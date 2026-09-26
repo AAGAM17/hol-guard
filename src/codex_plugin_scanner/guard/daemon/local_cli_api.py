@@ -355,6 +355,11 @@ class LocalCliApiService:
         except ApprovalGateError as exc:
             raise LocalCliApiError(exc.status, exc.code, str(exc)) from exc
         command_states = self._command_states_from_payload(payload)
+        from ..native_policy_snapshot import notify_native_policy_mutation
+
+        # Retire acknowledged authority before writing. The final notification
+        # also rejects publications raced with a commit or rollback.
+        notify_native_policy_mutation(self._store.guard_home)
         try:
             revision = record_local_custom_extension_mutation(
                 self._store,
@@ -368,6 +373,8 @@ class LocalCliApiService:
             if str(exc) == "local_cli_revision_conflict":
                 raise LocalCliApiError(409, "revision_conflict") from exc
             raise LocalCliApiError(400, "invalid_local_cli_mutation", str(exc)) from exc
+        finally:
+            notify_native_policy_mutation(self._store.guard_home)
         return {
             "schema_version": _LOCAL_CLI_API_SCHEMA,
             "status": "applied",

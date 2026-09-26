@@ -18,6 +18,9 @@ fn root() -> PathBuf {
         std::process::id(),
         NEXT_ROOT.fetch_add(1, Ordering::Relaxed)
     ));
+    #[cfg(windows)]
+    let path = crate::resident_state::ensure_private_directory(&path, true).unwrap();
+    #[cfg(not(windows))]
     fs::create_dir(&path).unwrap();
     #[cfg(unix)]
     {
@@ -29,15 +32,19 @@ fn root() -> PathBuf {
 
 fn install_key(path: &Path) -> [u8; 32] {
     let key = [23u8; 32];
-    fs::write(path.join("policy-verifier.key"), key).unwrap();
+    let key_path = path.join("policy-verifier.key");
+    #[cfg(windows)]
+    {
+        use std::io::Write;
+        let mut file = crate::resident_state::private_file(&key_path, false, path).unwrap();
+        file.write_all(&key).unwrap();
+    }
+    #[cfg(not(windows))]
+    fs::write(&key_path, key).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(
-            path.join("policy-verifier.key"),
-            fs::Permissions::from_mode(0o600),
-        )
-        .unwrap();
+        fs::set_permissions(key_path, fs::Permissions::from_mode(0o600)).unwrap();
     }
     key
 }

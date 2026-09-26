@@ -2,6 +2,8 @@ use super::{
     retry_scope_binding, signing_bytes, verify_and_claim_at, verify_envelope,
     WorkspaceReviewDecisionContext,
 };
+#[cfg(windows)]
+use guard_contracts::NATIVE_WORKSPACE_REVIEW_MAX_AUTHORITY_BYTES;
 use guard_contracts::{
     WorkspaceReviewAuthorityV1, WorkspaceReviewDecisionEnvelopeV1,
     NATIVE_WORKSPACE_REVIEW_AUTHORITY_PURPOSE, NATIVE_WORKSPACE_REVIEW_AUTHORITY_V1_SCHEMA,
@@ -15,6 +17,8 @@ use guard_policy_snapshot::{canonical_json_bytes, digest_bytes};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::Value;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -42,10 +46,7 @@ fn test_root() -> PathBuf {
     #[cfg(not(windows))]
     fs::create_dir(&path).unwrap();
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-    }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
     path
 }
 
@@ -86,12 +87,21 @@ fn authority_record() -> WorkspaceReviewAuthorityV1 {
 fn write_authority_candidate(root: &Path, record: &WorkspaceReviewAuthorityV1) -> PathBuf {
     let path = root.join("authority-candidate.json");
     let bytes = canonical_json_bytes(&serde_json::to_value(record).unwrap()).unwrap();
+    #[cfg(windows)]
+    {
+        super::super::policy_store_persistence::persist_private_bytes(
+            &path,
+            &bytes,
+            NATIVE_WORKSPACE_REVIEW_MAX_AUTHORITY_BYTES as u64,
+            "workspace_review_authority_test",
+            &crate::resident_state::private_root_for_state_base(root).unwrap(),
+        )
+        .unwrap();
+    }
+    #[cfg(not(windows))]
     fs::write(&path, bytes).unwrap();
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-    }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
     path
 }
 

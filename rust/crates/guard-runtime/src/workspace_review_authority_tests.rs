@@ -2,6 +2,8 @@ use super::{
     install_record_at_for_test, load_at_for_test, signing_bytes, validate_transition,
     verify_record, verify_record_bytes, AUTHORITY_FILE_NAME,
 };
+#[cfg(windows)]
+use guard_contracts::NATIVE_WORKSPACE_REVIEW_MAX_AUTHORITY_BYTES;
 use guard_contracts::{
     WorkspaceReviewAuthorityV1, NATIVE_WORKSPACE_REVIEW_AUTHORITY_PURPOSE,
     NATIVE_WORKSPACE_REVIEW_AUTHORITY_V1_SCHEMA, NATIVE_WORKSPACE_REVIEW_AUTHORITY_V1_VERSION,
@@ -44,19 +46,31 @@ fn test_root() -> PathBuf {
 
 fn write_candidate(root: &Path, name: &str, record: &WorkspaceReviewAuthorityV1) -> PathBuf {
     let path = root.join(name);
-    fs::write(
-        &path,
-        canonical_bytes(&sign_record(
-            record.clone(),
-            &ROOT_SEED,
-            NATIVE_WORKSPACE_REVIEW_ENROLLMENT_DOMAIN,
-        )),
-    )
-    .unwrap();
-    #[cfg(unix)]
+    let bytes = canonical_bytes(&sign_record(
+        record.clone(),
+        &ROOT_SEED,
+        NATIVE_WORKSPACE_REVIEW_ENROLLMENT_DOMAIN,
+    ));
+    #[cfg(windows)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let private_root = crate::resident_state::private_root_for_state_base(root).unwrap();
+        super::super::policy_store_persistence::persist_private_bytes(
+            &path,
+            &bytes,
+            NATIVE_WORKSPACE_REVIEW_MAX_AUTHORITY_BYTES as u64,
+            "workspace_review_authority_test",
+            &private_root,
+        )
+        .unwrap();
+    }
+    #[cfg(not(windows))]
+    {
+        fs::write(&path, bytes).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        }
     }
     path
 }

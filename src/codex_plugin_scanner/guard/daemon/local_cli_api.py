@@ -72,7 +72,7 @@ from ..runtime.package_json_scripts import looks_like_package_script_paste
 from ..runtime.skill_workflow_preflight import preflight_skill_dependencies
 from .local_cli_continuity_api import decorate_local_cli_continuity
 from .local_cli_mcp_store import bound_mcp_observation, stored_mcp_recognition
-from .mcp_discovery_jobs import DiscoveryJobError, McpDiscoveryJobs
+from .mcp_discovery_jobs import DiscoveryJobError, DiscoveryStageError, McpDiscoveryJobs
 
 if TYPE_CHECKING:
     from ..store import GuardStore
@@ -322,9 +322,19 @@ class LocalCliApiService:
                         return
                     # Existing host adapters read configuration and persisted
                     # observations only. This path never starts a server.
-                    self._observe_harness_mcp_servers()
+                    try:
+                        self._observe_harness_mcp_servers()
+                    except Exception as error:
+                        if getattr(error, "code", None) == "catalog_limit_reached":
+                            raise DiscoveryStageError("catalog_limit_reached") from None
+                        raise DiscoveryStageError("configured_host_scan_failed") from None
                     if not cancel.is_set():
-                        discover_observed_mcp_tools(self._store, seen_at=utc_now())
+                        try:
+                            discover_observed_mcp_tools(self._store, seen_at=utc_now())
+                        except Exception as error:
+                            if str(error) == "local_cli_catalog_limit":
+                                raise DiscoveryStageError("catalog_limit_reached") from None
+                            raise DiscoveryStageError("observed_provider_scan_failed") from None
 
                 return self._discovery_jobs.start(
                     "inventory:configured",
@@ -810,6 +820,12 @@ class LocalCliApiService:
                     409,
                     "catalog_revision_conflict",
                     "A newer discovery finished first. Your choices were kept; refresh the current inventory.",
+                ) from exc
+            if str(exc) == "local_cli_catalog_limit":
+                raise LocalCliApiError(
+                    409,
+                    "catalog_limit_reached",
+                    "This connector has more tools than Guard can catalog safely. Existing choices were kept.",
                 ) from exc
             raise
         finally:

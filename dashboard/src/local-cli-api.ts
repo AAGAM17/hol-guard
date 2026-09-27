@@ -441,6 +441,12 @@ export async function waitForMcpDiscoveryJob(cliId: string, initialJob: unknown,
           message = "Guard cannot list this connection directly. Refresh it in its host app.";
         } else if (job.error === "catalog_revision_conflict") {
           message = "A newer discovery finished first. Reload the inventory.";
+        } else if (job.error === "configured_host_scan_failed") {
+          message = "Guard could not read the host's configured connections. Check the host app and retry.";
+        } else if (job.error === "observed_provider_scan_failed") {
+          message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery.";
+        } else if (job.error === "catalog_limit_reached") {
+          message = "This connector has more tools than Guard can show safely. Existing choices were kept.";
         }
         throw new Error(message);
       }

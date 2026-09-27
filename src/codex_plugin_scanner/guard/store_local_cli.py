@@ -342,10 +342,13 @@ class StoreLocalCliMixin:
                 (cli_id,),
             ).fetchall()
             known = {str(row[0]) for row in rows}
+            if any(not is_local_cli_command_id(command.command_id) for command in commands):
+                raise ValueError("invalid local CLI command id")
+            incoming = {command.command_id for command in commands}
+            if len(known | incoming) > limit:
+                raise ValueError("local_cli_catalog_limit")
             for command in commands:
-                if not is_local_cli_command_id(command.command_id):
-                    raise ValueError("invalid local CLI command id")
-                if command.command_id in known or len(known) >= limit:
+                if command.command_id in known:
                     continue
                 connection.execute(
                     """insert into local_cli_command

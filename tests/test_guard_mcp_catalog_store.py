@@ -16,22 +16,31 @@ _SECOND = "2026-09-27T12:01:00Z"
 
 def test_skill_metadata_is_origin_bound_and_partial_refresh_keeps_prior(tmp_path: Path):
     store, identity = _store(tmp_path)
-    metadata = {"uri": "skill://report/SKILL.md", "connection_identity_hash": identity.identity_hash,
-                "origin": "mcp-served-skill", "name": "report", "description": "Synthetic workflow",
-                "activation_supported": False, "permissions_granted": False}
+    metadata = {
+        "uri": "skill://report/SKILL.md",
+        "connection_identity_hash": identity.identity_hash,
+        "origin": "mcp-served-skill",
+        "name": "report",
+        "description": "Synthetic workflow",
+        "activation_supported": False,
+        "permissions_granted": False,
+    }
     first = replace(_catalog("read"), skills=(metadata,), skills_complete=True)
-    store.replace_local_cli_commands(identity.cli_id, _commands("read"), mcp_catalog=first,
-                                     identity_hash=identity.identity_hash, seen_at=_FIRST)
+    store.replace_local_cli_commands(
+        identity.cli_id, _commands("read"), mcp_catalog=first, identity_hash=identity.identity_hash, seen_at=_FIRST
+    )
     assert store.read_local_cli_revision() == 0
     partial = replace(_catalog("read"), skills_complete=False, skills_reason="skill_discovery_failed")
-    store.replace_local_cli_commands(identity.cli_id, _commands("read"), mcp_catalog=partial,
-                                     identity_hash=identity.identity_hash, seen_at=_SECOND)
+    store.replace_local_cli_commands(
+        identity.cli_id, _commands("read"), mcp_catalog=partial, identity_hash=identity.identity_hash, seen_at=_SECOND
+    )
     snapshot = store.list_local_cli_items()[0]["mcp_catalog"]["skills_catalog"]
     assert snapshot["entries"] == [metadata]
     assert snapshot["stale"] is True and snapshot["complete"] is False
     foreign = replace(first, skills=({**metadata, "connection_identity_hash": "f" * 64},))
-    store.replace_local_cli_commands(identity.cli_id, _commands("read"), mcp_catalog=foreign,
-                                     identity_hash=identity.identity_hash, seen_at=_SECOND)
+    store.replace_local_cli_commands(
+        identity.cli_id, _commands("read"), mcp_catalog=foreign, identity_hash=identity.identity_hash, seen_at=_SECOND
+    )
     snapshot = store.list_local_cli_items()[0]["mcp_catalog"]["skills_catalog"]
     assert snapshot["entries"] == [metadata]
     assert snapshot["reason"] == "skill_origin_changed"
@@ -58,15 +67,22 @@ def test_skill_pages_are_bounded_revision_fenced_and_keep_private_catalogs(tmp_p
     from codex_plugin_scanner.guard.runtime.package_json_script_memory import public_local_cli_item
 
     store, identity = _store(tmp_path)
-    entries = tuple({
-        "uri": f"skill://report-{index:03}/SKILL.md", "name": f"report-{index:03}",
-        "description": "Synthetic workflow", "origin": "mcp-served-skill",
-        "connection_identity_hash": identity.identity_hash,
-        "activation_supported": False, "permissions_granted": False,
-    } for index in range(51))
+    entries = tuple(
+        {
+            "uri": f"skill://report-{index:03}/SKILL.md",
+            "name": f"report-{index:03}",
+            "description": "Synthetic workflow",
+            "origin": "mcp-served-skill",
+            "connection_identity_hash": identity.identity_hash,
+            "activation_supported": False,
+            "permissions_granted": False,
+        }
+        for index in range(51)
+    )
     catalog = replace(_catalog("read"), skills=entries, skills_complete=True)
-    store.replace_local_cli_commands(identity.cli_id, _commands("read"), mcp_catalog=catalog,
-                                     identity_hash=identity.identity_hash, seen_at=_FIRST)
+    store.replace_local_cli_commands(
+        identity.cli_id, _commands("read"), mcp_catalog=catalog, identity_hash=identity.identity_hash, seen_at=_FIRST
+    )
     first = store.read_local_mcp_skills(identity.cli_id, offset=0, search="", expected_revision=None)
     assert len(first["entries"]) == 50 and first["next_offset"] == 50
     second = store.read_local_mcp_skills(identity.cli_id, offset=50, search="", expected_revision=first["revision"])
@@ -81,8 +97,9 @@ def test_skill_pages_are_bounded_revision_fenced_and_keep_private_catalogs(tmp_p
     assert "tools" not in public["mcp_catalog"]
     assert "entries" not in public["mcp_catalog"]["skills_catalog"]
     assert len(private["mcp_catalog"]["skills_catalog"]["entries"]) == 51
-    store.replace_local_cli_commands(identity.cli_id, _commands("read"), mcp_catalog=catalog,
-                                     identity_hash=identity.identity_hash, seen_at=_SECOND)
+    store.replace_local_cli_commands(
+        identity.cli_id, _commands("read"), mcp_catalog=catalog, identity_hash=identity.identity_hash, seen_at=_SECOND
+    )
     with pytest.raises(ValueError, match="mcp_skill_catalog_changed"):
         store.read_local_mcp_skills(identity.cli_id, offset=50, search="", expected_revision=first["revision"])
     store.record_local_cli_observation(replace(identity, identity_hash="2" * 64), seen_at=_SECOND, surface="mcp")
@@ -163,6 +180,24 @@ def test_failed_refresh_keeps_the_last_catalog(tmp_path: Path) -> None:
     assert not item["mcp_catalog"]["complete"]
 
 
+def test_partial_refresh_limit_fails_atomically_instead_of_dropping_tools(tmp_path: Path) -> None:
+    store, identity = _store(tmp_path)
+    _publish(store, identity, "read", "delete")
+    before = store.list_local_cli_items()[0]
+    with pytest.raises(ValueError, match="local_cli_catalog_limit"):
+        store.merge_local_cli_commands(
+            identity.cli_id,
+            _commands("search"),
+            limit=2,
+            mcp_catalog=_catalog("search", complete=False),
+            identity_hash=identity.identity_hash,
+            seen_at=_SECOND,
+        )
+    after = store.list_local_cli_items()[0]
+    assert after["commands"] == before["commands"]
+    assert after["mcp_catalog"] == before["mcp_catalog"]
+
+
 def test_removed_tools_revoke_allow_and_preserve_deny_when_they_return(tmp_path: Path) -> None:
     store, identity = _store(tmp_path)
     _publish(store, identity, "read", "delete")
@@ -182,9 +217,12 @@ def test_partial_catalog_marks_missing_tools_stale_without_removing_them(tmp_pat
     store, identity = _store(tmp_path)
     _publish(store, identity, "read", "delete")
     store.merge_local_cli_commands(
-        identity.cli_id, _commands("read", "search"), limit=80,
+        identity.cli_id,
+        _commands("read", "search"),
+        limit=80,
         mcp_catalog=_catalog("read", "search", complete=False),
-        identity_hash=identity.identity_hash, seen_at=_SECOND,
+        identity_hash=identity.identity_hash,
+        seen_at=_SECOND,
     )
     changes = store.list_local_cli_items()[0]["mcp_catalog"]["changes"]
     assert changes == {"added": ["search"], "changed": [], "removed": [], "stale": ["delete"]}
@@ -193,11 +231,19 @@ def test_partial_catalog_marks_missing_tools_stale_without_removing_them(tmp_pat
 def test_saving_current_choices_preserves_retired_mcp_denies(tmp_path: Path) -> None:
     store, identity = _store(tmp_path)
     _publish(store, identity, "read", "delete")
-    store.upsert_local_cli_grant(identity=identity, state="allowed", expected_revision=0, updated_at=_FIRST,
-                                 command_states={"read": "allow", "delete": "block"})
+    store.upsert_local_cli_grant(
+        identity=identity,
+        state="allowed",
+        expected_revision=0,
+        updated_at=_FIRST,
+        command_states={"read": "allow", "delete": "block"},
+    )
     _publish(store, identity, "read")
     store.upsert_local_cli_grant(
-        identity=identity, state="allowed", expected_revision=store.read_local_cli_revision(), updated_at=_SECOND,
+        identity=identity,
+        state="allowed",
+        expected_revision=store.read_local_cli_revision(),
+        updated_at=_SECOND,
         command_states={"read": "review"},
     )
     assert store.read_local_cli_command_states(identity.cli_id) == {"read": "review", "delete": "block"}
@@ -211,13 +257,19 @@ def test_schema_changes_require_review_and_preserve_deny(tmp_path: Path) -> None
     store.upsert_local_cli_grant(identity=identity, state="allowed", expected_revision=0, updated_at=_FIRST)
     store.upsert_local_cli_command_states(identity.cli_id, {"read": "allow", "delete": "block"})
     revision = store.read_local_cli_revision()
-    changed = replace(_catalog("read", "delete"), tools=tuple(
-        {"name": name, "inputSchema": {"type": "object", "properties": {"destination": {"type": "string"}}}}
-        for name in ("read", "delete")
-    ))
+    changed = replace(
+        _catalog("read", "delete"),
+        tools=tuple(
+            {"name": name, "inputSchema": {"type": "object", "properties": {"destination": {"type": "string"}}}}
+            for name in ("read", "delete")
+        ),
+    )
     store.replace_local_cli_commands(
-        identity.cli_id, _commands("read", "delete"), mcp_catalog=changed,
-        identity_hash=identity.identity_hash, seen_at=_SECOND,
+        identity.cli_id,
+        _commands("read", "delete"),
+        mcp_catalog=changed,
+        identity_hash=identity.identity_hash,
+        seen_at=_SECOND,
     )
     assert store.read_local_cli_command_states(identity.cli_id) == {"read": "review", "delete": "block"}
     assert store.read_local_cli_revision() == revision + 1
@@ -229,12 +281,22 @@ def test_cosmetic_description_does_not_reset_choices(tmp_path: Path) -> None:
     store.upsert_local_cli_grant(identity=identity, state="allowed", expected_revision=0, updated_at=_FIRST)
     store.upsert_local_cli_command_states(identity.cli_id, {"read": "allow"})
     revision = store.read_local_cli_revision()
-    changed = replace(_catalog("read"), tools=({
-        "name": "read", "inputSchema": {"type": "object"}, "description": "Updated presentation text",
-    },))
+    changed = replace(
+        _catalog("read"),
+        tools=(
+            {
+                "name": "read",
+                "inputSchema": {"type": "object"},
+                "description": "Updated presentation text",
+            },
+        ),
+    )
     store.replace_local_cli_commands(
-        identity.cli_id, _commands("read"), mcp_catalog=changed,
-        identity_hash=identity.identity_hash, seen_at=_SECOND,
+        identity.cli_id,
+        _commands("read"),
+        mcp_catalog=changed,
+        identity_hash=identity.identity_hash,
+        seen_at=_SECOND,
     )
     assert store.read_local_cli_command_states(identity.cli_id)["read"] == "allow"
     assert store.read_local_cli_revision() == revision
@@ -244,13 +306,21 @@ def test_stale_refresh_cannot_overwrite_newer_catalog(tmp_path: Path) -> None:
     store, identity = _store(tmp_path)
     _publish(store, identity, "read")
     store.replace_local_cli_commands(
-        identity.cli_id, _commands("read", "search"), mcp_catalog=_catalog("read", "search"),
-        identity_hash=identity.identity_hash, seen_at=_SECOND, expected_catalog_revision=1,
+        identity.cli_id,
+        _commands("read", "search"),
+        mcp_catalog=_catalog("read", "search"),
+        identity_hash=identity.identity_hash,
+        seen_at=_SECOND,
+        expected_catalog_revision=1,
     )
     with pytest.raises(ValueError, match="mcp_catalog_revision_conflict"):
         store.replace_local_cli_commands(
-            identity.cli_id, _commands("delete"), mcp_catalog=_catalog("delete"),
-            identity_hash=identity.identity_hash, seen_at=_FIRST, expected_catalog_revision=1,
+            identity.cli_id,
+            _commands("delete"),
+            mcp_catalog=_catalog("delete"),
+            identity_hash=identity.identity_hash,
+            seen_at=_FIRST,
+            expected_catalog_revision=1,
         )
     item = store.list_local_cli_items()[0]
     assert item["mcp_catalog"]["revision"] == 2
@@ -322,8 +392,9 @@ def test_v10_migration_rebuilds_tool_hashes_without_changing_grants(tmp_path: Pa
 
     store, identity = _store(tmp_path)
     _publish(store, identity, "read")
-    store.upsert_local_cli_grant(identity=identity, state="allowed", expected_revision=0, updated_at=_FIRST,
-                                 command_states={"read": "block"})
+    store.upsert_local_cli_grant(
+        identity=identity, state="allowed", expected_revision=0, updated_at=_FIRST, command_states={"read": "block"}
+    )
     before = store.read_local_mcp_grant(identity.identity_hash, tool_name="read")
     with sqlite3.connect(store.path) as connection:
         connection.execute("drop table local_mcp_tool_authority")

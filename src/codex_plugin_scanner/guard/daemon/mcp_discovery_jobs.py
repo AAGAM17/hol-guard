@@ -13,10 +13,26 @@ from uuid import uuid4
 
 _LOG = logging.getLogger(__name__)
 _JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
+_MAX_RUNNING_JOBS = 4
+_PUBLIC_FAILURE_CODES = frozenset(
+    {
+        "mcp_refresh_unavailable",
+        "catalog_revision_conflict",
+        "configured_host_scan_failed",
+        "observed_provider_scan_failed",
+        "catalog_limit_reached",
+    }
+)
 
 
 class DiscoveryJobError(ValueError):
     pass
+
+
+class DiscoveryStageError(ValueError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 @dataclass
@@ -74,7 +90,7 @@ class McpDiscoveryJobs:
                 if job.state == "complete" and job.finished is not None and now - job.finished < reuse_seconds:
                     return job.public()
                 break
-            if sum(job.finished is None for job in self._jobs.values()) >= 2:
+            if sum(job.finished is None for job in self._jobs.values()) >= _MAX_RUNNING_JOBS:
                 raise DiscoveryJobError("discovery_busy")
             while len(self._jobs) >= 16:
                 oldest = next((key for key, job in self._jobs.items() if job.finished is not None), None)
@@ -124,11 +140,7 @@ class McpDiscoveryJobs:
             # Never expose a launch command, environment, provider result, or
             # exception text to polling clients. API codes are a narrow enum.
             candidate = getattr(error, "code", None)
-            code = (
-                candidate
-                if candidate in {"mcp_refresh_unavailable", "catalog_revision_conflict"}
-                else "discovery_failed"
-            )
+            code = candidate if candidate in _PUBLIC_FAILURE_CODES else "discovery_failed"
             # Exception text, locals and source lines may contain provider output.
             frames = tuple(
                 f"{frame.name}:{frame.lineno}" for frame in traceback.extract_tb(error.__traceback__, limit=8)

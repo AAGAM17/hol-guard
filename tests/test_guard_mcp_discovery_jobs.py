@@ -39,12 +39,16 @@ def test_jobs_bound_concurrency_deduplicate_and_shutdown():
     assert entered.wait(1)
     assert pool.start("connection-a", stall)["job_id"] == first["job_id"]
     second = pool.start("connection-b", stall)
+    third = pool.start("connection-c", stall)
+    fourth = pool.start("connection-d", stall)
     with pytest.raises(DiscoveryJobError, match="discovery_busy"):
-        pool.start("connection-c", stall)
+        pool.start("connection-e", stall)
     assert pool.read(str(first["job_id"]), cancel=True)["state"] == "cancelling"
     assert _finished(pool, str(first["job_id"]))["state"] == "cancelled"
     assert pool.close()
     assert pool.read(str(second["job_id"]))["state"] == "cancelled"
+    assert pool.read(str(third["job_id"]))["state"] == "cancelled"
+    assert pool.read(str(fourth["job_id"]))["state"] == "cancelled"
     with pytest.raises(DiscoveryJobError, match="discovery_unavailable"):
         pool.start("connection-c", stall)
 
@@ -167,6 +171,39 @@ def test_configured_inventory_uses_read_adapters_and_never_launches(tmp_path: Pa
         assert calls == ["configuration", "observations"]
         assert service.refresh_job({"operation": "configured-connections"})["job_id"] == job["job_id"]
         assert calls == ["configuration", "observations"]
+    finally:
+        assert service.close_discovery()
+
+
+@pytest.mark.parametrize(
+    ("stage", "code"),
+    [
+        ("configuration", "configured_host_scan_failed"),
+        ("observations", "observed_provider_scan_failed"),
+    ],
+)
+def test_configured_inventory_reports_failed_stage_without_private_exception(
+    tmp_path: Path, monkeypatch, stage: str, code: str
+) -> None:
+    service = LocalCliApiService(store=GuardStore(tmp_path / "home"))
+
+    def fail() -> None:
+        raise ValueError("PRIVATE CONFIG OR PROVIDER RESULT")
+
+    if stage == "configuration":
+        monkeypatch.setattr(service, "_observe_harness_mcp_servers", fail)
+    else:
+        monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda: None)
+        monkeypatch.setattr(
+            "codex_plugin_scanner.guard.daemon.local_cli_api.discover_observed_mcp_tools",
+            lambda *_args, **_kwargs: fail(),
+        )
+    try:
+        job = service.refresh_job({"operation": "configured-connections"})
+        result = _finished(service._discovery_jobs, str(job["job_id"]))
+        assert result["state"] == "failed"
+        assert result["error"] == code
+        assert "PRIVATE" not in str(result)
     finally:
         assert service.close_discovery()
 

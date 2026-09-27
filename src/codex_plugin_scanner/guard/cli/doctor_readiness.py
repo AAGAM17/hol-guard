@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
 
 def _command_probe_results(probe: object) -> tuple[Mapping[str, object], ...]:
@@ -10,8 +11,13 @@ def _command_probe_results(probe: object) -> tuple[Mapping[str, object], ...]:
         return ()
     # Hermes/OpenClaw use command; OpenCode uses paths/config. Do not crawl
     # arbitrary configuration or turn other adapter metadata into probe results.
-    nested = tuple(probe[key] for key in ("command", "paths", "config") if isinstance(probe.get(key), Mapping))
-    return (probe, *nested)
+    typed_probe = cast(Mapping[str, object], probe)
+    nested = tuple(
+        cast(Mapping[str, object], typed_probe[key])
+        for key in ("command", "paths", "config")
+        if isinstance(typed_probe.get(key), Mapping)
+    )
+    return (typed_probe, *nested)
 
 
 def doctor_runtime_readiness(diagnostics: Mapping[str, object]) -> dict[str, str]:

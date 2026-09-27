@@ -133,6 +133,9 @@ def test_stable_dispatch_computes_and_requires_the_registry_derived_version() ->
     assert "'$pypi + $testpypi + ($tags | map(select(. != $candidate))) | unique'" in compute_run
     assert '--arg candidate "$RELEASE_VERSION"' in compute_run
     assert "compute_main_release_version.py" in compute_run
+    assert "stable_release_asset_repair.py" in compute_run
+    assert "release_repair=true" in compute_run
+    assert 'git checkout --detach "$SOURCE_SHA"' in compute_run
     assert 'if [[ "$RELEASE_VERSION" != "$EXPECTED_VERSION" ]]' in compute_run
     assert 'VERSION="$RELEASE_VERSION"' in compute_run
     assert 'elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]' not in compute_run

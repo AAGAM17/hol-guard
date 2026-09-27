@@ -26,7 +26,11 @@ def search_mcp_registry(query: str) -> dict[str, object]:
             timeout=5,
             allow_redirects=False,
         ) as response:
-            if response.status != 200 or response.headers.get_content_type() != "application/json":
+            content_type = next(
+                (value for key, value in response.headers.items() if key.lower() == "content-type"),
+                "",
+            )
+            if response.status != 200 or content_type.split(";", 1)[0].strip().lower() != "application/json":
                 raise ValueError("registry_unavailable")
             raw = response.read(_MAX_BYTES + 1)
     except (OSError, urllib.error.URLError, ValueError) as error:

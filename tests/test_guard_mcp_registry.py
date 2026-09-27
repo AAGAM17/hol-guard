@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import urllib.request
+from typing import ClassVar
 
 import pytest
 
@@ -11,13 +12,7 @@ from codex_plugin_scanner.guard.runtime.mcp_registry import search_mcp_registry
 
 class _Response(io.BytesIO):
     status = 200
-
-    class Headers:
-        @staticmethod
-        def get_content_type():
-            return "application/json"
-
-    headers = Headers()
+    headers: ClassVar[dict[str, str]] = {"Content-Type": "application/json; charset=utf-8"}
 
 
 def test_public_registry_search_is_fixed_origin_bounded_and_noninstalling(monkeypatch):

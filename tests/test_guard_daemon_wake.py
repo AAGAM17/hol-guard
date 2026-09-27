@@ -347,6 +347,12 @@ class _FakeSpawnedDaemonProcess:
         self.terminated = False
         self.killed = False
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        return None
+
     def poll(self) -> int | None:
         return self.returncode
 
@@ -367,88 +373,149 @@ class TestSpawnedDaemonStartClassification:
     """A spawned daemon still starting at the deadline must not be killed."""
 
     def test_classify_spawned_daemon_dead_when_exited(self) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
         process = _FakeSpawnedDaemonProcess(returncode=1)
         assert (
-            daemon_manager_module.classify_spawned_daemon(
+            start_classification.classify_spawned_daemon(
                 process,
                 pending_launch_present=True,
-                lock_holder_pid=process.pid,
+                lock_held_by_spawned_tree=True,
                 journal_start_requested_after=True,
             )
             == "dead"
         )
 
-    def test_classify_spawned_daemon_progressing_when_lock_held_by_spawn(self) -> None:
+    def test_classify_spawned_daemon_progressing_when_lock_held_by_spawned_tree(self) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
         process = _FakeSpawnedDaemonProcess()
         assert (
-            daemon_manager_module.classify_spawned_daemon(
+            start_classification.classify_spawned_daemon(
                 process,
                 pending_launch_present=True,
-                lock_holder_pid=process.pid,
+                lock_held_by_spawned_tree=True,
                 journal_start_requested_after=False,
             )
             == "progressing"
         )
 
     def test_classify_spawned_daemon_progressing_on_newer_start_requested(self) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
         process = _FakeSpawnedDaemonProcess()
         assert (
-            daemon_manager_module.classify_spawned_daemon(
+            start_classification.classify_spawned_daemon(
                 process,
                 pending_launch_present=True,
-                lock_holder_pid=None,
+                lock_held_by_spawned_tree=False,
                 journal_start_requested_after=True,
             )
             == "progressing"
         )
 
     def test_classify_spawned_daemon_blocked_with_no_progress_signals(self) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
         process = _FakeSpawnedDaemonProcess()
         assert (
-            daemon_manager_module.classify_spawned_daemon(
+            start_classification.classify_spawned_daemon(
                 process,
                 pending_launch_present=True,
-                lock_holder_pid=None,
+                lock_held_by_spawned_tree=False,
                 journal_start_requested_after=False,
             )
             == "blocked"
         )
 
     def test_classify_spawned_daemon_blocked_without_pending_launch(self) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
         process = _FakeSpawnedDaemonProcess()
         assert (
-            daemon_manager_module.classify_spawned_daemon(
+            start_classification.classify_spawned_daemon(
                 process,
                 pending_launch_present=False,
-                lock_holder_pid=process.pid,
+                lock_held_by_spawned_tree=True,
                 journal_start_requested_after=True,
             )
             == "blocked"
         )
 
-    def test_start_requested_journal_reader_compares_spawn_time(self, tmp_path, monkeypatch) -> None:
+    def test_owner_lock_signal_requires_spawned_tree_inventory(self, tmp_path, monkeypatch) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
+        guard_home = tmp_path / "guard-home"
+        monkeypatch.setattr(start_classification, "daemon_owner_lock_is_held", lambda _gh: True)
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_process_inventory_for_guard_home",
+            lambda _gh: [(424242, 5700)],
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_parent_pid",
+            lambda pid: 424242 if pid == 555555 else None,
+        )
+        assert start_classification.spawned_daemon_owner_lock_held(guard_home, root_pid=424242) is True
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_process_inventory_for_guard_home",
+            lambda _gh: [(424242, 5700), (777777, 5701)],
+        )
+        assert start_classification.spawned_daemon_owner_lock_held(guard_home, root_pid=424242) is False
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_process_inventory_for_guard_home",
+            lambda _gh: [(555555, 5700)],
+        )
+        assert start_classification.spawned_daemon_owner_lock_held(guard_home, root_pid=424242) is True
+        monkeypatch.setattr(start_classification, "daemon_owner_lock_is_held", lambda _gh: False)
+        assert start_classification.spawned_daemon_owner_lock_held(guard_home, root_pid=424242) is False
+
+    def test_start_requested_journal_requires_spawned_tree_pid(self, tmp_path, monkeypatch) -> None:
+        import os
+
+        from codex_plugin_scanner.guard.daemon import start_classification
         from codex_plugin_scanner.guard.daemon.lifecycle_journal import record_daemon_lifecycle_event
 
         guard_home = tmp_path / "guard-home"
         guard_home.mkdir()
-        before_ns = 1
-        record_daemon_lifecycle_event(guard_home, event="start_requested")
+        own_pid = os.getpid()
+        record_daemon_lifecycle_event(guard_home, event="start_requested", pid=own_pid)
+        record_daemon_lifecycle_event(guard_home, event="start_requested", pid=999999)
 
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_parent_pid",
+            lambda pid: own_pid if pid == 999999 else None,
+        )
         assert (
-            daemon_manager_module._guard_daemon_journal_records_start_requested_after(
-                guard_home, since_ns=before_ns
+            start_classification.daemon_journal_records_start_requested_after(
+                guard_home, root_pid=own_pid, since_ns=1
             )
             is True
         )
         assert (
-            daemon_manager_module._guard_daemon_journal_records_start_requested_after(
-                guard_home, since_ns=2**62
+            start_classification.daemon_journal_records_start_requested_after(
+                guard_home, root_pid=own_pid, since_ns=2**62
+            )
+            is False
+        )
+
+        monkeypatch.setattr(daemon_manager_module, "_guard_daemon_parent_pid", lambda pid: None)
+        other_home = tmp_path / "other-home"
+        other_home.mkdir()
+        record_daemon_lifecycle_event(other_home, event="start_requested", pid=888888)
+        assert (
+            start_classification.daemon_journal_records_start_requested_after(
+                other_home, root_pid=own_pid, since_ns=1
             )
             is False
         )
         assert (
-            daemon_manager_module._guard_daemon_journal_records_start_requested_after(
-                tmp_path / "missing", since_ns=before_ns
+            start_classification.daemon_journal_records_start_requested_after(
+                tmp_path / "missing", root_pid=own_pid, since_ns=1
             )
             is False
         )
@@ -462,6 +529,8 @@ class TestSpawnedDaemonStartClassification:
         owner_lock_held: bool,
         journal_wait: object = None,
     ) -> None:
+        from codex_plugin_scanner.guard.daemon import start_classification
+
         monkeypatch.setattr(daemon_manager_module, "_reap_stale_ephemeral_guard_daemons", lambda **_: None)
         monkeypatch.setattr(
             daemon_manager_module,
@@ -473,10 +542,16 @@ class TestSpawnedDaemonStartClassification:
         monkeypatch.setattr(daemon_manager_module, "_guard_daemon_start_in_progress", lambda _gh: False)
         monkeypatch.setattr(daemon_manager_module.time, "sleep", lambda _: None)
         monkeypatch.setattr(daemon_manager_module.subprocess, "Popen", lambda *a, **k: process)
+        monkeypatch.setattr(daemon_manager_module, "process_start_token", lambda _pid: "posix:token")
+        monkeypatch.setattr(
+            start_classification,
+            "daemon_owner_lock_is_held",
+            lambda _gh: owner_lock_held,
+        )
         monkeypatch.setattr(
             daemon_manager_module,
-            "_guard_daemon_owner_lock_is_held",
-            lambda _gh: owner_lock_held,
+            "_guard_daemon_process_inventory_for_guard_home",
+            lambda _gh: [(process.pid, 5700)] if owner_lock_held else [],
         )
 
         def fake_wait(_gh, **kwargs):
@@ -495,7 +570,7 @@ class TestSpawnedDaemonStartClassification:
         self._patch_ensure_deadline(monkeypatch, guard_home, process, owner_lock_held=True)
 
         with pytest.raises(RuntimeError, match="^Guard daemon is still starting"):
-            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0)
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
 
         assert process.terminated is False
         assert process.killed is False
@@ -515,11 +590,13 @@ class TestSpawnedDaemonStartClassification:
             guard_home,
             process,
             owner_lock_held=False,
-            journal_wait=lambda: record_daemon_lifecycle_event(guard_home, event="start_requested"),
+            journal_wait=lambda: record_daemon_lifecycle_event(
+                guard_home, event="start_requested", pid=process.pid
+            ),
         )
 
         with pytest.raises(RuntimeError, match="^Guard daemon is still starting"):
-            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0)
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
 
         assert process.terminated is False
 
@@ -532,6 +609,216 @@ class TestSpawnedDaemonStartClassification:
         self._patch_ensure_deadline(monkeypatch, guard_home, process, owner_lock_held=False)
 
         with pytest.raises(RuntimeError, match="^Guard approval center did not start"):
-            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=0.05)
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=0.05, home_dir=tmp_path)
 
         assert process.terminated is True
+
+
+class TestStillStartingAdoption:
+    """The next ensure call adopts a recorded still-starting daemon."""
+
+    def _patch_baseline(self, monkeypatch, guard_home: Path) -> dict[str, list]:
+        calls: dict[str, list] = {"popen": [], "retire": []}
+        monkeypatch.setattr(daemon_manager_module, "_reap_stale_ephemeral_guard_daemons", lambda **_: None)
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_running_guard_daemon_processes_for_guard_home",
+            lambda _guard_home: [],
+        )
+        monkeypatch.setattr(daemon_manager_module, "load_guard_daemon_url", lambda _gh: None)
+        monkeypatch.setattr(daemon_manager_module, "_load_state", lambda _gh: None)
+        monkeypatch.setattr(daemon_manager_module, "_guard_daemon_start_in_progress", lambda _gh: False)
+        monkeypatch.setattr(daemon_manager_module.time, "sleep", lambda _: None)
+        monkeypatch.setattr(
+            daemon_manager_module.subprocess,
+            "Popen",
+            lambda *a, **k: calls["popen"].append(a[0]) or _FakeSpawnedDaemonProcess(),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "retire_all_guard_daemons_for_home",
+            lambda _gh, **_kw: calls["retire"].append(1),
+        )
+        return calls
+
+    def _record(self, pid: int = 424242, *, guard_home: Path | None = None) -> dict:
+        return {
+            "state_kind": "daemon_start_progress",
+            "guard_home": str((guard_home or Path("/tmp/ignored")).resolve()),
+            "pid": pid,
+            "port": 5700,
+            "process_start_token": "posix:token",
+            "recorded_at_ns": 1,
+            "spawned_at_ns": 1,
+        }
+
+    def test_retry_adopts_progressing_daemon_without_spawn(self, tmp_path, monkeypatch) -> None:
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        calls = self._patch_baseline(monkeypatch, guard_home)
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "load_authenticated_guard_daemon_start_progress",
+            lambda _gh: self._record(),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_start_progress_is_live",
+            lambda _gh, _record: True,
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_clear_guard_daemon_start_progress",
+            lambda _gh: cleared.append(1),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_wait_for_guard_daemon_url",
+            lambda _gh, **_kw: "http://127.0.0.1:5700",
+        )
+
+        url = daemon_manager_module.ensure_guard_daemon(guard_home)
+
+        assert url == "http://127.0.0.1:5700"
+        daemon_spawns = [cmd for cmd in calls["popen"] if "daemon" in str(cmd)]
+        assert daemon_spawns == []
+        assert calls["retire"] == []
+        assert cleared == [1]
+
+    def test_dead_record_is_cleared_and_spawn_proceeds(self, tmp_path, monkeypatch) -> None:
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        calls = self._patch_baseline(monkeypatch, guard_home)
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "load_authenticated_guard_daemon_start_progress",
+            lambda _gh: self._record(pid=424242),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_start_progress_is_live",
+            lambda _gh, _record: False,
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_clear_guard_daemon_start_progress",
+            lambda _gh: cleared.append(1),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_wait_for_guard_daemon_url",
+            lambda _gh, **_kw: "http://127.0.0.1:5700",
+        )
+
+        url = daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
+
+        assert url == "http://127.0.0.1:5700"
+        assert cleared == [1]
+        daemon_spawns = [cmd for cmd in calls["popen"] if "daemon" in str(cmd)]
+        assert len(daemon_spawns) == 1
+
+    def test_still_progressing_pid_raises_again_without_kill(self, tmp_path, monkeypatch) -> None:
+        import pytest
+
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        calls = self._patch_baseline(monkeypatch, guard_home)
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "load_authenticated_guard_daemon_start_progress",
+            lambda _gh: self._record(pid=424242),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_start_progress_is_live",
+            lambda _gh, _record: True,
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_wait_for_guard_daemon_url",
+            lambda _gh, **_kw: None,
+        )
+        monkeypatch.setattr(
+            daemon_manager_module, "_guard_daemon_pid_is_running", lambda _pid: True
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "daemon_still_starting_evidence_present",
+            lambda _gh, **_kw: True,
+        )
+
+        with pytest.raises(RuntimeError, match="^Guard daemon is still starting"):
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
+
+        daemon_spawns = [cmd for cmd in calls["popen"] if "daemon" in str(cmd)]
+        assert daemon_spawns == []
+        assert calls["retire"] == []
+
+    def test_blocked_record_falls_back_to_retirement(self, tmp_path, monkeypatch) -> None:
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        calls = self._patch_baseline(monkeypatch, guard_home)
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "load_authenticated_guard_daemon_start_progress",
+            lambda _gh: self._record(pid=424242),
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_start_progress_is_live",
+            lambda _gh, _record: True,
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_wait_for_guard_daemon_url",
+            lambda _gh, **_kw: None,
+        )
+        monkeypatch.setattr(
+            daemon_manager_module, "_guard_daemon_pid_is_running", lambda _pid: False
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_wait_for_started_guard_daemon_url",
+            lambda _gh, **_kw: "http://127.0.0.1:5701",
+        )
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "guard_daemon_retirement_is_complete",
+            lambda _gh: True,
+        )
+
+        url = daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
+
+        assert url == "http://127.0.0.1:5701"
+        assert calls["retire"] == [1]
+        daemon_spawns = [cmd for cmd in calls["popen"] if "daemon" in str(cmd)]
+        assert len(daemon_spawns) == 1
+
+    def test_windows_pending_launch_retire_skips_live_start_progress(self, tmp_path, monkeypatch) -> None:
+        """A live still-starting record exempts its pid from the previous-launch retire."""
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        (guard_home / "daemon-launch-pending.json").write_text("{}", encoding="utf-8")
+        pending_loads: list[int] = []
+        monkeypatch.setattr(daemon_manager_module.os, "name", "nt")
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "load_authenticated_guard_daemon_pending_launch",
+            lambda _gh: pending_loads.append(1) or {"pid": 424242},
+        )
+
+        assert (
+            daemon_manager_module._windows_pending_launch_needs_retirement(
+                guard_home, progress_is_live=True
+            )
+            is False
+        )
+        assert pending_loads == []
+        assert (
+            daemon_manager_module._windows_pending_launch_needs_retirement(
+                guard_home, progress_is_live=False
+            )
+            is True
+        )

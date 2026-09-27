@@ -91,12 +91,6 @@ def allow_pretool_response() -> dict[str, object]:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse"}}
 
 
-def _watch_recording_only(state_path: str | Path) -> bool:
-    from ..daemon.hook_availability_policy import hook_review_is_recording_only
-
-    return hook_review_is_recording_only(guard_home=Path(state_path).parent)
-
-
 def _poll_resolution(
     *,
     request_id: str,

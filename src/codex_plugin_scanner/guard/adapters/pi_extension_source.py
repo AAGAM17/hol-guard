@@ -523,7 +523,11 @@ def managed_extension_source(
         "    binding: InputApprovalResumeBinding | null,\n"
         "  ): void {\n"
         "    const requestId = approvalRequestId(response);\n"
-        "    if (!requestId || !inputApprovalResumeBindingIsActive(ctx, binding) || pendingApprovalResumes.has(requestId)) return;\n"
+        "    if (\n"
+        "      !requestId ||\n"
+        "      !inputApprovalResumeBindingIsActive(ctx, binding) ||\n"
+        "      pendingApprovalResumes.has(requestId)\n"
+        "    ) return;\n"
         "    const isActive = () => inputApprovalResumeBindingIsActive(ctx, binding);\n"
         "    if (!isActive()) return;\n"
         "    pendingApprovalResumes.add(requestId);\n"
@@ -585,7 +589,8 @@ def managed_extension_source(
         "      return { block: true, reason: cancelledReason };\n"
         "    }\n"
         "    if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
-        '      const reason = "HOL Guard blocked this tool call because its original arguments or context changed while it was reviewed.";\n'
+        '      const reason = "HOL Guard blocked this tool call because its original arguments or '\
+        'context changed while it was reviewed.";\n'
         '      ctx.ui.notify(reason, "warning");\n'
         "      return { block: true, reason };\n"
         "    }\n"
@@ -610,7 +615,8 @@ def managed_extension_source(
         "        return { block: true, reason: blockedReason };\n"
         "      }\n"
         "      if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
-        '        const changedReason = "HOL Guard blocked this tool call because its original arguments or context changed before approval was consumed.";\n'
+        '        const changedReason = "HOL Guard blocked this tool call because its original arguments or '\
+        'context changed before approval was consumed.";\n'
         '        ctx.ui.notify(changedReason, "warning");\n'
         "        return { block: true, reason: changedReason };\n"
         "      }\n"
@@ -626,13 +632,14 @@ def managed_extension_source(
         "        return { block: true, reason: cancelledReason };\n"
         "      }\n"
         "      if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
-        '        const changedReason = "HOL Guard blocked this tool call because its original arguments or context changed during approval revalidation.";\n'
+        '        const changedReason = "HOL Guard blocked this tool call because its original arguments or '\
+        'context changed during approval revalidation.";\n'
         '        ctx.ui.notify(changedReason, "warning");\n'
         "        return { block: true, reason: changedReason };\n"
         "      }\n"
         '      if (revalidated.decision === "allow") return undefined;\n'
-        '      const revalidationReason = revalidated.reason ?? "HOL Guard could not revalidate the exact approved tool '
-        'call.";\n'
+        "      const revalidationReason = revalidated.reason ?? "
+        '"HOL Guard could not revalidate the exact approved tool call.";\n'
         '      ctx.ui.notify(revalidationReason, "warning");\n'
         "      return { block: true, reason: revalidationReason };\n"
         "    }\n"

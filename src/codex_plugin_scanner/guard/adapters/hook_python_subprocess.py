@@ -231,8 +231,9 @@ def run_probe(
             _ = process.wait(timeout=_PROBE_REAP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             capture_incomplete = True
+    grace_deadline = max(deadline, time.monotonic()) + _PROBE_REAP_TIMEOUT_SECONDS
     for reader in readers:
-        reader.join(timeout=max(0, deadline - time.monotonic()))
+        reader.join(timeout=max(0, grace_deadline - time.monotonic()))
     capture_incomplete = capture_incomplete or capture_error.is_set() or any(reader.is_alive() for reader in readers)
     for reader, stream in zip(readers, (process.stdout, process.stderr), strict=True):
         if not reader.is_alive():

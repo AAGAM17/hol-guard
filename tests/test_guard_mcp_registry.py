@@ -40,7 +40,7 @@ def test_public_registry_search_is_fixed_origin_bounded_and_noninstalling(monkey
     }
 
     class Opener:
-        def open(self, request, timeout):
+        def open(self, request, data=None, timeout=None):
             captured.append((request.full_url, timeout, request.headers))
             return _Response(json.dumps(fixture).encode())
 
@@ -67,7 +67,7 @@ def test_registry_does_not_accept_oversize_or_fabricated_metadata(monkeypatch):
         def __init__(self, payload):
             self.payload = payload
 
-        def open(self, _request, timeout):
+        def open(self, _request, data=None, timeout=None):
             return _Response(self.payload)
 
     for payload, reason in (

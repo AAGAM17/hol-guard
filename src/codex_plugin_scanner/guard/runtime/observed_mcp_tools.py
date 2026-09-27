@@ -150,7 +150,13 @@ def discover_observed_mcp_tools(store: GuardStore, *, seen_at: str) -> None:
         ]
         # There is no allow-all fallback for an observed connector. Its catalog
         # is incomplete; unseen tools must retain their normal review.
-        store.merge_local_cli_commands(cli_id, catalog, limit=MAX_OBSERVED_MCP_TOOLS)
+        try:
+            store.merge_local_cli_commands(cli_id, catalog, limit=MAX_OBSERVED_MCP_TOOLS)
+        except ValueError as error:
+            if str(error) != "local_cli_catalog_limit":
+                raise
+            # Connector is full; keep existing tools and continue with the others.
+            continue
 
 
 def native_observed_mcp_tool_actions(store: GuardStore) -> dict[str, str]:

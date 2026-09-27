@@ -320,14 +320,7 @@ class HookWorkerNativeMixin:
         deadline: float | None,
     ) -> dict[str, object]:
         policy_snapshot = self._native_policy_snapshot(workspace, deadline=deadline)
-        # Watch is an explicit "record, do not stop" posture. Honor it from
-        # the installed config even when the resident is still serving an
-        # older enforcing snapshot. Otherwise every unproven command pauses
-        # for fresh approval until that snapshot is accepted. An enforcing
-        # snapshot still pauses when the installed posture is not Watch.
-        recording_only = (policy_snapshot is not None and policy_snapshot.get("mode") == "observe") or (
-            hook_review_is_recording_only(guard_home=guard_home, workspace=workspace)
-        )
+        recording_only = policy_snapshot is not None and policy_snapshot.get("mode") == "observe"
         fenced: bool | None = None
         try:
             with native_review_fence(

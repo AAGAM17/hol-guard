@@ -43,10 +43,6 @@ def apply_browser_approval_wait(
     pending = pending_pretool_approval(response, event_name=event_name)
     if pending is None:
         return response
-    if _watch_recording_only(state_path):
-        # Watch already decided not to stop the action. Waiting here holds the
-        # hook until the harness timeout even though no approval is required.
-        return allow_pretool_response()
     request_id, approval_url = pending
     _open_pending_approval(approval_url, state_path=state_path)
     action = _poll_resolution(

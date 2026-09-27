@@ -162,7 +162,9 @@ def test_native_installers_bundle_the_version_file_for_the_frozen_probe() -> Non
     windows = Path("scripts/mdm/windows/build-msi.ps1").read_text(encoding="utf-8")
 
     assert '--add-data "${ROOT}/src/codex_plugin_scanner/version.py:."' in macos
+    assert 'HOL_GUARD_VERSION %s does not match source version %s' in macos
     assert "--add-data \"$(Join-Path $Root 'src/codex_plugin_scanner/version.py');.\"" in windows
+    assert 'HOL_GUARD_VERSION $Version does not match source version $SourceVersion' in windows
 
 
 def test_macos_installer_stages_protected_state_and_log_surfaces() -> None:

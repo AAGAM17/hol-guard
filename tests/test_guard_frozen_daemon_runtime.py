@@ -124,6 +124,7 @@ def test_frozen_version_probe_reads_bundled_version_without_guard_imports(tmp_pa
 
     assert result.returncode == 0
     assert result.stdout.strip() == "hol-guard 9.9.9"
+    assert result.stderr == ""
     assert not marker.exists()
 
 

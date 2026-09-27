@@ -11,6 +11,13 @@ readonly RUNTIME="${STAGE}/Library/Application Support/HOL Guard"
 readonly STATE="${STAGE}/Library/Application Support/HOL Guard State"
 readonly LOGS="${STAGE}/Library/Logs/HOL Guard"
 readonly PACKAGE_ID="org.hol.guard"
+readonly SOURCE_VERSION="$(sed -n 's/^__version__ = "\([^"]*\)".*$/\1/p' \
+  "${ROOT}/src/codex_plugin_scanner/version.py")"
+if [[ "${SOURCE_VERSION}" != "${VERSION}" ]]; then
+  printf 'HOL_GUARD_VERSION %s does not match source version %s\n' \
+    "${VERSION}" "${SOURCE_VERSION}" >&2
+  exit 1
+fi
 
 rm -rf "${OUT}"
 mkdir -p "${RUNTIME}" "${STATE}" "${LOGS}" "${STAGE}/Library/LaunchAgents" \

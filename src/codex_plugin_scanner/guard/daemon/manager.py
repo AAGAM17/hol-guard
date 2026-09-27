@@ -437,6 +437,10 @@ def ensure_guard_daemon(
             _pending_launch_path(guard_home).is_file()
             or load_authenticated_guard_daemon_pending_launch(guard_home) is not None
         ):
+            if _guard_daemon_pending_launch_is_active(guard_home):
+                raise _GuardDaemonStillStartingError(
+                    f"Guard daemon is still starting; retry shortly. Expected state file at {state_path}."
+                )
             retire_all_guard_daemons_for_home(guard_home, deadline=start_deadline)
             if not _guard_daemon_pending_launch_state_is_resolved(guard_home):
                 raise RuntimeError("A previous Guard daemon launch could not be retired safely.")

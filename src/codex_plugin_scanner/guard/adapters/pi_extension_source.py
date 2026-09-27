@@ -631,7 +631,8 @@ def managed_extension_source(
         "        return { block: true, reason: changedReason };\n"
         "      }\n"
         '      if (revalidated.decision === "allow") return undefined;\n'
-        '      const revalidationReason = revalidated.reason ?? "HOL Guard could not revalidate the exact approved tool call.";\n'
+        '      const revalidationReason = revalidated.reason ?? "HOL Guard could not revalidate the exact approved tool '
+        'call.";\n'
         '      ctx.ui.notify(revalidationReason, "warning");\n'
         "      return { block: true, reason: revalidationReason };\n"
         "    }\n"

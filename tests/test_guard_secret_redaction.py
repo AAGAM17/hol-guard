@@ -11,6 +11,7 @@ from codex_plugin_scanner.guard.secret_redaction import sanitize_secret
 
 
 def _join(*parts: str) -> str:
+    """Construct synthetic credential labels and values at runtime."""
     return "".join(parts)
 
 
@@ -114,6 +115,7 @@ def test_sanitize_secret_handles_empty_string() -> None:
 def test_sanitize_secret_never_returns_sensitive_input_when_redaction_fails(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
     pattern_name: str,
     failure_type: type[Exception],
 ) -> None:
@@ -134,4 +136,20 @@ def test_sanitize_secret_never_returns_sensitive_input_when_redaction_fails(
 
     assert isinstance(result, str)
     assert result
-    assert not any(value in result + captured.out + captured.err for value in values)
+    # Cover diagnostic output as well as the returned string.
+    assert not any(value in result + captured.out + captured.err + caplog.text for value in values)
+    assert caplog.records[-1].getMessage() == "secret_redaction_failed"
+    assert caplog.records[-1].exc_info is None
+
+
+@pytest.mark.parametrize("failure_type", (RuntimeError, MemoryError))
+def test_sanitize_secret_keeps_safe_fallback_when_failure_logging_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> str:
+        raise failure_type("synthetic failure")
+
+    monkeypatch.setattr(secret_redaction, "_SECRET_KV_PATTERN", SimpleNamespace(sub=fail))
+    monkeypatch.setattr(secret_redaction._LOGGER, "warning", fail)
+    assert sanitize_secret(f"{_join('to', 'ken')}=synthetic-value") == "<redacted>"

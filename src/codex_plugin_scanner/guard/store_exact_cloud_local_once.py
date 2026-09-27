@@ -48,6 +48,7 @@ class StoreExactCloudLocalOnceMixin:
                 authority_revision=_authority_revision(connection),
             )
 
+
 def claim_exact_cloud_local_once_approval_locked(
     connection: sqlite3.Connection,
     *,
@@ -148,7 +149,7 @@ def _exact_row_locked(
                created_at, expires_at, claimed_at, integrity_version, payload_hash, payload_mac,
                integrity_key_id, signed_at, authority_kind
         from guard_local_once_approvals
-        where {' and '.join(clauses)}
+        where {" and ".join(clauses)}
         order by created_at desc, approval_id desc
         limit 1
         """,
@@ -174,9 +175,7 @@ def _verified_decision(
 
 
 def _authority_revision(connection: sqlite3.Connection) -> int:
-    row = connection.execute(
-        "select revision from guard_approval_authority_revision where singleton = 1"
-    ).fetchone()
+    row = connection.execute("select revision from guard_approval_authority_revision where singleton = 1").fetchone()
     return int(row["revision"]) if row is not None else -1
 
 

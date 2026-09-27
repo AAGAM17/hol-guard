@@ -17,9 +17,9 @@ The version probe reuses the bounded interpreter-probe collector. It limits
 combined stdout/stderr to the smaller of the declared output budget and
 64 KiB, and execution to the smaller of the declared duration and two seconds.
 Overflow reports `host_version_output_limit`; deadline expiry reports
-`host_version_timeout`. On POSIX, failed probes terminate their private process
-group and use a bounded reap interval. This does not contain a child that
-deliberately creates another session or establish a whole-host memory limit;
+`host_version_timeout`. On POSIX, timed-out or overflowing probes terminate
+their private process group and use a bounded reap interval. This does not
+contain a child that deliberately creates another session or establish a whole-host memory limit;
 the disposable VM remains the outer isolation boundary. An incomplete capture
 cannot pass version validation. Raw probe output is excluded from the report.
 

@@ -20,6 +20,7 @@ from ..codex_hook_windows_job import WindowsHookJob, spawn_windows_hook_process
 _PROBE_TIMEOUT_SECONDS: Final = 15
 _PROBE_OUTPUT_LIMIT_BYTES: Final = 64 * 1024
 _PROBE_REAP_TIMEOUT_SECONDS: Final = 1.0
+_JOB_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,7 +147,7 @@ def _stop_threaded_probe(
     except OSError:
         capture_error.set()
         if job is not None:
-            with contextlib.suppress(OSError):
+            with _JOB_LOCK, contextlib.suppress(OSError):
                 job.close()
         with contextlib.suppress(OSError):
             process.kill()
@@ -271,7 +272,8 @@ def run_probe(
     finally:
         if job is not None:
             try:
-                job.close()
+                with _JOB_LOCK:
+                    job.close()
             except OSError:
                 capture_error.set()
                 _stop_threaded_probe(process, job, capture_error)

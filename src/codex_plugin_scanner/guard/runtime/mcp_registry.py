@@ -8,6 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from ..mdm.network import managed_urlopen
 from ..strict_json_pairs import unique_json_object
 
 _ENDPOINT = "https://registry.modelcontextprotocol.io/v0.1/servers"
@@ -15,18 +16,16 @@ _MAX_BYTES = 512_000
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}\Z")
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ValueError("registry_redirect_refused")
-
-
 def search_mcp_registry(query: str) -> dict[str, object]:
     if not isinstance(query, str) or not 2 <= len(query.strip()) <= 80 or any(ord(char) < 32 for char in query):
         raise ValueError("invalid_registry_search")
     url = _ENDPOINT + "?" + urllib.parse.urlencode({"search": query.strip(), "version": "latest", "limit": 20})
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     try:
-        with opener.open(urllib.request.Request(url, headers={"Accept": "application/json"}), timeout=5) as response:
+        with managed_urlopen(
+            urllib.request.Request(url, headers={"Accept": "application/json"}),
+            timeout=5,
+            allow_redirects=False,
+        ) as response:
             if response.status != 200 or response.headers.get_content_type() != "application/json":
                 raise ValueError("registry_unavailable")
             raw = response.read(_MAX_BYTES + 1)

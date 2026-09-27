@@ -24,7 +24,12 @@ _ROLES: dict[str, ComposioToolRole] = {
 
 def composio_tool_role(tool_name: str) -> ComposioToolRole | None:
     name = tool_name.rsplit("__", 1)[-1].casefold()
-    return _ROLES.get(name, "unknown" if name.startswith("composio_") else None)
+    role = _ROLES.get(name)
+    if role is not None:
+        return role
+    if name.startswith("composio_"):
+        return "unknown"
+    return None
 
 
 def composio_requires_action_review(tool_name: str) -> bool:

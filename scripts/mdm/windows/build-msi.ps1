@@ -16,6 +16,7 @@ uv run --no-sync python (Join-Path $PSScriptRoot 'write-version-info.py') --vers
 
 uv run --no-sync pyinstaller --clean --noconfirm --onedir --name hol-guard `
     --collect-submodules codex_plugin_scanner --collect-data codex_plugin_scanner `
+    --add-data "$(Join-Path $Root 'src/codex_plugin_scanner/version.py');." `
     --version-file $VersionFile `
     --distpath $Runtime --workpath (Join-Path $Out 'pyinstaller') --specpath $Out `
     (Join-Path $Root 'scripts/mdm/hol-guard-entry.py')

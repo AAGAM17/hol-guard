@@ -19,6 +19,7 @@ mkdir -p "${RUNTIME}" "${STATE}" "${LOGS}" "${STAGE}/Library/LaunchAgents" \
 typeset -a pyinstaller_args
 pyinstaller_args=(--clean --noconfirm --onedir --name hol-guard \
   --collect-submodules codex_plugin_scanner --collect-data codex_plugin_scanner \
+  --add-data "${ROOT}/src/codex_plugin_scanner/version.py:." \
   --distpath "${RUNTIME}" --workpath "${OUT}/pyinstaller" --specpath "${OUT}" \
   "${ROOT}/scripts/mdm/hol-guard-entry.py")
 if [[ -n "${HOL_GUARD_INSTALLER_SIGN_IDENTITY:-}" ]]; then

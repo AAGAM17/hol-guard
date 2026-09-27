@@ -655,6 +655,7 @@ jobs:
           }
           uv run --no-sync pyinstaller --clean --noconfirm --onedir --name hol-guard `
             --collect-submodules codex_plugin_scanner --collect-data codex_plugin_scanner `
+            --add-data "src/codex_plugin_scanner/version.py;." `
             --version-file $versionFile `
             --distpath $dist --workpath $work --specpath $spec `
             scripts/mdm/hol-guard-entry.py

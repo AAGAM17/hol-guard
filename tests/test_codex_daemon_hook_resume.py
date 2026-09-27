@@ -481,3 +481,38 @@ def test_bridge_keeps_deny_when_browser_wait_times_out(
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_watch_mode_does_not_hold_the_codex_hook_for_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    (guard_home / "config.toml").write_text(
+        'mode = "observe"\nprotection_posture = "watch"\n',
+        encoding="utf-8",
+    )
+
+    def fail_if_called(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("watch mode must not wait for approval")
+
+    monkeypatch.setattr(resume, "_poll_resolution", fail_if_called)
+    monkeypatch.setattr(resume, "open_browser_url", fail_if_called)
+    response = resume.apply_browser_approval_wait(
+        {
+            "guardApprovalRequestId": "e6a363623e084e69b3b5ff34c476deb4",
+            "guardApprovalUrl": "http://127.0.0.1:4959/requests/e6a363623e084e69b3b5ff34c476deb4",
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": (
+                    "HOL Guard requires fresh approval under the installed native policy."
+                ),
+            },
+        },
+        event_name="PreToolUse",
+        hook_input='{"hook_event_name":"PreToolUse","tool_name":"Bash"}',
+        state_path=guard_home / "daemon-state.json",
+        deadline=time.monotonic() + 30,
+    )
+    assert response == resume.allow_pretool_response()

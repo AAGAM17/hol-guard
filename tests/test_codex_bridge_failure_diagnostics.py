@@ -71,10 +71,31 @@ def test_unusable_managed_launcher_reports_both_causes_without_running_children(
     assert str(tmp_path) not in captured.err
 
 
-def test_unrecognized_validation_error_is_redacted(
+@pytest.mark.parametrize(
+    ("validation_error", "reason"),
+    [
+        (ValueError("sensitive-key-file-and-token"), "launcher_validation_failed"),
+        (ValueError("managed Codex hook launch identity is invalid"), "launcher_launch_identity_invalid"),
+        (ValueError("managed Codex hook event identity is invalid"), "launcher_event_identity_invalid"),
+        (
+            ValueError("managed Codex hook bridge compatibility identity is invalid"),
+            "launcher_compatibility_identity_invalid",
+        ),
+        (ValueError("managed Codex hook bridge config is malformed"), "launcher_config_malformed"),
+        (
+            ValueError("managed Codex hook runtime directory is not owner-only"),
+            "launcher_runtime_directory_permissions_unsafe",
+        ),
+        (TypeError("sensitive-key-file-and-token"), "launcher_authority_unavailable"),
+        (AttributeError("sensitive-key-file-and-token"), "launcher_authority_unavailable"),
+    ],
+)
+def test_validation_failure_preserves_specific_causes_and_redacts_unknown_detail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    validation_error: Exception,
+    reason: str,
 ) -> None:
     config = _bridge_config(tmp_path / "guard-home", 1)
     config["manifest_path"] = tmp_path / "guard-home/managed/codex/hooks-fixture.manifest.json"
@@ -85,7 +106,7 @@ def test_unrecognized_validation_error_is_redacted(
         raise ConnectionRefusedError("sensitive-daemon-endpoint")
 
     def invalid_launcher(**_kwargs):
-        raise ValueError("sensitive-key-file-and-token")
+        raise validation_error
 
     monkeypatch.setattr(flow, "_daemon_response", unavailable)
     monkeypatch.setattr(flow, "trusted_hook_launch", invalid_launcher)
@@ -94,7 +115,7 @@ def test_unrecognized_validation_error_is_redacted(
     assert json.loads(captured.out)["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert json.loads(captured.err)["causes"] == [
         {"stage": "daemon_request", "reason_code": "daemon_connection_refused"},
-        {"stage": "launcher_validation", "reason_code": "launcher_validation_failed"},
+        {"stage": "launcher_validation", "reason_code": reason},
     ]
     assert "sensitive" not in captured.err
 
@@ -151,10 +172,12 @@ def test_recovered_daemon_does_not_emit_incident_noise(
     assert captured.err == ""
 
 
-def test_diagnostic_sink_failure_preserves_denial(
+@pytest.mark.parametrize("failure", ["broken_sink", "unserializable_cause"])
+def test_diagnostic_failure_preserves_denial(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    failure: str,
 ) -> None:
     class BrokenSink:
         def write(self, _text):
@@ -172,6 +195,9 @@ def test_diagnostic_sink_failure_preserves_denial(
     monkeypatch.setattr(flow, "_daemon_response", unavailable)
     monkeypatch.setattr(flow, "trusted_hook_launch", invalid_launcher)
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"hook_event_name": "PreToolUse"})))
-    monkeypatch.setattr("sys.stderr", BrokenSink())
+    if failure == "broken_sink":
+        monkeypatch.setattr("sys.stderr", BrokenSink())
+    else:
+        monkeypatch.setattr(flow, "_record_failure", lambda causes, *_args: causes.append(object()))
     assert bridge.main(**config) == 0
     assert json.loads(capsys.readouterr().out)["hookSpecificOutput"]["permissionDecision"] == "deny"

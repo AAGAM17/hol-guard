@@ -21,6 +21,44 @@ _DAEMON_RPC_TIMEOUT_SECONDS = 4.0
 _FALLBACK_TIMEOUT_SECONDS = 4.0
 _MINIMUM_OPERATION_SECONDS = 0.01
 _OVERLOAD_RESERVE_MS = 100
+_LAUNCHER_INTEGRITY_REASONS = frozenset(
+    {
+        "codex_hook_file_identity_invalid",
+        "codex_hook_integrity_io_error",
+        "codex_hook_interpreter_path_mismatch",
+        "codex_hook_manifest_argv_mismatch",
+        "codex_hook_manifest_authentication_invalid",
+        "codex_hook_manifest_authentication_missing",
+        "codex_hook_manifest_baseline_untrusted",
+        "codex_hook_manifest_config_target_mismatch",
+        "codex_hook_manifest_context_mismatch",
+        "codex_hook_manifest_daemon_start_mismatch",
+        "codex_hook_manifest_directory_owner_mismatch",
+        "codex_hook_manifest_directory_permissions_unsafe",
+        "codex_hook_manifest_directory_unsafe",
+        "codex_hook_manifest_fallback_mismatch",
+        "codex_hook_manifest_generated_at_invalid",
+        "codex_hook_manifest_installation_mismatch",
+        "codex_hook_manifest_invalid",
+        "codex_hook_manifest_key_mismatch",
+        "codex_hook_manifest_mac_invalid",
+        "codex_hook_manifest_missing",
+        "codex_hook_manifest_not_regular",
+        "codex_hook_manifest_package_version_stale",
+        "codex_hook_manifest_packaged_files_invalid",
+        "codex_hook_manifest_packaged_files_stale",
+        "codex_hook_manifest_registration_invalid",
+        "codex_hook_manifest_registration_stale",
+        "codex_hook_manifest_schema_unsupported",
+        "codex_hook_manifest_secret_invalid",
+        "codex_hook_manifest_secret_missing",
+        "codex_hook_manifest_transport_invalid",
+        "codex_hook_package_reauthentication_refused",
+        "codex_hook_registration_mismatch",
+        "codex_hook_registration_missing",
+        "codex_hook_interpreter_identity_invalid",
+    }
+)
 
 
 class BridgeFailureCause(TypedDict):
@@ -33,6 +71,9 @@ def _record_failure(
     stage: Literal["daemon_request", "daemon_retry", "daemon_worker", "launcher_validation"],
     reason_code: str,
 ) -> None:
+    # The current flow records one initial failure and at most two retry errors.
+    # Failed launcher validation prevents the daemon-start retry; worker failure
+    # replaces a successful response, so this bound retains the full cause chain.
     if causes is not None and len(causes) < 4:
         causes.append({"stage": stage, "reason_code": reason_code})
 
@@ -69,7 +110,16 @@ def _daemon_failure_reason(error: BaseException) -> str:
 def _launcher_failure_reason(error: BaseException) -> str:
     # Match only fixed validation messages. Never export arbitrary exception text.
     messages = {
+        "managed Codex hook paths must be absolute": "launcher_paths_not_absolute",
+        "managed Codex hook paths do not belong to this Guard home": "launcher_paths_state_home_mismatch",
+        "managed Codex hook manifest path is invalid": "launcher_manifest_path_invalid",
+        "managed Codex hook config target is invalid": "launcher_config_target_invalid",
+        "managed Codex hook packaged-file identity is invalid": "launcher_packaged_file_identity_invalid",
+        "managed Codex hook packaged-file roles are invalid": "launcher_packaged_file_roles_invalid",
+        "managed Codex hook package identity is incomplete": "launcher_package_identity_incomplete",
         "managed Codex hook launch identity is incomplete": "launcher_identity_incomplete",
+        "managed Codex hook launch identity is invalid": "launcher_launch_identity_invalid",
+        "managed Codex hook fallback entrypoint is invalid": "launcher_fallback_entrypoint_invalid",
         "managed Codex hook bridge path is invalid": "launcher_bridge_path_mismatch",
         "managed Codex hook resume path is invalid": "launcher_resume_path_mismatch",
         "managed Codex hook bridge runtime path is invalid": "launcher_bridge_runtime_path_mismatch",
@@ -83,7 +133,27 @@ def _launcher_failure_reason(error: BaseException) -> str:
         "managed Codex hook fallback contract is invalid": "launcher_fallback_contract_mismatch",
         "managed Codex hook daemon-start contract is invalid": "launcher_start_contract_mismatch",
         "managed Codex hook bridge config changed after authentication": "launcher_config_binding_mismatch",
+        "managed Codex hook bridge config is malformed": "launcher_config_malformed",
+        "managed Codex hook bridge identity is invalid": "launcher_bridge_identity_invalid",
+        "managed Codex hook event identity is invalid": "launcher_event_identity_invalid",
+        "managed Codex hook bridge compatibility identity is invalid": "launcher_compatibility_identity_invalid",
+        "managed Codex hook runtime directory is unavailable": "launcher_runtime_directory_unavailable",
+        "managed Codex hook runtime directory is not a regular directory": "launcher_runtime_directory_not_directory",
+        "managed Codex hook runtime directory changed during validation": "launcher_runtime_directory_changed",
+        "managed Codex hook runtime directory has an unexpected owner": "launcher_runtime_directory_owner_mismatch",
+        "managed Codex hook runtime directory is not owner-only": "launcher_runtime_directory_permissions_unsafe",
+        "managed Codex hook fallback argv is invalid": "launcher_fallback_argv_invalid",
+        "managed Codex hook daemon start argv is invalid": "launcher_start_argv_invalid",
     }
+    for label, reason in {
+        "interpreter": "launcher_interpreter_identity_invalid",
+        "context": "launcher_context_identity_invalid",
+        "config": "launcher_config_identity_invalid",
+        "fallback": "launcher_fallback_identity_invalid",
+        "daemon start": "launcher_start_identity_invalid",
+        "packaged file": "launcher_packaged_file_identity_invalid",
+    }.items():
+        messages[f"managed Codex hook {label} identity is invalid"] = reason
     if isinstance(error, ValueError):
         message = error.args[0] if len(error.args) == 1 and isinstance(error.args[0], str) else ""
         return messages.get(message, "launcher_validation_failed")
@@ -92,42 +162,7 @@ def _launcher_failure_reason(error: BaseException) -> str:
     if isinstance(error, OSError):
         return "launcher_files_unavailable"
     reason = getattr(error, "reason", None)
-    if isinstance(reason, str) and reason in {
-        "codex_hook_file_identity_invalid",
-        "codex_hook_integrity_io_error",
-        "codex_hook_interpreter_path_mismatch",
-        "codex_hook_manifest_argv_mismatch",
-        "codex_hook_manifest_authentication_invalid",
-        "codex_hook_manifest_authentication_missing",
-        "codex_hook_manifest_baseline_untrusted",
-        "codex_hook_manifest_config_target_mismatch",
-        "codex_hook_manifest_context_mismatch",
-        "codex_hook_manifest_daemon_start_mismatch",
-        "codex_hook_manifest_directory_owner_mismatch",
-        "codex_hook_manifest_directory_permissions_unsafe",
-        "codex_hook_manifest_directory_unsafe",
-        "codex_hook_manifest_fallback_mismatch",
-        "codex_hook_manifest_generated_at_invalid",
-        "codex_hook_manifest_installation_mismatch",
-        "codex_hook_manifest_invalid",
-        "codex_hook_manifest_key_mismatch",
-        "codex_hook_manifest_mac_invalid",
-        "codex_hook_manifest_missing",
-        "codex_hook_manifest_not_regular",
-        "codex_hook_manifest_package_version_stale",
-        "codex_hook_manifest_packaged_files_invalid",
-        "codex_hook_manifest_packaged_files_stale",
-        "codex_hook_manifest_registration_invalid",
-        "codex_hook_manifest_registration_stale",
-        "codex_hook_manifest_schema_unsupported",
-        "codex_hook_manifest_secret_invalid",
-        "codex_hook_manifest_secret_missing",
-        "codex_hook_manifest_transport_invalid",
-        "codex_hook_package_reauthentication_refused",
-        "codex_hook_registration_mismatch",
-        "codex_hook_registration_missing",
-        "codex_hook_interpreter_identity_invalid",
-    }:
+    if isinstance(reason, str) and reason in _LAUNCHER_INTEGRITY_REASONS:
         return reason
     return "launcher_authority_unavailable"
 
@@ -291,7 +326,9 @@ def _trusted_launch_for_fallback(
             ),
             False,
         )
-    except (ImportError, OSError, RuntimeError, ValueError) as error:
+    except Exception as error:
+        # A validator fault also leaves the launch unauthenticated. Never execute
+        # fallback argv after validation aborts, including unexpected error types.
         _record_failure(failure_causes, "launcher_validation", _launcher_failure_reason(error))
         return None, True
 

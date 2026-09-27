@@ -58,6 +58,7 @@ else:  # pragma: no cover - exercised by subprocess integration tests
 _HOOK_TIMEOUT_GRACE_SECONDS = 2
 _DISCOVERY_PROTOCOL_VERSION = 1
 _MAX_HOOK_INPUT_BYTES = 1_000_000
+_BRIDGE_FAILURE_SCHEMA = "hol-guard.codex-bridge-failure.v1"
 _FAIL_CLOSED_REASON = "HOL Guard could not authenticate the local daemon. Run `hol-guard daemon repair`, then retry."
 _LAUNCH_INTEGRITY_REASON = (
     "HOL Guard could not authenticate its managed Codex hook launcher. Run `hol-guard install codex`, then retry."
@@ -240,11 +241,11 @@ def main(
         if response is None:
             if launch_integrity_failed:
                 # Diagnostic delivery must not interrupt the denial response.
-                with suppress(OSError, ValueError):
+                with suppress(OSError, ValueError, TypeError):
                     sys.stderr.write(
                         json.dumps(
                             {
-                                "schema": "hol-guard.codex-bridge-failure.v1",
+                                "schema": _BRIDGE_FAILURE_SCHEMA,
                                 "causes": failure_causes,
                             },
                             separators=(",", ":"),

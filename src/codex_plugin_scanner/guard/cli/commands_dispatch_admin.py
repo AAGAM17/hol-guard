@@ -304,9 +304,13 @@ def _run_guard_doctor_command(
         if args.harness == "codex":
             payload["codex_resume"] = inspect_codex_resume_capabilities(store)
     else:
-        detected_harnesses = [detection.to_dict() for detection in detect_all(context)]
-        for detection in detected_harnesses:
-            detection["runtime_readiness"] = doctor_runtime_readiness(detection)
+        detected_harnesses = []
+        for detection in detect_all(context):
+            item = detection.to_dict()
+            diagnostics = get_adapter(detection.harness).diagnostics(context)
+            item["setup_status"] = diagnostics.get("setup_status")
+            item["runtime_readiness"] = doctor_runtime_readiness(diagnostics)
+            detected_harnesses.append(item)
         payload = {
             "tables": store.list_table_names(),
             "adapters": detected_harnesses,

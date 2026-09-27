@@ -1647,7 +1647,9 @@ jobs:
                   exit 1
                 fi
                 gh attestation verify "$remote_file" --repo "$GITHUB_REPOSITORY" \
-                  --bundle "$bundle" --source-digest "$GITHUB_SHA" >/dev/null
+                  --bundle "$bundle" \
+                  --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+                  --source-digest "$GITHUB_SHA" >/dev/null
               fi
             done
             exit 0

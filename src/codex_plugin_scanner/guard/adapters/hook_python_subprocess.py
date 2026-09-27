@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Final
 
+from ..codex_hook_windows_job import WindowsHookJob, spawn_windows_hook_process
+
 _PROBE_TIMEOUT_SECONDS: Final = 15
 _PROBE_OUTPUT_LIMIT_BYTES: Final = 64 * 1024
 _PROBE_REAP_TIMEOUT_SECONDS: Final = 1.0
@@ -133,6 +135,20 @@ def _run_posix_probe(
     )
 
 
+def _stop_threaded_probe(
+    process: subprocess.Popen[bytes], job: WindowsHookJob | None, capture_error: threading.Event
+) -> None:
+    try:
+        if job is not None:
+            job.terminate()
+        else:
+            process.kill()
+    except OSError:
+        capture_error.set()
+        with contextlib.suppress(OSError):
+            process.kill()
+
+
 def _read_bounded_stream(
     stream: BinaryIO,
     chunks: list[bytes],
@@ -140,6 +156,7 @@ def _read_bounded_stream(
     process: subprocess.Popen[bytes],
     budget: _OutputBudget,
     capture_error: threading.Event,
+    job: WindowsHookJob | None,
 ) -> None:
     total = 0
     while True:
@@ -155,8 +172,7 @@ def _read_bounded_stream(
         total += len(kept)
         if exceeded:
             overflow.set()
-            with contextlib.suppress(OSError):
-                process.kill()
+            _stop_threaded_probe(process, job, capture_error)
             return
 
 
@@ -187,17 +203,30 @@ def run_probe(
         raise ValueError("invalid probe output limit")
     stream_limit = _PROBE_OUTPUT_LIMIT_BYTES if output_limit_bytes is None else output_limit
     budget = _OutputBudget(output_limit, stream_limit)
+    job: WindowsHookJob | None = None
     try:
         if os.name == "posix":
             return _run_posix_probe(command, cwd=cwd, env=env, timeout=timeout, budget=budget)
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        if os.name == "nt":
+            process, job = spawn_windows_hook_process(command, cwd=cwd, environment=env)
+            assert process.stdin is not None
+            try:
+                process.stdin.close()
+            except OSError:
+                with contextlib.suppress(OSError):
+                    job.close()
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                    process.wait(timeout=_PROBE_REAP_TIMEOUT_SECONDS)
+                raise
+        else:
+            process = subprocess.Popen(
+                command,
+                cwd=cwd,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
     except OSError as error:
         raise RuntimeError("guard_hook_python_probe_execution_failed") from error
     assert process.stdout is not None
@@ -209,12 +238,12 @@ def run_probe(
     readers = (
         threading.Thread(
             target=_read_bounded_stream,
-            args=(process.stdout, stdout_chunks, overflow, process, budget, capture_error),
+            args=(process.stdout, stdout_chunks, overflow, process, budget, capture_error, job),
             daemon=True,
         ),
         threading.Thread(
             target=_read_bounded_stream,
-            args=(process.stderr, stderr_chunks, overflow, process, budget, capture_error),
+            args=(process.stderr, stderr_chunks, overflow, process, budget, capture_error, job),
             daemon=True,
         ),
     )
@@ -226,15 +255,24 @@ def run_probe(
         _ = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
-        process.kill()
+        _stop_threaded_probe(process, job, capture_error)
         try:
             _ = process.wait(timeout=_PROBE_REAP_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             capture_incomplete = True
-    grace_deadline = max(deadline, time.monotonic()) + _PROBE_REAP_TIMEOUT_SECONDS
+    if job is not None:
+        try:
+            job.close()
+        except OSError:
+            capture_error.set()
+            _stop_threaded_probe(process, job, capture_error)
     for reader in readers:
-        reader.join(timeout=max(0, grace_deadline - time.monotonic()))
+        reader.join(timeout=max(0, deadline - time.monotonic()))
     capture_incomplete = capture_incomplete or capture_error.is_set() or any(reader.is_alive() for reader in readers)
+    if any(reader.is_alive() for reader in readers):
+        grace_deadline = time.monotonic() + _PROBE_REAP_TIMEOUT_SECONDS
+        for reader in readers:
+            reader.join(timeout=max(0, grace_deadline - time.monotonic()))
     for reader, stream in zip(readers, (process.stdout, process.stderr), strict=True):
         if not reader.is_alive():
             try:

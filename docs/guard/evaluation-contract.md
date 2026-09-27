@@ -22,6 +22,10 @@ their private process group and use a bounded reap interval. This does not
 contain a child that deliberately creates another session or establish a whole-host memory limit;
 the disposable VM remains the outer isolation boundary. An incomplete capture
 cannot pass version validation. Raw probe output is excluded from the report.
+The Windows path reuses the suspended Job Object launcher and refuses to run
+when job assignment fails. Job cleanup failures invalidate the capture. A
+bounded reader-cleanup grace interval cannot make a late capture complete.
+The Linux/macOS package matrix does not establish native Windows verification.
 
 For an interrupted run, the caller may retain `EvaluationSetup.root_path` and its opaque `marker_token` outside the owned child before running host cases, then call `cleanup_interrupted_evaluation_setup(profile, owned_root=..., marker_token=...)`. Recovery checks the validated profile's exact private temporary parent and the ownership marker before removing that one child. It does not scan for orphan directories or reconstruct a lost token. The token must remain local and must not be included in a report or shared evidence package. Recovery is cleanup only; it does not certify the interrupted run or resume a host action.
 

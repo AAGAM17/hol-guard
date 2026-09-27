@@ -7,6 +7,7 @@ import shlex
 import stat
 import sys
 import time
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
@@ -126,15 +127,84 @@ def _artifact_paths(path: Path) -> dict[str, Path]:
     return {"core-fixture": path}
 
 
+def test_windows_probe_requires_job_assignment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unavailable(*_args: object, **_kwargs: object) -> object:
+        raise OSError("synthetic private diagnostic")
+
+    monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(probe_module, "spawn_windows_hook_process", unavailable)
+
+    with pytest.raises(RuntimeError, match=r"^guard_hook_python_probe_execution_failed$"):
+        probe_module.run_probe(["synthetic-agent"], cwd=tmp_path, env={})
+
+
+@pytest.mark.parametrize("close_fails", [False, True])
+def test_windows_probe_job_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, close_fails: bool) -> None:
+    calls: list[str] = []
+
+    def close() -> None:
+        calls.append("close")
+        if close_fails:
+            raise OSError("synthetic private diagnostic")
+
+    process = SimpleNamespace(
+        stdin=io.BytesIO(),
+        stdout=io.BytesIO(b"synthetic-agent 0.1.0\n"),
+        stderr=io.BytesIO(),
+        returncode=0,
+        wait=lambda **_kwargs: 0,
+    )
+    job = SimpleNamespace(terminate=lambda: calls.append("terminate"), close=close)
+    monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(probe_module, "spawn_windows_hook_process", lambda *_args, **_kwargs: (process, job))
+
+    result = probe_module.run_probe(["synthetic-agent"], cwd=tmp_path, env={}, timeout_seconds=1)
+
+    assert process.stdin.closed
+    assert result.stdout == b"synthetic-agent 0.1.0\n"
+    assert result.capture_incomplete is close_fails
+    assert calls == (["close", "terminate"] if close_fails else ["close"])
+
+
+def test_windows_probe_overflow_terminates_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    process = SimpleNamespace(
+        stdin=io.BytesIO(),
+        stdout=io.BytesIO(b"x" * 10000),
+        stderr=io.BytesIO(),
+        returncode=0,
+        wait=lambda **_kwargs: 0,
+    )
+    job = SimpleNamespace(terminate=lambda: calls.append("terminate"), close=lambda: calls.append("close"))
+    monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(probe_module, "spawn_windows_hook_process", lambda *_args, **_kwargs: (process, job))
+
+    result = probe_module.run_probe(["synthetic-agent"], cwd=tmp_path, env={}, output_limit_bytes=4096)
+
+    assert result.output_overflow
+    assert len(result.stdout) <= 4096
+    assert "terminate" in calls
+    assert "close" in calls
+
+
 def test_threaded_probe_read_failure_is_not_complete_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class BrokenStream(io.BytesIO):
         def read(self, size: int = -1) -> bytes:
             raise OSError("synthetic private diagnostic")
 
     process = SimpleNamespace(
-        stdout=io.BytesIO(b"synthetic-agent 0.1.0\n"), stderr=BrokenStream(), returncode=0, wait=lambda **_kwargs: 0
+        stdin=io.BytesIO(),
+        stdout=io.BytesIO(b"synthetic-agent 0.1.0\n"),
+        stderr=BrokenStream(),
+        returncode=0,
+        wait=lambda **_kwargs: 0,
     )
     monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        probe_module,
+        "spawn_windows_hook_process",
+        lambda *_args, **_kwargs: (process, SimpleNamespace(terminate=lambda: None, close=lambda: None)),
+    )
     monkeypatch.setattr(
         probe_module,
         "subprocess",
@@ -146,6 +216,53 @@ def test_threaded_probe_read_failure_is_not_complete_capture(tmp_path: Path, mon
     assert result.capture_incomplete
     assert result.stdout == b"synthetic-agent 0.1.0\n"
     assert result.stderr == b""
+
+
+def test_threaded_probe_late_capture_remains_incomplete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [0.0]
+
+    class DelayedReader:
+        def __init__(self, *, target: Callable[..., None], args: tuple[object, ...], daemon: bool) -> None:
+            self.target = target
+            self.args = args
+            self.alive = True
+
+        def start(self) -> None:
+            pass
+
+        def join(self, timeout: float) -> None:
+            if timeout > 0.5:
+                self.target(*self.args)
+                self.alive = False
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+    def wait(**_kwargs: object) -> int:
+        clock[0] = 0.1
+        return 0
+
+    process = SimpleNamespace(
+        stdin=io.BytesIO(), stdout=io.BytesIO(b"synthetic-agent 0.1.0\n"), stderr=io.BytesIO(), returncode=0, wait=wait
+    )
+    monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        probe_module,
+        "spawn_windows_hook_process",
+        lambda *_args, **_kwargs: (process, SimpleNamespace(terminate=lambda: None, close=lambda: None)),
+    )
+    monkeypatch.setattr(probe_module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(
+        probe_module, "threading", SimpleNamespace(Event=probe_module.threading.Event, Thread=DelayedReader)
+    )
+    monkeypatch.setattr(
+        probe_module, "subprocess", SimpleNamespace(Popen=lambda *_args, **_kwargs: process, PIPE=-1, DEVNULL=-3)
+    )
+
+    result = probe_module.run_probe(["synthetic-agent"], cwd=tmp_path, env={}, timeout_seconds=0.1)
+
+    assert result.capture_incomplete
+    assert result.stdout == b"synthetic-agent 0.1.0\n"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="synthetic executable uses a POSIX shebang")
@@ -172,7 +289,7 @@ def test_host_version_probe_rejects_output_beyond_profile_budget(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="requires POSIX process-group cleanup")
-def test_host_version_deadline_stops_child_holding_output_pipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_host_version_deadline_stops_child_holding_output_pipe(tmp_path: Path) -> None:
     effect = tmp_path / "delayed-child-effect"
     started = tmp_path / "child-started"
     executable = tmp_path / "synthetic-agent"
@@ -184,7 +301,6 @@ def test_host_version_deadline_stops_child_holding_output_pipe(tmp_path: Path, m
         encoding="utf-8",
     )
     executable.chmod(0o755)
-    monkeypatch.setattr(preflight_module, "_VERSION_TIMEOUT_SECONDS", 2.0)
     report = preflight_evaluation(
         _profile(tmp_path, executable), artifact_paths=_artifact_paths(_artifact(tmp_path)), allow_host_execution=True
     )

@@ -48,7 +48,7 @@ Guard uses two isolated release lines:
 2. The `Release Please` workflow opens or updates a `chore(release): <version>` pull request with changelog and version metadata.
 3. Merge that pull request when the batch is ready. Merging it tags the release commit and dispatches `Publish to PyPI` for `release_channel=stable` and `release_train=main`.
 4. Confirm the dispatched publish builds native wheels, uploads to PyPI, and creates the GitHub release assets.
-5. Maintainers can still dispatch `Publish to PyPI` from `main`, or from the existing `v<version>` tag if `main` has moved, with the exact version and `expected_sha`.
+5. Maintainers can still dispatch `Publish to PyPI` from `main`, or from the existing `v<version>` tag if `main` has moved, with the next registry-derived version and exact `expected_sha`. Once a version is present in the registry, a fresh dispatch must target the next version; it cannot replay that published version. Workflow reruns are denied.
 
 Normal pushes to `main` still build and verify packages without publishing.
 

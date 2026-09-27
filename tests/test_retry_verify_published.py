@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Sequence
 
+import pytest
+
 from scripts.retry_verify_published import is_retryable_incomplete_error, wait_for_published
 
 INCOMPLETE = (
@@ -13,6 +15,7 @@ MISMATCH = (
     "Registry release is not the exact Guard artifact set: "
     "missing=[], extra=[], mismatched=['hol_guard-3.0.96.tar.gz']\n"
 )
+ABSENT = "Error: Registry release is absent\n"
 
 
 class FakeRunner:
@@ -54,3 +57,28 @@ def test_wait_fails_immediately_on_digest_mismatch() -> None:
     assert wait_for_published(["--registry", "pypi"], runner=runner, sleeper=sleeps.append) == 1
     assert runner.calls == 1
     assert sleeps == []
+
+
+def test_wait_retries_absent_then_incomplete_then_succeeds() -> None:
+    sleeps: list[float] = []
+    runner = FakeRunner([1, 1, 0], [ABSENT, INCOMPLETE, ""])
+    assert wait_for_published(["--registry", "pypi"], runner=runner, sleeper=sleeps.append) == 0
+    assert runner.calls == 3
+    assert sleeps == [5.0, 5.0]
+
+
+def test_wait_absent_release_exhausts_attempts(capsys: pytest.CaptureFixture[str]) -> None:
+    sleeps: list[float] = []
+    runner = FakeRunner([1], [ABSENT])
+    assert wait_for_published(["--registry", "pypi"], attempts=3, runner=runner, sleeper=sleeps.append) == 1
+    assert runner.calls == 3
+    assert sleeps == [5.0, 5.0]
+    assert capsys.readouterr().err == ABSENT
+
+
+def test_wait_absent_then_mismatch_fails_without_another_retry() -> None:
+    sleeps: list[float] = []
+    runner = FakeRunner([1, 1], [ABSENT, MISMATCH])
+    assert wait_for_published(["--registry", "pypi"], runner=runner, sleeper=sleeps.append) == 1
+    assert runner.calls == 2
+    assert sleeps == [5.0]

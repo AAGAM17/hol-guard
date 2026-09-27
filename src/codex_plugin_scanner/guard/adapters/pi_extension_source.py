@@ -54,6 +54,11 @@ def managed_extension_source(
         taskkill_path = windows_system_executable_path("taskkill.exe") if os.name == "nt" else None
     except (OSError, ValueError):
         taskkill_path = None
+    lifecycle_abort_event_source = (
+        '  pi.on("session_stop", (event) => { if (event.signal?.aborted) invalidateApprovalContinuations(); });\n'
+        if harness == "omp"
+        else ""
+    )
     taskkill_path_json = json.dumps(taskkill_path)
     source = (
         'import { spawn } from "node:child_process";\n'
@@ -475,20 +480,59 @@ def managed_extension_source(
         "  const blockedToolResults = new Map<string, string>();\n"
         "  const pendingApprovalResumes = new Set<string>();\n"
         "  const openedApprovalUrls = new Set<string>();\n"
-        "  function scheduleApprovalResume(\n"
+        "  let approvalContinuationGeneration = 0;\n"
+        "  let inputApprovalResumeGeneration = 0;\n"
+        "  const invalidateToolApprovalContinuations = () => { approvalContinuationGeneration += 1; };\n"
+        "  const invalidateInputApprovalResumes = () => { inputApprovalResumeGeneration += 1; };\n"
+        "  const invalidateApprovalContinuations = () => {\n"
+        "    invalidateToolApprovalContinuations();\n"
+        "    invalidateInputApprovalResumes();\n"
+        "  };\n"
+        "  const approvalContinuationActivity = (): ApprovalContinuationActivity => {\n"
+        "    const generation = approvalContinuationGeneration;\n"
+        "    return () => generation === approvalContinuationGeneration;\n"
+        "  };\n"
+        "  type InputApprovalResumeBinding = {\n"
+        "    generation: number;\n"
+        "    sessionId: string;\n"
+        "    cwd: string;\n"
+        "  };\n"
+        "  const captureInputApprovalResumeBinding = (ctx: unknown): InputApprovalResumeBinding | null => {\n"
+        "    const sessionId = contextSessionId(ctx);\n"
+        "    const cwd = contextCwd(ctx);\n"
+        "    if (!sessionId || !cwd) return null;\n"
+        "    return { generation: inputApprovalResumeGeneration, sessionId, cwd };\n"
+        "  };\n"
+        "  const inputApprovalResumeBindingIsActive = (\n"
+        "    ctx: unknown,\n"
+        "    binding: InputApprovalResumeBinding | null,\n"
+        "  ): boolean =>\n"
+        "    binding !== null &&\n"
+        "    binding.generation === inputApprovalResumeGeneration &&\n"
+        "    contextSessionId(ctx) === binding.sessionId &&\n"
+        "    contextCwd(ctx) === binding.cwd;\n"
+        '  pi.on("agent_start", () => { invalidateApprovalContinuations(); });\n'
+        '  pi.on("agent_end", () => { invalidateToolApprovalContinuations(); });\n'
+        '  pi.on("session_start", () => { invalidateApprovalContinuations(); });\n'
+        '  pi.on("session_shutdown", () => { invalidateApprovalContinuations(); });\n'
+        + lifecycle_abort_event_source
+        + "  function scheduleApprovalResume(\n"
         "    response: GuardResponse,\n"
         "    ctx: { ui: { notify(message: string, kind?: 'info' | 'warning'): void } },\n"
-        "    details: { kind: 'input' | 'tool_call'; prompt?: string; toolName?: string },\n"
+        "    details: { kind: 'input'; prompt?: string },\n"
+        "    binding: InputApprovalResumeBinding | null,\n"
         "  ): void {\n"
         "    const requestId = approvalRequestId(response);\n"
-        "    if (!requestId || pendingApprovalResumes.has(requestId)) return;\n"
+        "    if (!requestId || !inputApprovalResumeBindingIsActive(ctx, binding) || pendingApprovalResumes.has(requestId)) return;\n"
+        "    const isActive = () => inputApprovalResumeBindingIsActive(ctx, binding);\n"
+        "    if (!isActive()) return;\n"
         "    pendingApprovalResumes.add(requestId);\n"
         "    void openApprovalUrl(response, openedApprovalUrls);\n"
         "    const pollPath = approvalPollPath(response, requestId);\n"
         "    void (async () => {\n"
         "      try {\n"
-        "        const action = await pollApprovalResolution(requestId, pollPath);\n"
-        "        if (action === 'allow') {\n"
+        "        const action = await pollApprovalResolution(requestId, pollPath, undefined, isActive);\n"
+        "        if (action === 'allow' && isActive()) {\n"
         "          pi.sendMessage(\n"
         "            {\n"
         "              customType: 'hol_guard_approval_resume',\n"
@@ -512,40 +556,84 @@ def managed_extension_source(
         "  }\n"
         '  pi.on("input", async (event, ctx) => {\n'
         '    if (event.source === "extension") return { action: "continue" };\n'
+        "    const inputBinding = captureInputApprovalResumeBinding(ctx);\n"
         "    const response = await runGuard(\n"
         '      { hook_event_name: "UserPromptSubmit", prompt: event.text, config_path: GUARD_CONFIG_PATH },\n'
         "      ctx.cwd,\n"
         "    );\n"
         '    if (response.decision === "deny") {\n'
-        '      const reason = approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
-        "      scheduleApprovalResume(response, ctx, { kind: 'input', prompt: event.text });\n"
+        '      const reason = approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.", "input");\n'
+        "      scheduleApprovalResume(response, ctx, { kind: 'input', prompt: event.text }, inputBinding);\n"
         '      ctx.ui.notify(reason, "warning");\n'
         '      return { action: "handled", handled: true };\n'
         "    }\n"
         '    return { action: "continue" };\n'
         "  });\n"
         '  pi.on("tool_call", async (event, ctx) => {\n'
-        "    const toolInput =\n"
-        "      (event as { input?: Record<string, unknown> }).input ??\n"
-        "      (event as { toolInput?: Record<string, unknown> }).toolInput ??\n"
-        "      (event as { arguments?: Record<string, unknown> }).arguments ??\n"
-        "      {};\n"
-        "    const response = await runGuard(\n"
-        "      {\n"
-        '        hook_event_name: "PreToolUse",\n'
-        "        config_path: GUARD_CONFIG_PATH,\n"
-        "        tool_call_id: event.toolCallId,\n"
-        "        session_id: ctx.sessionManager?.getSessionId?.(),\n"
-        "        tool_name: event.toolName,\n"
-        "        tool_input: toolInput,\n"
-        "      },\n"
-        "      ctx.cwd,\n"
-        "    );\n"
-        '    if (response.decision === "deny") {\n'
-        '      const reason = approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
-        "      scheduleApprovalResume(response, ctx, { kind: 'tool_call', toolName: event.toolName });\n"
+        "    const snapshot = snapshotToolCall(event, ctx, GUARD_CONFIG_PATH);\n"
+        "    if (!snapshot) {\n"
+        '      const reason = "HOL Guard could not capture an immutable tool-call snapshot.";\n'
         '      ctx.ui.notify(reason, "warning");\n'
         "      return { block: true, reason };\n"
+        "    }\n"
+        "    const signal = handlerAbortSignal(ctx);\n"
+        "    const activity = approvalContinuationActivity();\n"
+        "    const response = await runGuard(snapshot.payload, snapshot.cwd);\n"
+        "    if (signal?.aborted || (activity && !continuationIsActive(activity))) {\n"
+        "      const cancelledReason = approvalContinuationFailureReason(response, 'aborted');\n"
+        '      ctx.ui.notify(cancelledReason, "warning");\n'
+        "      return { block: true, reason: cancelledReason };\n"
+        "    }\n"
+        "    if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
+        '      const reason = "HOL Guard blocked this tool call because its original arguments or context changed while it was reviewed.";\n'
+        '      ctx.ui.notify(reason, "warning");\n'
+        "      return { block: true, reason };\n"
+        "    }\n"
+        '    if (response.decision === "deny") {\n'
+        '      const reason = approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
+        "      const requestId = approvalRequestId(response);\n"
+        "      if (!requestId) {\n"
+        '        ctx.ui.notify(reason, "warning");\n'
+        "        return { block: true, reason };\n"
+        "      }\n"
+        '      ctx.ui.notify(reason, "warning");\n'
+        "      void openApprovalUrl(response, openedApprovalUrls);\n"
+        "      const action = await pollApprovalResolution(\n"
+        "        requestId,\n"
+        "        approvalPollPath(response, requestId),\n"
+        "        signal,\n"
+        "        activity,\n"
+        "      );\n"
+        "      if (action !== 'allow') {\n"
+        "        const blockedReason = approvalContinuationFailureReason(response, action);\n"
+        '        ctx.ui.notify(blockedReason, "warning");\n'
+        "        return { block: true, reason: blockedReason };\n"
+        "      }\n"
+        "      if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
+        '        const changedReason = "HOL Guard blocked this tool call because its original arguments or context changed before approval was consumed.";\n'
+        '        ctx.ui.notify(changedReason, "warning");\n'
+        "        return { block: true, reason: changedReason };\n"
+        "      }\n"
+        "      if (signal?.aborted || (activity && !continuationIsActive(activity))) {\n"
+        "        const cancelledReason = approvalContinuationFailureReason(response, 'aborted');\n"
+        '        ctx.ui.notify(cancelledReason, "warning");\n'
+        "        return { block: true, reason: cancelledReason };\n"
+        "      }\n"
+        "      const revalidated = await runGuard(snapshot.payload, snapshot.cwd);\n"
+        "      if (signal?.aborted || (activity && !continuationIsActive(activity))) {\n"
+        "        const cancelledReason = approvalContinuationFailureReason(revalidated, 'aborted');\n"
+        '        ctx.ui.notify(cancelledReason, "warning");\n'
+        "        return { block: true, reason: cancelledReason };\n"
+        "      }\n"
+        "      if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
+        '        const changedReason = "HOL Guard blocked this tool call because its original arguments or context changed during approval revalidation.";\n'
+        '        ctx.ui.notify(changedReason, "warning");\n'
+        "        return { block: true, reason: changedReason };\n"
+        "      }\n"
+        '      if (revalidated.decision === "allow") return undefined;\n'
+        '      const revalidationReason = revalidated.reason ?? "HOL Guard could not revalidate the exact approved tool call.";\n'
+        '      ctx.ui.notify(revalidationReason, "warning");\n'
+        "      return { block: true, reason: revalidationReason };\n"
         "    }\n"
         "    return undefined;\n"
         "  });\n"

@@ -111,10 +111,19 @@ def test_privileged_feed_is_main_bound_and_pins_candidate_provenance() -> None:
     assert '--source-ref "$source_ref"' in provenance
     assert 'verify_published_wheel "refs/tags/${CORE_TAG}"' in provenance
     assert 'verify_published_wheel "refs/heads/${RELEASE_BRANCH}"' in provenance
+    assert "read_publish_attestation_commit.py" in provenance
+    assert 'merge-base --is-ancestor "$SOURCE_SHA" "$attested_commit"' in provenance
+    assert '--source-digest "$attested_commit"' in provenance
+    attestation = (ROOT / "scripts/release/read_publish_attestation_commit.py").read_text(
+        encoding="utf-8"
+    )
+    assert "provenance workflow is not the publish workflow" in attestation
     linux = linux_workflow_text()
     assert '--source-ref "$source_ref"' in linux
     assert 'verify_published_wheel "refs/tags/${CORE_TAG}"' in linux
     assert 'verify_published_wheel "refs/heads/${RELEASE_BRANCH}"' in linux
+    assert "read_publish_attestation_commit.py" in linux
+    assert '--source-digest "$attested_commit"' in linux
     assert "merge-base --is-ancestor" in linux
     assert "--deny-self-hosted-runners" in provenance
 

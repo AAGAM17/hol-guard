@@ -1596,6 +1596,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
           VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_REPAIR: ${{ needs.build.outputs.release_repair }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           tag="v${VERSION}"
           git fetch --force --no-tags origin "+refs/tags/${tag}:refs/tags/${tag}"
@@ -1639,8 +1641,16 @@ jobs:
             remote_guard_files=("$existing_dir"/hol_guard-*)
             [[ "${#remote_guard_files[@]}" -gt 0 ]]
             for remote_file in "${remote_guard_files[@]}"; do
-              gh attestation verify "$remote_file" --repo "$GITHUB_REPOSITORY" \
-                --bundle "$bundle" --source-digest "$SOURCE_SHA" >/dev/null
+              if ! gh attestation verify "$remote_file" --repo "$GITHUB_REPOSITORY" \
+                --bundle "$bundle" --source-digest "$SOURCE_SHA" >/dev/null; then
+                if [[ "$RELEASE_REPAIR" != "true" ]]; then
+                  exit 1
+                fi
+                gh attestation verify "$remote_file" --repo "$GITHUB_REPOSITORY" \
+                  --bundle "$bundle" \
+                  --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+                  --source-digest "$GITHUB_SHA" >/dev/null
+              fi
             done
             exit 0
           fi

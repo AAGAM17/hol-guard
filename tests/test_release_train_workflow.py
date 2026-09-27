@@ -603,6 +603,8 @@ def test_release_tags_are_bound_to_the_exact_published_source() -> None:
     assert '[[ "${#remote_guard_files[@]}" -gt 0 ]]' in stable_run
     assert 'gh attestation verify "$remote_file"' in stable_run
     assert '--bundle "$bundle" --source-digest "$SOURCE_SHA"' in stable_run
+    assert '--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml"' in stable_run
+    assert '--source-digest "$GITHUB_SHA"' in stable_run
     assert "--verify-tag" in stable_run and '"$existing_dir" dist "$VERSION" stable' in stable_run
 
 

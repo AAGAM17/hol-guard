@@ -38,17 +38,19 @@ def build_doctor_harness_table(detections: list[dict[str, object]]) -> Table:
         "harness_probe_failed": "CLI check failed",
         "harness_probe_timed_out": "CLI check timed out",
         "harness_probe_not_run": "CLI check not run",
+        "hook_evaluation_unverified": "No Guard decision verified",
     }
     for detection in detections:
         readiness = doctor_runtime_readiness(detection)
+        reason_code = readiness["reason_code"]
         # Global JSON keeps the classified result; it omits raw CLI output.
         projected = detection.get("runtime_readiness")
         if readiness["state"] == "unknown" and isinstance(projected, Mapping) and projected.get("state") == "unknown":
             reason = projected.get("reason_code")
             if isinstance(reason, str) and reason in reason_labels:
-                readiness = {"state": str(projected["state"]), "reason_code": reason}
+                reason_code = reason
         value = readiness_text(readiness)
-        label = reason_labels.get(readiness["reason_code"])
+        label = reason_labels.get(reason_code)
         if label:
             value.append(f"\n{label}")
         warnings = detection.get("warnings")

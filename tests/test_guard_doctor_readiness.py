@@ -127,6 +127,7 @@ def test_global_doctor_text_does_not_label_detected_harness_ready(capsys) -> Non
     assert "Registration" in output
     assert "Runtime readiness" in output
     assert "Unverified" in output
+    assert "No Guard decision verified" in output
     assert "Ready" not in output
 
 
@@ -298,6 +299,7 @@ def test_global_doctor_text_distinguishes_partial_registration_and_probe_failure
                     "runtime_readiness": {
                         "state": "unknown",
                         "reason_code": "harness_probe_failed",
+                        "detail": "raw-projection-marker",
                     },
                 },
                 {
@@ -316,4 +318,5 @@ def test_global_doctor_text_distinguishes_partial_registration_and_probe_failure
 
     assert "Partial" in output
     assert "CLI check failed" in output
+    assert "raw-projection-marker" not in output
     assert "Setup broken" in output

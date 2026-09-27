@@ -485,10 +485,11 @@ class TestSpawnedDaemonStartClassification:
         record_daemon_lifecycle_event(guard_home, event="start_requested", pid=own_pid)
         record_daemon_lifecycle_event(guard_home, event="start_requested", pid=999999)
 
+        # 999999 is a grandchild of the spawned root: 999999 -> 555555 -> own_pid.
         monkeypatch.setattr(
             daemon_manager_module,
             "_guard_daemon_parent_pid",
-            lambda pid: own_pid if pid == 999999 else None,
+            lambda pid: {999999: 555555, 555555: own_pid}.get(pid),
         )
         assert (
             start_classification.daemon_journal_records_start_requested_after(
@@ -612,6 +613,23 @@ class TestSpawnedDaemonStartClassification:
             daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=0.05, home_dir=tmp_path)
 
         assert process.terminated is True
+
+    def test_unrecordable_progressing_spawn_falls_back_to_terminate(self, tmp_path, monkeypatch) -> None:
+        """A progressing daemon we cannot re-identify on retry must not stay alive."""
+
+        import pytest
+
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        process = _FakeSpawnedDaemonProcess()
+        self._patch_ensure_deadline(monkeypatch, guard_home, process, owner_lock_held=True)
+        monkeypatch.setattr(daemon_manager_module, "process_start_token", lambda _pid: None)
+
+        with pytest.raises(RuntimeError, match="^Guard approval center did not start"):
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=0.05, home_dir=tmp_path)
+
+        assert process.terminated is True
+        assert not (guard_home / "daemon-start-progress.json").is_file()
 
 
 class TestStillStartingAdoption:

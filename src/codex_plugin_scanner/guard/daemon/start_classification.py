@@ -134,9 +134,7 @@ def daemon_journal_records_start_requested_after(
     root_pid: int,
     since_ns: int,
 ) -> bool:
-    """Find a newer ``start_requested`` event written by ``root_pid`` or its child."""
-
-    from . import manager as _manager
+    """Find a newer ``start_requested`` event written by ``root_pid``'s tree."""
 
     try:
         events = load_daemon_lifecycle_events(guard_home, limit=128)
@@ -146,9 +144,7 @@ def daemon_journal_records_start_requested_after(
         if event.get("event") != "start_requested" or event.get("recorded_at_ns", 0) <= since_ns:
             continue
         event_pid = event.get("pid")
-        if event_pid == root_pid:
-            return True
-        if isinstance(event_pid, int) and _manager._guard_daemon_parent_pid(event_pid) == root_pid:
+        if isinstance(event_pid, int) and _pid_in_process_tree(event_pid, root_pid):
             return True
     return False
 

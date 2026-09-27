@@ -450,8 +450,8 @@ def ensure_guard_daemon(
             _clear_guard_daemon_start_progress(guard_home)
         if progress_is_live:
             assert start_progress is not None
-            progress_pid = cast(int, start_progress["pid"])
-            progress_spawned_at_ns = cast(int, start_progress["spawned_at_ns"])
+            progress_pid = start_progress["pid"]
+            progress_spawned_at_ns = start_progress["spawned_at_ns"]
             adopted_url = _wait_for_guard_daemon_url(
                 guard_home,
                 timeout=max(0.0, start_deadline - time.monotonic()),
@@ -570,13 +570,12 @@ def ensure_guard_daemon(
                     lock_held_by_spawned_tree=signals.lock_held_by_spawned_tree,
                     journal_start_requested_after=signals.journal_start_requested_after,
                 )
-                if spawn_state == "progressing":
-                    _record_guard_daemon_start_progress(
-                        guard_home,
-                        process=process,
-                        port=candidate_port,
-                        spawned_at_ns=spawned_at_ns,
-                    )
+                if spawn_state == "progressing" and _record_guard_daemon_start_progress(
+                    guard_home,
+                    process=process,
+                    port=candidate_port,
+                    spawned_at_ns=spawned_at_ns,
+                ):
                     raise GuardDaemonStillStartingError(
                         f"Guard daemon is still starting; retry shortly. Expected state file at {state_path}."
                     )
@@ -1987,40 +1986,54 @@ def _start_progress_path(guard_home: Path) -> Path:
     return guard_home / _GUARD_DAEMON_START_PROGRESS_FILE
 
 
+class GuardDaemonStartProgress(TypedDict):
+    state_kind: str
+    guard_home: str
+    pid: int
+    port: int
+    process_start_token: str
+    recorded_at_ns: int
+    spawned_at_ns: int
+
+
 def _record_guard_daemon_start_progress(
     guard_home: Path,
     *,
     process: subprocess.Popen[bytes],
     port: int,
     spawned_at_ns: int,
-) -> None:
+) -> bool:
     """Persist an authenticated marker so the next starter adopts the live spawn."""
 
     start_token = process_start_token(process.pid)
     if start_token is None:
-        return
+        return False
     _ensure_private_directory(guard_home)
-    with _guard_daemon_state_write_lock(guard_home):
-        discovery_key = ensure_daemon_discovery_key(guard_home)
-        progress = authenticate_daemon_state(
-            {
-                "state_kind": "daemon_start_progress",
-                "guard_home": str(guard_home.resolve()),
-                "pid": process.pid,
-                "port": port,
-                "process_start_token": start_token,
-                "recorded_at_ns": time.time_ns(),
-                "spawned_at_ns": spawned_at_ns,
-            },
-            discovery_key=discovery_key,
-        )
-        _write_private_atomic_text(
-            _start_progress_path(guard_home),
-            json.dumps(progress, sort_keys=True),
-        )
+    try:
+        with _guard_daemon_state_write_lock(guard_home):
+            discovery_key = ensure_daemon_discovery_key(guard_home)
+            progress = authenticate_daemon_state(
+                {
+                    "state_kind": "daemon_start_progress",
+                    "guard_home": str(guard_home.resolve()),
+                    "pid": process.pid,
+                    "port": port,
+                    "process_start_token": start_token,
+                    "recorded_at_ns": time.time_ns(),
+                    "spawned_at_ns": spawned_at_ns,
+                },
+                discovery_key=discovery_key,
+            )
+            _write_private_atomic_text(
+                _start_progress_path(guard_home),
+                json.dumps(progress, sort_keys=True),
+            )
+    except OSError:
+        return False
+    return True
 
 
-def load_authenticated_guard_daemon_start_progress(guard_home: Path) -> dict[str, object] | None:
+def load_authenticated_guard_daemon_start_progress(guard_home: Path) -> GuardDaemonStartProgress | None:
     """Load one signed still-starting record from a private regular file."""
 
     raw_payload = read_private_regular_text(
@@ -2067,7 +2080,7 @@ def load_authenticated_guard_daemon_start_progress(guard_home: Path) -> dict[str
             return None
     except OSError:
         return None
-    return payload
+    return cast(GuardDaemonStartProgress, cast(object, payload))
 
 
 def _clear_guard_daemon_start_progress(guard_home: Path) -> None:
@@ -2075,7 +2088,7 @@ def _clear_guard_daemon_start_progress(guard_home: Path) -> None:
         _write_private_atomic_text(_start_progress_path(guard_home), "{}")
 
 
-def _guard_daemon_start_progress_is_live(guard_home: Path, record: dict[str, object]) -> bool:
+def _guard_daemon_start_progress_is_live(guard_home: Path, record: GuardDaemonStartProgress) -> bool:
     """Whether the record still names a live, identity-proven daemon for this home."""
 
     pid = record.get("pid")

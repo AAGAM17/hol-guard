@@ -14,6 +14,7 @@ from ..redaction import redact_text
 from ..value_coercion import coerce_int as _coerce_int
 from .doctor_readiness import doctor_runtime_readiness
 from .protect_output import _protect_harness_message_for_render, _restore_ephemeral_signed_approval_output
+from .render_doctor_readiness import build_doctor_harness_table, readiness_text
 from .render_uninstall import render_self_uninstall
 
 try:
@@ -843,7 +844,7 @@ def _render_doctor(console: Console, payload: dict[str, object]) -> None:
             )
         )
         adapters = _coerce_dict_list(payload.get("adapters"))
-        console.print(_build_harness_table(adapters, show_readiness=True))
+        console.print(build_doctor_harness_table(adapters))
     elif "harnesses" in payload and all("install_aliases" in h for h in _coerce_dict_list(payload.get("harnesses"))):
         contracts = _coerce_dict_list(payload.get("harnesses"))
         table = Table(title="HOL Guard supported harnesses", box=box.SIMPLE_HEAD, show_lines=False)
@@ -871,8 +872,9 @@ def _render_doctor(console: Console, payload: dict[str, object]) -> None:
         summary.add_row("Harness", f"[bold]{payload.get('harness', 'unknown')}[/bold]")
         summary.add_row("Installed", _bool_label(bool(payload.get("installed"))))
         summary.add_row("Registration", str(payload.get("setup_status") or "unknown"))
-        summary.add_row("Runtime readiness", _doctor_readiness_text(payload))
-        summary.add_row("Evidence", Text(doctor_runtime_readiness(payload)["detail"]))
+        readiness = doctor_runtime_readiness(payload)
+        summary.add_row("Runtime readiness", readiness_text(readiness))
+        summary.add_row("Evidence", Text(readiness["detail"]))
         summary.add_row("Command", _bool_label(bool(payload.get("command_available"))))
         summary.add_row("Artifacts", str(len(_coerce_dict_list(payload.get("artifacts")))))
         registry = payload.get("runtime_detector_registry")
@@ -2287,37 +2289,21 @@ def _build_supply_chain_posture_panel(supply_chain: dict[str, object]) -> Panel:
     return Panel(body, title="Supply-chain firewall", border_style="cyan")
 
 
-def _doctor_readiness_text(diagnostics: dict[str, object]) -> Text:
-    readiness = doctor_runtime_readiness(diagnostics)
-    if readiness["state"] == "fail":
-        return Text("Setup broken", style="red")
-    return Text("Unverified", style="yellow")
-
-
-def _build_harness_table(detections: list[dict[str, object]], *, show_readiness: bool = False) -> Table:
+def _build_harness_table(detections: list[dict[str, object]]) -> Table:
     table = Table(box=box.SIMPLE_HEAVY, show_header=True)
     table.add_column("Harness", style="bold")
-    table.add_column("Detection" if show_readiness else "Status")
-    if show_readiness:
-        table.add_column("Runtime readiness")
+    table.add_column("Status")
     table.add_column("Command")
     table.add_column("Artifacts", justify="right")
     table.add_column("Warnings", justify="right")
     for detection in detections:
-        status = _status_text(detection)
-        if show_readiness and _status_label(detection) == "Ready":
-            status = Text("Found", style="cyan")
-        row = [str(detection.get("harness", "unknown")), status]
-        if show_readiness:
-            row.append(_doctor_readiness_text(detection))
-        row.extend(
-            [
-                _bool_label(bool(detection.get("command_available"))),
-                str(len(_coerce_dict_list(detection.get("artifacts")))),
-                str(_warning_count(detection)),
-            ]
+        table.add_row(
+            str(detection.get("harness", "unknown")),
+            _status_text(detection),
+            _bool_label(bool(detection.get("command_available"))),
+            str(len(_coerce_dict_list(detection.get("artifacts")))),
+            str(_warning_count(detection)),
         )
-        table.add_row(*row)
     return table
 
 

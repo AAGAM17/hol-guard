@@ -5,6 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 
+def _command_probe_results(probe: object) -> tuple[Mapping[str, object], ...]:
+    if not isinstance(probe, Mapping):
+        return ()
+    # Hermes/OpenClaw use command; OpenCode uses paths/config. Do not crawl
+    # arbitrary configuration or turn other adapter metadata into probe results.
+    nested = tuple(probe[key] for key in ("command", "paths", "config") if isinstance(probe.get(key), Mapping))
+    return (probe, *nested)
+
+
 def doctor_runtime_readiness(diagnostics: Mapping[str, object]) -> dict[str, str]:
     """Do not promote registration, manifest trust or a CLI probe to evaluation proof.
 
@@ -33,17 +42,23 @@ def doctor_runtime_readiness(diagnostics: Mapping[str, object]) -> dict[str, str
             "Guard decision from this harness."
         )
     else:
-        probe = diagnostics.get("runtime_probe")
-        if isinstance(probe, Mapping) and probe.get("timed_out") is True:
+        probes = _command_probe_results(diagnostics.get("runtime_probe"))
+        if any(probe.get("timed_out") is True for probe in probes):
             reason = "harness_probe_timed_out"
             detail = (
                 "The harness diagnostic check timed out. Inspect the probe and daemon diagnostics; "
                 "no authenticated Guard decision was verified."
             )
-        elif isinstance(probe, Mapping) and probe.get("ok") is False:
+        elif any(probe.get("ok") is False for probe in probes):
             reason = "harness_probe_failed"
             detail = (
                 "The harness diagnostic check failed. Inspect the probe and daemon diagnostics; "
                 "no authenticated Guard decision was verified."
+            )
+        elif any(probe.get("skipped") is True for probe in probes):
+            reason = "harness_probe_not_run"
+            detail = (
+                "Global doctor checked registration without running the harness CLI probe. "
+                "No authenticated Guard decision was verified."
             )
     return {"state": state, "reason_code": reason, "detail": detail}

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     )
 
 
+from ..adapters.diagnostic_probes import without_command_probes
 from ..daemon.bounded_http import daemon_admission_snapshot
 from ..native_runtime_admission import native_resident_admission_snapshot
 from ..runtime.command_queue import command_queue_status, repair_command_queue_state
@@ -305,12 +307,14 @@ def _run_guard_doctor_command(
             payload["codex_resume"] = inspect_codex_resume_capabilities(store)
     else:
         detected_harnesses = []
-        for detection in detect_all(context):
-            item = detection.to_dict()
-            diagnostics = get_adapter(detection.harness).diagnostics(context)
-            item["setup_status"] = diagnostics.get("setup_status")
-            item["runtime_readiness"] = doctor_runtime_readiness(diagnostics)
-            detected_harnesses.append(item)
+        with without_command_probes():
+            for detection in detect_all(context):
+                item = detection.to_dict()
+                diagnostics = get_adapter(detection.harness).diagnostics(context)
+                item["setup_status"] = diagnostics.get("setup_status")
+                item["warnings"] = diagnostics.get("warnings", [])
+                item["runtime_readiness"] = doctor_runtime_readiness(diagnostics)
+                detected_harnesses.append(item)
         payload = {
             "tables": store.list_table_names(),
             "adapters": detected_harnesses,
@@ -365,7 +369,8 @@ def _run_guard_doctor_command(
     }
     payload["trust"] = build_trust_doctor_payload(store)
     payload["supply_chain"] = build_local_supply_chain_posture(store, config, now=_now())
-    payload["aibom"] = build_aibom_status_payload(store, context, generated_at=_now())
+    with nullcontext() if args.harness else without_command_probes():
+        payload["aibom"] = build_aibom_status_payload(store, context, generated_at=_now())
     from ..protection_posture import protection_status_fields
 
     payload.update(protection_status_fields(posture=config.protection_posture, mode=config.mode))

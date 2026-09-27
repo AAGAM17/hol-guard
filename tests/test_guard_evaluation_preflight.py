@@ -245,6 +245,31 @@ def test_posix_capture_failure_reaps_owned_process(
     assert processes[0].stdout.closed and processes[0].stderr.closed
 
 
+@pytest.mark.parametrize("error_type", [OSError, ValueError])
+def test_windows_stdin_failure_kills_process_when_job_cleanup_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_type: type[Exception]
+) -> None:
+    calls: list[str] = []
+
+    class BrokenStdin:
+        def close(self) -> None:
+            raise error_type("synthetic private diagnostic")
+
+    def failed_job_operation() -> None:
+        raise OSError("synthetic job failure")
+
+    process = SimpleNamespace(
+        stdin=BrokenStdin(), kill=lambda: calls.append("kill"), wait=lambda **_kwargs: calls.append("wait")
+    )
+    job = SimpleNamespace(close=failed_job_operation, terminate=failed_job_operation)
+    monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(probe_module, "spawn_windows_hook_process", lambda *_args, **_kwargs: (process, job))
+
+    with pytest.raises(RuntimeError, match="guard_hook_python_probe_execution_failed"):
+        probe_module.run_probe(["synthetic-agent"], cwd=tmp_path, env={})
+    assert calls == ["kill", "wait"]
+
+
 @pytest.mark.parametrize("reap_expires", [False, True])
 def test_windows_timeout_has_bounded_reap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reap_expires: bool) -> None:
     calls: list[str] = []

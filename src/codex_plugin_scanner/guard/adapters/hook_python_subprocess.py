@@ -235,8 +235,10 @@ def run_probe(
             try:
                 process.stdin.close()
             except (OSError, ValueError):
-                with contextlib.suppress(OSError):
+                try:
                     job.close()
+                except OSError:
+                    _stop_threaded_probe(process, job, threading.Event())
                 with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                     process.wait(timeout=_PROBE_REAP_TIMEOUT_SECONDS)
                 raise

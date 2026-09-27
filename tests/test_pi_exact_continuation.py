@@ -729,20 +729,24 @@ async function pollApprovalResolution(_requestId, _pollPath, _signal, activity) 
   await delay(10);
   return activity && !activity() ? 'aborted' : 'allow';
 }}
-async function runGuard() {{
+async function runGuard(payload) {{
   activeScenario.guardCalls += 1;
+  if (activeScenario.mode === 'replacement' && payload.prompt === 'prompt-A') {{
+    await new Promise((resolve) => {{ activeScenario.releaseA = resolve; }});
+  }}
+  const requestId = payload.prompt === 'prompt-B' ? 'request-B' : 'request-A';
   return {{
     decision: 'deny',
     reason: 'approval pending',
-    approval_request_id: 'request-fixture',
-    resume_poll_path: '/v1/requests/request-fixture',
+    approval_request_id: requestId,
+    resume_poll_path: `/v1/requests/${{requestId}}`,
   }};
 }}
 
 async function runScenario(changeContext) {{
   let sessionId = 'session-input';
   let cwd = '/fixture/workspace';
-  activeScenario = {{ guardCalls: 0, sentMessages: [] }};
+  activeScenario = {{ guardCalls: 0, sentMessages: [], mode: 'single' }};
   const handlers = new Map();
   const pi = {{
     on: (event, handler) => handlers.set(event, handler),
@@ -764,9 +768,35 @@ async function runScenario(changeContext) {{
   return {{ ...activeScenario, result }};
 }}
 
+async function runSameSessionReplacement() {{
+  let sessionId = 'session-input';
+  let cwd = '/fixture/workspace';
+  activeScenario = {{ guardCalls: 0, sentMessages: [], mode: 'replacement', releaseA: null }};
+  const handlers = new Map();
+  const pi = {{
+    on: (event, handler) => handlers.set(event, handler),
+    sendMessage: (...args) => activeScenario.sentMessages.push(args),
+  }};
+  const ctx = {{
+    cwd,
+    sessionManager: {{ getCwd: () => cwd, getSessionId: () => sessionId }},
+    ui: {{ notify: () => {{}} }},
+  }};
+{input_source}
+  const first = handlers.get('input')({{ source: 'interactive', text: 'prompt-A' }}, ctx);
+  while (activeScenario.releaseA === null) await delay(1);
+  const second = handlers.get('input')({{ source: 'interactive', text: 'prompt-B' }}, ctx);
+  const secondResult = await second;
+  activeScenario.releaseA();
+  const firstResult = await first;
+  await delay(30);
+  return {{ ...activeScenario, firstResult, secondResult }};
+}}
+
 const sameContext = await runScenario(false);
 const changedContext = await runScenario(true);
-console.log(JSON.stringify({{ sameContext, changedContext }}));
+const sameSessionReplacement = await runSameSessionReplacement();
+console.log(JSON.stringify({{ sameContext, changedContext, sameSessionReplacement }}));
 """
     harness_path.write_text(script, encoding="utf-8")
     completed = subprocess.run(
@@ -785,3 +815,10 @@ console.log(JSON.stringify({{ sameContext, changedContext }}));
     assert len(same_context["sentMessages"]) == 1
     assert changed_context["guardCalls"] == 1
     assert changed_context["sentMessages"] == []
+    replacement = payload["sameSessionReplacement"]
+    assert isinstance(replacement, dict)
+    assert replacement["guardCalls"] == 2
+    assert replacement["firstResult"]["handled"] is True
+    assert replacement["secondResult"]["handled"] is True
+    assert len(replacement["sentMessages"]) == 1
+    assert replacement["sentMessages"][0][0]["content"] == "prompt-B"

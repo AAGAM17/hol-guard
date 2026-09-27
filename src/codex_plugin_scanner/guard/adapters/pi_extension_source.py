@@ -560,6 +560,7 @@ def managed_extension_source(
         "  }\n"
         '  pi.on("input", async (event, ctx) => {\n'
         '    if (event.source === "extension") return { action: "continue" };\n'
+        "    invalidateInputApprovalResumes();\n"
         "    const inputBinding = captureInputApprovalResumeBinding(ctx);\n"
         "    const response = await runGuard(\n"
         '      { hook_event_name: "UserPromptSubmit", prompt: event.text, config_path: GUARD_CONFIG_PATH },\n'

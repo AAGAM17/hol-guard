@@ -1,4 +1,4 @@
-"""Watch must not pause native reviews while an older enforcing snapshot is still acknowledged."""
+"""An acknowledged enforcing snapshot still pauses native reviews."""
 
 from __future__ import annotations
 

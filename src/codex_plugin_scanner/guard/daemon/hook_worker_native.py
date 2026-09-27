@@ -320,6 +320,10 @@ class HookWorkerNativeMixin:
         deadline: float | None,
     ) -> dict[str, object]:
         policy_snapshot = self._native_policy_snapshot(workspace, deadline=deadline)
+        # Native evaluation and Python delivery use the same acknowledged
+        # posture. A local Watch edit cannot weaken an enforcing snapshot
+        # before its replacement is accepted. A missing binding already takes
+        # the existing unavailable route, whose response is posture-independent.
         recording_only = policy_snapshot is not None and policy_snapshot.get("mode") == "observe"
         fenced: bool | None = None
         try:

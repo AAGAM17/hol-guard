@@ -481,5 +481,3 @@ def test_bridge_keeps_deny_when_browser_wait_times_out(
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
-
-

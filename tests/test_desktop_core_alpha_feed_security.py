@@ -302,7 +302,7 @@ def test_linux_feed_publishes_digest_verified_gnu_sidecar() -> None:
     assert '--wheel "$RUNNER_TEMP/attested-linux-x64.whl"' in build_run
     assert '--expected-target "$NATIVE_RUNTIME_TARGET"' in build_run
     assert "--codesign-identity" not in build_run
-    assert '--add-data "src/codex_plugin_scanner/version.py:."' in build_run
+    assert '--add-data "$SOURCE/src/codex_plugin_scanner/version.py:."' in build_run
     assert "codesign " not in build_run
     assert "notarytool" not in text
     assert "APPLE_CERTIFICATE" not in text

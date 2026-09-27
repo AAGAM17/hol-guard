@@ -242,7 +242,7 @@ def await_persisted_native_receipt(
         if writer is not None and receipt_processed_before is not None
         else None
     )
-    next_reader_poll = 0.0
+    next_reader_poll = time.monotonic() + 0.25 if writer_progress is not None else 0.0
     while time.monotonic() < deadline:
         should_read = writer_progress is None
         if writer_progress is not None:

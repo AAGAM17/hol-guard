@@ -144,8 +144,8 @@ export function resolveActionEnvelopeDetailText(
   }
   // All canonical details above take precedence. This JSON input fallback never changes Rust's action kind.
   if (envelope.action_type === "mcp_tool" || envelope.event_name === "PreToolUse") {
-    const baseText =
-      resolveEnvelopeDisplayText(envelope) ?? envelope.mcp_tool ?? envelope.tool_name ?? envelope.action_type;
+    const baseText = friendlyMcpToolName(envelope.tool_name) ?? friendlyMcpToolName(envelope.mcp_tool)
+      ?? resolveEnvelopeDisplayText(envelope) ?? envelope.mcp_tool ?? envelope.tool_name ?? envelope.action_type;
     const inputSummary = serializeMcpInput(envelope.raw_payload_redacted, options.mcpInputMaxLength ?? null);
     if (inputSummary !== null) return `${baseText}\n\nInput:\n${inputSummary}`;
     return envelope.action_type === "shell_command" ? null : baseText;
@@ -538,7 +538,24 @@ export function harnessDisplayName(harness: string): string {
 }
 
 export function displayArtifactName(item: GuardApprovalRequest): string {
+  if (item.artifact_type === "tool_call") {
+    const friendly = friendlyMcpToolName(item.artifact_name);
+    if (friendly) return friendly;
+  }
   return item.artifact_name || item.artifact_id || "this action";
+}
+
+export function friendlyMcpToolName(raw: string | null | undefined): string | null {
+  if (!raw || raw.length > 256) return null;
+  const parts = raw.startsWith("mcp__") ? raw.slice(5).split("__") : [];
+  if (parts.length < 2 || parts.some((part) => !/^[a-zA-Z0-9_-]{1,80}$/.test(part))) return null;
+  const connector = parts.length > 2 ? parts.at(-2)! : parts[0];
+  const tool = parts.at(-1)!;
+  const humanize = (part: string) => part.replaceAll("_", " ").replaceAll("-", " ")
+    .toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+  const shortTool = tool.toLowerCase().startsWith(`${connector.toLowerCase()}_`)
+    ? tool.slice(connector.length + 1) : tool;
+  return `${humanize(connector)} · ${humanize(shortTool)}`;
 }
 
 export function formatNumber(n: number): string {

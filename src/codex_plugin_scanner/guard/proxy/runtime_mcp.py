@@ -66,6 +66,7 @@ from ..runtime.approval_context import (
 )
 from ..runtime.approval_reuse import APPROVAL_REUSE_CLAIM_FAILED
 from ..runtime.browser_mcp_intent import normalize_browser_mcp_intent
+from ..runtime.composio_contract import composio_requires_action_review
 from ..runtime.harness_attribution import origin_harness_env
 from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity
 from ..runtime.package_execution_policy import is_execution_permitted
@@ -1032,6 +1033,10 @@ class RuntimeMcpGuardProxy:
             server_identity=self._session_server_identity(),
             tool_schema=tool_schema,
             tool_description=tool_description_value if isinstance(tool_description_value, str) else None,
+            tool_definition=tool_definition,
+            provider_catalog_hash=(
+                self.store.read_mcp_provider_authority_hash() if composio_requires_action_review(tool_name) else None
+            ),
         )
         artifact_hash = build_tool_call_hash(
             artifact,

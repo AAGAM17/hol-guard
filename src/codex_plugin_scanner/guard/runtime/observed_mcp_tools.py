@@ -13,7 +13,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from ..native_policy_snapshot_codec import _normalized_harness_selector_v3
-from ..native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS
+from ..native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS, NativePolicySnapshotError
 from .local_cli_commands import MAX_LOCAL_CLI_COMMANDS, OTHER_COMMAND_ID, LocalCliCommand
 from .local_cli_identity import UnlistedCliIdentity
 from .mcp_protection import McpServerIdentity, build_mcp_server_identity
@@ -199,7 +199,7 @@ def native_observed_mcp_tool_actions(store: GuardStore) -> dict[str, str]:
             if tool is None or tool.namespace != namespace or tool.command_id != command.command_id:
                 continue
             state = states.get(command.command_id)
-            if state in {"allow", "block"}:
+            if state in {"allow", "review", "block"}:
                 actions[f"{harness}:{tool.qualified_name}"] = str(state)
     return bound_native_mcp_tool_actions(actions)
 
@@ -209,12 +209,15 @@ def bound_native_mcp_tool_actions(
     *,
     required_blocks: frozenset[str] = frozenset(),
 ) -> dict[str, str]:
-    """Keep configured restrictions, then namespace blocks, tool blocks and allows."""
+    """Retain every restriction; reject capacity that would discard a floor."""
+
+    if sum(action in {"block", "review"} for action in actions.values()) > POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS:
+        raise NativePolicySnapshotError("native_mcp_permission_capacity_exceeded")
 
     ordered = sorted(
         actions,
         key=lambda key: (
-            actions[key] != "block",
+            actions[key] not in {"block", "review"},
             key not in required_blocks,
             not key.endswith("*"),
             key,

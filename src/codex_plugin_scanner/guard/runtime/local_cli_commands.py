@@ -12,7 +12,7 @@ from typing import Literal
 from .command_model import parse_shell_command
 from .local_cli_identity import UnlistedCliIdentity
 
-LocalCliCommandState = Literal["inherit", "allow", "block"]
+LocalCliCommandState = Literal["inherit", "allow", "review", "block"]
 
 ROOT_COMMAND_ID = "root"
 OTHER_COMMAND_ID = "other"
@@ -65,7 +65,7 @@ def slug_local_cli_command_id(name: str) -> str:
 
 
 def is_local_cli_command_state(value: object) -> bool:
-    return value in {"inherit", "allow", "block"}
+    return value in {"inherit", "allow", "review", "block"}
 
 
 def local_cli_command_state(value: object) -> LocalCliCommandState | None:
@@ -75,6 +75,8 @@ def local_cli_command_state(value: object) -> LocalCliCommandState | None:
         return "allow"
     if value == "block":
         return "block"
+    if value == "review":
+        return "review"
     return None
 
 

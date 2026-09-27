@@ -6,14 +6,17 @@ from codex_plugin_scanner.guard.adapters.harness_mcp_discovery import (
     MAX_DISCOVERED_MCP_SERVERS,
     apply_source_labels,
     discover_harness_mcp_servers,
+    discovered_server_for_observation,
     persist_discovered_harness_mcp_servers,
 )
 from codex_plugin_scanner.guard.daemon.local_cli_api import LocalCliApiError, LocalCliApiService
-from codex_plugin_scanner.guard.local_cli_trust import utc_now
+from codex_plugin_scanner.guard.local_cli_trust import matching_local_mcp_grant, utc_now
+from codex_plugin_scanner.guard.mcp_tool_calls import build_tool_call_artifact
 from codex_plugin_scanner.guard.models import GuardArtifact, HarnessDetection
 from codex_plugin_scanner.guard.runtime.local_cli_commands import LocalCliCommand
 from codex_plugin_scanner.guard.runtime.local_cli_identity import UnlistedCliIdentity
 from codex_plugin_scanner.guard.runtime.local_mcp_probe import McpProbeResult
+from codex_plugin_scanner.guard.runtime.local_mcp_stdio import McpCatalogResult
 from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_identity
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -72,7 +75,7 @@ def test_packaged_native_proxies_are_not_offered_as_servers(tmp_path: Path) -> N
     assert [server.identity.name for server in servers] == ["hol-guard::unverified"]
 
 
-def test_discover_groups_same_launch_across_harnesses() -> None:
+def test_identical_launches_keep_distinct_host_connections() -> None:
     detections = (
         _detection(
             "codex",
@@ -91,6 +94,7 @@ def test_discover_groups_same_launch_across_harnesses() -> None:
                 name="github",
                 command="npx",
                 args=("-y", "@modelcontextprotocol/server-github"),
+                env={"GITHUB_TOKEN": "secret"},
             ),
         ),
     )
@@ -99,11 +103,105 @@ def test_discover_groups_same_launch_across_harnesses() -> None:
         guard_home=Path("."),
         detections=detections,
     )
-    assert len(discovered) == 1
+    assert len(discovered) == 2
     assert discovered[0].identity.name == "github"
-    assert discovered[0].source_label == "Codex, Claude Code"
+    assert {server.source_label for server in discovered} == {"Codex", "Claude Code"}
+    assert discovered[0].identity.identity_hash != discovered[1].identity.identity_hash
     assert discovered[0].server_identity.env_keys == ("GITHUB_TOKEN",)
     assert "secret" not in discovered[0].identity.example_label
+
+
+def test_distinct_configured_environments_do_not_merge(tmp_path: Path) -> None:
+    artifacts = tuple(
+        _artifact(
+            harness="codex", name=name, command="npx", args=("-y", "pkg"),
+            env={"ACCOUNT": name},
+        )
+        for name in ("personal", "work")
+    )
+    servers = discover_harness_mcp_servers(
+        home_dir=tmp_path, guard_home=tmp_path, detections=(_detection("codex", *artifacts),),
+    )
+    assert len(servers) == 2
+    store = GuardStore(tmp_path / "guard")
+    labels = persist_discovered_harness_mcp_servers(store, servers, seen_at=utc_now())
+    assert len(labels) == 2
+    for server in servers:
+        found = store.find_local_mcp_observation(
+            server_identity_hash=server.identity.identity_hash,
+            command=server.server_identity.command, args_hash=server.server_identity.args_hash,
+        )
+        assert found is not None
+        assert found["identity_hash"] == server.identity.identity_hash
+    assert store.find_local_mcp_observation(
+        command=servers[0].server_identity.command, args_hash=servers[0].server_identity.args_hash,
+    ) is None
+
+
+def test_configured_grants_follow_exact_host_and_configuration(tmp_path: Path) -> None:
+    servers = discover_harness_mcp_servers(
+        home_dir=tmp_path, guard_home=tmp_path, detections=tuple(
+            _detection(host, _artifact(harness=host, name="github", command="npx", args=("-y", "pkg")))
+            for host in ("codex", "claude-code")
+        ),
+    )
+    assert len(servers) == 2
+    assert servers[0].server_identity.identity_hash == servers[1].server_identity.identity_hash
+    store = GuardStore(tmp_path / "guard")
+    persist_discovered_harness_mcp_servers(store, servers, seen_at=utc_now())
+    for server in servers:
+        connection = server.connection_identity
+        assert connection is not None
+        choice = "allow" if connection.host == "codex" else "block"
+        store.replace_local_cli_commands(server.identity.cli_id, (
+            LocalCliCommand("read_file", "read_file", "read_file", "Read a file"),
+        ), mcp_catalog=McpCatalogResult(
+            tools=({"name": "read_file", "inputSchema": {"type": "object"}},), complete=True,
+        ), identity_hash=server.identity.identity_hash, seen_at=utc_now())
+        store.upsert_local_cli_grant(
+            identity=server.identity, state="allowed", expected_revision=store.read_local_cli_revision(),
+            updated_at=utc_now(), command_states={"read_file": choice},
+        )
+    for server in servers:
+        connection = server.connection_identity
+        assert connection is not None
+        artifact = build_tool_call_artifact(
+            harness=connection.host, server_name="github", tool_name="read_file", source_scope="user",
+            config_path=f"{connection.host}/mcp.json", transport="stdio", server_identity=server.server_identity,
+            tool_definition={"name": "read_file", "inputSchema": {"type": "object"}},
+        )
+        assert matching_local_mcp_grant(store=store, artifact=artifact, current_action="review") == (
+            "allowed" if connection.host == "codex" else "blocked"
+        )
+        changed_config = build_tool_call_artifact(
+            harness=connection.host, server_name="github", tool_name="read_file", source_scope="user",
+            config_path="different/mcp.json", transport="stdio", server_identity=server.server_identity,
+        )
+        assert matching_local_mcp_grant(store=store, artifact=changed_config, current_action="review") is None
+        changed_schema = build_tool_call_artifact(
+            harness=connection.host, server_name="github", tool_name="read_file", source_scope="user",
+            config_path=f"{connection.host}/mcp.json", transport="stdio", server_identity=server.server_identity,
+            tool_definition={"name": "read_file", "inputSchema": {"type": "object", "required": ["destination"]}},
+        )
+        assert matching_local_mcp_grant(store=store, artifact=changed_schema, current_action="review") == (
+            "review" if connection.host == "codex" else "blocked"
+        )
+    assert store.find_local_mcp_observation(
+        server_identity_hash="0" * 64, command=servers[0].server_identity.command,
+        args_hash=servers[0].server_identity.args_hash,
+    ) is None
+    assert discovered_server_for_observation(
+        servers, server_command=servers[0].server_identity.command,
+        args_hash=servers[0].server_identity.args_hash,
+    ) is None
+    assert discovered_server_for_observation(
+        servers, cli_id=servers[1].identity.cli_id,
+        server_command=servers[0].server_identity.command, args_hash=servers[0].server_identity.args_hash,
+    ) == servers[1]
+    assert discovered_server_for_observation(
+        servers, cli_id="local-cli.mcp-missing", server_command=servers[0].server_identity.command,
+        args_hash=servers[0].server_identity.args_hash,
+    ) is None
 
 
 def test_discover_redacts_secret_argv_tokens() -> None:
@@ -321,7 +419,8 @@ def test_recognize_reuses_harness_identity(tmp_path: Path, monkeypatch) -> None:
     item = result["item"]
     assert isinstance(item, dict)
     assert item["cli_id"] == listed_item["cli_id"]
-    assert item["identity_hash"] == harness_identity.identity_hash
+    assert item["identity_hash"] == listed_item["identity_hash"]
+    assert item["identity_hash"] != harness_identity.identity_hash
     assert item["identity_hash"] != probed_identity.identity_hash
     assert item["name"] == "github"
     ids = [entry["command_id"] for entry in item["commands"]]

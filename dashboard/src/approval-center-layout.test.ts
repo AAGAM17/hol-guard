@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import {
   resolveEnvelopeDisplayText,
+  resolveActionEnvelopeDetailText,
+  friendlyMcpToolName,
   resolveStoppedCommandText,
   resolveTerminalLabel,
   displayArtifactName,
@@ -249,6 +251,16 @@ assert(
   resolveTerminalLabel(mcpRequest) === "MCP server / tool",
   "T482: resolveTerminalLabel returns 'MCP server / tool' for mcp_tool action type"
 );
+const qualifiedComposio = "mcp__codex_apps__composio__composio_search_tools";
+assert(friendlyMcpToolName(qualifiedComposio) === "Composio · Search Tools",
+  "review shows the connector and action without requiring qualified-name parsing");
+assert(displayArtifactName({ ...mcpRequest, artifact_type: "tool_call", artifact_name: qualifiedComposio })
+  === "Composio · Search Tools", "queue uses a friendly connector-action title");
+assert(resolveActionEnvelopeDetailText({ ...BASE_ENVELOPE, action_type: "mcp_tool",
+  tool_name: qualifiedComposio, mcp_tool: qualifiedComposio }) === "Composio · Search Tools",
+"review action uses a friendly label while retaining the bound underlying artifact");
+assert(friendlyMcpToolName("mcp__unsafe__../../send") === null,
+  "malformed qualified names stay uninterpreted");
 
 const queuedBrowserTool: GuardApprovalRequest = {
   ...BASE_REQUEST,

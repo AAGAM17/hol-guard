@@ -18,6 +18,7 @@ from codex_plugin_scanner.guard.store_approvals import (
     approval_index_statements,
     approval_schema_statement,
     count_approval_requests,
+    get_approval_request,
     list_approval_requests,
 )
 
@@ -78,6 +79,42 @@ def _make_request(
 
 class TestDuplicatePendingRequestCollapse:
     """T719-T720: Duplicate pending requests collapse to one row."""
+
+    def test_corrupt_pending_authority_requires_a_new_host_attempt_and_request_id(self) -> None:
+        conn = _make_conn()
+        first = _make_request(artifact_id="codex:project:mcp-review", launch_target="tool:composio_search_tools")
+        old_id = add_approval_request(conn, first, "2026-09-27T12:00:00Z")
+        conn.execute(
+            "update approval_requests set decision_v2_json = ? where request_id = ?",
+            ('{"minimum_action":"invalid-action"}', old_id),
+        )
+        fresh = _make_request(artifact_id=first.artifact_id, launch_target=first.launch_target)
+        fresh_id = add_approval_request(conn, fresh, "2026-09-27T12:01:00Z")
+        assert fresh_id == fresh.request_id and fresh_id != old_id
+        old = conn.execute(
+            "select status, resolution_action, reason from approval_requests where request_id = ?", (old_id,),
+        ).fetchone()
+        assert tuple(old) == ("expired", None, "superseded_by_fresh_review:" + fresh_id)
+        assert count_approval_requests(conn, status="pending") == 1
+        current = list_approval_requests(conn)[0]
+        assert current["request_id"] == fresh_id
+        assert current["policy_action"] == "require-reapproval"
+        assert get_approval_request(conn, old_id)["superseded_by_request_id"] == fresh_id
+        conn.execute("update approval_requests set harness = 'claude' where request_id = ?", (fresh_id,))
+        assert "superseded_by_request_id" not in get_approval_request(conn, old_id)
+
+    def test_invalid_old_request_cannot_be_repaired_using_the_same_id(self) -> None:
+        import pytest
+
+        conn = _make_conn()
+        first = _make_request(artifact_id="codex:project:mcp-review", launch_target="tool:composio_search_tools")
+        old_id = add_approval_request(conn, first, "2026-09-27T12:00:00Z")
+        conn.execute("update approval_requests set policy_action = 'invalid' where request_id = ?", (old_id,))
+        with pytest.raises(ValueError, match="fresh_review_request_id_required"):
+            add_approval_request(conn, first, "2026-09-27T12:01:00Z")
+        assert conn.execute(
+            "select policy_action from approval_requests where request_id = ?", (old_id,),
+        ).fetchone()[0] == "invalid"
 
     def test_second_identical_request_updates_existing_row(self) -> None:
         """T720: A second pending request for the same artifact+workspace+launch_target

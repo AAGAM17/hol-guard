@@ -15,6 +15,7 @@ from codex_plugin_scanner.guard.runtime.local_mcp_probe import (
 from codex_plugin_scanner.guard.runtime.local_mcp_stdio import (
     MCP_PACKAGE_PROBE_TIMEOUT_SECONDS,
     MCP_PROBE_OUTPUT_LIMIT,
+    McpCatalogResult,
     probe_env,
 )
 from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_identity
@@ -247,12 +248,18 @@ def test_live_stdio_probe_lists_tools_from_large_payload(tmp_path: Path) -> None
     assert "Other tools" in names
 
 
-def test_legacy_output_limit_drops_large_tools_list(tmp_path: Path, monkeypatch) -> None:
+def test_legacy_output_limit_reports_failed_inventory(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(stdio_module, "MCP_PROBE_OUTPUT_LIMIT", 64_000)
     server = tmp_path / "fat-mcp.py"
     _write_framed_server(server, tools=_large_tools())
     probed = probe_stdio_mcp_server(f"python3 {server}", cwd=tmp_path, home_dir=tmp_path, timeout=2.0)
-    assert probed is None
+    assert probed is not None
+    assert probed.status == "failed"
+    assert probed.catalog is not None
+    assert not probed.catalog.complete
+    assert probed.catalog.reason == "list_failed"
+    assert probed.catalog.tools == ()
+    assert [tool.command_id for tool in probed.tools] == [OTHER_COMMAND_ID]
 
 
 def test_live_stdio_probe_answers_roots_list(tmp_path: Path) -> None:
@@ -336,12 +343,16 @@ def test_probe_timeout_returns_none(tmp_path: Path) -> None:
 def test_package_launcher_uses_longer_probe_timeout(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, float] = {}
 
-    def fake_run(_argv: list[str], *, timeout: float, **_kwargs: object) -> list[dict[str, object]]:
+    def fake_run(_argv: list[str], *, timeout: float, **_kwargs: object) -> McpCatalogResult:
         captured["timeout"] = timeout
-        return [{"name": "list_pages", "description": "List pages"}]
+        return McpCatalogResult(
+            ({"name": "list_pages", "description": "List pages"},),
+            complete=True,
+            protocol_version="2024-11-05",
+        )
 
     monkeypatch.setattr(
-        "codex_plugin_scanner.guard.runtime.local_mcp_probe.run_mcp_tools_list",
+        "codex_plugin_scanner.guard.runtime.local_mcp_probe.run_mcp_catalog",
         fake_run,
     )
     probed = probe_stdio_mcp_server(
@@ -383,7 +394,7 @@ def test_probe_env_resolves_relative_npm_cache(tmp_path: Path, monkeypatch) -> N
     assert Path(env["npm_config_cache"]).is_absolute()
 
 
-def test_incomplete_pagination_does_not_persist_partial_tools(tmp_path: Path) -> None:
+def test_incomplete_pagination_retains_explicit_partial_inventory(tmp_path: Path) -> None:
     server = tmp_path / "paged-mcp.py"
     server.write_text(
         """
@@ -417,7 +428,14 @@ for line in sys.stdin:
         encoding="utf-8",
     )
     probed = probe_stdio_mcp_server(f"python3 {server}", cwd=tmp_path, home_dir=tmp_path, timeout=0.4)
-    assert probed is None
+    assert probed is not None
+    assert probed.status == "ok"
+    assert probed.catalog is not None
+    assert not probed.catalog.complete
+    assert probed.catalog.reason == "list_failed"
+    assert probed.catalog.pages == 1
+    assert [tool["name"] for tool in probed.catalog.tools] == ["tool_1"]
+    assert [tool.name for tool in probed.tools] == ["tool_1", "Other tools"]
 
 
 def test_live_stdio_probe_reads_utf8_tool_names(tmp_path: Path) -> None:

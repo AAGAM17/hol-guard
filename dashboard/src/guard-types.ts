@@ -276,6 +276,7 @@ export type GuardApprovalRequest = {
   dedupe_count?: number;
   last_seen_at?: string | null;
   display_status?: string;
+  superseded_by_request_id?: string;
   scanner_evidence?: GuardScannerEvidence[];
   temporary_mcp_approval?: GuardTemporaryMcpApproval | null;
   local_tool_approval?: GuardLocalToolApproval | null;

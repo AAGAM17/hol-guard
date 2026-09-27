@@ -44,6 +44,18 @@ def add_approval_request(
         identity_key=identity_key,
         queue_group_id=queue_group_id,
     )
+    if request_id is not None and not _consistent_pending_request(connection, request_id):
+        if request_id == request.request_id:
+            raise ValueError("fresh_review_request_id_required")
+        # Only a new, canonically validated host attempt can replace this row.
+        # Never repair its authority under the old ID or authorize a replay.
+        connection.execute(
+            """update approval_requests set status = 'expired', resolved_at = ?,
+            resolution_action = null, resolution_scope = null, reason = ?
+            where request_id = ? and status = 'pending'""",
+            (now, "superseded_by_fresh_review:" + request.request_id, request_id),
+        )
+        request_id = None
     if request_id is not None:
         _update_request(
             connection,
@@ -68,6 +80,24 @@ def add_approval_request(
         now=now,
     )
     return request.request_id
+
+
+def _consistent_pending_request(connection: sqlite3.Connection, request_id: str) -> bool:
+    row = connection.execute(
+        "select policy_action, decision_v2_json, action_envelope_json from approval_requests where request_id = ?",
+        (request_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    try:
+        canonical = canonical_approval_surfaces(
+            row[0], json.loads(row[1]) if row[1] is not None else None,
+            json.loads(row[2]) if row[2] is not None else None,
+            reject_contradiction=False,
+        )
+        return canonical.contract_error is None
+    except (TypeError, ValueError):
+        return False
 
 
 def _existing_request_id(

@@ -425,6 +425,7 @@ export function ProtectionCenterWorkspace(props: {
           active={showOverview}
           onPrimaryStatusAction={handlePrimaryStatusAction}
           onRefresh={refreshProtection}
+          onReloadConnections={localClis.load}
           onOpenExtension={openExtension}
           onOpenLocalCli={openLocalCliDetail}
           onAddCustom={openAddCustom}
@@ -457,6 +458,7 @@ export function ProtectionCenterWorkspace(props: {
           item={selectedLocalCli}
           revision={localClis.data.revision}
           continuity={localClis.data.cloud}
+          nativePublication={localClis.data.native_publication}
           onBack={closeExtension}
           onRefresh={localClis.load}
         />

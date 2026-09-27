@@ -27,6 +27,7 @@ export function useLocalCliCatalog() {
   const [discovering, setDiscovering] = useState(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const loadGeneration = useRef(0);
+  const publicationPoll = useRef({ revision: -1, attempts: 0 });
   const load = useCallback(async () => {
     const generation = loadGeneration.current + 1;
     loadGeneration.current = generation;
@@ -70,5 +71,17 @@ export function useLocalCliCatalog() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (discovering || data?.native_publication?.state !== "pending") return;
+    if (publicationPoll.current.revision !== data.revision) {
+      publicationPoll.current = { revision: data.revision, attempts: 0 };
+    }
+    if (publicationPoll.current.attempts >= 20) return;
+    const timer = window.setTimeout(() => {
+      publicationPoll.current.attempts += 1;
+      void load();
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [data, discovering, load]);
   return { data, error, load, discover, discovering, catalogReady };
 }

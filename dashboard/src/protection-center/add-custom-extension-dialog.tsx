@@ -50,6 +50,7 @@ import {
 import { CustomExtensionCommandList, withCommandState } from "./custom-extension-commands";
 import { useResolvedApprovalGate } from "../use-resolved-approval-gate";
 import { InlineError } from "./components/protection-primitives";
+import { McpRegistrySearch } from "./mcp-registry-search";
 
 function randomToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
@@ -75,6 +76,7 @@ export function AddCustomExtensionWorkspace(props: {
   const [error, setError] = useState<string | null>(null);
   const [reviewingScripts, setReviewingScripts] = useState(false);
   const [toolQuery, setToolQuery] = useState("");
+  const [registryOpen, setRegistryOpen] = useState(false);
   const recognizeGeneration = useRef(0);
   const autoRecognizedCommand = useRef("");
   const didAutoSelect = useRef(false);
@@ -462,6 +464,7 @@ export function AddCustomExtensionWorkspace(props: {
               ) : null}
             </section>
           ) : (
+            <>
             <SuggestionPanel
               query={command}
               discovering={props.discovering === true}
@@ -471,11 +474,13 @@ export function AddCustomExtensionWorkspace(props: {
               seenSuggestions={seenSuggestions}
               onSelect={selectSuggestion}
             />
+            <McpRegistrySearch items={props.items} approvalGate={resolvedApprovalGate} onOpenChange={setRegistryOpen} />
+            </>
           )}
         </>
       )}
       {error ? <div className="mt-4 max-w-xl"><InlineError message={error} /></div> : null}
-      <div className="sticky bottom-0 mt-auto border-t border-slate-200 bg-white py-4">
+      <div className={`${registryOpen && !recognized ? "relative" : "sticky bottom-0"} mt-auto border-t border-slate-200 bg-white py-4`}>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={submitDisabled} className="min-h-11 rounded-xl bg-brand-blue px-5 text-sm font-semibold text-white disabled:opacity-60">
             {addDialogSubmitLabel({ recognized, busy, pending, step: recognized ? step : "pick" })}

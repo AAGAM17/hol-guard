@@ -37,8 +37,14 @@ def _snapshot_api() -> Any:
     return native_policy_snapshot
 
 
-def _same_resident_paths(a, b) -> bool:
-    return {p for p, _m, _s in a} == {p for p, _m, _s in b}
+def _same_resident_paths(left, right) -> bool:
+    """True when the resident file set is unchanged.
+
+    Matching paths with new mtimes are hook traffic, not a new resident.
+    A restart adds or removes a generation path and must withdraw Watch.
+    """
+
+    return {path for path, _mtime, _size in left} == {path for path, _mtime, _size in right}
 
 
 class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
@@ -176,6 +182,35 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
     def _republish_preserving_watch(self) -> None:
         if not self._queue_observe_republish():
             self.request_publish()
+
+    def _accept_resident_fingerprint(self, fingerprint) -> None:
+        """Refresh Watch after resident metadata changes without hiding a policy edit.
+
+        Resident mtime churn and a config change can land in one poll. Keeping
+        the old observe snapshot in that case would let hooks run under Watch
+        after the installed policy moved to enforce. Policy-input changes that
+        are not an observe command-control refresh withdraw readiness first.
+        """
+
+        if self._input_fingerprint is None:
+            self._input_fingerprint = fingerprint
+            return
+        same_resident = _same_resident_paths(self._input_fingerprint[1], fingerprint[1])
+        previous_inputs = dict(self._input_fingerprint[0])
+        current_inputs = dict(fingerprint[0])
+        changed_paths = {
+            path
+            for path in previous_inputs.keys() | current_inputs.keys()
+            if previous_inputs.get(path) != current_inputs.get(path)
+        }
+        self._input_fingerprint = fingerprint
+        if changed_paths and self._policy_input_changed(changed_paths) and not self._observe_extension_refresh:
+            self.request_publish()
+            return
+        if same_resident:
+            self._republish_preserving_watch()
+            return
+        self.request_publish()
 
     notify_policy_changed = request_publish
 
@@ -329,12 +364,7 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             if self._input_fingerprint is None:
                 self._input_fingerprint = fingerprint
             elif fingerprint[1] != self._input_fingerprint[1]:
-                same = _same_resident_paths(self._input_fingerprint[1], fingerprint[1])
-                self._input_fingerprint = fingerprint
-                if same:
-                    self._republish_preserving_watch()
-                else:
-                    self.request_publish()
+                self._accept_resident_fingerprint(fingerprint)
             elif fingerprint[0] != self._input_fingerprint[0]:
                 previous_inputs = dict(self._input_fingerprint[0])
                 current_inputs = dict(fingerprint[0])

@@ -51,3 +51,33 @@ def test_protected_config_still_pauses_under_enforcing_snapshot(
 
     assert response.get("approval_request_id") or response.get("guardApprovalRequestId")
     assert store.list_approval_requests(status="pending")
+
+
+@pytest.mark.parametrize("harness", ["codex", "devin"])
+def test_watch_config_still_pauses_while_acknowledged_snapshot_enforces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    harness: str,
+) -> None:
+    edge = _edge(harness)
+    result = edge["result"]
+    assert isinstance(result, dict)
+    result.update(
+        policy_action="require-reapproval",
+        minimum_action="require-reapproval",
+        decision="deny",
+        reason_code="native_policy_reapproval_required",
+        reason="HOL Guard requires fresh approval under the installed native policy.",
+    )
+    worker, store = _worker(tmp_path, monkeypatch, edge)
+    guard_home = tmp_path / "guard-home"
+    (guard_home / "config.toml").write_text(
+        'mode = "observe"\nprotection_posture = "watch"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(worker, "_native_policy_snapshot", lambda *_args, **_kwargs: {"mode": "enforce"})
+
+    response = _review(worker, tmp_path, harness)
+
+    assert response.get("approval_request_id") or response.get("guardApprovalRequestId")
+    assert store.list_approval_requests(status="pending")

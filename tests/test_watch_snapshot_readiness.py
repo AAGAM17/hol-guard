@@ -183,3 +183,47 @@ def test_protected_publish_still_rejects_resident_file_churn(
         assert not publisher.is_ready()
     finally:
         publisher.close()
+
+
+def test_resident_mtime_churn_keeps_watch_when_policy_inputs_are_unchanged(tmp_path: Path) -> None:
+    clock = _DeterministicClock()
+    publisher = _publisher(tmp_path, clock)
+    publisher._snapshot = _ready_snapshot(clock, "observe")
+    publisher._acked = True
+    generation = "resident-v3-a/generation-00000000000000000007.json"
+    publisher._input_fingerprint = ((), ((generation, 1, 1),))
+    try:
+        epoch = publisher._epoch
+        publisher._accept_resident_fingerprint(((), ((generation, 2, 1),)))
+        assert publisher.is_ready()
+        assert publisher._epoch == epoch
+        assert publisher._renewal_after_generation == 7
+    finally:
+        publisher.close()
+
+
+def test_resident_mtime_churn_withdraws_watch_when_policy_moves_to_enforce(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _DeterministicClock()
+    publisher = _publisher(tmp_path, clock)
+    publisher._snapshot = _ready_snapshot(clock, "observe")
+    publisher._acked = True
+    config_path = str(publisher.guard_home / "config.toml")
+    generation = "resident-v3-a/generation-00000000000000000007.json"
+    publisher._input_fingerprint = (((config_path, (1, 1, 1, 1)),), ((generation, 1, 1),))
+    monkeypatch.setattr(
+        publisher,
+        "_compiled_effective_policy",
+        lambda: {"mode": "enforce", "blocked_capabilities": ["network"]},
+    )
+    monkeypatch.setattr(publisher, "_compiled_command_extensions", lambda: {"revision": 1})
+    try:
+        publisher._accept_resident_fingerprint(
+            (((config_path, (2, 1, 1, 1)),), ((generation, 2, 1),)),
+        )
+        assert not publisher.is_ready()
+        assert publisher.current_snapshot_binding() is None
+    finally:
+        publisher.close()

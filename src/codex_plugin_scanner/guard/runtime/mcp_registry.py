@@ -8,6 +8,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from ..strict_json_pairs import unique_json_object
+
 _ENDPOINT = "https://registry.modelcontextprotocol.io/v0.1/servers"
 _MAX_BYTES = 512_000
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}\Z")
@@ -98,12 +100,7 @@ def search_mcp_registry(query: str) -> dict[str, object]:
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    output: dict[str, object] = {}
-    for key, value in pairs:
-        if key in output:
-            raise ValueError("duplicate key")
-        output[key] = value
-    return output
+    return unique_json_object(pairs)
 
 
 def _invalid_constant(_value: str) -> object:

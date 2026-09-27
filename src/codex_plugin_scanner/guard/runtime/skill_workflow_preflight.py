@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 
+from ..strict_json_pairs import unique_json_object
 from .composio_contract import composio_requires_action_review
 from .local_cli_identity import is_local_cli_id
 
@@ -103,12 +104,7 @@ def preflight_skill_dependencies(
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate manifest key")
-        result[key] = value
-    return result
+    return unique_json_object(pairs, "duplicate manifest key")
 
 
 def _invalid_constant(_value: str) -> object:

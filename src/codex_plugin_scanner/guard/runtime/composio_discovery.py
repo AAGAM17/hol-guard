@@ -12,6 +12,7 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass
 
+from ..strict_json_pairs import unique_json_object
 from .composio_contract import composio_tool_role
 
 _MAX_BYTES = 1_000_000
@@ -101,12 +102,7 @@ def _response_object(response: object) -> object:
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate metadata key")
-        result[key] = value
-    return result
+    return unique_json_object(pairs, "duplicate metadata key")
 
 
 def _invalid_constant(value: str) -> object:

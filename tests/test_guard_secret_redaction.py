@@ -138,8 +138,13 @@ def test_sanitize_secret_never_returns_sensitive_input_when_redaction_fails(
     assert result
     # Cover diagnostic output as well as the returned string.
     assert not any(value in result + captured.out + captured.err + caplog.text for value in values)
-    assert caplog.records[-1].getMessage() == "secret_redaction_failed"
-    assert caplog.records[-1].exc_info is None
+    failure_records = [
+        record
+        for record in caplog.records
+        if record.name == secret_redaction._LOGGER.name and record.getMessage() == "secret_redaction_failed"
+    ]
+    assert len(failure_records) == 1
+    assert failure_records[0].exc_info is None
 
 
 @pytest.mark.parametrize("failure_type", (RuntimeError, MemoryError))
@@ -153,3 +158,26 @@ def test_sanitize_secret_keeps_safe_fallback_when_failure_logging_raises(
     monkeypatch.setattr(secret_redaction, "_SECRET_KV_PATTERN", SimpleNamespace(sub=fail))
     monkeypatch.setattr(secret_redaction._LOGGER, "warning", fail)
     assert sanitize_secret(f"{_join('to', 'ken')}=synthetic-value") == "<redacted>"
+
+
+@pytest.mark.parametrize("failure_stage", ("redaction", "logging"))
+@pytest.mark.parametrize("control_flow_type", (KeyboardInterrupt, SystemExit))
+def test_sanitize_secret_preserves_control_flow_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+    control_flow_type: type[BaseException],
+) -> None:
+    """Ordinary failures redact diagnostics; control-flow exceptions propagate."""
+
+    def fail_redaction(*_args: object, **_kwargs: object) -> str:
+        if failure_stage == "redaction":
+            raise control_flow_type()
+        raise RuntimeError("synthetic redactor failure")
+
+    def fail_logging(*_args: object, **_kwargs: object) -> None:
+        raise control_flow_type()
+
+    monkeypatch.setattr(secret_redaction, "_SECRET_KV_PATTERN", SimpleNamespace(sub=fail_redaction))
+    monkeypatch.setattr(secret_redaction._LOGGER, "warning", fail_logging)
+    with pytest.raises(control_flow_type):
+        sanitize_secret("synthetic diagnostic")

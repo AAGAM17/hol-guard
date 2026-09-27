@@ -66,5 +66,5 @@ def test_dashboard_error_payload_omits_sensitive_values_when_redaction_fails(
     encoded = json.dumps(payload, sort_keys=True).encode("utf-8")
     assert result.opened is False
     assert result.reason == expected_reason
-    assert payload["error"]
+    assert payload["error"] == "<redacted>"
     assert all(value.encode("utf-8") not in encoded for value in (diagnostic_value, daemon_auth, browser_auth))

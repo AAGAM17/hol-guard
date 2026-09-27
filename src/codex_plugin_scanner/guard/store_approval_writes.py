@@ -91,7 +91,8 @@ def _consistent_pending_request(connection: sqlite3.Connection, request_id: str)
         return False
     try:
         canonical = canonical_approval_surfaces(
-            row[0], json.loads(row[1]) if row[1] is not None else None,
+            row[0],
+            json.loads(row[1]) if row[1] is not None else None,
             json.loads(row[2]) if row[2] is not None else None,
             reject_contradiction=False,
         )

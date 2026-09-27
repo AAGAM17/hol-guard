@@ -41,8 +41,9 @@ def public_local_cli_item(item: dict[str, object]) -> dict[str, object]:
         public = dict(item)
         catalog = public.get("mcp_catalog")
         if isinstance(catalog, dict):
-            public_catalog = {key: value for key, value in catalog.items()
-                              if key not in {"tools", "server_info", "capabilities"}}
+            public_catalog = {
+                key: value for key, value in catalog.items() if key not in {"tools", "server_info", "capabilities"}
+            }
             skills = public_catalog.get("skills_catalog")
             if isinstance(skills, dict):
                 public_catalog["skills_catalog"] = {key: value for key, value in skills.items() if key != "entries"}

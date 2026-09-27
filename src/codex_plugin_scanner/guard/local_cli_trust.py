@@ -113,7 +113,8 @@ def apply_local_mcp_extension_decision(
         )
     if matched == "review":
         return (
-            "review", "local-mcp-extension",
+            "review",
+            "local-mcp-extension",
             "This tool is not in the reviewed catalog. Review its authority before execution.",
         )
     from .runtime.mcp_server_grants import apply_contributed_mcp_decision
@@ -179,7 +180,8 @@ def matching_local_mcp_grant(
     command_id = observed.command_id if observed is not None else slug_local_cli_command_id(_mcp_tool_name(artifact))
     known = (
         {item.command_id for item in commands if isinstance(item, LocalCliCommand)}
-        if isinstance(commands, list) else set()
+        if isinstance(commands, list)
+        else set()
     )
     states = grant.get("command_states")
     if command_id not in known:
@@ -206,7 +208,9 @@ def matching_local_mcp_grant(
             from .store_mcp_catalog import catalog_tool_authority_matches
 
             if not catalog_tool_authority_matches(
-                grant.get("catalog"), _mcp_tool_name(artifact), artifact.metadata.get("mcp_tool_authority_hash"),
+                grant.get("catalog"),
+                _mcp_tool_name(artifact),
+                artifact.metadata.get("mcp_tool_authority_hash"),
             ):
                 return "review"
         return "allowed"
@@ -220,7 +224,9 @@ def _configured_mcp_connection_hash(artifact: GuardArtifact, server_hash: str) -
 
     server_name = artifact.metadata.get("server_name")
     return build_mcp_connection_identity(
-        host=artifact.harness, source_scope=artifact.source_scope, config_path=artifact.config_path,
+        host=artifact.harness,
+        source_scope=artifact.source_scope,
+        config_path=artifact.config_path,
         server_name=server_name if isinstance(server_name, str) else "",
         server_identity_hash=server_hash,
     ).identity_hash

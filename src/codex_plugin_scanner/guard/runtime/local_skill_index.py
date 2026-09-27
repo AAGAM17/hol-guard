@@ -25,7 +25,10 @@ _HEADER_BYTES = 16_384
 _INDEX_LIMIT = 1000
 _DISCOVERY_LIMITS = SkillDirectoryIdentityLimits(max_depth=8, max_entries=1024)
 _INSPECTION_LIMITS = SkillDirectoryIdentityLimits(
-    max_depth=16, max_entries=4096, max_file_bytes=16 * 1024 * 1024, max_total_bytes=16 * 1024 * 1024,
+    max_depth=16,
+    max_entries=4096,
+    max_file_bytes=16 * 1024 * 1024,
+    max_total_bytes=16 * 1024 * 1024,
 )
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
@@ -39,22 +42,28 @@ class LocalSkillRecord:
     metadata: dict[str, object]
 
     def public(self, *, duplicate: bool = False) -> dict[str, object]:
-        return {"skill_id": self.skill_id, "root_id": self.root_id, "origin": "local-agent-skill",
-                "uri": self.document.as_uri(), "duplicate_name": duplicate, "permission_state": "not-granted",
-                **self.metadata}
+        return {
+            "skill_id": self.skill_id,
+            "root_id": self.root_id,
+            "origin": "local-agent-skill",
+            "uri": self.document.as_uri(),
+            "duplicate_name": duplicate,
+            "permission_state": "not-granted",
+            **self.metadata,
+        }
 
 
 def approved_skill_roots(home: Path) -> dict[str, Path]:
     # The API offers these fixed harness locations; it never accepts an
     # arbitrary client path. Reading them still requires explicit selection.
-    return {
-        hashlib.sha256(suffix.encode()).hexdigest(): home / suffix
-        for suffix in KNOWN_SKILL_DOC_ROOT_SUFFIXES
-    }
+    return {hashlib.sha256(suffix.encode()).hexdigest(): home / suffix for suffix in KNOWN_SKILL_DOC_ROOT_SUFFIXES}
 
 
 def index_local_skills(
-    roots: dict[str, Path], *, home: Path, cancel: threading.Event,
+    roots: dict[str, Path],
+    *,
+    home: Path,
+    cancel: threading.Event,
 ) -> tuple[dict[str, LocalSkillRecord], list[dict[str, str]]]:
     records: dict[str, LocalSkillRecord] = {}
     issues: list[dict[str, str]] = []
@@ -91,7 +100,8 @@ def read_skill_metadata(document: Path, *, root: Path) -> dict[str, object]:
     if not stat.S_ISREG(before.st_mode):
         raise ValueError("metadata-not-regular-file")
     descriptor = (
-        open_windows_locked_regular_descriptor(document) if os.name == "nt"
+        open_windows_locked_regular_descriptor(document)
+        if os.name == "nt"
         else os.open(document, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     )
     try:
@@ -120,8 +130,12 @@ def read_skill_metadata(document: Path, *, root: Path) -> dict[str, object]:
         raise ValueError("metadata-invalid-frontmatter")
     name, description = parsed.get("name"), parsed.get("description")
     if (
-        not isinstance(name, str) or len(name) > 64 or not _NAME.fullmatch(name) or name != document.parent.name
-        or not isinstance(description, str) or not 1 <= len(description.strip()) <= 1024
+        not isinstance(name, str)
+        or len(name) > 64
+        or not _NAME.fullmatch(name)
+        or name != document.parent.name
+        or not isinstance(description, str)
+        or not 1 <= len(description.strip()) <= 1024
     ):
         raise ValueError("metadata-invalid-name-or-description")
     compatibility, requested = parsed.get("compatibility", ""), parsed.get("allowed-tools", "")
@@ -130,27 +144,39 @@ def read_skill_metadata(document: Path, *, root: Path) -> dict[str, object]:
     if not isinstance(requested, str) or len(requested) > 2048:
         raise ValueError("metadata-invalid-tool-request")
     return {
-        "name": name, "description": description.strip(), "compatibility": compatibility,
+        "name": name,
+        "description": description.strip(),
+        "compatibility": compatibility,
         "requested_tools": requested,
         "metadata_digest": hashlib.sha256(header.encode()).hexdigest(),
-        "requirements_complete": False, "instruction_content_loaded": False,
+        "requirements_complete": False,
+        "instruction_content_loaded": False,
         "dependencies": parse_guard_skill_dependencies(parsed),
     }
 
 
 def public_skill_page(
-    records: dict[str, LocalSkillRecord], *, offset: int, search: str,
+    records: dict[str, LocalSkillRecord],
+    *,
+    offset: int,
+    search: str,
 ) -> dict[str, object]:
     names = Counter(str(record.metadata["name"]) for record in records.values())
     selected = sorted(
-        (record for record in records.values() if search.casefold() in
-         f"{record.metadata['name']} {record.metadata['description']}".casefold()),
+        (
+            record
+            for record in records.values()
+            if search.casefold() in f"{record.metadata['name']} {record.metadata['description']}".casefold()
+        ),
         key=lambda record: (str(record.metadata["name"]), record.skill_id),
     )
     return {
-        "skills": [record.public(duplicate=names[str(record.metadata["name"])] > 1)
-                   for record in selected[offset:offset + 50]],
-        "known_count": len(records), "matched_count": len(selected),
+        "skills": [
+            record.public(duplicate=names[str(record.metadata["name"])] > 1)
+            for record in selected[offset : offset + 50]
+        ],
+        "known_count": len(records),
+        "matched_count": len(selected),
         "next_offset": offset + 50 if offset + 50 < len(selected) else None,
         "permissions_granted": False,
     }
@@ -166,8 +192,13 @@ def inspect_indexed_skill(record: LocalSkillRecord, *, home: Path) -> dict[str, 
     if read_skill_metadata(record.document, root=record.root)["metadata_digest"] != current["metadata_digest"]:
         raise ValueError("skill-metadata-changed")
     return {
-        "skill_id": record.skill_id, "status": identity.status, "manifest_digest": identity.directory_hash,
-        "entry_count": identity.entry_count, "total_bytes": identity.total_bytes, "reason": identity.failure_reason,
-        "requirements_complete": False, "permissions_granted": False,
+        "skill_id": record.skill_id,
+        "status": identity.status,
+        "manifest_digest": identity.directory_hash,
+        "entry_count": identity.entry_count,
+        "total_bytes": identity.total_bytes,
+        "reason": identity.failure_reason,
+        "requirements_complete": False,
+        "permissions_granted": False,
         "runtime_checks_required": True,
     }

@@ -21,9 +21,11 @@ def parse_guard_skill_dependencies(frontmatter: dict[str, object]) -> dict[str, 
             raise ValueError("invalid dependencies")
         manifest = json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
         if (
-            not isinstance(manifest, dict) or set(manifest) != {"schema_version", "tools"}
+            not isinstance(manifest, dict)
+            or set(manifest) != {"schema_version", "tools"}
             or manifest["schema_version"] != "guard.skill-dependencies.v1"
-            or not isinstance(manifest["tools"], list) or len(manifest["tools"]) > 50
+            or not isinstance(manifest["tools"], list)
+            or len(manifest["tools"]) > 50
         ):
             raise ValueError("invalid dependencies")
         tools: list[dict[str, str]] = []
@@ -44,7 +46,10 @@ def parse_guard_skill_dependencies(frontmatter: dict[str, object]) -> dict[str, 
 
 
 def preflight_skill_dependencies(
-    dependencies: dict[str, object], items: list[dict[str, object]], *, revision: int,
+    dependencies: dict[str, object],
+    items: list[dict[str, object]],
+    *,
+    revision: int,
 ) -> dict[str, object]:
     connections = {item["cli_id"]: item for item in items}
     requests = dependencies.get("tools")
@@ -61,7 +66,8 @@ def preflight_skill_dependencies(
             commands = item.get("commands")
             command = (
                 next((entry for entry in commands if isinstance(entry, dict) and entry.get("usage") == name), None)
-                if isinstance(commands, list) else None
+                if isinstance(commands, list)
+                else None
             )
             if item.get("stale"):
                 reason = "connection-changed"
@@ -75,15 +81,24 @@ def preflight_skill_dependencies(
                 state, reason = "saved-allow", "live-runtime-check-still-required"
             else:
                 state, reason = "ask", "permission-review-needed"
-        requirements.append({
-            "connection_id": connection_id, "tool_name": name, "identity_hash": identity,
-            "state": state, "reason": reason,
-        })
+        requirements.append(
+            {
+                "connection_id": connection_id,
+                "tool_name": name,
+                "identity_hash": identity,
+                "state": state,
+                "reason": reason,
+            }
+        )
     return {
-        "schema_version": "guard.workflow-preflight.v1", "dependency_source": "guard-extension",
-        "dependency_status": dependencies.get("status", "absent"), "authority_revision": revision,
-        "requirements": requirements, "requirements_complete": False,
-        "permissions_granted": False, "runtime_checks_required": True,
+        "schema_version": "guard.workflow-preflight.v1",
+        "dependency_source": "guard-extension",
+        "dependency_status": dependencies.get("status", "absent"),
+        "authority_revision": revision,
+        "requirements": requirements,
+        "requirements_complete": False,
+        "permissions_granted": False,
+        "runtime_checks_required": True,
     }
 
 

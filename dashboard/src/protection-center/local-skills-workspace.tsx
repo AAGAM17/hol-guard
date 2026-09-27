@@ -157,11 +157,14 @@ function SkillPreflightPreview({ plan }: { plan: SkillWorkflowPreflight }) {
     This workflow preview expired. Prepare it again to check current evidence.
   </p>;
   const stateLabel = { "saved-allow": "Saved Allow · runtime checks required", deny: "Denied", ask: "Needs review", unresolved: "Not resolved" };
+  const dependencyLabel = {
+    declared: "Guard dependency manifest (nonstandard extension)",
+    invalid: "Invalid Guard dependency manifest; review the skill's metadata.",
+    absent: "No Guard dependency manifest. Requirements remain unresolved.",
+  }[plan.dependency_status];
   return <section aria-label="Workflow preflight" className="mt-4 border-l-2 border-brand-blue pl-4 text-xs leading-5 text-brand-dark/75">
     <p className="font-semibold">{plan.inspection.status === "complete" ? "Skill revision inspected" : "Skill revision could not be fully inspected"}</p>
-    <p className="mt-2">Dependencies: {plan.dependency_status === "declared" ? "Guard dependency manifest (nonstandard extension)"
-      : plan.dependency_status === "invalid" ? "Invalid Guard dependency manifest; review the skill's metadata."
-        : "No Guard dependency manifest. Requirements remain unresolved."}</p>
+    <p className="mt-2">Dependencies: {dependencyLabel}</p>
     <p className="mt-2">Permissions checked at revision {plan.authority_revision}. Native publication: {plan.native_state}.</p>
     <ul className="mt-3 divide-y divide-slate-200">{plan.requirements.map((requirement) => (
       <li key={`${requirement.connection_id}:${requirement.tool_name}`} className="py-3">

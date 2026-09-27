@@ -30,7 +30,8 @@ for (const width of [1280, 390]) {
           return;
         }
         if (body.operation === "scan") {
-          expect(body).toEqual({ operation: "scan", confirm_metadata_read: true, approved_root_ids: [rootId] });
+          expect(body).toEqual({ operation: "scan", confirm_metadata_read: true, approved_root_ids: [rootId],
+            client_job_id: expect.stringMatching(/^[a-f0-9]{32}$/) });
           scanCount += 1;
           scanned = true;
           await route.fulfill({ json: { job_id: scanCount === 1 ? "b".repeat(32) : "c".repeat(32),

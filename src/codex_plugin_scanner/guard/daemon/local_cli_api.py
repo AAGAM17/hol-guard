@@ -92,6 +92,15 @@ class LocalCliApiError(Exception):
         return {"error": self.code, "message": str(self)}
 
 
+def _client_discovery_job_id(payload: dict[str, object]) -> str | None:
+    value = payload.get("client_job_id")
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) != 32 or any(c not in "0123456789abcdef" for c in value):
+        raise LocalCliApiError(400, "invalid_discovery_job")
+    return value
+
+
 class LocalCliApiService:
     def __init__(self, *, store: GuardStore) -> None:
         self._store = store
@@ -112,18 +121,25 @@ class LocalCliApiService:
         roots = approved_skill_roots(home)
         operation = payload.get("operation", "list")
         if operation == "roots":
-            return {"roots": [{"root_id": key, "path": str(path), "available": path.is_dir()}
-                              for key, path in roots.items()], "permissions_granted": False}
+            return {
+                "roots": [
+                    {"root_id": key, "path": str(path), "available": path.is_dir()} for key, path in roots.items()
+                ],
+                "permissions_granted": False,
+            }
         if operation == "scan":
             selected = payload.get("approved_root_ids")
             if (
-                payload.get("confirm_metadata_read") is not True or not isinstance(selected, list)
+                payload.get("confirm_metadata_read") is not True
+                or not isinstance(selected, list)
                 or not 1 <= len(selected) <= len(roots)
                 or any(not isinstance(key, str) or key not in roots for key in selected)
                 or len(set(selected)) != len(selected)
             ):
                 raise LocalCliApiError(
-                    400, "invalid_skill_root_selection", "Choose skill roots to read their metadata.",
+                    400,
+                    "invalid_skill_root_selection",
+                    "Choose skill roots to read their metadata.",
                 )
             selected_roots = {key: roots[key] for key in selected}
             selection = tuple(sorted(selected_roots))
@@ -136,7 +152,9 @@ class LocalCliApiService:
                     if active is not None and active["state"] in {"running", "cancelling"}:
                         if selection != self._skill_selected_roots:
                             raise LocalCliApiError(
-                                409, "skill_scan_in_progress", "Finish or cancel the current skill scan first.",
+                                409,
+                                "skill_scan_in_progress",
+                                "Finish or cancel the current skill scan first.",
                             )
                         return active
 
@@ -152,10 +170,16 @@ class LocalCliApiService:
                                 self._skill_preflights.clear()
 
                 try:
-                    job = self._discovery_jobs.start("inventory:skills", scan)
+                    job = self._discovery_jobs.start(
+                        "inventory:skills",
+                        scan,
+                        requested_job_id=_client_discovery_job_id(payload),
+                    )
                 except DiscoveryJobError as error:
                     raise LocalCliApiError(
-                        503, "skill_discovery_busy", "Other inventories are refreshing. Try again shortly.",
+                        503,
+                        "skill_discovery_busy",
+                        "Other inventories are refreshing. Try again shortly.",
                     ) from error
                 self._skill_selected_roots = selection
                 self._skill_job_id = str(job["job_id"])
@@ -163,7 +187,8 @@ class LocalCliApiService:
         if operation in {"preflight", "preflight-result"}:
             skill_id = payload.get("skill_id")
             if (
-                not isinstance(skill_id, str) or len(skill_id) != 64
+                not isinstance(skill_id, str)
+                or len(skill_id) != 64
                 or any(c not in "0123456789abcdef" for c in skill_id)
             ):
                 raise LocalCliApiError(400, "invalid_skill_identity")
@@ -176,25 +201,45 @@ class LocalCliApiService:
             if operation == "preflight-result":
                 if cached is None or time.monotonic() - cached[0] > 30:
                     raise LocalCliApiError(
-                        409, "workflow_preflight_expired", "Prepare this workflow again with current evidence.",
+                        409,
+                        "workflow_preflight_expired",
+                        "Prepare this workflow again with current evidence.",
                     )
                 result = cached[1]
+                try:
+                    current_inspection = inspect_indexed_skill(record, home=home)
+                except (OSError, ValueError) as error:
+                    raise LocalCliApiError(
+                        409,
+                        "workflow_skill_changed",
+                        "Skill files changed. Prepare the workflow again.",
+                    ) from error
+                if current_inspection != result.get("inspection"):
+                    raise LocalCliApiError(
+                        409,
+                        "workflow_skill_changed",
+                        "Skill files changed. Prepare the workflow again.",
+                    )
                 dependencies = record.metadata.get("dependencies")
                 current = self._current_skill_requirements(dependencies)
-                if (
-                    result.get("authority_revision") != current.get("authority_revision")
-                    or result.get("requirements") != current.get("requirements")
-                ):
+                if result.get("authority_revision") != current.get("authority_revision") or result.get(
+                    "requirements"
+                ) != current.get("requirements"):
                     raise LocalCliApiError(
-                        409, "workflow_permissions_changed", "Permissions changed. Prepare the workflow again.",
+                        409,
+                        "workflow_permissions_changed",
+                        "Permissions changed. Prepare the workflow again.",
                     )
                 return {
-                    **result, "native_publication": current["native_publication"],
+                    **result,
+                    "native_publication": current["native_publication"],
                     "expires_in_seconds": max(0, int(30 - (time.monotonic() - cached[0]))),
                 }
             if payload.get("confirm_directory_read") is not True:
                 raise LocalCliApiError(
-                    400, "skill_inspection_consent_required", "Confirm inspecting this skill directory's revision.",
+                    400,
+                    "skill_inspection_consent_required",
+                    "Confirm inspecting this skill directory's revision.",
                 )
 
             def prepare(cancel: threading.Event) -> None:
@@ -203,8 +248,10 @@ class LocalCliApiService:
                 inspected = inspect_indexed_skill(record, home=home)
                 dependencies = record.metadata.get("dependencies")
                 result = {
-                    **self._current_skill_requirements(dependencies), "skill_id": skill_id,
-                    "inspection": inspected, "expires_in_seconds": 30,
+                    **self._current_skill_requirements(dependencies),
+                    "skill_id": skill_id,
+                    "inspection": inspected,
+                    "expires_in_seconds": 30,
                 }
                 if not cancel.is_set():
                     with self._skill_index_lock:
@@ -212,16 +259,25 @@ class LocalCliApiService:
                             self._skill_preflights[skill_id] = (time.monotonic(), result)
 
             try:
-                return self._discovery_jobs.start(f"skill:{skill_id}", prepare)
+                return self._discovery_jobs.start(
+                    f"skill:{skill_id}",
+                    prepare,
+                    requested_job_id=_client_discovery_job_id(payload),
+                )
             except DiscoveryJobError as error:
                 raise LocalCliApiError(
-                    503, "skill_discovery_busy", "Other inventories are refreshing. Try again shortly.",
+                    503,
+                    "skill_discovery_busy",
+                    "Other inventories are refreshing. Try again shortly.",
                 ) from error
         if operation != "list":
             raise LocalCliApiError(400, "invalid_skill_operation")
         offset, search, revision = payload.get("offset", 0), payload.get("search", ""), payload.get("revision")
         if (
-            type(offset) is not int or not 0 <= offset <= 1000 or not isinstance(search, str) or len(search) > 128
+            type(offset) is not int
+            or not 0 <= offset <= 1000
+            or not isinstance(search, str)
+            or len(search) > 128
             or (revision is not None and (type(revision) is not int or revision < 0))
         ):
             raise LocalCliApiError(400, "invalid_skill_page")
@@ -230,8 +286,10 @@ class LocalCliApiService:
                 raise LocalCliApiError(409, "skill_index_changed", "Skill metadata changed. Reload the first page.")
             return {
                 **public_skill_page(self._skill_records, offset=offset, search=search),
-                "revision": self._skill_index_revision, "indexed_root_ids": list(self._skill_index_roots),
-                "issues": self._skill_issues[:64], "issue_count": len(self._skill_issues),
+                "revision": self._skill_index_revision,
+                "indexed_root_ids": list(self._skill_index_roots),
+                "issues": self._skill_issues[:64],
+                "issue_count": len(self._skill_issues),
                 "complete": self._skill_index_revision > 0 and not self._skill_issues,
             }
 
@@ -243,7 +301,9 @@ class LocalCliApiService:
         if type(revision) is not int:
             raise LocalCliApiError(503, "workflow_authority_unavailable")
         result = preflight_skill_dependencies(
-            dependencies if isinstance(dependencies, dict) else {}, items, revision=revision,
+            dependencies if isinstance(dependencies, dict) else {},
+            items,
+            revision=revision,
         )
         result["native_publication"] = local_cli_publication_status(self._store.guard_home, revision)
         return result
@@ -256,6 +316,7 @@ class LocalCliApiService:
                     raise LocalCliApiError(400, "invalid_discovery_job")
                 return self._discovery_jobs.read(job_id, cancel=payload.get("cancel") is True)
             if payload.get("operation") == "configured-connections":
+
                 def discover(cancel: threading.Event) -> None:
                     if cancel.is_set():
                         return
@@ -266,12 +327,17 @@ class LocalCliApiService:
                         discover_observed_mcp_tools(self._store, seen_at=utc_now())
 
                 return self._discovery_jobs.start(
-                    "inventory:configured", discover, reuse_seconds=0 if payload.get("force_refresh") is True else 30,
+                    "inventory:configured",
+                    discover,
+                    reuse_seconds=0 if payload.get("force_refresh") is True else 30,
+                    requested_job_id=_client_discovery_job_id(payload),
                 )
             cli_id = self._required_string(payload, "cli_id")
             if not is_local_cli_id(cli_id) or payload.get("confirm_process_start") is not True:
                 raise LocalCliApiError(
-                    400, "discovery_process_consent_required", "Confirm starting this configured server to list tools.",
+                    400,
+                    "discovery_process_consent_required",
+                    "Confirm starting this configured server to list tools.",
                 )
             item = next((item for item in self._store.list_local_cli_items() if item.get("cli_id") == cli_id), None)
             if item is None or item.get("surface") != "mcp":
@@ -282,7 +348,11 @@ class LocalCliApiService:
                 if not cancel.is_set() and response.get("help_status") == "failed":
                     raise LocalCliApiError(503, "discovery_failed")
 
-            return self._discovery_jobs.start(cli_id, refresh)
+            return self._discovery_jobs.start(
+                cli_id,
+                refresh,
+                requested_job_id=_client_discovery_job_id(payload),
+            )
         except DiscoveryJobError as error:
             code = str(error)
             status = 404 if code == "discovery_job_unavailable" else 429 if code == "discovery_retry_backoff" else 503
@@ -308,22 +378,31 @@ class LocalCliApiService:
         limit, offset, search = payload.get("limit", 100), payload.get("offset", 0), payload.get("search", "")
         token = payload.get("catalog_token")
         if (
-            type(limit) is not int or not 1 <= limit <= 100
-            or type(offset) is not int or not 0 <= offset <= 10_000
-            or not isinstance(search, str) or len(search) > 128
-            or (token is not None and (
-                not isinstance(token, str) or len(token) != 64 or any(c not in "0123456789abcdef" for c in token)
-            ))
+            type(limit) is not int
+            or not 1 <= limit <= 100
+            or type(offset) is not int
+            or not 0 <= offset <= 10_000
+            or not isinstance(search, str)
+            or len(search) > 128
+            or (
+                token is not None
+                and (not isinstance(token, str) or len(token) != 64 or any(c not in "0123456789abcdef" for c in token))
+            )
         ):
             raise LocalCliApiError(400, "invalid_provider_catalog_page")
         try:
             page = self._store.read_local_mcp_provider_actions(
-                cli_id, limit=limit, offset=offset, search=search, expected_token=token,
+                cli_id,
+                limit=limit,
+                offset=offset,
+                search=search,
+                expected_token=token,
             )
         except ValueError as error:
             if str(error) == "provider_catalog_changed":
                 raise LocalCliApiError(
-                    409, "provider_catalog_changed",
+                    409,
+                    "provider_catalog_changed",
                     "Inventory changed. Reload its first page; your draft choices are kept.",
                 ) from error
             raise LocalCliApiError(404, "provider_connection_unavailable", str(error)) from error
@@ -365,9 +444,13 @@ class LocalCliApiService:
                 409, str(error), "Registry listing changed or cannot be used for Codex setup."
             ) from error
         if operation == "preview":
-            return {"schema_version": _LOCAL_CLI_API_SCHEMA, **candidate,
-                    "permissions_granted": False, "host_change_applied": False,
-                    "next_action": "Review the exact Codex connection and confirm setup."}
+            return {
+                "schema_version": _LOCAL_CLI_API_SCHEMA,
+                **candidate,
+                "permissions_granted": False,
+                "host_change_applied": False,
+                "next_action": "Review the exact Codex connection and confirm setup.",
+            }
         if (
             payload.get("selection_digest") != candidate["selection_digest"]
             or payload.get("confirm_host_change") is not True
@@ -378,11 +461,18 @@ class LocalCliApiService:
         subject = "codex-mcp-remote-setup:" + candidate["selection_digest"]
         try:
             grant = require_local_cli_trust(
-                self._store.guard_home, approval_gate_input=input_from_mapping(payload),
-                action=action, subject=subject, session_nonce=session_nonce,
+                self._store.guard_home,
+                approval_gate_input=input_from_mapping(payload),
+                action=action,
+                subject=subject,
+                session_nonce=session_nonce,
             )
             consume_local_cli_trust_grant(
-                self._store.guard_home, grant, action=action, subject=subject, session_nonce=session_nonce,
+                self._store.guard_home,
+                grant,
+                action=action,
+                subject=subject,
+                session_nonce=session_nonce,
             )
         except ApprovalGateError as error:
             raise LocalCliApiError(error.status, error.code, str(error)) from error
@@ -390,22 +480,31 @@ class LocalCliApiService:
             with self._registry_setup_lock:
                 configured = install_codex_remote_mcp(candidate)
         except ValueError as error:
-            message = ("Codex may have changed its connection. Check the host configuration before retrying."
-                       if str(error) == "codex_setup_outcome_uncertain"
-                       else "Codex could not add this connection. Review its host configuration and retry.")
+            message = (
+                "Codex may have changed its connection. Check the host configuration before retrying."
+                if str(error) == "codex_setup_outcome_uncertain"
+                else "Codex could not add this connection. Review its host configuration and retry."
+            )
             raise LocalCliApiError(409, str(error), message) from error
-        return {"schema_version": _LOCAL_CLI_API_SCHEMA, "host": "codex", "setup_name": configured,
-                "host_change_applied": True, "permissions_granted": False,
-                "next_action": (
-                    "Restart Codex, complete provider-owned sign-in if prompted, "
-                    "then check host connections in Guard."
-                )}
+        return {
+            "schema_version": _LOCAL_CLI_API_SCHEMA,
+            "host": "codex",
+            "setup_name": configured,
+            "host_change_applied": True,
+            "permissions_granted": False,
+            "next_action": (
+                "Restart Codex, complete provider-owned sign-in if prompted, then check host connections in Guard."
+            ),
+        }
 
     def mcp_skills(self, payload: dict[str, object]) -> dict[str, object]:
         cli_id = self._required_string(payload, "cli_id")
         offset, search, revision = payload.get("offset", 0), payload.get("search", ""), payload.get("revision")
         if (
-            type(offset) is not int or not 0 <= offset <= 1000 or not isinstance(search, str) or len(search) > 128
+            type(offset) is not int
+            or not 0 <= offset <= 1000
+            or not isinstance(search, str)
+            or len(search) > 128
             or (revision is not None and (type(revision) is not int or revision < 1))
         ):
             raise LocalCliApiError(400, "invalid_mcp_skill_page")
@@ -554,17 +653,26 @@ class LocalCliApiService:
             return None
         servers = self._discovered_servers()
         launch_identity = build_mcp_server_identity(
-            config_path="", command=tokens[0], args=tuple(tokens[1:]), transport="stdio",
+            config_path="",
+            command=tokens[0],
+            args=tuple(tokens[1:]),
+            transport="stdio",
         )
         selected_server = discovered_server_for_observation(
-            servers, cli_id=cli_id, server_command=launch_identity.command, args_hash=launch_identity.args_hash,
+            servers,
+            cli_id=cli_id,
+            server_command=launch_identity.command,
+            args_hash=launch_identity.args_hash,
         )
         extra_env = extra_env_for_mcp_launch(servers, command=command, cli_id=cli_id)
-        provisional_id = selected_server.identity.cli_id if selected_server is not None else (
-            cli_id or f"local-cli.mcp-{launch_identity.identity_hash[:8]}"
+        provisional_id = (
+            selected_server.identity.cli_id
+            if selected_server is not None
+            else (cli_id or f"local-cli.mcp-{launch_identity.identity_hash[:8]}")
         )
         snapshot_before = next(
-            (item for item in self._store.list_local_cli_items() if item.get("cli_id") == provisional_id), {},
+            (item for item in self._store.list_local_cli_items() if item.get("cli_id") == provisional_id),
+            {},
         )
         catalog_before = snapshot_before.get("mcp_catalog")
         prior_revision = catalog_before.get("revision", 0) if isinstance(catalog_before, dict) else 0
@@ -572,12 +680,19 @@ class LocalCliApiService:
         try:
             probed = (
                 probe_stdio_mcp_server(
-                    command, cwd=home_dir, home_dir=home_dir, extra_env=extra_env, cancel=cancel,
+                    command,
+                    cwd=home_dir,
+                    home_dir=home_dir,
+                    extra_env=extra_env,
+                    cancel=cancel,
                     connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
                 )
-                if cancel is not None else
-                probe_stdio_mcp_server(
-                    command, cwd=home_dir, home_dir=home_dir, extra_env=extra_env,
+                if cancel is not None
+                else probe_stdio_mcp_server(
+                    command,
+                    cwd=home_dir,
+                    home_dir=home_dir,
+                    extra_env=extra_env,
                     connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
                 )
             )
@@ -659,8 +774,12 @@ class LocalCliApiService:
         )
 
     def _commit_mcp_discovery(
-        self, identity: UnlistedCliIdentity, tools: tuple[LocalCliCommand, ...],
-        catalog: McpCatalogResult | None, seen_at: str, expected_revision: int,
+        self,
+        identity: UnlistedCliIdentity,
+        tools: tuple[LocalCliCommand, ...],
+        catalog: McpCatalogResult | None,
+        seen_at: str,
+        expected_revision: int,
     ) -> None:
         from ..native_policy_snapshot import notify_native_policy_mutation
 
@@ -668,19 +787,28 @@ class LocalCliApiService:
         try:
             if catalog is not None and not catalog.complete:
                 self._store.merge_local_cli_commands(
-                    identity.cli_id, tools, limit=MAX_LOCAL_CLI_COMMANDS, mcp_catalog=catalog,
-                    identity_hash=identity.identity_hash, seen_at=seen_at,
+                    identity.cli_id,
+                    tools,
+                    limit=MAX_LOCAL_CLI_COMMANDS,
+                    mcp_catalog=catalog,
+                    identity_hash=identity.identity_hash,
+                    seen_at=seen_at,
                     expected_catalog_revision=expected_revision,
                 )
             else:
                 self._store.replace_local_cli_commands(
-                    identity.cli_id, tools, mcp_catalog=catalog, identity_hash=identity.identity_hash,
-                    seen_at=seen_at, expected_catalog_revision=expected_revision,
+                    identity.cli_id,
+                    tools,
+                    mcp_catalog=catalog,
+                    identity_hash=identity.identity_hash,
+                    seen_at=seen_at,
+                    expected_catalog_revision=expected_revision,
                 )
         except ValueError as exc:
             if str(exc) == "mcp_catalog_revision_conflict":
                 raise LocalCliApiError(
-                    409, "catalog_revision_conflict",
+                    409,
+                    "catalog_revision_conflict",
                     "A newer discovery finished first. Your choices were kept; refresh the current inventory.",
                 ) from exc
             raise
@@ -836,8 +964,13 @@ class LocalCliApiService:
             if not isinstance(entry, dict) or set(entry) != {"tool_slug", "state", "revision"}:
                 raise LocalCliApiError(400, "invalid_provider_actions")
             slug, state, revision = entry["tool_slug"], entry["state"], entry["revision"]
-            if (not isinstance(slug, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", slug)
-                or state not in ("review", "block") or type(revision) is not int or revision < 1):
+            if (
+                not isinstance(slug, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", slug)
+                or state not in ("review", "block")
+                or type(revision) is not int
+                or revision < 1
+            ):
                 raise LocalCliApiError(400, "invalid_provider_actions")
             updates.append((slug, str(state), revision))
         if len({slug for slug, _, _ in updates}) != len(updates):

@@ -1,4 +1,5 @@
 import { fetchLocalCliApi } from "./guard-api";
+import { startCancelableDiscoveryJob } from "./discovery-job-start";
 import type { LocalCliContinuity } from "./custom-extension-continuity-api";
 
 export type {
@@ -650,11 +651,15 @@ export async function refreshMcpInventory(
   cliId: string, signal: AbortSignal, configuredConnections = false, forceRefresh = false,
 ): Promise<void> {
   if (signal.aborted) return;
-  const initialJob = await readJson(await fetchLocalCliApi("/v1/local-clis/refresh-job", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(configuredConnections ? { operation: "configured-connections", ...(forceRefresh ? { force_refresh: true } : {}) }
-      : { cli_id: cliId, confirm_process_start: true }),
-  }));
+  const initialJob = await startCancelableDiscoveryJob(signal, async (clientJobId) => readJson(await fetchLocalCliApi(
+    "/v1/local-clis/refresh-job", {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal,
+      body: JSON.stringify(configuredConnections
+        ? { operation: "configured-connections", client_job_id: clientJobId, ...(forceRefresh ? { force_refresh: true } : {}) }
+        : { cli_id: cliId, confirm_process_start: true, client_job_id: clientJobId }),
+    },
+  )));
+  if (initialJob === null) return;
   await waitForMcpDiscoveryJob(cliId, initialJob, signal);
 }
 
@@ -682,10 +687,13 @@ export async function waitForMcpDiscoveryJob(cliId: string, initialJob: unknown,
       if (job.state === "complete" || job.state === "cancelled") { finished = true; return; }
       if (job.state === "failed") {
         finished = true;
-        throw new Error(job.error === "mcp_refresh_unavailable"
-          ? "Guard cannot list this connection directly. Refresh it in its host app."
-          : job.error === "catalog_revision_conflict" ? "A newer discovery finished first. Reload the inventory."
-            : "Discovery did not finish. Known tools and choices were kept. Try again shortly.");
+        let message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
+        if (job.error === "mcp_refresh_unavailable") {
+          message = "Guard cannot list this connection directly. Refresh it in its host app.";
+        } else if (job.error === "catalog_revision_conflict") {
+          message = "A newer discovery finished first. Reload the inventory.";
+        }
+        throw new Error(message);
       }
       await new Promise<void>((resolve) => {
         const done = () => { window.clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };

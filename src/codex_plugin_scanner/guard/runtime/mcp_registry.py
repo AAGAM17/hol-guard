@@ -45,8 +45,7 @@ def search_mcp_registry(query: str) -> dict[str, object]:
         server = entry.get("server") if isinstance(entry, dict) else None
         registry_meta = entry.get("_meta") if isinstance(entry, dict) else None
         official = (
-            registry_meta.get("io.modelcontextprotocol.registry/official")
-            if isinstance(registry_meta, dict) else None
+            registry_meta.get("io.modelcontextprotocol.registry/official") if isinstance(registry_meta, dict) else None
         )
         if not isinstance(server, dict) or not isinstance(official, dict):
             raise ValueError("registry_response_invalid")
@@ -66,18 +65,35 @@ def search_mcp_registry(query: str) -> dict[str, object]:
             if not isinstance(remote, dict):
                 continue
             uri, transport = remote.get("url"), remote.get("type")
-            if (isinstance(uri, str) and len(uri) <= 2048 and uri.startswith("https://")
-                and isinstance(transport, str) and transport in {"streamable-http", "sse"}):
+            if (
+                isinstance(uri, str)
+                and len(uri) <= 2048
+                and uri.startswith("https://")
+                and isinstance(transport, str)
+                and transport in {"streamable-http", "sse"}
+            ):
                 endpoints.append({"url": uri, "transport": transport})
-        results.append({"name": name, "version": version, "title": title[:120],
-                        "description": description[:500], "status": official.get("status")
-                        if official.get("status") in {"active", "deprecated"} else "unknown",
-                        "remote_endpoints": endpoints, "package_count": min(len(packages), 100),
-                        "provenance": "official-mcp-registry", "verified_package": False,
-                        "configured": False, "installed": False})
+        results.append(
+            {
+                "name": name,
+                "version": version,
+                "title": title[:120],
+                "description": description[:500],
+                "status": official.get("status") if official.get("status") in {"active", "deprecated"} else "unknown",
+                "remote_endpoints": endpoints,
+                "package_count": min(len(packages), 100),
+                "provenance": "official-mcp-registry",
+                "verified_package": False,
+                "configured": False,
+                "installed": False,
+            }
+        )
     return {
-        "results": results, "source": "official-mcp-registry", "coverage": "search-page",
-        "count": len(results), "more_available": isinstance(metadata.get("nextCursor"), str),
+        "results": results,
+        "source": "official-mcp-registry",
+        "coverage": "search-page",
+        "count": len(results),
+        "more_available": isinstance(metadata.get("nextCursor"), str),
     }
 
 

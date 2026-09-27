@@ -129,7 +129,10 @@ def probe_stdio_mcp_server(
         catalog = McpCatalogResult(tuple(raw_tools), complete=True)
     else:
         catalog = run_mcp_catalog(
-            argv, timeout=resolved_timeout, extra_env=extra_env, cancel=cancel,
+            argv,
+            timeout=resolved_timeout,
+            extra_env=extra_env,
+            cancel=cancel,
             connection_identity_hash=connection_identity_hash or server_identity.identity_hash,
         )
         if catalog.protocol_version is None:

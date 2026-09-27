@@ -187,7 +187,11 @@ class RuntimeHookEvidenceWriter:
         return True
 
     def submit_composio_discovery(
-        self, *, harness: str, payload: Mapping[str, object], succeeded: bool,
+        self,
+        *,
+        harness: str,
+        payload: Mapping[str, object],
+        succeeded: bool,
     ) -> bool:
         """Queue only bounded provider metadata; exclude raw outputs and account/session data."""
         tool_name = payload.get("tool_name")
@@ -205,13 +209,18 @@ class RuntimeHookEvidenceWriter:
             # a provider adds an unsupported or malformed recommendation shape.
             proposals = ()
         record = _McpDiscoveryRecord(
-            uuid4().hex, source.harness, source.qualified_name,
-            datetime.now(timezone.utc).isoformat(), actions, proposals,
+            uuid4().hex,
+            source.harness,
+            source.qualified_name,
+            datetime.now(timezone.utc).isoformat(),
+            actions,
+            proposals,
         )
         record = replace(record, payload_bytes=len(record.serialized()))
         with self._condition:
             if (
-                self._stopping or len(self._records) >= self._max_records
+                self._stopping
+                or len(self._records) >= self._max_records
                 or self._queued_bytes + record.payload_bytes > self._max_bytes
             ):
                 self._dropped += 1
@@ -359,7 +368,10 @@ class RuntimeHookEvidenceWriter:
                             if source is None:
                                 raise ValueError("provider discovery source changed")
                             self._store.record_composio_discovery(
-                                source, record.actions, proposals=record.proposals, seen_at=record.occurred_at,
+                                source,
+                                record.actions,
+                                proposals=record.proposals,
+                                seen_at=record.occurred_at,
                             )
                         elif record.event == "PreToolUse":
                             if (

@@ -171,15 +171,21 @@ class StoreLocalCliMixin:
             if catalog is not None and item.get("surface") == "mcp" and catalog[0] == item.get("identity_hash"):
                 item["mcp_catalog"] = catalog[1]
                 definitions = catalog[1].get("tools")
-                by_name = {
-                    tool["name"]: tool for tool in definitions
-                    if isinstance(tool, dict) and isinstance(tool.get("name"), str)
-                } if isinstance(definitions, list) else {}
+                by_name = (
+                    {
+                        tool["name"]: tool
+                        for tool in definitions
+                        if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+                    }
+                    if isinstance(definitions, list)
+                    else {}
+                )
                 for command in command_map.get(str(item["cli_id"]), []):
                     definition = by_name.get(command.get("usage"))
                     if definition is not None:
                         command["classification"] = classify_mcp_action(
-                            str(definition["name"]), definition.get("inputSchema"),
+                            str(definition["name"]),
+                            definition.get("inputSchema"),
                             annotations=definition.get("annotations"),
                         )
             if str(item["cli_id"]) in provider_map:
@@ -248,10 +254,18 @@ class StoreLocalCliMixin:
             ensure_local_cli_schema(connection)
             connection.commit()
             connection.execute("begin immediate")
-            review_ids = write_mcp_catalog(
-                connection, cli_id, identity_hash=identity_hash, catalog=mcp_catalog, seen_at=seen_at,
-                expected_revision=expected_catalog_revision,
-            ) if mcp_catalog is not None else set()
+            review_ids = (
+                write_mcp_catalog(
+                    connection,
+                    cli_id,
+                    identity_hash=identity_hash,
+                    catalog=mcp_catalog,
+                    seen_at=seen_at,
+                    expected_revision=expected_catalog_revision,
+                )
+                if mcp_catalog is not None
+                else set()
+            )
             _ = connection.execute("delete from local_cli_command where cli_id = ?", (cli_id,))
             for index, command in enumerate(commands):
                 if not is_local_cli_command_id(command.command_id):
@@ -307,10 +321,18 @@ class StoreLocalCliMixin:
             ensure_local_cli_schema(connection)
             connection.commit()
             connection.execute("begin immediate")
-            review_ids = write_mcp_catalog(
-                connection, cli_id, identity_hash=identity_hash, catalog=mcp_catalog, seen_at=seen_at,
-                expected_revision=expected_catalog_revision,
-            ) if mcp_catalog is not None else set()
+            review_ids = (
+                write_mcp_catalog(
+                    connection,
+                    cli_id,
+                    identity_hash=identity_hash,
+                    catalog=mcp_catalog,
+                    seen_at=seen_at,
+                    expected_revision=expected_catalog_revision,
+                )
+                if mcp_catalog is not None
+                else set()
+            )
             rows = connection.execute(
                 "select command_id from local_cli_command where cli_id = ?",
                 (cli_id,),
@@ -513,8 +535,10 @@ def _observation_from_row(row: object) -> dict[str, object]:
     surface = values[10] if values[10] in {"cli", "mcp", "package-scripts"} else "cli"
     source_label = values[12]
     command = values[13]
-    scope = "host-namespace" if isinstance(command, str) and command.startswith("observed-mcp:") else (
-        "configured-connection" if values[11] is not None and values[1] != values[11] else "legacy-device"
+    scope = (
+        "host-namespace"
+        if isinstance(command, str) and command.startswith("observed-mcp:")
+        else ("configured-connection" if values[11] is not None and values[1] != values[11] else "legacy-device")
     )
     return {
         "cli_id": values[0],

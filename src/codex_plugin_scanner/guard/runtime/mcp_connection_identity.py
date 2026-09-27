@@ -17,7 +17,12 @@ class McpConnectionIdentity:
 
 
 def build_mcp_connection_identity(
-    *, host: str, source_scope: str, config_path: str, server_name: str, server_identity_hash: str,
+    *,
+    host: str,
+    source_scope: str,
+    config_path: str,
+    server_name: str,
+    server_identity_hash: str,
 ) -> McpConnectionIdentity:
     """Bind a configured connection without publishing a private config path.
 
@@ -28,8 +33,11 @@ def build_mcp_connection_identity(
 
     configuration_hash = sha256(config_path.encode("utf-8")).hexdigest()
     payload = {
-        "version": 1, "host": host, "source_scope": source_scope,
-        "configuration_hash": configuration_hash, "server_name": server_name,
+        "version": 1,
+        "host": host,
+        "source_scope": source_scope,
+        "configuration_hash": configuration_hash,
+        "server_name": server_name,
         "server_identity_hash": server_identity_hash,
     }
     digest = sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

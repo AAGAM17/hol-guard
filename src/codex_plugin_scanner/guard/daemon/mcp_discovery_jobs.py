@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+import re
 import threading
 import time
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
+
+_LOG = logging.getLogger(__name__)
+_JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
 
 
 class DiscoveryJobError(ValueError):
@@ -32,15 +38,29 @@ class McpDiscoveryJobs:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._jobs: dict[str, _Job] = {}
+        self._pending_cancels: dict[str, float] = {}
         self._closed = False
 
     def start(
-        self, cli_id: str, run: Callable[[threading.Event], None], *, reuse_seconds: float = 0,
+        self,
+        cli_id: str,
+        run: Callable[[threading.Event], None],
+        *,
+        reuse_seconds: float = 0,
+        requested_job_id: str | None = None,
     ) -> dict[str, object]:
         with self._lock:
             if self._closed:
                 raise DiscoveryJobError("discovery_unavailable")
+            if requested_job_id is not None and not _JOB_ID.fullmatch(requested_job_id):
+                raise DiscoveryJobError("invalid_discovery_job")
             now = time.monotonic()
+            self._pending_cancels = {key: seen for key, seen in self._pending_cancels.items() if now - seen < 60}
+            if requested_job_id in self._pending_cancels:
+                del self._pending_cancels[requested_job_id]
+                return {"job_id": requested_job_id, "cli_id": cli_id, "state": "cancelled", "error": None}
+            if requested_job_id in self._jobs:
+                raise DiscoveryJobError("discovery_job_id_conflict")
             self._jobs = {
                 key: job for key, job in self._jobs.items() if job.finished is None or now - job.finished < 600
             }
@@ -61,10 +81,13 @@ class McpDiscoveryJobs:
                 if oldest is None:
                     raise DiscoveryJobError("discovery_busy")
                 del self._jobs[oldest]
-            job = _Job(uuid4().hex, cli_id, now)
+            job = _Job(requested_job_id or uuid4().hex, cli_id, now)
             self._jobs[job.job_id] = job
             job.thread = threading.Thread(
-                target=self._run, args=(job, run), name="hol-guard-mcp-discovery", daemon=True,
+                target=self._run,
+                args=(job, run),
+                name="hol-guard-mcp-discovery",
+                daemon=True,
             )
             try:
                 job.thread.start()
@@ -77,6 +100,15 @@ class McpDiscoveryJobs:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
+                if cancel and _JOB_ID.fullmatch(job_id):
+                    now = time.monotonic()
+                    self._pending_cancels = {
+                        key: seen for key, seen in self._pending_cancels.items() if now - seen < 60
+                    }
+                    if len(self._pending_cancels) >= 64:
+                        self._pending_cancels.pop(next(iter(self._pending_cancels)))
+                    self._pending_cancels[job_id] = now
+                    return {"job_id": job_id, "cli_id": "", "state": "cancelled", "error": None}
                 raise DiscoveryJobError("discovery_job_unavailable")
             if cancel and job.finished is None:
                 job.cancel.set()
@@ -93,9 +125,15 @@ class McpDiscoveryJobs:
             # exception text to polling clients. API codes are a narrow enum.
             candidate = getattr(error, "code", None)
             code = (
-                candidate if candidate in {"mcp_refresh_unavailable", "catalog_revision_conflict"}
+                candidate
+                if candidate in {"mcp_refresh_unavailable", "catalog_revision_conflict"}
                 else "discovery_failed"
             )
+            # Exception text, locals and source lines may contain provider output.
+            frames = tuple(
+                f"{frame.name}:{frame.lineno}" for frame in traceback.extract_tb(error.__traceback__, limit=8)
+            )
+            _LOG.warning("MCP discovery job %s failed (%s, %s) at %s", job.job_id, code, type(error).__name__, frames)
         finally:
             with self._lock:
                 job.finished = time.monotonic()

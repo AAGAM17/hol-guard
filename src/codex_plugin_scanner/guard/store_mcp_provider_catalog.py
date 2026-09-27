@@ -34,17 +34,24 @@ def write_composio_metadata(
     authority_changed = False
     for action in actions:
         raw = json.dumps(action.input_schema, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
-        authority_hash = sha256(json.dumps(
-            {"toolkit": action.toolkit, "tool_slug": action.tool_slug, "input_schema": action.input_schema},
-            sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
-        ).encode("utf-8")).hexdigest()
+        authority_hash = sha256(
+            json.dumps(
+                {"toolkit": action.toolkit, "tool_slug": action.tool_slug, "input_schema": action.input_schema},
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
         previous = connection.execute(
             "select revision, authority_hash, full_schema from local_mcp_provider_action "
             "where cli_id = ? and identity_hash = ? and provider = 'composio' and tool_slug = ?",
             (cli_id, identity_hash, action.tool_slug),
         ).fetchone()
-        revision = 1 if previous is None else previous[0] + int(
-            previous[1] != authority_hash or previous[2] != int(action.full_schema)
+        revision = (
+            1
+            if previous is None
+            else previous[0] + int(previous[1] != authority_hash or previous[2] != int(action.full_schema))
         )
         if previous is None or revision != previous[0]:
             authority_changed = True
@@ -58,8 +65,19 @@ def write_composio_metadata(
             input_schema_json = excluded.input_schema_json, authority_hash = excluded.authority_hash,
             full_schema = excluded.full_schema, source_tool = excluded.source_tool,
             revision = excluded.revision, updated_at = excluded.updated_at""",
-            (cli_id, identity_hash, action.tool_slug, action.toolkit, action.description, raw,
-             authority_hash, int(action.full_schema), source.qualified_name, revision, seen_at),
+            (
+                cli_id,
+                identity_hash,
+                action.tool_slug,
+                action.toolkit,
+                action.description,
+                raw,
+                authority_hash,
+                int(action.full_schema),
+                source.qualified_name,
+                revision,
+                seen_at,
+            ),
         )
     count, size = connection.execute(
         "select count(*), coalesce(sum(length(cast(input_schema_json as blob)) "
@@ -79,7 +97,8 @@ def rebuild_provider_authority(connection: sqlite3.Connection, cli_id: str, iden
     fingerprint = sha256(identity_hash.encode())
     for row in connection.execute(
         """select tool_slug, authority_hash, full_schema from local_mcp_provider_action
-        where cli_id = ? and identity_hash = ? order by tool_slug""", (cli_id, identity_hash),
+        where cli_id = ? and identity_hash = ? order by tool_slug""",
+        (cli_id, identity_hash),
     ):
         fingerprint.update(json.dumps(tuple(row), separators=(",", ":")).encode())
     connection.execute(
@@ -109,16 +128,26 @@ def load_provider_catalog_summaries(connection: sqlite3.Connection) -> dict[str,
     ).fetchall()
     return {
         cli_id: {
-            "provider": "composio", "known_count": count, "full_schema_count": full_count,
-            "updated_at": updated_at, "coverage": "discovery-subset", "account_binding": "unverified",
+            "provider": "composio",
+            "known_count": count,
+            "full_schema_count": full_count,
+            "updated_at": updated_at,
+            "coverage": "discovery-subset",
+            "account_binding": "unverified",
         }
         for cli_id, count, full_count, updated_at in rows
     }
 
 
 def read_provider_actions(
-    connection: sqlite3.Connection, cli_id: str, identity_hash: str, *, limit: int = 100, offset: int = 0,
-    search: str = "", expected_token: str | None = None,
+    connection: sqlite3.Connection,
+    cli_id: str,
+    identity_hash: str,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    search: str = "",
+    expected_token: str | None = None,
 ) -> dict[str, object]:
     if not 1 <= limit <= 100 or offset < 0 or len(search) > 128:
         raise ValueError("invalid provider catalog page")
@@ -149,15 +178,27 @@ def read_provider_actions(
         (cli_id, identity_hash, pattern, pattern, pattern, limit + 1, offset),
     ).fetchall()
     return {
-        "actions": [{
-            "tool_slug": slug, "toolkit": toolkit, "description": description,
-            "full_schema": bool(full), "revision": revision, "updated_at": updated_at,
-            "permission_state": state, "allow_supported": False,
-            "account_binding": "unverified", "source": "observed-provider-result",
-            "classification": classify_mcp_action(
-                slug, json.loads(raw_schema), provider="composio", full_schema=bool(full),
-            ),
-        } for slug, toolkit, description, full, revision, updated_at, state, raw_schema in rows[:limit]],
+        "actions": [
+            {
+                "tool_slug": slug,
+                "toolkit": toolkit,
+                "description": description,
+                "full_schema": bool(full),
+                "revision": revision,
+                "updated_at": updated_at,
+                "permission_state": state,
+                "allow_supported": False,
+                "account_binding": "unverified",
+                "source": "observed-provider-result",
+                "classification": classify_mcp_action(
+                    slug,
+                    json.loads(raw_schema),
+                    provider="composio",
+                    full_schema=bool(full),
+                ),
+            }
+            for slug, toolkit, description, full, revision, updated_at, state, raw_schema in rows[:limit]
+        ],
         "next_offset": offset + limit if len(rows) > limit else None,
         "coverage": "discovery-subset",
         "catalog_token": token,

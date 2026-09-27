@@ -191,7 +191,8 @@ def effective_native_policy_v3(config: GuardConfig | Mapping[str, object]) -> di
     provider_catalog_hash = _config_value(config, "mcp_provider_catalog_hash")
     if provider_catalog_hash is not None:
         if (
-            not isinstance(provider_catalog_hash, str) or len(provider_catalog_hash) != 64
+            not isinstance(provider_catalog_hash, str)
+            or len(provider_catalog_hash) != 64
             or any(character not in "0123456789abcdef" for character in provider_catalog_hash)
         ):
             raise NativePolicySnapshotError("native_provider_catalog_hash_invalid")
@@ -222,8 +223,9 @@ def _provider_action_map(value: object) -> dict[str, str]:
     from .runtime.mcp_provider_permissions import valid_provider_action_selector
 
     actions = _string_map(value, max_entries=POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS)
-    if any(action not in {"review", "block"} or not valid_provider_action_selector(key)
-           for key, action in actions.items()):
+    if any(
+        action not in {"review", "block"} or not valid_provider_action_selector(key) for key, action in actions.items()
+    ):
         raise NativePolicySnapshotError("native_policy_snapshot_provider_actions_invalid")
     return actions
 

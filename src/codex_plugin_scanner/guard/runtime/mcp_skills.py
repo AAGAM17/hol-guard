@@ -51,18 +51,25 @@ class McpSkillEntry:
         if self.resources is None:
             return None
         payload = {
-            "origin": self.origin, "uri": self.uri, "frontmatter": self.frontmatter,
+            "origin": self.origin,
+            "uri": self.uri,
+            "frontmatter": self.frontmatter,
             "resources": sorted((entry.uri, entry.digest, entry.size) for entry in self.resources),
         }
         return "sha256:" + sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     def public_metadata(self) -> dict[str, object]:
         return {
-            "origin": "mcp-served-skill", "connection_identity_hash": self.origin, "uri": self.uri,
-            "name": self.frontmatter["name"], "description": self.frontmatter["description"],
-            "manifest_digest": self.manifest_digest, "dynamic": self.resources is None,
+            "origin": "mcp-served-skill",
+            "connection_identity_hash": self.origin,
+            "uri": self.uri,
+            "name": self.frontmatter["name"],
+            "description": self.frontmatter["description"],
+            "manifest_digest": self.manifest_digest,
+            "dynamic": self.resources is None,
             "resource_count": None if self.resources is None else len(self.resources),
-            "activation_supported": False, "permissions_granted": False,
+            "activation_supported": False,
+            "permissions_granted": False,
         }
 
 
@@ -83,11 +90,14 @@ def parse_mcp_skill_entry(value: object, *, origin: str) -> McpSkillEntry:
     if not isinstance(frontmatter, dict):
         raise McpSkillError("invalid_skill_frontmatter")
     name, description = frontmatter.get("name"), frontmatter.get("description")
-    path_name = unquote(uri[:-len("/SKILL.md")].rsplit("/", 1)[-1])
+    path_name = unquote(uri[: -len("/SKILL.md")].rsplit("/", 1)[-1])
     if (
-        not isinstance(name, str) or not 1 <= len(name) <= 64 or name != path_name
+        not isinstance(name, str)
+        or not 1 <= len(name) <= 64
+        or name != path_name
         or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name)
-        or not isinstance(description, str) or not 1 <= len(description) <= 1024
+        or not isinstance(description, str)
+        or not 1 <= len(description) <= 1024
     ):
         raise McpSkillError("invalid_skill_frontmatter")
     try:
@@ -101,17 +111,22 @@ def parse_mcp_skill_entry(value: object, *, origin: str) -> McpSkillEntry:
         return McpSkillEntry(origin, uri, raw_frontmatter, None)
     if not isinstance(resources, list) or not 1 <= len(resources) <= 512:
         raise McpSkillError("skill_manifest_resource_limit")
-    root, total, seen = uri[:-len("SKILL.md")], 0, set()
+    root, total, seen = uri[: -len("SKILL.md")], 0, set()
     entries: list[McpSkillResource] = []
     for resource in resources:
         if not isinstance(resource, dict):
             raise McpSkillError("invalid_skill_resource")
         resource_uri, digest, size = resource.get("uri"), resource.get("digest"), resource.get("size")
         if (
-            not isinstance(resource_uri, str) or not _resource_uri(resource_uri)
-            or not resource_uri.startswith(root) or resource_uri in seen or resource_uri == root
-            or not isinstance(digest, str) or not _DIGEST.fullmatch(digest)
-            or type(size) is not int or size < 0
+            not isinstance(resource_uri, str)
+            or not _resource_uri(resource_uri)
+            or not resource_uri.startswith(root)
+            or resource_uri in seen
+            or resource_uri == root
+            or not isinstance(digest, str)
+            or not _DIGEST.fullmatch(digest)
+            or type(size) is not int
+            or size < 0
         ):
             raise McpSkillError("invalid_skill_resource")
         total += size
@@ -217,7 +232,7 @@ class McpSkillsClient:
 
     def invalidate(self, uri: str) -> None:
         self._entries.pop(uri, None)
-        root = uri[:-len("SKILL.md")]
+        root = uri[: -len("SKILL.md")]
         for key in tuple(self._cache):
             if key[0].startswith(root):
                 self._cache_bytes -= len(self._cache.pop(key))
@@ -231,15 +246,20 @@ class McpSkillsClient:
         self._entries[entry.uri] = entry
 
     def _call(self, method: str, params: dict[str, object]) -> dict[str, object]:
-        params = {**params, "_meta": {
-            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            "io.modelcontextprotocol/clientInfo": {"name": "hol-guard", "version": "3.0"},
-            "io.modelcontextprotocol/clientCapabilities": {},
-        }}
+        params = {
+            **params,
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientInfo": {"name": "hol-guard", "version": "3.0"},
+                "io.modelcontextprotocol/clientCapabilities": {},
+            },
+        }
         result = self._request(method, params)
         if (
-            not isinstance(result, dict) or result.get("resultType") != "complete"
-            or type(result.get("ttlMs")) is not int or result.get("cacheScope") not in ("private", "public")
+            not isinstance(result, dict)
+            or result.get("resultType") != "complete"
+            or type(result.get("ttlMs")) is not int
+            or result.get("cacheScope") not in ("private", "public")
         ):
             raise McpSkillError("invalid_skills_result")
         return result

@@ -231,6 +231,31 @@ function parseProtectionRoute(pathname) {
 function localCliHref(cliId) {
   return `/extensions/local-cli/${encodeURIComponent(cliId)}`;
 }
+async function startCancelableDiscoveryJob(signal, start) {
+  if (signal.aborted) return null;
+  const clientJobId = globalThis.crypto.randomUUID().replaceAll("-", "");
+  let cancelSent = false;
+  const cancel = () => {
+    if (cancelSent) return;
+    cancelSent = true;
+    void fetchLocalCliApi("/v1/local-clis/refresh-job", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job_id: clientJobId, cancel: true })
+    }).catch(() => void 0);
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    const result = await start(clientJobId);
+    return signal.aborted ? null : result;
+  } catch (error) {
+    if (signal.aborted) return null;
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    if (signal.aborted) cancel();
+  }
+}
 function normalizeMcpClassification(value) {
   if (!isRecord(value) || value.schema_version !== "guard.mcp-classification.v1" || value.advisory_only !== true || !["reviewed-mapping", "limited"].includes(String(value.confidence))) return void 0;
   const labels = [value.effect, value.data, value.destination, value.reversibility];
@@ -659,11 +684,16 @@ async function applyLocalCliMutation(payload) {
 }
 async function refreshMcpInventory(cliId, signal, configuredConnections = false, forceRefresh = false) {
   if (signal.aborted) return;
-  const initialJob = await readJson(await fetchLocalCliApi("/v1/local-clis/refresh-job", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(configuredConnections ? { operation: "configured-connections", ...forceRefresh ? { force_refresh: true } : {} } : { cli_id: cliId, confirm_process_start: true })
-  }));
+  const initialJob = await startCancelableDiscoveryJob(signal, async (clientJobId) => readJson(await fetchLocalCliApi(
+    "/v1/local-clis/refresh-job",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify(configuredConnections ? { operation: "configured-connections", client_job_id: clientJobId, ...forceRefresh ? { force_refresh: true } : {} } : { cli_id: cliId, confirm_process_start: true, client_job_id: clientJobId })
+    }
+  )));
+  if (initialJob === null) return;
   await waitForMcpDiscoveryJob(cliId, initialJob, signal);
 }
 async function waitForMcpDiscoveryJob(cliId, initialJob, signal) {
@@ -694,7 +724,13 @@ async function waitForMcpDiscoveryJob(cliId, initialJob, signal) {
       }
       if (job.state === "failed") {
         finished = true;
-        throw new Error(job.error === "mcp_refresh_unavailable" ? "Guard cannot list this connection directly. Refresh it in its host app." : job.error === "catalog_revision_conflict" ? "A newer discovery finished first. Reload the inventory." : "Discovery did not finish. Known tools and choices were kept. Try again shortly.");
+        let message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
+        if (job.error === "mcp_refresh_unavailable") {
+          message = "Guard cannot list this connection directly. Refresh it in its host app.";
+        } else if (job.error === "catalog_revision_conflict") {
+          message = "A newer discovery finished first. Reload the inventory.";
+        }
+        throw new Error(message);
       }
       await new Promise((resolve) => {
         const done = () => {
@@ -4208,6 +4244,7 @@ async function fetchProviderWorkflows(cliId, offset, signal) {
   });
   return { proposals, nextOffset: body.next_offset };
 }
+const requirementLabels = { "saved-deny": "Saved Deny", unresolved: "Not observed", ask: "Needs review" };
 function ProviderWorkflows({ cliId }) {
   const [open, setOpen] = reactExports.useState(false);
   const [offset, setOffset] = reactExports.useState(0);
@@ -4267,7 +4304,7 @@ function ProviderWorkflows({ cliId }) {
                 " · ",
                 part.role === "primary" ? "Primary" : "Supporting",
                 " · ",
-                part.state === "saved-deny" ? "Saved Deny" : part.state === "unresolved" ? "Not observed" : "Needs review",
+                requirementLabels[part.state],
                 !part.schemaObserved && part.state !== "unresolved" ? " · Schema incomplete" : ""
               ] }, part.slug)) })
             ]
@@ -5971,7 +6008,11 @@ async function fetchLocalSkillRoots(signal) {
 }
 async function scanLocalSkillMetadata(rootIds, signal) {
   if (signal.aborted) return;
-  const job = await request({ operation: "scan", confirm_metadata_read: true, approved_root_ids: rootIds });
+  const job = await startCancelableDiscoveryJob(signal, (clientJobId) => request(
+    { operation: "scan", confirm_metadata_read: true, approved_root_ids: rootIds, client_job_id: clientJobId },
+    signal
+  ));
+  if (job === null) return;
   await waitForMcpDiscoveryJob("inventory:skills", job, signal);
 }
 async function fetchLocalSkillPage(options) {
@@ -6010,7 +6051,11 @@ async function fetchLocalSkillPage(options) {
 }
 async function prepareSkillWorkflow(skillId, signal) {
   if (signal.aborted) return null;
-  const job = await request({ operation: "preflight", skill_id: skillId, confirm_directory_read: true });
+  const job = await startCancelableDiscoveryJob(signal, (clientJobId) => request(
+    { operation: "preflight", skill_id: skillId, confirm_directory_read: true, client_job_id: clientJobId },
+    signal
+  ));
+  if (job === null) return null;
   await waitForMcpDiscoveryJob(`skill:${skillId}`, job, signal);
   if (signal.aborted) return null;
   const body = await request({ operation: "preflight-result", skill_id: skillId }, signal);
@@ -6273,11 +6318,16 @@ function SkillPreflightPreview({ plan }) {
   }, [plan.expires_at]);
   if (expired) return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-4 text-xs leading-5 text-brand-dark/75", children: "This workflow preview expired. Prepare it again to check current evidence." });
   const stateLabel = { "saved-allow": "Saved Allow · runtime checks required", deny: "Denied", ask: "Needs review", unresolved: "Not resolved" };
+  const dependencyLabel = {
+    declared: "Guard dependency manifest (nonstandard extension)",
+    invalid: "Invalid Guard dependency manifest; review the skill's metadata.",
+    absent: "No Guard dependency manifest. Requirements remain unresolved."
+  }[plan.dependency_status];
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "Workflow preflight", className: "mt-4 border-l-2 border-brand-blue pl-4 text-xs leading-5 text-brand-dark/75", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold", children: plan.inspection.status === "complete" ? "Skill revision inspected" : "Skill revision could not be fully inspected" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2", children: [
       "Dependencies: ",
-      plan.dependency_status === "declared" ? "Guard dependency manifest (nonstandard extension)" : plan.dependency_status === "invalid" ? "Invalid Guard dependency manifest; review the skill's metadata." : "No Guard dependency manifest. Requirements remain unresolved."
+      dependencyLabel
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2", children: [
       "Permissions checked at revision ",

@@ -76,7 +76,11 @@ def run_mcp_catalog(
     try:
         with tempfile.TemporaryDirectory(prefix="hol-guard-mcp-probe-") as tmp:
             return _exchange_tools_list(
-                list(argv), tmp, timeout=timeout, extra_env=extra_env, cancel=cancel,
+                list(argv),
+                tmp,
+                timeout=timeout,
+                extra_env=extra_env,
+                cancel=cancel,
                 connection_identity_hash=connection_identity_hash,
             )
     except (OSError, ValueError, subprocess.TimeoutExpired, json.JSONDecodeError, UnicodeError):
@@ -295,13 +299,19 @@ def _exchange_tools_list(
                 return partial("tool_limit")
             if next_cursor is None:
                 complete_catalog = replace(
-                    catalog, tools=tuple(collected), complete=True, pages=pages,
+                    catalog,
+                    tools=tuple(collected),
+                    complete=True,
+                    pages=pages,
                     cache_ttl_ms=max(0, int((cache_deadline - time.monotonic()) * 1000)),
                     cache_scope=cache_scope,
                     cache_received_at=datetime.now(timezone.utc).isoformat(),
                 )
                 return _append_skill_metadata(
-                    complete_catalog, session, deadline, connection_identity_hash=connection_identity_hash,
+                    complete_catalog,
+                    session,
+                    deadline,
+                    connection_identity_hash=connection_identity_hash,
                 )
             if len(collected) == MAX_MCP_PROBE_TOOLS:
                 return partial("tool_limit")
@@ -316,7 +326,11 @@ def _exchange_tools_list(
 
 
 def _append_skill_metadata(
-    catalog: McpCatalogResult, session: _RpcSession, deadline: float, *, connection_identity_hash: str | None,
+    catalog: McpCatalogResult,
+    session: _RpcSession,
+    deadline: float,
+    *,
+    connection_identity_hash: str | None,
 ) -> McpCatalogResult:
     if not mcp_skills_declared(catalog.capabilities, protocol_version=catalog.protocol_version or ""):
         return catalog
@@ -339,8 +353,10 @@ def _append_skill_metadata(
 
     try:
         client = McpSkillsClient(
-            origin=connection_identity_hash, capabilities=catalog.capabilities,
-            protocol_version=catalog.protocol_version or "", request=request,
+            origin=connection_identity_hash,
+            capabilities=catalog.capabilities,
+            protocol_version=catalog.protocol_version or "",
+            request=request,
         )
         entries, complete, reason = client.list_metadata()
     except McpSkillError as error:
@@ -371,9 +387,7 @@ def _modern_request_meta() -> dict[str, object]:
 def _negotiate_catalog(session: _RpcSession, deadline: float) -> McpCatalogResult:
     """Probe modern stdio, falling back only when it is not recognized."""
 
-    session.write(
-        {"jsonrpc": "2.0", "id": 0, "method": "server/discover", "params": {"_meta": _modern_request_meta()}}
-    )
+    session.write({"jsonrpc": "2.0", "id": 0, "method": "server/discover", "params": {"_meta": _modern_request_meta()}})
     remaining = max(0.0, deadline - time.monotonic())
     discovered = _await_result(session, 0, min(deadline, time.monotonic() + min(1.0, remaining / 4)))
     if discovered is not None:
@@ -548,7 +562,8 @@ def _is_rpc_message(message: dict[str, object] | None) -> TypeGuard[dict[str, ob
     if "result" in message or "error" in message:
         return True
     return "method" in message and (
-        "id" in message or (
+        "id" in message
+        or (
             message.get("jsonrpc") == "2.0"
             and message.get("method") in ("notifications/tools/list_changed", "tools/list_changed")
         )

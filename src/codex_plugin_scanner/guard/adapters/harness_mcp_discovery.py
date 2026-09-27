@@ -109,7 +109,8 @@ def persist_discovered_harness_mcp_servers(
             server_args_hash=server.server_identity.args_hash,
             source_label=server.source_label,
             connection_identity_hash=server.connection_identity.identity_hash
-            if server.connection_identity is not None else None,
+            if server.connection_identity is not None
+            else None,
         )
         if isinstance(cli_id, str) and cli_id:
             labels[cli_id] = server.source_label
@@ -127,14 +128,20 @@ def discovered_server_for_observation(
     """Return the live discovered server for a stored observation. Does not persist."""
 
     if cli_id:
-        matches = [server for server in servers if server.identity.cli_id == cli_id
-                   and (not server_identity_hash or server.server_identity.identity_hash == server_identity_hash)]
+        matches = [
+            server
+            for server in servers
+            if server.identity.cli_id == cli_id
+            and (not server_identity_hash or server.server_identity.identity_hash == server_identity_hash)
+        ]
     elif server_identity_hash:
         matches = [server for server in servers if server.server_identity.identity_hash == server_identity_hash]
     else:
         matches = [
-            server for server in servers
-            if server_command and args_hash
+            server
+            for server in servers
+            if server_command
+            and args_hash
             and server.server_identity.command == server_command
             and server.server_identity.args_hash == args_hash
         ]
@@ -224,8 +231,11 @@ def _identity_for(
         return None
     name = server.name.strip() or server_identity.package_name or Path(server.command).name or "mcp-server"
     connection = build_mcp_connection_identity(
-        host=server.harness, source_scope=server.source_scope, config_path=server.config_path,
-        server_name=server.name, server_identity_hash=server_identity.identity_hash,
+        host=server.harness,
+        source_scope=server.source_scope,
+        config_path=server.config_path,
+        server_name=server.name,
+        server_identity_hash=server_identity.identity_hash,
     )
     return (
         UnlistedCliIdentity(

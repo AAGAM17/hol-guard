@@ -102,7 +102,7 @@ for (const width of [1280, 390]) {
         }] };
       }
       if (path.endsWith("/refresh-job")) {
-        expect(route.request().postDataJSON()).toEqual({ operation: "configured-connections" });
+        expect(route.request().postDataJSON()).toEqual({ operation: "configured-connections", client_job_id: expect.stringMatching(/^[a-f0-9]{32}$/) });
         discovered = true;
         body = { job_id: "d".repeat(32), cli_id: "inventory:configured", state: "complete", error: null };
       }

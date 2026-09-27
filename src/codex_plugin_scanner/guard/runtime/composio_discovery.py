@@ -37,7 +37,8 @@ def composio_discovered_actions(tool_name: str, response: object) -> tuple[Compo
         return None
     data = value.get("data")
     if (
-        not isinstance(data, dict) or ("success" in data and data["success"] is not True)
+        not isinstance(data, dict)
+        or ("success" in data and data["success"] is not True)
         or data.get("error") is not None
     ):
         return None
@@ -52,10 +53,15 @@ def composio_discovered_actions(tool_name: str, response: object) -> tuple[Compo
         slug, toolkit, description = entry.get("tool_slug"), entry.get("toolkit"), entry.get("description", "")
         schema, full = entry.get("input_schema"), entry.get("hasFullSchema")
         if (
-            not isinstance(slug, str) or not _TOKEN.fullmatch(slug) or key != slug
-            or not isinstance(toolkit, str) or not _TOKEN.fullmatch(toolkit)
-            or not isinstance(description, str) or not isinstance(full, bool)
-            or not isinstance(schema, dict) or not _bounded_json_tree(schema)
+            not isinstance(slug, str)
+            or not _TOKEN.fullmatch(slug)
+            or key != slug
+            or not isinstance(toolkit, str)
+            or not _TOKEN.fullmatch(toolkit)
+            or not isinstance(description, str)
+            or not isinstance(full, bool)
+            or not isinstance(schema, dict)
+            or not _bounded_json_tree(schema)
         ):
             return None
         try:

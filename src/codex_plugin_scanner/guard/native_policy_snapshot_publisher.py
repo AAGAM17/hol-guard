@@ -270,7 +270,9 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
         with self._condition:
             self._mark_expired_locked()
             if (
-                not self._acked or self._closed or self._snapshot is None
+                not self._acked
+                or self._closed
+                or self._snapshot is None
                 or self._published_local_cli_revision != revision
             ):
                 return None

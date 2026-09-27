@@ -29,20 +29,34 @@ def test_provider_discovery_is_private_and_persists_off_the_hook_thread(tmp_path
         return original(*args, **kwargs)
 
     monkeypatch.setattr(store, "record_composio_discovery", blocked_record)
-    response = {"successful": True, "error": None, "data": {
-        "tool_schemas": {"SLACK_SEARCH_MESSAGES": {
-            "toolkit": "slack", "tool_slug": "SLACK_SEARCH_MESSAGES", "description": "Synthetic tool",
-            "input_schema": {"type": "object"}, "hasFullSchema": True,
-        }}, "session": {"session_id": "private-session-do-not-persist"},
-    }}
+    response = {
+        "successful": True,
+        "error": None,
+        "data": {
+            "tool_schemas": {
+                "SLACK_SEARCH_MESSAGES": {
+                    "toolkit": "slack",
+                    "tool_slug": "SLACK_SEARCH_MESSAGES",
+                    "description": "Synthetic tool",
+                    "input_schema": {"type": "object"},
+                    "hasFullSchema": True,
+                }
+            },
+            "session": {"session_id": "private-session-do-not-persist"},
+        },
+    }
     writer = RuntimeHookEvidenceWriter(store=store)
     try:
         started = time.monotonic()
-        assert writer.submit_composio_discovery(harness="codex", succeeded=True, payload={
-            "tool_name": "mcp__codex_apps__composio__composio_search_tools",
-            "tool_response": {"content": [{"type": "text", "text": json.dumps(response)}]},
-            "tool_input": {"query": "private-query-do-not-persist"},
-        })
+        assert writer.submit_composio_discovery(
+            harness="codex",
+            succeeded=True,
+            payload={
+                "tool_name": "mcp__codex_apps__composio__composio_search_tools",
+                "tool_response": {"content": [{"type": "text", "text": json.dumps(response)}]},
+                "tool_input": {"query": "private-query-do-not-persist"},
+            },
+        )
         assert time.monotonic() - started < 0.1
         assert entered.wait(timeout=1)
         journal = (store.guard_home / "runtime-hook-evidence.jsonl").read_text()
@@ -61,12 +75,22 @@ def test_provider_discovery_is_private_and_persists_off_the_hook_thread(tmp_path
 def test_provider_discovery_rejects_error_results_and_unqualified_sources(tmp_path: Path) -> None:
     writer = RuntimeHookEvidenceWriter(store=GuardStore(tmp_path / "home"))
     try:
-        assert not writer.submit_composio_discovery(harness="codex", succeeded=False, payload={
-            "tool_name": "mcp__codex_apps__composio__composio_search_tools", "tool_response": {},
-        })
-        assert not writer.submit_composio_discovery(harness="codex", succeeded=True, payload={
-            "tool_name": "composio_search_tools", "tool_response": {},
-        })
+        assert not writer.submit_composio_discovery(
+            harness="codex",
+            succeeded=False,
+            payload={
+                "tool_name": "mcp__codex_apps__composio__composio_search_tools",
+                "tool_response": {},
+            },
+        )
+        assert not writer.submit_composio_discovery(
+            harness="codex",
+            succeeded=True,
+            payload={
+                "tool_name": "composio_search_tools",
+                "tool_response": {},
+            },
+        )
         assert writer.stats()["accepted"] == 0
     finally:
         assert writer.stop(timeout_seconds=1)
@@ -75,7 +99,9 @@ def test_provider_discovery_rejects_error_results_and_unqualified_sources(tmp_pa
 def test_provider_metadata_journal_recovers_after_restart(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "home")
     record = _McpDiscoveryRecord(
-        "fixture-provider-record", "codex", "mcp__codex_apps__composio__composio_search_tools",
+        "fixture-provider-record",
+        "codex",
+        "mcp__codex_apps__composio__composio_search_tools",
         "2026-09-27T12:00:00+00:00",
         (ComposioActionSchema("slack", "SLACK_SEARCH_MESSAGES", "Synthetic metadata", {"type": "object"}, True),),
     )
@@ -90,20 +116,55 @@ def test_provider_metadata_journal_recovers_after_restart(tmp_path: Path) -> Non
     assert journal.read_text() == ""
 
 
+def test_malformed_provider_workflow_journal_does_not_block_writer_start(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "home")
+    record = _McpDiscoveryRecord(
+        "fixture-provider-record",
+        "codex",
+        "mcp__codex_apps__composio__composio_search_tools",
+        "2026-09-27T12:00:00+00:00",
+        (ComposioActionSchema("slack", "SLACK_SEARCH_MESSAGES", "Synthetic metadata", {"type": "object"}, True),),
+    )
+    malformed = json.loads(record.serialized())
+    malformed["workflow_proposals"] = None
+    journal = store.guard_home / "runtime-hook-evidence.jsonl"
+    journal.write_text(json.dumps(malformed) + "\n")
+    journal.chmod(0o600)
+    writer = RuntimeHookEvidenceWriter(store=store, batch_wait_seconds=0)
+    try:
+        assert writer.stats()["recovered"] == 0
+        assert writer.stats()["failures"] >= 1
+    finally:
+        assert writer.stop(timeout_seconds=2)
+
+
 def test_hook_worker_forwards_successful_provider_results_to_background_writer(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "home")
     writer = RuntimeHookEvidenceWriter(store=store)
     worker = HookWorker(store=store, activity_writer=writer, wait_for_native_policy=False, publish_native_policy=False)
     try:
-        worker._record_post_tool_activity(harness="codex", succeeded=True, payload={
-            "tool_name": "mcp__codex_apps__composio__composio_search_tools",
-            "tool_response": {"successful": True, "error": None, "data": {"tool_schemas": {
-                "SLACK_SEARCH_MESSAGES": {
-                    "toolkit": "slack", "tool_slug": "SLACK_SEARCH_MESSAGES", "description": "Synthetic tool",
-                    "input_schema": {"type": "object"}, "hasFullSchema": True,
+        worker._record_post_tool_activity(
+            harness="codex",
+            succeeded=True,
+            payload={
+                "tool_name": "mcp__codex_apps__composio__composio_search_tools",
+                "tool_response": {
+                    "successful": True,
+                    "error": None,
+                    "data": {
+                        "tool_schemas": {
+                            "SLACK_SEARCH_MESSAGES": {
+                                "toolkit": "slack",
+                                "tool_slug": "SLACK_SEARCH_MESSAGES",
+                                "description": "Synthetic tool",
+                                "input_schema": {"type": "object"},
+                                "hasFullSchema": True,
+                            },
+                        }
+                    },
                 },
-            }}},
-        })
+            },
+        )
         assert writer.stop(timeout_seconds=2)
         assert store.list_local_cli_items()[0]["provider_catalog"]["known_count"] == 1
     finally:

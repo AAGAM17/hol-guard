@@ -32,6 +32,9 @@ for (const width of [1280, 390]) {
     };
     const refreshRequests: Record<string, unknown>[] = [];
     let cancelRequested = false;
+    const cancelledJobIds: string[] = [];
+    let holdStart = false;
+    let releaseStart: (() => void) | null = null;
     let publicationState = "pending";
     let skillRevision = 1;
     const skillRequests: Record<string, unknown>[] = [];
@@ -89,10 +92,17 @@ for (const width of [1280, 390]) {
         }
         if (body.cancel) {
           cancelRequested = true;
+          cancelledJobIds.push(body.job_id);
           await route.fulfill({ json: { job_id: "d".repeat(32), cli_id: item.cli_id, state: "cancelled", error: null } });
           return;
         }
         if (!body.job_id) refreshRequests.push(body);
+        if (holdStart && !body.job_id) {
+          await new Promise<void>((resolve) => { releaseStart = resolve; });
+          await route.fulfill({ json: { job_id: body.client_job_id, cli_id: item.cli_id,
+            state: "cancelled", error: null } }).catch(() => undefined);
+          return;
+        }
         if (refreshRequests.length > 1) {
           await route.fulfill({ json: { job_id: "d".repeat(32), cli_id: item.cli_id,
             state: refreshRequests.length === 2 ? "failed" : "running", error: "discovery_failed" } });
@@ -161,7 +171,8 @@ for (const width of [1280, 390]) {
     await expect(detail.getByText("New tools · 1", { exact: true })).toBeVisible();
     await expect(read.getByRole("radio", { name: "Allow", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(detail.getByRole("radiogroup", { name: "Search records protection setting" })).toBeVisible();
-    expect(refreshRequests[0]).toEqual({ cli_id: item.cli_id, confirm_process_start: true });
+    expect(refreshRequests[0]).toEqual({ cli_id: item.cli_id, confirm_process_start: true,
+      client_job_id: expect.stringMatching(/^[a-f0-9]{32}$/) });
     await detail.getByTestId("custom-extension-bulk-policy").getByRole("radio", { name: "Allow listed", exact: true }).click();
     await expect(detail.getByRole("radiogroup", { name: "Other tools protection setting" })
       .getByRole("radio", { name: "Policy", exact: true })).toHaveAttribute("aria-checked", "true");
@@ -178,6 +189,16 @@ for (const width of [1280, 390]) {
     await expect.poll(() => cancelRequested).toBe(true);
     await expect(detail.getByRole("button", { name: "Refresh inventory", exact: true })).toBeEnabled();
     await expect(read.getByRole("radio", { name: "Allow", exact: true })).toHaveAttribute("aria-checked", "true");
+    holdStart = true;
+    cancelRequested = false;
+    await detail.getByRole("button", { name: "Refresh inventory", exact: true }).click();
+    await expect.poll(() => Boolean(releaseStart)).toBe(true);
+    const pendingJobId = refreshRequests.at(-1)?.client_job_id;
+    await detail.getByRole("button", { name: "Cancel refresh", exact: true }).click();
+    await expect.poll(() => cancelledJobIds.includes(String(pendingJobId))).toBe(true);
+    await expect(detail.getByRole("button", { name: "Refresh inventory", exact: true })).toBeEnabled();
+    releaseStart?.();
+    holdStart = false;
     await detail.getByRole("button", { name: /^Review \d+ tool changes$/ }).click();
     const review = page.getByRole("dialog");
     await expect(review.getByRole("region", { name: "Permission changes", exact: true })).toContainText("Read records: Policy → Allow");

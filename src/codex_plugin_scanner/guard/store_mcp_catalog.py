@@ -38,12 +38,19 @@ def read_mcp_catalog(connection: sqlite3.Connection, cli_id: str, identity_hash:
 
 
 def read_mcp_skill_page(
-    connection: sqlite3.Connection, cli_id: str, identity_hash: str, *, offset: int, search: str,
+    connection: sqlite3.Connection,
+    cli_id: str,
+    identity_hash: str,
+    *,
+    offset: int,
+    search: str,
     expected_revision: int | None,
 ) -> dict[str, object]:
     if (
-        type(offset) is not int or not 0 <= offset <= 1000
-        or not isinstance(search, str) or len(search) > 128
+        type(offset) is not int
+        or not 0 <= offset <= 1000
+        or not isinstance(search, str)
+        or len(search) > 128
         or (expected_revision is not None and (type(expected_revision) is not int or expected_revision < 1))
     ):
         raise ValueError("invalid_mcp_skill_page")
@@ -64,13 +71,20 @@ def read_mcp_skill_page(
         raise ValueError("mcp_skills_unavailable")
     if any(not isinstance(entry, dict) or entry.get("connection_identity_hash") != identity_hash for entry in entries):
         raise ValueError("mcp_skills_unavailable")
-    selected = [entry for entry in entries if search.casefold() in
-                f"{entry.get('name', '')} {entry.get('description', '')} {entry.get('uri', '')}".casefold()]
+    selected = [
+        entry
+        for entry in entries
+        if search.casefold()
+        in f"{entry.get('name', '')} {entry.get('description', '')} {entry.get('uri', '')}".casefold()
+    ]
     selected.sort(key=lambda entry: (str(entry.get("name", "")), str(entry.get("uri", ""))))
     return {
-        "entries": selected[offset:offset + 50], "revision": row[1],
+        "entries": selected[offset : offset + 50],
+        "revision": row[1],
         "next_offset": offset + 50 if offset + 50 < len(selected) else None,
-        "known_count": len(entries), "matched_count": len(selected), "activation_supported": False,
+        "known_count": len(entries),
+        "matched_count": len(selected),
+        "activation_supported": False,
     }
 
 
@@ -90,10 +104,14 @@ def catalog_tool_authority_matches(catalog: object, name: str, live_authority_ha
 
 
 def read_mcp_tool_authority(
-    connection: sqlite3.Connection, cli_id: str, identity_hash: str, tool_name: str | None,
+    connection: sqlite3.Connection,
+    cli_id: str,
+    identity_hash: str,
+    tool_name: str | None,
 ) -> dict[str, object] | None:
     row = connection.execute(
-        "select revision from local_mcp_catalog where cli_id = ? and identity_hash = ?", (cli_id, identity_hash),
+        "select revision from local_mcp_catalog where cli_id = ? and identity_hash = ?",
+        (cli_id, identity_hash),
     ).fetchone()
     if row is None:
         return None
@@ -107,7 +125,11 @@ def read_mcp_tool_authority(
 
 
 def rebuild_tool_authority(
-    connection: sqlite3.Connection, cli_id: str, identity_hash: str, raw: object, revision: int,
+    connection: sqlite3.Connection,
+    cli_id: str,
+    identity_hash: str,
+    raw: object,
+    revision: int,
 ) -> None:
     """Rebuild inside the catalog transaction; invalid/missing evidence never permits a tool."""
     payload = _decode_snapshot(raw)
@@ -170,10 +192,11 @@ def write_mcp_catalog(
             last_complete_at = prior_row[3]
     tools_by_name: dict[str, dict[str, object]] = {}
     previous_tools = prior.get("tools")
-    previous_by_name = {
-        tool["name"]: tool for tool in previous_tools
-        if isinstance(tool, dict) and isinstance(tool.get("name"), str)
-    } if isinstance(previous_tools, list) else {}
+    previous_by_name = (
+        {tool["name"]: tool for tool in previous_tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)}
+        if isinstance(previous_tools, list)
+        else {}
+    )
     review_ids: set[str] = set()
     added: set[str] = set()
     authority_changed: set[str] = set()
@@ -243,7 +266,10 @@ def write_mcp_catalog(
 
 
 def _skill_metadata_snapshot(
-    catalog: McpCatalogResult, prior: dict[str, object], *, identity_hash: str,
+    catalog: McpCatalogResult,
+    prior: dict[str, object],
+    *,
+    identity_hash: str,
 ) -> dict[str, object]:
     declared = mcp_skills_declared(catalog.capabilities, protocol_version=catalog.protocol_version or "")
     previous = prior.get("skills_catalog")
@@ -254,8 +280,13 @@ def _skill_metadata_snapshot(
     if not complete and isinstance(previous, dict):
         entries = previous.get("entries")
         if isinstance(entries, list):
-            known.update({entry["uri"]: entry for entry in entries
-                          if isinstance(entry, dict) and isinstance(entry.get("uri"), str)})
+            known.update(
+                {
+                    entry["uri"]: entry
+                    for entry in entries
+                    if isinstance(entry, dict) and isinstance(entry.get("uri"), str)
+                }
+            )
     for entry in catalog.skills:
         if entry.get("connection_identity_hash") != identity_hash:
             continue
@@ -266,10 +297,13 @@ def _skill_metadata_snapshot(
                 continue
             known[uri] = entry
     return {
-        "declared": declared, "complete": complete,
+        "declared": declared,
+        "complete": complete,
         "stale": not complete and bool(known),
         "reason": reason or (None if complete else "skills_not_checked"),
-        "known_count": len(known), "entries": list(known.values()), "activation_supported": False,
+        "known_count": len(known),
+        "entries": list(known.values()),
+        "activation_supported": False,
     }
 
 
@@ -288,37 +322,51 @@ def _fresh_until(seen_at: str | None, ttl_ms: int) -> str | None:
 def _authority_shape(tool: dict[str, object]) -> str:
     return json.dumps(
         {key: tool.get(key) for key in ("inputSchema", "outputSchema", "annotations")},
-        sort_keys=True, ensure_ascii=True, allow_nan=False, separators=(",", ":"),
+        sort_keys=True,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
     )
 
 
 def review_catalog_changes(
-    connection: sqlite3.Connection, cli_id: str, review_ids: set[str], known: set[str], seen_at: str | None,
+    connection: sqlite3.Connection,
+    cli_id: str,
+    review_ids: set[str],
+    known: set[str],
+    seen_at: str | None,
 ) -> None:
     """Reset changed/new authority to Ask while retaining explicit Deny."""
 
     changed = False
     # Retain decisions for retired tools as tombstones. A tool that returns
     # must not recover an old Allow or escape an explicit Deny.
-    saved = {row[0] for row in connection.execute(
-        "select command_id from local_cli_command_grant where cli_id = ?", (cli_id,),
-    )}
+    saved = {
+        row[0]
+        for row in connection.execute(
+            "select command_id from local_cli_command_grant where cli_id = ?",
+            (cli_id,),
+        )
+    }
     for command_id in sorted(review_ids & (known | saved)):
         previous = connection.execute(
-            "select state from local_cli_command_grant where cli_id = ? and command_id = ?", (cli_id, command_id),
+            "select state from local_cli_command_grant where cli_id = ? and command_id = ?",
+            (cli_id, command_id),
         ).fetchone()
         if previous is not None and previous[0] in {"block", "review"}:
             continue
         connection.execute(
             "insert into local_cli_command_grant (cli_id, command_id, state) values (?, ?, 'review') "
-            "on conflict(cli_id, command_id) do update set state = 'review'", (cli_id, command_id),
+            "on conflict(cli_id, command_id) do update set state = 'review'",
+            (cli_id, command_id),
         )
         changed = True
     if changed and connection.execute("select 1 from local_cli_grant where cli_id = ?", (cli_id,)).fetchone():
         connection.execute("update local_cli_authority set revision = revision + 1 where singleton = 1")
         connection.execute(
             "update local_cli_grant set revision = (select revision from local_cli_authority where singleton = 1), "
-            "updated_at = ? where cli_id = ?", (seen_at, cli_id),
+            "updated_at = ? where cli_id = ?",
+            (seen_at, cli_id),
         )
 
 

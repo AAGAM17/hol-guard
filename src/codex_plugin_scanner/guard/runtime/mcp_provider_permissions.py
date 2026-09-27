@@ -40,7 +40,11 @@ class ProviderActionFloor:
 
 
 def composio_provider_action_floor(
-    choices: Mapping[str, str], *, harness: str, tool_name: str, arguments: object,
+    choices: Mapping[str, str],
+    *,
+    harness: str,
+    tool_name: str,
+    arguments: object,
 ) -> ProviderActionFloor | None:
     source = observed_mcp_tool(harness, tool_name)
     role = composio_tool_role(tool_name)
@@ -48,22 +52,30 @@ def composio_provider_action_floor(
         return None
     prefix = f"{source.harness}:{source.namespace}:composio:all-accounts:"
     scoped = {
-        key[len(prefix):]: value for key, value in choices.items()
+        key[len(prefix) :]: value
+        for key, value in choices.items()
         if key.startswith(prefix) and valid_provider_action_selector(key) and value in {"review", "block"}
     }
     if role != "batch":
-        return ProviderActionFloor("block", "opaque-execution-with-deny") if "block" in scoped.values() else (
-            ProviderActionFloor("review", "unresolved-actions")
+        return (
+            ProviderActionFloor("block", "opaque-execution-with-deny")
+            if "block" in scoped.values()
+            else (ProviderActionFloor("review", "unresolved-actions"))
         )
     parsed = composio_batch_actions(arguments)
     # A malformed batch cannot hide a definite denied member. This scan does
     # not resolve or authorize other members, and never executes a subset.
     raw = arguments.get("tools") if isinstance(arguments, Mapping) else None
     denied = {slug.casefold() for slug, state in scoped.items() if state == "block"}
-    if isinstance(raw, list) and len(raw) <= 50 and any(
-        isinstance(member, Mapping) and isinstance(slug := member.get("tool_slug"), str)
-        and slug.casefold() in denied
-        for member in raw
+    if (
+        isinstance(raw, list)
+        and len(raw) <= 50
+        and any(
+            isinstance(member, Mapping)
+            and isinstance(slug := member.get("tool_slug"), str)
+            and slug.casefold() in denied
+            for member in raw
+        )
     ):
         return ProviderActionFloor("block", "denied-batch-member")
     if (parsed is None or any(not _SLUG.fullmatch(action.tool_slug) for action in parsed)) and denied:

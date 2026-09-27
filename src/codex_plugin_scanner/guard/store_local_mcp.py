@@ -45,7 +45,11 @@ class StoreLocalMcpMixin:
             return read_provider_authority(connection)
 
     def record_composio_discovery(
-        self, source: ObservedMcpTool, actions: tuple[ComposioActionSchema, ...], *, seen_at: str,
+        self,
+        source: ObservedMcpTool,
+        actions: tuple[ComposioActionSchema, ...],
+        *,
+        seen_at: str,
         proposals: tuple[ComposioWorkflowProposal, ...] = (),
     ) -> str:
         if observed_mcp_tool(source.harness, source.qualified_name) != source or (
@@ -54,8 +58,11 @@ class StoreLocalMcpMixin:
             raise ValueError("invalid provider discovery source")
         server = source.server_identity
         cli_id = self.ensure_local_mcp_observation(
-            source.identity, seen_at=seen_at, server_identity_hash=server.identity_hash,
-            server_command=server.command, server_args_hash=server.args_hash,
+            source.identity,
+            seen_at=seen_at,
+            server_identity_hash=server.identity_hash,
+            server_command=server.command,
+            server_args_hash=server.args_hash,
             source_label=f"{source.harness.title()} · observed provider metadata",
         )
         from .native_policy_snapshot import notify_native_policy_mutation
@@ -74,7 +81,11 @@ class StoreLocalMcpMixin:
                 connection.commit()
                 connection.execute("begin immediate")
                 write_composio_metadata(
-                    connection, source, actions, cli_id=cli_id, seen_at=seen_at,
+                    connection,
+                    source,
+                    actions,
+                    cli_id=cli_id,
+                    seen_at=seen_at,
                     before_authority_change=before_change,
                 )
                 from .store_mcp_workflows import write_workflow_proposals
@@ -96,7 +107,12 @@ class StoreLocalMcpMixin:
             return read_workflow_proposals(connection, cli_id, offset=offset)
 
     def read_local_mcp_provider_actions(
-        self, cli_id: str, *, limit: int = 100, offset: int = 0, search: str = "",
+        self,
+        cli_id: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        search: str = "",
         expected_token: str | None = None,
     ) -> dict[str, object]:
         if not is_local_cli_id(cli_id):
@@ -105,17 +121,28 @@ class StoreLocalMcpMixin:
             connection.execute("begin deferred")
             ensure_local_cli_schema(connection, for_read=True)
             observation = connection.execute(
-                "select identity_hash from local_cli_observation where cli_id = ? and surface = 'mcp'", (cli_id,),
+                "select identity_hash from local_cli_observation where cli_id = ? and surface = 'mcp'",
+                (cli_id,),
             ).fetchone()
             if observation is None:
                 raise ValueError("provider connection not found")
             return read_provider_actions(
-                connection, cli_id, observation[0], limit=limit, offset=offset, search=search,
+                connection,
+                cli_id,
+                observation[0],
+                limit=limit,
+                offset=offset,
+                search=search,
                 expected_token=expected_token,
             )
 
     def read_local_mcp_skills(
-        self, cli_id: str, *, offset: int, search: str, expected_revision: int | None = None,
+        self,
+        cli_id: str,
+        *,
+        offset: int,
+        search: str,
+        expected_revision: int | None = None,
     ) -> dict[str, object]:
         if not is_local_cli_id(cli_id):
             raise ValueError("mcp_skills_unavailable")
@@ -123,12 +150,18 @@ class StoreLocalMcpMixin:
             connection.execute("begin deferred")
             ensure_local_cli_schema(connection, for_read=True)
             observation = connection.execute(
-                "select identity_hash from local_cli_observation where cli_id = ? and surface = 'mcp'", (cli_id,),
+                "select identity_hash from local_cli_observation where cli_id = ? and surface = 'mcp'",
+                (cli_id,),
             ).fetchone()
             if observation is None:
                 raise ValueError("mcp_skills_unavailable")
             return read_mcp_skill_page(
-                connection, cli_id, observation[0], offset=offset, search=search, expected_revision=expected_revision,
+                connection,
+                cli_id,
+                observation[0],
+                offset=offset,
+                search=search,
+                expected_revision=expected_revision,
             )
 
     def find_local_mcp_observation(

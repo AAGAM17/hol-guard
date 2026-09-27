@@ -145,7 +145,8 @@ def _validate_snapshot_scope_v3(root: Mapping[str, object]) -> Mapping[str, obje
 def _validate_snapshot_policy_v3(root: Mapping[str, object]) -> Mapping[str, object]:
     raw = root.get("effective_policy")
     optional = frozenset(
-        field for field in ("mcp_tool_actions", "mcp_provider_actions", "mcp_provider_catalog_hash")
+        field
+        for field in ("mcp_tool_actions", "mcp_provider_actions", "mcp_provider_catalog_hash")
         if isinstance(raw, Mapping) and field in raw
     )
     effective = _require_snapshot_mapping_fields_v3(raw, _EFFECTIVE_POLICY_FIELDS | optional)

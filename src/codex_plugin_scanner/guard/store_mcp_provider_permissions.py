@@ -12,8 +12,12 @@ ProviderUpdate = tuple[str, str, int]
 
 
 def write_provider_choices(
-    connection: sqlite3.Connection, *, cli_id: str, identity_hash: str,
-    updates: Sequence[ProviderUpdate], updated_at: str,
+    connection: sqlite3.Connection,
+    *,
+    cli_id: str,
+    identity_hash: str,
+    updates: Sequence[ProviderUpdate],
+    updated_at: str,
 ) -> None:
     if len(updates) > 100 or len({slug for slug, _, _ in updates}) != len(updates):
         raise ValueError("invalid provider action choices")
@@ -30,7 +34,8 @@ def write_provider_choices(
             raise ValueError("provider_action_revision_conflict")
         # Cached metadata cannot invent a different authority namespace.
         marker = connection.execute(
-            "select server_command from local_cli_observation where cli_id = ?", (cli_id,),
+            "select server_command from local_cli_observation where cli_id = ?",
+            (cli_id,),
         ).fetchone()[0]
         source = _source(marker)
         if source is None or source.server_identity.identity_hash != identity_hash:
@@ -47,7 +52,7 @@ def write_provider_choices(
 def _source(marker: object) -> ObservedMcpTool | None:
     if not isinstance(marker, str) or not marker.startswith(OBSERVED_MCP_PREFIX):
         return None
-    harness, separator, namespace = marker[len(OBSERVED_MCP_PREFIX):].partition(":")
+    harness, separator, namespace = marker[len(OBSERVED_MCP_PREFIX) :].partition(":")
     source = observed_mcp_tool(harness, namespace + "probe") if separator else None
     return source if source is not None and source.namespace == namespace else None
 

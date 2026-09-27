@@ -482,11 +482,13 @@ def evaluate_tool_call(
         current=current,
     )
     if (
-        composio_requires_action_review(artifact.command or "") and current.action != "block"
+        composio_requires_action_review(artifact.command or "")
+        and current.action != "block"
         and store.read_mcp_provider_authority_hash() != artifact.metadata.get("mcp_provider_catalog_hash")
     ):
         return replace(
-            current, action=most_restrictive_guard_action(current.action, "require-reapproval"),
+            current,
+            action=most_restrictive_guard_action(current.action, "require-reapproval"),
             source="composio-schema-reapproval",
             summary="The app action inventory changed. Rebuild this call and review it again.",
         )
@@ -543,7 +545,9 @@ def evaluate_tool_call(
         )
 
     if (
-        validation_reason is None and saved_decision is not None and saved_action == "allow"
+        validation_reason is None
+        and saved_decision is not None
+        and saved_action == "allow"
         and composio_requires_action_review(artifact.command or "")
         and store.approval_reuse_claim_disposition(saved_decision) != "consumed"
     ):
@@ -603,13 +607,21 @@ def _apply_temporary_mcp_grant(
     original_action = current.action
     from .runtime.mcp_provider_permissions import composio_provider_action_floor
 
-    provider_floor = composio_provider_action_floor(
-        store.read_mcp_provider_choices(), harness=artifact.harness,
-        tool_name=artifact.command or "", arguments=arguments,
-    ) if composio_requires_action_review(artifact.command or "") else None
+    provider_floor = (
+        composio_provider_action_floor(
+            store.read_mcp_provider_choices(),
+            harness=artifact.harness,
+            tool_name=artifact.command or "",
+            arguments=arguments,
+        )
+        if composio_requires_action_review(artifact.command or "")
+        else None
+    )
     if provider_floor is not None and provider_floor.action == "block":
         return replace(
-            current, action="block", source="composio-action-deny",
+            current,
+            action="block",
+            source="composio-action-deny",
             summary="A denied app action blocks this execution. No batch member may run.",
         )
     if original_action == "review":

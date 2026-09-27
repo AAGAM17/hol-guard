@@ -107,8 +107,11 @@ def apply_custom_extension_continuity_mutation_locked(
             if state == "unset":
                 raise ValueError("provider choices cannot accompany removal")
             write_provider_choices(
-                connection, cli_id=identity.cli_id, identity_hash=identity.identity_hash,
-                updates=updates, updated_at=mutation.updated_at,
+                connection,
+                cli_id=identity.cli_id,
+                identity_hash=identity.identity_hash,
+                updates=updates,
+                updated_at=mutation.updated_at,
             )
     boundary("after_authority")
     _write_sync_payloads(connection, mutation.sync_payloads, updated_at=mutation.updated_at)
@@ -205,7 +208,8 @@ def _write_local_cli_grant(
         _upsert_grant(connection, identity=identity, state=state, revision=next_revision, updated_at=updated_at)
         if command_states is not None:
             observation = connection.execute(
-                "select surface from local_cli_observation where cli_id = ?", (identity.cli_id,),
+                "select surface from local_cli_observation where cli_id = ?",
+                (identity.cli_id,),
             ).fetchone()
             if observation is not None and observation[0] == "mcp":
                 # The visible payload omits retired tools. Preserve their Deny

@@ -1,4 +1,5 @@
 import { fetchLocalCliApi } from "./guard-api";
+import { startCancelableDiscoveryJob } from "./discovery-job-start";
 import { isLocalCliId, normalizeLocalCliList, waitForMcpDiscoveryJob } from "./local-cli-api";
 
 export type LocalSkillRoot = { root_id: string; path: string; available: boolean };
@@ -36,7 +37,10 @@ export async function fetchLocalSkillRoots(signal?: AbortSignal): Promise<LocalS
 
 export async function scanLocalSkillMetadata(rootIds: string[], signal: AbortSignal): Promise<void> {
   if (signal.aborted) return;
-  const job = await request({ operation: "scan", confirm_metadata_read: true, approved_root_ids: rootIds });
+  const job = await startCancelableDiscoveryJob(signal, (clientJobId) => request(
+    { operation: "scan", confirm_metadata_read: true, approved_root_ids: rootIds, client_job_id: clientJobId }, signal,
+  ));
+  if (job === null) return;
   await waitForMcpDiscoveryJob("inventory:skills", job, signal);
 }
 
@@ -79,7 +83,10 @@ export type SkillWorkflowPreflight = {
 
 export async function prepareSkillWorkflow(skillId: string, signal: AbortSignal): Promise<SkillWorkflowPreflight | null> {
   if (signal.aborted) return null;
-  const job = await request({ operation: "preflight", skill_id: skillId, confirm_directory_read: true });
+  const job = await startCancelableDiscoveryJob(signal, (clientJobId) => request(
+    { operation: "preflight", skill_id: skillId, confirm_directory_read: true, client_job_id: clientJobId }, signal,
+  ));
+  if (job === null) return null;
   await waitForMcpDiscoveryJob(`skill:${skillId}`, job, signal);
   if (signal.aborted) return null;
   const body = await request({ operation: "preflight-result", skill_id: skillId }, signal);

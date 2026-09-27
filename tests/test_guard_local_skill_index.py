@@ -65,13 +65,16 @@ def test_symlink_roots_and_documents_are_explicit_gaps(tmp_path: Path):
     assert issues == [{"root_id": "safe", "reason": "linked-skill-not-indexed"}]
 
 
-@pytest.mark.parametrize("header,reason", [
-    ("name: replaced\n", "metadata-invalid-frontmatter"),
-    ("compatibility: !!python/object/apply:os.system ['echo unsafe']\n", "metadata-invalid-frontmatter"),
-    ("description: duplicate\n", "metadata-invalid-frontmatter"),
-    ("compatibility: " + "x" * 501 + "\n", "metadata-invalid-compatibility"),
-    ("# " + "x" * 20_000 + "\n", "metadata-frontmatter-limit"),
-])
+@pytest.mark.parametrize(
+    "header,reason",
+    [
+        ("name: replaced\n", "metadata-invalid-frontmatter"),
+        ("compatibility: !!python/object/apply:os.system ['echo unsafe']\n", "metadata-invalid-frontmatter"),
+        ("description: duplicate\n", "metadata-invalid-frontmatter"),
+        ("compatibility: " + "x" * 501 + "\n", "metadata-invalid-compatibility"),
+        ("# " + "x" * 20_000 + "\n", "metadata-frontmatter-limit"),
+    ],
+)
 def test_malformed_or_over_limit_metadata_is_not_loaded(tmp_path: Path, header: str, reason: str):
     root = tmp_path / "skills"
     document = _skill(root, frontmatter=header)
@@ -145,6 +148,10 @@ def test_skill_api_requires_exact_root_selection_and_pages_consistently(tmp_path
         assert preflight["inspection"]["status"] == "complete"
         assert preflight["dependency_status"] == "absent"
         assert store.read_local_cli_revision() == 0
+        record = api._skill_records[skill_id]
+        (record.document.parent / "new-guide.md").write_text("A changed supporting file")
+        with pytest.raises(LocalCliApiError, match="Skill files changed"):
+            api.skills({"operation": "preflight-result", "skill_id": skill_id})
         api._skill_preflights[skill_id] = (time.monotonic() - 31, preflight)
         with pytest.raises(LocalCliApiError, match="Prepare this workflow again"):
             api.skills({"operation": "preflight-result", "skill_id": skill_id})

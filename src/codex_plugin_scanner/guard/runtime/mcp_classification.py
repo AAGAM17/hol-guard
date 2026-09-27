@@ -18,7 +18,11 @@ _SECRET_FIELDS = frozenset({"password", "token", "api_key", "secret", "credentia
 
 
 def classify_mcp_action(
-    name: str, schema: object, *, provider: str | None = None, annotations: object = None,
+    name: str,
+    schema: object,
+    *,
+    provider: str | None = None,
+    annotations: object = None,
     full_schema: bool = True,
 ) -> dict[str, object]:
     """Describe static evidence without reading field values or executing tools.
@@ -64,10 +68,14 @@ def classify_mcp_action(
         warnings.append("effect-unresolved")
     return {
         "schema_version": "guard.mcp-classification.v1",
-        "effect": effect, "data": data, "destination": destination,
+        "effect": effect,
+        "data": data,
+        "destination": destination,
         "reversibility": reversibility,
         "confidence": "reviewed-mapping" if mapping and complete and full_schema else "limited",
-        "evidence": evidence, "warnings": warnings, "advisory_only": True,
+        "evidence": evidence,
+        "warnings": warnings,
+        "advisory_only": True,
     }
 
 

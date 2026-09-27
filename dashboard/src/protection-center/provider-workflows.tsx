@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { fetchProviderWorkflows, type ProviderWorkflow } from "../provider-workflows-api";
 
+const requirementLabels = { "saved-deny": "Saved Deny", unresolved: "Not observed", ask: "Needs review" };
+
 export function ProviderWorkflows({ cliId }: { cliId: string }) {
   const [open, setOpen] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -43,7 +45,7 @@ export function ProviderWorkflows({ cliId }: { cliId: string }) {
             : "Action suggestions only; no plan guidance was returned."}</p>
           <ul className="mt-2 space-y-1">{proposal.requirements.map((part) => <li key={part.slug} className="break-words">
             {part.slug.replaceAll("_", " ").toLowerCase()} · {part.role === "primary" ? "Primary" : "Supporting"}
-            {" · "}{part.state === "saved-deny" ? "Saved Deny" : part.state === "unresolved" ? "Not observed" : "Needs review"}
+            {" · "}{requirementLabels[part.state]}
             {!part.schemaObserved && part.state !== "unresolved" ? " · Schema incomplete" : ""}
           </li>)}</ul>
         </li>)}</ol>

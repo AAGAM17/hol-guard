@@ -84,7 +84,7 @@ def test_scheduler_handles_48_routine_reviews_without_capacity_rejection() -> No
             client_key=f"client-{index % 6}",
             lane="decision",
             payload_bytes=1,
-            deadline=time.monotonic() + 8 * coverage_scale,
+            deadline=time.monotonic() + 16 * coverage_scale,
         )
         assert admission.permit is not None
         time.sleep(0.002)

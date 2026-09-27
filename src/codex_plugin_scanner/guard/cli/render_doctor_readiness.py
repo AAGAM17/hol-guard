@@ -27,6 +27,7 @@ def build_doctor_harness_table(detections: list[dict[str, object]]) -> Table:
 
     table = Table(box=box.SIMPLE_HEAVY, show_header=True)
     table.add_column("Harness", style="bold")
+    table.add_column("Detection")
     table.add_column("Registration")
     table.add_column("Runtime readiness")
     table.add_column("Warnings", justify="right")
@@ -53,6 +54,7 @@ def build_doctor_harness_table(detections: list[dict[str, object]]) -> Table:
         warnings = detection.get("warnings")
         table.add_row(
             Text(str(detection.get("harness", "unknown"))),
+            "Found" if detection.get("installed") else "Not found",
             registration_labels.get(str(detection.get("setup_status")), "Not checked"),
             value,
             str(len(warnings) if isinstance(warnings, list) else 0),

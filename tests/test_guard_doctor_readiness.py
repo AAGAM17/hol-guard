@@ -130,6 +130,25 @@ def test_global_doctor_text_does_not_label_detected_harness_ready(capsys) -> Non
     assert "Ready" not in output
 
 
+@pytest.mark.parametrize("installed", [True, False])
+@pytest.mark.parametrize("width", [80, 120])
+def test_global_doctor_distinguishes_detection_from_missing_registration(installed, width) -> None:
+    stream = StringIO()
+    console = Console(file=stream, width=width, color_system=None)
+    _render_doctor(
+        console,
+        {
+            "tables": [],
+            "adapters": [{"harness": "codex", "installed": installed, "setup_status": "not_found"}],
+        },
+    )
+    output = " ".join(stream.getvalue().split())
+
+    assert "Detection" in output
+    detection = "Found" if installed else "Not found"
+    assert f"codex {detection} Not found Unverified" in output
+
+
 def test_doctor_readiness_does_not_echo_raw_probe_data_or_accept_claimed_health() -> None:
     readiness = doctor_runtime_readiness(
         {

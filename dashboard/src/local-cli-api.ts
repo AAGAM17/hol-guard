@@ -83,6 +83,7 @@ export type LocalCliItem = {
 export type LocalCliListResponse = {
   schema_version: string;
   revision: number;
+  discovery_issue?: "catalog_limit_reached" | "observed_provider_scan_failed" | "configured_host_scan_failed";
   native_publication?: {
     state: "acknowledged" | "pending" | "failed" | "unavailable";
     revision: number;

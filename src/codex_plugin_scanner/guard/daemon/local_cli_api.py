@@ -5,7 +5,6 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
-from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -330,11 +329,13 @@ class LocalCliApiService:
                         raise DiscoveryStageError("configured_host_scan_failed") from None
                     if not cancel.is_set():
                         try:
-                            discover_observed_mcp_tools(self._store, seen_at=utc_now())
+                            saturated = discover_observed_mcp_tools(self._store, seen_at=utc_now())
                         except Exception as error:
                             if str(error) == "local_cli_catalog_limit":
                                 raise DiscoveryStageError("catalog_limit_reached") from None
                             raise DiscoveryStageError("observed_provider_scan_failed") from None
+                        if saturated:
+                            raise DiscoveryStageError("catalog_limit_reached")
 
                 return self._discovery_jobs.start(
                     "inventory:configured",
@@ -535,17 +536,13 @@ class LocalCliApiService:
         extension so project scripts reappear without blocking the overview.
         """
         # Connector history and configured launch discovery are independent.
-        with suppress(
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-            KeyError,
-            UnicodeError,
-            sqlite3.Error,
-            AttributeError,
-        ):
-            discover_observed_mcp_tools(self._store, seen_at=utc_now())
+        discovery_issue = None
+        try:
+            saturated = discover_observed_mcp_tools(self._store, seen_at=utc_now())
+            if saturated:
+                discovery_issue = "catalog_limit_reached"
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error, AttributeError):
+            discovery_issue = "observed_provider_scan_failed"
         try:
             labels = self._observe_harness_mcp_servers()
             items = apply_source_labels(
@@ -554,7 +551,12 @@ class LocalCliApiService:
             )
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             items = self._listed_public_items()
-        return self._list_payload(items)
+            if discovery_issue is None:
+                discovery_issue = "configured_host_scan_failed"
+        result = self._list_payload(items)
+        if discovery_issue is not None:
+            result["discovery_issue"] = discovery_issue
+        return result
 
     def _listed_public_items(self) -> list[dict[str, object]]:
         stored = self._store.list_local_cli_items()

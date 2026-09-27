@@ -210,6 +210,22 @@ def test_discover_items_falls_back_to_store_when_refresh_fails(tmp_path: Path, m
     assert listed["state"] == "allowed"
 
 
+def test_discover_items_reports_observed_catalog_limit_with_other_items(tmp_path: Path, monkeypatch) -> None:
+    service = LocalCliApiService(store=GuardStore(tmp_path / "home"))
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.local_cli_api.discover_observed_mcp_tools",
+        lambda *_args, **_kwargs: 1,
+    )
+    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda: {})
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.local_cli_api.refresh_package_script_catalogs",
+        lambda *_args, **_kwargs: [],
+    )
+    payload = service.discover_items()
+    assert payload["items"] == []
+    assert payload["discovery_issue"] == "catalog_limit_reached"
+
+
 def test_discover_items_rereads_store_after_partial_refresh_failure(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()

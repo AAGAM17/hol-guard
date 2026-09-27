@@ -21,6 +21,19 @@ async function fetchLocalCliDiscover(): Promise<LocalCliListResponse> {
   return normalizeLocalCliList(payload);
 }
 
+function discoveryIssueMessage(issue: LocalCliListResponse["discovery_issue"]): string | null {
+  switch (issue) {
+    case "catalog_limit_reached":
+      return "Some observed connectors have more tools than Guard can show safely. Existing choices were kept.";
+    case "configured_host_scan_failed":
+      return "Guard could not read configured host connections. Check the host app and retry.";
+    case "observed_provider_scan_failed":
+      return "Guard could not merge observed provider tools. Existing choices were kept; retry discovery.";
+    default:
+      return null;
+  }
+}
+
 export function useLocalCliCatalog() {
   const [data, setData] = useState<LocalCliListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +63,13 @@ export function useLocalCliCatalog() {
       const next = await fetchLocalCliDiscover();
       if (loadGeneration.current !== generation) return;
       setData(next);
-      setError(null);
-    } catch {
+      setError(discoveryIssueMessage(next.discovery_issue));
+    } catch (error) {
       try {
         const next = await fetchLocalCliList();
         if (loadGeneration.current !== generation) return;
         setData(next);
-        setError(null);
+        setError(error instanceof Error ? error.message : "Guard could not refresh custom extensions.");
       } catch (caught) {
         if (loadGeneration.current !== generation) return;
         setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");

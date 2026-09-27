@@ -205,6 +205,7 @@ export function normalizeLocalCliList(value: unknown): LocalCliListResponse {
     : [];
   const revision = requiredInt(value.revision, "revision");
   const publication = value.native_publication;
+  const discoveryIssue = value.discovery_issue;
   let nativePublication: LocalCliListResponse["native_publication"];
   if (isRecord(publication) && publication.revision === revision && (
     publication.state === "pending" || publication.state === "failed" || publication.state === "unavailable"
@@ -218,6 +219,8 @@ export function normalizeLocalCliList(value: unknown): LocalCliListResponse {
   return {
     schema_version: requiredString(value.schema_version, "schema"),
     revision,
+    ...((discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed"
+      || discoveryIssue === "configured_host_scan_failed") ? { discovery_issue: discoveryIssue } : {}),
     ...(nativePublication ? { native_publication: nativePublication } : {}),
     items,
     cloud: {

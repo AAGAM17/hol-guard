@@ -110,7 +110,7 @@ def tools_from_receipts(receipts: Sequence[Mapping[str, object]]) -> tuple[Obser
     return tuple(tools.values())
 
 
-def discover_observed_mcp_tools(store: GuardStore, *, seen_at: str) -> None:
+def discover_observed_mcp_tools(store: GuardStore, *, seen_at: str) -> int:
     """Backfill connector suggestions. Existing grants and tool states survive."""
 
     groups: dict[tuple[str, str], list[ObservedMcpTool]] = {}
@@ -128,6 +128,7 @@ def discover_observed_mcp_tools(store: GuardStore, *, seen_at: str) -> None:
         group = groups.setdefault(key, [])
         if tool not in group and len(group) < MAX_OBSERVED_MCP_TOOLS:
             group.append(tool)
+    saturated = 0
     for tools in groups.values():
         first = tools[0]
         server = first.server_identity
@@ -150,7 +151,16 @@ def discover_observed_mcp_tools(store: GuardStore, *, seen_at: str) -> None:
         ]
         # There is no allow-all fallback for an observed connector. Its catalog
         # is incomplete; unseen tools must retain their normal review.
-        store.merge_local_cli_commands(cli_id, catalog, limit=MAX_OBSERVED_MCP_TOOLS)
+        try:
+            store.merge_local_cli_commands(cli_id, catalog, limit=MAX_OBSERVED_MCP_TOOLS)
+        except ValueError as error:
+            if str(error) != "local_cli_catalog_limit":
+                raise
+            # Keep this connector's prior choices, continue other connectors,
+            # and let the caller report incomplete coverage.
+            saturated += 1
+            continue
+    return saturated
 
 
 def native_observed_mcp_tool_actions(store: GuardStore) -> dict[str, str]:

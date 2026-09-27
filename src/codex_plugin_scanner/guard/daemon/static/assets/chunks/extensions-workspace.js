@@ -434,6 +434,7 @@ function normalizeLocalCliList(value) {
   }) : [];
   const revision = requiredInt(value.revision, "revision");
   const publication = value.native_publication;
+  const discoveryIssue = value.discovery_issue;
   let nativePublication;
   if (isRecord(publication) && publication.revision === revision && (publication.state === "pending" || publication.state === "failed" || publication.state === "unavailable")) {
     nativePublication = { state: publication.state, revision };
@@ -443,6 +444,7 @@ function normalizeLocalCliList(value) {
   return {
     schema_version: requiredString(value.schema_version, "schema"),
     revision,
+    ...discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed" || discoveryIssue === "configured_host_scan_failed" ? { discovery_issue: discoveryIssue } : {},
     ...nativePublication ? { native_publication: nativePublication } : {},
     items,
     cloud: {
@@ -5251,6 +5253,18 @@ async function fetchLocalCliDiscover() {
   }
   return normalizeLocalCliList(payload);
 }
+function discoveryIssueMessage(issue) {
+  switch (issue) {
+    case "catalog_limit_reached":
+      return "Some observed connectors have more tools than Guard can show safely. Existing choices were kept.";
+    case "configured_host_scan_failed":
+      return "Guard could not read configured host connections. Check the host app and retry.";
+    case "observed_provider_scan_failed":
+      return "Guard could not merge observed provider tools. Existing choices were kept; retry discovery.";
+    default:
+      return null;
+  }
+}
 function useLocalCliCatalog() {
   const [data, setData] = reactExports.useState(null);
   const [error, setError] = reactExports.useState(null);
@@ -5280,13 +5294,13 @@ function useLocalCliCatalog() {
       const next = await fetchLocalCliDiscover();
       if (loadGeneration.current !== generation) return;
       setData(next);
-      setError(null);
-    } catch {
+      setError(discoveryIssueMessage(next.discovery_issue));
+    } catch (error2) {
       try {
         const next = await fetchLocalCliList();
         if (loadGeneration.current !== generation) return;
         setData(next);
-        setError(null);
+        setError(error2 instanceof Error ? error2.message : "Guard could not refresh custom extensions.");
       } catch (caught) {
         if (loadGeneration.current !== generation) return;
         setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");

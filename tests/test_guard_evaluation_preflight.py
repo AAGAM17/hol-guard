@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 from urllib.request import Request, urlopen
 
@@ -25,6 +26,53 @@ from codex_plugin_scanner.guard.evaluation_preflight import (
     setup_evaluation,
 )
 from codex_plugin_scanner.guard.evaluation_witness import LocalSideEffectWitness
+
+
+def test_windows_job_cleanup_serializes_only_the_owned_probe() -> None:
+    entered = Event()
+    release = Event()
+    attempted = Event()
+    terminated = Event()
+    other_closed = Event()
+    calls: list[str] = []
+
+    class BlockingJob:
+        def close(self) -> None:
+            calls.append("closing")
+            entered.set()
+            assert release.wait(timeout=2)
+            calls.append("closed")
+
+        def terminate(self) -> None:
+            calls.append("terminated")
+            terminated.set()
+
+    owned = probe_module._ProbeWindowsJob(BlockingJob())
+    other = probe_module._ProbeWindowsJob(SimpleNamespace(close=other_closed.set))
+
+    def terminate_owned() -> None:
+        attempted.set()
+        owned.terminate()
+
+    threads = [Thread(target=owned.close), Thread(target=terminate_owned), Thread(target=other.close)]
+    started: list[Thread] = []
+    try:
+        threads[0].start()
+        started.append(threads[0])
+        assert entered.wait(timeout=1)
+        threads[1].start()
+        started.append(threads[1])
+        assert attempted.wait(timeout=1)
+        threads[2].start()
+        started.append(threads[2])
+        assert other_closed.wait(timeout=1)
+        assert not terminated.wait(timeout=0.05)
+    finally:
+        release.set()
+        for thread in started:
+            thread.join(timeout=2)
+    assert all(not thread.is_alive() for thread in started)
+    assert calls == ["closing", "closed", "terminated"]
 
 
 def _host_os() -> str:

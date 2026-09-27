@@ -20,7 +20,6 @@ from ..codex_hook_windows_job import WindowsHookJob, spawn_windows_hook_process
 _PROBE_TIMEOUT_SECONDS: Final = 15
 _PROBE_OUTPUT_LIMIT_BYTES: Final = 64 * 1024
 _PROBE_REAP_TIMEOUT_SECONDS: Final = 1.0
-_JOB_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +30,20 @@ class ProbeResult:
     timed_out: bool
     output_overflow: bool
     capture_incomplete: bool = False
+
+
+@dataclass(slots=True)
+class _ProbeWindowsJob:
+    job: WindowsHookJob
+    lock: LockType = field(default_factory=threading.Lock)
+
+    def terminate(self) -> None:
+        with self.lock:
+            self.job.terminate()
+
+    def close(self) -> None:
+        with self.lock:
+            self.job.close()
 
 
 @dataclass(slots=True)
@@ -137,7 +150,7 @@ def _run_posix_probe(
 
 
 def _stop_threaded_probe(
-    process: subprocess.Popen[bytes], job: WindowsHookJob | None, capture_error: threading.Event
+    process: subprocess.Popen[bytes], job: _ProbeWindowsJob | None, capture_error: threading.Event
 ) -> None:
     try:
         if job is not None:
@@ -147,7 +160,7 @@ def _stop_threaded_probe(
     except OSError:
         capture_error.set()
         if job is not None:
-            with _JOB_LOCK, contextlib.suppress(OSError):
+            with contextlib.suppress(OSError):
                 job.close()
         with contextlib.suppress(OSError):
             process.kill()
@@ -160,7 +173,7 @@ def _read_bounded_stream(
     process: subprocess.Popen[bytes],
     budget: _OutputBudget,
     capture_error: threading.Event,
-    job: WindowsHookJob | None,
+    job: _ProbeWindowsJob | None,
 ) -> None:
     total = 0
     while True:
@@ -211,12 +224,13 @@ def run_probe(
         raise ValueError("invalid probe output limit")
     stream_limit = _PROBE_OUTPUT_LIMIT_BYTES if output_limit_bytes is None else output_limit
     budget = _OutputBudget(output_limit, stream_limit)
-    job: WindowsHookJob | None = None
+    job: _ProbeWindowsJob | None = None
     try:
         if os.name == "posix":
             return _run_posix_probe(command, cwd=cwd, env=env, timeout=timeout, budget=budget)
         if os.name == "nt":
-            process, job = spawn_windows_hook_process(command, cwd=cwd, environment=env)
+            process, windows_job = spawn_windows_hook_process(command, cwd=cwd, environment=env)
+            job = _ProbeWindowsJob(windows_job)
             assert process.stdin is not None
             try:
                 process.stdin.close()
@@ -272,8 +286,7 @@ def run_probe(
     finally:
         if job is not None:
             try:
-                with _JOB_LOCK:
-                    job.close()
+                job.close()
             except OSError:
                 capture_error.set()
                 _stop_threaded_probe(process, job, capture_error)

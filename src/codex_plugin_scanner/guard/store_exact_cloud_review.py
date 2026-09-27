@@ -14,7 +14,10 @@ from .runtime.time_support import parse_utc_timestamp
 from .store_approvals import get_approval_request as load_approval_request
 from .store_approvals import resolve_one_request_only as persist_one_resolution
 from .store_approvals import resolve_request_with_queue_result as persist_queue_resolution
-from .store_local_once_authority import persist_local_once_approval
+from .store_local_once_authority import (
+    EXACT_CLOUD_AUTHORITY_KIND,
+    persist_local_once_approval,
+)
 
 _CAPABILITY_KEY = "guard_exact_cloud_review_capability"
 _OAUTH_KEY = "oauth_local_credentials"
@@ -314,6 +317,7 @@ class StoreExactCloudReviewMixin:
                     ).isoformat(),
                     integrity_key=local_integrity_key,
                     integrity_key_id=local_integrity_key_id,
+                    authority_kind=EXACT_CLOUD_AUTHORITY_KIND,
                 )
                 if authority_id is None:
                     raise RuntimeError("exact Cloud Review request has no exact local authority target")

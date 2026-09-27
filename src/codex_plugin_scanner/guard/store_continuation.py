@@ -9,6 +9,11 @@ from collections.abc import Mapping
 
 # ruff: noqa: F403,F405
 from .store_base import *
+from .store_exact_cloud_local_once import claim_exact_cloud_local_once_approval_locked
+from .store_local_once_authority import (
+    EXACT_CLOUD_AUTHORITY_KIND,
+    LOCAL_ONCE_LEGACY_AUTHORITY_KIND,
+)
 from .store_policy import _approval_authority_revision
 from .store_review_event_outbox_writes import append_request_snapshot_event
 
@@ -223,6 +228,7 @@ class StoreContinuationMixin:
         self,
         connection: sqlite3.Connection,
         *,
+        request_id: str,
         approval_decision: Mapping[str, object],
         now: str,
     ) -> bool:
@@ -243,6 +249,21 @@ class StoreContinuationMixin:
             return False
         if _approval_authority_revision(connection) != authority_revision:
             return False
+        authority_kind = approval_decision.get("authority_kind")
+        if authority_kind == EXACT_CLOUD_AUTHORITY_KIND:
+            return (
+                claim_exact_cloud_local_once_approval_locked(
+                    connection,
+                    request_id=request_id,
+                    expected_decision=approval_decision,
+                    now=now,
+                    integrity_key=integrity_key,
+                    integrity_key_id=integrity_key_id,
+                )
+                is not None
+            )
+        if authority_kind != LOCAL_ONCE_LEGACY_AUTHORITY_KIND:
+            return False
         return (
             self._claim_local_once_approval_by_id_locked(
                 connection,
@@ -251,6 +272,7 @@ class StoreContinuationMixin:
                 expected_decision=approval_decision,
                 integrity_key=integrity_key,
                 integrity_key_id=integrity_key_id,
+                authority_kind=LOCAL_ONCE_LEGACY_AUTHORITY_KIND,
             )
             is not None
         )
@@ -323,6 +345,7 @@ class StoreContinuationMixin:
             connection.execute("begin immediate")
             if approval_decision is not None and not self._claim_continuation_approval_authority(
                 connection,
+                request_id=request_id,
                 approval_decision=approval_decision,
                 now=now,
             ):

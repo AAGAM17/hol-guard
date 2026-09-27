@@ -128,20 +128,13 @@ def test_exact_cloud_review_resolves_one_request_without_policy_or_memory(tmp_pa
     assert store.get_sync_payload("guard_review_memory_registry") is None
     resolved_at = resolution.resolved_request["resolved_at"]
     assert isinstance(resolved_at, str)
-    authority_lookup = store.resolve_policy_decision_lookup(
-        harness=target.harness,
-        artifact_id=target.artifact_id,
-        artifact_hash=target.artifact_hash,
-        workspace=target.workspace,
-        publisher=target.publisher,
-        now=resolved_at,
-        consume_one_shot=False,
-    )
-    authority = authority_lookup["decision"]
+    assert target_row is not None
+    authority = store.peek_exact_cloud_local_once_approval(request_id=target.request_id, now=resolved_at)
     assert authority is not None
     assert authority["request_id"] == target.request_id
     assert authority["source"] == "approval-gate-once"
-    assert store.claim_approval_reuse_decision(authority, now=resolved_at) is True
+    assert authority["authority_kind"] == "exact-cloud"
+    assert store.claim_local_once_approval(authority["approval_id"], claimed_at=resolved_at) is False
     assert (
         store.peek_local_once_approval(
             harness=target.harness,

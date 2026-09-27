@@ -27,6 +27,7 @@ from .store_connection_schema import StoreConnectionSchemaMixin
 from .store_continuation import StoreContinuationMixin
 from .store_custom_extension_continuity import StoreCustomExtensionContinuityMixin
 from .store_event_receipts import StoreEventReceiptsMixin
+from .store_exact_cloud_local_once import StoreExactCloudLocalOnceMixin
 from .store_extension_control_authority import StoreExtensionControlAuthorityMixin
 from .store_managed_controls_status import StoreManagedControlsStatusMixin
 from .store_local_cli import StoreLocalCliMixin
@@ -90,6 +91,7 @@ class GuardStore(
     StoreApprovalsMixin,
     StoreExactCloudReviewMixin,
     StoreReviewEventOutboxMixin,
+    StoreExactCloudLocalOnceMixin,
     StoreEventReceiptsMixin,
     StoreNativeDecisionReceiptsMixin,
     StoreNativeWorkspaceReviewMixin,

@@ -145,6 +145,9 @@ def _stop_threaded_probe(
             process.kill()
     except OSError:
         capture_error.set()
+        if job is not None:
+            with contextlib.suppress(OSError):
+                job.close()
         with contextlib.suppress(OSError):
             process.kill()
 
@@ -184,7 +187,11 @@ def run_probe(
     timeout_seconds: float | None = None,
     output_limit_bytes: int | None = None,
 ) -> ProbeResult:
-    """Run a probe with no stdin and strictly bounded output and duration."""
+    """Run a probe with no stdin and strictly bounded output and duration.
+
+    An explicit output limit is shared by stdout and stderr. Either stream may
+    use the full shared budget. Defaults retain 64 KiB for each stream.
+    """
 
     timeout = float(_PROBE_TIMEOUT_SECONDS) if timeout_seconds is None else timeout_seconds
     if (
@@ -212,7 +219,7 @@ def run_probe(
             assert process.stdin is not None
             try:
                 process.stdin.close()
-            except OSError:
+            except (OSError, ValueError):
                 with contextlib.suppress(OSError):
                     job.close()
                 with contextlib.suppress(OSError, subprocess.TimeoutExpired):
@@ -227,7 +234,7 @@ def run_probe(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-    except OSError as error:
+    except (OSError, ValueError) as error:
         raise RuntimeError("guard_hook_python_probe_execution_failed") from error
     assert process.stdout is not None
     assert process.stderr is not None
@@ -247,25 +254,27 @@ def run_probe(
             daemon=True,
         ),
     )
-    for reader in readers:
-        reader.start()
     deadline = time.monotonic() + timeout
     timed_out = capture_incomplete = False
     try:
-        _ = process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        _stop_threaded_probe(process, job, capture_error)
+        for reader in readers:
+            reader.start()
         try:
-            _ = process.wait(timeout=_PROBE_REAP_TIMEOUT_SECONDS)
+            _ = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            capture_incomplete = True
-    if job is not None:
-        try:
-            job.close()
-        except OSError:
-            capture_error.set()
+            timed_out = True
             _stop_threaded_probe(process, job, capture_error)
+            try:
+                _ = process.wait(timeout=_PROBE_REAP_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                capture_incomplete = True
+    finally:
+        if job is not None:
+            try:
+                job.close()
+            except OSError:
+                capture_error.set()
+                _stop_threaded_probe(process, job, capture_error)
     for reader in readers:
         reader.join(timeout=max(0, deadline - time.monotonic()))
     capture_incomplete = capture_incomplete or capture_error.is_set() or any(reader.is_alive() for reader in readers)

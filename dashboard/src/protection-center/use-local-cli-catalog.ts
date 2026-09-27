@@ -37,6 +37,7 @@ function discoveryIssueMessage(issue: LocalCliListResponse["discovery_issue"]): 
 export function useLocalCliCatalog() {
   const [data, setData] = useState<LocalCliListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const loadGeneration = useRef(0);
@@ -63,13 +64,14 @@ export function useLocalCliCatalog() {
       const next = await fetchLocalCliDiscover();
       if (loadGeneration.current !== generation) return;
       setData(next);
-      setError(discoveryIssueMessage(next.discovery_issue));
+      setError(null);
+      setDiscoveryNotice(discoveryIssueMessage(next.discovery_issue));
     } catch (error) {
       try {
         const next = await fetchLocalCliList();
         if (loadGeneration.current !== generation) return;
         setData(next);
-        setError(error instanceof Error ? error.message : "Guard could not refresh custom extensions.");
+        setDiscoveryNotice(error instanceof Error ? error.message : "Guard could not refresh custom extensions.");
       } catch (caught) {
         if (loadGeneration.current !== generation) return;
         setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
@@ -96,5 +98,5 @@ export function useLocalCliCatalog() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [data, discovering, load]);
-  return { data, error, load, discover, discovering, catalogReady };
+  return { data, error: error ?? discoveryNotice, load, discover, discovering, catalogReady };
 }

@@ -312,6 +312,7 @@ jobs:
               --collect-submodules codex_plugin_scanner --collect-data codex_plugin_scanner \
               --add-data "$NATIVE_RUNTIME:codex_plugin_scanner/_native" \
               --add-data "$NATIVE_MANIFEST:codex_plugin_scanner/_native" \
+              --add-data "$SOURCE/src/codex_plugin_scanner/version.py:." \
               --distpath "$DIST" --workpath "$RUNNER_TEMP/pyinstaller" --specpath "$RUNNER_TEMP/spec" \
               scripts/mdm/hol-guard-entry.py
           )

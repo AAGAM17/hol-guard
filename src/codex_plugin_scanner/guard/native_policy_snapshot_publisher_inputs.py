@@ -32,6 +32,7 @@ class NativePolicySnapshotPublisherInputs:
 
     store: GuardStore  # pyright: ignore[reportUninitializedInstanceVariable]
     _command_control_runtime: ExtensionControlRuntime | None = None
+    _observe_extension_refresh: bool = False
     guard_home: Path  # pyright: ignore[reportUninitializedInstanceVariable]
     _condition: Condition  # pyright: ignore[reportUninitializedInstanceVariable]
     _acked: bool  # pyright: ignore[reportUninitializedInstanceVariable]

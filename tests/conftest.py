@@ -171,6 +171,42 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
 
 
 @pytest.fixture(autouse=True)
+def _close_native_policy_publishers_before_monkeypatch_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Join native snapshot publishers created by test-owned workers."""
+    del monkeypatch
+    from codex_plugin_scanner.guard import native_policy_snapshot
+
+    with native_policy_snapshot._PUBLISHER_LOCK:
+        existing_publishers = {
+            id(publisher) for registered in native_policy_snapshot._PUBLISHERS.values() for publisher in registered
+        }
+    yield
+
+    with native_policy_snapshot._PUBLISHER_LOCK:
+        publishers = tuple(
+            publisher
+            for registered in native_policy_snapshot._PUBLISHERS.values()
+            for publisher in registered
+            if id(publisher) not in existing_publishers
+        )
+    live_publishers: list[str] = []
+    for publisher in publishers:
+        publisher.close(timeout_seconds=5.0)
+        thread = getattr(publisher, "_thread", None)
+        if isinstance(thread, threading.Thread) and thread.is_alive():
+            with native_policy_snapshot._PUBLISHER_LOCK:
+                native_policy_snapshot._PUBLISHERS.setdefault(
+                    native_policy_snapshot._publisher_key(Path(publisher.guard_home)),
+                    set(),
+                ).add(publisher)
+            live_publishers.append(f"{publisher.guard_home}:{thread.name}")
+    if live_publishers:
+        raise AssertionError("native policy publisher thread(s) survived test teardown: " + ", ".join(live_publishers))
+
+
+@pytest.fixture(autouse=True)
 def _reset_guard_sync_resolver_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """Undo any _resolve_guard_sync_auth_context override leaked by _seed_guard_cloud."""
     from codex_plugin_scanner.guard.runtime import runner as guard_runner_module

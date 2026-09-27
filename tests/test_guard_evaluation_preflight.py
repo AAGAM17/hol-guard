@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import io
 import os
 import platform
+import shlex
 import stat
+import sys
+import time
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +15,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from codex_plugin_scanner.guard import evaluation_preflight as preflight_module
+from codex_plugin_scanner.guard.adapters import hook_python_subprocess as probe_module
 from codex_plugin_scanner.guard.evaluation_contracts import EvaluationResult
 from codex_plugin_scanner.guard.evaluation_preflight import (
     EvaluationSetup,
@@ -119,6 +124,76 @@ def _artifact(tmp_path: Path) -> Path:
 
 def _artifact_paths(path: Path) -> dict[str, Path]:
     return {"core-fixture": path}
+
+
+def test_threaded_probe_read_failure_is_not_complete_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class BrokenStream(io.BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            raise OSError("synthetic private diagnostic")
+
+    process = SimpleNamespace(
+        stdout=io.BytesIO(b"synthetic-agent 0.1.0\n"), stderr=BrokenStream(), returncode=0, wait=lambda **_kwargs: 0
+    )
+    monkeypatch.setattr(probe_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        probe_module,
+        "subprocess",
+        SimpleNamespace(Popen=lambda *_args, **_kwargs: process, PIPE=-1, DEVNULL=-3),
+    )
+
+    result = probe_module.run_probe(["synthetic-agent"], cwd=tmp_path, env={}, timeout_seconds=0.1)
+
+    assert result.capture_incomplete
+    assert result.stdout == b"synthetic-agent 0.1.0\n"
+    assert result.stderr == b""
+
+
+@pytest.mark.skipif(os.name == "nt", reason="synthetic executable uses a POSIX shebang")
+@pytest.mark.parametrize("writes", [((1, 131072),), ((2, 131072),), ((1, 3000), (2, 3000))])
+def test_host_version_probe_rejects_output_beyond_profile_budget(
+    tmp_path: Path, writes: tuple[tuple[int, int], ...]
+) -> None:
+    executable = tmp_path / "synthetic-agent"
+    executable.write_text(
+        f"#!{sys.executable}\nimport os\nos.write(1, b'synthetic-agent 0.1.0\\n')\n"
+        + "".join(f"os.write({descriptor}, b'x' * {size})\n" for descriptor, size in writes),
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    profile = _profile(tmp_path, executable)
+    profile["resourceLimits"]["maxOutputBytes"] = 4096  # type: ignore[index]
+    report = preflight_evaluation(
+        profile, artifact_paths=_artifact_paths(_artifact(tmp_path)), allow_host_execution=True
+    )
+
+    assert report.status == "blocked_environment"
+    assert report.reason == "host_version_output_limit"
+    assert "xxxxxxxx" not in str(report.to_dict())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX process-group cleanup")
+def test_host_version_deadline_stops_child_holding_output_pipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    effect = tmp_path / "delayed-child-effect"
+    started = tmp_path / "child-started"
+    executable = tmp_path / "synthetic-agent"
+    executable.write_text(
+        "#!/bin/sh\n"
+        f"(/bin/sleep 3; printf '%s' 'child ran' > {shlex.quote(str(effect))}) &\n"
+        f"printf '%s' 'started' > {shlex.quote(str(started))}\n"
+        "printf '%s\\n' 'synthetic-agent 0.1.0'\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    monkeypatch.setattr(preflight_module, "_VERSION_TIMEOUT_SECONDS", 2.0)
+    report = preflight_evaluation(
+        _profile(tmp_path, executable), artifact_paths=_artifact_paths(_artifact(tmp_path)), allow_host_execution=True
+    )
+
+    assert started.exists(), report.reason
+    assert report.status == "blocked_environment"
+    assert report.reason == "host_version_timeout"
+    time.sleep(3.1)
+    assert not effect.exists()
 
 
 def test_preflight_validates_host_and_artifact_without_running_scenarios(tmp_path: Path) -> None:

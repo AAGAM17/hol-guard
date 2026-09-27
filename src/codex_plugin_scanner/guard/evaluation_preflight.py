@@ -16,13 +16,13 @@ import re
 import secrets
 import shutil
 import stat
-import subprocess
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
 
+from .adapters.hook_python_subprocess import run_probe
 from .evaluation_contracts import (
     EvaluationContractError,
     EvaluationProfile,
@@ -36,6 +36,7 @@ EVALUATION_SETUP_SCHEMA_VERSION = "guard.evaluation-setup.v1"
 _OWNED_ROOT_PREFIX = "hol-guard-eval-"
 _MARKER_NAME = ".hol-guard-evaluation-owned"
 _VERSION_TIMEOUT_SECONDS = 2.0
+_VERSION_OUTPUT_LIMIT_BYTES = 64 * 1024
 
 
 def _check(
@@ -289,30 +290,34 @@ def _version_matches(output: str, expected_version: str) -> bool:
     return re.search(pattern, output) is not None
 
 
-def _check_host_version(executable: Path, expected_version: str) -> tuple[bool, str]:
+def _check_host_version(
+    executable: Path, expected_version: str, *, timeout_seconds: float, output_limit_bytes: int
+) -> tuple[bool, str]:
     probe_root = Path(tempfile.mkdtemp(prefix="hol-guard-preflight-"))
     try:
         probe_root.chmod(0o700)
         environment = _isolated_version_environment(probe_root)
         try:
-            completed = subprocess.run(
+            completed = run_probe(
                 [os.fspath(executable), "--version"],
                 cwd=probe_root,
                 env=environment,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=_VERSION_TIMEOUT_SECONDS,
-                check=False,
-                shell=False,
+                timeout_seconds=timeout_seconds,
+                output_limit_bytes=output_limit_bytes,
             )
-        except subprocess.TimeoutExpired:
+        except (OSError, RuntimeError, ValueError):
+            return False, "host_version_unavailable"
+        if completed.output_overflow:
+            return False, "host_version_output_limit"
+        if completed.timed_out:
             return False, "host_version_timeout"
-        except (OSError, UnicodeError):
+        if completed.capture_incomplete or completed.returncode != 0:
             return False, "host_version_unavailable"
-        if completed.returncode != 0:
+        try:
+            output = completed.stdout.decode("utf-8") + "\n" + completed.stderr.decode("utf-8")
+        except UnicodeError:
             return False, "host_version_unavailable"
-        if not _version_matches(f"{completed.stdout}\n{completed.stderr}", expected_version):
+        if not _version_matches(output, expected_version):
             return False, "host_version_mismatch"
         return True, ""
     except (OSError, RuntimeError):
@@ -482,7 +487,13 @@ def preflight_evaluation(
         return _report("not_run", "preflight", profile_id, checks, reason="isolated_host_execution_not_enabled")
 
     version = str(host["version"])
-    version_ok, version_reason = _check_host_version(executable, version)
+    limits = cast(Mapping[str, object], payload["resourceLimits"])
+    version_ok, version_reason = _check_host_version(
+        executable,
+        version,
+        timeout_seconds=min(_VERSION_TIMEOUT_SECONDS, float(cast(int, limits["maxDurationSeconds"]))),
+        output_limit_bytes=min(_VERSION_OUTPUT_LIMIT_BYTES, cast(int, limits["maxOutputBytes"])),
+    )
     if not version_ok:
         checks.append(_check("host_version", "blocked_environment", reason=version_reason))
         return _report("blocked_environment", "preflight", profile_id, checks, reason=version_reason)

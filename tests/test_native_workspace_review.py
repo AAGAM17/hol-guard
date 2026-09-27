@@ -3,6 +3,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import stat
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -94,6 +97,55 @@ def test_staging_uses_only_persisted_request_material(tmp_path: Path) -> None:
     assert payload["action"]["action_identity"] == "action-1"
     assert "decision" not in payload
     assert "dpop" not in json.dumps(payload).lower()
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_windows_staging_uses_acl_bound_atomic_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _Store(_request())
+    ensured: list[Path] = []
+    bindings: list[Path] = []
+
+    @contextmanager
+    def bind_directory(path: Path):
+        path.mkdir(parents=True, exist_ok=True)
+        bindings.append(path)
+        yield SimpleNamespace(path=path, handle=object(), handles=[])
+
+    def ensure_private_directory(path: Path) -> None:
+        ensured.append(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+    def write_atomic(**kwargs: object) -> None:
+        assert kwargs["maximum_bytes"] == native._MAX_REQUEST_STATE_BYTES
+        assert kwargs["kind"] == "workspace_review_request"
+        destination = cast(Path, kwargs["parent_path"]) / cast(str, kwargs["destination_name"])
+        destination.write_bytes(cast(bytes, kwargs["payload"]))
+
+    monkeypatch.setattr(
+        native,
+        "_native_policy_snapshot",
+        SimpleNamespace(
+            _windows_ensure_private_directory=ensure_private_directory,
+            _windows_private_directory_binding=bind_directory,
+            _windows_write_private_file_atomic=write_atomic,
+        ),
+    )
+    monkeypatch.setattr(native.os, "name", "nt")
+    for function_name in ("fchmod", "open", "fsync"):
+        monkeypatch.setattr(
+            native.os,
+            function_name,
+            lambda *args, _function_name=function_name, **kwargs: pytest.fail(_function_name),
+        )
+
+    native.stage_workspace_review_request(store, tmp_path, "request-1")
+    path = tmp_path / "native-runtime" / "workspace-review-requests" / "request-1.json"
+    expected = native._canonical_json_bytes(native._request_state("request-1", _request()))
+    assert path.read_bytes() == expected
+    assert _staged_digest(tmp_path, "request-1") == hashlib.sha256(expected).hexdigest()
+    assert ensured == [tmp_path, tmp_path / "native-runtime", path.parent]
+    assert bindings == [path.parent]
 
 
 def test_apply_reconciles_native_claim_into_local_queue(

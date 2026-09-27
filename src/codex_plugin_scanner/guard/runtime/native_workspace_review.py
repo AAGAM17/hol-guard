@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import tempfile
 from collections.abc import Mapping
 from contextlib import suppress
@@ -12,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol, cast
 
+from .. import native_policy_snapshot as _native_policy_snapshot
+from ..durable_io import fsync_directory
 from ..native_resident_client import (
     native_resident_client_failure_code,
     native_resident_client_request,
@@ -87,6 +90,13 @@ def _request_id_is_safe(request_id: str) -> bool:
 def _private_request_directory(guard_home: Path) -> Path:
     state_base = guard_home / "native-runtime"
     request_directory = state_base / _REQUEST_DIRECTORY
+    if os.name == "nt":
+        try:
+            for directory in (guard_home, state_base, request_directory):
+                _native_policy_snapshot._windows_ensure_private_directory(directory)
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            raise NativeWorkspaceReviewError("native_workspace_review_request_unavailable") from error
+        return request_directory
     for directory in (state_base, request_directory):
         if directory.is_symlink():
             raise NativeWorkspaceReviewError("native_workspace_review_request_invalid")
@@ -180,21 +190,34 @@ def _stage_workspace_review_request(
         raise NativeWorkspaceReviewError("native_workspace_review_request_invalid")
     temporary_path: Path | None = None
     try:
-        descriptor, temporary_name = tempfile.mkstemp(prefix=".request-", dir=directory)
-        temporary_path = Path(temporary_name)
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "wb") as output:
-            output.write(encoded)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary_path, path)
-        temporary_path = None
-        directory_descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
-    except OSError as error:
+        if os.name == "nt":
+            temporary_name = f".request-{secrets.token_hex(16)}.tmp"
+            with _native_policy_snapshot._windows_private_directory_binding(directory) as binding:
+                _native_policy_snapshot._windows_write_private_file_atomic(
+                    parent_path=binding.path,
+                    parent_handle=binding.handle,
+                    directory_handles=binding.handles,
+                    temporary_name=temporary_name,
+                    destination_name=path.name,
+                    payload=encoded,
+                    maximum_bytes=_MAX_REQUEST_STATE_BYTES,
+                    kind="workspace_review_request",
+                )
+        else:
+            descriptor, temporary_name = tempfile.mkstemp(prefix=".request-", dir=directory)
+            temporary_path = Path(temporary_name)
+            fchmod = getattr(os, "fchmod", None)
+            if fchmod is not None:
+                fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(encoded)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = None
+            os.chmod(path, 0o600)
+            fsync_directory(directory)
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
         raise NativeWorkspaceReviewError("native_workspace_review_request_unavailable") from error
     finally:
         if temporary_path is not None:

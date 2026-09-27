@@ -223,8 +223,27 @@ jobs:
               EXPECTED_VERSION=$(uv run --no-sync python scripts/compute_main_release_version.py \
                 --base-version "$BASE_VERSION" <<< "$VERSIONS")
               if [[ "$RELEASE_VERSION" != "$EXPECTED_VERSION" ]]; then
-                echo "Stable release version must match the next registry-derived version: ${EXPECTED_VERSION}" >&2
-                exit 1
+                LATEST_PYPI=$(uv run --no-sync python scripts/compute_main_release_version.py \
+                  --base-version "$BASE_VERSION" --latest-existing <<< "$PYPI_VERSIONS")
+                ASSET_NAMES_FILE=$(mktemp)
+                RELEASE_VIEW_ERROR=$(mktemp)
+                if gh release view "v${RELEASE_VERSION}" --repo "$GITHUB_REPOSITORY" --json assets \
+                  --jq '.assets[].name' > "$ASSET_NAMES_FILE" 2>"$RELEASE_VIEW_ERROR"; then
+                  REPAIR_ARGS=(--asset-names-file "$ASSET_NAMES_FILE")
+                elif grep -q "release not found" "$RELEASE_VIEW_ERROR"; then
+                  REPAIR_ARGS=(--release-missing)
+                else
+                  echo "Could not inspect the GitHub release for ${RELEASE_VERSION}" >&2
+                  exit 1
+                fi
+                if ! uv run --no-sync python scripts/stable_release_asset_repair.py \
+                  --requested "$RELEASE_VERSION" \
+                  --expected-next "$EXPECTED_VERSION" \
+                  --latest-pypi "$LATEST_PYPI" \
+                  "${REPAIR_ARGS[@]}"; then
+                  echo "Stable release version must match the next registry-derived version: ${EXPECTED_VERSION}" >&2
+                  exit 1
+                fi
               fi
               if git rev-parse -q --verify "v${RELEASE_VERSION}^{commit}" >/dev/null; then
                 tag_sha=$(git rev-parse "v${RELEASE_VERSION}^{commit}")

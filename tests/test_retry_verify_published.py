@@ -36,8 +36,18 @@ class FakeRunner:
 
 def test_incomplete_missing_set_is_retryable() -> None:
     assert is_retryable_incomplete_error(INCOMPLETE)
+    assert is_retryable_incomplete_error("Registry release is absent\n")
+    assert is_retryable_incomplete_error("Base Guard release is not present yet\n")
     assert not is_retryable_incomplete_error(MISMATCH)
     assert not is_retryable_incomplete_error("Registry request failed with HTTP 500\n")
+
+
+def test_wait_retries_while_the_registry_release_is_still_absent() -> None:
+    sleeps: list[float] = []
+    runner = FakeRunner([1, 0], ["Registry release is absent\n", ""])
+    assert wait_for_published(["--registry", "pypi"], runner=runner, sleeper=sleeps.append) == 0
+    assert runner.calls == 2
+    assert sleeps == [5.0]
 
 
 def test_wait_retries_incomplete_then_succeeds() -> None:

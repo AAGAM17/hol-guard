@@ -2,7 +2,11 @@ from scripts.stable_release_asset_repair import github_release_needs_asset_repai
 
 COMPLETE = (
     "hol_guard-3.7.2-py3-none-any.whl",
+    "hol_guard-3.7.2.tar.gz",
+    "hol_guard-3.7.2-py3-none-manylinux_2_17_x86_64.whl",
+    "hol_guard-3.7.2-py3-none-macosx_13_0_x86_64.whl",
     "hol_guard-3.7.2-py3-none-macosx_11_0_arm64.whl",
+    "hol_guard-3.7.2-py3-none-win_amd64.whl",
     "hol-guard-v3.7.2.intoto.jsonl",
 )
 
@@ -29,6 +33,17 @@ def test_latest_published_version_repairs_a_release_without_desktop_files() -> N
         expected_next="3.7.3",
         latest_pypi="3.7.2",
         release_missing=True,
+    )
+
+
+def test_missing_platform_wheel_still_needs_repair() -> None:
+    partial = tuple(name for name in COMPLETE if "win_amd64" not in name)
+    assert github_release_needs_asset_repair("3.7.2", partial)
+    assert stable_dispatch_is_allowed(
+        requested="3.7.2",
+        expected_next="3.7.3",
+        latest_pypi="3.7.2",
+        asset_names=partial,
     )
 
 

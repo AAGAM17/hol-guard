@@ -14,16 +14,33 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
+# Keep aligned with verify_native_runtime_release.EXPECTED_TARGETS. Stable
+# versions are canonical X.Y.Z; wheel tags still use PEP 427's dash-to-underscore
+# normalization so a pre-release form cannot miss its filename.
+_NATIVE_PLATFORM_TAGS = (
+    "manylinux_2_17_x86_64",
+    "macosx_13_0_x86_64",
+    "macosx_11_0_arm64",
+    "win_amd64",
+)
+
+
+def _required_release_assets(version: str) -> set[str]:
+    wheel_version = version.replace("-", "_")
+    required = {
+        f"hol_guard-{wheel_version}-py3-none-any.whl",
+        f"hol_guard-{version}.tar.gz",
+        f"hol-guard-v{version}.intoto.jsonl",
+    }
+    required.update(
+        f"hol_guard-{wheel_version}-py3-none-{platform}.whl" for platform in _NATIVE_PLATFORM_TAGS
+    )
+    return required
+
 
 def github_release_needs_asset_repair(version: str, asset_names: Iterable[str]) -> bool:
     names = {name.strip() for name in asset_names if name.strip()}
-    pure_wheel = f"hol_guard-{version}-py3-none-any.whl"
-    provenance = f"hol-guard-v{version}.intoto.jsonl"
-    arm64_prefix = f"hol_guard-{version}-"
-    has_arm64_wheel = any(
-        name.startswith(arm64_prefix) and "macosx_" in name and name.endswith("_arm64.whl") for name in names
-    )
-    return pure_wheel not in names or provenance not in names or not has_arm64_wheel
+    return not _required_release_assets(version).issubset(names)
 
 
 def stable_dispatch_is_allowed(

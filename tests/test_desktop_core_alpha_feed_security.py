@@ -219,7 +219,7 @@ def test_frozen_sidecar_stages_attested_native_runtime() -> None:
     ) < run.index("uv run --no-sync pyinstaller")
     assert '--add-data "$NATIVE_RUNTIME:codex_plugin_scanner/_native"' in run
     assert '--add-data "$NATIVE_MANIFEST:codex_plugin_scanner/_native"' in run
-    assert '--add-data "src/codex_plugin_scanner/version.py:."' in run
+    assert '--add-data "$SOURCE/src/codex_plugin_scanner/version.py:."' in run
     assert "--add-binary" not in run
     assert "python3 -I scripts/release/seal_pyinstaller_native_manifest.py" in run
     assert "python3 -I scripts/release/verify_pyinstaller_native_runtime.py" in run

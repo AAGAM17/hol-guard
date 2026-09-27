@@ -53,7 +53,7 @@ from .discovery import (
 )
 from .file_locking import lock_daemon_file as _lock_daemon_start_file
 from .file_locking import try_lock_daemon_file as _try_lock_daemon_file
-from .lifecycle_journal import record_daemon_lifecycle_event
+from .lifecycle_journal import load_daemon_lifecycle_events, record_daemon_lifecycle_event
 from .start_lock import guard_daemon_start_lock as _guard_daemon_start_lock
 
 DEFAULT_GUARD_DAEMON_PORT = 4781
@@ -491,6 +491,7 @@ def ensure_guard_daemon(
                     env=launcher_env,
                     start_new_session=True,
                 )
+            spawned_at_ns = time.time_ns()
             pending_creation_time: int | None = None
             try:
                 pending_creation_time = _record_guard_daemon_pending_launch(
@@ -513,12 +514,31 @@ def ensure_guard_daemon(
                         raise RuntimeError("Guard daemon pending launch state could not be cleared safely.")
                     _schedule_duplicate_guard_daemon_retirement(guard_home)
                     return url
+                spawn_state = classify_spawned_daemon(
+                    process,
+                    pending_launch_present=_spawned_guard_daemon_pending_launch_present(
+                        guard_home,
+                        process=process,
+                        creation_time=pending_creation_time,
+                    ),
+                    lock_holder_pid=process.pid if _guard_daemon_owner_lock_is_held(guard_home) else None,
+                    journal_start_requested_after=_guard_daemon_journal_records_start_requested_after(
+                        guard_home,
+                        since_ns=spawned_at_ns,
+                    ),
+                )
+                if spawn_state == "progressing":
+                    raise _GuardDaemonStillStartingError(
+                        f"Guard daemon is still starting; retry shortly. Expected state file at {state_path}."
+                    )
                 if not _terminate_spawned_guard_daemon(process):
                     raise RuntimeError("Guard daemon startup process could not be retired safely.")
                 if not _clear_spawned_guard_daemon_pending_launch(
                     guard_home, process=process, creation_time=pending_creation_time
                 ):
                     raise RuntimeError("Guard daemon pending launch state could not be cleared safely.")
+            except _GuardDaemonStillStartingError:
+                raise
             except BaseException:
                 if _terminate_spawned_guard_daemon(process):
                     _clear_spawned_guard_daemon_pending_launch(
@@ -3014,6 +3034,64 @@ def _retire_guard_daemon_process(payload: dict[str, object]) -> bool:
     guard_home = payload.get("guard_home")
     expected_guard_home = Path(guard_home) if isinstance(guard_home, str) and guard_home.strip() else None
     return _retire_guard_daemon_pid(pid, expected_guard_home=expected_guard_home)
+
+
+class _GuardDaemonStillStartingError(RuntimeError):
+    """Raised when the spawned daemon is still starting; callers must not kill it."""
+
+
+def classify_spawned_daemon(
+    process: subprocess.Popen[bytes],
+    *,
+    pending_launch_present: bool,
+    lock_holder_pid: int | None,
+    journal_start_requested_after: bool,
+) -> Literal["progressing", "dead", "blocked"]:
+    """Classify a spawned daemon whose state URL never appeared before the deadline."""
+
+    if process.poll() is not None:
+        return "dead"
+    if pending_launch_present and (lock_holder_pid == process.pid or journal_start_requested_after):
+        return "progressing"
+    return "blocked"
+
+
+def _spawned_guard_daemon_pending_launch_present(
+    guard_home: Path,
+    *,
+    process: subprocess.Popen[bytes],
+    creation_time: int | None,
+) -> bool:
+    if os.name != "nt":
+        # POSIX keeps no pending-launch file; the live child handle is the record.
+        return True
+    pending = load_authenticated_guard_daemon_pending_launch(guard_home)
+    return (
+        isinstance(pending, dict)
+        and pending.get("pid") == process.pid
+        and pending.get("process_creation_time") == creation_time
+    )
+
+
+def _guard_daemon_owner_lock_is_held(guard_home: Path) -> bool:
+    try:
+        with (guard_home / _GUARD_DAEMON_OWNER_LOCK_FILE).open("a+b") as handle:
+            if _try_lock_daemon_file(handle):
+                _unlock_daemon_start_file(handle)
+                return False
+            return True
+    except OSError:
+        return False
+
+
+def _guard_daemon_journal_records_start_requested_after(guard_home: Path, *, since_ns: int) -> bool:
+    try:
+        events = load_daemon_lifecycle_events(guard_home, limit=128)
+    except OSError:
+        return False
+    return any(
+        event.get("event") == "start_requested" and event.get("recorded_at_ns", 0) > since_ns for event in events
+    )
 
 
 def _terminate_spawned_guard_daemon(process: subprocess.Popen[bytes]) -> bool:

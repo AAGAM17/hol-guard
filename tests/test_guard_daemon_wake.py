@@ -335,3 +335,203 @@ class TestDaemonLifecycle:
         daemon_manager_module._retire_duplicate_guard_daemons(guard_home, keep_port=5711)
 
         assert json.loads((guard_home / "daemon-state.json").read_text(encoding="utf-8")) == {}
+
+
+class _FakeSpawnedDaemonProcess:
+    """Popen-compatible fake that records termination attempts."""
+
+    def __init__(self, pid: int = 424242, returncode: int | None = None) -> None:
+        self.pid = pid
+        self.returncode = returncode
+        self.stdin = None
+        self.terminated = False
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = -15
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        return self.returncode if self.returncode is not None else 0
+
+
+class TestSpawnedDaemonStartClassification:
+    """A spawned daemon still starting at the deadline must not be killed."""
+
+    def test_classify_spawned_daemon_dead_when_exited(self) -> None:
+        process = _FakeSpawnedDaemonProcess(returncode=1)
+        assert (
+            daemon_manager_module.classify_spawned_daemon(
+                process,
+                pending_launch_present=True,
+                lock_holder_pid=process.pid,
+                journal_start_requested_after=True,
+            )
+            == "dead"
+        )
+
+    def test_classify_spawned_daemon_progressing_when_lock_held_by_spawn(self) -> None:
+        process = _FakeSpawnedDaemonProcess()
+        assert (
+            daemon_manager_module.classify_spawned_daemon(
+                process,
+                pending_launch_present=True,
+                lock_holder_pid=process.pid,
+                journal_start_requested_after=False,
+            )
+            == "progressing"
+        )
+
+    def test_classify_spawned_daemon_progressing_on_newer_start_requested(self) -> None:
+        process = _FakeSpawnedDaemonProcess()
+        assert (
+            daemon_manager_module.classify_spawned_daemon(
+                process,
+                pending_launch_present=True,
+                lock_holder_pid=None,
+                journal_start_requested_after=True,
+            )
+            == "progressing"
+        )
+
+    def test_classify_spawned_daemon_blocked_with_no_progress_signals(self) -> None:
+        process = _FakeSpawnedDaemonProcess()
+        assert (
+            daemon_manager_module.classify_spawned_daemon(
+                process,
+                pending_launch_present=True,
+                lock_holder_pid=None,
+                journal_start_requested_after=False,
+            )
+            == "blocked"
+        )
+
+    def test_classify_spawned_daemon_blocked_without_pending_launch(self) -> None:
+        process = _FakeSpawnedDaemonProcess()
+        assert (
+            daemon_manager_module.classify_spawned_daemon(
+                process,
+                pending_launch_present=False,
+                lock_holder_pid=process.pid,
+                journal_start_requested_after=True,
+            )
+            == "blocked"
+        )
+
+    def test_start_requested_journal_reader_compares_spawn_time(self, tmp_path, monkeypatch) -> None:
+        from codex_plugin_scanner.guard.daemon.lifecycle_journal import record_daemon_lifecycle_event
+
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        before_ns = 1
+        record_daemon_lifecycle_event(guard_home, event="start_requested")
+
+        assert (
+            daemon_manager_module._guard_daemon_journal_records_start_requested_after(
+                guard_home, since_ns=before_ns
+            )
+            is True
+        )
+        assert (
+            daemon_manager_module._guard_daemon_journal_records_start_requested_after(
+                guard_home, since_ns=2**62
+            )
+            is False
+        )
+        assert (
+            daemon_manager_module._guard_daemon_journal_records_start_requested_after(
+                tmp_path / "missing", since_ns=before_ns
+            )
+            is False
+        )
+
+    def _patch_ensure_deadline(
+        self,
+        monkeypatch,
+        guard_home: Path,
+        process: _FakeSpawnedDaemonProcess,
+        *,
+        owner_lock_held: bool,
+        journal_wait: object = None,
+    ) -> None:
+        monkeypatch.setattr(daemon_manager_module, "_reap_stale_ephemeral_guard_daemons", lambda **_: None)
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_running_guard_daemon_processes_for_guard_home",
+            lambda _guard_home: [],
+        )
+        monkeypatch.setattr(daemon_manager_module, "load_guard_daemon_url", lambda _gh: None)
+        monkeypatch.setattr(daemon_manager_module, "_load_state", lambda _gh: None)
+        monkeypatch.setattr(daemon_manager_module, "_guard_daemon_start_in_progress", lambda _gh: False)
+        monkeypatch.setattr(daemon_manager_module.time, "sleep", lambda _: None)
+        monkeypatch.setattr(daemon_manager_module.subprocess, "Popen", lambda *a, **k: process)
+        monkeypatch.setattr(
+            daemon_manager_module,
+            "_guard_daemon_owner_lock_is_held",
+            lambda _gh: owner_lock_held,
+        )
+
+        def fake_wait(_gh, **kwargs):
+            if callable(journal_wait):
+                journal_wait()
+            return None
+
+        monkeypatch.setattr(daemon_manager_module, "_wait_for_guard_daemon_url", fake_wait)
+
+    def test_progressing_spawn_is_not_terminated_or_cleared(self, tmp_path, monkeypatch) -> None:
+        import pytest
+
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        process = _FakeSpawnedDaemonProcess()
+        self._patch_ensure_deadline(monkeypatch, guard_home, process, owner_lock_held=True)
+
+        with pytest.raises(RuntimeError, match="^Guard daemon is still starting"):
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0)
+
+        assert process.terminated is False
+        assert process.killed is False
+        assert not (guard_home / "daemon-launch-pending.json").is_file()
+        assert not (guard_home / ".guard" / "daemon-state.json").is_file()
+
+    def test_progressing_spawn_detected_by_newer_start_requested(self, tmp_path, monkeypatch) -> None:
+        import pytest
+
+        from codex_plugin_scanner.guard.daemon.lifecycle_journal import record_daemon_lifecycle_event
+
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        process = _FakeSpawnedDaemonProcess()
+        self._patch_ensure_deadline(
+            monkeypatch,
+            guard_home,
+            process,
+            owner_lock_held=False,
+            journal_wait=lambda: record_daemon_lifecycle_event(guard_home, event="start_requested"),
+        )
+
+        with pytest.raises(RuntimeError, match="^Guard daemon is still starting"):
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0)
+
+        assert process.terminated is False
+
+    def test_blocked_spawn_keeps_existing_termination_behavior(self, tmp_path, monkeypatch) -> None:
+        import pytest
+
+        guard_home = tmp_path / "guard-home"
+        guard_home.mkdir()
+        process = _FakeSpawnedDaemonProcess()
+        self._patch_ensure_deadline(monkeypatch, guard_home, process, owner_lock_held=False)
+
+        with pytest.raises(RuntimeError, match="^Guard approval center did not start"):
+            daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=0.05)
+
+        assert process.terminated is True

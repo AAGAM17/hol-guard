@@ -37,6 +37,10 @@ def _snapshot_api() -> Any:
     return native_policy_snapshot
 
 
+def _same_resident_paths(a, b) -> bool:
+    return {p for p, _m, _s in a} == {p for p, _m, _s in b}
+
+
 class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
     """Asynchronously publish an authenticated snapshot and expose its barrier."""
 
@@ -325,11 +329,12 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             if self._input_fingerprint is None:
                 self._input_fingerprint = fingerprint
             elif fingerprint[1] != self._input_fingerprint[1]:
-                # Resident generation files are created on every managed
-                # restart. Re-push the last snapshot before a hook can rely
-                # on the replacement resident's in-memory policy.
+                same = _same_resident_paths(self._input_fingerprint[1], fingerprint[1])
                 self._input_fingerprint = fingerprint
-                self._republish_preserving_watch()
+                if same:
+                    self._republish_preserving_watch()
+                else:
+                    self.request_publish()
             elif fingerprint[0] != self._input_fingerprint[0]:
                 previous_inputs = dict(self._input_fingerprint[0])
                 current_inputs = dict(fingerprint[0])
@@ -481,6 +486,7 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
                 if (
                     resident_fingerprint_confirmed is None
                     and snapshot.get("mode") == "observe"
+                    and _same_resident_paths(resident_fingerprint_before, resident_fingerprint)
                     and self._resident_fingerprint_matches_generation(resident_fingerprint, resident_generation)
                 ):
                     # Hook reviews touch resident generation files while this

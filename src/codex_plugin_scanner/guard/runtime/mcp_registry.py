@@ -20,7 +20,9 @@ def search_mcp_registry(query: str) -> dict[str, object]:
         raise ValueError("invalid_registry_search")
     url = _ENDPOINT + "?" + urllib.parse.urlencode({"search": query.strip(), "version": "latest", "limit": 20})
     try:
-        with managed_urlopen(urllib.request.Request(url, headers={"Accept": "application/json"}), timeout=5) as response:
+        with managed_urlopen(
+            urllib.request.Request(url, headers={"Accept": "application/json"}), timeout=5
+        ) as response:
             if response.status != 200 or response.headers.get_content_type() != "application/json":
                 raise ValueError("registry_unavailable")
             raw = response.read(_MAX_BYTES + 1)

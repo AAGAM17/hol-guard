@@ -44,7 +44,9 @@ def classify_spawned_daemon(
 
     if process.poll() is not None:
         return "dead"
-    if pending_launch_present and (lock_held_by_spawned_tree or journal_start_requested_after):
+    if pending_launch_present and (
+        lock_held_by_spawned_tree or journal_start_requested_after
+    ):
         return "progressing"
     return "blocked"
 
@@ -62,7 +64,9 @@ def collect_spawned_daemon_signals(
             process=process,
             creation_time=pending_creation_time,
         ),
-        lock_held_by_spawned_tree=spawned_daemon_owner_lock_held(guard_home, root_pid=process.pid),
+        lock_held_by_spawned_tree=spawned_daemon_owner_lock_held(
+            guard_home, root_pid=process.pid
+        ),
         journal_start_requested_after=daemon_journal_records_start_requested_after(
             guard_home,
             root_pid=process.pid,
@@ -71,7 +75,9 @@ def collect_spawned_daemon_signals(
     )
 
 
-def daemon_still_starting_evidence_present(guard_home: Path, *, root_pid: int, spawned_at_ns: int) -> bool:
+def daemon_still_starting_evidence_present(
+    guard_home: Path, *, root_pid: int, spawned_at_ns: int
+) -> bool:
     """Re-check progress evidence for a recorded still-starting daemon pid."""
 
     return spawned_daemon_owner_lock_held(
@@ -143,12 +149,18 @@ def daemon_journal_records_start_requested_after(
     except OSError:
         return False
     for event in events:
-        if event.get("event") != "start_requested" or event.get("recorded_at_ns", 0) <= since_ns:
+        if (
+            event.get("event") != "start_requested"
+            or event.get("recorded_at_ns", 0) <= since_ns
+        ):
             continue
         event_pid = event.get("pid")
         if event_pid == root_pid:
             return True
-        if isinstance(event_pid, int) and _manager._guard_daemon_parent_pid(event_pid) == root_pid:
+        if (
+            isinstance(event_pid, int)
+            and _manager._guard_daemon_parent_pid(event_pid) == root_pid
+        ):
             return True
     return False
 

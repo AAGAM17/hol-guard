@@ -291,7 +291,21 @@ class NativePolicySnapshotPublisherInputs:
         )
         self._observed_policy_fingerprint = current_fingerprint
         changed = force_republish or previous_fingerprint != current_fingerprint
-        if changed or current_fingerprint[0] == "unavailable":
+        # Command-control churn under Watch must republish, but it must not
+        # withdraw the resident-validated observe snapshot. Withdrawing it
+        # makes the next review pause, and that pause is what churns the
+        # controls again. Policy, mode, and unavailable inputs still withdraw.
+        self._observe_extension_refresh = bool(
+            changed
+            and not force_republish
+            and previous_fingerprint is not None
+            and current_fingerprint[0] not in {"", "unavailable"}
+            and previous_fingerprint[0] == current_fingerprint[0]
+            and previous_fingerprint[1] == "observe"
+            and current_fingerprint[1] == "observe"
+            and previous_fingerprint[2] != current_fingerprint[2]
+        )
+        if (changed or current_fingerprint[0] == "unavailable") and not self._observe_extension_refresh:
             # A verified state change invalidates the previous ACK immediately,
             # including WAL-only mutations. Do not leave a readiness window
             # between observation and the publisher's next push attempt.

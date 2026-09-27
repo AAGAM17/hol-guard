@@ -69,6 +69,7 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
         self._published_config_digest: str | None = None
         self._published_policy_fingerprint: tuple[str, str, str] | None = None
         self._observed_policy_fingerprint: tuple[str, str, str] | None = None
+        self._observe_extension_refresh = False
         self._renewal_due_monotonic: float | None = None
         self._renewal_after_generation: int | None = None
         self._retry_not_before_monotonic: float | None = None
@@ -142,6 +143,35 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             self._failure_count = 0
             self._condition.notify_all()
         self._publish_event.set()
+
+    def _queue_observe_republish(self) -> bool:
+        """Refresh an acknowledged Watch snapshot without opening a pause window.
+
+        ``request_publish`` drops readiness first. That is required when
+        enforcement might strengthen, and it is how a hook storm turns Watch
+        into a fresh-approval deadlock: each resident-file or command-control
+        update withdraws the snapshot, the next review pauses, and the pause
+        updates the same files again. Watch does not stop those reviews, so
+        keep serving the resident-validated observe snapshot until the refresh
+        commits.
+        """
+
+        with self._condition:
+            snapshot = self._snapshot
+            if self._closed or not self._acked or snapshot is None or snapshot.get("mode") != "observe":
+                return False
+            generation = snapshot.get("generation")
+            if not isinstance(generation, int) or generation <= 0:
+                return False
+            self._renewal_after_generation = generation
+            self._retry_not_before_monotonic = self._monotonic_clock()
+            self._failure_count = 0
+        self._publish_event.set()
+        return True
+
+    def _republish_preserving_watch(self) -> None:
+        if not self._queue_observe_republish():
+            self.request_publish()
 
     notify_policy_changed = request_publish
 
@@ -299,7 +329,7 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
                 # restart. Re-push the last snapshot before a hook can rely
                 # on the replacement resident's in-memory policy.
                 self._input_fingerprint = fingerprint
-                self.request_publish()
+                self._republish_preserving_watch()
             elif fingerprint[0] != self._input_fingerprint[0]:
                 previous_inputs = dict(self._input_fingerprint[0])
                 current_inputs = dict(fingerprint[0])
@@ -310,11 +340,11 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
                 }
                 self._input_fingerprint = fingerprint
                 if self._policy_input_changed(changed_paths):
-                    self.request_publish()
+                    self._republish_preserving_watch()
             if self._monotonic_clock() >= self._reconcile_due_monotonic:
                 self._reconcile_due_monotonic = self._monotonic_clock() + 1.0
                 if self._policy_input_changed():
-                    self.request_publish()
+                    self._republish_preserving_watch()
             with self._condition:
                 if self._closed:
                     return
@@ -430,7 +460,7 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             # A separate process may commit authority while the resident is
             # acknowledging this candidate. Re-read verified authority outside
             # the hook barrier and reject an ACK for the earlier controls.
-            if self._compiled_command_extensions() != command_extensions:
+            if self._compiled_command_extensions() != command_extensions and snapshot.get("mode") != "observe":
                 with self._condition:
                     self._acked = False
                 raise NativePolicySnapshotError("native_command_control_binding_changed")
@@ -448,6 +478,15 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
                     resident_generation,
                     resident_directory_fingerprint,
                 )
+                if (
+                    resident_fingerprint_confirmed is None
+                    and snapshot.get("mode") == "observe"
+                    and self._resident_fingerprint_matches_generation(resident_fingerprint, resident_generation)
+                ):
+                    # Hook reviews touch resident generation files while this
+                    # publish is in flight. Watch still matches the resident
+                    # that acknowledged the snapshot; do not drop it and pause.
+                    resident_fingerprint_confirmed = resident_fingerprint
                 if resident_fingerprint_confirmed is None:
                     self._acked = False
                     raise NativePolicySnapshotError("native_policy_snapshot_resident_changed")

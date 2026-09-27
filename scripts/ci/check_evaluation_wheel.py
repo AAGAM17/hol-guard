@@ -20,8 +20,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-version", required=True)
     args = parser.parse_args()
-    if not sys.flags.isolated or sys.prefix == sys.base_prefix:
-        parser.error("run with an isolated Python interpreter inside the wheel virtual environment")
+    if not sys.flags.isolated:
+        parser.error("run with the Python -I flag")
+    if sys.prefix == sys.base_prefix:
+        parser.error("run inside the wheel virtual environment")
 
     from codex_plugin_scanner.guard import evaluation_cli, evaluation_preflight
 
@@ -33,7 +35,10 @@ def main() -> int:
         raise RuntimeError("installed distribution version differs from the expected wheel version")
 
     console = Path(sys.executable).parent / "hol-guard-eval"
-    version = subprocess.run([str(console), "--version"], check=True, capture_output=True, text=True, timeout=30)
+    try:
+        version = subprocess.run([str(console), "--version"], check=True, capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        raise RuntimeError("installed evaluator console script is missing") from None
     if version.stdout.strip() != f"hol-guard-eval {args.expected_version}":
         raise RuntimeError("installed evaluator console reports an unexpected version")
 
@@ -48,7 +53,7 @@ def main() -> int:
         for name in ("test_guard_evaluation_cli.py", "test_guard_evaluation_preflight.py"):
             shutil.copy2(repo / "tests" / name, root / name)
         configuration = root / "pytest.ini"
-        configuration.write_text("[pytest]\n", encoding="utf-8")
+        configuration.write_text("[pytest]\naddopts = --strict-markers\n", encoding="utf-8")
         result = subprocess.run(
             [
                 sys.executable,

@@ -156,13 +156,23 @@ def daemon_journal_records_start_requested_after(
 def _pid_in_process_tree(pid: int, root_pid: int) -> bool:
     from . import manager as _manager
 
+    if pid == root_pid:
+        return True
+    if os.name == "nt":
+        root_cmd = _manager.windows_processes.windows_process_command_line(root_pid)
+        pid_cmd = _manager.windows_processes.windows_process_command_line(pid)
+        return (
+            root_cmd is not None
+            and pid_cmd is not None
+            and _manager._same_daemon_invocation(root_cmd, pid_cmd)
+        )
     current = pid
     for _ in range(_PPID_WALK_LIMIT):
-        if current == root_pid:
-            return True
         parent = _manager._guard_daemon_parent_pid(current)
         if parent is None or parent <= 1:
             return False
+        if parent == root_pid:
+            return True
         current = parent
     return False
 

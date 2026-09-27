@@ -95,6 +95,106 @@ function approvalBlockedReason(
   return `${reason}\n\n${additions.join('\n')}`;
 }
 
+function approvalManualRetryReason(response: GuardResponse, fallbackReason: string): string {
+  const reason = fallbackReason.trim() || 'Blocked by HOL Guard.';
+  const approvalUrl = approvalUrlFromResponse(response);
+  const retryLine = 'This OMP host cannot safely resume a blocked tool call in the background. Retry the exact original tool call after approving it in HOL Guard.';
+  const urlLine = approvalUrl ? `HOL Guard approval page: ${approvalUrl}` : '';
+  return [reason, retryLine, urlLine].filter(Boolean).join('\n\n');
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+type OmpInteractiveContinuation<T> =
+  | { kind: 'completed'; value: T }
+  | { kind: 'aborted' }
+  | { kind: 'failed' }
+  | { kind: 'unavailable' };
+
+function ompInteractiveContext(ctx: unknown): boolean {
+  try {
+    const typedContext = ctx as { mode?: unknown; ui?: { custom?: unknown } };
+    return typedContext.mode === 'tui' && typeof typedContext.ui?.custom === 'function';
+  } catch {
+    return false;
+  }
+}
+
+async function runOmpInteractiveContinuation<T>(
+  ctx: unknown,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<OmpInteractiveContinuation<T>> {
+  if (!ompInteractiveContext(ctx) || typeof AbortController !== 'function') {
+    return { kind: 'unavailable' };
+  }
+  const typedContext = ctx as {
+    ui: {
+      custom: (
+        factory: (...args: unknown[]) => unknown,
+        options?: { overlay?: boolean },
+      ) => Promise<unknown>;
+    };
+  };
+  const operationController = new AbortController();
+  let completed = false;
+  try {
+    const result = await typedContext.ui.custom(
+      async (...args: unknown[]) => {
+        const done = args[3] as ((value: OmpInteractiveContinuation<T>) => void) | undefined;
+        if (typeof done !== 'function') {
+          operationController.abort();
+          return {
+            render: () => ['HOL Guard could not create its approval wait state.'],
+            invalidate: () => {},
+            handleInput: () => {},
+            dispose: () => {},
+          };
+        }
+        const component = {
+          render: () => ['HOL Guard is waiting for approval...'],
+          invalidate: () => {},
+          handleInput: () => {},
+          dispose: () => {
+            if (!completed) operationController.abort();
+          },
+        };
+        void operation(operationController.signal).then(
+          value => {
+            if (completed) return;
+            completed = true;
+            done(
+              operationController.signal.aborted
+                ? { kind: 'aborted' }
+                : { kind: 'completed', value },
+            );
+          },
+          error => {
+            if (completed) return;
+            completed = true;
+            done({ kind: isAbortError(error) || operationController.signal.aborted ? 'aborted' : 'failed' });
+          },
+        );
+        return component;
+      },
+      { overlay: true },
+    );
+    if (
+      result &&
+      typeof result === 'object' &&
+      'kind' in result &&
+      ['completed', 'aborted', 'failed', 'unavailable'].includes((result as { kind?: unknown }).kind as string)
+    ) {
+      return result as OmpInteractiveContinuation<T>;
+    }
+    return { kind: 'failed' };
+  } catch (error) {
+    completed = true;
+    return { kind: isAbortError(error) || operationController.signal.aborted ? 'aborted' : 'failed' };
+  }
+}
+
 function trySpawnOpen(command: string, args: string[]): Promise<boolean> {
   return new Promise(resolve => {
     let settled = false;

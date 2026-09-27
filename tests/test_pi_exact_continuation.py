@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -15,6 +16,120 @@ from codex_plugin_scanner.guard.daemon.manager import GUARD_DAEMON_COMPATIBILITY
 
 def _node_executable() -> str | None:
     return shutil.which("node")
+
+
+_PI_SDK_ROOT_ENV = "HOL_GUARD_PI_SDK_ROOT"
+_PI_SDK_PACKAGE_NAME = "@earendil-works/pi-coding-agent"
+_PI_SDK_PACKAGE_VERSION = "0.87.1"
+
+
+def _pi_runner_module() -> Path | None:
+    explicit_root = os.environ.get(_PI_SDK_ROOT_ENV)
+    if explicit_root:
+        root = Path(explicit_root)
+        if not root.is_absolute():
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} must be an absolute job-local SDK root")
+        try:
+            resolved_root = root.resolve(strict=True)
+            metadata = json.loads((resolved_root / "package.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} does not point to a readable package: {error}")
+        if not isinstance(metadata, dict):
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} package metadata is not an object")
+        if metadata.get("name") != _PI_SDK_PACKAGE_NAME:
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} package identity is not {_PI_SDK_PACKAGE_NAME!r}")
+        if metadata.get("version") != _PI_SDK_PACKAGE_VERSION:
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} package version is not {_PI_SDK_PACKAGE_VERSION!r}")
+        runner_module = resolved_root / "dist" / "index.js"
+        try:
+            resolved_runner = runner_module.resolve(strict=True)
+        except OSError as error:
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} package has no dist/index.js: {error}")
+        if not resolved_runner.is_relative_to(resolved_root):
+            pytest.fail(f"{_PI_SDK_ROOT_ENV} runner resolves outside its package root")
+        return resolved_runner
+
+    pi_cli = shutil.which("pi")
+    if pi_cli is None:
+        return None
+    cli_path = Path(pi_cli).resolve()
+    if not cli_path.is_file():
+        return None
+    for parent_index in range(3):
+        package_root = cli_path.parents[parent_index]
+        try:
+            metadata = json.loads((package_root / "package.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(metadata, dict) or metadata.get("name") != _PI_SDK_PACKAGE_NAME:
+            continue
+        raw_bin = metadata.get("bin")
+        if isinstance(raw_bin, str):
+            bin_targets = (raw_bin,)
+        elif isinstance(raw_bin, dict):
+            bin_targets = tuple(value for value in raw_bin.values() if isinstance(value, str))
+        else:
+            bin_targets = ()
+        if not any(
+            (package_root / target).resolve() == cli_path
+            and (package_root / target).resolve().is_relative_to(package_root)
+            for target in bin_targets
+        ):
+            continue
+        runner_module = package_root / "dist" / "index.js"
+        try:
+            resolved_runner = runner_module.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved_runner.is_relative_to(package_root):
+            return resolved_runner
+    return None
+
+
+def _write_pi_package(root: Path, bin_target: str) -> Path:
+    root.mkdir(parents=True)
+    (root / "package.json").write_text(
+        json.dumps(
+            {
+                "name": _PI_SDK_PACKAGE_NAME,
+                "version": _PI_SDK_PACKAGE_VERSION,
+                "bin": {"pi": bin_target},
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli_path = root / bin_target
+    cli_path.parent.mkdir(parents=True, exist_ok=True)
+    cli_path.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    runner_module = root / "dist" / "index.js"
+    runner_module.parent.mkdir(parents=True, exist_ok=True)
+    runner_module.write_text("export {};\n", encoding="utf-8")
+    return cli_path
+
+
+def test_pi_runner_module_accepts_published_old_cli_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cli_path = _write_pi_package(tmp_path / "old-layout", "dist/cli.js")
+    monkeypatch.setattr(shutil, "which", lambda name: str(cli_path) if name == "pi" else None)
+
+    assert _pi_runner_module() == (cli_path.parent / "index.js").resolve()
+
+
+def test_pi_runner_module_accepts_published_nested_cli_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cli_path = _write_pi_package(tmp_path / "nested-layout", "dist/bundle/cli.js")
+    monkeypatch.setattr(shutil, "which", lambda name: str(cli_path) if name == "pi" else None)
+
+    assert _pi_runner_module() == (cli_path.parents[1] / "index.js").resolve()
+
+
+def test_pi_runner_module_rejects_undeclared_package_wrapper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    package_root = tmp_path / "package"
+    _write_pi_package(package_root, "dist/bundle/cli.js")
+    wrapper_path = package_root / "shim" / "pi"
+    wrapper_path.parent.mkdir()
+    wrapper_path.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda name: str(wrapper_path) if name == "pi" else None)
+
+    assert _pi_runner_module() is None
 
 
 def _decode_json_object(stdout: str) -> dict[str, object]:
@@ -110,13 +225,9 @@ console.log(JSON.stringify({{
 
 def test_installed_pi_runner_cancels_generated_pending_tool_call(tmp_path: Path) -> None:
     node = _node_executable()
-    pi_cli = shutil.which("pi")
-    if node is None or pi_cli is None:
+    runner_module = _pi_runner_module()
+    if node is None or runner_module is None:
         pytest.skip("Node and the installed Pi SDK are required")
-    pi_package = Path(pi_cli).resolve().parents[1]
-    runner_module = pi_package / "dist" / "index.js"
-    if not runner_module.is_file():
-        pytest.skip("Installed Pi SDK runner is unavailable")
 
     guard_home = tmp_path / "guard-home"
     guard_home.mkdir()
@@ -378,7 +489,15 @@ async function runGuard(payload) {{
 {handler}
 
 async function runScenario(name, guardResponses, pollResponses, options = {{}}) {{
-  activeScenario = {{ guardCalls: 0, pollCalls: 0, scheduleCalls: 0, hostAborted: false, guardResponses, pollQueue: [...pollResponses], payloads: [] }};
+  activeScenario = {{
+    guardCalls: 0,
+    pollCalls: 0,
+    scheduleCalls: 0,
+    hostAborted: false,
+    guardResponses,
+    pollQueue: [...pollResponses],
+    payloads: [],
+  }};
   activeSessionId = `session-${{name}}`;
   const notices = [];
   sentMessages = [];
@@ -563,6 +682,67 @@ function makeRunner(scenario) {
   };
   const modelRegistry = { getAvailable: () => [] };
   const runner = new ExtensionRunner([extension], {}, scenario.cwd, sessionManager, modelRegistry);
+  const ui = {
+    notify: () => {},
+    custom: async (factory, options = {}) => {
+      let settled = false;
+      let component;
+      let resolveResult;
+      let rejectResult;
+      const result = new Promise((resolve, reject) => {
+        resolveResult = resolve;
+        rejectResult = reject;
+      });
+      const abort = () => {
+        if (settled) return;
+        settled = true;
+        component?.dispose?.();
+        rejectResult(options.signal?.reason ?? new DOMException("Dialog aborted", "AbortError"));
+      };
+      const done = (value) => {
+        if (settled) return;
+        settled = true;
+        resolveResult(value);
+      };
+      if (options.signal?.aborted) {
+        abort();
+        return result;
+      }
+      options.signal?.addEventListener("abort", abort, { once: true });
+      component = await factory({}, {}, {}, done);
+      if (settled) component?.dispose?.();
+      return await result.finally(() => options.signal?.removeEventListener("abort", abort));
+    },
+  };
+  runner.initialize(
+    {
+      sendMessage: () => {},
+      sendUserMessage: () => {},
+      appendEntry: () => {},
+      getActiveTools: () => [],
+      getAllTools: () => [],
+      setActiveTools: async () => {},
+      getCommands: () => [],
+      setModel: () => {},
+      getThinkingLevel: () => "off",
+      setThinkingLevel: () => {},
+      getSessionName: () => undefined,
+      setSessionName: () => {},
+    },
+    {
+      getModel: () => undefined,
+      isIdle: () => false,
+      abort: () => {},
+      hasPendingMessages: () => false,
+      shutdown: async () => {},
+      getContextUsage: () => undefined,
+      compact: async () => {},
+      getSystemPrompt: () => "",
+    },
+    undefined,
+    ui,
+    scenario.mode ?? "tui",
+  );
   return { runner, sentMessages };
 }
 
@@ -570,15 +750,21 @@ async function runScenario(name, config) {
   const scenario = {
     cwd: "/fixture/workspace",
     sessionId: `session-${name}`,
+    mode: config.mode,
   };
   let event;
   let guardCalls = 0;
   let pollCalls = 0;
+  let activeController;
   globalThis.fetch = async (url) => {
     const text = String(url);
     if (text.includes("/v1/hooks/")) {
       const response = config.guardResponses[Math.min(guardCalls, config.guardResponses.length - 1)];
       guardCalls += 1;
+      if (config.abortDuringRevalidation && guardCalls === 2) {
+        await delay(20);
+        activeController?.abort();
+      }
       return new Response(JSON.stringify(response), { status: 200 });
     }
     pollCalls += 1;
@@ -609,16 +795,18 @@ async function runScenario(name, config) {
     input: { ...originalInput },
   };
   const controller = new AbortController();
+  activeController = controller;
   const pending = runner.emitToolCall(event, controller.signal);
   if (config.abort) {
     await waitFor(() => pollCalls === 1);
     controller.abort();
   }
+  if (config.sessionStop) {
+    await waitFor(() => pollCalls === 1);
+    await runner.emitSessionStop();
+  }
   const result = await pending;
-  if (config.abort) {
-    // The outer per-tool abort is supplied to emitToolCall; agent_end then
-    // invalidates the detached handler before its approval poll can resume.
-    await runner.emit({ type: "agent_end" });
+  if (config.abort || config.sessionStop || config.abortDuringRevalidation) {
     await delay(2_300);
   }
   const executed = result === undefined ? 1 : 0;
@@ -652,11 +840,17 @@ const results = {
   mutation: await runScenario("mutation", { guardResponses: [approval], poll: "allow", mutateInput: true }),
   contextMutation: await runScenario("context", { guardResponses: [approval], poll: "allow", mutateContext: true }),
   abort: await runScenario("abort", { guardResponses: [approval], poll: "pending", abort: true }),
+  sessionStop: await runScenario("session-stop", { guardResponses: [approval], poll: "pending", sessionStop: true }),
+  abortDuringRevalidation: await runScenario(
+    "abort-during-revalidation",
+    { guardResponses: [approval, allow], poll: "allow", abortDuringRevalidation: true },
+  ),
+  headless: await runScenario("headless", { guardResponses: [approval], poll: "allow", mode: "print" }),
 };
 console.log(JSON.stringify(results));
-""".replace(
-        "__EXTENSION_PATH__", json.dumps(str(extension_path))
-    ).replace("__RUNNER_PATH__", json.dumps(str(runner_path)))
+""".replace("__EXTENSION_PATH__", json.dumps(str(extension_path))).replace(
+        "__RUNNER_PATH__", json.dumps(str(runner_path))
+    )
     harness_path.write_text(script, encoding="utf-8")
     completed = subprocess.run(
         [bun, str(harness_path)],
@@ -697,6 +891,20 @@ console.log(JSON.stringify(results));
     assert abort["guardCalls"] == 1
     assert abort["pollCalls"] == 1
     assert abort["sentMessages"] == 0
+
+    for name in ("sessionStop", "abortDuringRevalidation", "headless"):
+        scenario = payload[name]
+        assert isinstance(scenario, dict)
+        assert scenario["blocked"] is True
+        assert scenario["executed"] == 0
+        assert scenario["sentMessages"] == 0
+    assert payload["sessionStop"]["guardCalls"] == 1
+    assert payload["sessionStop"]["pollCalls"] == 1
+    assert payload["abortDuringRevalidation"]["guardCalls"] == 2
+    assert payload["abortDuringRevalidation"]["pollCalls"] == 1
+    assert payload["headless"]["guardCalls"] == 1
+    assert payload["headless"]["pollCalls"] == 0
+    assert "Retry the exact original tool call" in payload["headless"]["reason"]
 
 
 def test_generated_input_resume_cancels_after_session_change(tmp_path: Path) -> None:

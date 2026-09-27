@@ -167,6 +167,22 @@ def test_persisted_receipt_correlation_retries_after_writer_progress_stops(
     assert reads == 2
 
 
+def test_persisted_receipt_correlation_does_not_read_before_writer_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _ReceiptStore(tmp_path / "receipts.sqlite3", ("prior",))
+
+    def unexpected_read(_target: _ReceiptStore) -> set[str]:
+        raise AssertionError("reader started before writer progress")
+
+    monkeypatch.setattr(probe._support, "persisted_native_receipt_ids", unexpected_read)
+    writer = SimpleNamespace(stats=lambda: {"receipt_processed": 0})
+    with pytest.raises(RuntimeError, match="receipt_persistence_missing"):
+        probe.await_persisted_native_receipt(
+            store, {"prior"}, writer=writer, receipt_processed_before=0, timeout_seconds=0.35
+        )
+
+
 @pytest.mark.parametrize("reason", sorted(NATIVE_COMMAND_CONTROL_ERROR_CODES))
 def test_diagnostic_keeps_the_exact_approved_command_control_reason(reason: str) -> None:
     assert probe.receipt_binding_diagnostic({"reason_code": reason}, {}, {}, [])["http_reason_code"] == reason

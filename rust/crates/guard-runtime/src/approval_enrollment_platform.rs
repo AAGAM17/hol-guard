@@ -1,6 +1,6 @@
 #[cfg(target_os = "linux")]
 use std::io::ErrorKind;
-#[cfg(any(test, target_os = "linux"))]
+#[cfg(any(all(test, unix), target_os = "linux"))]
 use std::io::Write;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
@@ -137,7 +137,7 @@ pub(super) fn write_platform_secret_with_limit(
     }
 }
 
-#[cfg(any(test, target_os = "linux"))]
+#[cfg(any(all(test, unix), target_os = "linux"))]
 fn write_secret_input(mut stdin: impl Write, value: &str) -> Result<(), String> {
     stdin
         .write_all(value.as_bytes())

@@ -20,6 +20,18 @@ _NATIVE_PAYLOAD_FIELDS = frozenset({"localRequestId", "receiptId", "envelope"})
 _MAX_IDENTIFIER_LENGTH = 128
 
 
+def native_workspace_review_transport_candidate(store: object) -> bool:
+    """Routing hint only; delivered jobs still require native verification."""
+    guard_home = getattr(store, "guard_home", None)
+    if not isinstance(guard_home, Path):
+        return False
+    authority = guard_home / "native-runtime" / "workspace-review-authority.v1.json"
+    try:
+        return not authority.is_symlink() and authority.is_file()
+    except OSError:
+        return False
+
+
 class NativeWorkspaceReviewQueueError(ValueError):
     """Stable rejection for the native exact-command queue boundary."""
 

@@ -27,11 +27,11 @@ def exact_review_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Guard
     return store
 
 
-def test_exact_review_lease_does_not_depend_on_workspace_keyring(exact_review_store: GuardStore) -> None:
+def test_legacy_exact_review_lease_waits_for_workspace_keyring(exact_review_store: GuardStore) -> None:
     now = datetime.now(timezone.utc).isoformat()
     exact_review_store.set_sync_payload("guard_review_verification_keyring", [], now)
 
-    assert command_queue.lease_ready_operations(exact_review_store) == (EXACT_CLOUD_REVIEW_OPERATION,)
+    assert command_queue.lease_ready_operations(exact_review_store) == ()
 
     exact_review_store.set_sync_payload(
         "guard_review_verification_keyring",
@@ -42,14 +42,14 @@ def test_exact_review_lease_does_not_depend_on_workspace_keyring(exact_review_st
     assert command_queue.lease_ready_operations(exact_review_store) == (EXACT_CLOUD_REVIEW_OPERATION,)
 
 
-def test_exact_review_lease_does_not_use_other_workspace_keyring(exact_review_store: GuardStore) -> None:
+def test_legacy_exact_review_lease_rejects_other_workspace_keyring(exact_review_store: GuardStore) -> None:
     exact_review_store.set_sync_payload(
         "guard_review_verification_keyring",
         review_trusted_keyring_payload(workspace_id="workspace-2"),
         datetime.now(timezone.utc).isoformat(),
     )
 
-    assert command_queue.lease_ready_operations(exact_review_store) == (EXACT_CLOUD_REVIEW_OPERATION,)
+    assert command_queue.lease_ready_operations(exact_review_store) == ()
 
 
 def test_generic_queue_operations_continue_before_review_key_sync(
@@ -66,7 +66,4 @@ def test_generic_queue_operations_continue_before_review_key_sync(
     )
     monkeypatch.setattr(command_queue, "command_capability_operations", generic_operations)
 
-    assert command_queue.lease_ready_operations(exact_review_store) == (
-        "guard.packageShims.status",
-        EXACT_CLOUD_REVIEW_OPERATION,
-    )
+    assert command_queue.lease_ready_operations(exact_review_store) == ("guard.packageShims.status",)

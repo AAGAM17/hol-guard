@@ -27,6 +27,7 @@ from codex_plugin_scanner.guard.runtime.native_workspace_review_queue import (
     NativeWorkspaceReviewQueueError,
     is_native_workspace_review_job,
     native_workspace_review_payload,
+    native_workspace_review_transport_candidate,
 )
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.guard_exact_cloud_review_support import (
@@ -35,6 +36,29 @@ from tests.guard_exact_cloud_review_support import (
     exact_review_job,
     review_request,
 )
+
+
+@pytest.mark.parametrize("kind", ["missing", "directory", "symlink", "regular"])
+def test_native_transport_hint_requires_installed_file_and_preserves_revocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    store = connected_exact_review_store(tmp_path)
+    monkeypatch.setattr(command_queue, "review_verification_keyring_ready", lambda _store: False)
+    authority = store.guard_home / "native-runtime" / "workspace-review-authority.v1.json"
+    authority.parent.mkdir(parents=True, exist_ok=True)
+    if kind == "directory":
+        authority.mkdir()
+    elif kind == "symlink":
+        target = tmp_path / "untrusted-authority.json"
+        target.write_text("{}", encoding="utf-8")
+        authority.symlink_to(target)
+    elif kind == "regular":
+        authority.write_text("{}", encoding="utf-8")
+    assert native_workspace_review_transport_candidate(store) is (kind == "regular")
+    assert ("guard.review.resolveExact" in command_queue.lease_ready_operations(store)) is (kind == "regular")
+    if kind == "regular":
+        disable_exact_cloud_review(store)
+        assert command_queue.lease_ready_operations(store) == ()
 
 
 def _native_job(store, request_id: str = "native-request") -> dict[str, object]:
@@ -59,6 +83,24 @@ def _native_store(tmp_path: Path, request_id: str = "native-request"):
     store = connected_exact_review_store(tmp_path)
     add_review_request(store, review_request(request_id))
     return store
+
+
+def test_native_transport_hint_cannot_authorize_legacy_payload_without_keyring(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = connected_exact_review_store(tmp_path)
+    authority = store.guard_home / "native-runtime" / "workspace-review-authority.v1.json"
+    authority.parent.mkdir(parents=True, exist_ok=True)
+    authority.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(command_queue, "review_verification_keyring_ready", lambda _store: False)
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.runtime.command_queue_authority.review_verification_keyring_ready",
+        lambda _store: False,
+    )
+    assert "guard.review.resolveExact" in command_queue.lease_ready_operations(store)
+    job = exact_transport_job(exact_review_job(store, {}))
+    with pytest.raises(CommandCapabilityError, match="cloud_review_verification_unavailable"):
+        authorize_transport_command_queue_job(store, job, schema_versions=COMMAND_OPERATION_SCHEMA_VERSIONS)
 
 
 def test_native_payload_is_exact_and_mixed_payloads_do_not_fallback() -> None:

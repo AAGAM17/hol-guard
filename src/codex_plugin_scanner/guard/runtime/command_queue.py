@@ -8,6 +8,7 @@ from typing import Any
 
 from ...version import __version__  # noqa: F401 - public compatibility export
 from ..adapters.base import HarnessContext
+from ..review_verification_keyring import review_verification_keyring_ready
 from ..store import GuardStore
 from .auto_update import maybe_auto_update
 from .command_capability import (
@@ -70,7 +71,7 @@ from .exact_cloud_review_transport import (
     lease_next_job,
     uses_exact_transport,
 )
-from .native_workspace_review_queue import is_native_workspace_review_job
+from .native_workspace_review_queue import is_native_workspace_review_job, native_workspace_review_transport_candidate
 from .runner import _resolve_guard_sync_auth_context, repair_guard_cloud_connect_storage
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,7 +85,10 @@ def command_queue_operations(store: GuardStore) -> tuple[str, ...]:
 
 
 def lease_ready_operations(store: GuardStore) -> tuple[str, ...]:
-    return command_queue_operations(store)
+    operations = command_queue_operations(store)
+    if review_verification_keyring_ready(store) or native_workspace_review_transport_candidate(store):
+        return operations
+    return tuple(operation for operation in operations if operation != EXACT_CLOUD_REVIEW_OPERATION)
 
 
 def _generic_command_queue_operations(store: GuardStore) -> tuple[str, ...]:

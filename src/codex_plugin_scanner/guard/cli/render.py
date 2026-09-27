@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, TextIO, TypeAlias
 
 from ..redaction import redact_text
 from ..value_coercion import coerce_int as _coerce_int
+from .doctor_readiness import doctor_runtime_readiness
 from .protect_output import _protect_harness_message_for_render, _restore_ephemeral_signed_approval_output
 from .render_uninstall import render_self_uninstall
 
@@ -832,7 +833,9 @@ def _render_doctor(console: Console, payload: dict[str, object]) -> None:
     elif "adapters" in payload:
         tables = _coerce_string_list(payload.get("tables"))
         name, protection_off = _protection_status_copy(payload, "protected")
-        protection_line = f"[bold red]protection: {name} (off)[/bold red]" if protection_off else f"protection: {name}"
+        protection_line = (
+            f"[bold red]protection mode: {name} (off)[/bold red]" if protection_off else f"protection mode: {name}"
+        )
         console.print(
             Panel.fit(
                 f"[bold]HOL Guard doctor[/bold]\n{protection_line}\n{len(tables)} local tables checked",
@@ -840,7 +843,7 @@ def _render_doctor(console: Console, payload: dict[str, object]) -> None:
             )
         )
         adapters = _coerce_dict_list(payload.get("adapters"))
-        console.print(_build_harness_table(adapters))
+        console.print(_build_harness_table(adapters, show_readiness=True))
     elif "harnesses" in payload and all("install_aliases" in h for h in _coerce_dict_list(payload.get("harnesses"))):
         contracts = _coerce_dict_list(payload.get("harnesses"))
         table = Table(title="HOL Guard supported harnesses", box=box.SIMPLE_HEAD, show_lines=False)
@@ -867,6 +870,9 @@ def _render_doctor(console: Console, payload: dict[str, object]) -> None:
         summary = Table.grid(padding=(0, 1))
         summary.add_row("Harness", f"[bold]{payload.get('harness', 'unknown')}[/bold]")
         summary.add_row("Installed", _bool_label(bool(payload.get("installed"))))
+        summary.add_row("Registration", str(payload.get("setup_status") or "unknown"))
+        summary.add_row("Runtime readiness", _doctor_readiness_text(payload))
+        summary.add_row("Evidence", Text(doctor_runtime_readiness(payload)["detail"]))
         summary.add_row("Command", _bool_label(bool(payload.get("command_available"))))
         summary.add_row("Artifacts", str(len(_coerce_dict_list(payload.get("artifacts")))))
         registry = payload.get("runtime_detector_registry")
@@ -891,7 +897,7 @@ def _render_doctor(console: Console, payload: dict[str, object]) -> None:
         name, protection_off = _protection_status_copy(payload, "")
         if name:
             value = f"[bold red]{name} (off)[/bold red]" if protection_off else name
-            summary.add_row("Protection", value)
+            summary.add_row("Protection mode", value)
         console.print(Panel(summary, title="Guard doctor", border_style="cyan"))
         if warnings:
             warning_text = "\n".join(
@@ -2281,21 +2287,37 @@ def _build_supply_chain_posture_panel(supply_chain: dict[str, object]) -> Panel:
     return Panel(body, title="Supply-chain firewall", border_style="cyan")
 
 
-def _build_harness_table(detections: list[dict[str, object]]) -> Table:
+def _doctor_readiness_text(diagnostics: dict[str, object]) -> Text:
+    readiness = doctor_runtime_readiness(diagnostics)
+    if readiness["state"] == "fail":
+        return Text("Setup broken", style="red")
+    return Text("Unverified", style="yellow")
+
+
+def _build_harness_table(detections: list[dict[str, object]], *, show_readiness: bool = False) -> Table:
     table = Table(box=box.SIMPLE_HEAVY, show_header=True)
     table.add_column("Harness", style="bold")
-    table.add_column("Status")
+    table.add_column("Detection" if show_readiness else "Status")
+    if show_readiness:
+        table.add_column("Runtime readiness")
     table.add_column("Command")
     table.add_column("Artifacts", justify="right")
     table.add_column("Warnings", justify="right")
     for detection in detections:
-        table.add_row(
-            str(detection.get("harness", "unknown")),
-            _status_text(detection),
-            _bool_label(bool(detection.get("command_available"))),
-            str(len(_coerce_dict_list(detection.get("artifacts")))),
-            str(_warning_count(detection)),
+        status = _status_text(detection)
+        if show_readiness and _status_label(detection) == "Ready":
+            status = Text("Found", style="cyan")
+        row = [str(detection.get("harness", "unknown")), status]
+        if show_readiness:
+            row.append(_doctor_readiness_text(detection))
+        row.extend(
+            [
+                _bool_label(bool(detection.get("command_available"))),
+                str(len(_coerce_dict_list(detection.get("artifacts")))),
+                str(_warning_count(detection)),
+            ]
         )
+        table.add_row(*row)
     return table
 
 
@@ -2753,7 +2775,8 @@ def _build_approval_table(items: list[dict[str, object]], *, title: str | None) 
 def _build_runtime_probe_panel(runtime_probe: dict[str, object]) -> Panel:
     body = Table.grid(padding=(0, 1))
     body.add_row("Command", _command_text(runtime_probe.get("command")))
-    body.add_row("Succeeded", _bool_label(bool(runtime_probe.get("ok"))))
+    body.add_row("Check succeeded", _bool_label(bool(runtime_probe.get("ok"))))
+    body.add_row("Scope", "Passive check; no Guard evaluation verified")
     if runtime_probe.get("return_code") is not None:
         body.add_row("Return code", str(runtime_probe.get("return_code")))
     if runtime_probe.get("reported_artifacts") is not None:
@@ -2764,7 +2787,7 @@ def _build_runtime_probe_panel(runtime_probe: dict[str, object]) -> Panel:
         stdout = _clean_terminal_output(str(runtime_probe.get("stdout")))
         preview = "\n".join(stdout.splitlines()[:6])
         body.add_row("stdout", preview)
-    return Panel(body, title="Runtime probe", border_style="magenta")
+    return Panel(body, title="Passive probe", border_style="magenta")
 
 
 def _build_cloud_summary_panel(payload: dict[str, object]) -> Panel:

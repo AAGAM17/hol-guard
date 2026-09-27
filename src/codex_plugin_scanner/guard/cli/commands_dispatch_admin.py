@@ -34,6 +34,7 @@ from ..shims import package_shim_dashboard_status
 from ._commands_shared import *
 from .commands_dispatch_trust import build_trust_doctor_payload
 from .commands_parser_helpers import *
+from .doctor_readiness import doctor_runtime_readiness
 
 
 def _run_guard_exceptions_command(
@@ -297,14 +298,18 @@ def _run_guard_doctor_command(
     if args.harness:
         adapter = get_adapter(args.harness)
         payload: dict[str, object] = adapter.diagnostics(context)
+        payload["runtime_readiness"] = doctor_runtime_readiness(payload)
         payload["runtime_detector_registry"] = _runtime_detector_registry_payload(config)
         payload["connect_health"] = _guard_doctor_connect_health_payload(store)
         if args.harness == "codex":
             payload["codex_resume"] = inspect_codex_resume_capabilities(store)
     else:
+        detected_harnesses = [detection.to_dict() for detection in detect_all(context)]
+        for detection in detected_harnesses:
+            detection["runtime_readiness"] = doctor_runtime_readiness(detection)
         payload = {
             "tables": store.list_table_names(),
-            "adapters": [detection.to_dict() for detection in detect_all(context)],
+            "adapters": detected_harnesses,
             "runtime_detector_registry": _runtime_detector_registry_payload(config),
         }
     if getattr(args, "perf", False):

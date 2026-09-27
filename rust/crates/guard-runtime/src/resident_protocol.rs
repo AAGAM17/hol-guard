@@ -25,6 +25,7 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalChallengeV4(ApprovalChallengeRequestV4),
     ApprovalValidateV4(ApprovalValidateRequestV4),
     ApprovalConsumeV4(ApprovalConsumeRequestV4),
+    WorkspaceReviewContext(WorkspaceReviewContextRequestV1),
     WorkspaceReviewDecision(WorkspaceReviewDecisionRequestV1),
     Health(Value),
     Shutdown(Value),
@@ -35,6 +36,12 @@ pub(crate) enum ResidentOperationV1 {
 pub(crate) struct WorkspaceReviewDecisionRequestV1 {
     pub(crate) request_id: String,
     pub(crate) decision: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WorkspaceReviewContextRequestV1 {
+    pub(crate) request_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +82,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "native-approval-consume-v4".into(),
         "native-approval-replay-memory-v1".into(),
         "native-workspace-review-authority-v1".into(),
+        "native-workspace-review-context-v1".into(),
         "native-workspace-review-decision-v1".into(),
         "native-policy-in-memory-v1".into(),
         "hook-envelope-v2".into(),
@@ -102,7 +110,10 @@ pub(crate) fn evaluate_resident_bytes(
     policy_store: Option<&PolicySnapshotStore>,
 ) -> Result<Vec<u8>, String> {
     let value = strict_json_value(bytes)?;
-    if value.get("operation").and_then(Value::as_str) == Some("workspace_review_decision") {
+    if matches!(
+        value.get("operation").and_then(Value::as_str),
+        Some("workspace_review_context" | "workspace_review_decision")
+    ) {
         let canonical = canonical_json_bytes(&value)
             .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
         if canonical != bytes {
@@ -190,6 +201,16 @@ pub(crate) fn evaluate_resident_bytes(
                     policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
                 crate::approval::approval_v4::consume_approval(request, policy_store)
             }
+            ResidentOperationV1::WorkspaceReviewContext(request) => {
+                let policy_store =
+                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                let context =
+                    crate::policy_store::resident_workspace_review_context::build_context(
+                        policy_store,
+                        &request.request_id,
+                    )?;
+                encode_response(&context)
+            }
             ResidentOperationV1::WorkspaceReviewDecision(request) => {
                 let policy_store =
                     policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
@@ -206,6 +227,10 @@ pub(crate) fn evaluate_resident_bytes(
                     "decision": verified.decision,
                     "claim_id": verified.claim_id,
                     "authority_record_digest": verified.authority_record_digest,
+                    "workspace_binding": verified.workspace_binding,
+                    "device_binding": verified.device_binding,
+                    "installation_binding": verified.installation_binding,
+                    "scope_binding": verified.scope_binding,
                     "request_binding": verified.request_binding,
                     "action_binding": verified.action_binding,
                     "intent_binding": verified.intent_binding,

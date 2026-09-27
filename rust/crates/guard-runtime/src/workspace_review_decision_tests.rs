@@ -25,6 +25,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[path = "workspace_review_decision_clock_tests.rs"]
 mod clock_tests;
+#[path = "workspace_review_interoperability_tests.rs"]
+mod interoperability_tests;
 
 const NOW_MS: u64 = 2_000;
 const ROOT_SEED: [u8; 32] = [42u8; 32];
@@ -266,6 +268,8 @@ fn legacy_expiry_claims_seed_a_conservative_clock_floor() {
         super::super::workspace_review_secure_state::WorkspaceReviewClaimV1 {
             claim_id: "a".repeat(64),
             envelope_digest: "b".repeat(64),
+            semantic_decision_digest: None,
+            legacy_semantic_recovered: false,
             expires_at_ms: Some(NOW_MS + 100),
         },
     );
@@ -379,44 +383,6 @@ fn rejects_wrong_domain_delivery_mode_and_binding_substitution() {
 }
 
 #[test]
-fn prunes_only_expired_claims_before_replay_capacity_is_checked() {
-    let root = test_root();
-    let authority = install_authority(&root);
-    let values = bindings();
-    let retry_scope = retry_scope_binding(&values[4], &values[5], &values[6], &values[7]).unwrap();
-    let context = context(&values, &retry_scope);
-    let mut state = super::super::workspace_review_secure_state::load(&root)
-        .unwrap()
-        .unwrap();
-    state.consumed_claims = (0..NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES)
-        .map(
-            |index| super::super::workspace_review_secure_state::WorkspaceReviewClaimV1 {
-                claim_id: format!("{index:064x}"),
-                envelope_digest: format!("{:064x}", index + 1),
-                expires_at_ms: Some(NOW_MS - 1),
-            },
-        )
-        .collect();
-    super::super::workspace_review_secure_state::store(&root, &state).unwrap();
-
-    let envelope = signed_envelope(
-        &authority,
-        &context,
-        1,
-        NOW_MS,
-        61_000,
-        NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN,
-    );
-    verify_and_claim_at(&root, &envelope, &context, NOW_MS).unwrap();
-    let updated = super::super::workspace_review_secure_state::load(&root)
-        .unwrap()
-        .unwrap();
-    assert_eq!(updated.consumed_claims.len(), 1);
-    assert_eq!(updated.consumed_claims[0].expires_at_ms, Some(61_000));
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
 fn rejects_expired_future_and_noncanonical_or_unknown_decisions() {
     let root = test_root();
     let authority = install_authority(&root);
@@ -492,4 +458,35 @@ fn retry_scope_is_derived_from_exact_action_intent_revision_and_policy() {
         expected,
         retry_scope_binding(&values[4], &values[5], &values[6], &"a".repeat(64)).unwrap()
     );
+}
+
+#[test]
+fn permanent_semantic_tombstones_fit_the_bounded_secure_state_budget() {
+    let root = test_root();
+    let authority = install_authority(&root);
+    let mut state = super::super::workspace_review_secure_state::load(&root)
+        .unwrap()
+        .unwrap();
+    state.consumed_claims = (0..NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES)
+        .map(
+            |index| super::super::workspace_review_secure_state::WorkspaceReviewClaimV1 {
+                claim_id: format!("{index:064x}"),
+                envelope_digest: format!("{:064x}", index + 1),
+                semantic_decision_digest: Some(format!("{:064x}", index + 2)),
+                legacy_semantic_recovered: false,
+                expires_at_ms: Some(NOW_MS - 1),
+            },
+        )
+        .collect();
+    super::super::workspace_review_secure_state::store(&root, &state).unwrap();
+    let restored = super::super::workspace_review_secure_state::load(&root)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        restored.consumed_claims.len(),
+        NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES
+    );
+    assert_eq!(restored.consumed_claims, state.consumed_claims);
+    drop(authority);
+    fs::remove_dir_all(root).unwrap();
 }

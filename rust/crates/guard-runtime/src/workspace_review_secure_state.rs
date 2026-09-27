@@ -17,11 +17,15 @@ use std::path::Path;
 use super::workspace_review_authority::VerifiedWorkspaceReviewAuthority;
 
 #[cfg(not(test))]
-use super::approval_enrollment::{read_platform_secret_for_v4, write_platform_secret_for_v4};
+use super::approval_enrollment::{
+    read_platform_secret_for_workspace_review, write_platform_secret_for_workspace_review,
+};
 
 pub(crate) const SECURE_STATE_SCHEMA: &str = "guard-native-workspace-review-secure-state.v1";
 pub(crate) const SECURE_STATE_VERSION: u16 = 1;
-const MAX_CLAIM_TEXT_BYTES: usize = 256;
+// Covers the canonical JSON representation of one claim, including the
+// optional semantic digest, while keeping the platform-secret budget bounded.
+const MAX_CLAIM_TEXT_BYTES: usize = 512;
 const MAX_SECRET_TEXT_BYTES: usize = NATIVE_WORKSPACE_REVIEW_MAX_AUTHORITY_BYTES
     + (NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES * MAX_CLAIM_TEXT_BYTES);
 #[cfg(test)]
@@ -34,8 +38,16 @@ const SECURE_STATE_ACCOUNT_SUFFIX: &str = ":workspace-review-authority-v1";
 pub(crate) struct WorkspaceReviewClaimV1 {
     pub(crate) claim_id: String,
     pub(crate) envelope_digest: String,
-    /// Legacy claims may omit this field. Such claims are retained forever so
-    /// an old state file cannot be silently weakened by pruning.
+    /// Derived from the stable decision semantics, excluding short-lived
+    /// transport timestamps/signature and authority signer identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) semantic_decision_digest: Option<String>,
+    /// Set only when an exact legacy envelope was replayed and its semantic
+    /// digest was safely derived under the current authority.
+    #[serde(default)]
+    pub(crate) legacy_semantic_recovered: bool,
+    /// The original transport expiry is retained for audit only. Consumed
+    /// claims are never pruned after expiry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) expires_at_ms: Option<u64>,
 }
@@ -173,12 +185,16 @@ impl WorkspaceReviewSecureStateV1 {
         for (index, claim) in self.consumed_claims.iter().enumerate() {
             if !is_lower_hex(&claim.claim_id, 64)
                 || !is_lower_hex(&claim.envelope_digest, 64)
+                || claim
+                    .semantic_decision_digest
+                    .as_ref()
+                    .is_some_and(|digest| !is_lower_hex(digest, 64))
                 || claim.expires_at_ms == Some(0)
-                || self
-                    .consumed_claims
-                    .iter()
-                    .take(index)
-                    .any(|previous| previous.claim_id == claim.claim_id)
+                || self.consumed_claims.iter().take(index).any(|previous| {
+                    previous.claim_id == claim.claim_id
+                        || claim.semantic_decision_digest.is_some()
+                            && previous.semantic_decision_digest == claim.semantic_decision_digest
+                })
             {
                 return Err("native_workspace_review_secure_state_invalid".to_owned());
             }
@@ -227,7 +243,8 @@ pub(crate) fn load(state_base: &Path) -> Result<Option<WorkspaceReviewSecureStat
             super::approval_enrollment::account_for_state_base(state_base)?,
             SECURE_STATE_ACCOUNT_SUFFIX
         );
-        read_platform_secret_for_v4(&account).map_err(map_platform_error)?
+        read_platform_secret_for_workspace_review(&account, MAX_SECRET_TEXT_BYTES)
+            .map_err(map_platform_error)?
     };
     decode_secure_state(encoded)
 }
@@ -284,7 +301,8 @@ pub(crate) fn store(state_base: &Path, state: &WorkspaceReviewSecureStateV1) -> 
         );
         let encoded = String::from_utf8(bytes)
             .map_err(|_| "native_workspace_review_secure_state_invalid".to_owned())?;
-        write_platform_secret_for_v4(&account, &encoded).map_err(map_platform_error)
+        write_platform_secret_for_workspace_review(&account, &encoded, MAX_SECRET_TEXT_BYTES)
+            .map_err(map_platform_error)
     }
 }
 

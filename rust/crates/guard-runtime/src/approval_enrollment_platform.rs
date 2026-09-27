@@ -1,5 +1,7 @@
 #[cfg(target_os = "linux")]
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
+#[cfg(any(test, target_os = "linux"))]
+use std::io::Write;
 #[cfg(target_os = "linux")]
 use std::process::{Command, Stdio};
 
@@ -8,6 +10,14 @@ use super::{MAX_SECRET_TEXT_BYTES, SERVICE_NAME};
 
 #[cfg(target_os = "macos")]
 pub(super) fn read_platform_secret(account: &str) -> Result<Option<String>, String> {
+    read_platform_secret_with_limit(account, MAX_SECRET_TEXT_BYTES)
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn read_platform_secret_with_limit(
+    account: &str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
     use security_framework::passwords::generic_password;
 
     let value = match generic_password(
@@ -21,7 +31,7 @@ pub(super) fn read_platform_secret(account: &str) -> Result<Option<String>, Stri
     };
     let value =
         String::from_utf8(value).map_err(|_| "native_approval_secure_state_invalid".to_owned())?;
-    if value.len() > MAX_SECRET_TEXT_BYTES {
+    if value.len() > max_bytes {
         return Err("native_approval_secure_state_invalid".to_owned());
     }
     Ok(Some(value.trim().to_owned()))
@@ -29,9 +39,18 @@ pub(super) fn read_platform_secret(account: &str) -> Result<Option<String>, Stri
 
 #[cfg(target_os = "macos")]
 pub(super) fn write_platform_secret(account: &str, value: &str) -> Result<(), String> {
+    write_platform_secret_with_limit(account, value, MAX_SECRET_TEXT_BYTES)
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn write_platform_secret_with_limit(
+    account: &str,
+    value: &str,
+    max_bytes: usize,
+) -> Result<(), String> {
     use security_framework::passwords::set_generic_password;
 
-    if value.len() > MAX_SECRET_TEXT_BYTES {
+    if value.len() > max_bytes {
         return Err("native_approval_secure_state_invalid".to_owned());
     }
     set_generic_password(SERVICE_NAME, account, value.as_bytes()).map_err(map_keychain_error)
@@ -44,6 +63,14 @@ fn map_keychain_error(_error: security_framework::base::Error) -> String {
 
 #[cfg(target_os = "linux")]
 pub(super) fn read_platform_secret(account: &str) -> Result<Option<String>, String> {
+    read_platform_secret_with_limit(account, MAX_SECRET_TEXT_BYTES)
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn read_platform_secret_with_limit(
+    account: &str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
     let output = match Command::new("/usr/bin/secret-tool")
         .args(["lookup", "service", SERVICE_NAME, "account", account])
         .output()
@@ -60,7 +87,7 @@ pub(super) fn read_platform_secret(account: &str) -> Result<Option<String>, Stri
     }
     let value = String::from_utf8(output.stdout)
         .map_err(|_| "native_approval_secure_state_invalid".to_owned())?;
-    if value.len() > MAX_SECRET_TEXT_BYTES {
+    if value.len() > max_bytes {
         return Err("native_approval_secure_state_invalid".to_owned());
     }
     Ok(Some(value.trim().to_owned()))
@@ -68,7 +95,16 @@ pub(super) fn read_platform_secret(account: &str) -> Result<Option<String>, Stri
 
 #[cfg(target_os = "linux")]
 pub(super) fn write_platform_secret(account: &str, value: &str) -> Result<(), String> {
-    if value.len() > MAX_SECRET_TEXT_BYTES {
+    write_platform_secret_with_limit(account, value, MAX_SECRET_TEXT_BYTES)
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn write_platform_secret_with_limit(
+    account: &str,
+    value: &str,
+    max_bytes: usize,
+) -> Result<(), String> {
+    if value.len() > max_bytes {
         return Err("native_approval_secure_state_invalid".to_owned());
     }
     let mut child = Command::new("/usr/bin/secret-tool")
@@ -86,12 +122,11 @@ pub(super) fn write_platform_secret(account: &str, value: &str) -> Result<(), St
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| "native_approval_secure_state_unavailable".to_owned())?;
-    child
+    let stdin = child
         .stdin
-        .as_mut()
-        .ok_or_else(|| "native_approval_secure_state_unavailable".to_owned())?
-        .write_all(value.as_bytes())
-        .map_err(|_| "native_approval_secure_state_unavailable".to_owned())?;
+        .take()
+        .ok_or_else(|| "native_approval_secure_state_unavailable".to_owned())?;
+    write_secret_input(stdin, value)?;
     let status = child
         .wait()
         .map_err(|_| "native_approval_secure_state_unavailable".to_owned())?;
@@ -102,8 +137,41 @@ pub(super) fn write_platform_secret(account: &str, value: &str) -> Result<(), St
     }
 }
 
+#[cfg(any(test, target_os = "linux"))]
+fn write_secret_input(mut stdin: impl Write, value: &str) -> Result<(), String> {
+    stdin
+        .write_all(value.as_bytes())
+        .map_err(|_| "native_approval_secure_state_unavailable".to_owned())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::write_secret_input;
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn secret_input_is_dropped_before_child_wait() {
+        let mut child = Command::new("/bin/cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        write_secret_input(stdin, "test").unwrap();
+        assert!(child.wait().unwrap().success());
+    }
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub(super) fn read_platform_secret(_account: &str) -> Result<Option<String>, String> {
+    read_platform_secret_with_limit(_account, 0)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub(super) fn read_platform_secret_with_limit(
+    _account: &str,
+    _max_bytes: usize,
+) -> Result<Option<String>, String> {
     // No desktop secret store is wired on this platform yet. Treat that as an
     // empty store so reads can fail open to "no enrollment", matching Linux
     // when the helper binary is absent. Writes below still fail closed.
@@ -111,6 +179,15 @@ pub(super) fn read_platform_secret(_account: &str) -> Result<Option<String>, Str
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub(super) fn write_platform_secret(_account: &str, _value: &str) -> Result<(), String> {
+pub(super) fn write_platform_secret(_account: &str, value: &str) -> Result<(), String> {
+    write_platform_secret_with_limit(_account, value, 0)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub(super) fn write_platform_secret_with_limit(
+    _account: &str,
+    _value: &str,
+    _max_bytes: usize,
+) -> Result<(), String> {
     Err("native_approval_secure_state_unavailable".to_owned())
 }

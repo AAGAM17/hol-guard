@@ -20,6 +20,7 @@ from ..native_resident_client import (
     native_resident_client_request,
 )
 from ..native_runtime import _isolated_environment, native_runtime_status
+from ..store_native_workspace_review import NATIVE_WORKSPACE_REVIEW_RECEIPT_STATE_PREFIX
 from .exact_cloud_review import EXACT_CLOUD_REVIEW_REVOCATION_STATE_KEY
 
 _REQUEST_SCHEMA = "guard-native-workspace-review-request.v1"
@@ -53,6 +54,7 @@ class NativeWorkspaceReviewStore(Protocol):
         expected_request: Mapping[str, object],
         resolved_at: str,
         native_replayed: bool,
+        native_receipt: Mapping[str, object] | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -294,17 +296,17 @@ def apply_native_workspace_review_decision(
     """Verify a native decision and apply it to the local approval queue.
 
     The resident claim is durable before SQLite application begins. A retry
-    can resume the exact claim while the signed envelope is valid; after
-    expiry there is deliberately no automatic recovery or signature bypass.
+    can resume the same decision using a fresh signed envelope. Expired proof
+    is never extended locally or accepted without native verification.
     """
 
     if store.get_sync_payload(EXACT_CLOUD_REVIEW_REVOCATION_STATE_KEY) is not None:
         raise NativeWorkspaceReviewError("native_workspace_review_cloud_review_disabled")
-    request = store.get_approval_request(request_id)
-    if isinstance(request, dict) and request.get("status") == "resolved":
-        return {"status": "already_resolved", "resolved_request": request}
     if not isinstance(decision, Mapping):
         raise NativeWorkspaceReviewError("native_workspace_review_decision_invalid")
+    request = store.get_approval_request(request_id)
+    if isinstance(request, dict) and request.get("status") == "resolved":
+        return _reverify_resolved_decision(store, guard_home, request_id, request, decision, resolved_at=resolved_at)
     expected_request, request_snapshot_digest = _stage_workspace_review_request(store, guard_home, request_id)
     response = _native_response(
         guard_home=guard_home,
@@ -325,6 +327,7 @@ def apply_native_workspace_review_decision(
         expected_request=expected_request,
         resolved_at=resolved_at or datetime.now(timezone.utc).isoformat(),
         native_replayed=bool(response["replayed"]),
+        native_receipt=response,
     )
     if applied.get("resolved") is not True:
         raise NativeWorkspaceReviewError(str(applied.get("error") or "native_workspace_review_apply_failed"))
@@ -338,6 +341,56 @@ def apply_native_workspace_review_decision(
         "native_receipt": response,
         "native_replayed": bool(response["replayed"]),
         "application_replayed": bool(applied.get("replayed")),
+        "resolved_request": applied.get("resolved_request"),
+    }
+
+
+def _reverify_resolved_decision(
+    store: NativeWorkspaceReviewStore,
+    guard_home: Path,
+    request_id: str,
+    request: Mapping[str, object],
+    decision: Mapping[str, object],
+    *,
+    resolved_at: str | None,
+) -> dict[str, object]:
+    previous = store.get_sync_payload(NATIVE_WORKSPACE_REVIEW_RECEIPT_STATE_PREFIX + request_id)
+    if not isinstance(previous, dict) or previous.get("request_id") != request_id:
+        raise NativeWorkspaceReviewError("native_workspace_review_request_resolved")
+    snapshot_digest = previous.get("request_snapshot_digest")
+    if not isinstance(snapshot_digest, str) or len(snapshot_digest) != 64:
+        raise NativeWorkspaceReviewError("native_workspace_review_receipt_invalid")
+    # Do not rewrite a resolved row into a new pending snapshot. Revalidate
+    # against the original native snapshot and its durably consumed claim.
+    response = _native_response(
+        guard_home=guard_home,
+        request_id=request_id,
+        decision=decision,
+        request_snapshot_digest=snapshot_digest,
+    )
+    if response.get("replayed") is not True:
+        raise NativeWorkspaceReviewError("native_workspace_review_decision_replay")
+    resolution_action = "block" if response.get("decision") == "deny" else "allow"
+    applied = store.resolve_native_workspace_review_request(
+        request_id,
+        resolution_action=resolution_action,
+        expected_request=request,
+        resolved_at=resolved_at or datetime.now(timezone.utc).isoformat(),
+        native_replayed=True,
+        native_receipt=response,
+    )
+    if applied.get("resolved") is not True:
+        raise NativeWorkspaceReviewError(str(applied.get("error") or "native_workspace_review_apply_failed"))
+    return {
+        "status": "already_resolved",
+        "request_id": request_id,
+        "decision": response.get("decision"),
+        "resolution_action": resolution_action,
+        "claim_id": response.get("claim_id"),
+        "envelope_digest": response.get("envelope_digest"),
+        "native_receipt": response,
+        "native_replayed": True,
+        "application_replayed": True,
         "resolved_request": applied.get("resolved_request"),
     }
 

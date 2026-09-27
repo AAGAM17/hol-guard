@@ -221,10 +221,10 @@ def test_apply_handles_resolved_invalid_and_failed_local_transactions(
 ) -> None:
     resolved = _request()
     resolved["status"] = "resolved"
-    assert native.apply_native_workspace_review_decision(_Store(resolved), tmp_path, "request-1", object()) == {
-        "status": "already_resolved",
-        "resolved_request": resolved,
-    }
+    with pytest.raises(native.NativeWorkspaceReviewError, match="native_workspace_review_decision_invalid"):
+        native.apply_native_workspace_review_decision(_Store(resolved), tmp_path, "request-1", object())
+    with pytest.raises(native.NativeWorkspaceReviewError, match="native_workspace_review_request_resolved"):
+        native.apply_native_workspace_review_decision(_Store(resolved), tmp_path, "request-1", {})
 
     with pytest.raises(native.NativeWorkspaceReviewError, match="native_workspace_review_decision_invalid"):
         native.apply_native_workspace_review_decision(_Store(_request()), tmp_path / "nonmapping", "request-1", [])

@@ -13,6 +13,8 @@ mod platform;
 #[path = "approval_enrollment_state.rs"]
 mod state;
 use platform::{read_platform_secret, write_platform_secret};
+#[cfg(not(test))]
+use platform::{read_platform_secret_with_limit, write_platform_secret_with_limit};
 use state::encode_state;
 pub(super) use state::load_unlocked;
 #[cfg(test)]
@@ -27,6 +29,23 @@ pub(super) fn read_platform_secret_for_v4(account: &str) -> Result<Option<String
 #[cfg(not(test))]
 pub(super) fn write_platform_secret_for_v4(account: &str, value: &str) -> Result<(), String> {
     write_platform_secret(account, value)
+}
+
+#[cfg(not(test))]
+pub(super) fn read_platform_secret_for_workspace_review(
+    account: &str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
+    read_platform_secret_with_limit(account, max_bytes)
+}
+
+#[cfg(not(test))]
+pub(super) fn write_platform_secret_for_workspace_review(
+    account: &str,
+    value: &str,
+    max_bytes: usize,
+) -> Result<(), String> {
+    write_platform_secret_with_limit(account, value, max_bytes)
 }
 
 const STATE_VERSION: u16 = 4;

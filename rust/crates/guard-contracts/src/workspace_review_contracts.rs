@@ -16,6 +16,8 @@ pub const NATIVE_WORKSPACE_REVIEW_DECISION_V1_SCHEMA: &str =
 pub const NATIVE_WORKSPACE_REVIEW_DECISION_V1_VERSION: u16 = 1;
 pub const NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN: &[u8] =
     b"guard-native-workspace-review-decision-v1\0";
+pub const NATIVE_WORKSPACE_REVIEW_SEMANTIC_DECISION_DOMAIN: &[u8] =
+    b"guard-native-workspace-review-semantic-decision-v1\0";
 pub const NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_RETRY_ONLY: &str = "validated_retry_only";
 pub const NATIVE_WORKSPACE_REVIEW_RETRY_SCOPE_DOMAIN: &[u8] =
     b"guard-native-workspace-review-retry-scope-v1\0";
@@ -34,6 +36,7 @@ pub const NATIVE_WORKSPACE_REVIEW_MAX_SCOPE_BINDING_BYTES: usize = 64;
 pub const NATIVE_WORKSPACE_REVIEW_MAX_AUTHORITY_BYTES: usize = 16 * 1024;
 pub const NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES: usize = 16 * 1024;
 pub const NATIVE_WORKSPACE_REVIEW_MAX_TTL_MS: u64 = 365 * 24 * 60 * 60 * 1000;
+/// Consumed decision tombstones are permanent; capacity exhaustion fails closed.
 pub const NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES: usize = 1024;
 
 /// The root-signed record binds one workspace-review key to one installation.

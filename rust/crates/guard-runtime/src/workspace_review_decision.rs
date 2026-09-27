@@ -11,6 +11,7 @@ use guard_contracts::{
     NATIVE_WORKSPACE_REVIEW_DECISION_V1_SCHEMA, NATIVE_WORKSPACE_REVIEW_DECISION_V1_VERSION,
     NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES, NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES,
     NATIVE_WORKSPACE_REVIEW_MAX_TTL_MS, NATIVE_WORKSPACE_REVIEW_RETRY_SCOPE_DOMAIN,
+    NATIVE_WORKSPACE_REVIEW_SEMANTIC_DECISION_DOMAIN,
 };
 use guard_policy_snapshot::{canonical_json_bytes, digest_bytes};
 use ring::signature;
@@ -23,6 +24,10 @@ use super::workspace_review_secure_state::WorkspaceReviewClaimV1;
 
 const DIGEST_HEX_BYTES: usize = 64;
 const ED25519_SIGNATURE_HEX_BYTES: usize = 128;
+
+#[path = "workspace_review_decision_claims.rs"]
+mod claim_semantics;
+use claim_semantics::consume_or_replay_claim;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkspaceReviewDecisionContext<'a> {
@@ -127,6 +132,38 @@ pub(crate) fn signing_bytes(
 ) -> Result<Vec<u8>, String> {
     canonical_json_bytes(&signing_value(envelope)?)
         .map_err(|_| "native_workspace_review_decision_invalid".to_owned())
+}
+
+/// Digest durable semantics independently of transport lifetime and signer
+/// rotation; excluding the claim id keeps a new id from creating a second grant.
+pub(crate) fn semantic_decision_digest(
+    envelope: &WorkspaceReviewDecisionEnvelopeV1,
+) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema": envelope.schema,
+        "version": envelope.version,
+        "purpose": envelope.purpose,
+        "workspace_binding": envelope.workspace_binding,
+        "device_binding": envelope.device_binding,
+        "installation_binding": envelope.installation_binding,
+        "scope_binding": envelope.scope_binding,
+        "request_binding": envelope.request_binding,
+        "action_binding": envelope.action_binding,
+        "intent_binding": envelope.intent_binding,
+        "revision_binding": envelope.revision_binding,
+        "policy_binding": envelope.policy_binding,
+        "retry_scope_binding": envelope.retry_scope_binding,
+        "delivery_mode": envelope.delivery_mode,
+        "decision": envelope.decision,
+    });
+    let canonical = canonical_json_bytes(&value)
+        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+    let mut preimage = Vec::with_capacity(
+        NATIVE_WORKSPACE_REVIEW_SEMANTIC_DECISION_DOMAIN.len() + canonical.len(),
+    );
+    preimage.extend_from_slice(NATIVE_WORKSPACE_REVIEW_SEMANTIC_DECISION_DOMAIN);
+    preimage.extend_from_slice(&canonical);
+    Ok(digest_bytes(&preimage))
 }
 
 fn canonical_envelope_bytes(
@@ -321,30 +358,20 @@ fn verify_and_claim_at(
         return Err("native_workspace_review_authority_provenance_mismatch".to_owned());
     }
     let (verified, _) = verify_envelope(envelope, &authority, context, now_ms)?;
-    if let Some(claim) = state
-        .consumed_claims
-        .iter()
-        .find(|claim| claim.claim_id == verified.claim_id)
-    {
-        if claim.envelope_digest != verified.envelope_digest {
-            return Err("native_workspace_review_decision_replay".to_owned());
-        }
+    let semantic_digest = semantic_decision_digest(envelope)?;
+    if consume_or_replay_claim(state_base, &mut state, &verified, &semantic_digest)? {
         let mut resumed = verified;
         resumed.replayed = true;
         return Ok(resumed);
     }
-    state.consumed_claims.retain(|claim| {
-        claim
-            .expires_at_ms
-            .map(|expires_at_ms| expires_at_ms > now_ms)
-            .unwrap_or(true)
-    });
     if state.consumed_claims.len() >= NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES {
         return Err("native_workspace_review_decision_replay_full".to_owned());
     }
     state.consumed_claims.push(WorkspaceReviewClaimV1 {
         claim_id: verified.claim_id.clone(),
         envelope_digest: verified.envelope_digest.clone(),
+        semantic_decision_digest: Some(semantic_digest),
+        legacy_semantic_recovered: false,
         expires_at_ms: Some(envelope.expires_at_ms),
     });
     state.validate()?;
@@ -352,7 +379,7 @@ fn verify_and_claim_at(
     Ok(verified)
 }
 
-fn current_native_workspace_review_bindings(
+pub(crate) fn current_native_workspace_review_bindings(
     state_base: &Path,
     scope_digest: &str,
 ) -> Result<(String, String), String> {
@@ -369,7 +396,7 @@ fn current_native_workspace_review_bindings(
     Ok((workspace_binding, scope_binding))
 }
 
-fn ensure_current_native_workspace_review_provenance(
+pub(crate) fn ensure_current_native_workspace_review_provenance(
     authority: &VerifiedWorkspaceReviewAuthority,
     workspace_binding: &str,
     scope_binding: &str,
@@ -454,3 +481,11 @@ pub(crate) fn verify_and_claim_bytes_at(
 #[cfg(test)]
 #[path = "workspace_review_decision_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "workspace_review_decision_renewal_tests.rs"]
+mod renewal_tests;
+
+#[cfg(test)]
+#[path = "workspace_review_decision_legacy_tests.rs"]
+mod legacy_tests;

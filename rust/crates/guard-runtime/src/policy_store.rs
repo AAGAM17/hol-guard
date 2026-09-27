@@ -41,6 +41,8 @@ mod policy_store_persistence;
 mod policy_store_request;
 #[path = "policy_store_validation.rs"]
 mod policy_store_validation;
+#[path = "resident_workspace_review_context.rs"]
+pub(crate) mod resident_workspace_review_context;
 #[path = "workspace_review_authority.rs"]
 pub(crate) mod workspace_review_authority;
 #[path = "workspace_review_decision.rs"]

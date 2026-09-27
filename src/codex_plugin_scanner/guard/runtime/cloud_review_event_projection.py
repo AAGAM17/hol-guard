@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from ..continuation_runtime import continuation_offer_payload
 from ..continuation_snapshot import (
@@ -20,6 +21,7 @@ from ..store_review_event_outbox_schema import REVIEW_EVENT_SCHEMA_VERSION
 from .local_request_snapshots import (
     _cloud_safe_local_request_payload,  # pyright: ignore[reportPrivateUsage]
 )
+from .native_workspace_review_context import build_native_workspace_review_context
 from .review_event_delivery import StoredReviewEventError, decode_stored_review_event
 from .review_event_display import build_display_command, resolve_display_provenance
 
@@ -80,7 +82,7 @@ def build_cloud_review_event(
     continuation = frozen_continuation or continuation_offer_payload(store, request_row=item, now=_now(), headless=True)
     created_at = str(item.get("created_at") or _now())
     last_seen_at = str(item.get("last_seen_at") or created_at)
-    return {
+    event = {
         "localRequestId": request_id,
         "correlationId": continuation["correlationId"],
         "localEventSequence": event_sequence,
@@ -113,6 +115,13 @@ def build_cloud_review_event(
         "localEmittedAt": _now(),
         "sentAt": _now(),
     }
+    if oauth is not None and stored_status == "pending":
+        guard_home = getattr(store, "guard_home", None)
+        if isinstance(guard_home, Path):
+            context = build_native_workspace_review_context(store, guard_home, request_id)
+            if context is not None:
+                request_payload["nativeWorkspaceReview"] = context
+    return event
 
 
 def project_cloud_review_event(

@@ -7,6 +7,9 @@ import importlib
 import importlib.metadata
 import json
 import sys
+import threading
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, TextIO
 
@@ -17,7 +20,11 @@ if TYPE_CHECKING:
     from ..config import GuardConfig
     from ..store import GuardStore
 
-from ..dashboard_launcher import build_desktop_dashboard_session_url, desktop_bootstrap_is_preflight
+from ..dashboard_launcher import (
+    build_desktop_dashboard_session_url,
+    build_desktop_dashboard_session_url_for_daemon,
+    desktop_bootstrap_is_preflight,
+)
 
 DESKTOP_BOOTSTRAP_SCHEMA = "guard-desktop-bootstrap.v1"
 _MAX_PENDING_APPROVALS = 20
@@ -332,6 +339,157 @@ def build_desktop_bootstrap_payload(
     }
 
 
+_CACHE_FRESH_SECONDS = 30.0
+_CACHE_SERVE_SECONDS = 600.0
+_cache_condition = threading.Condition()
+_cached_document: dict[str, object] | None = None
+_cached_at = 0.0
+_refresh_thread: threading.Thread | None = None
+
+
+def reset_desktop_bootstrap_cache() -> None:
+    """Drop the in-process bootstrap document. Tests use this to isolate runs."""
+
+    global _cached_document, _cached_at, _refresh_thread
+    with _cache_condition:
+        _cached_document = None
+        _cached_at = 0.0
+        _refresh_thread = None
+
+
+def assemble_desktop_bootstrap_document(
+    *,
+    context: HarnessContext,
+    store: GuardStore,
+    config: GuardConfig,
+    session_url: str | None,
+) -> dict[str, object]:
+    """Build the bootstrap document the CLI prints and the daemon route returns."""
+
+    status_payload = importlib.import_module(".product", __package__).build_guard_status_payload(
+        context,
+        store,
+        config,
+        scan_installed_apps=False,
+    )
+    now = datetime.now(timezone.utc)
+    day_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=timezone.utc)
+    day_end = day_start + timedelta(days=1)
+    day_start_text = day_start.isoformat()
+    day_end_text = day_end.isoformat()
+    pending_requests = store.list_approval_requests(status="pending", limit=_MAX_PENDING_APPROVALS)
+    oldest_pending_at = store.oldest_approval_request_created_at(status="pending")
+    resolved_today_count = store.count_approval_requests(
+        status="resolved",
+        resolved_at_from=day_start_text,
+        resolved_at_before=day_end_text,
+    )
+    receipts = store.list_receipts(limit=_MAX_RECENT_RECEIPTS)
+    receipt_summary = store.receipt_summary_between(start_at=day_start_text, before_at=day_end_text)
+    payload = build_desktop_bootstrap_payload(
+        status_payload=status_payload,
+        pending_requests=pending_requests,
+        approval_history=[],
+        receipts=receipts,
+        core_version=_core_version(),
+        oldest_pending_at=oldest_pending_at,
+        resolved_today_count=resolved_today_count,
+        receipt_summary=receipt_summary,
+    )
+    dashboard = payload.get("dashboard")
+    if isinstance(dashboard, dict):
+        if session_url is not None:
+            dashboard["sessionUrl"] = session_url
+        dashboard["canonical"] = True
+    return payload
+
+
+def _store_cached_document(document: dict[str, object]) -> None:
+    global _cached_document, _cached_at
+    with _cache_condition:
+        _cached_document = document
+        _cached_at = time.monotonic()
+
+
+def _schedule_refresh_locked(builder: Callable[[], dict[str, object]]) -> None:
+    global _refresh_thread
+    if _refresh_thread is not None and _refresh_thread.is_alive():
+        return
+
+    def refresh() -> None:
+        try:
+            document = builder()
+        except Exception:
+            return
+        _store_cached_document(document)
+
+    _refresh_thread = threading.Thread(target=refresh, name="desktop-bootstrap-cache", daemon=True)
+    _refresh_thread.start()
+
+
+def cached_desktop_bootstrap_document(builder: Callable[[], dict[str, object]]) -> dict[str, object]:
+    """Return a recent bootstrap document without taking the store lock again.
+
+    A fresh document is served from memory. A document younger than ten minutes
+    is served immediately while one refresh runs in the background. Desktop's
+    open path hits this while hook workers hold the store, so it must not wait
+    behind that convoy.
+    """
+
+    now = time.monotonic()
+    with _cache_condition:
+        cached = _cached_document
+        age = None if cached is None else now - _cached_at
+        if cached is not None and age is not None and age < _CACHE_FRESH_SECONDS:
+            return cached
+        if cached is not None and age is not None and age < _CACHE_SERVE_SECONDS:
+            _schedule_refresh_locked(builder)
+            return cached
+    document = builder()
+    _store_cached_document(document)
+    return document
+
+
+def desktop_bootstrap_document_for_running_daemon(
+    *,
+    store: GuardStore,
+    home_dir: Path,
+    daemon_url: str,
+    auth_token: str,
+) -> dict[str, object]:
+    """Build or reuse the bootstrap document for the daemon that is already up."""
+
+    def build() -> dict[str, object]:
+        from ..adapters.base import HarnessContext
+        from ..config import load_guard_config, overlay_synced_guard_policy
+        from ..synced_policy import synced_policy_payload
+
+        context = HarnessContext(
+            home_dir=home_dir,
+            workspace_dir=None,
+            guard_home=store.guard_home,
+            executable_overrides={},
+            home_override_explicit=False,
+            workspace_override_explicit=False,
+        )
+        config = overlay_synced_guard_policy(
+            load_guard_config(store.guard_home, workspace=None),
+            synced_policy_payload(store),
+        )
+        session_url = build_desktop_dashboard_session_url_for_daemon(
+            daemon_url=daemon_url,
+            auth_token=auth_token,
+        )
+        return assemble_desktop_bootstrap_document(
+            context=context,
+            store=store,
+            config=config,
+            session_url=session_url,
+        )
+
+    return cached_desktop_bootstrap_document(build)
+
+
 def _run_guard_desktop_command(
     args: argparse.Namespace,
     *,
@@ -382,42 +540,12 @@ def _run_guard_desktop_command(
             guard_home=resolved_guard_home,
             home_dir=getattr(context, "home_dir", None),
         )
-    status_payload = importlib.import_module(".product", __package__).build_guard_status_payload(
-        context,
-        store,
-        config,
-        scan_installed_apps=False,
+    payload = assemble_desktop_bootstrap_document(
+        context=context,
+        store=store,
+        config=config,
+        session_url=session_url,
     )
-    now = datetime.now(timezone.utc)
-    day_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=timezone.utc)
-    day_end = day_start + timedelta(days=1)
-    day_start_text = day_start.isoformat()
-    day_end_text = day_end.isoformat()
-
-    pending_requests = store.list_approval_requests(status="pending", limit=_MAX_PENDING_APPROVALS)
-    oldest_pending_at = store.oldest_approval_request_created_at(status="pending")
-    resolved_today_count = store.count_approval_requests(
-        status="resolved",
-        resolved_at_from=day_start_text,
-        resolved_at_before=day_end_text,
-    )
-    receipts = store.list_receipts(limit=_MAX_RECENT_RECEIPTS)
-    receipt_summary = store.receipt_summary_between(start_at=day_start_text, before_at=day_end_text)
-    payload = build_desktop_bootstrap_payload(
-        status_payload=status_payload,
-        pending_requests=pending_requests,
-        approval_history=[],
-        receipts=receipts,
-        core_version=_core_version(),
-        oldest_pending_at=oldest_pending_at,
-        resolved_today_count=resolved_today_count,
-        receipt_summary=receipt_summary,
-    )
-    dashboard = payload.get("dashboard")
-    if isinstance(dashboard, dict):
-        if session_url is not None:
-            dashboard["sessionUrl"] = session_url
-        dashboard["canonical"] = True
     print(json.dumps(payload, sort_keys=True), file=output_stream or sys.stdout)
     return 0
 
@@ -425,5 +553,9 @@ def _run_guard_desktop_command(
 __all__ = [
     "DESKTOP_BOOTSTRAP_SCHEMA",
     "_run_guard_desktop_command",
+    "assemble_desktop_bootstrap_document",
     "build_desktop_bootstrap_payload",
+    "cached_desktop_bootstrap_document",
+    "desktop_bootstrap_document_for_running_daemon",
+    "reset_desktop_bootstrap_cache",
 ]

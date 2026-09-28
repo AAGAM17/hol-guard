@@ -14,7 +14,15 @@ export function customExtensionRowDescription(item: LocalCliItem, catalogTitle: 
   return item.example_label;
 }
 
-export function nativePublicationMessage(publication: LocalCliListResponse["native_publication"]): string {
+export function nativePublicationMessage(
+  publication: LocalCliListResponse["native_publication"],
+  permissionScope?: LocalCliItem["permission_scope"],
+): string {
+  if (permissionScope === "configured-connection") {
+    return publication?.state === "failed"
+      ? "Your choices are saved, but policy publication failed. Guard has not confirmed enforcement for this connection."
+      : "Your choices are saved for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
+  }
   if (publication?.state === "acknowledged") {
     return `Native policy acknowledged saved revision ${publication.revision}. Live calls still check connection and tool authority.`;
   }

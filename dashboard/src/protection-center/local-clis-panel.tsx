@@ -296,9 +296,9 @@ export function LocalCliDetail(props: {
       </header>
       {props.item.surface === "mcp" && added ? (
         <section className="mt-5 rounded-xl border border-slate-200 p-4" aria-labelledby="mcp-publication-heading">
-          <h2 id="mcp-publication-heading" className="text-sm font-semibold text-brand-dark">Enforcement status</h2>
+          <h2 id="mcp-publication-heading" className="text-sm font-semibold text-brand-dark">{props.item.permission_scope === "configured-connection" ? "Policy status" : "Enforcement status"}</h2>
           <p role="status" className="mt-2 text-sm leading-6 text-brand-dark/75">
-            {nativePublicationMessage(props.nativePublication)}
+            {nativePublicationMessage(props.nativePublication, props.item.permission_scope)}
           </p>
           {props.nativePublication?.state !== "acknowledged" ? (
             <button type="button" className="mt-3 min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-brand-dark"
@@ -361,7 +361,7 @@ export function LocalCliDetail(props: {
             <p className="break-all font-mono text-xs leading-6">{props.item.example_label}</p>
             <p className="mt-2">Protocol: {props.item.mcp_catalog?.protocol_version ?? "Not verified"}</p>
             <p className="mt-2">Permission scope: {props.item.permission_scope === "configured-connection"
-              ? "This configured host connection. Provider account not verified."
+              ? "This configured host connection. Provider account and native host-hook binding are not verified."
               : props.item.permission_scope === "host-namespace"
                 ? "This connector namespace in its host. Account changes cannot currently be verified."
                 : props.item.permission_scope === "legacy-device"

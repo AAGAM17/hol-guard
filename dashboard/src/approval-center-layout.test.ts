@@ -261,6 +261,10 @@ assert(resolveActionEnvelopeDetailText({ ...BASE_ENVELOPE, action_type: "mcp_too
 "review action uses a friendly label while retaining the bound underlying artifact");
 assert(friendlyMcpToolName("mcp__unsafe__../../send") === null,
   "malformed qualified names stay uninterpreted");
+assert(friendlyMcpToolName("mcp__evil__github__delete_repo") === null,
+  "an unrelated namespace cannot hide its server behind a friendly connector label");
+assert(friendlyMcpToolName("mcp__codex_apps__composio__search__tools") === "Composio · Search Tools",
+  "Codex app labels retain all action segments");
 
 const queuedBrowserTool: GuardApprovalRequest = {
   ...BASE_REQUEST,
@@ -423,6 +427,11 @@ assert(
   requestResolutionBlockReason(inconsistentRequest)?.includes("cannot be approved") === true,
   "P45: inconsistent stored authority has explicit non-resolvable UI copy",
 );
+const supersededRequest: GuardApprovalRequest = {
+  ...BASE_REQUEST, status: "expired", superseded_by_request_id: "fresh-review",
+};
+assert(requestResolutionBlockReason(supersededRequest)?.includes("superseded by a fresh review") === true,
+  "expired requests expose the fresh review link rather than hiding it");
 
 assert(
   scopeLabel("workspace") === "Same action in this project",

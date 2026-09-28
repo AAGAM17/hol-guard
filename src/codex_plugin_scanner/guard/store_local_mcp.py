@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import shlex
 import sqlite3
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from .runtime.approval_context import build_configured_environment_hash
@@ -219,7 +221,15 @@ class StoreLocalMcpMixin:
             command=server_command,
             args_hash=server_args_hash,
         )
-        with self._connect() as connection:
+        legacy_deny = False
+        if existing is None and connection_identity_hash and connection_identity_hash != server_identity_hash:
+            with self._connect() as lookup:
+                ensure_local_cli_schema(lookup, for_read=True)
+                legacy_deny = _matching_legacy_mcp_denial(
+                    lookup, server_identity_hash, server_command, server_args_hash
+                )
+        guard_home = cast("GuardStore", self).guard_home if legacy_deny else None
+        with _notify_legacy_mcp_denial(guard_home), self._connect() as connection:
             ensure_local_cli_schema(connection)
             if existing is None:
                 inserted = _insert_mcp_observation(
@@ -232,6 +242,8 @@ class StoreLocalMcpMixin:
                     source_label=source_label,
                 )
                 if inserted is not None:
+                    if legacy_deny:
+                        _carry_legacy_mcp_denial(connection, inserted, identity.identity_hash, seen_at)
                     return inserted
                 existing = _observation_from_values(
                     connection.execute(
@@ -258,9 +270,13 @@ class StoreLocalMcpMixin:
                         cli_id=_collision_cli_id(identity.identity_hash),
                     )
                     if retry is not None:
+                        if legacy_deny:
+                            _carry_legacy_mcp_denial(connection, retry, identity.identity_hash, seen_at)
                         return retry
                     return str(existing["cli_id"])
             cli_id = str(existing["cli_id"])
+            if legacy_deny and _same_mcp_observation(existing, identity, server_command, server_args_hash):
+                _carry_legacy_mcp_denial(connection, cli_id, identity.identity_hash, seen_at)
             _ = connection.execute(
                 """
                 update local_cli_observation
@@ -355,6 +371,48 @@ class StoreLocalMcpMixin:
             grant["command_states"] = _read_command_states(connection, cli_id)
             grant["catalog"] = read_mcp_tool_authority(connection, cli_id, identity_hash, tool_name)
             return grant
+
+
+@contextmanager
+def _notify_legacy_mcp_denial(guard_home: Path | None) -> Iterator[None]:
+    from .native_policy_snapshot import notify_native_policy_mutation
+
+    if guard_home is not None:
+        notify_native_policy_mutation(guard_home)
+    try:
+        yield
+    finally:
+        if guard_home is not None:
+            notify_native_policy_mutation(guard_home)
+
+
+def _matching_legacy_mcp_denial(connection: sqlite3.Connection, server_hash: str, command: str, args_hash: str) -> bool:
+    row = connection.execute(
+        """select 1 from local_cli_observation observation
+           join local_cli_grant grant_row on grant_row.cli_id = observation.cli_id
+             and grant_row.identity_hash = observation.identity_hash
+           where observation.surface = 'mcp' and observation.identity_hash = ?
+             and (observation.server_identity_hash = ? or observation.server_identity_hash is null)
+             and observation.server_command = ? and observation.server_args_hash = ?
+             and (grant_row.state = 'blocked' or exists (
+               select 1 from local_cli_command_grant choice
+               where choice.cli_id = observation.cli_id and choice.state = 'block'))
+           limit 1""",
+        (server_hash, server_hash, command, args_hash),
+    ).fetchone()
+    return row is not None
+
+
+def _carry_legacy_mcp_denial(connection: sqlite3.Connection, cli_id: str, identity_hash: str, seen_at: str) -> None:
+    # A legacy Deny may cover multiple new host connections. Carry it to each;
+    # old Allow authority never crosses the new connection identity boundary.
+    inserted = connection.execute(
+        """insert or ignore into local_cli_grant (cli_id, identity_hash, state, revision, updated_at)
+           values (?, ?, 'blocked', 1, ?)""",
+        (cli_id, identity_hash, seen_at),
+    )
+    if inserted.rowcount:
+        connection.execute("update local_cli_authority set revision = revision + 1 where singleton = 1")
 
 
 def _equivalent_package_launcher_observation(

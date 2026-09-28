@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchLocalCliApi } from "../guard-api";
 import type { LocalCliItem } from "../local-cli-api";
 import type { GuardApprovalGatePublicConfig } from "../guard-types";
@@ -61,24 +61,29 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
   const [moreAvailable, setMoreAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [controller, setController] = useState<AbortController | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const operation = useRef<"search" | "preview" | "apply" | null>(null);
   const [candidate, setCandidate] = useState<SetupCandidate | null>(null);
   const [configured, setConfigured] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
-  useEffect(() => () => controller?.abort(), [controller]);
+  useEffect(() => () => controller.current?.abort(), []);
   async function search() {
-    if (query.trim().length < 2 || busy) return;
+    if (query.trim().length < 2 || busy || operation.current) return;
+    operation.current = "search";
     const next = new AbortController();
-    setController(next); setBusy(true); setError(null); setEntries(null); setCandidate(null);
+    controller.current = next; setBusy(true); setError(null); setEntries(null); setCandidate(null);
     try {
       const result = await registrySearch(query, next.signal);
       if (!next.signal.aborted) { setEntries(result.entries); setMoreAvailable(result.moreAvailable); }
     }
     catch (caught) { if (!next.signal.aborted) setError(caught instanceof Error ? caught.message : "Registry unavailable."); }
-    finally { if (!next.signal.aborted) setBusy(false); }
+    finally { operation.current = null; if (controller.current === next) controller.current = null;
+      if (!next.signal.aborted) setBusy(false); }
   }
   async function preview(entry: RegistryEntry, endpoint: string) {
+    if (operation.current) return;
+    operation.current = "preview";
     setBusy(true); setError(null); setCandidate(null);
     const setupName = entry.name.split("/").at(-1)?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") ?? "mcp-server";
     try {
@@ -95,11 +100,12 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
         || !/^[a-f0-9]{64}$/.test(body.selection_digest)) throw new Error("Invalid Codex setup preview");
       setCandidate(body as SetupCandidate);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not review setup."); }
-    finally { setBusy(false); }
+    finally { operation.current = null; setBusy(false); }
   }
   async function apply() {
-    if (!candidate || busy || isApprovalProofSubmitDisabled(approvalGate,
+    if (!candidate || busy || operation.current || isApprovalProofSubmitDisabled(approvalGate,
       { approvalPassword: password, approvalTotpCode: totp }, false)) return;
+    operation.current = "apply";
     setBusy(true); setError(null);
     try {
       const proof = buildApprovalProofCredentials(approvalGate,
@@ -117,12 +123,12 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
         || body.host_change_applied !== true || body.permissions_granted !== false) throw new Error("Codex setup outcome is uncertain.");
       setConfigured(candidate.setup_name); setCandidate(null); setPassword(""); setTotp("");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Codex setup did not finish."); }
-    finally { setBusy(false); }
+    finally { operation.current = null; setBusy(false); }
   }
   return <details className="mt-6 rounded-2xl border border-slate-200 bg-white p-4" onToggle={(event) => {
     setOpen(event.currentTarget.open);
     onOpenChange(event.currentTarget.open);
-    if (!event.currentTarget.open) { controller?.abort(); setBusy(false); }
+    if (!event.currentTarget.open && operation.current === "search") { controller.current?.abort(); setBusy(false); }
   }}>
     <summary className="min-h-11 cursor-pointer py-3 font-semibold text-brand-dark">Find an MCP server in the public registry</summary>
     {open ? <section aria-label="Public MCP registry search">

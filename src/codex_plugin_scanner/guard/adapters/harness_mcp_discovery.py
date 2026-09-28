@@ -134,6 +134,14 @@ def discovered_server_for_observation(
             if server.identity.cli_id == cli_id
             and (not server_identity_hash or server.server_identity.identity_hash == server_identity_hash)
         ]
+        if not matches and server_identity_hash and cli_id == f"local-cli.mcp-{server_identity_hash[:8]}":
+            matches = [
+                server
+                for server in servers
+                if server.server_identity.identity_hash == server_identity_hash
+                and (not server_command or server.server_identity.command == server_command)
+                and (not args_hash or server.server_identity.args_hash == args_hash)
+            ]
     elif server_identity_hash:
         matches = [server for server in servers if server.server_identity.identity_hash == server_identity_hash]
     else:

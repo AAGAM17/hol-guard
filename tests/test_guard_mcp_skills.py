@@ -31,6 +31,13 @@ def _result(**fields):
     return {"resultType": "complete", "ttlMs": 0, "cacheScope": "private", **fields}
 
 
+def test_oversized_frontmatter_reports_metadata_limit():
+    entry = _entry()
+    entry["frontmatter"]["notes"] = "x" * 262_144
+    with pytest.raises(McpSkillError, match="skill_metadata_limit"):
+        parse_mcp_skill_entry(entry, origin=_ORIGIN)
+
+
 def test_declaration_requires_resources_and_actual_extension_not_tool_names():
     assert mcp_skills_declared(_CAPABILITIES, protocol_version="2026-07-28")
     for capabilities in ({}, {"tools": {}}, {"extensions": _CAPABILITIES["extensions"]}, {"resources": {}}):

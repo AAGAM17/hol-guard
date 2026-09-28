@@ -4614,16 +4614,18 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
   const [moreAvailable, setMoreAvailable] = reactExports.useState(false);
   const [busy, setBusy] = reactExports.useState(false);
   const [error, setError] = reactExports.useState(null);
-  const [controller, setController] = reactExports.useState(null);
+  const controller = reactExports.useRef(null);
+  const operation = reactExports.useRef(null);
   const [candidate, setCandidate] = reactExports.useState(null);
   const [configured, setConfigured] = reactExports.useState(null);
   const [password, setPassword] = reactExports.useState("");
   const [totp, setTotp] = reactExports.useState("");
-  reactExports.useEffect(() => () => controller?.abort(), [controller]);
+  reactExports.useEffect(() => () => controller.current?.abort(), []);
   async function search() {
-    if (query.trim().length < 2 || busy) return;
+    if (query.trim().length < 2 || busy || operation.current) return;
+    operation.current = "search";
     const next = new AbortController();
-    setController(next);
+    controller.current = next;
     setBusy(true);
     setError(null);
     setEntries(null);
@@ -4637,10 +4639,14 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
     } catch (caught) {
       if (!next.signal.aborted) setError(caught instanceof Error ? caught.message : "Registry unavailable.");
     } finally {
+      operation.current = null;
+      if (controller.current === next) controller.current = null;
       if (!next.signal.aborted) setBusy(false);
     }
   }
   async function preview(entry, endpoint) {
+    if (operation.current) return;
+    operation.current = "preview";
     setBusy(true);
     setError(null);
     setCandidate(null);
@@ -4664,15 +4670,17 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not review setup.");
     } finally {
+      operation.current = null;
       setBusy(false);
     }
   }
   async function apply() {
-    if (!candidate || busy || isApprovalProofSubmitDisabled(
+    if (!candidate || busy || operation.current || isApprovalProofSubmitDisabled(
       approvalGate,
       { approvalPassword: password, approvalTotpCode: totp },
       false
     )) return;
+    operation.current = "apply";
     setBusy(true);
     setError(null);
     try {
@@ -4705,14 +4713,15 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Codex setup did not finish.");
     } finally {
+      operation.current = null;
       setBusy(false);
     }
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("details", { className: "mt-6 rounded-2xl border border-slate-200 bg-white p-4", onToggle: (event) => {
     setOpen(event.currentTarget.open);
     onOpenChange(event.currentTarget.open);
-    if (!event.currentTarget.open) {
-      controller?.abort();
+    if (!event.currentTarget.open && operation.current === "search") {
+      controller.current?.abort();
       setBusy(false);
     }
   }, children: [

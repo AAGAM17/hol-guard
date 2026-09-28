@@ -341,6 +341,11 @@ export function requestResolutionBlockReason(item: GuardApprovalRequest): string
   if (item.policy_action === "block") {
     return "Policy terminally blocked this action. This queue record is diagnostic and cannot be overridden by an approval.";
   }
+  if (item.status === "expired") {
+    return item.superseded_by_request_id
+      ? "This request expired and was superseded by a fresh review."
+      : "This request expired. Rerun the action to create a fresh review.";
+  }
   return null;
 }
 
@@ -549,10 +554,11 @@ export function friendlyMcpToolName(raw: string | null | undefined): string | nu
   if (!raw || raw.length > 256) return null;
   const parts = raw.startsWith("mcp__") ? raw.slice(5).split("__") : [];
   if (parts.length < 2 || parts.some((part) => !/^[a-zA-Z0-9_-]{1,80}$/.test(part))) return null;
-  const connector = parts.length > 2 ? parts.at(-2)! : parts[0];
-  const tool = parts.at(-1)!;
+  if (parts.length > 2 && parts[0] !== "codex_apps") return null;
+  const connector = parts.length > 2 ? parts[1] : parts[0];
+  const tool = parts.length > 2 ? parts.slice(2).join("__") : parts[1];
   const humanize = (part: string) => part.replaceAll("_", " ").replaceAll("-", " ")
-    .toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+    .toLowerCase().replace(/\s+/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
   const shortTool = tool.toLowerCase().startsWith(`${connector.toLowerCase()}_`)
     ? tool.slice(connector.length + 1) : tool;
   return `${humanize(connector)} · ${humanize(shortTool)}`;

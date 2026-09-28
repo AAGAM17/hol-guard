@@ -102,10 +102,11 @@ def parse_mcp_skill_entry(value: object, *, origin: str) -> McpSkillEntry:
         raise McpSkillError("invalid_skill_frontmatter")
     try:
         raw_frontmatter = json.dumps(frontmatter, sort_keys=True, allow_nan=False, separators=(",", ":"))
-        if len(raw_frontmatter.encode()) > 262_144:
-            raise McpSkillError("skill_metadata_limit")
+        encoded_size = len(raw_frontmatter.encode())
     except (TypeError, ValueError, RecursionError, UnicodeError) as error:
         raise McpSkillError("invalid_skill_frontmatter") from error
+    if encoded_size > 262_144:
+        raise McpSkillError("skill_metadata_limit")
     resources = value.get("resources")
     if resources == "dynamic":
         return McpSkillEntry(origin, uri, raw_frontmatter, None)

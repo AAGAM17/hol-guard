@@ -6,6 +6,8 @@ for (const width of [1280, 390]) {
   test(`registry Codex setup stays reviewed and does not grant tools at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const requests: Record<string, unknown>[] = [];
+    let finishApply: () => void = () => undefined;
+    const applyGate = new Promise<void>((resolve) => { finishApply = resolve; });
     await mount(page);
     await page.route("**/v1/local-clis**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -25,6 +27,7 @@ for (const width of [1280, 390]) {
       }
       if (path.endsWith("/registry-setup")) {
         requests.push(body);
+        if (body.operation === "apply") await applyGate;
         await route.fulfill({ json: body.operation === "preview"
           ? { host: "codex", registry_name: body.registry_name, version: body.version, endpoint: body.endpoint,
             setup_name: "newserver", selection_digest: "b".repeat(64),
@@ -58,6 +61,11 @@ for (const width of [1280, 390]) {
     expect(requests).toHaveLength(1);
     await review.getByLabel("Authenticator code").fill("123456");
     await review.getByRole("button", { name: "Add to Codex", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
+    await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
+    await expect(review.getByRole("button", { name: "Add to Codex", exact: true })).toBeDisabled();
+    finishApply();
     await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ operation: "apply", registry_name: "io.github.sample/newserver",

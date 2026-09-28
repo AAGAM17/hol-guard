@@ -561,7 +561,24 @@ class LocalCliApiService:
 
     def _listed_public_items(self) -> list[dict[str, object]]:
         stored = self._store.list_local_cli_items()
-        return [public_local_cli_item(item) for item in stored if _package_item_available(item)]
+        configured = {
+            (item.get("server_identity_hash"), item.get("server_command"), item.get("server_args_hash"))
+            for item in stored
+            if item.get("surface") == "mcp" and item.get("identity_hash") != item.get("server_identity_hash")
+        }
+        return [
+            public_local_cli_item(item)
+            for item in stored
+            if _package_item_available(item)
+            and not (
+                item.get("surface") == "mcp"
+                and isinstance(item.get("server_identity_hash"), str)
+                and item.get("cli_id") == f"local-cli.mcp-{str(item.get('server_identity_hash'))[:8]}"
+                and item.get("identity_hash") == item.get("server_identity_hash")
+                and (item.get("server_identity_hash"), item.get("server_command"), item.get("server_args_hash"))
+                in configured
+            )
+        ]
 
     def _list_payload(self, items: list[dict[str, object]]) -> dict[str, object]:
         from ..native_policy_snapshot import local_cli_publication_status

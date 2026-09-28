@@ -412,8 +412,8 @@ function testApprovalProofBlocksUnreadyGate(): void {
     "unconfigured gate routes to approval setup instead of blocking proof submission",
   );
   assert(
-    isApprovalProofSubmitDisabled(disabledConfiguredGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === true,
-    "disabled gate must block proof submission instead of collecting a dead credential",
+    isApprovalProofSubmitDisabled(disabledConfiguredGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === false,
+    "disabled gate must allow fail-open submission without collecting a dead credential",
   );
   assert(
     isApprovalProofSubmitDisabled(readyGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === false,

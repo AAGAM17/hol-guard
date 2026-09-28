@@ -93,33 +93,35 @@ def _bounded_regular_bytes(path: Path) -> tuple[bytes | None, str]:
 def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, str | bool | None]]:
     config_path = CodexHarnessAdapter._hook_config_path(context)
     raw, status = _bounded_regular_bytes(config_path)
-    if raw is None:
+    if raw is None and status != "missing":
         return None, {"config_status": status, "hooks_enabled": None}
-    try:
-        config = tomllib.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError, RecursionError):
-        return None, {"config_status": "malformed", "hooks_enabled": None}
+    config: dict = {}
+    if raw is not None:
+        try:
+            config = tomllib.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, tomllib.TOMLDecodeError, RecursionError):
+            return None, {"config_status": "malformed", "hooks_enabled": None}
     features = config.get("features")
     hooks_enabled = not isinstance(features, dict) or features.get("hooks") is not False
     hooks = config.get("hooks")
     if isinstance(hooks, dict):
-        return hooks, {"config_status": "read", "hooks_enabled": hooks_enabled}
+        return hooks, {"config_status": status, "hooks_enabled": hooks_enabled}
     hooks_path = CodexHarnessAdapter._hooks_path(context)
     raw_hooks, hooks_status = _bounded_regular_bytes(hooks_path)
     if raw_hooks is None:
-        return None, {"config_status": "read", "hooks_enabled": hooks_enabled, "hooks_status": hooks_status}
+        return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": hooks_status}
     try:
         decoded = json.loads(raw_hooks)
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
-        return None, {"config_status": "read", "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
+        return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
     if not isinstance(decoded, dict):
-        return None, {"config_status": "read", "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
-    return decoded.get("hooks"), {"config_status": "read", "hooks_enabled": hooks_enabled, "hooks_status": "read"}
+        return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
+    return decoded.get("hooks"), {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "read"}
 
 
 def codex_incident_report(context: HarnessContext) -> dict[str, object]:
     hooks, config = _configured_codex_hooks(context)
-    if config["config_status"] == "read" and config.get("hooks_status") not in {
+    if config["config_status"] in {"read", "missing"} and config.get("hooks_status") not in {
         "too_large",
         "unsafe_file_type",
         "changed_during_read",

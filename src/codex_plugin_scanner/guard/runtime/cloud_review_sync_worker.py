@@ -37,7 +37,7 @@ def start_cloud_sync_sync_worker(
     store: GuardStore,
     existing: CloudReviewSyncWorker | None = None,
     *,
-    on_authority_changed: Callable[[], None] | None = None,
+    on_authority_changed: Callable[[], bool] | None = None,
     poll_interval: float | None = None,
     error_backoff: float | None = None,
 ) -> CloudReviewSyncWorker | None:
@@ -96,7 +96,7 @@ def refresh_cloud_review_sync_worker(
     worker: CloudReviewSyncWorker | None,
     *,
     shutting_down: bool,
-    on_authority_changed: Callable[[], None] | None = None,
+    on_authority_changed: Callable[[], bool] | None = None,
 ) -> tuple[CloudReviewSyncWorker | None, bool]:
     if shutting_down:
         return worker, False
@@ -132,7 +132,7 @@ def _cloud_sync_sync_loop(
     poll_interval: float,
     error_backoff: float,
     error_backoff_base: float = DEFAULT_ERROR_BACKOFF_BASE_SECONDS,
-    on_authority_changed: Callable[[], None] | None = None,
+    on_authority_changed: Callable[[], bool] | None = None,
 ) -> None:
     """Drain immediately after commits and poll durably if a hint is lost."""
     from . import cloud_review_sync as sync
@@ -157,8 +157,7 @@ def _cloud_sync_sync_loop(
             authority_changed = refresh_native_workspace_review_authority(store, auth_context)
             queue_refresh_pending = queue_refresh_pending or authority_changed
             if queue_refresh_pending and on_authority_changed is not None:
-                on_authority_changed()
-                queue_refresh_pending = False
+                queue_refresh_pending = not on_authority_changed()
             binding = store.get_review_event_oauth_binding()
             binding_changed = isinstance(binding, dict) and binding != prepared_binding
             if isinstance(binding, dict) and binding != prepared_binding:

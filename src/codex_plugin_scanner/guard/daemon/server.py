@@ -8288,10 +8288,16 @@ class GuardDaemonServer:
             "sync_running": sync_running,
         }
 
-    def _start_command_queue_after_authority(self) -> None:
-        with self._finish_service_lock:
-            if self._owned_service_ready and not self._shutdown_started.is_set():
-                self._command_queue_worker = start_command_queue_worker(self._server.store, self._command_queue_worker)
+    def _start_command_queue_after_authority(self) -> bool:
+        if self._shutdown_started.is_set() or not self._finish_service_lock.acquire(blocking=False):
+            return False
+        try:
+            if not self._owned_service_ready or self._shutdown_started.is_set():
+                return False
+            self._command_queue_worker = start_command_queue_worker(self._server.store, self._command_queue_worker)
+            return True
+        finally:
+            self._finish_service_lock.release()
 
     def _reconcile_runtime_artifacts_best_effort(self) -> None:
         """Align existing Guard-owned artifacts before reporting daemon_ready."""

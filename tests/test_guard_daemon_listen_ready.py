@@ -300,16 +300,21 @@ def test_signed_authority_starts_command_queue_without_daemon_restart(
         "start_command_queue_worker",
         lambda store, existing: calls.append((store, existing)) or "worker",
     )
-    daemon._start_command_queue_after_authority()
+    assert daemon._start_command_queue_after_authority() is False
     assert calls == []
 
     daemon._owned_service_ready = True
-    daemon._start_command_queue_after_authority()
+    daemon._finish_service_lock.acquire()
+    try:
+        assert daemon._start_command_queue_after_authority() is False
+    finally:
+        daemon._finish_service_lock.release()
+    assert daemon._start_command_queue_after_authority() is True
     assert calls == [(daemon._server.store, None)]
     assert daemon._command_queue_worker == "worker"
 
     daemon._shutdown_started.set()
-    daemon._start_command_queue_after_authority()
+    assert daemon._start_command_queue_after_authority() is False
     assert len(calls) == 1
 
 

@@ -57,6 +57,47 @@ class Store:
 
 
 class TestIndependentWorker:
+    def test_queue_start_retries_after_contended_lifecycle_lock(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        from codex_plugin_scanner.guard.runtime import native_workspace_review_enrollment
+
+        store = Store(tmp_path)
+        stop = threading.Event()
+        enrollments: list[bool] = []
+        queue_attempts: list[bool] = []
+
+        class Wake:
+            def generation(self) -> int:
+                return 0
+
+            def wait(self, generation: int, timeout: float) -> int:
+                del generation, timeout
+                if len(queue_attempts) == 2:
+                    stop.set()
+                return 0
+
+        def enroll(_store: object, _auth: object) -> bool:
+            enrolled = not enrollments
+            enrollments.append(enrolled)
+            return enrolled
+
+        def start_queue() -> bool:
+            ready = bool(queue_attempts)
+            queue_attempts.append(ready)
+            return ready
+
+        monkeypatch.setattr(cloud_review_sync_module, "_resolve_cloud_review_sync_auth_context", lambda _store: {})
+        monkeypatch.setattr(native_workspace_review_enrollment, "refresh_native_workspace_review_authority", enroll)
+        monkeypatch.setattr(cloud_review_sync_module, "sync_cloud_review_events_once", lambda *_args: {"synced": 0})
+        cloud_review_sync_worker._cloud_sync_sync_loop(
+            store, stop, Wake(), poll_interval=1, error_backoff=1, on_authority_changed=start_queue
+        )
+        assert enrollments == [True, False]
+        assert queue_attempts == [False, True]
+
     def test_new_authority_reprobes_pending_review_before_upload(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -108,7 +149,7 @@ class TestIndependentWorker:
             Wake(),
             poll_interval=1,
             error_backoff=1,
-            on_authority_changed=lambda: calls.append("start-command-queue"),
+            on_authority_changed=lambda: calls.append("start-command-queue") or True,
         )
         assert calls == ["enroll", "start-command-queue", "reprobe", "upload"]
 

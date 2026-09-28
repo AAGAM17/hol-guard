@@ -146,63 +146,63 @@
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_complete_inline_recording_only_output_gets_matching_proof",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_complete_inline_recording_only_output_gets_matching_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_complete_inline_recording_only_output_gets_matching_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_source_ref_proof_is_copied_without_hashing_an_excerpt",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_source_ref_proof_is_copied_without_hashing_an_excerpt"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_source_ref_proof_is_copied_without_hashing_an_excerpt"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_inherited_excerpt_digest_is_removed_during_allow_original_rewrite",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_inherited_excerpt_digest_is_removed_during_allow_original_rewrite"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_inherited_excerpt_digest_is_removed_during_allow_original_rewrite"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_inherited_excerpt_digest_is_removed_from_existing_allow_response",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_inherited_excerpt_digest_is_removed_from_existing_allow_response"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_inherited_excerpt_digest_is_removed_from_existing_allow_response"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_stale_allow_original_uses_canonical_inline_proof",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_stale_allow_original_uses_canonical_inline_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_stale_allow_original_uses_canonical_inline_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_summary_without_digest_falls_back_to_complete_inline_output",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_summary_without_digest_falls_back_to_complete_inline_output"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_summary_without_digest_falls_back_to_complete_inline_output"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_truncated_or_excerpt_only_output_gets_no_fabricated_proof",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_truncated_or_excerpt_only_output_gets_no_fabricated_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_truncated_or_excerpt_only_output_gets_no_fabricated_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_existing_observe_mode_is_preserved_during_rewrite",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_existing_observe_mode_is_preserved_during_rewrite"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_existing_observe_mode_is_preserved_during_rewrite"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_worker_native_post_tool_watch.py::test_truncated_inline_output_gets_no_proof",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_truncated_inline_output_gets_no_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_truncated_inline_output_gets_no_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
@@ -337,21 +337,21 @@
     {
       "old_node": "tests/test_hook_review_observe_mode.py::test_watch_only_observes_sensitive_source_read_without_blocking",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_existing_observe_mode_is_preserved_during_rewrite"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_existing_observe_mode_is_preserved_during_rewrite"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_review_observe_mode.py::test_watch_only_observes_inline_secret_output_without_blocking",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_existing_observe_mode_is_preserved_during_rewrite"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_existing_observe_mode_is_preserved_during_rewrite"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_hook_review_observe_mode.py::test_watch_only_preserves_clean_truncated_output",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_truncated_inline_output_gets_no_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_truncated_inline_output_gets_no_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
@@ -466,21 +466,21 @@
     {
       "old_node": "tests/test_pi_extension_response_contract.py::test_generated_omp_payload_matches_real_python_review",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_complete_inline_recording_only_output_gets_matching_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_complete_inline_recording_only_output_gets_matching_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_pi_extension_response_contract.py::test_generated_unicode_source_ref_matches_python_fast_path",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_source_ref_proof_is_copied_without_hashing_an_excerpt"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_source_ref_proof_is_copied_without_hashing_an_excerpt"
       ],
       "status": "native_behavior_ported_requires_ci"
     },
     {
       "old_node": "tests/test_pi_extension_response_contract.py::test_generated_large_non_source_result_returns_reviewed_excerpt",
       "replacement_nodes": [
-        "rust/crates/guard-runtime/src/policy_enforcement_tests.rs::test_truncated_or_excerpt_only_output_gets_no_fabricated_proof"
+        "rust/crates/guard-runtime/src/policy_enforcement_post_tool_tests.rs::test_truncated_or_excerpt_only_output_gets_no_fabricated_proof"
       ],
       "status": "native_behavior_ported_requires_ci"
     },

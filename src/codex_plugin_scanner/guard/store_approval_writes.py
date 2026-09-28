@@ -37,6 +37,14 @@ def add_approval_request(
     normalized_oauth_source = oauth_source.strip().lower() or "default"
     identity_key = _normalized_identity_key(request.launch_target)
     action_identity, queue_group_id = approval_queue_identity_for_request(request)
+    _expire_inconsistent_group_requests(
+        connection,
+        request_id=request.request_id,
+        harness=request.harness,
+        oauth_source=normalized_oauth_source,
+        queue_group_id=queue_group_id,
+        now=now,
+    )
     request_id = _existing_request_id(
         connection,
         request,
@@ -80,6 +88,40 @@ def add_approval_request(
         now=now,
     )
     return request.request_id
+
+
+def _expire_inconsistent_group_requests(
+    connection: sqlite3.Connection,
+    *,
+    request_id: str,
+    harness: str,
+    oauth_source: str,
+    queue_group_id: str,
+    now: str,
+) -> None:
+    """Retire invalid older cards even when a newer valid card wins deduplication."""
+
+    rows = connection.execute(
+        """select request_id from approval_requests
+           where queue_group_id = ? and harness = ? and oauth_source = ? and status = 'pending'
+           order by last_seen_at desc, request_id desc""",
+        (queue_group_id, harness, oauth_source),
+    ).fetchall()
+    valid_ids: list[str] = []
+    invalid_ids: list[str] = []
+    for row in rows:
+        existing_id = str(row["request_id"])
+        (valid_ids if _consistent_pending_request(connection, existing_id) else invalid_ids).append(existing_id)
+    if request_id in invalid_ids:
+        raise ValueError("fresh_review_request_id_required")
+    replacement_id = valid_ids[0] if valid_ids else request_id
+    for invalid_id in invalid_ids:
+        connection.execute(
+            """update approval_requests set status = 'expired', resolved_at = ?,
+            resolution_action = null, resolution_scope = null, reason = ?
+            where request_id = ? and status = 'pending'""",
+            (now, "superseded_by_fresh_review:" + replacement_id, invalid_id),
+        )
 
 
 def _consistent_pending_request(connection: sqlite3.Connection, request_id: str) -> bool:

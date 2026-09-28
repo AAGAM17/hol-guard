@@ -92,7 +92,8 @@ class TestDuplicatePendingRequestCollapse:
         fresh_id = add_approval_request(conn, fresh, "2026-09-27T12:01:00Z")
         assert fresh_id == fresh.request_id and fresh_id != old_id
         old = conn.execute(
-            "select status, resolution_action, reason from approval_requests where request_id = ?", (old_id,),
+            "select status, resolution_action, reason from approval_requests where request_id = ?",
+            (old_id,),
         ).fetchone()
         assert tuple(old) == ("expired", None, "superseded_by_fresh_review:" + fresh_id)
         assert count_approval_requests(conn, status="pending") == 1
@@ -112,9 +113,42 @@ class TestDuplicatePendingRequestCollapse:
         conn.execute("update approval_requests set policy_action = 'invalid' where request_id = ?", (old_id,))
         with pytest.raises(ValueError, match="fresh_review_request_id_required"):
             add_approval_request(conn, first, "2026-09-27T12:01:00Z")
-        assert conn.execute(
-            "select policy_action from approval_requests where request_id = ?", (old_id,),
-        ).fetchone()[0] == "invalid"
+        assert (
+            conn.execute(
+                "select policy_action from approval_requests where request_id = ?",
+                (old_id,),
+            ).fetchone()[0]
+            == "invalid"
+        )
+
+    def test_newer_valid_duplicate_does_not_leave_inconsistent_old_card_pending(self) -> None:
+        conn = _make_conn()
+        first = _make_request(artifact_id="codex:project:mcp-review", launch_target="tool:read_text_file")
+        old_id = add_approval_request(conn, first, "2026-09-27T12:00:00Z")
+        newer_id = str(uuid.uuid4())
+        columns = [row[1] for row in conn.execute("pragma table_info(approval_requests)") if row[1] != "request_id"]
+        names = ", ".join(columns)
+        conn.execute(
+            f"insert into approval_requests (request_id, {names}) "
+            f"select ?, {names} from approval_requests where request_id = ?",
+            (newer_id, old_id),
+        )
+        conn.execute(
+            "update approval_requests set created_at = ?, last_seen_at = ? where request_id = ?",
+            ("2026-09-27T12:01:00Z", "2026-09-27T12:01:00Z", newer_id),
+        )
+        conn.execute(
+            "update approval_requests set decision_v2_json = ? where request_id = ?",
+            ("{invalid-json", old_id),
+        )
+
+        fresh = _make_request(artifact_id=first.artifact_id, launch_target=first.launch_target)
+        assert add_approval_request(conn, fresh, "2026-09-27T12:02:00Z") == newer_id
+        old = conn.execute(
+            "select status, resolution_action, reason from approval_requests where request_id = ?", (old_id,)
+        ).fetchone()
+        assert tuple(old) == ("expired", None, "superseded_by_fresh_review:" + newer_id)
+        assert count_approval_requests(conn, status="pending") == 1
 
     def test_second_identical_request_updates_existing_row(self) -> None:
         """T720: A second pending request for the same artifact+workspace+launch_target

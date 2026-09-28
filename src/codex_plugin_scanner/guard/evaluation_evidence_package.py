@@ -47,9 +47,12 @@ class EvaluationEvidencePackage:
 
 
 def _json_bytes(value: Mapping[str, object]) -> bytes:
-    return (
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n"
-    ).encode("utf-8")
+    try:
+        return (
+            json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n"
+        ).encode("utf-8")
+    except UnicodeError as exc:
+        raise EvaluationContractError("evaluation evidence package contains invalid text") from exc
 
 
 def _record_payloads(
@@ -169,7 +172,7 @@ def write_evaluation_evidence_package(
 ) -> EvaluationEvidencePackage:
     """Write one archive exclusively under the profile's private temp root."""
 
-    profile_payload, result_payload = _record_payloads(profile, result)
+    profile_payload, result_payload = _record_payloads(profile, result, portable=True)
     scope = cast(Mapping[str, object], profile_payload["targetScope"])
     declared_root = Path(cast(str, scope["rootPath"]))
     destination_root = Path(output_dir)

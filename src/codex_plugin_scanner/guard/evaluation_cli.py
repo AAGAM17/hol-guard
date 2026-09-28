@@ -30,6 +30,7 @@ from .evaluation_evidence_package import (
     verify_evaluation_evidence_package,
     write_evaluation_evidence_package,
 )
+from .evaluation_json import reject_duplicate_keys
 from .evaluation_preflight import (
     cleanup_interrupted_evaluation_setup,
     preflight_evaluation,
@@ -101,15 +102,6 @@ def _read_bounded(path: Path, limit: int, *, too_large_code: str, read_code: str
     return data
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    payload: dict[str, object] = {}
-    for key, value in pairs:
-        if key in payload:
-            raise ValueError("duplicate JSON object key")
-        payload[key] = value
-    return payload
-
-
 def _reject_json_constant(value: str) -> NoReturn:
     del value
     raise ValueError("non-standard JSON constant")
@@ -118,7 +110,7 @@ def _reject_json_constant(value: str) -> NoReturn:
 def _load_json(data: bytes) -> object:
     return json.loads(
         data.decode("utf-8"),
-        object_pairs_hook=_reject_duplicate_json_keys,
+        object_pairs_hook=reject_duplicate_keys,
         parse_constant=_reject_json_constant,
     )
 
@@ -303,6 +295,12 @@ def _package_write_error(error: EvaluationContractError) -> _CliError:
         return _CliError(
             "evidence_package_invalid",
             "evaluation evidence package exceeds the declared output limit",
+            status="failed",
+        )
+    if "invalid text" in reason:
+        return _CliError(
+            "evidence_package_invalid",
+            "evaluation evidence package contains invalid text",
             status="failed",
         )
     if "unavailable on this platform" in reason:

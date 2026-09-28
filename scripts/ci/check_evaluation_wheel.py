@@ -52,6 +52,7 @@ def main() -> int:
         root = Path(temporary)
         for name in (
             "test_guard_evaluation_cli.py",
+            "test_guard_evaluation_cli_package.py",
             "test_guard_evaluation_preflight.py",
             "test_opencode_hook_python.py",
             "test_opencode_hook_python_isolation.py",

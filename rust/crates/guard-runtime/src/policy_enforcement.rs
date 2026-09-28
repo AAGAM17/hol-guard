@@ -30,7 +30,7 @@ mod policy_enforcement_policy;
 mod policy_enforcement_matrix;
 pub(crate) use policy_enforcement_matrix::validate_pre_tool_result_matrix;
 
-use policy_enforcement_facts::
+use policy_enforcement_facts::{
     classify_tool_name, collect_fact_maps, payload_facts, preferred_tool_name, risk_classes,
     PolicyFacts, PATH_KEYS,
 };

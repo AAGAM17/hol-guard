@@ -1364,7 +1364,7 @@ def run_native_generic_payload(
                 output_stream=output_stream,
             )
         elif _canonical_harness_name(args.harness) == "zcode":
-            from ..adapters.zcode_hooks import emit_zcode_hook_response
+            from ..adapters.zcode_hooks import emit_zcode_hook_response, zcode_hook_process_exit
 
             emit_zcode_hook_response(
                 policy_action=policy_action,
@@ -1482,7 +1482,7 @@ def run_native_generic_payload(
             )
             return 0 if policy_action not in {"review", "require-reapproval", "sandbox-required", "block"} else 2
         if _canonical_harness_name(args.harness) == "zcode":
-            from ..adapters.zcode_hooks import emit_zcode_hook_response
+            from ..adapters.zcode_hooks import emit_zcode_hook_response, zcode_hook_process_exit
 
             emit_zcode_hook_response(
                 policy_action=policy_action,
@@ -1491,7 +1491,7 @@ def run_native_generic_payload(
                 payload=payload_map,
                 output_stream=output_stream,
             )
-            return 0 if policy_action not in {"review", "require-reapproval", "sandbox-required", "block"} else 2
+            return zcode_hook_process_exit(policy_action=policy_action, event_name=hook_event_name)
         if _canonical_harness_name(args.harness) == "devin":
             from ..adapters.devin_hooks import emit_devin_hook_response
 

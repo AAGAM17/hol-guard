@@ -382,11 +382,15 @@ class StoreLocalMcpMixin:
                 # The authorization path needs the called tool and the unseen-tool
                 # fallback only. Keep both configured and observed command IDs in
                 # the same read snapshot as the grant and authority digest.
-                command_ids = tuple(dict.fromkeys((
-                    slug_local_cli_command_id(tool_name),
-                    "tool-" + sha256(tool_name.encode()).hexdigest()[:24],
-                    OTHER_COMMAND_ID,
-                )))
+                command_ids = tuple(
+                    dict.fromkeys(
+                        (
+                            slug_local_cli_command_id(tool_name),
+                            "tool-" + sha256(tool_name.encode()).hexdigest()[:24],
+                            OTHER_COMMAND_ID,
+                        )
+                    )
+                )
                 grant["commands"] = _read_command_catalog(connection, cli_id, command_ids)
                 grant["command_states"] = _read_command_states(connection, cli_id, command_ids)
             grant["catalog"] = read_mcp_tool_authority(connection, cli_id, identity_hash, tool_name)

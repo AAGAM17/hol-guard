@@ -61,7 +61,7 @@ export function isApprovalProofSubmitDisabled(
   }
   if (gate != null && !approvalGateProofReady(gate)) {
     // Gate off on a fail-open endpoint: no proof needed.
-    if (!requireGate && gate.enabled !== true) return false;
+    if (!requireGate && gate.enabled === false) return false;
     return true;
   }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
@@ -100,7 +100,7 @@ export function ApprovalProofFieldInputs(props: ApprovalProofFieldInputsProps) {
     props.onApprovalTotpCodeChange(event);
   }, [props]);
   if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
-    if (!props.requireGate && props.approvalGate.enabled !== true) return null;
+    if (!props.requireGate && props.approvalGate.enabled === false) return null;
     return <ApprovalGateSetupNotice />;
   }
   if (!props.requireFreshTotp && approvalProofRecentlySatisfied(props.approvalGate)) {

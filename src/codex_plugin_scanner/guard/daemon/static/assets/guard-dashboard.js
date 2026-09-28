@@ -19942,7 +19942,7 @@ function isApprovalProofSubmitDisabled(gate, credentials, busy, requireFreshTotp
     return true;
   }
   if (gate != null && !approvalGateProofReady(gate)) {
-    if (!requireGate && gate.enabled !== true) return false;
+    if (!requireGate && gate.enabled === false) return false;
     return true;
   }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
@@ -19975,7 +19975,7 @@ function ApprovalProofFieldInputs(props) {
     props.onApprovalTotpCodeChange(event);
   }, [props]);
   if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
-    if (!props.requireGate && props.approvalGate.enabled !== true) return null;
+    if (!props.requireGate && props.approvalGate.enabled === false) return null;
     return /* @__PURE__ */ jsxRuntimeExports.jsx(ApprovalGateSetupNotice, {});
   }
   if (!props.requireFreshTotp && approvalProofRecentlySatisfied(props.approvalGate)) {

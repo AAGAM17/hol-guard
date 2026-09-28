@@ -102,7 +102,7 @@ def managed_extension_source(
             "      const continuationResult = continuation.value;\n"
             "      if (continuationResult.action === 'allow') return undefined;\n"
             "      const continuationReason = continuationResult.action === 'changed'\n"
-            '        ? "HOL Guard blocked this tool call because its original arguments or "'
+            '        ? "HOL Guard blocked this tool call because its original arguments or '
             'context changed during approval."\n'
             "        : approvalContinuationFailureReason(continuationResult.response, continuationResult.action);\n"
             '      ctx.ui.notify(continuationReason, "warning");\n'
@@ -122,7 +122,7 @@ def managed_extension_source(
             "        return { block: true, reason: blockedReason };\n"
             "      }\n"
             "      if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
-            '        const changedReason = "HOL Guard blocked this tool call because its original arguments or "'
+            '        const changedReason = "HOL Guard blocked this tool call because its original arguments or '
             'context changed before approval was consumed.";\n'
             '        ctx.ui.notify(changedReason, "warning");\n'
             "        return { block: true, reason: changedReason };\n"
@@ -139,7 +139,7 @@ def managed_extension_source(
             "        return { block: true, reason: cancelledReason };\n"
             "      }\n"
             "      if (!toolCallStillMatches(event, ctx, GUARD_CONFIG_PATH, snapshot)) {\n"
-            '        const changedReason = "HOL Guard blocked this tool call because its original arguments or "'
+            '        const changedReason = "HOL Guard blocked this tool call because its original arguments or '
             'context changed during approval revalidation.";\n'
             '        ctx.ui.notify(changedReason, "warning");\n'
             "        return { block: true, reason: changedReason };\n"

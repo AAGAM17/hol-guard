@@ -143,6 +143,11 @@ def _resolve_exported_symbol(
     for item in tree.body:
         if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == name:
             return module_path
+        if isinstance(item, ast.ClassDef) and any(
+            isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == name
+            for member in item.body
+        ):
+            return module_path
     for item in tree.body:
         if not isinstance(item, ast.ImportFrom):
             continue

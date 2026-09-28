@@ -24,11 +24,14 @@ use serde_json::Value;
 mod policy_enforcement_facts;
 #[path = "policy_enforcement_policy.rs"]
 mod policy_enforcement_policy;
+#[path = "policy_enforcement_helpers.rs"]
+mod policy_enforcement_helpers;
 
 use policy_enforcement_facts::{
     classify_tool_name, collect_fact_maps, payload_facts, preferred_tool_name, risk_classes,
     PolicyFacts, PATH_KEYS,
 };
+use policy_enforcement_helpers::{action_rank, join_action, normalized_harness};
 use policy_enforcement_policy::{policy_map_action, CompiledEffectivePolicy};
 
 #[path = "policy_enforcement_admission.rs"]
@@ -140,20 +143,6 @@ impl ActionFloorMatrix {
     }
 }
 
-fn action_rank(action: &str) -> Option<u8> {
-    ActionFloor::parse(action).map(|floor| floor as u8)
-}
-
-fn join_action(left: &str, right: &str) -> Result<String, String> {
-    let left_rank = action_rank(left).ok_or_else(|| "native_policy_action_invalid".to_owned())?;
-    let right_rank = action_rank(right).ok_or_else(|| "native_policy_action_invalid".to_owned())?;
-    Ok(if left_rank >= right_rank {
-        left.to_owned()
-    } else {
-        right.to_owned()
-    })
-}
-
 /// Validate the typed relationship between the effective action fields.  The
 /// policy action is not a second, weaker authority: it must describe the same
 /// or stronger floor, and a terminal policy block must be reflected by the
@@ -173,28 +162,6 @@ pub(crate) fn validate_pre_tool_result_matrix(result: &PreToolResultV1) -> Resul
         }
     }
     ActionFloorMatrix::from_result(result)?.validate(result)
-}
-
-fn canonical_harness(value: &str) -> Option<&str> {
-    let normalized = value.trim().to_ascii_lowercase().replace('_', "-");
-    match normalized.as_str() {
-        "claude" => Some("claude-code"),
-        "cline-cli" | "cline-vscode" => Some("cline"),
-        "kimi-code" | "kimi-cli" => Some("kimi"),
-        "grok-build" | "grok-build-cli" | "xai-grok" => Some("grok"),
-        "pi-agent" | "pi-coding-agent" => Some("pi"),
-        "oh-my-pi" => Some("omp"),
-        "zai" | "z-code" | "zai-zcode" => Some("zcode"),
-        "devin-cli" | "cognition-devin" => Some("devin"),
-        _ => None,
-    }
-}
-
-fn normalized_harness(value: &str) -> String {
-    let normalized = value.trim().to_ascii_lowercase().replace('_', "-");
-    canonical_harness(&normalized)
-        .unwrap_or(normalized.as_str())
-        .to_owned()
 }
 
 /// The intrinsic-result inputs a policy floor can consult.  Grouped so the

@@ -158,6 +158,23 @@ test("approval password setup stays reachable while the gate is off", async ({ p
   expect(gateUpdate?.new_password).toBe("test-password");
 });
 
+test("cancelling first-time password setup restores the off gate state", async ({ page }) => {
+  const fixture = await mountSettingsFixture(page, disabledUnconfiguredSettingsPayload);
+  await page.goto(`/settings?${DAEMON}&section=approval`);
+
+  await page.getByRole("tabpanel", { name: "Approval gate settings" }).waitFor();
+  const gateToggle = page.locator("#settings-approval-gate");
+  await expect(gateToggle).not.toBeChecked();
+  await page.getByRole("button", { name: "Set up approval password" }).click();
+  const setupDialog = page.getByRole("dialog", { name: "Set your approval password" });
+  await expect(setupDialog).toBeVisible();
+  await expect(gateToggle).toBeChecked();
+  await setupDialog.getByRole("button", { name: "Go back" }).click();
+  await expect(setupDialog).toBeHidden();
+  await expect(gateToggle).not.toBeChecked();
+  expect(fixture.settingsUpdates).toHaveLength(0);
+});
+
 test("Enter on Go back cancels password proof rather than confirming it", async ({ page }) => {
   const fixture = await mountSettingsFixture(page, unconfiguredSettingsPayload);
   await page.goto(`/settings?${DAEMON}&section=approval`);

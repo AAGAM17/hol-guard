@@ -90,8 +90,7 @@ def _bounded_regular_bytes(path: Path) -> tuple[bytes | None, str]:
     return b"".join(chunks), "read"
 
 
-def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, str | bool | None]]:
-    config_path = CodexHarnessAdapter._hook_config_path(context)
+def _read_codex_hook_files(config_path: Path, hooks_path: Path) -> tuple[object, dict[str, str | bool | None]]:
     raw, status = _bounded_regular_bytes(config_path)
     if raw is None and status != "missing":
         return None, {"config_status": status, "hooks_enabled": None}
@@ -106,7 +105,6 @@ def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, 
     hooks = config.get("hooks")
     if isinstance(hooks, dict):
         return hooks, {"config_status": status, "hooks_enabled": hooks_enabled}
-    hooks_path = CodexHarnessAdapter._hooks_path(context)
     raw_hooks, hooks_status = _bounded_regular_bytes(hooks_path)
     if raw_hooks is None:
         return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": hooks_status}
@@ -117,6 +115,30 @@ def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, 
     if not isinstance(decoded, dict):
         return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
     return decoded.get("hooks"), {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "read"}
+
+
+def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, str | bool | None]]:
+    return _read_codex_hook_files(
+        CodexHarnessAdapter._hook_config_path(context),
+        CodexHarnessAdapter._hooks_path(context),
+    )
+
+
+def _workspace_hook_observation(context: HarnessContext) -> dict[str, object]:
+    if context.workspace_dir is None:
+        return {"selected": False}
+    config_path, hooks_path = CodexHarnessAdapter._config_hook_pairs(context)[1]
+    hooks, status = _read_codex_hook_files(config_path, hooks_path)
+    return {
+        "selected": True,
+        **status,
+        "authentication": "unverified_local_configuration",
+        "event_group_counts": {
+            event: len(groups) if isinstance((groups := hooks.get(event)), list) else 0 for event in _EVENTS
+        }
+        if isinstance(hooks, dict)
+        else None,
+    }
 
 
 def codex_incident_report(context: HarnessContext) -> dict[str, object]:
@@ -168,7 +190,10 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
         ),
         "liveness": "unknown",
     }
-    events, timeline_status = load_bounded_incident_lifecycle_events(context.guard_home)
+    try:
+        events, timeline_status = load_bounded_incident_lifecycle_events(context.guard_home)
+    except OSError:
+        events, timeline_status = [], "journal_unavailable"
     return {
         "schema": "hol-guard.codex-incident.v1",
         "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -184,6 +209,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
             "interpreter_sha256": interpreter_digest,
             "managed_events": matches,
         },
+        "workspace": _workspace_hook_observation(context),
         "daemon": daemon,
         "loaded_harness": {"state": "unknown", "reason_code": "loaded_session_not_observable"},
         "authenticated_hook_decision": {"state": "unknown", "reason_code": "decision_not_probed"},

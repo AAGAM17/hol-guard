@@ -93,6 +93,39 @@ def test_incident_export_reports_legacy_hooks_when_toml_config_is_missing(tmp_pa
     assert report["loaded_harness"]["state"] == "unknown"
 
 
+def test_incident_cli_reports_selected_workspace_hooks_without_authenticating_them(tmp_path: Path, capsys) -> None:
+    context = _context(tmp_path)
+    workspace = tmp_path / "workspace"
+    project_context = HarnessContext(home_dir=context.home_dir, workspace_dir=workspace, guard_home=context.guard_home)
+    project_config = CodexHarnessAdapter._config_hook_pairs(project_context)[1][0]
+    project_config.parent.mkdir(parents=True)
+    project_config.write_text('[hooks]\nPreToolUse = [{ matcher = ".*", hooks = [] }]\n', encoding="utf-8")
+
+    result = main(
+        [
+            "guard",
+            "doctor",
+            "codex",
+            "--incident",
+            "--json",
+            "--home",
+            str(context.home_dir),
+            "--guard-home",
+            str(context.guard_home),
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    assert result == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["workspace"]["selected"] is True
+    assert report["workspace"]["event_group_counts"]["PreToolUse"] == 1
+    assert report["workspace"]["authentication"] == "unverified_local_configuration"
+    assert report["configured"]["manifest_package_version"] is None
+    assert report["loaded_harness"]["state"] == "unknown"
+
+
 def test_incident_export_does_not_expose_identity_from_tampered_manifest(tmp_path: Path) -> None:
     context = _context(tmp_path)
     CodexHarnessAdapter().install(context)
@@ -133,6 +166,31 @@ def test_incident_cli_parser_emits_one_bounded_json_report(tmp_path: Path, capsy
     assert len(output.out.encode()) < 8192
 
 
+def test_incident_cli_expands_home_shorthand(tmp_path: Path, capsys, monkeypatch) -> None:
+    context = _context(tmp_path)
+    monkeypatch.setenv("HOME", str(context.home_dir))
+    config_path = CodexHarnessAdapter._hook_config_path(context)
+    config_path.parent.mkdir()
+    config_path.write_text("[features]\nhooks = true\n", encoding="utf-8")
+
+    result = main(
+        [
+            "guard",
+            "doctor",
+            "codex",
+            "--incident",
+            "--json",
+            "--home",
+            "~",
+            "--guard-home",
+            str(context.guard_home),
+        ]
+    )
+
+    assert result == 0
+    assert json.loads(capsys.readouterr().out)["configured"]["config_status"] == "read"
+
+
 def test_incident_export_never_echoes_untrusted_config_or_exception(tmp_path: Path, monkeypatch) -> None:
     context = _context(tmp_path)
     config_path = context.home_dir / ".codex" / "config.toml"
@@ -147,6 +205,20 @@ def test_incident_export_never_echoes_untrusted_config_or_exception(tmp_path: Pa
 
     assert report["configured"]["reason_code"] == "codex_integrity_probe_failed"
     assert "PRIVATE_TOKEN" not in json.dumps(report)
+
+
+def test_incident_export_keeps_json_when_journal_path_is_unavailable(tmp_path: Path, monkeypatch) -> None:
+    context = _context(tmp_path)
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.cli.doctor_incident.load_bounded_incident_lifecycle_events",
+        lambda _guard_home: (_ for _ in ()).throw(OSError("private incident detail")),
+    )
+
+    report = codex_incident_report(context)
+
+    assert report["timeline"]["status"] == "journal_unavailable"
+    assert report["timeline"]["events"] == []
+    assert "private incident detail" not in json.dumps(report)
 
 
 def test_incident_export_rejects_repair_without_running_diagnostics(tmp_path: Path, monkeypatch) -> None:

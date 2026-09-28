@@ -113,6 +113,22 @@ def test_incident_reader_reports_scan_limit_instead_of_empty_history(tmp_path: P
     assert status == "journal_scan_limit"
 
 
+def test_incident_reader_omits_read_time_io_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    record_daemon_lifecycle_event(tmp_path, event="ready")
+
+    def fail_read(_path: Path, *, max_bytes: int) -> str:
+        del max_bytes
+        raise OSError("private incident detail")
+
+    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.lifecycle_journal.read_private_regular_text", fail_read)
+
+    events, status = load_bounded_incident_lifecycle_events(tmp_path)
+
+    assert events == []
+    assert status == "invalid_entries_omitted"
+    assert load_daemon_lifecycle_events(tmp_path) == []
+
+
 def test_daemon_records_ready_and_clean_stop_without_sqlite_dependency(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "guard-home")
     daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)

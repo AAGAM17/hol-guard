@@ -154,7 +154,10 @@ def load_bounded_incident_lifecycle_events(
 
 
 def _read_lifecycle_event(path: Path) -> DaemonLifecycleEvent | None:
-    raw = read_private_regular_text(path, max_bytes=_MAX_JOURNAL_EVENT_BYTES)
+    try:
+        raw = read_private_regular_text(path, max_bytes=_MAX_JOURNAL_EVENT_BYTES)
+    except OSError:
+        return None
     if raw is None:
         return None
     try:

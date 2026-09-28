@@ -22,6 +22,31 @@ export function approvalProofRequiresPassword(gate: GuardApprovalGatePublicConfi
   return gate?.totp_enabled !== true;
 }
 
+export function approvalGateProofReady(gate: GuardApprovalGatePublicConfig | null | undefined): boolean {
+  return gate?.enabled === true && gate?.configured === true;
+}
+
+export function ApprovalGateSetupNotice() {
+  return (
+    <div className="rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] px-4 py-4">
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-blue/10">
+          <HiMiniKey className="h-5 w-5 text-brand-blue" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-brand-dark">Local approval isn't ready</h3>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            This change needs proof from this device, but the approval gate is off or missing its password. Enable Ask for proof and set an approval password in Settings &gt; Approval gate, then come back.
+          </p>
+          <div className="mt-3">
+            <ActionButton href="/settings?section=approval" variant="primary">Set up approval</ActionButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function isApprovalProofSubmitDisabled(
   gate: GuardApprovalGatePublicConfig | null | undefined,
   credentials: { approvalPassword: string; approvalTotpCode: string },
@@ -29,6 +54,9 @@ export function isApprovalProofSubmitDisabled(
   requireFreshTotp = false,
 ): boolean {
   if (busy) {
+    return true;
+  }
+  if (gate != null && !approvalGateProofReady(gate)) {
     return true;
   }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
@@ -45,6 +73,9 @@ export function buildApprovalProofCredentials(
   credentials: { approvalPassword: string; approvalTotpCode: string },
   requireFreshTotp = false,
 ): { approval_password?: string; approval_totp_code?: string } {
+  if (gate != null && !approvalGateProofReady(gate)) {
+    return {};
+  }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
     return {};
   }
@@ -63,6 +94,9 @@ export function ApprovalProofFieldInputs(props: ApprovalProofFieldInputsProps) {
     event.target.value = digits;
     props.onApprovalTotpCodeChange(event);
   }, [props]);
+  if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
+    return <ApprovalGateSetupNotice />;
+  }
   if (!props.requireFreshTotp && approvalProofRecentlySatisfied(props.approvalGate)) {
     return (
       <p className="text-sm leading-6 text-brand-dark/75">

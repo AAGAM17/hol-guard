@@ -4,6 +4,7 @@ import { HiMiniArrowLeft } from "react-icons/hi2";
 
 import {
   ApprovalProofFieldInputs,
+  approvalGateProofReady,
   approvalProofRecentlySatisfied,
   buildApprovalProofCredentials,
   isApprovalProofSubmitDisabled,
@@ -321,6 +322,7 @@ export function AddCustomExtensionWorkspace(props: {
   const previewNames = visibleCommands.slice(0, 8).map((entry) => entry.name);
   const bulkState = bulkCommandState(enrollable);
   const recentlySatisfied = approvalProofRecentlySatisfied(resolvedApprovalGate);
+  const gateReady = resolvedApprovalGate === null ? null : approvalGateProofReady(resolvedApprovalGate);
 
   return (
     <form
@@ -346,7 +348,7 @@ export function AddCustomExtensionWorkspace(props: {
           </p>
           {summary ? <p className="mt-2 text-sm leading-6 text-brand-dark/70">{observedMcp && pending === "blocked" ? "This connector will be blocked, including tools that have not been listed yet." : summary}</p> : null}
           <p className="mt-5 text-sm leading-6 text-brand-dark/80">
-            {enrollConfirmCopy(recognized.surface, recentlySatisfied, resolvedApprovalGate?.totp_enabled === true)}
+            {enrollConfirmCopy(recognized.surface, recentlySatisfied, resolvedApprovalGate?.totp_enabled === true, gateReady)}
           </p>
           <div className="mt-5 max-w-sm">
             <ApprovalProofFieldInputs

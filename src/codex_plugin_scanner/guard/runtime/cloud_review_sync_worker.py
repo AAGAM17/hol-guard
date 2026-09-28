@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import threading
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -36,6 +37,7 @@ def start_cloud_sync_sync_worker(
     store: GuardStore,
     existing: CloudReviewSyncWorker | None = None,
     *,
+    on_authority_changed: Callable[[], None] | None = None,
     poll_interval: float | None = None,
     error_backoff: float | None = None,
 ) -> CloudReviewSyncWorker | None:
@@ -68,6 +70,7 @@ def start_cloud_sync_sync_worker(
             "poll_interval": safety_poll,
             "error_backoff": maximum_backoff,
             "error_backoff_base": initial_backoff,
+            "on_authority_changed": on_authority_changed,
         },
         daemon=True,
         name="hol-guard-cloud-review-sync",
@@ -89,11 +92,15 @@ def stop_cloud_sync_sync_worker(
 
 
 def refresh_cloud_review_sync_worker(
-    store: GuardStore, worker: CloudReviewSyncWorker | None, *, shutting_down: bool
+    store: GuardStore,
+    worker: CloudReviewSyncWorker | None,
+    *,
+    shutting_down: bool,
+    on_authority_changed: Callable[[], None] | None = None,
 ) -> tuple[CloudReviewSyncWorker | None, bool]:
     if shutting_down:
         return worker, False
-    worker = start_cloud_sync_sync_worker(store, worker)
+    worker = start_cloud_sync_sync_worker(store, worker, on_authority_changed=on_authority_changed)
     if worker is None:
         return None, False
     worker.wake_signal.notify()
@@ -125,6 +132,7 @@ def _cloud_sync_sync_loop(
     poll_interval: float,
     error_backoff: float,
     error_backoff_base: float = DEFAULT_ERROR_BACKOFF_BASE_SECONDS,
+    on_authority_changed: Callable[[], None] | None = None,
 ) -> None:
     """Drain immediately after commits and poll durably if a hint is lost."""
     from . import cloud_review_sync as sync
@@ -133,6 +141,7 @@ def _cloud_sync_sync_loop(
 
     error_streak = 0
     prepared_binding: dict[str, str] | None = None
+    queue_refresh_pending = False
     while not stop_event.is_set():
         observed_generation = wake_signal.generation()
         result: dict[str, object] = {}
@@ -146,6 +155,10 @@ def _cloud_sync_sync_loop(
                 continue
             auth_context = sync._resolve_cloud_review_sync_auth_context(store)
             authority_changed = refresh_native_workspace_review_authority(store, auth_context)
+            queue_refresh_pending = queue_refresh_pending or authority_changed
+            if queue_refresh_pending and on_authority_changed is not None:
+                on_authority_changed()
+                queue_refresh_pending = False
             binding = store.get_review_event_oauth_binding()
             binding_changed = isinstance(binding, dict) and binding != prepared_binding
             if isinstance(binding, dict) and binding != prepared_binding:

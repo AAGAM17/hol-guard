@@ -102,8 +102,15 @@ class TestIndependentWorker:
             "sync_cloud_review_events_once",
             lambda _store, _auth: calls.append("upload") or {"synced": 0},
         )
-        cloud_review_sync_worker._cloud_sync_sync_loop(store, stop, Wake(), poll_interval=1, error_backoff=1)
-        assert calls == ["enroll", "reprobe", "upload"]
+        cloud_review_sync_worker._cloud_sync_sync_loop(
+            store,
+            stop,
+            Wake(),
+            poll_interval=1,
+            error_backoff=1,
+            on_authority_changed=lambda: calls.append("start-command-queue"),
+        )
+        assert calls == ["enroll", "start-command-queue", "reprobe", "upload"]
 
     def test_late_connection_wakes_delivery_without_restarting_daemon(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

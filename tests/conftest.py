@@ -272,7 +272,11 @@ def _isolate_daemon_background_refresh_workers(
         )
     if request.node.get_closest_marker("daemon_service_workers") is None:
         monkeypatch.setattr(daemon_server, "start_command_queue_worker", lambda _store, existing: existing)
-        monkeypatch.setattr(daemon_server, "start_cloud_sync_sync_worker", lambda _store, existing: existing)
+        monkeypatch.setattr(
+            daemon_server,
+            "start_cloud_sync_sync_worker",
+            lambda _store, existing, *, on_authority_changed=None: existing,
+        )
 
 
 class _FakeSystemKeyringModule:

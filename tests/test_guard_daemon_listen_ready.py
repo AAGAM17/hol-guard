@@ -286,6 +286,33 @@ def test_command_queue_refresh_stays_idle_after_shutdown_starts(tmp_path: Path) 
     assert result["sync_running"] is False
 
 
+def test_signed_authority_starts_command_queue_without_daemon_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    daemon = GuardDaemonServer(
+        GuardStore(tmp_path / "guard-home", prime_policy_integrity=False),
+        host="127.0.0.1",
+        port=0,
+    )
+    calls: list[object] = []
+    monkeypatch.setattr(
+        daemon_server_module,
+        "start_command_queue_worker",
+        lambda store, existing: calls.append((store, existing)) or "worker",
+    )
+    daemon._start_command_queue_after_authority()
+    assert calls == []
+
+    daemon._owned_service_ready = True
+    daemon._start_command_queue_after_authority()
+    assert calls == [(daemon._server.store, None)]
+    assert daemon._command_queue_worker == "worker"
+
+    daemon._shutdown_started.set()
+    daemon._start_command_queue_after_authority()
+    assert len(calls) == 1
+
+
 def test_begin_owned_service_defers_hook_workers_only_when_publishing_before_listen(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -327,9 +354,7 @@ def test_desktop_owned_core_executable_prefers_runtime_owner(monkeypatch, tmp_pa
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows files do not use POSIX execute bits")
-def test_desktop_owned_core_executable_ignores_non_executable_owner(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_desktop_owned_core_executable_ignores_non_executable_owner(monkeypatch, tmp_path: Path) -> None:
     from codex_plugin_scanner.guard.dashboard_launcher import _desktop_owned_core_executable
 
     owner = tmp_path / "hol-guard"

@@ -162,11 +162,11 @@ def test_generated_input_resume_guard_condition_is_closed(tmp_path: Path) -> Non
         display_name="fixture",
     )
     assert re.search(
-        r'if \(\n'
-        r'      !requestId \|\|\n'
-        r'      binding === null \|\|\n'
-        r'      !inputApprovalResumeBindingIsActive\(ctx, binding\)\n'
-        r'    \) return;',
+        r"if \(\n"
+        r"      !requestId \|\|\n"
+        r"      binding === null \|\|\n"
+        r"      !inputApprovalResumeBindingIsActive\(ctx, binding\)\n"
+        r"    \) return;",
         source,
     )
 

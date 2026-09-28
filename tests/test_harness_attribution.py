@@ -90,6 +90,7 @@ def test_guard_hook_records_cursor_harness_for_cursor_env(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
+    native_hook_force: Path,
 ) -> None:
     from tests.test_guard_runtime import _build_guard_fixture, _run_guard_hook
 

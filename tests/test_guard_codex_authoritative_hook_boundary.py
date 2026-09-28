@@ -281,6 +281,7 @@ def test_native_pretool_checks_complete_command_before_shell_mutation_can_run(
     tmp_path,
     capsys,
     monkeypatch,
+    native_hook_force: Path,
 ):
     bash_path = shutil.which("bash")
     if bash_path is None:
@@ -342,6 +343,7 @@ def test_native_pretool_keeps_ordinary_safe_command_prompt_free(
     tmp_path,
     capsys,
     monkeypatch,
+    native_hook_force: Path,
 ):
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"

@@ -83,6 +83,7 @@ from .commands_hook_native_floor import (
 from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
 from .commands_support_hook_state import _load_cursor_native_shell_allowance
+from .commands_support_runtime_artifact_policy import _runtime_artifact_has_explicit_permission_allow
 from .commands_support_runtime_artifacts import _hook_event_name, _optional_string
 from .commands_support_runtime_policy import (
     _remembered_rule_rejection_reason,
@@ -487,9 +488,14 @@ def evaluate_native_artifact_hook(
     # the generic command floor: the evaluator is the fail-closed semantic
     # authority for installs, and an unproven-command ``review`` floor would
     # force every install to pause regardless of its supply-chain verdict.
+    # The same holds for a verified explicit-permission allow: the artifact's
+    # own native-evidence-bound evaluation already adjudicated this exact
+    # command against the published control layer, so a control-blind floor
+    # re-review can only re-raise the cataloged risk the grant accepted.
     native_pre_tool_floor = (
         None
         if runtime_artifact.artifact_type == "package_request"
+        or _runtime_artifact_has_explicit_permission_allow(runtime_artifact)
         else attach_native_pre_tool_floor(
             event_name,
             payload_map,

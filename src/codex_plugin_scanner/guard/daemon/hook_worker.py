@@ -258,6 +258,12 @@ class HookWorker(HookWorkerNativeMixin):
         self._last_native_decision_receipt = None
         harness = self._runtime_harness(params) or default_harness
         event_name = self._hook_event_name(payload)
+        if (
+            event_name == "Notification"
+            and harness.strip().lower().replace("_", "-") == "claude-code"
+            and str(payload.get("notification_type") or "") == "permission_prompt"
+        ):
+            return self._claude_permission_prompt_notification_response(payload)
         mode = native_mode()
         if mode in {"auto", "force"}:
             # Send even unknown or malformed event labels to Rust. The edge
@@ -301,6 +307,41 @@ class HookWorker(HookWorkerNativeMixin):
             workspace=workspace,
             deadline=deadline,
         )
+
+    def _claude_permission_prompt_notification_response(
+        self,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        """Present the pending Guard approval when Claude shows a permission prompt."""
+        from ..cli._commands_shared import _now
+        from ..cli.commands_support_claude_approval import (
+            _claude_permission_prompt_additional_context,
+            _claude_permission_prompt_system_message,
+        )
+        from ..cli.commands_support_hook_state import (
+            _load_claude_permission_notice,
+            _mark_claude_pending_permission_prompt_seen,
+        )
+
+        notice = _load_claude_permission_notice(self.store, payload)
+        _mark_claude_pending_permission_prompt_seen(store=self.store, payload=payload, notice=notice)
+        self.store.add_event(
+            "claude/permission_prompt",
+            {
+                "session_id": payload.get("session_id"),
+                "notification_type": payload.get("notification_type"),
+                "tool_name": payload.get("tool_name"),
+                "notice": notice or {},
+            },
+            _now(),
+        )
+        return {
+            "systemMessage": _claude_permission_prompt_system_message(payload=payload, notice=notice),
+            "hookSpecificOutput": {
+                "hookEventName": "Notification",
+                "additionalContext": _claude_permission_prompt_additional_context(notice),
+            },
+        }
 
     def _review_post_tool_http(
         self,

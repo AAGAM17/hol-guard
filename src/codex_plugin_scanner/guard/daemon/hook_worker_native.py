@@ -15,7 +15,10 @@ from .hook_availability_policy import (
     availability_harness_response,
     recording_only_pre_tool_response,
 )
-from .hook_native_review_approval import pause_native_pre_tool_for_approval
+from .hook_native_review_approval import (
+    pause_native_pre_tool_for_approval,
+    record_claude_permission_notice_for_native_review,
+)
 from .hook_native_review_fence import native_review_fence
 from .hook_worker_responses import (
     harness_json_from_native_post_tool,
@@ -25,6 +28,67 @@ from .hook_worker_responses import (
 )
 
 _NATIVE_PRE_TOOL_APPROVAL_ACTIONS = frozenset({"review", "require-reapproval"})
+
+
+_CLAUDE_SECRET_READ_NATIVE_CLASSES = frozenset({"local_env_read", "sensitive_material"})
+
+
+def _claude_native_prompt_brand(
+    response: dict[str, object],
+    native_result: Mapping[str, object],
+) -> dict[str, object]:
+    """Overlay the Python-owned Claude approval presentation on a native prompt result.
+
+    Rust decides the action; this only re-derives the branded system message and
+    approval briefing copy that the hook surfaces to Claude Code users.
+    """
+    from ..cli.commands_support_prompts import (
+        _claude_prompt_additional_context,
+        _claude_prompt_system_message,
+    )
+    from ..models import GuardArtifact
+
+    raw_classes = native_result.get("prompt_risk_classes")
+    request_classes = (
+        [
+            "secret_read" if item in _CLAUDE_SECRET_READ_NATIVE_CLASSES else item
+            for item in raw_classes
+            if isinstance(item, str) and item
+        ]
+        if isinstance(raw_classes, list)
+        else []
+    )
+    artifact = GuardArtifact(
+        artifact_id="claude-code:native-prompt:session",
+        name="user prompt",
+        harness="claude-code",
+        artifact_type="prompt_request",
+        source_scope="harness",
+        config_path="",
+        metadata={"prompt_request_classes": request_classes},
+    )
+    policy_action = str(native_result.get("minimum_action") or "")
+    native_reason = str(native_result.get("reason") or "")
+    system_message = _claude_prompt_system_message(
+        event_name="UserPromptSubmit",
+        policy_action=policy_action,
+        artifact=artifact,
+        native_reason=native_reason,
+    )
+    if system_message:
+        response["systemMessage"] = system_message
+    additional_context = _claude_prompt_additional_context(
+        harness="claude-code",
+        event_name="UserPromptSubmit",
+        policy_action=policy_action,
+        artifact=artifact,
+        native_reason=native_reason,
+    )
+    if additional_context:
+        hook_output = response.get("hookSpecificOutput")
+        if isinstance(hook_output, dict):
+            hook_output["additionalContext"] = additional_context
+    return response
 
 
 def _watch_native_pre_tool_result(native: Mapping[str, object]) -> dict[str, object]:
@@ -367,7 +431,11 @@ class HookWorkerNativeMixin:
                     ),
                     True,
                 )
-            return (harness_json_from_native_prompt(native_harness, native_result), True)
+            response = harness_json_from_native_prompt(native_harness, native_result)
+            if native_harness.strip().lower().replace("_", "-") == "claude-code":
+                with suppress(Exception):
+                    response = _claude_native_prompt_brand(response, native_result)
+            return (response, True)
         if native_event == "PreToolUse":
             if recording_only:
                 action = str(native_result.get("minimum_action") or "")
@@ -393,6 +461,17 @@ class HookWorkerNativeMixin:
                     workspace=workspace,
                     guard_home=guard_home,
                 )
+                if native_harness.strip().lower().replace("_", "-") == "claude-code" and response.get("prompted"):
+                    with suppress(Exception):
+                        record_claude_permission_notice_for_native_review(
+                            self.store,
+                            harness=native_harness,
+                            payload=payload,
+                            native_result=native_result,
+                            native_receipt=accepted_receipt,
+                            workspace=workspace,
+                            guard_home=guard_home,
+                        )
                 return (_record_native_pre_activity(self, native_harness, payload, response, accepted_receipt), True)
             return (
                 _record_native_pre_activity(

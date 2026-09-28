@@ -224,6 +224,49 @@ def _native_review_artifact_id(harness: str, tool_name: str) -> str:
     return f"{harness}:native-pretool:{tool_name}"
 
 
+def record_claude_permission_notice_for_native_review(
+    store: object,
+    *,
+    harness: str,
+    payload: Mapping[str, object],
+    native_result: Mapping[str, object],
+    native_receipt: Mapping[str, object] | None,
+    workspace: Path | None,
+    guard_home: Path,
+) -> None:
+    """Persist the Claude permission-prompt notice for a queued native review.
+
+    Presentation only: this records the same session notice the CLI review path
+    writes so a later ``permission_prompt`` Notification can route Claude to the
+    HOL Guard approval question.
+    """
+    from ..cli.commands_support_hook_state import _record_claude_permission_notice
+    from ..models import GuardArtifact
+
+    tool_name = _native_review_tool_name(payload)
+    command = pre_tool_command(payload)
+    artifact_id = _native_review_artifact_id(harness, tool_name)
+    binding = _native_review_binding(harness, payload, native_result, native_receipt, workspace)
+    metadata: dict[str, object] = {"raw_command_text": command} if command else {}
+    artifact = GuardArtifact(
+        artifact_id=artifact_id,
+        name=tool_name,
+        harness=harness,
+        artifact_type="tool_call",
+        source_scope="project" if workspace is not None else "harness",
+        config_path=str(workspace if workspace is not None else guard_home),
+        command=command,
+        metadata=metadata,
+    )
+    _record_claude_permission_notice(
+        store=store,
+        payload=dict(payload),
+        reason=str(native_result.get("reason") or "HOL Guard requires review before this action can execute."),
+        artifact=artifact,
+        artifact_hash=binding or artifact_id,
+    )
+
+
 def _command_reuse_is_payload_bound(command: str) -> bool:
     """Allow retry reuse only when mutable local code cannot hide behind argv.
 
@@ -467,4 +510,5 @@ def _native_review_launch_target(payload: Mapping[str, object]) -> str:
 __all__ = [
     "pause_native_pre_tool_for_approval",
     "queue_native_pre_tool_review",
+    "record_claude_permission_notice_for_native_review",
 ]

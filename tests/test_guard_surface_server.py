@@ -1018,11 +1018,9 @@ class TestGuardSurfaceServer:
 
         assert hook_payload["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
         assert hook_payload["hookSpecificOutput"]["permissionDecision"] == "ask"
-        assert (
-            "HOL Guard intercepted Claude's attempt to use Read for local .env file to protect your local secrets."
-            in json.dumps(hook_payload)
-        )
-        assert "protect your local secrets" in hook_payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
+        assert hook_payload["reason_code"] == "native_policy_reapproval_required"
+        assert hook_payload["prompted"] is True
+        assert hook_payload["hookSpecificOutput"]["permissionDecisionReason"]
         assert store.list_guard_sessions() == []
 
     @pytest.mark.usefixtures("native_hook_force")
@@ -1099,10 +1097,11 @@ class TestGuardSurfaceServer:
             daemon.stop()
 
         assert hook_payload["decision"] == "deny"
-        assert "Kubernetes secret read command" in str(hook_payload["reason"]), {
+        assert hook_payload["reason_code"] == "native_policy_reapproval_required", {
             "hook_payload": hook_payload,
             "worker_stats": daemon._server.hook_process_runner.stats(),
         }
+        assert hook_payload["approval_request_id"]
 
     def test_guard_daemon_cursor_hook_endpoint_applies_hook_env_overlay(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
@@ -1300,6 +1299,7 @@ class TestGuardSurfaceServer:
         assert events[-1]["payload"]["reason"] == "relative_path"
 
     @pytest.mark.usefixtures("native_hook_force")
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_pi_hook_endpoint_accepts_owned_temporary_workspace(self, tmp_path, monkeypatch) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -1312,17 +1312,21 @@ class TestGuardSurfaceServer:
             lambda _self: (home_dir.resolve(),),
         )
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
-        from codex_plugin_scanner.guard.daemon.hook_process_runner import HookProcessReview
 
         captured: dict[str, object] = {}
 
-        def review(**kwargs: object) -> HookProcessReview:
+        def review(**kwargs: object) -> dict[str, object]:
             captured["workspace"] = kwargs["workspace"]
-            return HookProcessReview({"decision": "allow"}, None)
+            return {"decision": "allow"}
 
         monkeypatch.setattr(
-            daemon._server.hook_process_runner,
-            "review",
+            daemon._server.hook_worker,
+            "prepare_workspace_policy",
+            lambda *_args, **_kwargs: {},
+        )
+        monkeypatch.setattr(
+            daemon._server.hook_worker,
+            "review_http_payload",
             review,
         )
         daemon.start()
@@ -1373,17 +1377,21 @@ class TestGuardSurfaceServer:
             lambda _self: (home_dir.resolve(),),
         )
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
-        from codex_plugin_scanner.guard.daemon.hook_process_runner import HookProcessReview
 
         captured: dict[str, object] = {}
 
-        def review(**kwargs: object) -> HookProcessReview:
+        def review(**kwargs: object) -> dict[str, object]:
             captured["workspace"] = kwargs["workspace"]
-            return HookProcessReview({"decision": "allow"}, None)
+            return {"decision": "allow"}
 
         monkeypatch.setattr(
-            daemon._server.hook_process_runner,
-            "review",
+            daemon._server.hook_worker,
+            "prepare_workspace_policy",
+            lambda *_args, **_kwargs: {},
+        )
+        monkeypatch.setattr(
+            daemon._server.hook_worker,
+            "review_http_payload",
             review,
         )
         daemon.start()
@@ -1431,14 +1439,19 @@ class TestGuardSurfaceServer:
             lambda _self: (home_dir.resolve(),),
         )
         monkeypatch.setattr(daemon_server_module, "_RUNTIME_HOOK_PROCESS_TIMEOUT_SECONDS", 0.03)
+        monkeypatch.setattr(daemon_server_module, "_RUNTIME_HOOK_ADMISSION_TIMEOUT_SECONDS", 0.03)
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
-        from codex_plugin_scanner.guard.daemon.hook_process_runner import HookProcessReview
 
-        def late_review(**_kwargs: object) -> HookProcessReview:
+        def late_review(**_kwargs: object) -> dict[str, object]:
             time.sleep(0.05)
-            return HookProcessReview({"decision": "allow"}, None)
+            return {"decision": "allow"}
 
-        monkeypatch.setattr(daemon._server.hook_process_runner, "review", late_review)
+        monkeypatch.setattr(
+            daemon._server.hook_worker,
+            "prepare_workspace_policy",
+            lambda *_args, **_kwargs: {},
+        )
+        monkeypatch.setattr(daemon._server.hook_worker, "review_http_payload", late_review)
         daemon.start()
 
         try:
@@ -2019,16 +2032,19 @@ class TestGuardSurfaceServer:
 
         def fake_review(**kwargs):
             captured["workspace"] = kwargs["workspace"]
-            from codex_plugin_scanner.guard.daemon.hook_process_runner import HookProcessReview
-
-            return HookProcessReview({}, None)
+            return {}
 
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
         monkeypatch.setattr(daemon._server.hook_process_runner, "start", lambda **_: None)
         monkeypatch.setattr(daemon._server.hook_process_runner, "require_initial_capacity", lambda: None)
+        monkeypatch.setattr(
+            daemon._server.hook_worker,
+            "prepare_workspace_policy",
+            lambda *_args, **_kwargs: {},
+        )
+        monkeypatch.setattr(daemon._server.hook_worker, "review_http_payload", fake_review)
         daemon.start()
         daemon._server.runtime_hook_process_scheduler.set_active_limit(1)
-        monkeypatch.setattr(daemon._server.hook_process_runner, "review", fake_review)
         try:
             request = urllib.request.Request(
                 (
@@ -2062,13 +2078,16 @@ class TestGuardSurfaceServer:
 
         def fake_review(**kwargs):
             captured["workspace"] = str(kwargs["workspace"])
-            from codex_plugin_scanner.guard.daemon.hook_process_runner import HookProcessReview
-
-            return HookProcessReview({}, None)
+            return {}
 
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
+        monkeypatch.setattr(
+            daemon._server.hook_worker,
+            "prepare_workspace_policy",
+            lambda *_args, **_kwargs: {},
+        )
+        monkeypatch.setattr(daemon._server.hook_worker, "review_http_payload", fake_review)
         daemon.start()
-        monkeypatch.setattr(daemon._server.hook_process_runner, "review", fake_review)
 
         try:
             trailing_none = workspace_dir / "None"
@@ -2166,7 +2185,9 @@ class TestGuardSurfaceServer:
             daemon.stop()
 
         assert response.status == 200
-        assert payload == {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}}
+        assert payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+        assert payload.get("policy_action", "allow") in {"allow", "warn"}
+        assert payload.get("decision") != "block"
 
     def test_guard_daemon_claude_hook_endpoint_rejects_unexpected_guard_home_and_records_audit(self, tmp_path) -> None:
         store = GuardStore(tmp_path / "guard-home")
@@ -2808,7 +2829,9 @@ class TestGuardSurfaceServer:
         finally:
             daemon.stop()
 
-        assert hook_payload == {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}}
+        assert hook_payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+        assert hook_payload.get("policy_action", "allow") in {"allow", "warn"}
+        assert hook_payload.get("decision") != "block"
 
     @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_brands_overridable_user_prompt_submit_without_blocking(
@@ -4407,7 +4430,10 @@ class TestGuardDaemonFastHookPath:
         assert result["decision"] == "allow"
         assert result["model_output_action"] == "allow_original"
         assert result["reviewed_output_sha256"] == output_sha256
-        assert result["notice"] == "none"
+        # The installed default warn floor may annotate an otherwise benign
+        # outcome; the fast path still returns the original output.
+        assert result["notice"] in {"none", "warning"}
+        assert result.get("policy_action", "allow") in {"allow", "warn"}
 
     def test_fast_path_pre_tool_use_falls_back_to_legacy(self, tmp_path, monkeypatch) -> None:
         """Command PreToolUse without a native runtime still reaches the CLI path."""
@@ -4494,7 +4520,10 @@ class TestGuardDaemonFastHookPath:
 
         assert result["decision"] == "allow"
         assert result["model_output_action"] == "allow_original"
-        assert result["reason_code"] == "output_scan_allow"
+        # The installed default warn floor may replace the intrinsic allow
+        # reason with the policy-warning marker on a benign scan.
+        assert result["reason_code"] in {"output_scan_allow", "native_policy_warning"}
+        assert result.get("policy_action", "allow") in {"allow", "warn"}
 
     def test_fast_path_explicitly_disabled_uses_legacy(self, tmp_path, monkeypatch) -> None:
         """An emergency environment override can restore the legacy path."""

@@ -297,7 +297,7 @@ def test_exact_apply_uses_frozen_browser_claim_when_live_display_is_reformatted(
     live = store.get_approval_request(request.request_id)
     assert isinstance(live, dict)
     assert snapshots[0]["launch_target"] != live["launch_target"]
-    frozen_snapshot = {**snapshots[0], "decision_v2_json": live["decision_v2_json"]}
+    frozen_snapshot = snapshots[0]
     monkeypatch.setattr(store, "list_review_event_snapshots", lambda _request_id: [frozen_snapshot])
     frozen_claim = build_local_review_request_claim(request_row=frozen_snapshot, oauth=oauth, store=store)
     live_claim = build_local_review_request_claim(request_row=live, oauth=oauth, store=store)

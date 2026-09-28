@@ -247,6 +247,47 @@ def test_v2_signed_envelope_requires_current_native_binding_digest(tmp_path: Pat
         )
 
 
+def test_exact_apply_uses_persisted_claim_after_outbox_compaction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _job_payload = _exact_job(tmp_path)
+    request = store.get_approval_request("exact-transport")
+    raw_request = store.get_raw_approval_request_snapshot("exact-transport")
+    assert isinstance(request, dict) and isinstance(raw_request, dict)
+    oauth = _oauth_metadata(store)
+    displayed_claim = build_local_review_request_claim(request_row=request, oauth=oauth, store=store)
+    persisted_claim = build_local_review_request_claim(request_row=raw_request, oauth=oauth, store=store)
+    assert displayed_claim["nativePolicyBinding"] != persisted_claim["nativePolicyBinding"]
+    monkeypatch.setattr(store, "list_review_event_snapshots", lambda _request_id: [])
+
+    resolution = apply_exact_cloud_review(
+        store,
+        remote_approval=_remote_approval(
+            store, "exact-transport", receipt_id="raw-claim-after-ack", source_claim=persisted_claim
+        ),
+    )
+    assert resolution.action == "allow"
+
+
+def test_exact_apply_rejects_policy_change_after_persisted_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _job_payload = _exact_job(tmp_path)
+    raw_request = store.get_raw_approval_request_snapshot("exact-transport")
+    assert isinstance(raw_request, dict)
+    claim = build_local_review_request_claim(request_row=raw_request, oauth=_oauth_metadata(store), store=store)
+    approval = _remote_approval(store, "exact-transport", receipt_id="raw-claim-drift", source_claim=claim)
+    monkeypatch.setattr(store, "list_review_event_snapshots", lambda _request_id: [])
+    with store._connect() as connection:
+        connection.execute(
+            "update approval_requests set recommended_scope = ? where request_id = ?",
+            ("workspace", "exact-transport"),
+        )
+
+    with pytest.raises(ExactCloudReviewError, match="remote_exact_request_stale"):
+        apply_exact_cloud_review(store, remote_approval=approval)
+
+
 def test_exact_apply_accepts_legacy_claim_without_native_bindings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

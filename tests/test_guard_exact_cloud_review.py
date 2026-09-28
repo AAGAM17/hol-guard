@@ -134,6 +134,7 @@ def test_exact_cloud_review_resolves_one_request_without_policy_or_memory(tmp_pa
     assert authority["request_id"] == target.request_id
     assert authority["source"] == "approval-gate-once"
     assert authority["authority_kind"] == "exact-cloud"
+    assert isinstance(authority["approval_id"], str)
     assert store.claim_local_once_approval(authority["approval_id"], claimed_at=resolved_at) is False
     assert (
         store.peek_local_once_approval(
@@ -563,6 +564,13 @@ def test_exact_cloud_review_queue_job_requires_no_generic_capability_or_local_ap
     )
     assert request_claim["deviceId"] == oauth_state["device_id"]
     assert request_claim["machineId"] == oauth_state["machine_id"]
+    persisted_request = store.get_raw_approval_request_snapshot(request.request_id)
+    assert isinstance(persisted_request, dict)
+    persisted_claim = build_local_review_request_claim(
+        request_row=persisted_request,
+        oauth=_oauth_metadata(store),
+        store=store,
+    )
     assert command_queue_oauth_target(store) == (oauth_state["device_id"], oauth_state["workspace_id"])
     job = _job(
         store,
@@ -570,7 +578,7 @@ def test_exact_cloud_review_queue_job_requires_no_generic_capability_or_local_ap
             store,
             request.request_id,
             receipt_id="exact-receipt-queue",
-            source_claim=request_claim,
+            source_claim=persisted_claim,
         ),
     )
 

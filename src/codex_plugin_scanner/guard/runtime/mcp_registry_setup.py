@@ -16,6 +16,11 @@ from .mcp_registry import search_mcp_registry
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
 
 
+def _registry_query(registry_name: str) -> str:
+    # Search is a bounded substring lookup; exact full-name matching happens below.
+    return registry_name if len(registry_name) <= 80 else registry_name[-80:]
+
+
 def reviewed_codex_setup_candidate(payload: dict[str, object]) -> dict[str, str]:
     registry_name, version, endpoint, setup_name = (
         payload.get("registry_name"),
@@ -44,7 +49,7 @@ def reviewed_codex_setup_candidate(payload: dict[str, object]) -> dict[str, str]
         or parsed.query
     ):
         raise ValueError("invalid_codex_setup_endpoint")
-    query = registry_name if len(registry_name) <= 80 else registry_name.rsplit("/", 1)[-1]
+    query = _registry_query(registry_name)
     search = search_mcp_registry(query)
     results = search.get("results")
     if not isinstance(results, list):
@@ -151,7 +156,7 @@ def reviewed_codex_package_candidate(payload: dict[str, object]) -> dict[str, ob
         or not _NAME.fullmatch(setup_name)
     ):
         raise ValueError("invalid_codex_package_selection")
-    query = registry_name if len(registry_name) <= 80 else registry_name.rsplit("/", 1)[-1]
+    query = _registry_query(registry_name)
     results = search_mcp_registry(query).get("results")
     if not isinstance(results, list):
         raise ValueError("registry_setup_listing_changed")

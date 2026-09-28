@@ -162,3 +162,31 @@ def test_codex_package_setup_uses_argv_and_checks_result(monkeypatch):
     monkeypatch.setattr(mcp_registry_setup.subprocess, "run", changed)
     with pytest.raises(ValueError, match="codex_setup_outcome_uncertain"):
         mcp_registry_setup.install_codex_package_mcp(candidate)
+
+
+@pytest.mark.parametrize("kind", ["remote", "package"])
+def test_long_single_component_registry_name_uses_bounded_substring_and_exact_match(kind, monkeypatch):
+    name = "a" * 100
+    queries = []
+    entry = {"name": name, "version": "1.0.0", "status": "active",
+             "remote_endpoints": [{"url": "https://example.com/mcp", "transport": "streamable-http"}],
+             "package_options": [{"registry_type": "pypi", "identifier": "example-server", "version": "2.0.0",
+                                  "command": "uvx", "arguments": ["example-server@2.0.0"], "verified_package": False}]}
+
+    def search(query):
+        queries.append(query)
+        return {"results": [entry]}
+
+    monkeypatch.setattr(mcp_registry_setup, "search_mcp_registry", search)
+    payload = {"registry_name": name, "version": "1.0.0", "setup_name": "example"}
+    if kind == "package":
+        monkeypatch.setattr(mcp_registry_setup.shutil, "which", lambda _name: "/synthetic/uvx")
+        candidate = mcp_registry_setup.reviewed_codex_package_candidate(
+            {**payload, "package_identifier": "example-server", "package_version": "2.0.0"}
+        )
+    else:
+        candidate = mcp_registry_setup.reviewed_codex_setup_candidate(
+            {**payload, "endpoint": "https://example.com/mcp"}
+        )
+    assert candidate["kind"] == kind and len(candidate["selection_digest"]) == 64
+    assert queries == [name[-80:]]

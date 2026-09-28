@@ -13,6 +13,8 @@ from uuid import uuid4
 
 _LOG = logging.getLogger(__name__)
 _JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
+# Four distinct refreshes can progress when slow providers occupy other slots;
+# the pool remains bounded so probes cannot crowd the resident daemon.
 _MAX_RUNNING_JOBS = 4
 _PUBLIC_FAILURE_CODES = frozenset(
     {

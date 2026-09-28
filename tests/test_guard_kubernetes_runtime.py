@@ -434,7 +434,7 @@ def test_pi_post_tool_output_labels_later_commands_payload_kubernetes_secret_sou
 
 @pytest.mark.usefixtures("native_hook_force")
 def test_pi_post_tool_output_keeps_sensitive_batched_command_even_with_read_only_sibling(
-    tmp_path: Path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch, capsys, native_hook_force: Path
 ) -> None:
     home_dir = tmp_path / "home"
     guard_home = tmp_path / "guard-home"

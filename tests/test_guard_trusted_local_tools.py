@@ -241,6 +241,7 @@ def test_impeccable_package_request_exposes_trust_controls_in_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    native_hook_force: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -369,6 +370,7 @@ def test_local_tool_trust_allows_variable_read_queries_and_invalidates_changed_b
     local_tool_workspace: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    native_hook_force: Path,
 ) -> None:
     workspace, tool = local_tool_workspace
     guard_home = tmp_path / "guard-home"

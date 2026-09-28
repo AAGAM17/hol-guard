@@ -30,7 +30,7 @@ def installed_hook_request(
             state_path=guard_home / "daemon-state.json",
             query=query,
             data=encoded,
-            timeout_seconds=5,
+            timeout_seconds=20,
         )
     if harness == "claude-code":
         decoded = json.loads(
@@ -38,7 +38,7 @@ def installed_hook_request(
                 state_path=guard_home / "daemon-state.json",
                 query=query,
                 data=encoded,
-                timeout_seconds=5,
+                timeout_seconds=20,
             )
         )
         return decoded if isinstance(decoded, dict) else None
@@ -49,7 +49,7 @@ def installed_hook_request(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        with urllib.request.urlopen(request, timeout=20) as response:
             decoded = json.loads(response.read().decode("utf-8"))
             return decoded if isinstance(decoded, dict) else None
     except urllib.error.HTTPError as error:

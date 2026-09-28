@@ -78,6 +78,9 @@ class CommandActivityWriter(Protocol):
 
 
 _NATIVE_POLICY_READY_TIMEOUT_SECONDS = _PUBLISH_TIMEOUT_SECONDS
+_TRANSIENT_RESIDENT_PUBLICATION_ERRORS = frozenset(
+    {"native_policy_snapshot_resident_changed", "native_resident_restart_budget_busy"}
+)
 
 
 def _post_tool_unavailable_response(
@@ -233,12 +236,15 @@ class HookWorker(HookWorkerNativeMixin):
                 wait_until_ready = getattr(self.policy_snapshot_publisher, "wait_until_ready", None)
                 last_error = getattr(self.policy_snapshot_publisher, "last_error", None)
                 # A replacement resident can serve persisted policy before the
-                # publisher confirms its new generation. Await that fresh ACK
-                # within the existing budget; other publication errors still
-                # fail immediately without admitting an unacknowledged policy.
-                transient_resident_change = last_error == "native_policy_snapshot_resident_changed"
+                # publisher confirms its new generation. Its restart-budget
+                # lock can also be briefly held by a concurrent native client.
+                # Await the fresh ACK within the existing deadline; unrelated
+                # publication errors still fail immediately.
+                transient_publication_error = (
+                    isinstance(last_error, str) and last_error in _TRANSIENT_RESIDENT_PUBLICATION_ERRORS
+                )
                 if callable(wait_until_ready) and (
-                    transient_resident_change or not (isinstance(last_error, str) and last_error.strip())
+                    transient_publication_error or not (isinstance(last_error, str) and last_error.strip())
                 ):
                     readiness_deadline = time.monotonic() + _NATIVE_POLICY_READY_TIMEOUT_SECONDS
                     if deadline is not None:

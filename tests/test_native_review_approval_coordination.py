@@ -15,7 +15,7 @@ from codex_plugin_scanner.guard.native_decision_receipt import canonical_receipt
 from codex_plugin_scanner.guard.store import GuardStore
 
 
-def _edge(harness: str, *, url: str = "https://example.test") -> dict[str, object]:
+def _edge(harness: str, *, url: str = "https://example.test", action_type: str = "network") -> dict[str, object]:
     return {
         "schema": "guard-hook-edge-result.v2",
         "authority": "rust",
@@ -26,10 +26,11 @@ def _edge(harness: str, *, url: str = "https://example.test") -> dict[str, objec
             "schema": "guard-pre-tool-result.v1",
             "version": 1,
             "authority": "rust",
+            "action": {"action_type": action_type},
             "decision": "deny",
             "policy_action": "review",
             "minimum_action": "review",
-            "reason_code": "native_network_review",
+            "reason_code": "native_pre_tool_unknown_review" if action_type == "unknown" else "native_network_review",
             "reason": "HOL Guard requires review before this network action can execute.",
         },
     }

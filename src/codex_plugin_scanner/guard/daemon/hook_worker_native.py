@@ -120,7 +120,6 @@ class _HookWorkerNativeHost(Protocol):
 
     _last_native_decision_receipt: dict[str, object] | None
     _native_policy_snapshot: Callable[..., dict[str, object] | None]
-    _review_pre_tool_native: Callable[..., dict[str, object] | None]
     _native_runtime_status: Callable[[], NativeRuntimeStatus]
     _hook_event_name: Callable[[Mapping[str, object]], str]
     _review_raw_hook_native: Callable[..., dict[str, object] | None]

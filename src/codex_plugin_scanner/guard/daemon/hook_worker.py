@@ -36,7 +36,6 @@ from ..native_hook_edge import review_raw_hook_native
 from ..native_policy_snapshot import get_native_policy_snapshot_publisher
 from ..native_policy_snapshot_acked import acked_snapshot_binding_for_store
 from ..native_policy_snapshot_constants import _PUBLISH_TIMEOUT_SECONDS
-from ..native_pretool import review_pre_tool_native
 from ..native_runtime import NativeRuntimeStatus, native_mode, native_runtime_status, review_post_tool_native
 from ..runtime.hook_review_types import (
     HookReviewRequest,
@@ -155,16 +154,6 @@ class HookWorker(HookWorkerNativeMixin):
             deadline=deadline,
             policy_snapshot=policy_snapshot,
         )
-
-    def _review_pre_tool_native(
-        self,
-        command: str,
-        *,
-        guard_home: Path,
-        cwd: Path | None,
-        home_dir: Path | None,
-    ) -> dict[str, object] | None:
-        return review_pre_tool_native(command, guard_home=guard_home, cwd=cwd, home_dir=home_dir)
 
     def _native_runtime_status(self) -> NativeRuntimeStatus:
         return native_runtime_status()

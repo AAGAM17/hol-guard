@@ -394,10 +394,19 @@ class StoreLocalCliMixin:
             return _read_command_states(connection, cli_id)
 
 
+def _command_id_filter(command_ids: Sequence[str] | None) -> tuple[str, tuple[str, ...]]:
+    if command_ids is None:
+        return "", ()
+    if not command_ids:
+        # An empty filter must never turn into a full permission read.
+        return " and 0", ()
+    return f" and command_id in ({','.join('?' for _ in command_ids)})", tuple(command_ids)
+
+
 def _read_command_catalog(
     connection: sqlite3.Connection, cli_id: str, command_ids: Sequence[str] | None = None
 ) -> list[LocalCliCommand]:
-    selection = "" if command_ids is None else f" and command_id in ({','.join('?' for _ in command_ids)})"
+    selection, parameters = _command_id_filter(command_ids)
     rows = connection.execute(
         f"""
         select command_id, name, usage, description, parent_id
@@ -405,7 +414,7 @@ def _read_command_catalog(
         where cli_id = ?{selection}
         order by sort_index asc, command_id asc
         """,
-        (cli_id, *(command_ids or ())),
+        (cli_id, *parameters),
     ).fetchall()
     catalog: list[LocalCliCommand] = []
     for row in rows:
@@ -432,10 +441,10 @@ def _read_command_catalog(
 def _read_command_states(
     connection: sqlite3.Connection, cli_id: str, command_ids: Sequence[str] | None = None
 ) -> dict[str, LocalCliCommandState]:
-    selection = "" if command_ids is None else f" and command_id in ({','.join('?' for _ in command_ids)})"
+    selection, parameters = _command_id_filter(command_ids)
     rows = connection.execute(
         f"select command_id, state from local_cli_command_grant where cli_id = ?{selection}",
-        (cli_id, *(command_ids or ())),
+        (cli_id, *parameters),
     ).fetchall()
     states: dict[str, LocalCliCommandState] = {}
     for row in rows:

@@ -22,8 +22,6 @@ export { resolveDecisionV2Detail, resolveEnvelopeDisplayText, resolveSecondaryRi
 
 export const EMPTY_QUEUE_TITLE = "Review queue is clear";
 export const STALE_REQUEST_COPY = "This request was already decided.";
-export const QUEUE_CONNECTION_ERROR_HEADLINE = "Guard daemon not reachable: approval links work when Guard is running on this device.";
-export const QUEUE_CONNECTION_ERROR_INSTRUCTION = "Start Guard on this machine, then reload to continue approving or blocking.";
 
 export type DataFlowEvidenceSummary = {
   signalTitle: string;
@@ -117,11 +115,11 @@ export function resolveActionEnvelopeDetailText(
   envelope: GuardActionEnvelope,
   options: { mcpInputMaxLength?: number | null } = {}
 ): string | null {
-  if (isApplyPatchEnvelope(envelope) && envelope.command !== null && envelope.command.length > 0) {
+  if (isApplyPatchEnvelope(envelope) && envelope.command !== null && envelope.command.trim().length > 0) {
     return envelope.command;
   }
-  if (envelope.action_type === "shell_command") {
-    return envelope.command !== null && envelope.command.length > 0 ? envelope.command : null;
+  if (envelope.action_type === "shell_command" && envelope.command !== null && envelope.command.trim().length > 0) {
+    return envelope.command;
   }
   const promptText = envelope.prompt_text ?? envelope.prompt_excerpt;
   if (envelope.action_type === "prompt") {
@@ -136,12 +134,6 @@ export function resolveActionEnvelopeDetailText(
   if (envelope.action_type === "network_request" && envelope.network_hosts.length > 0) {
     return envelope.network_hosts.join("\n");
   }
-  if (envelope.action_type === "mcp_tool") {
-    const baseText =
-      resolveEnvelopeDisplayText(envelope) ?? envelope.mcp_tool ?? envelope.tool_name ?? envelope.action_type;
-    const inputSummary = serializeMcpInput(envelope.raw_payload_redacted, options.mcpInputMaxLength ?? null);
-    return inputSummary === null ? baseText : `${baseText}\n\nInput:\n${inputSummary}`;
-  }
   if (envelope.action_type === "package_script") {
     if (envelope.package_manager && envelope.package_name) {
       return `${envelope.package_manager} install ${envelope.package_name}`;
@@ -150,7 +142,15 @@ export function resolveActionEnvelopeDetailText(
       return envelope.package_name;
     }
   }
-  return resolveEnvelopeDisplayText(envelope);
+  // All canonical details above take precedence. This JSON input fallback never changes Rust's action kind.
+  if (envelope.action_type === "mcp_tool" || envelope.event_name === "PreToolUse") {
+    const baseText =
+      resolveEnvelopeDisplayText(envelope) ?? envelope.mcp_tool ?? envelope.tool_name ?? envelope.action_type;
+    const inputSummary = serializeMcpInput(envelope.raw_payload_redacted, options.mcpInputMaxLength ?? null);
+    if (inputSummary !== null) return `${baseText}\n\nInput:\n${inputSummary}`;
+    return envelope.action_type === "shell_command" ? null : baseText;
+  }
+  return envelope.action_type === "shell_command" ? null : resolveEnvelopeDisplayText(envelope);
 }
 
 export function humanizeList(values: string[]): string {
@@ -466,7 +466,7 @@ function resolvePrimaryReviewText(item: GuardApprovalRequest): string {
 }
 
 function serializeMcpInput(payload: Record<string, unknown>, maxLength: number | null = null): string | null {
-  const input = payload.arguments ?? payload.input ?? payload.params ?? null;
+  const input = payload.tool_input ?? payload.toolInput ?? payload.arguments ?? payload.input ?? payload.params ?? null;
   if (input === null || input === undefined) {
     return null;
   }
@@ -527,6 +527,11 @@ export function harnessDisplayName(harness: string): string {
       return "Oh My Pi";
     case "zcode":
       return "ZCode";
+    case "devin":
+      return "Devin";
+    case "guard-cli":
+    case "hol-guard":
+      return "Guard CLI";
     default:
       return capitalizeHarness(normalized);
   }
@@ -623,14 +628,26 @@ export function resolveApprovalShareUrl(item: GuardApprovalRequest): string | nu
   return guardAwareHref(absolute);
 }
 
+export function isBrowserToolReview(item: GuardApprovalRequest): boolean {
+  const name = item.artifact_name ?? "";
+  if (name.startsWith("chrome-devtools:")) {
+    return true;
+  }
+  return item.changed_fields.some((field) => field.toLowerCase().includes("browser"));
+}
+
 export function resolveTerminalLabel(item: GuardApprovalRequest): string {
   const envelope = item.action_envelope_json;
   if (envelope && isApplyPatchEnvelope(envelope)) return "Patch";
+  if (item.artifact_type === "tool_call" && item.changed_fields.includes("runtime_tool_call")) {
+    return isBrowserToolReview(item) ? "Browser tool" : "MCP tool";
+  }
   const actionType = envelope?.action_type;
   if (actionType === "shell_command") return "Command";
   if (actionType === "prompt") return "Prompt excerpt";
   if (actionType === "file_read" || actionType === "file_write") return "File path";
   if (actionType === "mcp_tool") return "MCP server / tool";
+  if (actionType === "browser_action") return "Browser tool";
   if (actionType === "package_script") return "Package";
   if (actionType === "network_request") return "Network destination";
 

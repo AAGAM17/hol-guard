@@ -22,6 +22,7 @@ from ..daemon.lifecycle_journal import load_bounded_incident_lifecycle_events
 _MAX_CONFIG_BYTES = 1024 * 1024
 _MAX_REPORT_BYTES = 8192
 _SAFE_CODE = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+_SAFE_EXCEPTION_CLASS = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _SAFE_VERSION = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$")
 _SAFE_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _EVENTS = ("PreToolUse", "PermissionRequest", "UserPromptSubmit", "PostToolUse")
@@ -110,7 +111,7 @@ def _read_codex_hook_files(config_path: Path, hooks_path: Path) -> tuple[object,
         return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": hooks_status}
     try:
         decoded = json.loads(raw_hooks)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
         return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
     if not isinstance(decoded, dict):
         return None, {"config_status": status, "hooks_enabled": hooks_enabled, "hooks_status": "malformed"}
@@ -153,14 +154,17 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
     if config["config_status"] in {"read", "missing"} and not hooks_unavailable:
         try:
             integrity = verify_live_hook_manifest(_hook_manifest_spec(context), hooks=hooks)
-        except Exception:
+        except Exception as error:
             status, reason = "unverified", "codex_integrity_probe_failed"
+            exception_name = type(error).__name__
+            probe_exception_class = exception_name if _SAFE_EXCEPTION_CLASS.fullmatch(exception_name) else "unknown"
             matches = {event: False for event in _EVENTS}
             manifest_version = None
             manifest_generation = None
             bridge_digest = None
             interpreter_digest = None
         else:
+            probe_exception_class = None
             status = _safe_code(integrity.get("integrity_status"), "unknown")
             reason = _safe_code(integrity.get("integrity_reason"), "codex_hook_integrity_unknown")
             event_matches = integrity.get("event_matches")
@@ -173,6 +177,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
             else:
                 manifest_version = manifest_generation = bridge_digest = interpreter_digest = None
     else:
+        probe_exception_class = None
         status, reason = "unverified", "codex_hooks_unavailable" if hooks_unavailable else "codex_config_unavailable"
         matches = {event: False for event in _EVENTS}
         manifest_version = None
@@ -206,6 +211,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
             **config,
             "manifest_integrity": status,
             "reason_code": reason,
+            "integrity_probe_exception_class": probe_exception_class,
             "manifest_package_version": manifest_version,
             "manifest_generated_at": manifest_generation,
             "bridge_sha256": bridge_digest,

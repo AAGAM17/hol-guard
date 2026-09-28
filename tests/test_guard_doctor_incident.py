@@ -115,6 +115,29 @@ def test_incident_export_reports_legacy_hooks_when_toml_config_is_missing(tmp_pa
     assert report["loaded_harness"]["state"] == "unknown"
 
 
+def test_incident_export_marks_hook_integer_conversion_error_malformed(tmp_path: Path, monkeypatch) -> None:
+    context = _context(tmp_path)
+    hooks_path = CodexHarnessAdapter._hooks_path(context)
+    hooks_path.parent.mkdir()
+    hooks_path.write_text('{"hooks":{"PreToolUse":[]}}', encoding="utf-8")
+    from codex_plugin_scanner.guard.cli import doctor_incident
+
+    original_loads = doctor_incident.json.loads
+
+    def fail_hook_parse(value: str | bytes):
+        if value == b'{"hooks":{"PreToolUse":[]}}':
+            raise ValueError("private integer conversion detail")
+        return original_loads(value)
+
+    monkeypatch.setattr(doctor_incident.json, "loads", fail_hook_parse)
+
+    report = codex_incident_report(context)
+
+    assert report["configured"]["hooks_status"] == "malformed"
+    assert report["configured"]["manifest_integrity"] == "unverified"
+    assert "private integer conversion detail" not in json.dumps(report)
+
+
 def test_incident_cli_reports_selected_workspace_hooks_without_authenticating_them(tmp_path: Path, capsys) -> None:
     context = _context(tmp_path)
     workspace = tmp_path / "workspace"
@@ -191,6 +214,7 @@ def test_incident_cli_parser_emits_one_bounded_json_report(tmp_path: Path, capsy
 def test_incident_cli_expands_home_shorthand(tmp_path: Path, capsys, monkeypatch) -> None:
     context = _context(tmp_path)
     monkeypatch.setenv("HOME", str(context.home_dir))
+    monkeypatch.setenv("USERPROFILE", str(context.home_dir))
     config_path = CodexHarnessAdapter._hook_config_path(context)
     config_path.parent.mkdir()
     config_path.write_text("[features]\nhooks = true\n", encoding="utf-8")
@@ -226,6 +250,7 @@ def test_incident_export_never_echoes_untrusted_config_or_exception(tmp_path: Pa
     report = codex_incident_report(context)
 
     assert report["configured"]["reason_code"] == "codex_integrity_probe_failed"
+    assert report["configured"]["integrity_probe_exception_class"] == "RuntimeError"
     assert "PRIVATE_TOKEN" not in json.dumps(report)
 
 

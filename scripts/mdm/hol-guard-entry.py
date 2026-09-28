@@ -185,6 +185,8 @@ def _running_desktop_bootstrap_body() -> str | None:
         return None
     if not isinstance(state, dict) or not _daemon_state_is_authentic(state, discovery_key):
         return None
+    if state.get("version") != _packaged_version() or state.get("executable") != sys.executable:
+        return None
     host = state.get("host")
     port = state.get("port")
     if host != "127.0.0.1" or type(port) is not int or not 1 <= port <= 65535:
@@ -229,6 +231,8 @@ def _try_proxy_running_desktop_bootstrap() -> bool:
     """
 
     if not _argv_is_desktop_bootstrap():
+        return False
+    if os.environ.get("HOL_GUARD_DESKTOP_PREFLIGHT", "").strip().lower() in {"1", "true", "yes"}:
         return False
     try:
         body = _running_desktop_bootstrap_body()

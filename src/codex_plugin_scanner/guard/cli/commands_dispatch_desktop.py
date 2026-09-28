@@ -341,20 +341,22 @@ def build_desktop_bootstrap_payload(
 
 _CACHE_FRESH_SECONDS = 30.0
 _CACHE_SERVE_SECONDS = 600.0
+_DesktopBootstrapCacheKey = tuple[str, str] | None
 _cache_condition = threading.Condition()
-_cached_document: dict[str, object] | None = None
-_cached_at = 0.0
-_refresh_thread: threading.Thread | None = None
+_cached_documents: dict[_DesktopBootstrapCacheKey, tuple[dict[str, object], float]] = {}
+_refresh_threads: dict[_DesktopBootstrapCacheKey, threading.Thread] = {}
 
 
-def reset_desktop_bootstrap_cache() -> None:
-    """Drop the in-process bootstrap document. Tests use this to isolate runs."""
+def reset_desktop_bootstrap_cache(cache_key: _DesktopBootstrapCacheKey = None) -> None:
+    """Drop in-process bootstrap documents. Tests use this to isolate runs."""
 
-    global _cached_document, _cached_at, _refresh_thread
     with _cache_condition:
-        _cached_document = None
-        _cached_at = 0.0
-        _refresh_thread = None
+        if cache_key is None:
+            _cached_documents.clear()
+            _refresh_threads.clear()
+        else:
+            _cached_documents.pop(cache_key, None)
+            _refresh_threads.pop(cache_key, None)
 
 
 def assemble_desktop_bootstrap_document(
@@ -404,16 +406,17 @@ def assemble_desktop_bootstrap_document(
     return payload
 
 
-def _store_cached_document(document: dict[str, object]) -> None:
-    global _cached_document, _cached_at
+def _store_cached_document(cache_key: _DesktopBootstrapCacheKey, document: dict[str, object]) -> None:
     with _cache_condition:
-        _cached_document = document
-        _cached_at = time.monotonic()
+        _cached_documents[cache_key] = (document, time.monotonic())
 
 
-def _schedule_refresh_locked(builder: Callable[[], dict[str, object]]) -> None:
-    global _refresh_thread
-    if _refresh_thread is not None and _refresh_thread.is_alive():
+def _schedule_refresh_locked(
+    cache_key: _DesktopBootstrapCacheKey,
+    builder: Callable[[], dict[str, object]],
+) -> None:
+    refresh_thread = _refresh_threads.get(cache_key)
+    if refresh_thread is not None and refresh_thread.is_alive():
         return
 
     def refresh() -> None:
@@ -421,13 +424,18 @@ def _schedule_refresh_locked(builder: Callable[[], dict[str, object]]) -> None:
             document = builder()
         except Exception:
             return
-        _store_cached_document(document)
+        _store_cached_document(cache_key, document)
 
-    _refresh_thread = threading.Thread(target=refresh, name="desktop-bootstrap-cache", daemon=True)
-    _refresh_thread.start()
+    refresh_thread = threading.Thread(target=refresh, name="desktop-bootstrap-cache", daemon=True)
+    _refresh_threads[cache_key] = refresh_thread
+    refresh_thread.start()
 
 
-def cached_desktop_bootstrap_document(builder: Callable[[], dict[str, object]]) -> dict[str, object]:
+def cached_desktop_bootstrap_document(
+    builder: Callable[[], dict[str, object]],
+    *,
+    cache_key: _DesktopBootstrapCacheKey = None,
+) -> dict[str, object]:
     """Return a recent bootstrap document without taking the store lock again.
 
     A fresh document is served from memory. A document younger than ten minutes
@@ -438,15 +446,16 @@ def cached_desktop_bootstrap_document(builder: Callable[[], dict[str, object]]) 
 
     now = time.monotonic()
     with _cache_condition:
-        cached = _cached_document
-        age = None if cached is None else now - _cached_at
+        cached_entry = _cached_documents.get(cache_key)
+        cached = None if cached_entry is None else cached_entry[0]
+        age = None if cached_entry is None else now - cached_entry[1]
         if cached is not None and age is not None and age < _CACHE_FRESH_SECONDS:
             return cached
         if cached is not None and age is not None and age < _CACHE_SERVE_SECONDS:
-            _schedule_refresh_locked(builder)
+            _schedule_refresh_locked(cache_key, builder)
             return cached
     document = builder()
-    _store_cached_document(document)
+    _store_cached_document(cache_key, document)
     return document
 
 
@@ -487,7 +496,10 @@ def desktop_bootstrap_document_for_running_daemon(
             session_url=session_url,
         )
 
-    return cached_desktop_bootstrap_document(build)
+    return cached_desktop_bootstrap_document(
+        build,
+        cache_key=(str(store.guard_home.resolve()), daemon_url),
+    )
 
 
 def _run_guard_desktop_command(

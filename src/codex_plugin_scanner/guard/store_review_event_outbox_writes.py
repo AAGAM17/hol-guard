@@ -15,6 +15,16 @@ from .store_review_event_outbox_schema import REVIEW_EVENT_SCHEMA_VERSION, revie
 
 # pyright: reportAny=false, reportUnusedCallResult=false
 
+_REQUEST_SNAPSHOT_JSON_FIELDS = (
+    "action_envelope_json",
+    "browser_intent_json",
+    "continuation_snapshot_json",
+    "changed_fields_json",
+    "decision_v2_json",
+    "risk_signals_json",
+    "scanner_evidence_json",
+)
+
 
 def _binding_for_append(
     connection: sqlite3.Connection,
@@ -65,15 +75,26 @@ def append_request_snapshot_event(
     event_type: str,
     occurred_at: str,
     continuation_result: Mapping[str, object] | None = None,
+    request_snapshot: Mapping[str, object] | None = None,
 ) -> int:
     """Append a request snapshot without replacing any unacknowledged event."""
 
-    request = connection.execute(
-        "select * from approval_requests where request_id = ?",
-        (request_id,),
-    ).fetchone()
-    if request is None:
-        return 0
+    if request_snapshot is None:
+        request_row = connection.execute(
+            "select * from approval_requests where request_id = ?",
+            (request_id,),
+        ).fetchone()
+        if request_row is None:
+            return 0
+        request = dict(request_row)
+    else:
+        request = dict(request_snapshot)
+        if request.get("request_id") != request_id:
+            return 0
+        for field in _REQUEST_SNAPSHOT_JSON_FIELDS:
+            value = request.get(field)
+            if isinstance(value, (dict, list)):
+                request[field] = json.dumps(value, sort_keys=True, separators=(",", ":"))
     values, binding_status, quarantine_reason = _binding_for_append(
         connection,
         request_id=request_id,
@@ -167,6 +188,8 @@ def requeue_pending_request_events(
     require_binding: bool = False,
     snapshot_repair_sequences: dict[str, int] | None = None,
     only_retry_identity_drift: bool = False,
+    request_ids: set[str] | None = None,
+    request_snapshots: Mapping[str, Mapping[str, object]] | None = None,
 ) -> int:
     connection.execute("begin immediate")
     current_binding = load_review_oauth_binding(connection, source)
@@ -193,6 +216,11 @@ def requeue_pending_request_events(
     if snapshot_repair_sequences is not None:
         request_query += " and request_id in (" + ", ".join("?" for _ in snapshot_repair_sequences) + ")"
         request_parameters.extend(snapshot_repair_sequences)
+    if request_ids is not None:
+        if not request_ids:
+            return 0
+        request_query += " and request_id in (" + ", ".join("?" for _ in request_ids) + ")"
+        request_parameters.extend(sorted(request_ids))
     rows = connection.execute(
         request_query + " order by coalesce(last_seen_at, created_at), request_id", request_parameters
     ).fetchall()
@@ -272,5 +300,6 @@ def requeue_pending_request_events(
             source=source,
             event_type="review.request.snapshot_requeued",
             occurred_at=changed_at,
+            request_snapshot=(request_snapshots or {}).get(request_id),
         )
     return appended

@@ -14,6 +14,7 @@ from ..mdm.user_health import run_user_health_cadence, user_health_report_due
 from ..review_event_wake import ReviewEventWake, ReviewEventWakeSignal, review_event_wake_signal
 from ..store import GuardStore
 from .cloud_review_retry_recovery import prepare_retry_identity_replay
+from .native_workspace_review_replay import prepare_native_workspace_review_replay
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,9 +145,12 @@ def _cloud_sync_sync_loop(
                 continue
             auth_context = sync._resolve_cloud_review_sync_auth_context(store)
             binding = store.get_review_event_oauth_binding()
+            binding_changed = isinstance(binding, dict) and binding != prepared_binding
             if isinstance(binding, dict) and binding != prepared_binding:
                 _ = prepare_retry_identity_replay(store, binding=binding)
                 prepared_binding = binding
+            if isinstance(binding, dict):
+                _ = prepare_native_workspace_review_replay(store, binding=binding, force_probe=binding_changed)
             result = sync.sync_cloud_review_events_once(store, auth_context)
             error_streak = 0
             with suppress(OSError, PermissionError, RuntimeError, ValueError):

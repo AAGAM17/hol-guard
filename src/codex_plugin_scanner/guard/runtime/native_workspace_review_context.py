@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -24,6 +27,8 @@ _AUTHORITY_KEY_ALGORITHM = "ed25519"
 _AUTHORITY_SCOPE_VERSION = "guard-native-workspace-review-scope.v1"
 _NATIVE_RESIDENT_FEATURE = "resident-protocol-v2"
 _NATIVE_CONTEXT_FEATURE = "native-workspace-review-context-v1"
+NATIVE_CONTEXT_PROBE_LIMIT = 2
+NATIVE_CONTEXT_TIMEOUT_SECONDS = 2.0
 _DIGEST_FIELDS = (
     "authority_record_digest",
     "workspace_binding",
@@ -77,6 +82,31 @@ _CONTEXT_FIELDS = {
     "policy_binding",
     "retry_scope_binding",
 }
+
+
+@dataclass
+class NativeWorkspaceReviewContextProbeState:
+    """Bound native context probes and reuse exact immutable snapshots."""
+
+    cache: dict[str, dict[str, object] | None] = field(default_factory=dict)
+    remaining: int = NATIVE_CONTEXT_PROBE_LIMIT
+
+
+def native_workspace_review_context_cache_key(
+    request_id: str,
+    request_snapshot: Mapping[str, object],
+) -> str | None:
+    try:
+        encoded = json.dumps(
+            request_snapshot,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError):
+        return None
+    return f"{request_id}:{hashlib.sha256(encoded).hexdigest()}"
 
 
 def _hex(value: object, length: int) -> bool:
@@ -159,6 +189,7 @@ def build_native_workspace_review_context(
     store: NativeWorkspaceReviewStore,
     guard_home: Path,
     request_id: str,
+    request_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
     """Return verified context, or omit native metadata on any local gap.
 
@@ -181,7 +212,7 @@ def build_native_workspace_review_context(
             or _NATIVE_CONTEXT_FEATURE not in features
         ):
             return None
-        stage_workspace_review_request(store, guard_home, request_id)
+        stage_workspace_review_request(store, guard_home, request_id, request_snapshot)
         payload = _canonical_json_bytes(
             {
                 "operation": "workspace_review_context",
@@ -193,7 +224,7 @@ def build_native_workspace_review_context(
             guard_home=guard_home,
             environment=_isolated_environment(),
             payload=payload,
-            timeout_seconds=10.0,
+            timeout_seconds=NATIVE_CONTEXT_TIMEOUT_SECONDS,
         )
         if encoded is None:
             return None
@@ -205,4 +236,42 @@ def build_native_workspace_review_context(
         return None
 
 
-__all__ = ["build_native_workspace_review_context"]
+def probe_native_workspace_review_context(
+    store: NativeWorkspaceReviewStore,
+    guard_home: Path,
+    request_id: str,
+    request_snapshot: Mapping[str, object] | None = None,
+    probe_state: NativeWorkspaceReviewContextProbeState | None = None,
+) -> dict[str, object] | None:
+    if probe_state is None:
+        if request_snapshot is None:
+            return build_native_workspace_review_context(store, guard_home, request_id)
+        return build_native_workspace_review_context(store, guard_home, request_id, request_snapshot)
+    cache_key = (
+        native_workspace_review_context_cache_key(request_id, request_snapshot)
+        if request_snapshot is not None
+        else None
+    )
+    if cache_key is not None and cache_key in probe_state.cache:
+        return probe_state.cache[cache_key]
+    if probe_state.remaining <= 0:
+        return None
+    probe_state.remaining -= 1
+    context = (
+        build_native_workspace_review_context(store, guard_home, request_id)
+        if request_snapshot is None
+        else build_native_workspace_review_context(store, guard_home, request_id, request_snapshot)
+    )
+    if cache_key is not None:
+        probe_state.cache[cache_key] = context
+    return context
+
+
+__all__ = [
+    "NATIVE_CONTEXT_PROBE_LIMIT",
+    "NATIVE_CONTEXT_TIMEOUT_SECONDS",
+    "NativeWorkspaceReviewContextProbeState",
+    "build_native_workspace_review_context",
+    "native_workspace_review_context_cache_key",
+    "probe_native_workspace_review_context",
+]

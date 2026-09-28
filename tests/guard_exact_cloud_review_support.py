@@ -156,6 +156,8 @@ def remote_approval(
     }
     if authority is not None:
         envelope["authority"] = authority
+    if isinstance(claim.get("nativeBindingVersion"), str):
+        envelope["nativeBindingVersion"] = claim["nativeBindingVersion"]
     envelope["payloadHash"] = payload_hash_for_remote_approval_envelope(envelope)
     envelope["signature"] = sign_review_payload(envelope)
     return envelope

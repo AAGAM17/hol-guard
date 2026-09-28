@@ -165,10 +165,11 @@ def stage_workspace_review_request(
     store: NativeWorkspaceReviewStore,
     guard_home: Path,
     request_id: str,
+    request_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Persist a private native snapshot sourced solely from the local row."""
+    """Persist a private native snapshot from a frozen row or the local row."""
 
-    request, _ = _stage_workspace_review_request(store, guard_home, request_id)
+    request, _ = _stage_workspace_review_request(store, guard_home, request_id, request_snapshot=request_snapshot)
     return request
 
 
@@ -176,10 +177,12 @@ def _stage_workspace_review_request(
     store: NativeWorkspaceReviewStore,
     guard_home: Path,
     request_id: str,
+    *,
+    request_snapshot: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], str]:
     """Stage a request and retain the digest of the exact bytes written."""
 
-    request = store.get_approval_request(request_id)
+    request = dict(request_snapshot) if request_snapshot is not None else store.get_approval_request(request_id)
     if not isinstance(request, dict):
         raise NativeWorkspaceReviewError("native_workspace_review_request_missing")
     state = _request_state(request_id, request)

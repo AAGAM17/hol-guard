@@ -42,7 +42,13 @@ class StoreReviewEventOutboxMixin:
             )
 
     def requeue_pending_review_events(
-        self, *, changed_at: str, require_binding: bool = False, snapshot_repair_sequences: dict[str, int] | None = None
+        self,
+        *,
+        changed_at: str,
+        require_binding: bool = False,
+        snapshot_repair_sequences: dict[str, int] | None = None,
+        request_ids: set[str] | None = None,
+        request_snapshots: Mapping[str, Mapping[str, object]] | None = None,
     ) -> int:
         with self._connect() as connection:
             return requeue_pending_request_events(
@@ -51,6 +57,8 @@ class StoreReviewEventOutboxMixin:
                 changed_at=changed_at,
                 require_binding=require_binding,
                 snapshot_repair_sequences=snapshot_repair_sequences,
+                request_ids=request_ids,
+                request_snapshots=request_snapshots,
             )
 
     def requeue_pending_review_events_with_marker(
@@ -61,6 +69,8 @@ class StoreReviewEventOutboxMixin:
         marker_payload: Mapping[str, object],
         require_binding: bool = False,
         only_retry_identity_drift: bool = False,
+        request_ids: set[str] | None = None,
+        request_snapshots: Mapping[str, Mapping[str, object]] | None = None,
     ) -> int:
         with self._connect() as connection:
             count = requeue_pending_request_events(
@@ -69,6 +79,8 @@ class StoreReviewEventOutboxMixin:
                 changed_at=changed_at,
                 require_binding=require_binding,
                 only_retry_identity_drift=only_retry_identity_drift,
+                request_ids=request_ids,
+                request_snapshots=request_snapshots,
             )
             connection.execute(
                 """
@@ -81,6 +93,80 @@ class StoreReviewEventOutboxMixin:
                 (marker_key, json.dumps({**marker_payload, "requeued": count}), changed_at),
             )
             return count
+
+    def list_pending_review_request_ids(
+        self,
+        *,
+        binding: Mapping[str, str],
+        limit: int,
+        after_request_id: str | None = None,
+    ) -> list[str]:
+        normalized = normalized_delivery_binding(
+            oauth_subject_hash=binding["oauth_subject_hash"],
+            workspace_id=binding["workspace_id"],
+            machine_id=binding["machine_id"],
+            machine_installation_id=binding["machine_installation_id"],
+        )
+        with self._connect() as connection:
+            current = load_review_oauth_binding(connection, self._guard_source)
+            current_values = (
+                (
+                    current["oauth_subject_hash"],
+                    current["workspace_id"],
+                    current["machine_id"],
+                    current["machine_installation_id"],
+                )
+                if current is not None
+                else None
+            )
+            if current_values != normalized:
+                return []
+            query = """
+                select a.request_id
+                from approval_requests as a
+                join guard_review_outbox_request_sequences as s
+                  on s.local_request_id = a.request_id
+                where a.status = 'pending'
+                  and a.oauth_source = ?
+                  and s.oauth_source = ?
+                  and s.oauth_subject_hash = ?
+                  and s.workspace_id = ?
+                  and s.machine_id = ?
+                  and s.machine_installation_id = ?
+            """
+            parameters: list[object] = [self._guard_source, self._guard_source, *normalized]
+            if after_request_id is not None:
+                query += " and a.request_id > ?"
+                parameters.append(after_request_id)
+            query += " order by a.request_id asc limit ?"
+            parameters.append(max(1, int(limit)))
+            rows = connection.execute(query, parameters).fetchall()
+        return [str(row["request_id"]) for row in rows]
+
+    def list_review_event_snapshots(self, request_id: str) -> list[dict[str, object]]:
+        from .runtime.review_event_delivery import StoredReviewEventError, decode_stored_review_event
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                select stream_sequence, event_id, local_request_id, request_sequence,
+                       event_type, event_schema_version, payload_json, payload_hash,
+                       occurred_at, oauth_source, oauth_subject_hash, workspace_id,
+                       machine_id, machine_installation_id
+                from guard_review_outbox_events
+                where local_request_id = ? and oauth_source = ? and binding_status = 'ready'
+                order by request_sequence desc, stream_sequence desc
+                """,
+                (request_id, self._guard_source),
+            ).fetchall()
+        snapshots: list[dict[str, object]] = []
+        for row in rows:
+            try:
+                stored_event = decode_stored_review_event(dict(row))
+            except (StoredReviewEventError, TypeError, ValueError):
+                continue
+            snapshots.append(stored_event.snapshot)
+        return snapshots
 
     def get_review_event_oauth_binding(self) -> dict[str, str] | None:
         with self._connect() as connection:
@@ -95,8 +181,6 @@ class StoreReviewEventOutboxMixin:
         machine_id: str,
         machine_installation_id: str,
     ) -> int:
-        """Refresh an established same-subject binding; never adopt unknown identity."""
-
         supplied = normalized_delivery_binding(
             oauth_subject_hash=oauth_subject_hash,
             workspace_id=workspace_id,
@@ -155,8 +239,6 @@ class StoreReviewEventOutboxMixin:
         machine_installation_id: str | None = None,
         newest_first: bool = False,
     ) -> list[dict[str, object]]:
-        """List the oldest unacknowledged events; ordering is never lossy."""
-
         del newest_first
         query = """
             select stream_sequence, event_id, local_request_id, request_sequence,

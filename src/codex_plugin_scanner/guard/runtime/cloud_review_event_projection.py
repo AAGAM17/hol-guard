@@ -21,9 +21,14 @@ from ..store_review_event_outbox_schema import REVIEW_EVENT_SCHEMA_VERSION
 from .local_request_snapshots import (
     _cloud_safe_local_request_payload,  # pyright: ignore[reportPrivateUsage]
 )
-from .native_workspace_review_context import build_native_workspace_review_context
+from .native_workspace_review_context import (
+    NativeWorkspaceReviewContextProbeState,
+    build_native_workspace_review_context,
+    native_workspace_review_context_cache_key,
+)
 from .review_event_delivery import StoredReviewEventError, decode_stored_review_event
 from .review_event_display import build_display_command, resolve_display_provenance
+from .time_support import parse_utc_timestamp
 
 _EVENT_TYPE_MAP = {
     "pending": "request_created",
@@ -56,6 +61,39 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _strip_expired_replay_capability(claim: dict[str, object]) -> dict[str, object]:
+    advertisement = claim.get("exactReviewCapability")
+    if not isinstance(advertisement, dict):
+        return claim
+    expires_at = parse_utc_timestamp(advertisement.get("expiresAt"))
+    if expires_at is None or expires_at > datetime.now(timezone.utc):
+        return claim
+    replay_claim = dict(claim)
+    _ = replay_claim.pop("exactReviewCapability", None)
+    return replay_claim
+
+
+def _native_context_for_snapshot(
+    store: GuardStore,
+    guard_home: Path,
+    request_id: str,
+    request_snapshot: dict[str, object],
+    probe_state: NativeWorkspaceReviewContextProbeState | None,
+) -> dict[str, object] | None:
+    if probe_state is None:
+        return build_native_workspace_review_context(store, guard_home, request_id, request_snapshot)
+    cache_key = native_workspace_review_context_cache_key(request_id, request_snapshot)
+    if cache_key is not None and cache_key in probe_state.cache:
+        return probe_state.cache[cache_key]
+    if probe_state.remaining <= 0:
+        return None
+    probe_state.remaining -= 1
+    context = build_native_workspace_review_context(store, guard_home, request_id, request_snapshot)
+    if cache_key is not None:
+        probe_state.cache[cache_key] = context
+    return context
+
+
 def build_cloud_review_event(
     item: dict[str, object],
     *,
@@ -64,6 +102,8 @@ def build_cloud_review_event(
     store: GuardStore,
     event_sequence: int,
     frozen_continuation: dict[str, object] | None = None,
+    strip_expired_capability: bool = False,
+    native_context_probe_state: NativeWorkspaceReviewContextProbeState | None = None,
 ) -> dict[str, object] | None:
     request_id = item.get("request_id")
     if not isinstance(request_id, str) or not request_id:
@@ -71,12 +111,25 @@ def build_cloud_review_event(
     stored_status = str(item.get("status") or "pending")
     if stored_status not in _EVENT_TYPE_MAP:
         return None
+    native_context: dict[str, object] | None = None
+    if oauth is not None and stored_status == "pending":
+        guard_home = getattr(store, "guard_home", None)
+        if isinstance(guard_home, Path):
+            native_context = _native_context_for_snapshot(
+                store,
+                guard_home,
+                request_id,
+                item,
+                native_context_probe_state,
+            )
     claim: dict[str, object] | None = None
     if oauth is not None:
         try:
             claim = build_local_review_request_claim(request_row=item, oauth=oauth, store=store)
         except GuardReviewContractError:
             claim = None
+    if strip_expired_capability and native_context is not None and claim is not None:
+        claim = _strip_expired_replay_capability(claim)
     display_command, display_summary, raw_command, redacted_command = build_display_command(item, redaction_level)
     request_payload = _cloud_safe_local_request_payload(item, redaction_level=redaction_level)
     continuation = frozen_continuation or continuation_offer_payload(store, request_row=item, now=_now(), headless=True)
@@ -115,12 +168,8 @@ def build_cloud_review_event(
         "localEmittedAt": _now(),
         "sentAt": _now(),
     }
-    if oauth is not None and stored_status == "pending":
-        guard_home = getattr(store, "guard_home", None)
-        if isinstance(guard_home, Path):
-            context = build_native_workspace_review_context(store, guard_home, request_id)
-            if context is not None:
-                request_payload["nativeWorkspaceReview"] = context
+    if native_context is not None:
+        request_payload["nativeWorkspaceReview"] = native_context
     return event
 
 
@@ -131,6 +180,7 @@ def project_cloud_review_event(
     delivery_binding: dict[str, str],
     redaction_level: str,
     oauth: GuardReviewOAuthMetadata | None,
+    native_context_probe_state: NativeWorkspaceReviewContextProbeState | None = None,
 ) -> tuple[int, dict[str, object]] | None:
     sequence = outbox_row.get("sequence")
     if not isinstance(sequence, int):
@@ -164,6 +214,8 @@ def project_cloud_review_event(
             store=store,
             event_sequence=stored_event.request_sequence,
             frozen_continuation=continuation,
+            strip_expired_capability=stored_event.event_type == "review.request.snapshot_requeued",
+            native_context_probe_state=native_context_probe_state,
         )
         if event is None:
             raise StoredReviewEventError(

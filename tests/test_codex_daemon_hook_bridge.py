@@ -620,6 +620,7 @@ def test_bridge_authenticates_real_daemon_before_hook_delivery(
         assert "permissionDecision" not in response.get("hookSpecificOutput", {})
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_bridge_real_daemon_uses_payload_cwd_for_bounded_compound_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -657,6 +658,7 @@ def test_bridge_real_daemon_uses_payload_cwd_for_bounded_compound_read(
     assert response == {} or response["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_bridge_real_daemon_emits_schema_exact_post_tool_response(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -698,6 +700,7 @@ def test_bridge_real_daemon_emits_schema_exact_post_tool_response(
         assert response["continue"] is True
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_bridge_real_daemon_prefers_payload_cwd_for_verified_git_fetch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -846,6 +849,7 @@ def test_bridge_real_daemon_reviews_git_fetch_without_repository_bound_cwd(
         "gh -Rgithub.com/Owner/Repo pr view 17",
     ),
 )
+@pytest.mark.usefixtures("native_hook_force")
 def test_bridge_real_daemon_allows_static_github_content_read_with_safe_jq_filter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1013,6 +1017,7 @@ def test_bridge_real_daemon_keeps_unsafe_github_pipeline_companions_reviewed(
     assert json.loads(capsys.readouterr().out) != {}
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_bridge_real_daemon_uses_exec_command_workdir_for_verified_git_fetch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

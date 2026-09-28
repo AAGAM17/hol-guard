@@ -76,6 +76,7 @@ def test_grok_and_zcode_payloads_keep_workspace_root_when_cwd_differs(tmp_path: 
     assert zcode["workspace_root"] == str(root)
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_run_guard_hook_uses_payload_cwd_when_cli_workspace_omitted(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

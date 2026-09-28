@@ -339,6 +339,7 @@ def test_watch_unavailable_pretool_records_command_activity(
     assert recorded["succeeded"] is True
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_watch_http_pretool_unavailable_records_command_activity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

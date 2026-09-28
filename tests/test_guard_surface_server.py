@@ -22,7 +22,6 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters import get_adapter
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
-from codex_plugin_scanner.guard.cli import commands as guard_commands_module
 from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.daemon import GuardDaemonServer, protection_repair_retry
 from codex_plugin_scanner.guard.daemon import manager as daemon_manager_module
@@ -39,6 +38,7 @@ from codex_plugin_scanner.guard.models import GuardApprovalRequest, GuardArtifac
 from codex_plugin_scanner.guard.runtime.surface_server import GuardSurfaceRuntime, _browser_url_for_review
 from codex_plugin_scanner.guard.schemas import build_surface_server_contract
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.conftest import guard_commands_module
 from tests.daemon_hook_test_client import open_authenticated_claude_request
 from tests.support.network import urlopen_json
 
@@ -983,6 +983,7 @@ class TestGuardSurfaceServer:
         assert risk.get("guard_bypass") == "block"
         assert risk.get("encoded_exfiltration") == "require-reapproval"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_returns_native_pretooluse_response(self, tmp_path) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -1024,6 +1025,7 @@ class TestGuardSurfaceServer:
         assert "protect your local secrets" in hook_payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
         assert store.list_guard_sessions() == []
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_pi_hook_endpoint_returns_blocked_runtime_review_payload(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setattr(daemon_server_module, "_RUNTIME_HOOK_PROCESS_TIMEOUT_SECONDS", 10.0)
         home_dir = tmp_path / "home"
@@ -1199,6 +1201,7 @@ class TestGuardSurfaceServer:
         assert events, "unauthorized audit event was never persisted"
         assert events[-1]["payload"]["path"] == "/v1/hooks/claude-code"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_returns_notification_context_with_auth(self, tmp_path) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -1296,6 +1299,7 @@ class TestGuardSurfaceServer:
         assert events[-1]["payload"]["parameter"] == "workspace"
         assert events[-1]["payload"]["reason"] == "relative_path"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_pi_hook_endpoint_accepts_owned_temporary_workspace(self, tmp_path, monkeypatch) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -1354,6 +1358,7 @@ class TestGuardSurfaceServer:
         assert captured["workspace"] == workspace_dir
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX shared temp root contract")
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_pi_hook_endpoint_omits_shared_temporary_root_workspace(
         self,
         tmp_path,
@@ -1413,6 +1418,7 @@ class TestGuardSurfaceServer:
         assert payload == {"decision": "allow"}
         assert captured["workspace"] is None
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_pi_hook_endpoint_rejects_worker_payload_after_deadline(self, tmp_path, monkeypatch) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -2006,6 +2012,7 @@ class TestGuardSurfaceServer:
     def test_guard_daemon_normalizes_decision_lane_event_aliases(self, event_key: str, event_value: str) -> None:
         assert daemon_server_module._GuardDaemonHandler._runtime_hook_lane({event_key: event_value}) == "decision"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_preserves_workspace_none_sentinel(self, tmp_path, monkeypatch) -> None:
         store = GuardStore(tmp_path / "guard-home")
         captured: dict[str, object] = {}
@@ -2044,6 +2051,7 @@ class TestGuardSurfaceServer:
         assert payload == {}
         assert captured == {"workspace": None}
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_preserves_workspace_trailing_none_sentinel(
         self, tmp_path, monkeypatch
     ) -> None:
@@ -2127,6 +2135,7 @@ class TestGuardSurfaceServer:
         assert events[-1]["payload"]["parameter"] == "workspace"
         assert events[-1]["payload"]["reason"] == "unexpected_root"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_accepts_guard_home_symlink_alias(self, tmp_path) -> None:
         store = GuardStore(tmp_path / "guard-home")
         guard_home_alias = tmp_path / "guard-home-alias"
@@ -2764,6 +2773,7 @@ class TestGuardSurfaceServer:
         assert events, "unauthorized audit event was never persisted"
         assert events[-1]["payload"]["path"] == "/v1/receipts"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_accepts_empty_allow_response(self, tmp_path) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -2800,6 +2810,7 @@ class TestGuardSurfaceServer:
 
         assert hook_payload == {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}}
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_brands_overridable_user_prompt_submit_without_blocking(
         self, tmp_path
     ) -> None:
@@ -2840,6 +2851,7 @@ class TestGuardSurfaceServer:
             in (hook_payload["hookSpecificOutput"]["additionalContext"])
         )
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_guard_daemon_claude_hook_endpoint_blocks_guard_bypass_user_prompt_submit(self, tmp_path) -> None:
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
@@ -4331,6 +4343,7 @@ class TestGuardDaemonFastHookPath:
     - Worker exceptions return fail-safe deny/block
     """
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_fast_path_source_ref_returns_allow_original(self, tmp_path, monkeypatch) -> None:
         """PostToolUse with a safe source ref returns allow_original via the fast worker."""
         home_dir = tmp_path / "home"
@@ -4439,6 +4452,7 @@ class TestGuardDaemonFastHookPath:
         assert result.get("model_output_action") != "not_applicable"
         assert result.get("reason_code") != "non_post_tool_event"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_fast_path_post_tool_use_without_source_ref_scans_inline_output(self, tmp_path, monkeypatch) -> None:
         """PostToolUse inline output is scanned without a second approval."""
         home_dir = tmp_path / "home"
@@ -4581,6 +4595,7 @@ class TestGuardDaemonFastHookPath:
         assert result["policy_action"] == "allow"
         assert result["reason_code"] == "daemon_worker_exception"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_fast_path_secret_source_file_is_denied(self, tmp_path, monkeypatch) -> None:
         """A source file containing a secret must not return allow_original."""
         home_dir = tmp_path / "home"
@@ -4636,6 +4651,7 @@ class TestGuardDaemonFastHookPath:
 
         assert result["model_output_action"] != "allow_original"
 
+    @pytest.mark.usefixtures("native_hook_force")
     def test_fast_path_source_ref_mismatch_is_not_allowed(self, tmp_path, monkeypatch) -> None:
         """Source ref pointing at a different file than the tool target must not allow_original."""
         home_dir = tmp_path / "home"

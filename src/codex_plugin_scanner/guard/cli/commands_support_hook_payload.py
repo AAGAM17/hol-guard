@@ -507,40 +507,33 @@ def _native_hook_json_document(
         base["decision"] = "block"
         base["reason"] = reason
     permission_decision = _native_hook_permission_decision(policy_action, harness=args.harness)
+    if (
+        permission_decision is None
+        and canonical == "codex"
+        and event_name == "PreToolUse"
+        and not blocking
+    ):
+        permission_decision = "allow"
     if permission_decision is not None:
         hook_specific_output["permissionDecision"] = permission_decision
-        if permission_decision != "allow" or _HOOK_DAEMON_UNREACHABLE_REASON_MARKER in reason.lower():
+        if (
+            permission_decision != "allow"
+            or policy_action == "warn"
+            or _HOOK_DAEMON_UNREACHABLE_REASON_MARKER in reason.lower()
+        ):
             hook_specific_output["permissionDecisionReason"] = reason
     base["hookSpecificOutput"] = hook_specific_output
-    # Codex exits nonzero only when the blocking decision must travel the
-    # machine envelope: file-tool actions (apply_patch, Write, Read — their
-    # records hold the harness), fail-closed native floors where the command
-    # evaluator could not prove the request (matcher failures), sandbox
-    # escalations, or compositions escalated by Python-side risk signals
-    # (data flow, package intent, scanner findings). A rejected saved
-    # approval whose stored hash predates the context-token contract is
-    # stale-format evidence — it never bound a live approval — so it does
-    # not force the envelope; the review proceeds as an ordinary prompt.
-    # Pure native-edge denials — destructive shell, explicit policy blocks —
-    # emit the deny document and exit cleanly so the harness reads
-    # hookSpecificOutput instead of the return code. Other harnesses keep
-    # the envelope contract for `event`-keyed payloads only.
-    composition = base.get("policy_composition")
-    has_risk_signals = isinstance(composition, Mapping) and any(
-        composition.get(key)
-        for key in ("data_flow_action", "package_action", "scanner_action")
-    )
-    reuse_evidence = base.get("approval_reuse")
-    legacy_stale_saved_approval = (
-        isinstance(reuse_evidence, Mapping)
-        and reuse_evidence.get("status") == "rejected"
-        and reuse_evidence.get("saved_artifact_hash_is_context_token") is False
-    )
+    # Codex reads its decision from the hookSpecificOutput document, so
+    # reviews and denials exit cleanly; nonzero is reserved for cases where
+    # the decision must travel the machine envelope instead: sandbox
+    # escalations, fail-closed native floors where the command evaluator
+    # could not prove the request, and `event`-keyed payloads that never
+    # normalized to a command surface. Other harnesses keep the envelope
+    # contract for `event`-keyed payloads only.
     if canonical == "codex":
         envelope_rc = (
             policy_action == "sandbox-required"
             or fail_closed_native_floor
-            or (has_risk_signals and (policy_action != "review" or not legacy_stale_saved_approval))
             or (envelope_keyed and not command_surface)
         )
     else:

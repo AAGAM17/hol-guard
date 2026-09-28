@@ -73,6 +73,7 @@ def _pi_hook_request(*, daemon: GuardDaemonServer, guard_home: str, call_id: str
     )
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_review_required_pi_hook_returns_before_worker_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -125,6 +126,7 @@ def test_review_required_pi_hook_returns_before_worker_deadline(
     assert elapsed < 1.45 * coverage_scale
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_pi_hook_is_not_queued_behind_unrelated_overlay_free_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

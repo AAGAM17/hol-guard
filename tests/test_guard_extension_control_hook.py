@@ -50,6 +50,7 @@ from codex_plugin_scanner.guard.store import GuardStore
     ),
 )
 @pytest.mark.usefixtures("native_command_artifact_reviews")
+@pytest.mark.usefixtures("native_hook_force")
 def test_guard_hook_honors_explicit_extension_permission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

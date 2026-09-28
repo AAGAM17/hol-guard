@@ -31,6 +31,7 @@ def test_adversarial_workload_nodeids_resolve() -> None:
 
 
 @pytest.mark.parametrize("workload", load_correctness_workloads(), ids=_fixture_id)
+@pytest.mark.usefixtures("native_hook_force")
 def test_packaged_correctness_workloads(
     workload: WorkloadSpec,
     tmp_path: Path,

@@ -50,6 +50,48 @@ def _default_unit_tests_to_python_rollback(monkeypatch: pytest.MonkeyPatch) -> N
         monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
 
 
+class _GuardCommandsProxy:
+    """Patch target that rebinds a symbol in every loaded guard module.
+
+    The hook pipeline is split across ``commands_*``/``commands_support_*``
+    modules that share bindings through the ``commands_support`` union, so a
+    name patched on ``cli.commands`` alone would never reach the moved call
+    sites. ``monkeypatch.setattr(guard_commands_module, name, value)`` fans
+    the rebind out to every loaded ``codex_plugin_scanner`` module that holds
+    the same object, and restores through the same fan-out on teardown.
+    """
+
+    @staticmethod
+    def _original(name: str) -> object:
+        sentinel = object()
+        commands = sys.modules.get("codex_plugin_scanner.guard.cli.commands")
+        if commands is not None:
+            value = getattr(commands, name, sentinel)
+            if value is not sentinel:
+                return value
+        for module in list(sys.modules.values()):
+            if not getattr(module, "__name__", "").startswith("codex_plugin_scanner"):
+                continue
+            value = getattr(module, name, sentinel)
+            if value is not sentinel:
+                return value
+        raise AttributeError(name)
+
+    def __getattr__(self, name: str) -> object:
+        return self._original(name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        original = self._original(name)
+        for module in list(sys.modules.values()):
+            if not getattr(module, "__name__", "").startswith("codex_plugin_scanner"):
+                continue
+            if getattr(module, name, None) is original:
+                setattr(module, name, value)
+
+
+guard_commands_module = _GuardCommandsProxy()
+
+
 @pytest.fixture
 def native_hook_force(monkeypatch: pytest.MonkeyPatch) -> Path:
     """Drive hook entrypoints through the compiled native runtime.

@@ -160,6 +160,7 @@ def test_observe_mode_uses_native_nonblocking_claude_responses(
 
 
 @pytest.mark.parametrize("endpoint", ("pi", "claude-code"))
+@pytest.mark.usefixtures("native_hook_force")
 def test_prompt_mode_still_blocks_failed_local_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -197,6 +198,7 @@ def test_prompt_mode_still_blocks_failed_local_review(
 
 
 @pytest.mark.parametrize("endpoint", ("pi", "claude-code"))
+@pytest.mark.usefixtures("native_hook_force")
 def test_prompt_mode_continues_emergency_safe_inspection_when_review_cannot_complete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

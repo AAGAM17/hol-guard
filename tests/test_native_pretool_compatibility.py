@@ -13,6 +13,7 @@ from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.store import GuardStore
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_cli_retries_native_after_compatibility_payload_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -414,6 +414,7 @@ def test_grok_live_wait_runs_in_json_mode(tmp_path: Path) -> None:
     assert decision == "allow"
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_grok_isolated_hook_resumes_after_approval(tmp_path: Path) -> None:
     import sys as runtime_sys
 

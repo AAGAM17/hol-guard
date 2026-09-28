@@ -51,6 +51,7 @@ import { CustomExtensionCommandList, withCommandState } from "./custom-extension
 import { useResolvedApprovalGate } from "../use-resolved-approval-gate";
 import { InlineError } from "./components/protection-primitives";
 import { McpRegistrySearch } from "./mcp-registry-search";
+import type { LocalCliDiscoveryOutcome } from "./use-local-cli-catalog";
 
 function randomToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
@@ -62,7 +63,7 @@ export function AddCustomExtensionWorkspace(props: {
   discovering?: boolean;
   onBack: () => void;
   onAdded: (cliId: string) => void;
-  onConfigured: () => Promise<boolean>;
+  onConfigured: () => Promise<LocalCliDiscoveryOutcome>;
 }) {
   const { resolvedApprovalGate, resolveApprovalGate, refreshApprovalGate } = useResolvedApprovalGate(null);
   const [command, setCommand] = useState("");

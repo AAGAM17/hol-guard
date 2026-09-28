@@ -80,7 +80,7 @@ for (const width of [1280, 390]) {
     await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
     await expect.poll(() => discoveryCalls).toBe(beforeApply + 1);
     if (width === 390) {
-      await expect(registry.getByRole("alert")).toContainText("Codex was configured, but Guard could not refresh host connections.");
+      await expect(registry.getByRole("alert")).toContainText("Codex was configured, but Guard could not fully rescan host connections.");
     }
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ operation: "apply", registry_name: "io.github.sample/newserver",

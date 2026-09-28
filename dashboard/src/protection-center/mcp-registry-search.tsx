@@ -3,6 +3,7 @@ import { fetchLocalCliApi } from "../guard-api";
 import type { LocalCliItem } from "../local-cli-api";
 import type { GuardApprovalGatePublicConfig } from "../guard-types";
 import { ApprovalProofFieldInputs, buildApprovalProofCredentials, isApprovalProofSubmitDisabled } from "../approval-proof-inline";
+import type { LocalCliDiscoveryOutcome } from "./use-local-cli-catalog";
 
 type PackageOption = {
   registry_type: "npm" | "pypi"; identifier: string; version: string;
@@ -75,7 +76,7 @@ type SetupCandidate = (SetupBase & { kind: "remote"; endpoint: string })
 
 export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }: {
   items: LocalCliItem[]; approvalGate: GuardApprovalGatePublicConfig | null;
-  onOpenChange: (open: boolean) => void; onConfigured: () => Promise<boolean>;
+  onOpenChange: (open: boolean) => void; onConfigured: () => Promise<LocalCliDiscoveryOutcome>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -160,11 +161,10 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
         || body.host_change_applied !== true || body.permissions_granted !== false) throw new Error("Codex setup outcome is uncertain.");
       setConfigured({ name: candidate.setup_name, kind: candidate.kind === "package" ? "package" : "remote" });
       setCandidate(null); setPassword(""); setTotp("");
-      operation.current = null; setBusy(false);
-      void onConfigured().then((refreshed) => {
-        if (refreshed === false && interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      void Promise.resolve().then(onConfigured).then((outcome) => {
+        if (outcome === "partial" && interactionGeneration.current === generation) setError("Codex was configured, but Guard could not fully rescan host connections. Existing connections remain visible. Retry discovery in Extensions.");
       }).catch(() => {
-        if (interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+        if (interactionGeneration.current === generation) setError("Codex was configured, but Guard could not fully rescan host connections. Retry discovery in Extensions.");
       });
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Codex setup did not finish."); }
     finally { operation.current = null; setBusy(false); }
@@ -188,8 +188,8 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
           className="min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white disabled:opacity-50">Search registry</button>
       </div>
       {busy ? <p role="status" className="mt-3 text-sm text-brand-dark/75">
-        {operation.current === "search" ? "Searching public listings…" : operation.current === "preview"
-          ? "Checking the exact registry listing…" : "Adding the reviewed connection to Codex…"}
+        {{ search: "Searching public listings…", preview: "Checking the exact registry listing…",
+          apply: "Adding the reviewed connection to Codex…" }[operation.current ?? "apply"]}
       </p> : null}
       {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
       {configured ? <p role="status" className="mt-3 text-sm text-brand-dark">

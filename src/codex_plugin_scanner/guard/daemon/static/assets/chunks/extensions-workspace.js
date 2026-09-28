@@ -4735,12 +4735,10 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
       setCandidate(null);
       setPassword("");
       setTotp("");
-      operation.current = null;
-      setBusy(false);
-      void onConfigured().then((refreshed) => {
-        if (refreshed === false && interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      void Promise.resolve().then(onConfigured).then((outcome) => {
+        if (outcome === "partial" && interactionGeneration.current === generation) setError("Codex was configured, but Guard could not fully rescan host connections. Existing connections remain visible. Retry discovery in Extensions.");
       }).catch(() => {
-        if (interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+        if (interactionGeneration.current === generation) setError("Codex was configured, but Guard could not fully rescan host connections. Retry discovery in Extensions.");
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Codex setup did not finish.");
@@ -4794,7 +4792,11 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
           }
         )
       ] }),
-      busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-3 text-sm text-brand-dark/75", children: operation.current === "search" ? "Searching public listings…" : operation.current === "preview" ? "Checking the exact registry listing…" : "Adding the reviewed connection to Codex…" }) : null,
+      busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-3 text-sm text-brand-dark/75", children: {
+        search: "Searching public listings…",
+        preview: "Checking the exact registry listing…",
+        apply: "Adding the reviewed connection to Codex…"
+      }[operation.current ?? "apply"] }) : null,
       error ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "alert", className: "mt-3 text-sm text-red-700", children: error }) : null,
       configured ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { role: "status", className: "mt-3 text-sm text-brand-dark", children: [
         configured.name,
@@ -5394,22 +5396,22 @@ function useLocalCliCatalog() {
     setCatalogReady(false);
     try {
       const next = await fetchLocalCliDiscover();
-      if (loadGeneration.current !== generation) return true;
+      if (loadGeneration.current !== generation) return "superseded";
       setData(next);
       setError(null);
       setDiscoveryNotice(discoveryIssueMessage(next.discovery_issue));
-      return true;
+      return next.discovery_issue ? "partial" : "refreshed";
     } catch (error2) {
       try {
         const next = await fetchLocalCliList();
-        if (loadGeneration.current !== generation) return true;
+        if (loadGeneration.current !== generation) return "superseded";
         setData(next);
         setDiscoveryNotice(error2 instanceof Error ? error2.message : "Guard could not refresh custom extensions.");
-        return false;
+        return "partial";
       } catch (caught) {
-        if (loadGeneration.current !== generation) return true;
+        if (loadGeneration.current !== generation) return "superseded";
         setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
-        return false;
+        return "partial";
       }
     } finally {
       if (loadGeneration.current === generation) {

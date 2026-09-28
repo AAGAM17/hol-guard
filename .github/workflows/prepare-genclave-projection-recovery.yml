@@ -1,0 +1,144 @@
+name: Prepare reviewed gEnclave projection repair
+
+on:
+  push:
+    branches: [repair/extension-projection-recovery-3151]
+    paths: [.github/workflows/prepare-genclave-projection-recovery.yml]
+
+permissions: {}
+concurrency:
+  group: extension-projection-recovery-3151
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: 3babb2f813317376c610fbdf031c550687c69251
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        with:
+          version: '0.9.26'
+          enable-cache: false
+      - name: Install trusted base dependencies
+        run: uv sync --frozen --extra dev --no-default-groups --python 3.13
+      - name: Read only the reviewed declarative inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin pull/3151/head
+          test "$(git rev-parse FETCH_HEAD)" = df5c6e5c5d13b3b6e2571253475d78963a02014a
+          # These are data inputs. No contributor script, workflow, dependency
+          # declaration, Rust source or Python module is executed by this job.
+          for path in \
+            contributions/command-sources/command.genclave.json \
+            tests/fixtures/command-source-genclave.v1.json \
+            contracts/extensions/trust-class-map.v1.json \
+            contributions/extension-listings/command.genclave.json; do
+            git show "FETCH_HEAD:$path" > "$path"
+          done
+          test "$(git hash-object contributions/command-sources/command.genclave.json)" = 0554596e09bd1bdc707bbdfe0493040719ea3f30
+          test "$(git hash-object tests/fixtures/command-source-genclave.v1.json)" = cefda78a2daa1f302d00780e126c816b8334a952
+          test "$(git hash-object contracts/extensions/trust-class-map.v1.json)" = 76119bf58e93c21b6bcee151339a6b5603297227
+      - name: Verify the published source compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --max-time 120 \
+            https://files.pythonhosted.org/packages/56/39/051143dc3c6132c6b85cf88f2a72fd2ba8a90e2e986504683283fc012eb1/hol_guard-3.8.0-py3-none-manylinux_2_17_x86_64.whl \
+            --output "$RUNNER_TEMP/guard.whl"
+          WHEEL="$RUNNER_TEMP/guard.whl" OUTPUT="$RUNNER_TEMP/native-source" python - <<'PY'
+          import hashlib, json, os, pathlib, zipfile
+          wheel = pathlib.Path(os.environ['WHEEL'])
+          assert hashlib.sha256(wheel.read_bytes()).hexdigest() == 'b91f2ec65222b962a6edc43556aabfe082db687387c2859772a07d118b24a1e7'
+          with zipfile.ZipFile(wheel) as archive:
+              manifest = json.loads(archive.read('codex_plugin_scanner/_native/source-compiler-manifest.json'))
+              payload = archive.read('codex_plugin_scanner/_native/guard-command-source')
+          assert manifest['source_sha'] == '3babb2f813317376c610fbdf031c550687c69251'
+          assert hashlib.sha256(payload).hexdigest() == manifest['compiler_sha256']
+          target = pathlib.Path(os.environ['OUTPUT'])
+          target.write_bytes(payload)
+          target.chmod(0o700)
+          PY
+      - name: Validate native fixtures and regenerate from the trusted base
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src uv run --no-sync python scripts/prepare_extension_contribution.py \
+            --source contributions/command-sources/command.genclave.json \
+            --fixture tests/fixtures/command-source-genclave.v1.json \
+            --compiler "$RUNNER_TEMP/native-source"
+          PYTHONPATH=src uv run --no-sync python scripts/render_command_extension_directory.py
+          mkdir -p projection-objects
+          python - <<'PY'
+          import hashlib, json, pathlib
+          expected = {
+              'contracts/extensions/command-catalog.v1.json': '090dc964292524c5ed729246ae1d52116ad0a3b6',
+              'contracts/extensions/native-command-program.v1.json': 'e0e58c639b0233df37fc79cce3e64a1aa7d9e09e',
+          }
+          for path, digest in expected.items():
+              payload = pathlib.Path(path).read_bytes()
+              assert hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest() == digest
+              pathlib.Path('projection-objects', digest + '.json').write_bytes(payload)
+          pathlib.Path('projection-objects/README.txt').write_text(
+              'Native fixtures passed; targetCommandsExecuted=0. These are regenerated Git objects, '
+              'not approval to merge. The normal PR CI must rebuild its embedded program and pass.\n'
+          )
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: genclave-projection-objects-${{ github.run_id }}
+          path: projection-objects/
+          if-no-files-found: error
+          retention-days: 3
+  store_objects:
+    needs: prepare
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: genclave-projection-objects-${{ github.run_id }}
+          path: projection-objects
+      - name: Store two verified blobs, without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, pathlib, urllib.request
+          expected = ('090dc964292524c5ed729246ae1d52116ad0a3b6', 'e0e58c639b0233df37fc79cce3e64a1aa7d9e09e')
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'}
+          receipts = []
+          for digest in expected:
+              path = pathlib.Path('projection-objects', digest + '.json')
+              assert path.is_file() and not path.is_symlink() and path.stat().st_size < 3000000
+              payload = path.read_bytes()
+              assert hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest() == digest
+              json.loads(payload)
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/hashgraph-online/hol-guard/git/blobs',
+                  data=json.dumps({'content': payload.decode('utf-8'), 'encoding': 'utf-8'}).encode(),
+                  headers=headers, method='POST')
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  receipt = json.load(response)
+              assert receipt['sha'] == digest
+              receipts.append({'sha': digest, 'url': receipt['url']})
+          print(json.dumps(receipts, indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Prepared the two exact projection Git objects for PR #3151. No branch, PR state, review or merge was changed.\n')
+              for item in receipts:
+                  summary.write('- ' + item['sha'] + '\n')
+          PY

@@ -1038,6 +1038,19 @@ class RuntimeMcpGuardProxy:
                 self.store.read_mcp_provider_authority_hash() if composio_requires_action_review(tool_name) else None
             ),
         )
+        if tool_name in self._tool_catalog:
+            from ..store_mcp_catalog import tool_definition_authority_hash
+
+            # Catalog entries omit their name because it is the map key. Bind
+            # the full definition for local grants without changing the
+            # artifact hash used by existing exact saved blocks.
+            artifact = replace(
+                artifact,
+                runtime_private_metadata={
+                    **artifact.runtime_private_metadata,
+                    "mcp_tool_authority_hash": tool_definition_authority_hash({"name": tool_name, **tool_definition}),
+                },
+            )
         artifact_hash = build_tool_call_hash(
             artifact,
             arguments,

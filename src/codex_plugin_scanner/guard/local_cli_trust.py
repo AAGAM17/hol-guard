@@ -210,7 +210,8 @@ def matching_local_mcp_grant(
             if not catalog_tool_authority_matches(
                 grant.get("catalog"),
                 _mcp_tool_name(artifact),
-                artifact.metadata.get("mcp_tool_authority_hash"),
+                artifact.metadata.get("mcp_tool_authority_hash")
+                or artifact.runtime_private_metadata.get("mcp_tool_authority_hash"),
             ):
                 return "review"
         return "allowed"

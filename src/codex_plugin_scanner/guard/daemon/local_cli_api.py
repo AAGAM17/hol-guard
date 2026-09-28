@@ -886,7 +886,20 @@ class LocalCliApiService:
         if cached is not None and now - cached[0] < _DISCOVERY_TTL_SECONDS:
             return cached[1]
         try:
-            servers = discover_harness_mcp_servers(home_dir=Path.home(), guard_home=self._store.guard_home)
+            codex_install = self._store.get_managed_install("codex")
+            managed_workspace = (
+                codex_install.get("workspace") if codex_install and codex_install.get("active") else None
+            )
+            workspace_dir = (
+                Path(managed_workspace)
+                if isinstance(managed_workspace, str) and Path(managed_workspace).is_absolute()
+                else None
+            )
+            servers = discover_harness_mcp_servers(
+                home_dir=Path.home(),
+                guard_home=self._store.guard_home,
+                workspace_dir=workspace_dir,
+            )
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             if strict:
                 raise DiscoveryStageError("configured_host_scan_failed") from None

@@ -4,13 +4,18 @@ from pathlib import Path
 
 import pytest
 
+import codex_plugin_scanner.guard.adapters as adapters_module
+import codex_plugin_scanner.guard.daemon.local_cli_api as local_cli_api_module
+from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.harness_mcp_discovery import (
     MAX_DISCOVERED_MCP_SERVERS,
+    _safe_detections,
     apply_source_labels,
     discover_harness_mcp_servers,
     discovered_server_for_observation,
     persist_discovered_harness_mcp_servers,
 )
+from codex_plugin_scanner.guard.adapters.mcp_servers import managed_stdio_servers
 from codex_plugin_scanner.guard.daemon.local_cli_api import LocalCliApiService
 from codex_plugin_scanner.guard.local_cli_trust import matching_local_mcp_grant, utc_now
 from codex_plugin_scanner.guard.mcp_tool_calls import build_tool_call_artifact
@@ -83,6 +88,70 @@ def test_packaged_native_proxies_are_not_offered_as_servers(tmp_path: Path) -> N
         detections=detections,
     )
     assert [server.identity.name for server in servers] == ["hol-guard::unverified"]
+
+
+def test_installed_guard_proxy_server_remains_discoverable_without_rewrapping(tmp_path: Path) -> None:
+    wrapped = _artifact(
+        harness="codex",
+        name="guard_canary",
+        command="/usr/local/bin/mcp-server-filesystem",
+        args=(str(tmp_path / "allowed"),),
+        metadata={"guard_managed_proxy": True},
+    )
+    detection = _detection("codex", wrapped)
+
+    assert managed_stdio_servers(detection) == ()
+    servers = discover_harness_mcp_servers(
+        home_dir=tmp_path,
+        guard_home=tmp_path / "guard-home",
+        detections=(detection,),
+    )
+
+    assert len(servers) == 1
+    assert servers[0].identity.name == "guard_canary"
+    assert servers[0].server_identity.command == "/usr/local/bin/mcp-server-filesystem"
+
+
+def test_discovery_uses_managed_codex_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store.set_managed_install("codex", True, str(workspace), {}, utc_now())
+    observed: list[Path | None] = []
+
+    def discover(**kwargs: object) -> tuple[()]:
+        observed.append(kwargs.get("workspace_dir"))
+        return ()
+
+    monkeypatch.setattr(local_cli_api_module, "discover_harness_mcp_servers", discover)
+
+    LocalCliApiService(store=store)._discovered_servers()
+
+    assert observed == [workspace]
+
+
+def test_managed_codex_discovery_authenticates_default_home_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed: list[tuple[bool, bool]] = []
+
+    class CodexAdapter:
+        harness = "codex"
+
+        def detect(self, context: HarnessContext) -> HarnessDetection:
+            home_explicit = context.home_override_explicit
+            workspace_explicit = context.workspace_override_explicit
+            observed.append((home_explicit, workspace_explicit))
+            if home_explicit:
+                raise RuntimeError("manifest belongs to default home context")
+            return _detection("codex")
+
+    monkeypatch.setattr(adapters_module, "list_adapters", lambda: (CodexAdapter(),))
+
+    detections = _safe_detections(tmp_path, tmp_path / "guard-home", tmp_path / "workspace")
+
+    assert len(detections) == 1
+    assert observed == [(True, True), (False, True)]
 
 
 def test_identical_launches_keep_distinct_host_connections() -> None:

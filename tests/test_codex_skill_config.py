@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.aibom_detection import (
     discover_codex_skill_artifacts,
     extend_codex_runtime_inventory,
@@ -12,7 +13,8 @@ from codex_plugin_scanner.guard.codex_skill_config import (
     load_codex_skill_config_rules,
     resolve_codex_skill_enabled,
 )
-from codex_plugin_scanner.guard.models import HarnessDetection
+from codex_plugin_scanner.guard.models import GuardArtifact, HarnessDetection
+from codex_plugin_scanner.guard.runtime.runner import _detection_with_prompt_artifacts
 
 
 def test_load_codex_skill_config_rules_merges_home_and_workspace(tmp_path: Path) -> None:
@@ -168,3 +170,34 @@ def test_extend_codex_runtime_inventory_replaces_workspace_skills(tmp_path: Path
     assert len(extended.artifacts) == 1
     assert extended.artifacts[0].name == "only-global"
     assert extended.artifacts[0].source_scope == "global"
+
+
+def test_disabled_codex_skill_is_inventory_only_during_launch(tmp_path: Path) -> None:
+    def artifact(name: str, artifact_type: str, *, enabled: bool = True) -> GuardArtifact:
+        return GuardArtifact(
+            artifact_id=f"codex:global:{artifact_type}:{name}",
+            name=name,
+            harness="codex",
+            artifact_type=artifact_type,
+            source_scope="global",
+            config_path=str(tmp_path / name),
+            metadata={"enabled": enabled},
+        )
+
+    detection = HarnessDetection(
+        harness="codex",
+        installed=True,
+        command_available=True,
+        config_paths=(),
+        artifacts=(
+            artifact("disabled-skill", "skill", enabled=False),
+            artifact("enabled-skill", "skill"),
+            artifact("guard_canary", "mcp_server"),
+        ),
+    )
+    context = HarnessContext(home_dir=tmp_path, workspace_dir=tmp_path, guard_home=tmp_path / "guard")
+
+    launch = _detection_with_prompt_artifacts(detection, context, [])
+
+    assert [item.name for item in launch.artifacts] == ["enabled-skill", "guard_canary"]
+    assert [item.name for item in detection.artifacts] == ["disabled-skill", "enabled-skill", "guard_canary"]

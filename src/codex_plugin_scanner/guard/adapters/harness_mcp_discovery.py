@@ -6,7 +6,7 @@ import os
 import shlex
 import subprocess
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..models import HarnessDetection
@@ -15,7 +15,7 @@ from ..runtime.local_mcp_probe import mcp_launch_tokens
 from ..runtime.mcp_connection_identity import McpConnectionIdentity, build_mcp_connection_identity
 from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity
 from .contracts import display_name_for
-from .mcp_servers import ManagedMcpServer, managed_stdio_servers, proxy_process_env
+from .mcp_servers import ManagedMcpServer, discoverable_stdio_servers, proxy_process_env
 
 MAX_DISCOVERED_MCP_SERVERS = 40
 
@@ -44,7 +44,7 @@ def discover_harness_mcp_servers(
     loaded = detections if detections is not None else _safe_detections(home_dir, guard_home, workspace_dir)
     groups: dict[str, _DiscoveryGroup] = {}
     for detection in loaded:
-        for server in managed_stdio_servers(detection):
+        for server in discoverable_stdio_servers(detection):
             built = _identity_for(server)
             if built is None:
                 continue
@@ -233,10 +233,21 @@ def _safe_detections(home_dir: Path, guard_home: Path, workspace_dir: Path | Non
     context = HarnessContext(home_dir=home_dir, workspace_dir=workspace_dir, guard_home=guard_home)
     detections: list[HarnessDetection] = []
     for adapter in list_adapters():
-        try:
-            detections.append(adapter.detect(context))
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError):
-            continue
+        contexts = (context,)
+        if adapter.harness == "codex" and workspace_dir is not None:
+            # A managed Codex hook manifest binds the installation workspace
+            # and whether home was explicit. Both contexts still authenticate
+            # that manifest before their inventory can be used.
+            contexts = (
+                replace(context, home_override_explicit=True, workspace_override_explicit=True),
+                replace(context, home_override_explicit=False, workspace_override_explicit=True),
+            )
+        for adapter_context in contexts:
+            try:
+                detections.append(adapter.detect(adapter_context))
+                break
+            except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError):
+                continue
     return detections
 
 

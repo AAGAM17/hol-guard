@@ -527,14 +527,22 @@ def _native_hook_json_document(
     # reviews and denials exit cleanly; nonzero is reserved for cases where
     # the decision must travel the machine envelope instead: sandbox
     # escalations, fail-closed native floors where the command evaluator
-    # could not prove the request, and `event`-keyed payloads that never
-    # normalized to a command surface. Other harnesses keep the envelope
-    # contract for `event`-keyed payloads only.
+    # could not prove the request, legacy `event`-keyed payloads that never
+    # normalized to the native protocol, and blocking decisions a package
+    # evaluation contributed to (queued approvals and advisory context live
+    # in the envelope, not the protocol decision). Other harnesses keep the
+    # envelope contract for `event`-keyed payloads only.
     if canonical == "codex":
+        policy_composition = base.get("policy_composition")
+        package_evaluated = (
+            isinstance(policy_composition, Mapping)
+            and policy_composition.get("package_action") is not None
+        )
         envelope_rc = (
             policy_action == "sandbox-required"
             or fail_closed_native_floor
-            or (envelope_keyed and not command_surface)
+            or (envelope_keyed and not native_protocol_payload)
+            or package_evaluated
         )
     else:
         envelope_rc = not native_protocol_payload and policy_action in {

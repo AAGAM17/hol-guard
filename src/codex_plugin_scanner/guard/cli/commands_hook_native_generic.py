@@ -117,6 +117,7 @@ if TYPE_CHECKING:
         _should_emit_claude_native_pretooluse_notice,
         _should_emit_copilot_hook_response,
         _should_emit_native_hook_exit_block,
+        _should_emit_native_hook_json_response,
         _should_emit_native_hook_response,
     )
     from .commands_support_prompts import (
@@ -1413,7 +1414,7 @@ def run_native_generic_payload(
     }
     if isinstance(payload_map.get("approval_requests"), list):
         hook_envelope["approval_requests"] = payload_map["approval_requests"]
-    if getattr(args, "json", False):
+    if getattr(args, "json", False) and output_stream is None:
         json_result = _native_hook_json_document(
             args,
             event_name=hook_event_name,
@@ -1449,8 +1450,10 @@ def run_native_generic_payload(
                     output_stream=output_stream,
                 )
             return json_rc
-    if _should_emit_native_hook_response(args) or (
-        getattr(args, "json", False) and output_stream is not None and _canonical_harness_name(args.harness) == "grok"
+    if _should_emit_native_hook_response(args) or _should_emit_native_hook_json_response(
+        args,
+        event_name=hook_event_name,
+        output_stream=output_stream,
     ):
         if _canonical_harness_name(args.harness) == "grok":
             from ..adapters.grok_hooks import emit_grok_hook_response, grok_hook_process_exit
@@ -1526,7 +1529,7 @@ def run_native_generic_payload(
             output_stream=output_stream,
             as_json=getattr(args, "json", False),
         )
-        return 0
+        return 1 if policy_action in {"review", "require-reapproval", "sandbox-required", "block"} else 0
     blocking = policy_action in {"review", "require-reapproval", "sandbox-required", "block"}
     hook_envelope["continue"] = True
     hook_envelope["decision"] = "block" if blocking else "allow"

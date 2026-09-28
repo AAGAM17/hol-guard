@@ -358,7 +358,7 @@ def finalize_native_artifact_hook(
             policy_action=policy_action,
             native_reason=runtime_reason,
         )
-    if getattr(args, "json", False):
+    if getattr(args, "json", False) and output_stream is None:
         emit_reason = runtime_reason
         if canonical_harness == "copilot":
             emit_reason = _copilot_hook_reason(
@@ -504,7 +504,10 @@ def finalize_native_artifact_hook(
             payload=payload,
             policy_action=policy_action,
         )
-        return 0
+        # A flagged outcome still exits nonzero: the machine envelope carries
+        # the pending re-approval or masked-output evidence consumers expect
+        # a failing rc for.
+        return 1 if policy_action in {"review", "require-reapproval", "sandbox-required", "block"} else 0
     response_payload["continue"] = True
     response_payload["decision"] = (
         "block" if policy_action in {"review", "require-reapproval", "sandbox-required", "block"} else "allow"

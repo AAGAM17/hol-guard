@@ -134,8 +134,14 @@ def apply_local_grant_then_native_floor(
         approval_context_policy_action = granted
     if native_floor is None:
         return policy_action, current_policy_action, approval_context_policy_action
+    # The floor already entered ``current_action_inputs``, so the two context
+    # actions carry it.  ``policy_action`` is the final decision: approval
+    # reuse, trusted-request overrides, and local grants settle the review the
+    # floor demanded, and the package evaluator owns package_request verdicts.
+    # Re-flooring here would make every saved approval or granted tool re-flag
+    # the identical request forever.
     return (
-        most_restrictive_guard_action(policy_action, native_floor),
+        policy_action,
         most_restrictive_guard_action(current_policy_action, native_floor),
         most_restrictive_guard_action(approval_context_policy_action, native_floor),
     )

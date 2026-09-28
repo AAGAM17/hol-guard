@@ -483,15 +483,23 @@ def evaluate_native_artifact_hook(
         # Hook payloads are untrusted hints.  They may make a decision stricter,
         # but can never lower current local policy or suppress later scanners.
         current_action_inputs.append(payload_action_normalization.action)
-    native_pre_tool_floor = attach_native_pre_tool_floor(
-        event_name,
-        payload_map,
-        action_envelope,
-        current_action_inputs,
-        guard_home=context.guard_home,
-        cwd=runtime_workspace,
-        home_dir=context.home_dir,
-        store=store,
+    # ``package_request`` artifacts are decided by the package evaluator, not
+    # the generic command floor: the evaluator is the fail-closed semantic
+    # authority for installs, and an unproven-command ``review`` floor would
+    # force every install to pause regardless of its supply-chain verdict.
+    native_pre_tool_floor = (
+        None
+        if runtime_artifact.artifact_type == "package_request"
+        else attach_native_pre_tool_floor(
+            event_name,
+            payload_map,
+            action_envelope,
+            current_action_inputs,
+            guard_home=context.guard_home,
+            cwd=runtime_workspace,
+            home_dir=context.home_dir,
+            store=store,
+        )
     )
     native_edge_action = _native_edge_floor_action(
         native_edge_result,

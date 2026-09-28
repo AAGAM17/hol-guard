@@ -181,7 +181,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
         interpreter_digest = None
     try:
         daemon_state = load_authenticated_daemon_state(context.guard_home)
-    except (OSError, UnicodeError, ValueError, RecursionError):
+    except (OSError, UnicodeError, ValueError, RecursionError, TypeError):
         daemon_state = None
     daemon = {
         "discovery_authentication": "verified" if daemon_state is not None else "unverified",

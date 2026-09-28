@@ -11,6 +11,7 @@ import shutil
 import socket
 import stat
 import sys
+import weakref
 from dataclasses import dataclass
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -48,18 +49,21 @@ class _PinnedWitnessDirectory:
     """Remove a witness through the workspace descriptor used to create it."""
 
     def __init__(self, *, workspace_fd: int, entry: str, name: str) -> None:
-        self._workspace_fd = workspace_fd
-        self._entry = entry
+        self._finalizer = weakref.finalize(self, _cleanup_pinned_witness, workspace_fd, entry)
         self.name = name
 
     def cleanup(self) -> None:
-        try:
-            if sys.version_info >= (3, 11):
-                shutil.rmtree(self._entry, dir_fd=self._workspace_fd)
-            else:
-                _rmtree_at(self._workspace_fd, self._entry)
-        finally:
-            os.close(self._workspace_fd)
+        self._finalizer()
+
+
+def _cleanup_pinned_witness(workspace_fd: int, entry: str) -> None:
+    try:
+        if sys.version_info >= (3, 11):
+            shutil.rmtree(entry, dir_fd=workspace_fd)
+        else:
+            _rmtree_at(workspace_fd, entry)
+    finally:
+        os.close(workspace_fd)
 
 
 def _owned_witness_directory(setup: EvaluationSetup) -> _PinnedWitnessDirectory:

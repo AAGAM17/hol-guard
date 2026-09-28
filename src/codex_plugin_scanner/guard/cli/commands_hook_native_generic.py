@@ -101,10 +101,15 @@ if TYPE_CHECKING:
     )
     from .commands_support_claude_approval import _claude_native_pretooluse_terminal_notice
     from .commands_support_hook_payload import (
+        _apply_native_edge_envelope_fields,
         _coalesce_string,
         _emit_native_hook_block_stderr,
+        _emit_native_hook_json_document,
         _emit_native_hook_notification_stderr,
         _emit_native_hook_response,
+        _emit_native_post_tool_envelope,
+        _hook_command_has_encoded_markers,
+        _native_hook_json_document,
     )
     from .commands_support_interaction import (
         _emit,

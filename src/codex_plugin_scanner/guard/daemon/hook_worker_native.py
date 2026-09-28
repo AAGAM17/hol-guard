@@ -58,6 +58,7 @@ class _HookWorkerNativeHost(Protocol):
     _native_policy_snapshot: Callable[..., dict[str, object] | None]
     _review_pre_tool_native: Callable[..., dict[str, object] | None]
     _native_runtime_status: Callable[[], NativeRuntimeStatus]
+    _hook_event_name: Callable[[Mapping[str, object]], str]
     _review_raw_hook_native: Callable[..., dict[str, object] | None]
     _review_native_edge_with_snapshot: Callable[..., tuple[dict[str, object], bool]]
     _record_post_tool_activity: Callable[..., None]

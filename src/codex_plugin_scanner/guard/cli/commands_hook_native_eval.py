@@ -14,6 +14,7 @@ from .commands_support import *
 
 if TYPE_CHECKING:
     from ._commands_shared import _now
+    from .commands_support_hook_payload import _apply_native_edge_envelope_fields
     from .commands_support_permission_store import (
         _persist_claude_native_permission_for_runtime_artifact,
         _record_cursor_pending_shell_permission,

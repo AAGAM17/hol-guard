@@ -12,7 +12,12 @@ from .commands_support import *
 if TYPE_CHECKING:
     from ..mcp_tool_calls import ToolCallDecision
     from ._commands_shared import _hook_command_text, _now
-    from .commands_support_hook_payload import _action_envelope_json, _approval_surface_policy_for_flow
+    from .commands_support_hook_payload import (
+        _action_envelope_json,
+        _approval_surface_policy_for_flow,
+        _copilot_hook_permission_decision,
+        _write_json_line,
+    )
     from .commands_support_interaction import (
         _bind_hook_blocked_operation_queue,
         _codex_browser_wait_metadata,
@@ -251,7 +256,7 @@ def _emit_copilot_pretool_response(
             policy_action=policy_action,
             reason=reason,
             approval_reuse=approval_reuse,
-            scanner_evidence=scanner_evidence,
+            scanner_evidence=tuple(scanner_evidence),
             output_stream=output_stream,
         )
         return

@@ -1,12 +1,25 @@
 """Guard CLI hook command entrypoint."""
 
-# ruff: noqa: F403, F405
+# ruff: noqa: F403
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from ._commands_shared import *
 from .commands_hook_native_authority import route_native_hook
 from .commands_support_hook_payload import _load_hook_payload
+
+if TYPE_CHECKING:
+    import argparse
+    from pathlib import Path
+    from typing import TextIO
+
+    from ..adapters.base import HarnessContext
+    from ..config import GuardConfig
+    from ..runtime.harness_attribution import resolve_runtime_hook_harness
+    from ..store import GuardStore
+    from ._commands_shared import _require_guard_context, _require_guard_store
 
 
 def _run_guard_hook_command(

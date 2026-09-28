@@ -23,6 +23,7 @@ from ..runtime.extension_control_runtime import (
 
 if TYPE_CHECKING:
     from ..daemon.hook_worker import HookWorker
+    from ._commands_shared import _now
 
 from ._commands_shared import *
 from .commands_hook_native_claude import (

@@ -14,6 +14,9 @@ if TYPE_CHECKING:
     from .commands_support_claude_approval import _claude_native_pretooluse_terminal_notice
     from .commands_support_hook_payload import (
         _emit_native_hook_block_stderr,
+        _emit_native_hook_json_document,
+        _emit_native_post_tool_envelope,
+        _native_hook_json_document,
         _emit_native_hook_notification_stderr,
         _emit_native_hook_response,
     )

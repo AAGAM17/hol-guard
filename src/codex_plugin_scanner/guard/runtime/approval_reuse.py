@@ -76,7 +76,7 @@ class ApprovalReuseDecision:
     def to_evidence(self) -> dict[str, object]:
         """Return stable, non-secret diagnostics for receipts and UI evidence."""
 
-        evidence = {
+        evidence: dict[str, object] = {
             "action": self.action,
             "status": self.status,
             "reason_code": self.reason_code,

@@ -51,7 +51,7 @@ def reviewed_stdio_package_options(packages: object) -> list[dict[str, object]]:
         elif registry_type == "pypi" and package.get("runtimeHint") == "uvx":
             if package.get("registryBaseUrl") not in (None, "https://pypi.org") or not _PYPI.fullmatch(identifier):
                 continue
-            command, prefix = "uvx", [f"{identifier}=={version}"]
+            command, prefix = "uvx", [f"{identifier}@{version}"]
         else:
             continue
         arguments: list[str] = []

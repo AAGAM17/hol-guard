@@ -78,6 +78,21 @@ def test_incident_export_rejects_oversized_config_without_reading_it(tmp_path: P
     assert report["configured"]["bridge_sha256"] is None
 
 
+def test_incident_export_reports_legacy_hooks_when_toml_config_is_missing(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    hooks_path = CodexHarnessAdapter._hooks_path(context)
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(json.dumps({"hooks": {"PreToolUse": [{"hooks": []}]}}), encoding="utf-8")
+
+    report = codex_incident_report(context)
+
+    assert report["configured"]["config_status"] == "missing"
+    assert report["configured"]["hooks_status"] == "read"
+    assert report["configured"]["manifest_integrity"] != "valid"
+    assert report["configured"]["manifest_package_version"] is None
+    assert report["loaded_harness"]["state"] == "unknown"
+
+
 def test_incident_export_does_not_expose_identity_from_tampered_manifest(tmp_path: Path) -> None:
     context = _context(tmp_path)
     CodexHarnessAdapter().install(context)

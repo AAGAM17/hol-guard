@@ -95,7 +95,7 @@ def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, 
     raw, status = _bounded_regular_bytes(config_path)
     if raw is None and status != "missing":
         return None, {"config_status": status, "hooks_enabled": None}
-    config: dict = {}
+    config: dict[str, object] = {}
     if raw is not None:
         try:
             config = tomllib.loads(raw.decode("utf-8"))

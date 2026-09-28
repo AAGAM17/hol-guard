@@ -119,6 +119,19 @@ def test_identical_launches_keep_distinct_host_connections() -> None:
     assert discovered[0].identity.identity_hash != discovered[1].identity.identity_hash
     assert discovered[0].server_identity.env_keys == ("GITHUB_TOKEN",)
     assert "secret" not in discovered[0].identity.example_label
+    server_hash = discovered[0].server_identity.identity_hash
+    assert discovered_server_for_observation(
+        discovered, cli_id=f"local-cli.mcp-{server_hash[:8]}", server_identity_hash=server_hash,
+        server_command=discovered[0].server_identity.command,
+        args_hash=discovered[0].server_identity.args_hash,
+        source_label="Codex, Claude Code",
+    ) is None
+    assert discovered_server_for_observation(
+        discovered, cli_id=f"local-cli.mcp-{server_hash[:8]}", server_identity_hash=server_hash,
+        server_command=discovered[0].server_identity.command,
+        args_hash=discovered[0].server_identity.args_hash,
+        source_label="Codex",
+    ) == next(server for server in discovered if server.source_label == "Codex")
 
 
 def test_distinct_configured_environments_do_not_merge(tmp_path: Path) -> None:
@@ -160,9 +173,10 @@ def test_distinct_configured_environments_do_not_merge(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(("legacy_state", "expected_new_state"), [
     ("blocked", "blocked"), ("allowed", None), ("allowed_with_block", "blocked"),
+    ("late_block", "blocked"),
 ])
 def test_legacy_authority_split_carries_deny_without_migrating_allow(
-    tmp_path: Path, legacy_state: str, expected_new_state: str | None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy_state: str, expected_new_state: str | None
 ) -> None:
     servers = discover_harness_mcp_servers(
         home_dir=tmp_path,
@@ -183,17 +197,36 @@ def test_legacy_authority_split_carries_deny_without_migrating_allow(
         legacy, seen_at=utc_now(), server_identity_hash=old_hash,
         server_command=server.server_identity.command,
         server_args_hash=server.server_identity.args_hash,
+        source_label=server.source_label,
     )
     if legacy_state == "allowed_with_block":
         store.replace_local_cli_commands(
             legacy.cli_id, (LocalCliCommand("read", "read", "read", "Read"),),
         )
-    store.upsert_local_cli_grant(
-        identity=legacy, state="allowed" if legacy_state == "allowed_with_block" else legacy_state,
-        expected_revision=store.read_local_cli_revision(),
-        updated_at=utc_now(),
-        command_states={"read": "block"} if legacy_state == "allowed_with_block" else None,
-    )
+    if legacy_state == "late_block":
+        injected = False
+
+        def add_denial_before_transaction(_guard_home: Path) -> None:
+            nonlocal injected
+            if injected:
+                return
+            injected = True
+            store.upsert_local_cli_grant(
+                identity=legacy, state="blocked", expected_revision=store.read_local_cli_revision(),
+                updated_at=utc_now(),
+            )
+
+        monkeypatch.setattr(
+            "codex_plugin_scanner.guard.native_policy_snapshot.notify_native_policy_mutation",
+            add_denial_before_transaction,
+        )
+    else:
+        store.upsert_local_cli_grant(
+            identity=legacy, state="allowed" if legacy_state == "allowed_with_block" else legacy_state,
+            expected_revision=store.read_local_cli_revision(),
+            updated_at=utc_now(),
+            command_states={"read": "block"} if legacy_state == "allowed_with_block" else None,
+        )
     labels = persist_discovered_harness_mcp_servers(store, servers, seen_at=utc_now())
     assert server.identity.cli_id in labels
     grant = store.read_local_mcp_grant(
@@ -208,6 +241,7 @@ def test_legacy_authority_split_carries_deny_without_migrating_allow(
     assert discovered_server_for_observation(
         servers, cli_id=legacy.cli_id, server_identity_hash=old_hash,
         server_command=server.server_identity.command, args_hash=server.server_identity.args_hash,
+        source_label=server.source_label,
     ) == server
 
 

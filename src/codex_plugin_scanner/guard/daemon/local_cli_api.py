@@ -885,12 +885,14 @@ class LocalCliApiService:
         server_command = existing.get("server_command") if isinstance(existing, dict) else None
         args_hash = existing.get("server_args_hash") if isinstance(existing, dict) else None
         server_hash = existing.get("server_identity_hash") if isinstance(existing, dict) else None
+        source_label = existing.get("source_label") if isinstance(existing, dict) else None
         server = discovered_server_for_observation(
             self._discovered_servers(),
             cli_id=cli_id,
             server_command=server_command if isinstance(server_command, str) else None,
             args_hash=args_hash if isinstance(args_hash, str) else None,
             server_identity_hash=server_hash if isinstance(server_hash, str) else None,
+            source_label=source_label if isinstance(source_label, str) else None,
         )
         return None if server is None else server.launch_command
 

@@ -554,9 +554,9 @@ export function friendlyMcpToolName(raw: string | null | undefined): string | nu
   if (!raw || raw.length > 256) return null;
   const parts = raw.startsWith("mcp__") ? raw.slice(5).split("__") : [];
   if (parts.length < 2 || parts.some((part) => !/^[a-zA-Z0-9_-]{1,80}$/.test(part))) return null;
-  if (parts.length > 2 && parts[0] !== "codex_apps") return null;
-  const connector = parts.length > 2 ? parts[1] : parts[0];
-  const tool = parts.length > 2 ? parts.slice(2).join("__") : parts[1];
+  const codexApp = parts[0] === "codex_apps" && parts.length > 2;
+  const connector = codexApp ? parts[1] : parts[0];
+  const tool = parts.slice(codexApp ? 2 : 1).join("__");
   const humanize = (part: string) => part.replaceAll("_", " ").replaceAll("-", " ")
     .toLowerCase().replace(/\s+/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
   const shortTool = tool.toLowerCase().startsWith(`${connector.toLowerCase()}_`)

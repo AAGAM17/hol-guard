@@ -261,8 +261,10 @@ assert(resolveActionEnvelopeDetailText({ ...BASE_ENVELOPE, action_type: "mcp_too
 "review action uses a friendly label while retaining the bound underlying artifact");
 assert(friendlyMcpToolName("mcp__unsafe__../../send") === null,
   "malformed qualified names stay uninterpreted");
-assert(friendlyMcpToolName("mcp__evil__github__delete_repo") === null,
-  "an unrelated namespace cannot hide its server behind a friendly connector label");
+assert(friendlyMcpToolName("mcp__evil__github__delete_repo") === "Evil · Github Delete Repo",
+  "a nested tool name keeps the real server visible");
+assert(friendlyMcpToolName("mcp__github__issues__list") === "Github · Issues List",
+  "nested tools remain readable without impersonating another server");
 assert(friendlyMcpToolName("mcp__codex_apps__composio__search__tools") === "Composio · Search Tools",
   "Codex app labels retain all action segments");
 

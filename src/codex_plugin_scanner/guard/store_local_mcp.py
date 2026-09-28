@@ -190,7 +190,7 @@ class StoreLocalMcpMixin:
             rows = connection.execute(
                 f"""
                 select cli_id, identity_hash, kind, name, interpreter_name, example_label,
-                       server_identity_hash, server_command, server_args_hash
+                       server_identity_hash, server_command, server_args_hash, source_label
                 from local_cli_observation
                 where surface = 'mcp'
                   and ({predicate})
@@ -221,16 +221,22 @@ class StoreLocalMcpMixin:
             command=server_command,
             args_hash=server_args_hash,
         )
-        legacy_deny = False
+        legacy_candidate = False
         if existing is None and connection_identity_hash and connection_identity_hash != server_identity_hash:
             with self._connect() as lookup:
                 ensure_local_cli_schema(lookup, for_read=True)
-                legacy_deny = _matching_legacy_mcp_denial(
+                legacy_candidate = _legacy_mcp_observation_exists(
                     lookup, server_identity_hash, server_command, server_args_hash
                 )
-        guard_home = cast("GuardStore", self).guard_home if legacy_deny else None
+        guard_home = cast("GuardStore", self).guard_home if legacy_candidate else None
         with _notify_legacy_mcp_denial(guard_home), self._connect() as connection:
             ensure_local_cli_schema(connection)
+            if legacy_candidate:
+                connection.commit()
+                connection.execute("begin immediate")
+            legacy_deny = legacy_candidate and _matching_legacy_mcp_denial(
+                connection, server_identity_hash, server_command, server_args_hash
+            )
             if existing is None:
                 inserted = _insert_mcp_observation(
                     connection,
@@ -249,7 +255,7 @@ class StoreLocalMcpMixin:
                     connection.execute(
                         """
                         select cli_id, identity_hash, kind, name, interpreter_name, example_label,
-                               server_identity_hash, server_command, server_args_hash
+                               server_identity_hash, server_command, server_args_hash, source_label
                         from local_cli_observation
                         where cli_id = ?
                         """,
@@ -386,6 +392,21 @@ def _notify_legacy_mcp_denial(guard_home: Path | None) -> Iterator[None]:
             notify_native_policy_mutation(guard_home)
 
 
+def _legacy_mcp_observation_exists(
+    connection: sqlite3.Connection, server_hash: str, command: str, args_hash: str
+) -> bool:
+    return (
+        connection.execute(
+            """select 1 from local_cli_observation
+           where surface = 'mcp' and identity_hash = ?
+             and (server_identity_hash = ? or server_identity_hash is null)
+             and server_command = ? and server_args_hash = ? limit 1""",
+            (server_hash, server_hash, command, args_hash),
+        ).fetchone()
+        is not None
+    )
+
+
 def _matching_legacy_mcp_denial(connection: sqlite3.Connection, server_hash: str, command: str, args_hash: str) -> bool:
     row = connection.execute(
         """select 1 from local_cli_observation observation
@@ -511,7 +532,7 @@ def _normalized_identity_hash(value: str | None) -> str | None:
 def _observation_from_values(row: object | None) -> dict[str, object] | None:
     if row is None:
         return None
-    values = _row_values(row, 9)
+    values = _row_values(row, 10)
     cli_id = values[0]
     identity_hash = values[1]
     if not isinstance(cli_id, str) or not isinstance(identity_hash, str):
@@ -526,6 +547,7 @@ def _observation_from_values(row: object | None) -> dict[str, object] | None:
         "server_identity_hash": values[6],
         "server_command": values[7],
         "server_args_hash": values[8],
+        "source_label": values[9],
     }
 
 

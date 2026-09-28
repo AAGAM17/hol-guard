@@ -124,6 +124,7 @@ def discovered_server_for_observation(
     server_command: str | None = None,
     args_hash: str | None = None,
     server_identity_hash: str | None = None,
+    source_label: str | None = None,
 ) -> DiscoveredHarnessMcpServer | None:
     """Return the live discovered server for a stored observation. Does not persist."""
 
@@ -134,13 +135,21 @@ def discovered_server_for_observation(
             if server.identity.cli_id == cli_id
             and (not server_identity_hash or server.server_identity.identity_hash == server_identity_hash)
         ]
-        if not matches and server_identity_hash and cli_id == f"local-cli.mcp-{server_identity_hash[:8]}":
+        if (
+            not matches
+            and server_identity_hash
+            and server_command
+            and args_hash
+            and source_label
+            and cli_id == f"local-cli.mcp-{server_identity_hash[:8]}"
+        ):
             matches = [
                 server
                 for server in servers
                 if server.server_identity.identity_hash == server_identity_hash
-                and (not server_command or server.server_identity.command == server_command)
-                and (not args_hash or server.server_identity.args_hash == args_hash)
+                and server.server_identity.command == server_command
+                and server.server_identity.args_hash == args_hash
+                and server.source_label == source_label
             ]
     elif server_identity_hash:
         matches = [server for server in servers if server.server_identity.identity_hash == server_identity_hash]

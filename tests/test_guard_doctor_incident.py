@@ -115,7 +115,7 @@ def test_incident_export_reports_legacy_hooks_when_toml_config_is_missing(tmp_pa
     assert report["loaded_harness"]["state"] == "unknown"
 
 
-def test_incident_export_counts_duplicate_configured_hooks_without_exposing_commands(tmp_path: Path) -> None:
+def test_incident_export_counts_duplicate_configured_hooks_without_exposing_commands(tmp_path: Path, capsys) -> None:
     context = _context(tmp_path)
     hooks_path = CodexHarnessAdapter._hooks_path(context)
     hooks_path.parent.mkdir()
@@ -134,7 +134,23 @@ def test_incident_export_counts_duplicate_configured_hooks_without_exposing_comm
         encoding="utf-8",
     )
 
-    report = codex_incident_report(context)
+    result = main(
+        [
+            "guard",
+            "doctor",
+            "codex",
+            "--incident",
+            "--json",
+            "--home",
+            str(context.home_dir),
+            "--guard-home",
+            str(context.guard_home),
+        ]
+    )
+    output = capsys.readouterr()
+    assert result == 0
+    assert output.err == ""
+    report = json.loads(output.out)
 
     assert report["configured"]["event_group_counts"]["PreToolUse"] == 2
     assert report["configured"]["event_handler_counts"]["PreToolUse"] == 2
@@ -143,8 +159,9 @@ def test_incident_export_counts_duplicate_configured_hooks_without_exposing_comm
     assert report["configured"]["event_group_counts"]["UserPromptSubmit"] == 0
     assert report["configured"]["manifest_integrity"] != "valid"
     assert report["loaded_harness"]["state"] == "unknown"
-    assert "private-pipx-command" not in json.dumps(report)
-    assert "private-uv-command" not in json.dumps(report)
+    assert "private-pipx-command" not in output.out
+    assert "private-uv-command" not in output.out
+    assert len(output.out.encode()) < 8192
 
 
 def test_incident_export_does_not_count_malformed_group_or_handler_entries(tmp_path: Path) -> None:

@@ -24,7 +24,7 @@ export function nativePublicationMessage(
       : "Your choices are saved for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
   }
   if (publication?.state === "acknowledged") {
-    return `Native policy acknowledged saved revision ${publication.revision}. Live calls still check connection and tool authority.`;
+    return `Native policy acknowledged saved revision ${publication.revision}. Live calls still check host namespace and tool authority.`;
   }
   if (publication?.state === "pending") {
     return "Your choices are saved. Waiting for the native runtime to acknowledge this revision.";

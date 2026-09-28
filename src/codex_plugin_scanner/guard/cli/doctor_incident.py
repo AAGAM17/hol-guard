@@ -125,11 +125,11 @@ def _configured_codex_hooks(context: HarnessContext) -> tuple[object, dict[str, 
     )
 
 
-def _hook_shape_counts(hooks: object) -> tuple[dict[str, int | None] | None, dict[str, int | None] | None]:
+def _hook_shape_counts(hooks: object) -> tuple[dict[str, int | None], dict[str, int | None]] | tuple[None, None]:
     """Count configured shapes without attributing ownership or loaded-session state."""
     if not isinstance(hooks, dict):
         return None, None
-    hook_table = cast("dict[str, object]", hooks)
+    hook_table = cast(dict[str, object], hooks)
     groups_by_event: dict[str, int | None] = {}
     handlers_by_event: dict[str, int | None] = {}
     for event in _EVENTS:
@@ -138,19 +138,25 @@ def _hook_shape_counts(hooks: object) -> tuple[dict[str, int | None] | None, dic
             groups_by_event[event] = None
             handlers_by_event[event] = None
             continue
-        typed_groups = cast("list[object]", groups)
+        typed_groups = cast(list[object], groups)
+        if any(not isinstance(group, dict) for group in typed_groups):
+            groups_by_event[event] = None
+            handlers_by_event[event] = None
+            continue
         groups_by_event[event] = len(typed_groups)
         handler_count = 0
         valid_handlers = True
         for group in typed_groups:
-            if not isinstance(group, dict):
-                valid_handlers = False
-                break
-            handlers = cast("dict[str, object]", group).get("hooks")
+            handlers = cast(dict[str, object], group).get("hooks")
             if not isinstance(handlers, list):
                 valid_handlers = False
                 break
-            handler_count += len(cast("list[object]", handlers))
+            typed_handlers = cast(list[object], handlers)
+            if any(not isinstance(handler, dict) for handler in typed_handlers):
+                valid_handlers = False
+                break
+            handler_count += len(typed_handlers)
+        # A partial count would imply that malformed configured entries were absent.
         handlers_by_event[event] = handler_count if valid_handlers else None
     return groups_by_event, handlers_by_event
 

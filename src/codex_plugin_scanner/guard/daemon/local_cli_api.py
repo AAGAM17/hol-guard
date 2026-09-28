@@ -838,7 +838,7 @@ class LocalCliApiService:
         try:
             return persist_discovered_harness_mcp_servers(
                 self._store,
-                self._discovered_servers(strict=strict),
+                self._discovered_servers(strict=True) if strict else self._discovered_servers(),
                 seen_at=utc_now(),
             )
         except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):

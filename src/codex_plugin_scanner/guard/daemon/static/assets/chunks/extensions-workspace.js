@@ -1,4 +1,4 @@
-import { aN as fetchLocalCliApi, r as reactExports, aO as fetchExtensionControlApi, j as jsxRuntimeExports, B as HiMiniSparkles, s as HiMiniCheckCircle, aP as HiMiniNoSymbol, af as HiMiniLockClosed, P as HiMiniExclamationTriangle, aQ as useResolvedApprovalGate, al as HiMiniArrowPath, w as HiMiniShieldCheck, aR as HiMiniInformationCircle, an as isApprovalProofSubmitDisabled, C as HiMiniXMark, am as ApprovalProofFieldInputs, ao as buildApprovalProofCredentials, aS as GenIcon, Q as HiMiniBolt, aT as HiMiniGlobeAlt, aU as HiMiniCube, K as HiMiniCloud, aV as HiMiniServerStack, b as HiMiniCommandLine, aW as HiMiniFolder, aX as FaWindows, aY as FaAws, c as HiMiniChevronRight, I as HiMiniChevronDown, aZ as approvalProofRecentlySatisfied, a_ as approvalGateProofReady, a$ as HiMiniArrowLeft, b0 as HiMiniPlus, a8 as HiMiniClipboardDocumentCheck, a9 as HiMiniClipboard, ah as HiMiniAdjustmentsHorizontal, b1 as HiMiniCheck, aH as HiMiniMagnifyingGlass, b2 as startGuardCloudConnect, b3 as HiMiniArrowTopRightOnSquare, aG as WorkspacePageHeader, b4 as guardAwareHref } from "../guard-dashboard.js";
+import { aN as fetchLocalCliApi, r as reactExports, aO as fetchExtensionControlApi, j as jsxRuntimeExports, B as HiMiniSparkles, s as HiMiniCheckCircle, aP as HiMiniNoSymbol, af as HiMiniLockClosed, P as HiMiniExclamationTriangle, aQ as useResolvedApprovalGate, al as HiMiniArrowPath, w as HiMiniShieldCheck, aR as HiMiniInformationCircle, an as isApprovalProofSubmitDisabled, C as HiMiniXMark, am as ApprovalProofFieldInputs, ao as buildApprovalProofCredentials, aS as GenIcon, Q as HiMiniBolt, aT as HiMiniGlobeAlt, aU as HiMiniCube, K as HiMiniCloud, aV as HiMiniServerStack, b as HiMiniCommandLine, aW as HiMiniFolder, aX as FaWindows, aY as FaAws, c as HiMiniChevronRight, I as HiMiniChevronDown, aZ as approvalProofRecentlySatisfied, a_ as isBulkApproveGateReady, a$ as HiMiniArrowLeft, b0 as HiMiniPlus, a8 as HiMiniClipboardDocumentCheck, a9 as HiMiniClipboard, ah as HiMiniAdjustmentsHorizontal, b1 as HiMiniCheck, aH as HiMiniMagnifyingGlass, b2 as startGuardCloudConnect, b3 as HiMiniArrowTopRightOnSquare, aG as WorkspacePageHeader, b4 as guardAwareHref } from "../guard-dashboard.js";
 import { A as ApprovalProofModal } from "./approval-proof-modal.js";
 import { u as useConfirmDialog } from "./confirm-dialog.js";
 const EXTENSION_ID_PATTERN = /^command\.[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
@@ -3839,7 +3839,7 @@ function AddCustomExtensionWorkspace(props) {
   const previewNames = visibleCommands.slice(0, 8).map((entry) => entry.name);
   const bulkState = bulkCommandState(enrollable);
   const recentlySatisfied = approvalProofRecentlySatisfied(resolvedApprovalGate);
-  const gateReady = resolvedApprovalGate === null ? null : approvalGateProofReady(resolvedApprovalGate);
+  const gateReady = resolvedApprovalGate === null ? null : isBulkApproveGateReady(resolvedApprovalGate);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "form",
     {

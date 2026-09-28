@@ -19924,9 +19924,6 @@ function approvalProofRecentlySatisfied(gate) {
 function approvalProofRequiresPassword(gate) {
   return gate?.totp_enabled !== true;
 }
-function approvalGateProofReady(gate) {
-  return isBulkApproveGateReady(gate);
-}
 function ApprovalGateSetupNotice() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] px-4 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-blue/10", children: /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniKey, { className: "h-5 w-5 text-brand-blue", "aria-hidden": "true" }) }),
@@ -19941,7 +19938,10 @@ function isApprovalProofSubmitDisabled(gate, credentials, busy, requireFreshTotp
   if (busy) {
     return true;
   }
-  if (gate != null && !approvalGateProofReady(gate)) {
+  if (requireGate && gate == null) {
+    return true;
+  }
+  if (gate != null && !isBulkApproveGateReady(gate)) {
     if (!requireGate && gate.enabled === false) return false;
     return true;
   }
@@ -19954,7 +19954,7 @@ function isApprovalProofSubmitDisabled(gate, credentials, busy, requireFreshTotp
   return credentials.approvalTotpCode.trim() === "";
 }
 function buildApprovalProofCredentials(gate, credentials, requireFreshTotp = false) {
-  if (gate != null && !approvalGateProofReady(gate)) {
+  if (gate != null && !isBulkApproveGateReady(gate)) {
     return {};
   }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
@@ -19974,7 +19974,10 @@ function ApprovalProofFieldInputs(props) {
     event.target.value = digits;
     props.onApprovalTotpCodeChange(event);
   }, [props]);
-  if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
+  if (props.requireGate && props.approvalGate === null) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-6 text-brand-dark/75", role: "status", children: "Checking local approval settings. Try again when they are available." });
+  }
+  if (props.approvalGate !== null && !isBulkApproveGateReady(props.approvalGate)) {
     if (!props.requireGate && props.approvalGate.enabled === false) return null;
     return /* @__PURE__ */ jsxRuntimeExports.jsx(ApprovalGateSetupNotice, {});
   }
@@ -32601,7 +32604,7 @@ export {
   FaWindows as aX,
   FaAws as aY,
   approvalProofRecentlySatisfied as aZ,
-  approvalGateProofReady as a_,
+  isBulkApproveGateReady as a_,
   PROTECTION_POSTURE_COPY as aa,
   POSTURE_OUTCOME_COLUMNS as ab,
   getDefaultExportFromCjs as ac,

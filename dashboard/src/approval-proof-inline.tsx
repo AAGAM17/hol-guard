@@ -3,7 +3,8 @@ import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import { HiMiniKey } from "react-icons/hi2";
 import { ActionButton } from "./approval-center-primitives";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
-import { isBulkApproveGateReady } from "./queue-bulk-approval-credentials";
+import { isBulkApproveGateReady as approvalGateProofReady } from "./queue-bulk-approval-credentials";
+export { approvalGateProofReady };
 
 type ApprovalProofFieldInputsProps = {
   approvalGate: GuardApprovalGatePublicConfig | null;
@@ -24,9 +25,7 @@ export function approvalProofRequiresPassword(gate: GuardApprovalGatePublicConfi
   return gate?.totp_enabled !== true;
 }
 
-export function approvalGateProofReady(gate: GuardApprovalGatePublicConfig | null | undefined): boolean {
-  return isBulkApproveGateReady(gate);
-}
+
 
 export function ApprovalGateSetupNotice() {
   return (
@@ -59,8 +58,11 @@ export function isApprovalProofSubmitDisabled(
   if (busy) {
     return true;
   }
+  if (requireGate && gate == null) {
+    return true;
+  }
   if (gate != null && !approvalGateProofReady(gate)) {
-    // Gate off on a fail-open endpoint: no proof needed.
+    // Fail-open endpoint with an explicitly disabled gate: the backend does not require proof.
     if (!requireGate && gate.enabled === false) return false;
     return true;
   }
@@ -99,6 +101,13 @@ export function ApprovalProofFieldInputs(props: ApprovalProofFieldInputsProps) {
     event.target.value = digits;
     props.onApprovalTotpCodeChange(event);
   }, [props]);
+  if (props.requireGate && props.approvalGate === null) {
+    return (
+      <p className="text-sm leading-6 text-brand-dark/75" role="status">
+        Checking local approval settings. Try again when they are available.
+      </p>
+    );
+  }
   if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
     if (!props.requireGate && props.approvalGate.enabled === false) return null;
     return <ApprovalGateSetupNotice />;

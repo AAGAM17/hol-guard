@@ -4,8 +4,13 @@ import json
 from pathlib import Path
 
 from codex_plugin_scanner.guard.runtime import local_mcp_stdio as stdio_module
-from codex_plugin_scanner.guard.runtime.local_cli_commands import OTHER_COMMAND_ID, slug_local_cli_command_id
+from codex_plugin_scanner.guard.runtime.local_cli_commands import (
+    MAX_LOCAL_CLI_COMMANDS,
+    OTHER_COMMAND_ID,
+    slug_local_cli_command_id,
+)
 from codex_plugin_scanner.guard.runtime.local_mcp_probe import (
+    _tools_from_payload,
     is_package_mcp_launcher,
     is_strict_package_mcp_launcher,
     looks_like_mcp_launch,
@@ -13,12 +18,21 @@ from codex_plugin_scanner.guard.runtime.local_mcp_probe import (
     probe_stdio_mcp_server,
 )
 from codex_plugin_scanner.guard.runtime.local_mcp_stdio import (
+    MAX_MCP_PROBE_TOOLS,
     MCP_PACKAGE_PROBE_TIMEOUT_SECONDS,
     MCP_PROBE_OUTPUT_LIMIT,
     McpCatalogResult,
     probe_env,
 )
 from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_identity
+
+
+def test_full_hundred_tool_catalog_keeps_every_tool_and_other_boundary() -> None:
+    raw = tuple({"name": f"tool_{index:03}"} for index in range(MAX_MCP_PROBE_TOOLS))
+    commands = _tools_from_payload(raw, server_name="fixture")
+    assert len(commands) == MAX_LOCAL_CLI_COMMANDS == MAX_MCP_PROBE_TOOLS + 1
+    assert [command.name for command in commands[:-1]] == [tool["name"] for tool in raw]
+    assert commands[-1].command_id == OTHER_COMMAND_ID
 
 
 def test_package_launcher_detection() -> None:

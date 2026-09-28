@@ -12,6 +12,7 @@ import re
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from hashlib import sha256
 from urllib.parse import unquote, urlsplit
 
@@ -20,6 +21,8 @@ from ..adapters.hermes_file_inspection import parse_hermes_yaml_mapping
 _EXTENSION = "io.modelcontextprotocol/skills"
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ORIGIN = re.compile(r"[0-9a-f]{64}\Z")
+_PROTOCOL_VERSION = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_MIN_SKILLS_VERSION = date(2026, 7, 28)
 _MAX_BYTES = 16_777_216
 McpSkillsRequest = Callable[[str, dict[str, object]], dict[str, object]]
 
@@ -74,7 +77,14 @@ class McpSkillEntry:
 
 
 def mcp_skills_declared(capabilities: object, *, protocol_version: str) -> bool:
-    if protocol_version != "2026-07-28" or not isinstance(capabilities, dict):
+    if not isinstance(protocol_version, str) or not _PROTOCOL_VERSION.fullmatch(protocol_version):
+        return False
+    try:
+        if date.fromisoformat(protocol_version) < _MIN_SKILLS_VERSION:
+            return False
+    except ValueError:
+        return False
+    if not isinstance(capabilities, dict):
         return False
     extensions = capabilities.get("extensions")
     declaration = extensions.get(_EXTENSION) if isinstance(extensions, dict) else None
@@ -151,6 +161,7 @@ class McpSkillsClient:
         if not _ORIGIN.fullmatch(origin) or not mcp_skills_declared(capabilities, protocol_version=protocol_version):
             raise McpSkillError("skills_extension_not_declared")
         self.origin = origin
+        self._protocol_version = protocol_version
         self._request = request
         self._entries: dict[str, McpSkillEntry] = {}
         self._cache: OrderedDict[tuple[str, str], bytes] = OrderedDict()
@@ -250,7 +261,7 @@ class McpSkillsClient:
         params = {
             **params,
             "_meta": {
-                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/protocolVersion": self._protocol_version,
                 "io.modelcontextprotocol/clientInfo": {"name": "hol-guard", "version": "3.0"},
                 "io.modelcontextprotocol/clientCapabilities": {},
             },

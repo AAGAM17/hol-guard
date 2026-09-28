@@ -234,7 +234,7 @@ def _tools_from_payload(raw_tools: Sequence[dict[str, object]], *, server_name: 
                 description=description.strip()[:240] if isinstance(description, str) else "",
             )
         )
-        if len(discovered) >= MAX_MCP_PROBE_TOOLS - 1:
+        if len(discovered) >= MAX_MCP_PROBE_TOOLS:
             break
     discovered.append(
         LocalCliCommand(

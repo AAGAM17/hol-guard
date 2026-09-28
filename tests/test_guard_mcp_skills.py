@@ -40,6 +40,7 @@ def test_oversized_frontmatter_reports_metadata_limit():
 
 def test_declaration_requires_resources_and_actual_extension_not_tool_names():
     assert mcp_skills_declared(_CAPABILITIES, protocol_version="2026-07-28")
+    assert mcp_skills_declared(_CAPABILITIES, protocol_version="2027-01-01")
     for capabilities in ({}, {"tools": {}}, {"extensions": _CAPABILITIES["extensions"]}, {"resources": {}}):
         assert not mcp_skills_declared(capabilities, protocol_version="2026-07-28")
         with pytest.raises(McpSkillError, match="not_declared"):
@@ -47,6 +48,20 @@ def test_declaration_requires_resources_and_actual_extension_not_tool_names():
                 origin=_ORIGIN, capabilities=capabilities, protocol_version="2026-07-28", request=lambda *_: {},
             )
     assert not mcp_skills_declared(_CAPABILITIES, protocol_version="2025-11-25")
+    for invalid in ("2026-07-27", "2026-13-01", "2026-07-28-extra", "20260728"):
+        assert not mcp_skills_declared(_CAPABILITIES, protocol_version=invalid)
+
+
+def test_later_negotiated_revision_is_sent_in_skills_request_metadata():
+    def request(method, params):
+        assert method == "skills/list"
+        assert params["_meta"]["io.modelcontextprotocol/protocolVersion"] == "2027-01-01"
+        return _result(skills=[])
+
+    client = McpSkillsClient(
+        origin=_ORIGIN, capabilities=_CAPABILITIES, protocol_version="2027-01-01", request=request,
+    )
+    assert client.list_metadata() == ((), True, None)
 
 
 def test_list_metadata_is_lazy_and_direct_get_can_find_unlisted_skill():

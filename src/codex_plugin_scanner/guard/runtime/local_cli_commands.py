@@ -17,7 +17,7 @@ LocalCliCommandState = Literal["inherit", "allow", "review", "block"]
 ROOT_COMMAND_ID = "root"
 OTHER_COMMAND_ID = "other"
 _COMMAND_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,40}$")
-MAX_LOCAL_CLI_COMMANDS = 80
+MAX_LOCAL_CLI_COMMANDS = 101
 _MAX_COMMANDS = MAX_LOCAL_CLI_COMMANDS
 _MAX_DEPTH = 4
 

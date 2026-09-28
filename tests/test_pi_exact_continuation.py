@@ -18,6 +18,17 @@ def _node_executable() -> str | None:
     return shutil.which("node")
 
 
+def _run_child(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"child process failed with exit code {completed.returncode}\n"
+            f"stdout:\n{completed.stdout}\n"
+            f"stderr:\n{completed.stderr}"
+        )
+    return completed
+
+
 _PI_SDK_ROOT_ENV = "HOL_GUARD_PI_SDK_ROOT"
 _PI_SDK_PACKAGE_NAME = "@earendil-works/pi-coding-agent"
 _PI_SDK_PACKAGE_VERSION = "0.87.1"
@@ -55,35 +66,39 @@ def _pi_runner_module() -> Path | None:
     cli_path = Path(pi_cli).resolve()
     if not cli_path.is_file():
         return None
-    for parent_index in range(3):
-        package_root = cli_path.parents[parent_index]
-        try:
-            metadata = json.loads((package_root / "package.json").read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(metadata, dict) or metadata.get("name") != _PI_SDK_PACKAGE_NAME:
-            continue
-        raw_bin = metadata.get("bin")
-        if isinstance(raw_bin, str):
-            bin_targets = (raw_bin,)
-        elif isinstance(raw_bin, dict):
-            bin_targets = tuple(value for value in raw_bin.values() if isinstance(value, str))
-        else:
-            bin_targets = ()
-        if not any(
-            (package_root / target).resolve() == cli_path
-            and (package_root / target).resolve().is_relative_to(package_root)
-            for target in bin_targets
-        ):
-            continue
-        runner_module = package_root / "dist" / "index.js"
-        try:
-            resolved_runner = runner_module.resolve(strict=True)
-        except OSError:
-            continue
-        if resolved_runner.is_relative_to(package_root):
-            return resolved_runner
-    return None
+    if cli_path.parent.name == "dist":
+        package_root = cli_path.parent.parent
+    elif cli_path.parent.name == "bundle" and cli_path.parent.parent.name == "dist":
+        package_root = cli_path.parent.parent.parent
+    else:
+        return None
+    try:
+        package_root = package_root.resolve(strict=True)
+        metadata = json.loads((package_root / "package.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(metadata, dict):
+        return None
+    if metadata.get("name") != _PI_SDK_PACKAGE_NAME or metadata.get("version") != _PI_SDK_PACKAGE_VERSION:
+        return None
+    raw_bin = metadata.get("bin")
+    if isinstance(raw_bin, str):
+        bin_targets = (raw_bin,)
+    elif isinstance(raw_bin, dict):
+        bin_targets = tuple(value for value in raw_bin.values() if isinstance(value, str))
+    else:
+        bin_targets = ()
+    if not any(
+        (package_root / target).resolve() == cli_path and (package_root / target).resolve().is_relative_to(package_root)
+        for target in bin_targets
+    ):
+        return None
+    runner_module = package_root / "dist" / "index.js"
+    try:
+        resolved_runner = runner_module.resolve(strict=True)
+    except OSError:
+        return None
+    return resolved_runner if resolved_runner.is_relative_to(package_root) else None
 
 
 def _write_pi_package(root: Path, bin_target: str) -> Path:
@@ -108,22 +123,27 @@ def _write_pi_package(root: Path, bin_target: str) -> Path:
 
 
 def test_pi_runner_module_accepts_published_old_cli_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cli_path = _write_pi_package(tmp_path / "old-layout", "dist/cli.js")
+    package_root = tmp_path / "old-layout"
+    cli_path = _write_pi_package(package_root, "dist/cli.js")
+    monkeypatch.delenv(_PI_SDK_ROOT_ENV, raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: str(cli_path) if name == "pi" else None)
 
-    assert _pi_runner_module() == (cli_path.parent / "index.js").resolve()
+    assert _pi_runner_module() == (package_root / "dist" / "index.js").resolve()
 
 
 def test_pi_runner_module_accepts_published_nested_cli_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cli_path = _write_pi_package(tmp_path / "nested-layout", "dist/bundle/cli.js")
+    package_root = tmp_path / "nested-layout"
+    cli_path = _write_pi_package(package_root, "dist/bundle/cli.js")
+    monkeypatch.delenv(_PI_SDK_ROOT_ENV, raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: str(cli_path) if name == "pi" else None)
 
-    assert _pi_runner_module() == (cli_path.parents[1] / "index.js").resolve()
+    assert _pi_runner_module() == (package_root / "dist" / "index.js").resolve()
 
 
 def test_pi_runner_module_rejects_undeclared_package_wrapper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     package_root = tmp_path / "package"
     _write_pi_package(package_root, "dist/bundle/cli.js")
+    monkeypatch.delenv(_PI_SDK_ROOT_ENV, raising=False)
     wrapper_path = package_root / "shim" / "pi"
     wrapper_path.parent.mkdir()
     wrapper_path.write_text("#!/usr/bin/env node\n", encoding="utf-8")
@@ -162,11 +182,8 @@ def test_generated_extension_is_typescript_parseable(tmp_path: Path, harness: st
         ),
         encoding="utf-8",
     )
-    subprocess.run(
+    _run_child(
         [node, "--experimental-strip-types", "--check", str(extension_path)],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=10,
     )
 
@@ -207,11 +224,8 @@ console.log(JSON.stringify({{
 }}));
 """
     harness_path.write_text(script, encoding="utf-8")
-    completed = subprocess.run(
+    completed = _run_child(
         [node, "--experimental-strip-types", str(harness_path)],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=10,
     )
     assert _decode_json_object(completed.stdout) == {
@@ -343,11 +357,8 @@ console.log(JSON.stringify({{
 }}));
 """
     harness_path.write_text(script, encoding="utf-8")
-    completed = subprocess.run(
+    completed = _run_child(
         [node, "--experimental-strip-types", str(harness_path)],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=15,
     )
     payload = _decode_json_object(completed.stdout)
@@ -461,6 +472,26 @@ function approvalBlockedReason(_response, fallback, _kind, continuation = 'exact
   return continuation === 'replan' ? `unsupported-${{fallback}}` : fallback;
 }}
 function approvalContinuationFailureReason(_response, result) {{ return `continuation-${{result}}`; }}
+function ompInteractiveContext(ctx) {{
+  return harness === 'omp' && ctx.mode === 'tui' && typeof ctx.ui?.custom === 'function';
+}}
+async function runOmpInteractiveContinuation(ctx, operation) {{
+  if (!ompInteractiveContext(ctx)) return {{ kind: 'unavailable' }};
+  const controller = new AbortController();
+  try {{
+    const value = await ctx.ui.custom(
+      async (_terminal, _theme, _keybindings, done) => {{
+        const result = await operation(controller.signal);
+        done(result);
+        return {{ dispose() {{}} }};
+      }},
+      {{ signal: controller.signal }},
+    );
+    return {{ kind: 'completed', value }};
+  }} catch (_error) {{
+    return {{ kind: 'aborted' }};
+  }}
+}}
 function scheduleApprovalResume(_response, _ctx, _details) {{ activeScenario.scheduleCalls += 1; }}
 async function openApprovalUrl() {{}}
 async function pollApprovalResolution(_requestId, _pollPath, signal, activity) {{
@@ -510,9 +541,17 @@ async function runScenario(name, guardResponses, pollResponses, options = {{}}) 
   }};
   const context = {{
     cwd: '/fixture/workspace',
+    mode: 'tui',
     sessionManager: {{ getSessionId: () => activeSessionId }},
     isIdle: () => activeScenario.hostAborted,
-    ui: {{ notify: (message) => notices.push(String(message)) }},
+    ui: {{
+      notify: (message) => notices.push(String(message)),
+      custom: async (factory) => {{
+        let value;
+        await factory({{}}, {{}}, {{}}, (result) => {{ value = result; }});
+        return value;
+      }},
+    }},
     ...(harness === 'pi' ? {{ signal: abortController.signal }} : {{}}),
   }};
   const pending = generated(event, context);
@@ -566,11 +605,8 @@ console.log(JSON.stringify(result));
 """
     harness_path = tmp_path / f"run-{harness}.mjs"
     harness_path.write_text(script, encoding="utf-8")
-    completed = subprocess.run(
+    completed = _run_child(
         [node, str(harness_path)],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=10,
     )
     payload = _decode_json_object(completed.stdout)
@@ -803,7 +839,7 @@ async function runScenario(name, config) {
   }
   if (config.sessionStop) {
     await waitFor(() => pollCalls === 1);
-    await runner.emitSessionStop();
+    await runner.emitSessionStop({ signal: controller.signal });
   }
   const result = await pending;
   if (config.abort || config.sessionStop || config.abortDuringRevalidation) {
@@ -852,11 +888,8 @@ console.log(JSON.stringify(results));
         "__RUNNER_PATH__", json.dumps(str(runner_path))
     )
     harness_path.write_text(script, encoding="utf-8")
-    completed = subprocess.run(
+    completed = _run_child(
         [bun, str(harness_path)],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=90,
     )
     payload = _decode_json_object(completed.stdout)
@@ -934,15 +967,19 @@ function approvalBlockedReason(_response, fallback) {{ return fallback; }}
 function approvalResumeMessage(details) {{ return details.prompt ?? ''; }}
 async function openApprovalUrl() {{}}
 async function pollApprovalResolution(_requestId, _pollPath, _signal, activity) {{
-  await delay(10);
+  activeScenario.pollCalls += 1;
+  if (activeScenario.mode === 'replacement' && activeScenario.pollCalls === 1) {{
+    await new Promise((resolve) => {{ activeScenario.releasePollA = resolve; }});
+  }} else {{
+    await delay(10);
+  }}
   return activity && !activity() ? 'aborted' : 'allow';
 }}
 async function runGuard(payload) {{
   activeScenario.guardCalls += 1;
-  if (activeScenario.mode === 'replacement' && payload.prompt === 'prompt-A') {{
-    await new Promise((resolve) => {{ activeScenario.releaseA = resolve; }});
-  }}
-  const requestId = payload.prompt === 'prompt-B' ? 'request-B' : 'request-A';
+  const requestId = activeScenario.mode === 'replacement'
+    ? 'request-same'
+    : (payload.prompt === 'prompt-B' ? 'request-B' : 'request-A');
   return {{
     decision: 'deny',
     reason: 'approval pending',
@@ -954,7 +991,7 @@ async function runGuard(payload) {{
 async function runScenario(changeContext) {{
   let sessionId = 'session-input';
   let cwd = '/fixture/workspace';
-  activeScenario = {{ guardCalls: 0, sentMessages: [], mode: 'single' }};
+  activeScenario = {{ guardCalls: 0, pollCalls: 0, sentMessages: [], mode: 'single', releasePollA: null }};
   const handlers = new Map();
   const pi = {{
     on: (event, handler) => handlers.set(event, handler),
@@ -979,7 +1016,7 @@ async function runScenario(changeContext) {{
 async function runSameSessionReplacement() {{
   let sessionId = 'session-input';
   let cwd = '/fixture/workspace';
-  activeScenario = {{ guardCalls: 0, sentMessages: [], mode: 'replacement', releaseA: null }};
+  activeScenario = {{ guardCalls: 0, pollCalls: 0, sentMessages: [], mode: 'replacement', releasePollA: null }};
   const handlers = new Map();
   const pi = {{
     on: (event, handler) => handlers.set(event, handler),
@@ -992,13 +1029,14 @@ async function runSameSessionReplacement() {{
   }};
 {input_source}
   const first = handlers.get('input')({{ source: 'interactive', text: 'prompt-A' }}, ctx);
-  while (activeScenario.releaseA === null) await delay(1);
+  while (activeScenario.pollCalls < 1) await delay(1);
   const second = handlers.get('input')({{ source: 'interactive', text: 'prompt-B' }}, ctx);
   const secondResult = await second;
-  activeScenario.releaseA();
+  const secondPollStarted = activeScenario.pollCalls === 2;
+  activeScenario.releasePollA();
   const firstResult = await first;
   await delay(30);
-  return {{ ...activeScenario, firstResult, secondResult }};
+  return {{ ...activeScenario, firstResult, secondResult, secondPollStarted }};
 }}
 
 const sameContext = await runScenario(false);
@@ -1007,11 +1045,8 @@ const sameSessionReplacement = await runSameSessionReplacement();
 console.log(JSON.stringify({{ sameContext, changedContext, sameSessionReplacement }}));
 """
     harness_path.write_text(script, encoding="utf-8")
-    completed = subprocess.run(
+    completed = _run_child(
         [node, "--experimental-strip-types", str(harness_path)],
-        check=True,
-        capture_output=True,
-        text=True,
         timeout=10,
     )
     payload = _decode_json_object(completed.stdout)
@@ -1026,6 +1061,8 @@ console.log(JSON.stringify({{ sameContext, changedContext, sameSessionReplacemen
     replacement = payload["sameSessionReplacement"]
     assert isinstance(replacement, dict)
     assert replacement["guardCalls"] == 2
+    assert replacement["pollCalls"] == 2
+    assert replacement["secondPollStarted"] is True
     assert replacement["firstResult"]["handled"] is True
     assert replacement["secondResult"]["handled"] is True
     assert len(replacement["sentMessages"]) == 1

@@ -6,7 +6,7 @@ use guard_contracts::{PreToolActionTypeV1, PreToolResultV1};
 /// strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
-enum ActionFloor {
+pub(crate) enum ActionFloor {
     Allow,
     Warn,
     Review,
@@ -16,7 +16,7 @@ enum ActionFloor {
 }
 
 impl ActionFloor {
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         Some(match value {
             "allow" => Self::Allow,
             "warn" => Self::Warn,

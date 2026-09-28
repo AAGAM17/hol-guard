@@ -24,11 +24,11 @@ use serde_json::Value;
 mod policy_enforcement_facts;
 #[path = "policy_enforcement_helpers.rs"]
 mod policy_enforcement_helpers;
-#[path = "policy_enforcement_policy.rs"]
-mod policy_enforcement_policy;
 #[path = "policy_enforcement_matrix.rs"]
 mod policy_enforcement_matrix;
-pub(crate) use policy_enforcement_matrix::validate_pre_tool_result_matrix;
+#[path = "policy_enforcement_policy.rs"]
+mod policy_enforcement_policy;
+pub(crate) use policy_enforcement_matrix::{validate_pre_tool_result_matrix, ActionFloor};
 
 use policy_enforcement_facts::{
     classify_tool_name, collect_fact_maps, payload_facts, preferred_tool_name, risk_classes,

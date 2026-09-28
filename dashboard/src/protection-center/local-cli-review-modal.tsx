@@ -43,6 +43,8 @@ export function CustomExtensionReviewModal(props: {
     props.approvalGate,
     { approvalPassword: password, approvalTotpCode: totp },
     props.busy,
+    false,
+    true,
   );
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm">
@@ -81,6 +83,7 @@ export function CustomExtensionReviewModal(props: {
             approvalGate={props.approvalGate}
             approvalPassword={password}
             approvalTotpCode={totp}
+            requireGate={true}
             onApprovalPasswordChange={handlePassword}
             onApprovalTotpCodeChange={handleTotp}
           />

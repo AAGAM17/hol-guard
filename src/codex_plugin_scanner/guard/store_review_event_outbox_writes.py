@@ -76,6 +76,7 @@ def append_request_snapshot_event(
     occurred_at: str,
     continuation_result: Mapping[str, object] | None = None,
     request_snapshot: Mapping[str, object] | None = None,
+    native_replay: bool = False,
 ) -> int:
     """Append a request snapshot without replacing any unacknowledged event."""
 
@@ -105,6 +106,7 @@ def append_request_snapshot_event(
         event_type=event_type,
         occurred_at=occurred_at,
         continuation_result=continuation_result,
+        native_replay=native_replay,
     )
     connection.execute(
         """
@@ -190,6 +192,7 @@ def requeue_pending_request_events(
     only_retry_identity_drift: bool = False,
     request_ids: set[str] | None = None,
     request_snapshots: Mapping[str, Mapping[str, object]] | None = None,
+    native_replay: bool = False,
 ) -> int:
     connection.execute("begin immediate")
     current_binding = load_review_oauth_binding(connection, source)
@@ -301,5 +304,6 @@ def requeue_pending_request_events(
             event_type="review.request.snapshot_requeued",
             occurred_at=changed_at,
             request_snapshot=(request_snapshots or {}).get(request_id),
+            native_replay=native_replay,
         )
     return appended

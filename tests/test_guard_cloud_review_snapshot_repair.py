@@ -11,10 +11,7 @@ from codex_plugin_scanner.guard.runtime import cloud_review_sync
 from tests.guard_exact_cloud_review_support import add_review_request, connected_exact_review_store, review_request
 
 
-@pytest.mark.parametrize("repaired_server", [True, False])
-def test_source_gap_recovery_without_native_commitment_stays_pending(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repaired_server: bool
-) -> None:
+def test_source_gap_recovery_generic_repair_is_acknowledged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = connected_exact_review_store(tmp_path)
     add_review_request(store, review_request("gap-request"))
     binding = store.get_review_event_oauth_binding()
@@ -33,9 +30,10 @@ def test_source_gap_recovery_without_native_commitment_stays_pending(
             event_type = json.loads(event["eventPayloadJson"])["eventType"]
             deliveries.append((event["eventId"], event_type))
             if event_type == "review.request.snapshot_requeued":
+                assert json.loads(event["eventPayloadJson"])["nativeReplay"] is False
                 snapshot_seen = True
                 status = "accepted"
-            elif snapshot_seen and repaired_server:
+            elif snapshot_seen:
                 status = "stale"
             else:
                 status = "quarantined"
@@ -62,14 +60,13 @@ def test_source_gap_recovery_without_native_commitment_stays_pending(
         connection.execute("update guard_review_outbox_events set next_attempt_at = null where acknowledged_at is null")
     result = cloud_review_sync.sync_cloud_review_events_once(store, auth)
     snapshot_ids = [event_id for event_id, kind in deliveries if kind == "review.request.snapshot_requeued"]
-    assert len(snapshot_ids) == 2
-    assert snapshot_ids[0] == snapshot_ids[1]
+    assert len(snapshot_ids) == 1
     status = store.get_sync_payload("guard_cloud_review_sync_state")
     assert isinstance(status, dict)
     outbox = result["outbox"]
     assert isinstance(outbox, dict)
-    assert status["state"] == "error"
-    assert outbox["depth"] == 2
+    assert status["state"] == "idle"
+    assert outbox["depth"] == 0
 
 
 def test_snapshot_repair_does_not_upload_other_identity_or_mint_consent(tmp_path: Path) -> None:

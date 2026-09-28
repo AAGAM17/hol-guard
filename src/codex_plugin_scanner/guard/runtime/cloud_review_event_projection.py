@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 from ..continuation_runtime import continuation_offer_payload
 from ..continuation_snapshot import (
@@ -71,6 +72,56 @@ def _strip_expired_replay_capability(claim: dict[str, object]) -> dict[str, obje
     replay_claim = dict(claim)
     _ = replay_claim.pop("exactReviewCapability", None)
     return replay_claim
+
+
+def _native_replay_marker_status(
+    store: GuardStore,
+    request_id: str,
+    delivery_binding: dict[str, str],
+) -> str:
+    from . import native_workspace_review_replay as replay
+
+    replay_store = cast(replay._NativeWorkspaceReplayStore, cast(object, store))
+    try:
+        marker = store.get_sync_payload(replay._marker_key(replay_store, request_id))
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return "error"
+    if marker is None:
+        return "generic"
+    if not isinstance(marker, dict) or marker.get("schema") != "guard-cloud-review-native-workspace-review-request.v1":
+        return "invalid"
+    marker_binding = marker.get("binding")
+    generation = marker.get("authority_generation")
+    digest = marker.get("authority_record_digest")
+    if (
+        not isinstance(marker_binding, dict)
+        or not all(marker_binding.get(key) == value for key, value in delivery_binding.items())
+        or marker.get("request_id") != request_id
+        or type(generation) is not int
+        or generation <= 0
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        return "invalid"
+    return "native"
+
+
+def _require_native_replay_context(
+    event_type: str,
+    event: dict[str, object],
+    *,
+    native_replay: bool,
+) -> None:
+    if event_type != "review.request.snapshot_requeued" or not native_replay:
+        return
+    request_payload = event.get("requestPayload")
+    native_context = request_payload.get("nativeWorkspaceReview") if isinstance(request_payload, dict) else None
+    if not isinstance(native_context, dict):
+        raise StoredReviewEventError(
+            "native_replay_context_unavailable",
+            "Native replay event requires temporarily unavailable native workspace review context.",
+        )
 
 
 def _native_context_for_snapshot(
@@ -222,7 +273,30 @@ def project_cloud_review_event(
                 "payload_snapshot_invalid",
                 "Stored Review event snapshot has no local request identifier.",
             )
+        native_replay = False
+        request_id = stored_event.snapshot.get("request_id")
+        if (
+            stored_event.event_type == "review.request.snapshot_requeued"
+            and stored_event.native_replay is not False
+            and isinstance(request_id, str)
+        ):
+            marker_status = _native_replay_marker_status(store, request_id, delivery_binding)
+            if marker_status in {"error", "invalid"}:
+                raise StoredReviewEventError(
+                    "native_replay_marker_invalid",
+                    "Native replay marker could not be validated safely.",
+                )
+            native_replay = stored_event.native_replay is True or marker_status == "native"
+        _require_native_replay_context(stored_event.event_type, event, native_replay=native_replay)
     except StoredReviewEventError as error:
+        if error.reason == "native_replay_context_unavailable":
+            store.retry_review_events(
+                [sequence],
+                now=_now(),
+                error=str(error),
+                **delivery_binding,
+            )
+            return None
         _ = store.quarantine_review_event(
             sequence,
             reason=error.reason,
@@ -246,4 +320,6 @@ def project_cloud_review_event(
         event["continuationResult"] = terminal_result
         event["continuationCapability"] = terminal_capability
         event["localUpdatedAt"] = terminal_completed_at
+    if stored_event.native_replay is not None:
+        event["nativeReplay"] = stored_event.native_replay
     return sequence, event

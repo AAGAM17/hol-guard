@@ -81,6 +81,8 @@ class StoreReviewEventOutboxMixin:
                 only_retry_identity_drift=only_retry_identity_drift,
                 request_ids=request_ids,
                 request_snapshots=request_snapshots,
+                native_replay=marker_payload.get("native_replay") is True
+                or marker_payload.get("schema") == "guard-cloud-review-native-workspace-review-request.v1",
             )
             connection.execute(
                 """

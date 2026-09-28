@@ -147,6 +147,7 @@ def prepare_native_workspace_review_replay(
         marker_seed: dict[str, object] = {
             **authority,
             "attempts": retry_attempts,
+            "native_replay": True,
             "replay_attempts": replay_attempts,
             "next_probe_at": cooldown,
         }

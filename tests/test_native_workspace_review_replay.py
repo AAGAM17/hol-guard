@@ -164,6 +164,7 @@ def test_replay_marker_prevents_duplicate_flood_and_projects_context(
     assert replay.prepare_native_workspace_review_replay(cast(GuardStore, cast(object, store)), binding=binding) == 1
     rows = [dict(row) for row in _all_events(store)]
     snapshot = next(row for row in rows if row["event_type"] == "review.request.snapshot_requeued")
+    assert json.loads(str(snapshot["payload_json"]))["nativeReplay"] is True
     snapshot["sequence"] = snapshot["stream_sequence"]
     projected = project_cloud_review_event(
         store,
@@ -172,12 +173,21 @@ def test_replay_marker_prevents_duplicate_flood_and_projects_context(
         redaction_level="none",
         oauth=cast(GuardReviewOAuthMetadata, object()),
     )
-    assert projected is not None
-    payload = projected[1]["requestPayload"]
-    assert isinstance(payload, dict)
-    assert "nativeWorkspaceReview" not in payload
+    assert projected is None
+    with store._connect() as connection:
+        quarantined = connection.execute(
+            "select binding_status, quarantine_reason, next_attempt_at, last_error "
+            "from guard_review_outbox_events where stream_sequence = ?",
+            (snapshot_sequence := int(snapshot["stream_sequence"]),),
+        ).fetchone()
+    assert quarantined is not None
+    assert quarantined["binding_status"] == "ready"
+    assert quarantined["quarantine_reason"] is None
+    assert isinstance(quarantined["next_attempt_at"], str)
+    assert quarantined["last_error"] == (
+        "Native replay event requires temporarily unavailable native workspace review context."
+    )
 
-    snapshot_sequence = int(snapshot["stream_sequence"])
     store.acknowledge_review_events([snapshot_sequence], **delivery_binding)
     with store._connect() as connection:
         marker_row = connection.execute(

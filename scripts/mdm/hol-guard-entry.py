@@ -219,16 +219,21 @@ def _running_desktop_bootstrap_body() -> str | None:
     return json.dumps(document, sort_keys=True)
 
 
+def _desktop_preflight_requested() -> bool:
+    return os.environ.get("HOL_GUARD_DESKTOP_PREFLIGHT", "").strip().lower() in {"1", "true", "yes"}
+
+
 def _try_proxy_running_desktop_bootstrap() -> bool:
     """Print a live daemon's bootstrap JSON and skip the frozen runtime import.
 
     Desktop runs this command on every open. Importing the frozen runtime first
     dlopens the whole native graph, and after a crash that import exceeds
-    Desktop's startup budget while the daemon is already serving. Any failure
-    falls through to the existing command.
+    Desktop's startup budget while the daemon is already serving. Candidate
+    preflight must still execute this binary, so that flag falls through.
+    Any other failure falls through to the existing command.
     """
 
-    if not _argv_is_desktop_bootstrap():
+    if not _argv_is_desktop_bootstrap() or _desktop_preflight_requested():
         return False
     try:
         body = _running_desktop_bootstrap_body()

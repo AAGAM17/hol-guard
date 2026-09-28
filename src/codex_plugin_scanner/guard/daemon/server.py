@@ -2221,7 +2221,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         except Exception:
             diagnostics = getattr(self.server, "diagnostics", None)
             if diagnostics is not None:
-                diagnostics.record("desktop_bootstrap_unavailable")
+                diagnostics.record_exception("desktop_bootstrap_unavailable")
             self._write_json({"error": "desktop_bootstrap_unavailable"}, status=503)
             return
         self._write_json(document)

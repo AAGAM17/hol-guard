@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import importlib.metadata
 import json
@@ -341,20 +342,26 @@ def build_desktop_bootstrap_payload(
 
 _CACHE_FRESH_SECONDS = 30.0
 _CACHE_SERVE_SECONDS = 600.0
+_CACHE_WAIT_SECONDS = 4.0
+_BootstrapCacheKey = tuple[str, str, str]
 _cache_condition = threading.Condition()
-_cached_document: dict[str, object] | None = None
-_cached_at = 0.0
-_refresh_thread: threading.Thread | None = None
+_cached_documents: dict[_BootstrapCacheKey, tuple[dict[str, object], float]] = {}
+_cache_builds: dict[_BootstrapCacheKey, threading.Event] = {}
 
 
 def reset_desktop_bootstrap_cache() -> None:
-    """Drop the in-process bootstrap document. Tests use this to isolate runs."""
+    """Drop in-process bootstrap documents. Tests use this to isolate runs."""
 
-    global _cached_document, _cached_at, _refresh_thread
     with _cache_condition:
-        _cached_document = None
-        _cached_at = 0.0
-        _refresh_thread = None
+        _cached_documents.clear()
+        _cache_builds.clear()
+
+
+def desktop_bootstrap_cache_key(*, guard_home: Path, daemon_url: str, auth_token: str) -> _BootstrapCacheKey:
+    """Identify a cached document without retaining the daemon auth token."""
+
+    token_id = hashlib.sha256(auth_token.encode("utf-8")).hexdigest()
+    return (str(guard_home), daemon_url, token_id)
 
 
 def assemble_desktop_bootstrap_document(
@@ -404,50 +411,99 @@ def assemble_desktop_bootstrap_document(
     return payload
 
 
-def _store_cached_document(document: dict[str, object]) -> None:
-    global _cached_document, _cached_at
+def _publish_cached_document(
+    cache_key: _BootstrapCacheKey,
+    document: dict[str, object],
+    *,
+    started_at: float,
+) -> None:
     with _cache_condition:
-        _cached_document = document
-        _cached_at = time.monotonic()
+        current = _cached_documents.get(cache_key)
+        if current is not None and current[1] > started_at:
+            return
+        _cached_documents[cache_key] = (document, time.monotonic())
 
 
-def _schedule_refresh_locked(builder: Callable[[], dict[str, object]]) -> None:
-    global _refresh_thread
-    if _refresh_thread is not None and _refresh_thread.is_alive():
-        return
+def _finish_cache_build(cache_key: _BootstrapCacheKey, done: threading.Event) -> None:
+    with _cache_condition:
+        current = _cache_builds.get(cache_key)
+        if current is done:
+            _cache_builds.pop(cache_key, None)
+    done.set()
+
+
+def _refresh_cached_document(cache_key: _BootstrapCacheKey, builder: Callable[[], dict[str, object]]) -> None:
+    with _cache_condition:
+        if cache_key in _cache_builds:
+            return
+        done = threading.Event()
+        _cache_builds[cache_key] = done
 
     def refresh() -> None:
+        started_at = time.monotonic()
         try:
             document = builder()
         except Exception:
+            _finish_cache_build(cache_key, done)
             return
-        _store_cached_document(document)
+        _publish_cached_document(cache_key, document, started_at=started_at)
+        _finish_cache_build(cache_key, done)
 
-    _refresh_thread = threading.Thread(target=refresh, name="desktop-bootstrap-cache", daemon=True)
-    _refresh_thread.start()
+    threading.Thread(target=refresh, name="desktop-bootstrap-cache", daemon=True).start()
 
 
-def cached_desktop_bootstrap_document(builder: Callable[[], dict[str, object]]) -> dict[str, object]:
-    """Return a recent bootstrap document without taking the store lock again.
+def cached_desktop_bootstrap_document(
+    cache_key: _BootstrapCacheKey,
+    builder: Callable[[], dict[str, object]],
+) -> dict[str, object]:
+    """Return this daemon's recent bootstrap document without another store read.
 
     A fresh document is served from memory. A document younger than ten minutes
-    is served immediately while one refresh runs in the background. Desktop's
-    open path hits this while hook workers hold the store, so it must not wait
-    behind that convoy.
+    is served immediately while one refresh runs in the background. A miss joins
+    the single build already in flight for this daemon instead of starting another.
     """
 
     now = time.monotonic()
     with _cache_condition:
-        cached = _cached_document
-        age = None if cached is None else now - _cached_at
+        cached = _cached_documents.get(cache_key)
+        age = None if cached is None else now - cached[1]
         if cached is not None and age is not None and age < _CACHE_FRESH_SECONDS:
-            return cached
+            return cached[0]
         if cached is not None and age is not None and age < _CACHE_SERVE_SECONDS:
-            _schedule_refresh_locked(builder)
-            return cached
-    document = builder()
-    _store_cached_document(document)
-    return document
+            should_refresh = cache_key not in _cache_builds
+            document = cached[0]
+            done = None
+            leader = False
+        else:
+            should_refresh = False
+            document = None
+            done = _cache_builds.get(cache_key)
+            leader = done is None
+            if leader:
+                done = threading.Event()
+                _cache_builds[cache_key] = done
+    if document is not None:
+        if should_refresh:
+            _refresh_cached_document(cache_key, builder)
+        return document
+    assert done is not None
+    if not leader:
+        if not done.wait(timeout=_CACHE_WAIT_SECONDS):
+            raise TimeoutError("desktop bootstrap document is still building")
+        with _cache_condition:
+            cached = _cached_documents.get(cache_key)
+        if cached is None:
+            raise TimeoutError("desktop bootstrap document is still building")
+        return cached[0]
+    started_at = time.monotonic()
+    try:
+        built = builder()
+    except Exception:
+        _finish_cache_build(cache_key, done)
+        raise
+    _publish_cached_document(cache_key, built, started_at=started_at)
+    _finish_cache_build(cache_key, done)
+    return built
 
 
 def desktop_bootstrap_document_for_running_daemon(
@@ -487,7 +543,14 @@ def desktop_bootstrap_document_for_running_daemon(
             session_url=session_url,
         )
 
-    return cached_desktop_bootstrap_document(build)
+    return cached_desktop_bootstrap_document(
+        desktop_bootstrap_cache_key(
+            guard_home=store.guard_home,
+            daemon_url=daemon_url,
+            auth_token=auth_token,
+        ),
+        build,
+    )
 
 
 def _run_guard_desktop_command(
@@ -556,6 +619,7 @@ __all__ = [
     "assemble_desktop_bootstrap_document",
     "build_desktop_bootstrap_payload",
     "cached_desktop_bootstrap_document",
+    "desktop_bootstrap_cache_key",
     "desktop_bootstrap_document_for_running_daemon",
     "reset_desktop_bootstrap_cache",
 ]

@@ -4787,7 +4787,8 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
         configured.name,
         " was added to Codex. Restart Codex and complete any provider-owned sign-in there.",
         configured.kind === "package" ? " Codex may download and run the pinned package on first use." : null,
-        " Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted."
+        " ",
+        "Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted."
       ] }) : null,
       candidate ? /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "Review Codex MCP setup", className: "mt-4 rounded-xl border border-slate-200 p-4 text-sm text-brand-dark", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold", children: "Review Codex connection" }),

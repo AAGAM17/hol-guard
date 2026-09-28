@@ -198,11 +198,18 @@ def write_evaluation_evidence_package(
             stream.write(packaged)
             stream.flush()
             os.fsync(stream.fileno())
+    except FileExistsError as exc:
+        if created and directory_fd is not None:
+            with suppress(OSError):
+                os.unlink(destination.name, dir_fd=directory_fd)
+        raise EvaluationContractError(
+            "evaluation evidence package already exists; refusing to write without overwriting"
+        ) from exc
     except OSError as exc:
         if created and directory_fd is not None:
             with suppress(OSError):
                 os.unlink(destination.name, dir_fd=directory_fd)
-        raise EvaluationContractError("unable to write evaluation evidence package without overwriting") from exc
+        raise EvaluationContractError("unable to write evaluation evidence package safely") from exc
     finally:
         if directory_fd is not None:
             os.close(directory_fd)

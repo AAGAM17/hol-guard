@@ -2,8 +2,9 @@
 
 The evaluator CLI is deliberately a staging surface.  It validates a declared
 profile, optionally allocates the private setup owned by the existing
-preflight module, and verifies an evidence archive's canonical bytes.  It does
-not run evaluation scenarios or produce installed-host proof.
+preflight module, packages validated records, and verifies an evidence
+archive's canonical bytes.  It does not run evaluation scenarios or produce
+installed-host proof.
 """
 
 from __future__ import annotations
@@ -24,8 +25,11 @@ from .evaluation_cli_recovery import (
     _remove_recovery_token,
     _write_recovery_token,
 )
-from .evaluation_contracts import EvaluationContractError, EvaluationProfile
-from .evaluation_evidence_package import verify_evaluation_evidence_package
+from .evaluation_contracts import EvaluationContractError, EvaluationProfile, EvaluationResult
+from .evaluation_evidence_package import (
+    verify_evaluation_evidence_package,
+    write_evaluation_evidence_package,
+)
 from .evaluation_preflight import (
     cleanup_interrupted_evaluation_setup,
     preflight_evaluation,
@@ -34,6 +38,7 @@ from .evaluation_preflight import (
 
 CLI_SCHEMA_VERSION = "guard.evaluation-cli.v1"
 _MAX_PROFILE_BYTES = 1 * 1024 * 1024
+_MAX_RESULT_BYTES = 1 * 1024 * 1024
 _MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 
 
@@ -55,6 +60,7 @@ def _result(
     *,
     report: Mapping[str, object] | None = None,
     manifest: Mapping[str, object] | None = None,
+    package: Mapping[str, object] | None = None,
     cleanup: Mapping[str, object] | None = None,
     error: _CliError | None = None,
 ) -> dict[str, object]:
@@ -67,6 +73,8 @@ def _result(
         payload["report"] = dict(report)
     if manifest is not None:
         payload["manifest"] = dict(manifest)
+    if package is not None:
+        payload["package"] = dict(package)
     if cleanup is not None:
         payload["cleanup"] = dict(cleanup)
     if error is not None:
@@ -93,6 +101,28 @@ def _read_bounded(path: Path, limit: int, *, too_large_code: str, read_code: str
     return data
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError("duplicate JSON object key")
+        payload[key] = value
+    return payload
+
+
+def _reject_json_constant(value: str) -> NoReturn:
+    del value
+    raise ValueError("non-standard JSON constant")
+
+
+def _load_json(data: bytes) -> object:
+    return json.loads(
+        data.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_json_constant,
+    )
+
+
 def _load_profile(path: Path) -> EvaluationProfile:
     data = _read_bounded(
         path,
@@ -102,8 +132,8 @@ def _load_profile(path: Path) -> EvaluationProfile:
         label="evaluation profile",
     )
     try:
-        payload = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        payload = _load_json(data)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
         raise _CliError("profile_json_invalid", "evaluation profile is not valid JSON") from None
     if not isinstance(payload, Mapping):
         raise _CliError("profile_invalid", "evaluation profile is invalid")
@@ -111,6 +141,28 @@ def _load_profile(path: Path) -> EvaluationProfile:
         return EvaluationProfile.from_dict(cast(Mapping[str, object], payload))
     except (EvaluationContractError, KeyError, TypeError, ValueError):
         raise _CliError("profile_invalid", "evaluation profile is invalid") from None
+
+
+def _load_result(path: Path, profile: EvaluationProfile) -> EvaluationResult:
+    data = _read_bounded(
+        path,
+        _MAX_RESULT_BYTES,
+        too_large_code="result_too_large",
+        read_code="result_read_failed",
+        label="evaluation result",
+    )
+    try:
+        payload = _load_json(data)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
+        raise _CliError("result_json_invalid", "evaluation result is not valid JSON") from None
+    if not isinstance(payload, Mapping):
+        raise _CliError("result_invalid", "evaluation result is invalid")
+    try:
+        return EvaluationResult.from_dict(cast(Mapping[str, object], payload), profile=profile)
+    except (EvaluationContractError, KeyError, TypeError, ValueError):
+        # Contract diagnostics may include caller-controlled values. Keep the
+        # CLI response stable and value-free.
+        raise _CliError("result_invalid", "evaluation result is invalid") from None
 
 
 def _path_argument(args: argparse.Namespace, positional: str, option: str, label: str, *, code: str) -> Path:
@@ -231,6 +283,82 @@ def _run_verify_evidence(args: argparse.Namespace) -> int:
         return _exit_code(error.status)
 
 
+def _package_write_error(error: EvaluationContractError) -> _CliError:
+    """Map writer failures to stable, value-free CLI diagnostics."""
+
+    reason = str(error)
+    if "already exists" in reason or "without overwriting" in reason:
+        return _CliError(
+            "output_exists",
+            "evaluation evidence package already exists",
+            status="blocked_environment",
+        )
+    if "private temporary root" in reason:
+        return _CliError(
+            "output_scope_invalid",
+            "evaluation evidence output is outside the profile private temporary scope",
+            status="blocked_environment",
+        )
+    if "output limit" in reason:
+        return _CliError(
+            "evidence_package_invalid",
+            "evaluation evidence package exceeds the declared output limit",
+            status="failed",
+        )
+    if "unavailable on this platform" in reason:
+        return _CliError(
+            "output_unavailable",
+            "safe evaluation evidence package writing is unavailable",
+            status="blocked_environment",
+        )
+    return _CliError(
+        "evidence_package_write_failed",
+        "evaluation evidence package could not be written safely",
+        status="blocked_environment",
+    )
+
+
+def _run_package_evidence(args: argparse.Namespace) -> int:
+    try:
+        profile_path = _path_argument(
+            args, "profile_path", "profile_option", "evaluation profile", code="profile_argument_required"
+        )
+        result_path = _path_argument(
+            args, "result_path", "result_option", "evaluation result", code="result_argument_required"
+        )
+        output_dir = _path_argument(
+            args,
+            "output_dir_path",
+            "output_dir_option",
+            "evidence output directory",
+            code="output_dir_argument_required",
+        )
+        profile = _load_profile(profile_path)
+        result = _load_result(result_path, profile)
+        try:
+            package = write_evaluation_evidence_package(profile, result, output_dir=output_dir)
+        except EvaluationContractError as error:
+            mapped = _package_write_error(error)
+            _emit(_result("package-evidence", mapped.status, error=mapped))
+            return _exit_code(mapped.status)
+        _emit(
+            _result(
+                "package-evidence",
+                "passed",
+                package={
+                    "digest": package.digest,
+                    "path": str(package.path),
+                    "proofBoundary": "caller_supplied_unverified",
+                    "sizeBytes": package.size_bytes,
+                },
+            )
+        )
+        return 0
+    except _CliError as error:
+        _emit(_result("package-evidence", error.status, error=error))
+        return _exit_code(error.status)
+
+
 def _run_cleanup(args: argparse.Namespace) -> int:
     try:
         profile_path = _path_argument(
@@ -318,6 +446,17 @@ def build_parser() -> argparse.ArgumentParser:
     verify_evidence.add_argument("package_path", nargs="?", help="evaluation evidence ZIP path")
     verify_evidence.add_argument("--package", dest="package_option", help="evaluation evidence ZIP path")
 
+    package_evidence = subparsers.add_parser(
+        "package-evidence",
+        help="package validated profile and result records in a private temporary root",
+    )
+    package_evidence.add_argument("profile_path", nargs="?", help="evaluation profile JSON path")
+    package_evidence.add_argument("result_path", nargs="?", help="evaluation result JSON path")
+    package_evidence.add_argument("output_dir_path", nargs="?", help="private evidence output directory")
+    package_evidence.add_argument("--profile", dest="profile_option", help="evaluation profile JSON path")
+    package_evidence.add_argument("--result", dest="result_option", help="evaluation result JSON path")
+    package_evidence.add_argument("--output-dir", dest="output_dir_option", help="private evidence output directory")
+
     cleanup = subparsers.add_parser(
         "cleanup",
         help="remove one setup previously allocated by preflight --setup",
@@ -344,6 +483,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_preflight(args)
     if args.command == "verify-evidence":
         return _run_verify_evidence(args)
+    if args.command == "package-evidence":
+        return _run_package_evidence(args)
     if args.command == "cleanup":
         return _run_cleanup(args)
     _emit(

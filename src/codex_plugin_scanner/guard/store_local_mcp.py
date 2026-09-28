@@ -6,6 +6,7 @@ import shlex
 import sqlite3
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -13,6 +14,7 @@ from .runtime.approval_context import build_configured_environment_hash
 from .runtime.composio_contract import composio_tool_role
 from .runtime.composio_discovery import ComposioActionSchema
 from .runtime.composio_workflows import ComposioWorkflowProposal
+from .runtime.local_cli_commands import OTHER_COMMAND_ID, slug_local_cli_command_id
 from .runtime.local_cli_identity import UnlistedCliIdentity, is_local_cli_id
 from .runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity, resolved_package_launcher_executable
 from .runtime.observed_mcp_tools import ObservedMcpTool, observed_mcp_tool
@@ -373,8 +375,20 @@ class StoreLocalMcpMixin:
                 grant["commands"] = []
                 grant["command_states"] = {}
                 return grant
-            grant["commands"] = _read_command_catalog(connection, cli_id)
-            grant["command_states"] = _read_command_states(connection, cli_id)
+            if tool_name is None:
+                grant["commands"] = _read_command_catalog(connection, cli_id)
+                grant["command_states"] = _read_command_states(connection, cli_id)
+            else:
+                # The authorization path needs the called tool and the unseen-tool
+                # fallback only. Keep both configured and observed command IDs in
+                # the same read snapshot as the grant and authority digest.
+                command_ids = tuple(dict.fromkeys((
+                    slug_local_cli_command_id(tool_name),
+                    "tool-" + sha256(tool_name.encode()).hexdigest()[:24],
+                    OTHER_COMMAND_ID,
+                )))
+                grant["commands"] = _read_command_catalog(connection, cli_id, command_ids)
+                grant["command_states"] = _read_command_states(connection, cli_id, command_ids)
             grant["catalog"] = read_mcp_tool_authority(connection, cli_id, identity_hash, tool_name)
             return grant
 

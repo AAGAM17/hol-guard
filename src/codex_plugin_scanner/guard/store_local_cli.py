@@ -394,15 +394,18 @@ class StoreLocalCliMixin:
             return _read_command_states(connection, cli_id)
 
 
-def _read_command_catalog(connection: sqlite3.Connection, cli_id: str) -> list[LocalCliCommand]:
+def _read_command_catalog(
+    connection: sqlite3.Connection, cli_id: str, command_ids: Sequence[str] | None = None
+) -> list[LocalCliCommand]:
+    selection = "" if command_ids is None else f" and command_id in ({','.join('?' for _ in command_ids)})"
     rows = connection.execute(
-        """
+        f"""
         select command_id, name, usage, description, parent_id
         from local_cli_command
-        where cli_id = ?
+        where cli_id = ?{selection}
         order by sort_index asc, command_id asc
         """,
-        (cli_id,),
+        (cli_id, *(command_ids or ())),
     ).fetchall()
     catalog: list[LocalCliCommand] = []
     for row in rows:
@@ -426,10 +429,13 @@ def _read_command_catalog(connection: sqlite3.Connection, cli_id: str) -> list[L
     return catalog
 
 
-def _read_command_states(connection: sqlite3.Connection, cli_id: str) -> dict[str, LocalCliCommandState]:
+def _read_command_states(
+    connection: sqlite3.Connection, cli_id: str, command_ids: Sequence[str] | None = None
+) -> dict[str, LocalCliCommandState]:
+    selection = "" if command_ids is None else f" and command_id in ({','.join('?' for _ in command_ids)})"
     rows = connection.execute(
-        "select command_id, state from local_cli_command_grant where cli_id = ?",
-        (cli_id,),
+        f"select command_id, state from local_cli_command_grant where cli_id = ?{selection}",
+        (cli_id, *(command_ids or ())),
     ).fetchall()
     states: dict[str, LocalCliCommandState] = {}
     for row in rows:

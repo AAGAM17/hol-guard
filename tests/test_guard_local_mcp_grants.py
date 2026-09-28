@@ -156,6 +156,57 @@ def test_mcp_grant_reads_one_snapshot_during_permission_change(tmp_path: Path, m
     assert after["command_states"]["read_file"] == "block"
 
 
+def test_mcp_targeted_grant_reads_only_called_tool_and_other(tmp_path: Path) -> None:
+    identity = _identity()
+    store = GuardStore(tmp_path / "guard-home")
+    _enroll(store, identity, states={"read_file": "allow", "write_file": "block", "other": "block"})
+
+    grant = store.read_local_mcp_grant(identity.identity_hash, tool_name="read_file")
+    assert grant is not None
+    assert {command.command_id for command in grant["commands"]} == {"read_file", "other"}
+    assert grant["command_states"] == {"read_file": "allow", "other": "block"}
+    assert (
+        matching_local_mcp_grant(store=store, artifact=_artifact(identity, "read_file"), current_action="review")
+        == "allowed"
+    )
+    assert (
+        matching_local_mcp_grant(store=store, artifact=_artifact(identity, "new_file"), current_action="allow")
+        == "blocked"
+    )
+
+
+def test_mcp_targeted_grant_keeps_observed_hashed_tool_choice(tmp_path: Path) -> None:
+    from codex_plugin_scanner.guard.runtime.local_cli_identity import UnlistedCliIdentity
+    from codex_plugin_scanner.guard.runtime.observed_mcp_tools import observed_mcp_tool
+
+    tool = observed_mcp_tool("codex", "mcp__codex_apps__composio__COMPOSIO_SEARCH_TOOLS")
+    assert tool is not None
+    store = GuardStore(tmp_path / "guard-home")
+    identity = UnlistedCliIdentity(
+        cli_id=tool.identity.cli_id, name=tool.identity.name, kind=tool.identity.kind,
+        identity_hash=tool.identity.identity_hash, example_label=tool.identity.example_label,
+    )
+    store.record_local_cli_observation(
+        identity, seen_at=utc_now(), surface="mcp",
+        server_identity_hash=tool.server_identity.identity_hash,
+        server_command=tool.server_identity.command, server_args_hash=tool.server_identity.args_hash,
+    )
+    store.replace_local_cli_commands(
+        identity.cli_id,
+        (LocalCliCommand(tool.command_id, tool.name, tool.qualified_name, "Observed tool"),),
+    )
+    store.upsert_local_cli_grant(
+        identity=identity, state="allowed", expected_revision=0, updated_at=utc_now(),
+        command_states={tool.command_id: "block"},
+    )
+    grant = store.read_local_mcp_grant(tool.server_identity.identity_hash, tool_name=tool.qualified_name)
+    assert grant is not None
+    assert {command.command_id for command in grant["commands"]} == {tool.command_id}
+    assert grant["command_states"] == {tool.command_id: "block"}
+    artifact = _artifact(tool.server_identity, tool.qualified_name)
+    assert matching_local_mcp_grant(store=store, artifact=artifact, current_action="allow") == "blocked"
+
+
 def test_retired_deny_still_blocks_an_empty_inventory(tmp_path: Path) -> None:
     from codex_plugin_scanner.guard.runtime.local_mcp_stdio import McpCatalogResult
 

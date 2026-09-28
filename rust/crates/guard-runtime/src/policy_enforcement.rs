@@ -22,10 +22,10 @@ use serde_json::Value;
 
 #[path = "policy_enforcement_facts.rs"]
 mod policy_enforcement_facts;
-#[path = "policy_enforcement_policy.rs"]
-mod policy_enforcement_policy;
 #[path = "policy_enforcement_helpers.rs"]
 mod policy_enforcement_helpers;
+#[path = "policy_enforcement_policy.rs"]
+mod policy_enforcement_policy;
 
 use policy_enforcement_facts::{
     classify_tool_name, collect_fact_maps, payload_facts, preferred_tool_name, risk_classes,

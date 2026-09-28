@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING
 
+from .local_cli_errors import LocalCliCatalogLimitError
 from .runtime.local_cli_commands import (
     LocalCliCommand,
     LocalCliCommandState,
@@ -346,7 +347,7 @@ class StoreLocalCliMixin:
                 raise ValueError("invalid local CLI command id")
             incoming = {command.command_id for command in commands}
             if len(known | incoming) > limit:
-                raise ValueError("local_cli_catalog_limit")
+                raise LocalCliCatalogLimitError("local_cli_catalog_limit")
             for command in commands:
                 if command.command_id in known:
                     continue

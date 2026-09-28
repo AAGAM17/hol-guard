@@ -155,7 +155,7 @@ def test_refresh_api_requires_process_consent_and_cancel_does_not_mutate_grants(
 def test_configured_inventory_uses_read_adapters_and_never_launches(tmp_path: Path, monkeypatch):
     service = LocalCliApiService(store=GuardStore(tmp_path / "home"))
     calls = []
-    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda: calls.append("configuration"))
+    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda **_kwargs: calls.append("configuration"))
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.local_cli_api.discover_observed_mcp_tools",
         lambda *_args, **_kwargs: calls.append("observations"),
@@ -187,13 +187,13 @@ def test_configured_inventory_reports_failed_stage_without_private_exception(
 ) -> None:
     service = LocalCliApiService(store=GuardStore(tmp_path / "home"))
 
-    def fail() -> None:
+    def fail(**_kwargs) -> None:
         raise ValueError("PRIVATE CONFIG OR PROVIDER RESULT")
 
     if stage == "configuration":
-        monkeypatch.setattr(service, "_observe_harness_mcp_servers", fail)
+        monkeypatch.setattr(service, "_discovered_servers", fail)
     else:
-        monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda: None)
+        monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda **_kwargs: None)
         monkeypatch.setattr(
             "codex_plugin_scanner.guard.daemon.local_cli_api.discover_observed_mcp_tools",
             lambda *_args, **_kwargs: fail(),
@@ -211,7 +211,7 @@ def test_configured_inventory_reports_failed_stage_without_private_exception(
 def test_cancel_reaches_job_before_delayed_start_response(tmp_path: Path, monkeypatch):
     service = LocalCliApiService(store=GuardStore(tmp_path / "home"))
     launched = threading.Event()
-    monkeypatch.setattr(service, "_observe_harness_mcp_servers", launched.set)
+    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda **_kwargs: launched.set())
     client_job_id = "e" * 32
     try:
         assert service.refresh_job({"job_id": client_job_id, "cancel": True})["state"] == "cancelled"

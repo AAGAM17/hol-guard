@@ -83,7 +83,7 @@ export type LocalCliItem = {
 export type LocalCliListResponse = {
   schema_version: string;
   revision: number;
-  discovery_issue?: "catalog_limit_reached" | "observed_provider_scan_failed" | "configured_host_scan_failed";
+  discovery_issue?: "catalog_limit_reached" | "observed_provider_scan_failed" | "configured_host_scan_failed" | "package_catalog_refresh_failed";
   native_publication?: {
     state: "acknowledged" | "pending" | "failed" | "unavailable";
     revision: number;
@@ -437,17 +437,20 @@ export async function waitForMcpDiscoveryJob(cliId: string, initialJob: unknown,
       if (job.state === "complete" || job.state === "cancelled") { finished = true; return; }
       if (job.state === "failed") {
         finished = true;
-        let message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
-        if (job.error === "mcp_refresh_unavailable") {
-          message = "Guard cannot list this connection directly. Refresh it in its host app.";
-        } else if (job.error === "catalog_revision_conflict") {
-          message = "A newer discovery finished first. Reload the inventory.";
-        } else if (job.error === "configured_host_scan_failed") {
-          message = "Guard could not read the host's configured connections. Check the host app and retry.";
-        } else if (job.error === "observed_provider_scan_failed") {
-          message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery.";
-        } else if (job.error === "catalog_limit_reached") {
-          message = "This connector has more tools than Guard can show safely. Existing choices were kept.";
+        let message: string;
+        switch (job.error) {
+          case "mcp_refresh_unavailable":
+            message = "Guard cannot list this connection directly. Refresh it in its host app."; break;
+          case "catalog_revision_conflict":
+            message = "A newer discovery finished first. Reload the inventory."; break;
+          case "configured_host_scan_failed":
+            message = "Guard could not read the host's configured connections. Check the host app and retry."; break;
+          case "observed_provider_scan_failed":
+            message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery."; break;
+          case "catalog_limit_reached":
+            message = "This connector has more tools than Guard can catalog safely. Existing choices were kept."; break;
+          default:
+            message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
         }
         throw new Error(message);
       }

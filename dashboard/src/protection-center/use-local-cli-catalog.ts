@@ -29,6 +29,8 @@ function discoveryIssueMessage(issue: LocalCliListResponse["discovery_issue"]): 
       return "Guard could not read configured host connections. Check the host app and retry.";
     case "observed_provider_scan_failed":
       return "Guard could not merge observed provider tools. Existing choices were kept; retry discovery.";
+    case "package_catalog_refresh_failed":
+      return "Guard could not refresh project scripts. Existing custom extensions were kept; retry discovery.";
     default:
       return null;
   }
@@ -42,7 +44,7 @@ export function useLocalCliCatalog() {
   const [catalogReady, setCatalogReady] = useState(false);
   const loadGeneration = useRef(0);
   const publicationPoll = useRef({ revision: -1, attempts: 0 });
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveDiscoveryNotice = false) => {
     const generation = loadGeneration.current + 1;
     loadGeneration.current = generation;
     try {
@@ -50,6 +52,7 @@ export function useLocalCliCatalog() {
       if (loadGeneration.current !== generation) return;
       setData(next);
       setError(null);
+      if (!preserveDiscoveryNotice) setDiscoveryNotice(null);
     } catch (caught) {
       if (loadGeneration.current !== generation) return;
       setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
@@ -94,7 +97,7 @@ export function useLocalCliCatalog() {
     if (publicationPoll.current.attempts >= 20) return;
     const timer = window.setTimeout(() => {
       publicationPoll.current.attempts += 1;
-      void load();
+      void load(true);
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [data, discovering, load]);

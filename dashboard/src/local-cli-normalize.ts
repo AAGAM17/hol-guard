@@ -220,7 +220,8 @@ export function normalizeLocalCliList(value: unknown): LocalCliListResponse {
     schema_version: requiredString(value.schema_version, "schema"),
     revision,
     ...((discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed"
-      || discoveryIssue === "configured_host_scan_failed") ? { discovery_issue: discoveryIssue } : {}),
+      || discoveryIssue === "configured_host_scan_failed" || discoveryIssue === "package_catalog_refresh_failed")
+      ? { discovery_issue: discoveryIssue } : {}),
     ...(nativePublication ? { native_publication: nativePublication } : {}),
     items,
     cloud: {

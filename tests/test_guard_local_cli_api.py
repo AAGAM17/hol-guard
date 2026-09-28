@@ -201,6 +201,7 @@ def test_discover_items_falls_back_to_store_when_refresh_fails(tmp_path: Path, m
         fail_refresh,
     )
     payload = service.discover_items()
+    assert payload["discovery_issue"] == "package_catalog_refresh_failed"
     items = payload["items"]
     assert isinstance(items, list)
     assert len(items) == 1
@@ -216,7 +217,7 @@ def test_discover_items_reports_observed_catalog_limit_with_other_items(tmp_path
         "codex_plugin_scanner.guard.daemon.local_cli_api.discover_observed_mcp_tools",
         lambda *_args, **_kwargs: 1,
     )
-    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda: {})
+    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda **_kwargs: {})
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.local_cli_api.refresh_package_script_catalogs",
         lambda *_args, **_kwargs: [],
@@ -265,7 +266,7 @@ def test_discover_items_rereads_store_after_partial_refresh_failure(tmp_path: Pa
         )
         raise RuntimeError("refresh failed")
 
-    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda: {})
+    monkeypatch.setattr(service, "_observe_harness_mcp_servers", lambda **_kwargs: {})
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.local_cli_api.refresh_package_script_catalogs",
         persist_then_fail_refresh,

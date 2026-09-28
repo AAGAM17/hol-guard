@@ -444,7 +444,7 @@ function normalizeLocalCliList(value) {
   return {
     schema_version: requiredString(value.schema_version, "schema"),
     revision,
-    ...discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed" || discoveryIssue === "configured_host_scan_failed" ? { discovery_issue: discoveryIssue } : {},
+    ...discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed" || discoveryIssue === "configured_host_scan_failed" || discoveryIssue === "package_catalog_refresh_failed" ? { discovery_issue: discoveryIssue } : {},
     ...nativePublication ? { native_publication: nativePublication } : {},
     items,
     cloud: {
@@ -726,17 +726,25 @@ async function waitForMcpDiscoveryJob(cliId, initialJob, signal) {
       }
       if (job.state === "failed") {
         finished = true;
-        let message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
-        if (job.error === "mcp_refresh_unavailable") {
-          message = "Guard cannot list this connection directly. Refresh it in its host app.";
-        } else if (job.error === "catalog_revision_conflict") {
-          message = "A newer discovery finished first. Reload the inventory.";
-        } else if (job.error === "configured_host_scan_failed") {
-          message = "Guard could not read the host's configured connections. Check the host app and retry.";
-        } else if (job.error === "observed_provider_scan_failed") {
-          message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery.";
-        } else if (job.error === "catalog_limit_reached") {
-          message = "This connector has more tools than Guard can show safely. Existing choices were kept.";
+        let message;
+        switch (job.error) {
+          case "mcp_refresh_unavailable":
+            message = "Guard cannot list this connection directly. Refresh it in its host app.";
+            break;
+          case "catalog_revision_conflict":
+            message = "A newer discovery finished first. Reload the inventory.";
+            break;
+          case "configured_host_scan_failed":
+            message = "Guard could not read the host's configured connections. Check the host app and retry.";
+            break;
+          case "observed_provider_scan_failed":
+            message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery.";
+            break;
+          case "catalog_limit_reached":
+            message = "This connector has more tools than Guard can catalog safely. Existing choices were kept.";
+            break;
+          default:
+            message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
         }
         throw new Error(message);
       }
@@ -5261,6 +5269,8 @@ function discoveryIssueMessage(issue) {
       return "Guard could not read configured host connections. Check the host app and retry.";
     case "observed_provider_scan_failed":
       return "Guard could not merge observed provider tools. Existing choices were kept; retry discovery.";
+    case "package_catalog_refresh_failed":
+      return "Guard could not refresh project scripts. Existing custom extensions were kept; retry discovery.";
     default:
       return null;
   }
@@ -5273,7 +5283,7 @@ function useLocalCliCatalog() {
   const [catalogReady, setCatalogReady] = reactExports.useState(false);
   const loadGeneration = reactExports.useRef(0);
   const publicationPoll = reactExports.useRef({ revision: -1, attempts: 0 });
-  const load = reactExports.useCallback(async () => {
+  const load = reactExports.useCallback(async (preserveDiscoveryNotice = false) => {
     const generation = loadGeneration.current + 1;
     loadGeneration.current = generation;
     try {
@@ -5281,6 +5291,7 @@ function useLocalCliCatalog() {
       if (loadGeneration.current !== generation) return;
       setData(next);
       setError(null);
+      if (!preserveDiscoveryNotice) setDiscoveryNotice(null);
     } catch (caught) {
       if (loadGeneration.current !== generation) return;
       setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
@@ -5325,7 +5336,7 @@ function useLocalCliCatalog() {
     if (publicationPoll.current.attempts >= 20) return;
     const timer = window.setTimeout(() => {
       publicationPoll.current.attempts += 1;
-      void load();
+      void load(true);
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [data, discovering, load]);

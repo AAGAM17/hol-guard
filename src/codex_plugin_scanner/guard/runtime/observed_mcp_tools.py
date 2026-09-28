@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from ..local_cli_errors import LocalCliCatalogLimitError
 from ..native_policy_snapshot_codec import _normalized_harness_selector_v3
 from ..native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS, NativePolicySnapshotError
 from .local_cli_commands import MAX_LOCAL_CLI_COMMANDS, OTHER_COMMAND_ID, LocalCliCommand
@@ -153,9 +154,7 @@ def discover_observed_mcp_tools(store: GuardStore, *, seen_at: str) -> int:
         # is incomplete; unseen tools must retain their normal review.
         try:
             store.merge_local_cli_commands(cli_id, catalog, limit=MAX_OBSERVED_MCP_TOOLS)
-        except ValueError as error:
-            if str(error) != "local_cli_catalog_limit":
-                raise
+        except LocalCliCatalogLimitError:
             # Keep this connector's prior choices, continue other connectors,
             # and let the caller report incomplete coverage.
             saturated += 1

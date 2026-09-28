@@ -22,6 +22,7 @@ from ..approval_gate import (
     input_from_mapping,
     require_local_cli_trust,
 )
+from ..local_cli_errors import LocalCliCatalogLimitError
 from ..local_cli_trust import utc_now
 from ..runtime.custom_extension_continuity import (
     record_local_custom_extension_mutation,
@@ -321,18 +322,13 @@ class LocalCliApiService:
                         return
                     # Existing host adapters read configuration and persisted
                     # observations only. This path never starts a server.
-                    try:
-                        self._observe_harness_mcp_servers()
-                    except Exception as error:
-                        if getattr(error, "code", None) == "catalog_limit_reached":
-                            raise DiscoveryStageError("catalog_limit_reached") from None
-                        raise DiscoveryStageError("configured_host_scan_failed") from None
+                    self._observe_harness_mcp_servers(strict=True)
                     if not cancel.is_set():
                         try:
                             saturated = discover_observed_mcp_tools(self._store, seen_at=utc_now())
-                        except Exception as error:
-                            if str(error) == "local_cli_catalog_limit":
-                                raise DiscoveryStageError("catalog_limit_reached") from None
+                        except LocalCliCatalogLimitError:
+                            raise DiscoveryStageError("catalog_limit_reached") from None
+                        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
                             raise DiscoveryStageError("observed_provider_scan_failed") from None
                         if saturated:
                             raise DiscoveryStageError("catalog_limit_reached")
@@ -541,10 +537,15 @@ class LocalCliApiService:
             saturated = discover_observed_mcp_tools(self._store, seen_at=utc_now())
             if saturated:
                 discovery_issue = "catalog_limit_reached"
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error, AttributeError):
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             discovery_issue = "observed_provider_scan_failed"
         try:
-            labels = self._observe_harness_mcp_servers()
+            labels = self._observe_harness_mcp_servers(strict=True)
+        except DiscoveryStageError:
+            labels = {}
+            if discovery_issue is None:
+                discovery_issue = "configured_host_scan_failed"
+        try:
             items = apply_source_labels(
                 refresh_package_script_catalogs(self._store, home_dir=Path.home()),
                 labels,
@@ -552,7 +553,7 @@ class LocalCliApiService:
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             items = self._listed_public_items()
             if discovery_issue is None:
-                discovery_issue = "configured_host_scan_failed"
+                discovery_issue = "package_catalog_refresh_failed"
         result = self._list_payload(items)
         if discovery_issue is not None:
             result["discovery_issue"] = discovery_issue
@@ -816,6 +817,12 @@ class LocalCliApiService:
                     seen_at=seen_at,
                     expected_catalog_revision=expected_revision,
                 )
+        except LocalCliCatalogLimitError as exc:
+            raise LocalCliApiError(
+                409,
+                "catalog_limit_reached",
+                "This connector has more tools than Guard can catalog safely. Existing choices were kept.",
+            ) from exc
         except ValueError as exc:
             if str(exc) == "mcp_catalog_revision_conflict":
                 raise LocalCliApiError(
@@ -823,27 +830,23 @@ class LocalCliApiService:
                     "catalog_revision_conflict",
                     "A newer discovery finished first. Your choices were kept; refresh the current inventory.",
                 ) from exc
-            if str(exc) == "local_cli_catalog_limit":
-                raise LocalCliApiError(
-                    409,
-                    "catalog_limit_reached",
-                    "This connector has more tools than Guard can catalog safely. Existing choices were kept.",
-                ) from exc
             raise
         finally:
             notify_native_policy_mutation(self._store.guard_home)
 
-    def _observe_harness_mcp_servers(self) -> dict[str, str]:
+    def _observe_harness_mcp_servers(self, *, strict: bool = False) -> dict[str, str]:
         try:
             return persist_discovered_harness_mcp_servers(
                 self._store,
-                self._discovered_servers(),
+                self._discovered_servers(strict=strict),
                 seen_at=utc_now(),
             )
         except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+            if strict:
+                raise DiscoveryStageError("configured_host_scan_failed") from None
             return {}
 
-    def _discovered_servers(self) -> tuple[DiscoveredHarnessMcpServer, ...]:
+    def _discovered_servers(self, *, strict: bool = False) -> tuple[DiscoveredHarnessMcpServer, ...]:
         now = time.monotonic()
         cached = self._discovery_cache
         if cached is not None and now - cached[0] < _DISCOVERY_TTL_SECONDS:
@@ -851,6 +854,8 @@ class LocalCliApiService:
         try:
             servers = discover_harness_mcp_servers(home_dir=Path.home(), guard_home=self._store.guard_home)
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError):
+            if strict:
+                raise DiscoveryStageError("configured_host_scan_failed") from None
             return ()
         self._discovery_cache = (now, servers)
         return servers

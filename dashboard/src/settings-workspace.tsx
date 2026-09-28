@@ -485,6 +485,7 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
   const settingsImportInputRef = useRef<HTMLInputElement>(null);
   const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedSettingsRef = useRef<GuardSettings | null>(null);
+  const setupGateRevertRef = useRef<boolean | null>(null);
   const [approvalGateEnabled, setApprovalGateEnabled] = useState(false);
   const [approvalGateTotpCode, setApprovalGateTotpCode] = useState("");
   const [approvalGateTotpDeviceLabel, setApprovalGateTotpDeviceLabel] = useState("local-device");
@@ -825,10 +826,15 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
     if (proofModalPending) {
       return;
     }
+    if (proofModalMode === "setup-gate" && setupGateRevertRef.current === false) {
+      setApprovalGateEnabled(false);
+      setDraft((value) => value === null ? value : applyApprovalGateDraft(value, { enabled: false, cooldown_seconds: approvalGateCooldown, strict_all_decisions: approvalGateStrictAllDecisions }));
+    }
+    setupGateRevertRef.current = null;
     setProofModalOpen(false);
     setPendingProofAction(null);
     setProofModalError(null);
-  }, [proofModalPending]);
+  }, [proofModalPending, proofModalMode, approvalGateCooldown, approvalGateStrictAllDecisions]);
 
   const executeSave = useCallback(async (proof?: SettingsSaveProofCredentials, scope: SettingsSaveScope = "all") => {
     if (draft === null) {
@@ -1099,6 +1105,7 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
     if (mode === "setup-gate") {
       // The gate can only store a password while it is on, so first-time
       // setup marks the draft enabled; the saved result turns the toggle on.
+      setupGateRevertRef.current = approvalGateEnabled;
       setApprovalGateEnabled(true);
       setDraft((value) =>
         value === null
@@ -1111,7 +1118,7 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
       );
     }
     openProofModal(mode, { kind: "save", scope: mode === "setup-gate" ? "approval-gate" : "all" });
-  }, [openProofModal, approvalGateCooldown, approvalGateStrictAllDecisions]);
+  }, [openProofModal, approvalGateEnabled, approvalGateCooldown, approvalGateStrictAllDecisions]);
 
   const handleRequestRevokeCooldown = useCallback(() => {
     openProofModal("maintenance", { kind: "maintenance", action: "revoke-cooldown" });

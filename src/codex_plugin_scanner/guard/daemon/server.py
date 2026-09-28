@@ -8308,6 +8308,7 @@ class GuardDaemonServer:
                     auth_token=server.auth_token,
                 )
             except Exception:
+                self._diagnostics.record_exception("desktop_bootstrap_warmup_failed")
                 return
 
         threading.Thread(target=warm, name="desktop-bootstrap-warm", daemon=True).start()

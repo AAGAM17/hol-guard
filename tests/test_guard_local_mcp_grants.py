@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,8 +17,10 @@ from codex_plugin_scanner.guard.mcp_tool_calls import (
 )
 from codex_plugin_scanner.guard.runtime.local_cli_commands import LocalCliCommand
 from codex_plugin_scanner.guard.runtime.local_mcp_probe import McpProbeResult
+from codex_plugin_scanner.guard.runtime.local_mcp_stdio import McpCatalogResult
 from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_identity
 from codex_plugin_scanner.guard.store import GuardStore
+from codex_plugin_scanner.guard.store_mcp_catalog import tool_definition_authority_hash
 
 
 def _clean_npx() -> str | None:
@@ -124,6 +127,28 @@ def test_allowed_tool_overrides_review(tmp_path: Path) -> None:
     )
     assert decision.action == "allow"
     assert decision.source == "local-mcp-extension"
+
+
+def test_explicit_empty_public_hash_cannot_use_private_catalog_authority(tmp_path: Path) -> None:
+    identity = _identity()
+    store = GuardStore(tmp_path / "guard-home")
+    _enroll(store, identity, states={"read_file": "allow"})
+    definition = {"name": "read_file", "inputSchema": {"type": "object"}}
+    store.replace_local_cli_commands(
+        f"local-cli.mcp-{identity.identity_hash[:8]}",
+        (LocalCliCommand("read_file", "read_file", "read_file", "Read a file"),),
+        mcp_catalog=McpCatalogResult(tools=(definition,), complete=True),
+        identity_hash=identity.identity_hash,
+        seen_at=utc_now(),
+    )
+    store.upsert_local_cli_command_states(f"local-cli.mcp-{identity.identity_hash[:8]}", {"read_file": "allow"})
+    artifact = _artifact(identity, "read_file")
+    private_hash = tool_definition_authority_hash(definition)
+    private_artifact = replace(artifact, runtime_private_metadata={"mcp_tool_authority_hash": private_hash})
+    assert matching_local_mcp_grant(store=store, artifact=private_artifact, current_action="allow") == "allowed"
+
+    empty_public_artifact = replace(private_artifact, metadata={**artifact.metadata, "mcp_tool_authority_hash": ""})
+    assert matching_local_mcp_grant(store=store, artifact=empty_public_artifact, current_action="allow") == "review"
 
 
 def test_mcp_grant_reads_one_snapshot_during_permission_change(tmp_path: Path, monkeypatch) -> None:

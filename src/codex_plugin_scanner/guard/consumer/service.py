@@ -1145,7 +1145,12 @@ def evaluate_detection(
         current_artifact_ids.add(artifact.artifact_id)
         previous = previous_snapshots.get(artifact.artifact_id)
         diff = diff_artifact(previous, artifact)
-        if artifact.metadata.get("inventory_only") is True:
+        if (
+            detection.harness == "codex"
+            and artifact.artifact_type == "skill"
+            and artifact.metadata.get("enabled") is False
+            and artifact.runtime_private_metadata.get("inventory_only") is True
+        ):
             inventory_decision = build_authoritative_decision(
                 "allow",
                 reason="inventory_only",

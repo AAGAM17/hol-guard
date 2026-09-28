@@ -2080,7 +2080,10 @@ def _detection_with_prompt_artifacts(
         detection = replace(
             detection,
             artifacts=tuple(
-                replace(artifact, metadata={**artifact.metadata, "inventory_only": True})
+                replace(
+                    artifact,
+                    runtime_private_metadata={**artifact.runtime_private_metadata, "inventory_only": True},
+                )
                 if artifact.artifact_type == "skill" and artifact.metadata.get("enabled") is False
                 else artifact
                 for artifact in detection.artifacts

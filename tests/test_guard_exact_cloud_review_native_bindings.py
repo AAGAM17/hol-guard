@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -286,6 +287,35 @@ def test_exact_apply_rejects_policy_change_after_persisted_claim(
 
     with pytest.raises(ExactCloudReviewError, match="remote_exact_request_stale"):
         apply_exact_cloud_review(store, remote_approval=approval)
+
+
+def test_exact_apply_rejects_raw_policy_change_between_validation_and_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _job_payload = _exact_job(tmp_path)
+    raw_request = store.get_raw_approval_request_snapshot("exact-transport")
+    assert isinstance(raw_request, dict)
+    claim = build_local_review_request_claim(request_row=raw_request, oauth=_oauth_metadata(store), store=store)
+    approval = _remote_approval(store, "exact-transport", receipt_id="raw-policy-race", source_claim=claim)
+    normalized_before = store.get_approval_request("exact-transport")
+    original_resolve = store.resolve_one_request_with_signed_remote_exact_result
+
+    def race_before_resolution(request_id: str, **kwargs: Any) -> dict[str, object]:
+        decision = json.loads(str(raw_request["decision_v2_json"]))
+        decision["approval_scopes"] = ["artifact"]
+        with store._connect() as connection:
+            connection.execute(
+                "update approval_requests set decision_v2_json = ? where request_id = ?",
+                (json.dumps(decision), request_id),
+            )
+        assert store.get_approval_request(request_id) == normalized_before
+        return original_resolve(request_id, **kwargs)
+
+    monkeypatch.setattr(store, "resolve_one_request_with_signed_remote_exact_result", race_before_resolution)
+    with pytest.raises(ExactCloudReviewError, match="remote_exact_request_stale"):
+        _ = apply_exact_cloud_review(store, remote_approval=approval)
+    unresolved = store.get_approval_request("exact-transport")
+    assert isinstance(unresolved, dict) and unresolved["status"] == "pending"
 
 
 def test_exact_apply_accepts_legacy_claim_without_native_bindings(

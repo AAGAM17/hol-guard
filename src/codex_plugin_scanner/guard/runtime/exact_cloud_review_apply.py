@@ -92,6 +92,9 @@ def apply_exact_cloud_review(
     request = store.get_approval_request(request_id)
     if not isinstance(request, dict) or request.get("status") != "pending":
         raise _reject(store, "remote_exact_request_not_pending", now=current)
+    raw_request = store.get_raw_approval_request_snapshot(request_id)
+    if not isinstance(raw_request, dict) or raw_request.get("status") != "pending":
+        raise _reject(store, "remote_exact_request_not_pending", now=current)
     if not _request_is_current(request, now=current):
         raise _reject(store, "remote_exact_request_not_pending", now=current)
     if expected_harness is not None and request.get("harness") != expected_harness:
@@ -107,7 +110,7 @@ def apply_exact_cloud_review(
     if envelope.get("scope") != "artifact":
         raise _reject(store, "remote_exact_scope_not_exact", now=current)
     try:
-        claim_request = _frozen_claim_request(store, request_id, envelope, request, oauth)
+        claim_request = _frozen_claim_request(store, request_id, envelope, request, raw_request, oauth)
         contract = request_scope_contract(claim_request)
         scope = resolve_request_scope_selection(
             claim_request,
@@ -149,6 +152,7 @@ def apply_exact_cloud_review(
             "workspaceId": oauth.workspace_id,
         },
         expected_request=request,
+        expected_raw_request=raw_request,
         receipt_expires_at=receipt_expires_at,
     )
     return _resolution_from_result(
@@ -166,21 +170,14 @@ def _frozen_claim_request(
     request_id: str,
     envelope: dict[str, object],
     live_request: dict[str, object],
+    raw_live_request: dict[str, object],
     oauth,
 ) -> dict[str, object]:
     """Match the signed claim against the authenticated immutable outbox snapshot."""
 
     get_snapshots = getattr(store, "list_review_event_snapshots", None)
     allow_legacy = envelope.get("nativeBindingVersion") is None
-    live_claim_request = live_request
-    if not allow_legacy:
-        try:
-            raw_request = store.get_raw_approval_request_snapshot(request_id)
-        except (OSError, RuntimeError, TypeError, ValueError) as error:
-            raise GuardReviewContractError("remote_approval_claim_hash_mismatch") from error
-        if not isinstance(raw_request, dict) or raw_request.get("status") != "pending":
-            raise GuardReviewContractError("remote_approval_claim_hash_mismatch")
-        live_claim_request = raw_request
+    live_claim_request = live_request if allow_legacy else raw_live_request
     if not callable(get_snapshots):
         if allow_legacy:
             raise GuardReviewContractError("remote_approval_claim_hash_mismatch")

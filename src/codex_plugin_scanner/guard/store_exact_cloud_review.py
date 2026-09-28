@@ -207,6 +207,7 @@ class StoreExactCloudReviewMixin:
         expected_capability: dict[str, object] | None,
         expected_oauth_binding: dict[str, object],
         expected_request: dict[str, object],
+        expected_raw_request: dict[str, object],
         receipt_expires_at: str,
         skip_exact_capability: bool = False,
     ) -> dict[str, object]:
@@ -269,6 +270,21 @@ class StoreExactCloudReviewMixin:
                         "changed_fields": changed_request_fields,
                         "request_id": request_id,
                     },
+                    now=resolved_at,
+                )
+                return _exact_error("remote_exact_request_stale", now=resolved_at)
+            raw_row = connection.execute(
+                "select * from approval_requests where request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if raw_row is None:
+                return _exact_error("remote_exact_request_not_pending", now=resolved_at)
+            changed_raw_fields = _changed_request_fields(dict(raw_row), expected_raw_request)
+            if changed_raw_fields:
+                StoreExactCloudReviewMixin._record_exact_event(
+                    connection,
+                    "cloud_review.exact_request_stale",
+                    {"changed_fields": changed_raw_fields, "request_id": request_id},
                     now=resolved_at,
                 )
                 return _exact_error("remote_exact_request_stale", now=resolved_at)

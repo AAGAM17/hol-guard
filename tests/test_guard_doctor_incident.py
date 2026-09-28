@@ -115,6 +115,65 @@ def test_incident_export_reports_legacy_hooks_when_toml_config_is_missing(tmp_pa
     assert report["loaded_harness"]["state"] == "unknown"
 
 
+def test_incident_export_counts_duplicate_configured_hooks_without_exposing_commands(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    hooks_path = CodexHarnessAdapter._hooks_path(context)
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {"matcher": ".*", "hooks": [{"type": "command", "command": "private-pipx-command"}]},
+                        {"matcher": ".*", "hooks": [{"type": "command", "command": "private-uv-command"}]},
+                    ],
+                    "PermissionRequest": "malformed-groups",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = codex_incident_report(context)
+
+    assert report["configured"]["event_group_counts"]["PreToolUse"] == 2
+    assert report["configured"]["event_handler_counts"]["PreToolUse"] == 2
+    assert report["configured"]["event_group_counts"]["PermissionRequest"] is None
+    assert report["configured"]["event_handler_counts"]["PermissionRequest"] is None
+    assert report["configured"]["event_group_counts"]["UserPromptSubmit"] == 0
+    assert report["configured"]["manifest_integrity"] != "valid"
+    assert report["loaded_harness"]["state"] == "unknown"
+    assert "private-pipx-command" not in json.dumps(report)
+    assert "private-uv-command" not in json.dumps(report)
+
+
+def test_incident_export_does_not_count_malformed_group_or_handler_entries(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    hooks_path = CodexHarnessAdapter._hooks_path(context)
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [None],
+                    "PermissionRequest": [{"hooks": [None]}],
+                    "UserPromptSubmit": [{"hooks": [{}]}],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    configured = codex_incident_report(context)["configured"]
+
+    assert configured["event_group_counts"]["PreToolUse"] is None
+    assert configured["event_handler_counts"]["PreToolUse"] is None
+    assert configured["event_group_counts"]["PermissionRequest"] == 1
+    assert configured["event_handler_counts"]["PermissionRequest"] is None
+    assert configured["event_group_counts"]["UserPromptSubmit"] == 1
+    assert configured["event_handler_counts"]["UserPromptSubmit"] == 1
+
+
 def test_incident_export_marks_hook_integer_conversion_error_malformed(tmp_path: Path, monkeypatch) -> None:
     context = _context(tmp_path)
     hooks_path = CodexHarnessAdapter._hooks_path(context)

@@ -169,6 +169,10 @@ def run_guard_command(
         home_override_explicit=bool(home_override),
         workspace_override_explicit=bool(getattr(args, "workspace", None)),
     )
+    if args.guard_command == "doctor" and bool(getattr(args, "incident", False)):
+        from .doctor_incident import run_codex_incident_export
+
+        return run_codex_incident_export(args, context, output_stream=output_stream)
     try:
         enforce_lifecycle_gate(args, guard_home=guard_home)
     except ApprovalGateError as error:

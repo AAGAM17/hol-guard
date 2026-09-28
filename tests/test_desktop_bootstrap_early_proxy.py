@@ -10,6 +10,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -299,3 +300,216 @@ def test_desktop_bootstrap_route_is_critical() -> None:
     assert "/v1/desktop/bootstrap" in _DAEMON_CRITICAL_PATHS
     with pytest.raises(ValueError):
         build_desktop_dashboard_session_url_for_daemon(daemon_url="http://10.0.0.8:9", auth_token="token")
+    with pytest.raises(ValueError):
+        build_desktop_dashboard_session_url_for_daemon(
+            daemon_url="http://user:secret@127.0.0.1:9",
+            auth_token="token",
+        )
+
+
+def test_daemon_state_executable_falls_back_when_resolution_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.daemon import manager
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        del self, strict
+        raise OSError("unresolvable")
+
+    monkeypatch.setattr(manager.Path, "resolve", fail_resolve)
+    assert manager._daemon_state_executable() == sys.executable
+
+
+def test_cached_bootstrap_document_covers_refresh_and_failure_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.cli import commands_dispatch_desktop as desktop
+
+    desktop.reset_desktop_bootstrap_cache()
+    key = ("guard-home", "http://127.0.0.1:1", "token-a")
+    monkeypatch.setattr(desktop, "_CACHE_WAIT_SECONDS", 0.05)
+    try:
+        desktop._cached_documents[key] = ({"n": 1}, time.monotonic())
+        desktop._publish_cached_document(key, {"n": 9}, started_at=time.monotonic() - 5)
+        assert desktop._cached_documents[key][0]["n"] == 1
+
+        desktop._cached_documents[key] = ({"n": 1}, time.monotonic() - 40)
+        refreshed = threading.Event()
+
+        def refresh_build() -> dict[str, object]:
+            refreshed.set()
+            return {"n": 2}
+
+        assert desktop.cached_desktop_bootstrap_document(key, refresh_build)["n"] == 1
+        assert refreshed.wait(timeout=2)
+        deadline = time.monotonic() + 2
+        while desktop._cached_documents[key][0]["n"] != 2:
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+
+        desktop._cached_documents[key] = ({"n": 2}, time.monotonic() - 40)
+        failed = threading.Event()
+
+        def failing_refresh() -> dict[str, object]:
+            failed.set()
+            raise RuntimeError("refresh failed")
+
+        assert desktop.cached_desktop_bootstrap_document(key, failing_refresh)["n"] == 2
+        assert failed.wait(timeout=2)
+        deadline = time.monotonic() + 2
+        while key in desktop._cache_builds:
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+
+        blocked = threading.Event()
+        release = threading.Event()
+
+        def blocked_build() -> dict[str, object]:
+            blocked.set()
+            assert release.wait(timeout=2)
+            return {"n": 3}
+
+        desktop._refresh_cached_document(key, blocked_build)
+        assert blocked.wait(timeout=2)
+        desktop._refresh_cached_document(key, blocked_build)
+        release.set()
+        deadline = time.monotonic() + 2
+        while key in desktop._cache_builds:
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+
+        desktop.reset_desktop_bootstrap_cache()
+
+        def fail_build() -> dict[str, object]:
+            raise RuntimeError("build failed")
+
+        with pytest.raises(RuntimeError, match="build failed"):
+            desktop.cached_desktop_bootstrap_document(key, fail_build)
+
+        monkeypatch.setattr(desktop, "_CACHE_WAIT_SECONDS", 0.05)
+        held = threading.Event()
+        release_hold = threading.Event()
+
+        def held_build() -> dict[str, object]:
+            held.set()
+            assert release_hold.wait(timeout=2)
+            return {"n": 5}
+
+        holder = threading.Thread(target=lambda: desktop.cached_desktop_bootstrap_document(key, held_build))
+        holder.start()
+        assert held.wait(timeout=2)
+        with pytest.raises(TimeoutError):
+            desktop.cached_desktop_bootstrap_document(key, lambda: {"n": 4})
+        release_hold.set()
+        holder.join(timeout=2)
+
+        desktop.reset_desktop_bootstrap_cache()
+        monkeypatch.setattr(desktop, "_CACHE_WAIT_SECONDS", 2)
+        leader_started = threading.Event()
+        release_leader = threading.Event()
+        follower_done = threading.Event()
+        follower_error: dict[str, BaseException] = {}
+
+        def failing_leader() -> dict[str, object]:
+            leader_started.set()
+            assert release_leader.wait(timeout=2)
+            raise RuntimeError("leader failed")
+
+        def follow() -> None:
+            try:
+                desktop.cached_desktop_bootstrap_document(key, lambda: {"n": 4})
+            except TimeoutError as error:
+                follower_error["error"] = error
+            follower_done.set()
+
+        def lead() -> None:
+            try:
+                desktop.cached_desktop_bootstrap_document(key, failing_leader)
+            except RuntimeError:
+                return
+
+        worker = threading.Thread(target=lead)
+        worker.start()
+        assert leader_started.wait(timeout=2)
+        waiter = threading.Thread(target=follow)
+        waiter.start()
+        time.sleep(0.05)
+        release_leader.set()
+        assert follower_done.wait(timeout=2)
+        worker.join(timeout=2)
+        waiter.join(timeout=2)
+        assert "error" in follower_error
+    finally:
+        desktop.reset_desktop_bootstrap_cache()
+
+
+def test_desktop_bootstrap_route_records_auth_and_build_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.cli import commands_dispatch_desktop as desktop
+    from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer, _GuardDaemonHandler
+
+    events: list[str] = []
+
+    class Handler:
+        def __init__(self, path: str, *, authorized: bool, diagnostics: object | None) -> None:
+            self.path = path
+            self.server = SimpleNamespace(
+                home_dir=Path("."),
+                auth_token="token",
+                diagnostics=diagnostics,
+                daemon_port=lambda: 9,
+            )
+            self.authorized = authorized
+            self.unauthorized = 0
+            self.payloads: list[tuple[dict[str, object], int]] = []
+
+        def _query_has_guard_token(self, query: str) -> bool:
+            return "guard_token=" in query
+
+        def _record_query_token_rejection(self) -> None:
+            events.append("query-token")
+
+        def _write_unauthorized(self, *, extra_headers: dict[str, str] | None = None) -> None:
+            del extra_headers
+            self.unauthorized += 1
+
+        def _header_token_is_valid(self) -> bool:
+            return self.authorized
+
+        def _cors_headers_for_request(self) -> dict[str, str]:
+            return {}
+
+        def _write_json(self, payload: dict[str, object], *, status: int = 200) -> None:
+            self.payloads.append((payload, status))
+
+    query = Handler("/v1/desktop/bootstrap?guard_token=1", authorized=True, diagnostics=None)
+    _GuardDaemonHandler._serve_desktop_bootstrap(query, object())  # type: ignore[arg-type]
+    assert query.unauthorized == 1
+
+    denied = Handler("/v1/desktop/bootstrap", authorized=False, diagnostics=None)
+    _GuardDaemonHandler._serve_desktop_bootstrap(denied, object())  # type: ignore[arg-type]
+    assert denied.unauthorized == 1
+
+    monkeypatch.setattr(
+        desktop,
+        "desktop_bootstrap_document_for_running_daemon",
+        lambda **_kwargs: {"schema": "guard-desktop-bootstrap.v1"},
+    )
+    diagnostics = SimpleNamespace(record_exception=lambda event: events.append(event))
+    served = Handler("/v1/desktop/bootstrap", authorized=True, diagnostics=diagnostics)
+    _GuardDaemonHandler._serve_desktop_bootstrap(served, object())  # type: ignore[arg-type]
+    assert served.payloads == [({"schema": "guard-desktop-bootstrap.v1"}, 200)]
+
+    def fail(**_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("bootstrap failed")
+
+    monkeypatch.setattr(desktop, "desktop_bootstrap_document_for_running_daemon", fail)
+    failed = Handler("/v1/desktop/bootstrap", authorized=True, diagnostics=diagnostics)
+    _GuardDaemonHandler._serve_desktop_bootstrap(failed, object())  # type: ignore[arg-type]
+    assert failed.payloads == [({"error": "desktop_bootstrap_unavailable"}, 503)]
+    assert "desktop_bootstrap_unavailable" in events
+
+    owner = SimpleNamespace(
+        _server=SimpleNamespace(store=object(), home_dir=Path("."), auth_token="token", daemon_port=lambda: 9),
+        _diagnostics=diagnostics,
+    )
+    GuardDaemonServer._warm_desktop_bootstrap_cache(owner)  # type: ignore[arg-type]
+    deadline = time.monotonic() + 2
+    while "desktop_bootstrap_warmup_failed" not in events:
+        assert time.monotonic() < deadline
+        time.sleep(0.02)

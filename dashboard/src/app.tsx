@@ -987,6 +987,7 @@ export function App() {
       onRetry={handleRetry}
       onRepair={handleRepair}
       onGuardReconnected={handleRetry}
+      enableUpdateStatus={view !== "inbox"}
       onClearEvidence={handleClearEvidence}
       fleetContent={
         runtime.kind === "ready" ? (

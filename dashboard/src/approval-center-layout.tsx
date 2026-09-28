@@ -100,6 +100,7 @@ type LayoutProps = {
   onClearEvidence?: () => void;
   onRetryResume?: () => void;
   onGuardReconnected?: () => void;
+  enableUpdateStatus?: boolean;
 };
 
 function InboxWatchBanner(props: { onRestored?: () => void; onOpenSettings: () => void }) {
@@ -265,7 +266,7 @@ export function ApprovalCenterLayout(props: LayoutProps) {
     onUpdateGuard,
     onReinstallGuard,
     onSetUpdateChannel,
-  } = useGuardUpdate({ onReconnected: props.onGuardReconnected });
+  } = useGuardUpdate({ onReconnected: props.onGuardReconnected, enabled: props.enableUpdateStatus });
 
   return (
     <div className="min-h-screen bg-white text-brand-dark">

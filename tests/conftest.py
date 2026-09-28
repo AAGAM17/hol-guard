@@ -37,59 +37,46 @@ os.environ.pop("HOL_GUARD_TEST_ALLOW_BROWSER_OPEN", None)
 
 @pytest.fixture(autouse=True)
 def _default_unit_tests_to_python_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep legacy unit fixtures on explicit, test-only oracle mode.
+    """Keep legacy unit fixtures off the production native default.
 
     Production default remains ``auto``. Native-authority tests monkeypatch
-    ``native_mode`` or delete this variable themselves. The oracle is injected
-    below; no production module imports the semantic evaluator.
+    ``native_mode`` or delete this variable themselves. There is no Python
+    semantic evaluator; ``off`` exercises the fail-safe surface.
     """
 
+    monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
+    monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
     if "HOL_GUARD_NATIVE" not in os.environ:
         monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
 
 
-@pytest.fixture(autouse=True)
-def _explicit_python_differential_oracle(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Install the Python reviewer only for explicit differential-test paths."""
+@pytest.fixture
+def native_hook_force(monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Drive hook entrypoints through the compiled native runtime.
 
-    monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
-    monkeypatch.setenv("HOL_GUARD_PYTHON_ORACLE", "1")
-    monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
+    Hook integration tests that assert real decisions (deny/review/allow)
+    need the Rust authority: ``force`` makes ``HOL_GUARD_NATIVE_BINARY``
+    authoritative, and the standalone CLI publishes its own policy snapshot.
+    There is no Python fallback, so the runtime is required, not skipped.
+    """
 
-    from codex_plugin_scanner.guard.cli import commands_hook_source_ref
-    from codex_plugin_scanner.guard.config import GuardConfig, load_guard_config
-    from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
-    from codex_plugin_scanner.guard.runtime.hook_content_scanner import ContentScanner
-    from codex_plugin_scanner.guard.runtime.hook_decision_cache import HookDecisionCache
-    from codex_plugin_scanner.guard.runtime.hook_review_engine import HookReviewEngine
-    from codex_plugin_scanner.guard.runtime.hook_review_types import HookReviewRequest, HookReviewResponse
-    from codex_plugin_scanner.guard.store import GuardStore
-
-    def worker_oracle(worker: HookWorker) -> object:
-        return HookReviewEngine(
-            store=worker.store,
-            scanner=ContentScanner(),
-            cache=HookDecisionCache(worker.store),
-            config_loader=worker._load_config,
-            metrics=worker.metrics,
+    binary = os.environ.get("HOL_GUARD_NATIVE_BINARY")
+    if binary:
+        runtime = Path(binary).expanduser()
+    else:
+        root = Path(__file__).resolve().parents[1]
+        runtime = root / "rust" / "target" / "release" / "hol-guard-runtime"
+        if not runtime.is_file():
+            runtime = root / "rust" / "target" / "debug" / "hol-guard-runtime"
+    if not runtime.is_file():
+        pytest.fail(
+            "HOL_GUARD_NATIVE_BINARY must name the compiled Rust runtime; "
+            "native retirement proof cannot skip"
         )
-
-    def source_ref_oracle(
-        request: HookReviewRequest,
-        store: GuardStore,
-        config: GuardConfig | None,
-    ) -> HookReviewResponse:
-        return HookReviewEngine(
-            store=store,
-            scanner=ContentScanner(),
-            cache=HookDecisionCache(store),
-            config_loader=lambda guard_home, workspace: (
-                config if config is not None else load_guard_config(guard_home, workspace=workspace)
-            ),
-        ).review(request)
-
-    monkeypatch.setattr(HookWorker, "_test_python_oracle_factory", worker_oracle)
-    monkeypatch.setattr(commands_hook_source_ref, "_test_source_ref_oracle", source_ref_oracle)
+    runtime = runtime.resolve(strict=True)
+    monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
+    monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(runtime))
+    return runtime
 
 
 @pytest.fixture

@@ -1741,8 +1741,6 @@ class TestGuardSurfaceServer:
         tmp_path,
         monkeypatch,
     ) -> None:
-        from codex_plugin_scanner.guard.runtime import hook_payload_reference as payload_reference_module
-
         monkeypatch.setattr(daemon_manager_module, "_guard_daemon_process_inventory_for_guard_home", lambda _home: [])
         monkeypatch.setenv("HOL_GUARD_NATIVE", "auto")
         monkeypatch.setenv("HOL_GUARD_HOOK_FAST_PATH", "0")
@@ -1766,9 +1764,6 @@ class TestGuardSurfaceServer:
             }
             seen_payload: dict[str, object] = {}
 
-            def fail_hydration(_payload: object) -> dict[str, object]:
-                pytest.fail("daemon native ingress hydrated the referenced payload")
-
             def native_dispatch(
                 handler,
                 payload,
@@ -1784,7 +1779,6 @@ class TestGuardSurfaceServer:
                 seen_payload.update(payload)
                 return {"decision": "allow"}
 
-            monkeypatch.setattr(payload_reference_module, "hydrate_hook_payload_reference", fail_hydration)
             monkeypatch.setattr(daemon_server_module, "prepare_native_hook_policy", lambda *_args, **_kwargs: True)
             monkeypatch.setattr(daemon_server_module._GuardDaemonHandler, "_handle_runtime_hook_fast", native_dispatch)
             daemon.start()

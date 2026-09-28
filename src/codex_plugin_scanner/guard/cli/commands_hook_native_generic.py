@@ -7,9 +7,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from .commands_hook_compat_bootstrap import bootstrap_compatibility_module
 
-bootstrap_compatibility_module(globals())
+from .commands_support import *  # noqa: F403
 
 
 def _coalesce_string(*values: object | None) -> str:
@@ -133,6 +132,7 @@ if TYPE_CHECKING:
 
 
 from ..action_lattice import (
+    coerce_guard_action,
     guard_action_severity,
     most_restrictive_guard_action,
     normalize_guard_action_result,
@@ -152,6 +152,7 @@ from ..runtime.approval_reuse import (
     ApprovalReuseDecision,
     ApprovalReuseValidationFailure,
     evaluate_approval_reuse,
+    with_saved_artifact_hash_provenance,
 )
 from ..runtime.command_activity_contract import ActivityApprovalReuseStatus
 from ..trusted_local_tools import (
@@ -586,8 +587,9 @@ def _generic_hook_approval_reuse(
                 ApprovalReuseValidationFailure | None,
                 approval_context_tokens_validation_reason(saved_artifact_hash, artifact_hash),
             )
+    diagnosed_stored_hash: str | None = None
     if not saved_present:
-        diagnosed_reason = store.approval_reuse_validation_reason(
+        diagnosed_reason, diagnosed_stored_hash = store.approval_reuse_diagnostic(
             harness,
             artifact_id,
             artifact_hash,
@@ -607,12 +609,15 @@ def _generic_hook_approval_reuse(
         and decision.get("expires_at") is None
         and parse_approval_context_token(decision.get("artifact_hash")) is not None
     )
-    reuse = evaluate_approval_reuse(
-        current_action,
-        saved_action,
-        saved_decision_present=saved_present,
-        validation_reason=validation_reason,
-        durable_exact_approval=durable_exact_approval,
+    reuse = with_saved_artifact_hash_provenance(
+        evaluate_approval_reuse(
+            current_action,
+            saved_action,
+            saved_decision_present=saved_present,
+            validation_reason=validation_reason,
+            durable_exact_approval=durable_exact_approval,
+        ),
+        decision.get("artifact_hash") if decision is not None else diagnosed_stored_hash,
     )
     return reuse, saved_present
 
@@ -689,7 +694,7 @@ def _should_relax_configured_default(
     )
 
 
-def _run_hook_generic_payload(
+def run_native_generic_payload(
     args: argparse.Namespace,
     *,
     action_envelope: GuardActionEnvelope | None,
@@ -704,6 +709,8 @@ def _run_hook_generic_payload(
     _claimed_saved_allow_hash: str | None = None,
     _claim_saved_approval: bool = True,
     _post_claim_refresh_failed: bool = False,
+    native_edge_result: Mapping[str, object] | None = None,
+    native_edge_receipt: Mapping[str, object] | None = None,
 ) -> int:
     payload_map = dict(payload)
     artifact_id = _coalesce_string(
@@ -863,6 +870,22 @@ def _run_hook_generic_payload(
             if granted != current_policy_action:
                 current_policy_action = granted
                 policy_action = granted
+    if isinstance(native_edge_result, Mapping):
+        native_edge_action = coerce_guard_action(
+            native_edge_result.get("policy_action") or native_edge_result.get("minimum_action")
+        )
+        if native_edge_action is None and native_edge_result.get("decision") == "deny":
+            native_edge_action = "block"
+        if (
+            hook_event_name == "PostToolUse"
+            and native_edge_action in {"block", "sandbox-required"}
+        ):
+            # PostToolUse cannot undo the finished action; the edge deny masks
+            # the emitted output while the policy surface stays reviewable.
+            native_edge_action = "require-reapproval"
+        if native_edge_action is not None:
+            policy_action = most_restrictive_guard_action(policy_action, native_edge_action)
+            current_policy_action = most_restrictive_guard_action(current_policy_action, native_edge_action)
     runtime_artifact_hash = _generic_hook_approval_context_token(
         action_envelope=action_envelope,
         artifact_id=artifact_id,
@@ -911,11 +934,14 @@ def _run_hook_generic_payload(
     )
     if approval_reuse.should_claim and stored_policy_decision is not None and _claim_saved_approval:
         if not store.claim_approval_reuse_decision(stored_policy_decision):
-            approval_reuse = evaluate_approval_reuse(
-                current_policy_action,
-                stored_policy_decision.get("action"),
-                saved_decision_present=True,
-                validation_reason=APPROVAL_REUSE_CLAIM_FAILED,
+            approval_reuse = with_saved_artifact_hash_provenance(
+                evaluate_approval_reuse(
+                    current_policy_action,
+                    stored_policy_decision.get("action"),
+                    saved_decision_present=True,
+                    validation_reason=APPROVAL_REUSE_CLAIM_FAILED,
+                ),
+                stored_policy_decision.get("artifact_hash"),
             )
         else:
             # A successful one-shot claim is not itself the launch authority.
@@ -930,7 +956,7 @@ def _run_hook_generic_payload(
                 if refreshed_result is not None:
                     return refreshed_result
                 _post_claim_refresh_failed = True
-            return _run_hook_generic_payload(
+            return run_native_generic_payload(
                 args,
                 action_envelope=action_envelope,
                 config=config,
@@ -982,19 +1008,22 @@ def _run_hook_generic_payload(
                 post_claim_current_action,
                 "require-reapproval",
             )
-        approval_reuse = evaluate_approval_reuse(
-            post_claim_current_action,
-            "allow",
-            saved_decision_present=True,
-            validation_reason=claimed_validation_reason,
-            durable_exact_approval=(
-                claimed_validation_reason is None
-                and stored_policy_decision is not None
-                and stored_policy_decision.get("source") == "approval-gate"
-                and stored_policy_decision.get("scope") == "artifact"
-                and stored_policy_decision.get("expires_at") is None
-                and parse_approval_context_token(stored_policy_decision.get("artifact_hash")) is not None
+        approval_reuse = with_saved_artifact_hash_provenance(
+            evaluate_approval_reuse(
+                post_claim_current_action,
+                "allow",
+                saved_decision_present=True,
+                validation_reason=claimed_validation_reason,
+                durable_exact_approval=(
+                    claimed_validation_reason is None
+                    and stored_policy_decision is not None
+                    and stored_policy_decision.get("source") == "approval-gate"
+                    and stored_policy_decision.get("scope") == "artifact"
+                    and stored_policy_decision.get("expires_at") is None
+                    and parse_approval_context_token(stored_policy_decision.get("artifact_hash")) is not None
+                ),
             ),
+            _claimed_saved_allow_hash,
         )
         policy_action = approval_reuse.action
         approval_reuse_source = "claimed_saved_policy_decision"
@@ -1373,10 +1402,57 @@ def _run_hook_generic_payload(
         _emit_native_hook_notification_stderr(
             _claude_native_pretooluse_terminal_notice(payload=payload_map, reason=reason)
         )
-    if _should_emit_native_hook_response(args) or _should_emit_native_hook_json_response(
-        args,
-        event_name=hook_event_name,
-        output_stream=output_stream,
+    hook_envelope: dict[str, object] = {
+        "recorded": True,
+        "artifact_id": artifact_id,
+        "artifact_name": artifact_name,
+        "policy_action": policy_action,
+        "approval_reuse": approval_reuse.to_evidence(),
+        "policy_composition": policy_composition,
+        "scanner_evidence": scanner_evidence,
+    }
+    if isinstance(payload_map.get("approval_requests"), list):
+        hook_envelope["approval_requests"] = payload_map["approval_requests"]
+    if getattr(args, "json", False):
+        json_result = _native_hook_json_document(
+            args,
+            event_name=hook_event_name,
+            policy_action=policy_action,
+            reason=reason,
+            envelope=hook_envelope,
+            generic_path=True,
+            native_protocol_payload="hook_event_name" in payload_map or "event" not in payload_map,
+            content_flagged=_hook_command_has_encoded_markers(command_text),
+            command_surface=action_envelope is not None and action_envelope.action_type == "shell_command",
+            verified_benign=(
+                hook_event_name == "PreToolUse"
+                and is_explicitly_benign_tool_action_request(
+                    payload_map.get("tool_name"),
+                    payload_map.get("tool_input", payload_map.get("arguments")),
+                    cwd=runtime_workspace,
+                    home_dir=home_dir,
+                )
+            ),
+            replayed_decision=isinstance(payload_map.get("policy_action"), str)
+            and any(
+                isinstance(payload_map.get(key), str) and payload_map.get(key)
+                for key in ("artifact_id", "artifact_name", "tool_call_id")
+            ),
+            envelope_keyed="hook_event_name" in payload_map or "event" in payload_map,
+        )
+        if json_result is not None:
+            json_doc, json_rc = json_result
+            if json_doc:
+                _emit_native_hook_json_document(
+                    json_doc,
+                    compact=_canonical_harness_name(args.harness) == "copilot",
+                    output_stream=output_stream,
+                )
+            return json_rc
+    if _should_emit_native_hook_response(args) or (
+        getattr(args, "json", False)
+        and output_stream is not None
+        and _canonical_harness_name(args.harness) == "grok"
     ):
         if _canonical_harness_name(args.harness) == "grok":
             from ..adapters.grok_hooks import emit_grok_hook_response, grok_hook_process_exit
@@ -1442,22 +1518,34 @@ def _run_hook_generic_payload(
             output_stream=output_stream,
         )
         return 0
+    if hook_event_name == "PostToolUse":
+        _apply_native_edge_envelope_fields(hook_envelope, native_edge_result)
+        _emit_native_post_tool_envelope(
+            args.harness,
+            policy_action=policy_action,
+            reason=_coalesce_string(incoming_reason, reason) or reason,
+            response_payload=hook_envelope,
+            output_stream=output_stream,
+            as_json=getattr(args, "json", False),
+        )
+        return 0
+    blocking = policy_action in {"review", "require-reapproval", "sandbox-required", "block"}
+    hook_envelope["continue"] = True
+    hook_envelope["decision"] = "block" if blocking else "allow"
     _emit(
         "hook",
-        {
-            "recorded": True,
-            "artifact_id": artifact_id,
-            "artifact_name": artifact_name,
-            "policy_action": policy_action,
-            "approval_reuse": approval_reuse.to_evidence(),
-            "policy_composition": policy_composition,
-            "scanner_evidence": scanner_evidence,
-        },
+        hook_envelope,
         getattr(args, "json", False),
     )
-    return 1 if policy_action in {"review", "require-reapproval", "sandbox-required", "block"} else 0
+    if isinstance(payload_map.get("artifact_id"), str) and isinstance(
+        payload_map.get("policy_action"), str
+    ):
+        # The caller replayed a decision that was already recorded upstream;
+        # the envelope acknowledges it without re-blocking the harness.
+        return 0
+    return 1 if blocking else 0
 
 
 __all__ = [
-    "_run_hook_generic_payload",
+    "run_native_generic_payload",
 ]

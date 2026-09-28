@@ -11,6 +11,7 @@ use search::safe_search_arguments;
 pub mod generic;
 
 pub use generic::evaluate_pre_tool_envelope;
+pub use generic::evaluate_pre_tool_envelope_with_context;
 pub use generic::evaluate_pre_tool_envelope_with_extensions;
 
 fn executable_basename(executable: &str) -> &str {
@@ -71,6 +72,8 @@ pub(super) fn sensitive_command(value: &str) -> bool {
         "~/.pypirc",
         "/.netrc",
         "~/.netrc",
+        ".authrc",
+        ".envrc",
         "/.env",
         "~/.env",
         "id_rsa",
@@ -118,7 +121,7 @@ fn safe_git_arguments(arguments: &[String], allow_helper_context: bool) -> bool 
     };
     if !matches!(
         subcommand,
-        "status" | "diff" | "log" | "show" | "rev-parse" | "ls-files" | "remote"
+        "status" | "diff" | "log" | "show" | "rev-parse" | "ls-files"
     ) {
         return false;
     }
@@ -127,14 +130,6 @@ fn safe_git_arguments(arguments: &[String], allow_helper_context: bool) -> bool 
         .position(|argument| argument == "--")
         .unwrap_or(arguments.len());
     let active_options = &arguments[1..option_end];
-    if subcommand == "remote" {
-        let has_arguments_after_options = option_end + 1 < arguments.len();
-        return !active_options.is_empty()
-            && !has_arguments_after_options
-            && active_options
-                .iter()
-                .all(|argument| matches!(argument.as_str(), "-v" | "--verbose"));
-    }
     if !allow_helper_context
         && matches!(subcommand, "diff" | "log" | "show")
         && !(active_options
@@ -215,18 +210,6 @@ fn exfiltration_command(value: &str) -> bool {
         && upload.iter().any(|needle| lowered.contains(needle))
 }
 
-fn safe_gh_arguments(arguments: &[String]) -> bool {
-    match arguments {
-        [auth, status] if auth == "auth" && status == "status" => true,
-        [auth, status, flag]
-            if auth == "auth" && status == "status" && matches!(flag.as_str(), "--help" | "-h") =>
-        {
-            true
-        }
-        _ => false,
-    }
-}
-
 fn exact_safe_command(model: &CanonicalCommandV1, allow_git_helper_context: bool) -> bool {
     if model.confidence != "exact"
         || model.path_overridden
@@ -258,7 +241,6 @@ fn exact_safe_command(model: &CanonicalCommandV1, allow_git_helper_context: bool
             "cat" => safe_reads::safe_plain_file_arguments(&segment.arguments),
             "head" | "tail" => safe_reads::safe_head_tail_arguments(&segment.arguments),
             "git" => safe_git_arguments(&segment.arguments, allow_git_helper_context),
-            "gh" => safe_gh_arguments(&segment.arguments),
             "rg" | "grep" => safe_search_arguments(basename, &segment.arguments),
             _ => false,
         }

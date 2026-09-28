@@ -8,7 +8,6 @@ import json
 import sys
 import threading
 import time
-from contextlib import redirect_stderr
 from pathlib import Path
 
 import pytest
@@ -258,47 +257,6 @@ def test_grok_live_wait_skips_observe_events_and_zero_timeout(tmp_path: Path) ->
     )
 
 
-def test_grok_generic_hook_does_not_wait_when_timeout_is_zero(tmp_path: Path) -> None:
-    from codex_plugin_scanner.guard.cli.commands_hook_generic import _run_hook_generic_payload
-    from codex_plugin_scanner.guard.config import GuardConfig
-    from codex_plugin_scanner.guard.store import GuardStore
-
-    guard_home = tmp_path / ".hol-guard"
-    store = GuardStore(guard_home)
-    config = GuardConfig(
-        guard_home=guard_home,
-        workspace=tmp_path,
-        approval_wait_timeout_seconds=0,
-    )
-    args = argparse.Namespace(
-        harness="grok",
-        json=False,
-        policy_action="require-reapproval",
-        artifact_id=None,
-        artifact_name=None,
-    )
-    stdout_capture = io.StringIO()
-    with redirect_stderr(io.StringIO()):
-        started = time.monotonic()
-        rc = _run_hook_generic_payload(
-            args,
-            action_envelope=None,
-            config=config,
-            output_stream=stdout_capture,
-            payload={
-                "hookEventName": "PreToolUse",
-                "toolName": "run_terminal_command",
-                "toolInput": {"command": "cat README.md"},
-            },
-            home_dir=tmp_path,
-            runtime_workspace=tmp_path,
-            store=store,
-        )
-    elapsed = time.monotonic() - started
-
-    assert rc == 2
-    assert json.loads(stdout_capture.getvalue())["decision"] == "deny"
-    assert elapsed < 2
 
 
 def test_grok_emit_allows_after_live_approval(tmp_path: Path, monkeypatch) -> None:

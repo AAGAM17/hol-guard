@@ -8,9 +8,8 @@ import os
 from argparse import Namespace
 from pathlib import Path
 
-from .commands_hook_compat_bootstrap import bootstrap_compatibility_module
 
-bootstrap_compatibility_module(globals())
+from .commands_support import *  # noqa: F403
 
 from ..adapters.base import HarnessContext
 from ..cli.commands_support_command_activity import (
@@ -27,7 +26,7 @@ from .commands_support_runtime_artifacts import _hook_event_name
 from .commands_support_workspace import _workspace_from_cursor_project_dir
 
 
-def prepare_compatibility_hook_payload(payload: dict[str, object], *, harness: str) -> dict[str, object]:
+def prepare_native_hook_payload(payload: dict[str, object], *, harness: str) -> dict[str, object]:
     """Apply harness-specific normalization after native authority declines."""
 
     from ..adapters.cline_hook_payload import prepare_cline_hook_payload
@@ -52,7 +51,7 @@ def prepare_compatibility_hook_payload(payload: dict[str, object], *, harness: s
     return payload
 
 
-def maybe_handle_cursor_post_tool(
+def handle_native_cursor_post_tool(
     *,
     args: Namespace,
     payload: dict[str, object],
@@ -117,4 +116,4 @@ def maybe_handle_cursor_post_tool(
     return runtime_workspace, 0
 
 
-__all__ = ["maybe_handle_cursor_post_tool", "prepare_compatibility_hook_payload"]
+__all__ = ["handle_native_cursor_post_tool", "prepare_native_hook_payload"]

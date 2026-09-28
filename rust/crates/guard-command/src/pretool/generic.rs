@@ -5,7 +5,9 @@ mod result;
 
 use crate::native_command_controls::CompiledNativeCommandControls;
 use crate::{CanonicalCommandV1, CommandModelRequestV1};
-use guard_contracts::{PreToolActionTypeV1, PreToolOperationV1, PreToolResultV1};
+use guard_contracts::{
+    NativePromptRiskClassV1, PreToolActionTypeV1, PreToolOperationV1, PreToolResultV1,
+};
 use serde_json::Value;
 
 use super::{evaluate_pre_tool, PreToolDecisionV1};
@@ -317,6 +319,17 @@ pub fn evaluate_pre_tool_envelope_with_extensions(
     controls: Option<&CompiledNativeCommandControls>,
     deadline: Option<Instant>,
 ) -> PreToolResultV1 {
+    evaluate_pre_tool_envelope_with_context(harness, event, payload, controls, deadline, None)
+}
+
+pub fn evaluate_pre_tool_envelope_with_context(
+    harness: &str,
+    event: &str,
+    payload: &Value,
+    controls: Option<&CompiledNativeCommandControls>,
+    deadline: Option<Instant>,
+    cwd: Option<&str>,
+) -> PreToolResultV1 {
     let signals = match extract_generic_signals(payload) {
         Ok(value) => value,
         Err(error) => return generic_error_result(harness, event, error),
@@ -329,7 +342,33 @@ pub fn evaluate_pre_tool_envelope_with_extensions(
             extraction_provenance: "pre-tool-generic".to_owned(),
         })
     });
-    let result = evaluate_signals(harness, event, &signals, command_decision.as_ref());
+    let mut result = evaluate_signals(harness, event, &signals, command_decision.as_ref(), cwd);
+    if event == "UserPromptSubmit" {
+        let mut classes = Vec::new();
+        if result.action.sensitive_target && signals.content_sensitive {
+            classes.push(if signals.env_reference {
+                NativePromptRiskClassV1::LocalEnvRead
+            } else {
+                NativePromptRiskClassV1::SensitiveMaterial
+            });
+        }
+        if signals.exfil_intent {
+            classes.push(NativePromptRiskClassV1::ExfilIntent);
+        }
+        if signals.destructive_intent {
+            classes.push(NativePromptRiskClassV1::DestructiveIntent);
+        }
+        if signals.subprocess_intent {
+            classes.push(NativePromptRiskClassV1::SubprocessIntent);
+        }
+        if signals.guard_bypass_intent {
+            classes.push(NativePromptRiskClassV1::GuardBypassIntent);
+        }
+        if signals.prompt_injection_intent {
+            classes.push(NativePromptRiskClassV1::PromptInjectionIntent);
+        }
+        result.prompt_risk_classes = classes;
+    }
     match (controls, command_decision) {
         (Some(controls), Some(Ok(decision))) => controls.apply_with_tool(
             Some(&decision.command_model),
@@ -354,6 +393,7 @@ fn evaluate_signals(
     event: &str,
     signals: &GenericSignals,
     command_decision: Option<&Result<PreToolDecisionV1, String>>,
+    cwd: Option<&str>,
 ) -> PreToolResultV1 {
     let (mut action_type, mut operation) = infer_action_type(
         event,
@@ -369,13 +409,16 @@ fn evaluate_signals(
         action_type = PreToolActionTypeV1::Package;
         operation = PreToolOperationV1::Install;
     }
+    let benign_prompt = event == "UserPromptSubmit"
+        && action_type == PreToolActionTypeV1::Prompt
+        && signals.benign_prompt;
     let action = generic_action(
         harness,
         event,
         action_type,
         operation,
         true,
-        signals.sensitive_target,
+        signals.sensitive_target && !benign_prompt,
     );
     let command_proves_benign = command_decision
         .and_then(|decision| decision.as_ref().ok())
@@ -406,12 +449,73 @@ fn evaluate_signals(
             "HOL Guard blocked a PreToolUse action that combines sensitive data with network transfer.",
         );
     }
-    if signals.sensitive_target && action_type == PreToolActionTypeV1::Prompt {
+    if signals.guard_bypass_intent && action_type == PreToolActionTypeV1::Prompt {
         return generic_result(
             action,
             "block",
+            "native_guard_bypass_prompt",
+            "HOL Guard blocked this prompt because it asks to disable Guard protection.",
+        );
+    }
+    if signals.exfil_intent && action_type == PreToolActionTypeV1::Prompt {
+        let (floor, code) = if action.sensitive_target {
+            ("block", "native_prompt_exfiltration_block")
+        } else {
+            ("require-reapproval", "native_prompt_exfiltration_review")
+        };
+        return generic_result(
+            action,
+            floor,
+            code,
+            "HOL Guard requires review because this prompt asks to transfer data.",
+        );
+    }
+    if signals.destructive_intent && action_type == PreToolActionTypeV1::Prompt {
+        let (floor, code) = if action.sensitive_target {
+            ("block", "native_prompt_destructive_block")
+        } else {
+            ("require-reapproval", "native_prompt_destructive_review")
+        };
+        return generic_result(
+            action,
+            floor,
+            code,
+            "HOL Guard requires review because this prompt asks to change local files.",
+        );
+    }
+    if action.sensitive_target && action_type == PreToolActionTypeV1::Prompt {
+        // Prompts that request sensitive local data are reviewable: the
+        // installed risk policy (local_secret_read) still decides whether a
+        // stricter posture turns this floor into a terminal block.
+        return generic_result(
+            action,
+            "require-reapproval",
             "native_sensitive_prompt",
-            "HOL Guard blocked a prompt that requests sensitive local data before execution.",
+            "HOL Guard requires review because this prompt requests sensitive local data.",
+        );
+    }
+    if signals.prompt_injection_intent && action_type == PreToolActionTypeV1::Prompt {
+        return generic_result(
+            action,
+            "require-reapproval",
+            "native_prompt_injection_review",
+            "HOL Guard requires review because this prompt asks to override trusted instructions.",
+        );
+    }
+    if signals.subprocess_intent && action_type == PreToolActionTypeV1::Prompt {
+        return generic_result(
+            action,
+            "review",
+            "native_prompt_subprocess_review",
+            "HOL Guard requires review because this prompt asks to run a subprocess.",
+        );
+    }
+    if benign_prompt {
+        return generic_result(
+            action,
+            "allow",
+            "native_prompt_benign",
+            "HOL Guard found no guarded prompt intent in this bounded request.",
         );
     }
     if let Some(command_decision) = command_decision {
@@ -462,7 +566,7 @@ fn evaluate_signals(
         && !signals.sensitive_target
         && signals.url_values.is_empty()
         && signals.path_values.len() == 1
-        && bounded_workspace_read_path(&signals.path_values[0])
+        && bounded_workspace_read_path(&signals.path_values[0], cwd)
     {
         return generic_result(
             action,
@@ -475,7 +579,7 @@ fn evaluate_signals(
     generic_result(action, "review", reason_code, reason)
 }
 
-fn bounded_workspace_read_path(value: &str) -> bool {
+fn bounded_workspace_read_path(value: &str, cwd: Option<&str>) -> bool {
     let path = value.trim();
     if path.is_empty() || path.len() > 4096 {
         return false;
@@ -488,5 +592,63 @@ fn bounded_workspace_read_path(value: &str) -> bool {
     if path.split(['/', '\\']).any(|part| part == "..") {
         return false;
     }
-    super::safe_reads::safe_read_target(path)
+    let stripped;
+    let candidate = if path.starts_with('/') || path.starts_with('~') {
+        let Some(root) = cwd else {
+            return false;
+        };
+        let Some(relative) = workspace_relative_path(path, root) else {
+            return false;
+        };
+        stripped = relative;
+        stripped.as_str()
+    } else {
+        path
+    };
+    super::safe_reads::safe_read_target(candidate)
+}
+
+/// Resolve an absolute read target against the hook's declared workspace.
+/// Both sides are normalized lexically; a target that escapes the workspace
+/// root never degrades to a relative path. Platforms whose workspace aliases
+/// differ from the harness's absolute spelling (for example `/tmp` versus
+/// `/private/tmp` on macOS) are reconciled through canonicalization.
+fn workspace_relative_path(path: &str, root: &str) -> Option<String> {
+    let normalize = |value: &str| -> Option<Vec<String>> {
+        let unified = value.replace('\\', "/");
+        let mut parts = Vec::new();
+        for part in unified.split('/') {
+            if part.is_empty() || part == "." {
+                continue;
+            }
+            if part == ".." || part.starts_with('~') || part.contains(':') {
+                return None;
+            }
+            parts.push(part.to_owned());
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        Some(parts)
+    };
+    let root = root.trim();
+    if !(root.starts_with('/') || root.starts_with('\\')) {
+        return None;
+    }
+    if let Some(relative) = normalize(root).and_then(|root_parts| {
+        normalize(path).and_then(|path_parts| {
+            (path_parts.len() > root_parts.len() && path_parts.starts_with(&root_parts))
+                .then(|| path_parts[root_parts.len()..].join("/"))
+        })
+    }) {
+        return Some(relative);
+    }
+    let canonical_root = std::fs::canonicalize(root).ok()?;
+    let canonical_path = std::fs::canonicalize(path).ok()?;
+    let suffix = canonical_path.strip_prefix(&canonical_root).ok()?;
+    if suffix.as_os_str().is_empty() {
+        return None;
+    }
+    normalize(&suffix.to_string_lossy())
+        .map(|parts| parts.join("/"))
 }

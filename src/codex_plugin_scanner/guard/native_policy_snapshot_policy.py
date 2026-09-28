@@ -27,7 +27,6 @@ from .native_policy_snapshot_constants import (
     _VALID_SECURITY_LEVELS,
     POLICY_SNAPSHOT_MAX_HARNESS_ENTRIES,
     POLICY_SNAPSHOT_MAX_MAP_ENTRIES,
-    POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS,
     NativePolicySnapshotError,
 )
 
@@ -74,16 +73,10 @@ def _action_value(config: GuardConfig | Mapping[str, object], name: str, default
     return value
 
 
-def _string_map(
-    value: object,
-    *,
-    risk_keys: bool = False,
-    selector_keys: bool = False,
-    max_entries: int = POLICY_SNAPSHOT_MAX_MAP_ENTRIES,
-) -> dict[str, str]:
+def _string_map(value: object, *, risk_keys: bool = False, selector_keys: bool = False) -> dict[str, str]:
     if value is None:
         return {}
-    if not isinstance(value, Mapping) or len(value) > max_entries:
+    if not isinstance(value, Mapping) or len(value) > POLICY_SNAPSHOT_MAX_MAP_ENTRIES:
         raise NativePolicySnapshotError("native_policy_snapshot_policy_invalid")
     result: dict[str, str] = {}
     for key, action in value.items():
@@ -166,7 +159,7 @@ def effective_native_policy_v3(config: GuardConfig | Mapping[str, object]) -> di
         or redaction_level not in _VALID_REDACTION_LEVELS
     ):
         raise NativePolicySnapshotError("native_policy_snapshot_policy_invalid")
-    policy: dict[str, object] = {
+    return {
         "protection_posture": posture,
         "security_level": security_level,
         "default_action": _action_value(config, "default_action", "warn"),
@@ -182,29 +175,6 @@ def effective_native_policy_v3(config: GuardConfig | Mapping[str, object]) -> di
         "sandbox_analysis": sandbox_analysis,
         "receipt_redaction_level": redaction_level,
     }
-    mcp_actions = _observed_mcp_action_map(_config_value(config, "mcp_tool_actions"))
-    if mcp_actions:
-        policy["mcp_tool_actions"] = mcp_actions
-    return policy
-
-
-def _observed_mcp_action_map(value: object) -> dict[str, str]:
-    from .runtime.observed_mcp_tools import observed_mcp_tool
-
-    actions = _string_map(value, max_entries=POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS)
-    for selector, action in actions.items():
-        harness, separator, tool_name = selector.partition(":")
-        wildcard = tool_name.endswith("__*")
-        parsed = observed_mcp_tool(harness, tool_name[:-1] + "probe" if wildcard else tool_name)
-        if (
-            not separator
-            or parsed is None
-            or parsed.harness != harness
-            or action not in {"allow", "block"}
-            or (wildcard and action != "block")
-        ):
-            raise NativePolicySnapshotError("native_policy_snapshot_policy_invalid")
-    return actions
 
 
 def _stricter_action(left: object, right: object) -> str:
@@ -222,7 +192,7 @@ _SCALAR_ACTION_FIELDS = (
     "new_network_domain_action",
     "subprocess_action",
 )
-_MAP_FIELDS = ("risk_actions", "publisher_actions", "artifact_actions", "mcp_tool_actions")
+_MAP_FIELDS = ("risk_actions", "publisher_actions", "artifact_actions")
 
 
 def _merge_scalar_actions(
@@ -243,15 +213,14 @@ def _merge_action_maps(
     for field in _MAP_FIELDS:
         values: dict[str, str] = {}
         for policy in policies:
-            mapping = policy.get(field, {} if field == "mcp_tool_actions" else None)
+            mapping = policy.get(field)
             if not isinstance(mapping, Mapping):
                 raise NativePolicySnapshotError("native_policy_snapshot_policy_invalid")
             for key, action in mapping.items():
                 if not isinstance(key, str):
                     raise NativePolicySnapshotError("native_policy_snapshot_policy_invalid")
                 values[key] = _stricter_action(values.get(key, "allow"), action)
-        if values or field != "mcp_tool_actions":
-            merged[field] = values
+        merged[field] = values
 
 
 def _merge_harness_actions(

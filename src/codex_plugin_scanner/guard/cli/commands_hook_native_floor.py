@@ -8,6 +8,9 @@ from typing import Any
 
 from ..action_lattice import coerce_guard_action, most_restrictive_guard_action
 from ..models import GuardAction, GuardArtifact
+from ..native_mode import native_mode_requires_rust
+from ..native_policy_snapshot_constants import NativePolicySnapshotError
+from ..native_policy_snapshot_publisher import provision_native_verifier_key_for_store
 from ..native_pretool import native_pre_tool_policy_floor
 from ..runtime.actions import GuardActionEnvelope
 from ..store import GuardStore
@@ -52,6 +55,33 @@ def native_pre_tool_floor_action(
     )
 
 
+def _ensure_native_resident_verifier(
+    store: GuardStore | None,
+    guard_home: Path,
+) -> None:
+    """Provision the resident verifier key before a native floor request.
+
+    Production hook entry provisions through the policy snapshot publisher at
+    worker start.  A direct evaluator call must establish the same one-time
+    prerequisite or the resident refuses to serve and the floor fails closed.
+    Provisioning stays best-effort here: failure leaves the fail-closed floor
+    intact instead of inventing a weaker native answer.
+    """
+
+    if store is None or not native_mode_requires_rust():
+        return
+    key_path = guard_home / "native-runtime" / "policy-verifier.key"
+    try:
+        if key_path.is_file():
+            return
+    except OSError:
+        return
+    try:
+        provision_native_verifier_key_for_store(store)
+    except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError, AttributeError):
+        return
+
+
 def attach_native_pre_tool_floor(
     event_name: str,
     payload: Mapping[str, object],
@@ -61,10 +91,14 @@ def attach_native_pre_tool_floor(
     guard_home: Path,
     cwd: Path | None,
     home_dir: Path,
+    store: GuardStore | None = None,
 ) -> GuardAction | None:
+    command = _runtime_package_raw_command(payload, action_envelope)
+    if event_name == "PreToolUse" and command is not None:
+        _ensure_native_resident_verifier(store, guard_home)
     floor = native_pre_tool_floor_action(
         event_name,
-        _runtime_package_raw_command(payload, action_envelope),
+        command,
         guard_home=guard_home,
         cwd=cwd,
         home_dir=home_dir,

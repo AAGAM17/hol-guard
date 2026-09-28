@@ -137,7 +137,6 @@ from ..local_supply_chain import (
 from ..managed_controls_policy_fields import ParsedManagedControlsPolicy
 from ..models import DECISION_SCOPE_VALUES, DecisionScope, PolicyDecision, format_local_http_origin
 from ..native_mode import native_mode_requires_rust as _native_mode_requires_rust
-from ..native_mode import python_oracle_surface_enabled
 from ..package_firewall_action_rate_limit import PackageFirewallActionRateLimiter
 from ..package_firewall_entitlement import (
     package_firewall_action_states,
@@ -5754,7 +5753,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_runtime_hook(self, payload: dict[str, object], query: str, *, default_harness: str) -> None:
-        from ..runtime.hook_payload_reference import (
+        from .hook_request_parsing import (
             HookPayloadReferenceError,
             hook_payload_reference_size,
         )
@@ -6073,7 +6072,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         payload_hydrated: bool = False,
         deadline: float | None = None,
     ) -> None:
-        if self._hook_fast_path_enabled() or _native_mode_requires_rust() or not python_oracle_surface_enabled():
+        if self._hook_fast_path_enabled() or _native_mode_requires_rust():
             result = self._handle_runtime_hook_fast(
                 payload,
                 params,
@@ -6136,8 +6135,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         deadline: float | None,
     ) -> dict[str, object] | None:
         """Try the resident hook worker; only explicit rollback may fall back."""
-        from .hook_worker import HookWorkerUnsupported
-
         daemon_server = self._daemon_server()
         effective_home_dir = Path(home_dir) if home_dir is not None else daemon_server.home_dir
         effective_guard_home = Path(guard_home) if guard_home is not None else daemon_server.store.guard_home
@@ -6152,27 +6149,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 guard_home=effective_guard_home,
                 workspace=Path(workspace) if workspace else None,
                 deadline=deadline,
-            )
-        except HookWorkerUnsupported:
-            if _native_mode_requires_rust():
-                return self._runtime_hook_fail_safe_response(
-                    payload,
-                    params,
-                    default_harness=default_harness,
-                    reason="HOL Guard could not complete the native hook decision safely.",
-                    reason_code="native_hook_worker_unsupported",
-                    native_authoritative=True,
-                )
-            if python_oracle_surface_enabled():
-                # The test-only oracle may exercise the compatibility seam.
-                return None
-            return self._runtime_hook_fail_safe_response(
-                payload,
-                params,
-                default_harness=default_harness,
-                reason="HOL Guard could not complete the native hook decision safely.",
-                reason_code="native_hook_compatibility_disabled",
-                native_authoritative=True,
             )
         except Exception as error:
             # Fail safe: deny/block. Do not fall back to compatibility CLI for

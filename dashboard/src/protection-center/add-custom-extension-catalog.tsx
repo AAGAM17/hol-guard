@@ -57,11 +57,10 @@ export function BulkPolicyPicker(props: {
   onChange: (state: LocalCliCommandState) => void;
   groupLabel?: string;
   mixedCopy?: string;
-  allowLabel?: string;
 }) {
   const choices: Array<{ value: LocalCliCommandState; label: string }> = [
     { value: "inherit", label: "Recommended" },
-    { value: "allow", label: props.allowLabel ?? "Allow all" },
+    { value: "allow", label: "Allow all" },
     { value: "block", label: "Block all" },
   ];
   const mixed = props.value === "mixed";
@@ -98,7 +97,7 @@ export function BulkPolicyPicker(props: {
       </div>
       {props.value === "mixed" ? (
         <p id="bulk-policy-mixed" className="mt-2 text-xs leading-5 text-brand-dark/70">
-          {props.mixedCopy ?? `Custom mix. Pick Recommended, ${props.allowLabel ?? "Allow all"}, or Block all to reset every tool.`}
+          {props.mixedCopy ?? "Custom mix. Pick Recommended, Allow all, or Block all to reset every tool."}
         </p>
       ) : null}
     </div>

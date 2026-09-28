@@ -11,8 +11,7 @@ Security:
 - Never calls ``run_guard_command()``.
 - Native PostToolUse is decided by Rust for ``auto``/``force``. When review
   cannot complete, PostToolUse continues; PreToolUse uses the emergency-safe
-  floor. Explicit ``off`` is a fail-safe disablement in production; only a
-  test-injected oracle may run.
+  floor. Explicit ``off`` is a fail-safe disablement.
 - Supported generic PreToolUse is decided by Rust. Native failure uses the
   mechanical emergency-safe action-class floor: local inspection may continue,
   while mutating, network, secret, destructive, and uncertain actions pause.
@@ -24,10 +23,9 @@ Security:
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping
-from contextlib import suppress
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast, final
+from typing import TYPE_CHECKING, Protocol, final
 
 from ..cli.commands_support_command_activity import (
     hook_post_succeeded,
@@ -35,29 +33,20 @@ from ..cli.commands_support_command_activity import (
 )
 from ..config import load_guard_config
 from ..native_hook_edge import review_raw_hook_native
-from ..native_mode import python_oracle_enabled, python_oracle_surface_enabled
 from ..native_policy_snapshot import get_native_policy_snapshot_publisher
 from ..native_policy_snapshot_acked import acked_snapshot_binding_for_store
 from ..native_policy_snapshot_constants import _PUBLISH_TIMEOUT_SECONDS
 from ..native_pretool import review_pre_tool_native
-from ..native_route_receipt import record_python_semantic_hook_route
 from ..native_runtime import NativeRuntimeStatus, native_mode, native_runtime_status, review_post_tool_native
 from ..runtime.hook_review_types import (
-    HookOutputSummary,
-    HookPayloadKind,
     HookReviewRequest,
-    HookReviewResponse,
-    HookSourceFileRef,
 )
 from .hook_availability_policy import availability_harness_response
 from .hook_request_parsing import (
     build_hook_review_request,
-    parse_output_summary,
-    parse_source_ref,
-    payload_kind,
     runtime_hook_event_name,
 )
-from .hook_worker_native import HookWorkerNativeMixin, HookWorkerUnsupported, PythonOracle
+from .hook_worker_native import HookWorkerNativeMixin
 from .hook_worker_responses import (
     harness_json_from_review_response,
 )
@@ -105,11 +94,6 @@ def _post_tool_unavailable_response(
 class HookWorker(HookWorkerNativeMixin):
     """Resident hook review worker for the daemon."""
 
-    # The callback is installed by pytest's explicit differential-oracle
-    # fixture. Production has no callback and therefore cannot construct a
-    # Python semantic reviewer from this worker.
-    _test_python_oracle_factory: ClassVar[Callable[[HookWorker], PythonOracle] | None] = None
-
     def __init__(
         self,
         *,
@@ -123,19 +107,9 @@ class HookWorker(HookWorkerNativeMixin):
         self.activity_writer = activity_writer
         self._publish_native_policy = publish_native_policy
         self._last_native_decision_receipt: dict[str, object] | None = None
-        self._python_oracle: Callable[[HookReviewRequest], HookReviewResponse] | None = None
-        self._python_oracle_object: PythonOracle | None = None
         from .hook_metrics import HookMetricsRecorder
 
         self.metrics = HookMetricsRecorder()
-        if python_oracle_enabled():
-            factory = type(self)._test_python_oracle_factory
-            if callable(factory):
-                oracle = factory(self)
-                review = getattr(oracle, "review", None)
-                if callable(review):
-                    self._python_oracle_object = oracle
-                    self._python_oracle = cast(Callable[[HookReviewRequest], HookReviewResponse], review)
         self.policy_snapshot_publisher = get_native_policy_snapshot_publisher(self.store)
         mode = native_mode()
         self._owns_policy_snapshot_publisher = publish_native_policy and mode in {"auto", "force", "shadow"}
@@ -145,12 +119,6 @@ class HookWorker(HookWorkerNativeMixin):
             wait_until_ready = getattr(self.policy_snapshot_publisher, "wait_until_ready", None)
             if callable(wait_until_ready):
                 _ = wait_until_ready(time.monotonic() + _NATIVE_POLICY_READY_TIMEOUT_SECONDS)
-
-    @property
-    def test_oracle(self) -> PythonOracle | None:
-        """Expose the injected differential oracle to test fixtures only."""
-
-        return self._python_oracle_object
 
     @property
     def last_native_decision_receipt(self) -> dict[str, object] | None:
@@ -285,8 +253,7 @@ class HookWorker(HookWorkerNativeMixin):
         unavailable or returns no result, high-impact PreToolUse pauses.
         PostToolUse continues so the turn does not freeze. Emergency-safe
         local inspection continues with an explicit degraded reason code.
-        ``off`` and ``shadow`` can use only an explicit test oracle;
-        production requests remain fail-safe.
+        ``off`` and ``shadow`` return fail-safe responses.
         """
         self._last_native_decision_receipt = None
         harness = self._runtime_harness(params) or default_harness
@@ -380,33 +347,6 @@ class HookWorker(HookWorkerNativeMixin):
                     home_dir=home_dir,
                     guard_home=guard_home,
                 )
-        elif self._python_oracle is not None and python_oracle_surface_enabled(mode):
-            record_python_semantic_hook_route()
-            try:
-                response = self._python_oracle(request)
-            except Exception:
-                self._record_post_tool_activity(
-                    harness=harness,
-                    payload=payload,
-                    succeeded=hook_post_succeeded(event_name, payload),
-                )
-                return _post_tool_unavailable_response(
-                    payload,
-                    harness=harness,
-                    reason_code="python_oracle_exception",
-                    workspace=workspace,
-                    home_dir=home_dir,
-                    guard_home=guard_home,
-                )
-            if mode == "shadow":
-                with suppress(Exception):
-                    _ = review_post_tool_native(
-                        request,
-                        observe_mode=response.observe_mode,
-                        policy_snapshot=self._native_policy_snapshot(workspace, deadline=deadline),
-                    )
-        elif python_oracle_enabled() and python_oracle_surface_enabled(mode):
-            raise HookWorkerUnsupported("explicit test oracle is not installed in this process")
         else:
             self._record_post_tool_activity(
                 harness=harness,
@@ -484,17 +424,7 @@ class HookWorker(HookWorkerNativeMixin):
     def _hook_event_name(self, payload: Mapping[str, object]) -> str:
         return runtime_hook_event_name(payload)
 
-    def _payload_kind(self, payload: Mapping[str, object]) -> HookPayloadKind:
-        return payload_kind(payload)
-
-    def _parse_output_summary(self, payload: Mapping[str, object]) -> HookOutputSummary | None:
-        return parse_output_summary(payload)
-
-    def _parse_source_ref(self, payload: Mapping[str, object]) -> HookSourceFileRef | None:
-        return parse_source_ref(payload)
-
 
 __all__ = [
     "HookWorker",
-    "HookWorkerUnsupported",
 ]

@@ -5,9 +5,7 @@ The hook transport is Python, but source bytes, path classification, file
 identity, and content equivalence are Rust responsibilities.  This gate keeps
 the boundary executable: it inventories synchronous Python I/O and hashes,
 walks the supported hook call graph, and rejects a new Python operation on a
-native decision branch.  The compatibility oracle remains observable in the
-inventory, but is explicitly limited to ``off``/``shadow`` and differential
-tests.
+native decision branch.
 """
 
 from __future__ import annotations
@@ -60,16 +58,14 @@ _EQUIVALENCE_FUNCTIONS: Final = frozenset({"output_equivalent", "parity_signatur
 
 _COMPATIBILITY_PATHS: Final = frozenset(
     {
-        "src/codex_plugin_scanner/guard/runtime/hook_source_read.py",
-        "src/codex_plugin_scanner/guard/runtime/hook_content_scanner.py",
-        "src/codex_plugin_scanner/guard/runtime/hook_decision_cache.py",
-        "src/codex_plugin_scanner/guard/runtime/hook_review_engine.py",
         "src/codex_plugin_scanner/guard/runtime/source_paths.py",
         "src/codex_plugin_scanner/guard/native_command_model.py",
     }
 )
 _TRANSPORT_IDENTITY_PATHS: Final = frozenset(
     {
+        # Payload-reference metadata validation; the native edge reads bytes.
+        "src/codex_plugin_scanner/guard/daemon/hook_request_parsing.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_resident_client.py",
         "src/codex_plugin_scanner/guard/native_runtime_resilience.py",
@@ -95,8 +91,6 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_pretool.py",
         "src/codex_plugin_scanner/guard/native_resident_client.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
-        # Bounded in-memory PostTool output extraction for recording evidence.
-        "src/codex_plugin_scanner/guard/runtime/hook_output_text.py",
     }
 )
 _ASYNC_POLICY_PATHS: Final = frozenset(
@@ -167,7 +161,7 @@ ROOTS: Final = (
     ),
     RootSpec(
         "src/codex_plugin_scanner/guard/cli/commands_hook_native_authority.py",
-        "try_native_or_source_ref_hook",
+        "route_native_hook",
     ),
 )
 

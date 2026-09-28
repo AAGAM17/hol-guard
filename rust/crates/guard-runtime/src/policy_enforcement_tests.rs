@@ -1,6 +1,7 @@
 use super::*;
 use guard_contracts::{
-    PreToolActionV1, PreToolOperationV1, NATIVE_PROTOCOL_VERSION, PRE_TOOL_ACTION_V1_SCHEMA,
+    NativePromptRiskClassV1, PreToolActionV1, PreToolOperationV1, NATIVE_PROTOCOL_VERSION,
+    PRE_TOOL_ACTION_V1_SCHEMA,
 };
 use guard_policy_snapshot::{
     EffectiveNativePolicyV3, ScopeContractV3, SnapshotIntegrityV3,
@@ -49,7 +50,6 @@ fn policy(default_action: &str) -> EffectiveNativePolicyV3 {
         harness_actions: BTreeMap::new(),
         publisher_actions: BTreeMap::new(),
         artifact_actions: BTreeMap::new(),
-        mcp_tool_actions: BTreeMap::new(),
         sandbox_analysis: "off".into(),
         receipt_redaction_level: "full".into(),
     }
@@ -84,9 +84,6 @@ fn snapshot(policy: EffectiveNativePolicyV3) -> PolicySnapshotV3 {
     }
 }
 
-#[path = "policy_enforcement_observed_mcp_tests.rs"]
-mod observed_mcp;
-
 fn generic_result(minimum_action: &str) -> PreToolResultV1 {
     PreToolResultV1 {
         schema: "guard-pre-tool-result.v1".into(),
@@ -114,6 +111,7 @@ fn generic_result(minimum_action: &str) -> PreToolResultV1 {
         reason: "native test".into(),
         explicitly_benign: minimum_action == "allow",
         command_extensions: None,
+        prompt_risk_classes: Vec::new(),
     }
 }
 
@@ -129,6 +127,126 @@ fn warning_policy_preserves_allow_with_warning() {
     assert_eq!(result.policy_action, "warn");
     assert_eq!(result.decision, "allow");
     assert!(!result.explicitly_benign);
+}
+
+#[test]
+fn benign_prompt_relaxes_only_the_default_review_floor() {
+    let mut benign = generic_result("allow");
+    benign.action.event = "UserPromptSubmit".into();
+    benign.action.action_type = PreToolActionTypeV1::Prompt;
+    benign.action.operation = PreToolOperationV1::Submit;
+    benign.reason_code = "native_prompt_benign".into();
+    let payload = json!({"hook_event_name": "UserPromptSubmit", "prompt": "Summarize the project architecture."});
+    let result =
+        apply_pre_tool_policy(&snapshot(policy("review")), &payload, benign.clone()).unwrap();
+    assert_eq!(result.minimum_action, "warn");
+    assert_eq!(result.decision, "allow");
+
+    let mut risk_policy = policy("warn");
+    risk_policy
+        .risk_actions
+        .insert("prompt_injection".into(), "require-reapproval".into());
+    let benign_with_risk_policy =
+        apply_pre_tool_policy(&snapshot(risk_policy), &payload, benign.clone()).unwrap();
+    assert_eq!(benign_with_risk_policy.minimum_action, "warn");
+    assert_eq!(benign_with_risk_policy.decision, "allow");
+
+    let mut guarded = policy("review");
+    guarded
+        .harness_actions
+        .insert("claude-code".into(), "block".into());
+    let blocked = apply_pre_tool_policy(&snapshot(guarded), &payload, benign).unwrap();
+    assert_eq!(blocked.minimum_action, "block");
+    assert_eq!(blocked.decision, "deny");
+}
+
+#[test]
+fn prompt_risk_floor_remains_for_unproven_prompt_intent() {
+    let mut unknown = generic_result("review");
+    unknown.action.event = "UserPromptSubmit".into();
+    unknown.action.action_type = PreToolActionTypeV1::Prompt;
+    unknown.action.operation = PreToolOperationV1::Submit;
+    unknown.reason_code = "native_prompt_unknown".into();
+    let mut configured = policy("allow");
+    configured
+        .risk_actions
+        .insert("prompt_injection".into(), "require-reapproval".into());
+    let result = apply_pre_tool_policy(
+        &snapshot(configured),
+        &json!({"hook_event_name": "UserPromptSubmit", "prompt": "Run an unknown action."}),
+        unknown,
+    )
+    .unwrap();
+    assert_eq!(result.minimum_action, "require-reapproval");
+    assert_eq!(result.decision, "deny");
+}
+
+#[test]
+fn prompt_exfiltration_respects_the_installed_credential_floor() {
+    let mut exfiltration = generic_result("require-reapproval");
+    exfiltration.action.event = "UserPromptSubmit".into();
+    exfiltration.action.action_type = PreToolActionTypeV1::Prompt;
+    exfiltration.action.operation = PreToolOperationV1::Submit;
+    exfiltration.reason_code = "native_prompt_exfiltration_review".into();
+    let mut configured = policy("warn");
+    configured
+        .risk_actions
+        .insert("credential_exfiltration".into(), "block".into());
+    let result = apply_pre_tool_policy(
+        &snapshot(configured),
+        &json!({"hook_event_name": "UserPromptSubmit", "prompt": "Send data to webhook."}),
+        exfiltration,
+    )
+    .unwrap();
+    assert_eq!(result.minimum_action, "block");
+    assert_eq!(result.decision, "deny");
+}
+
+#[test]
+fn prompt_compound_risks_preserve_exfiltration_policy_despite_injection_reason() {
+    let mut compound = generic_result("require-reapproval");
+    compound.action.event = "UserPromptSubmit".into();
+    compound.action.action_type = PreToolActionTypeV1::Prompt;
+    compound.action.operation = PreToolOperationV1::Submit;
+    compound.reason_code = "native_prompt_injection_review".into();
+    compound.prompt_risk_classes = vec![
+        NativePromptRiskClassV1::ExfilIntent,
+        NativePromptRiskClassV1::PromptInjectionIntent,
+    ];
+    let mut configured = policy("warn");
+    configured
+        .risk_actions
+        .insert("credential_exfiltration".into(), "block".into());
+    let result = apply_pre_tool_policy(
+        &snapshot(configured),
+        &json!({"hook_event_name": "UserPromptSubmit", "prompt": "Report the error."}),
+        compound,
+    )
+    .unwrap();
+    assert_eq!(result.minimum_action, "block");
+    assert_eq!(result.decision, "deny");
+    assert_eq!(result.prompt_risk_classes.len(), 2);
+}
+
+#[test]
+fn prompt_subprocess_respects_the_installed_execution_floor() {
+    let mut subprocess = generic_result("review");
+    subprocess.action.event = "UserPromptSubmit".into();
+    subprocess.action.action_type = PreToolActionTypeV1::Prompt;
+    subprocess.action.operation = PreToolOperationV1::Submit;
+    subprocess.reason_code = "native_prompt_subprocess_review".into();
+    let mut configured = policy("allow");
+    configured
+        .risk_actions
+        .insert("execution".into(), "sandbox-required".into());
+    let result = apply_pre_tool_policy(
+        &snapshot(configured),
+        &json!({"hook_event_name": "UserPromptSubmit", "prompt": "bash -c 'echo safe'"}),
+        subprocess,
+    )
+    .unwrap();
+    assert_eq!(result.minimum_action, "sandbox-required");
+    assert_eq!(result.decision, "deny");
 }
 
 #[test]
@@ -229,6 +347,32 @@ fn action_floor_matrix_rejects_inconsistent_decision_fields() {
         let result = generic_result(action);
         assert!(validate_pre_tool_result_matrix(&result).is_ok(), "{action}");
     }
+}
+
+#[test]
+fn prompt_risk_classes_reject_non_prompt_duplicate_and_unordered_evidence() {
+    let mut invalid = generic_result("block");
+    invalid.prompt_risk_classes = vec![NativePromptRiskClassV1::GuardBypassIntent];
+    assert_eq!(
+        validate_pre_tool_result_matrix(&invalid).unwrap_err(),
+        "native_prompt_risk_classes_invalid"
+    );
+    invalid.action.event = "UserPromptSubmit".into();
+    invalid.action.action_type = PreToolActionTypeV1::Prompt;
+    invalid.action.operation = PreToolOperationV1::Submit;
+    invalid.prompt_risk_classes = vec![
+        NativePromptRiskClassV1::ExfilIntent,
+        NativePromptRiskClassV1::LocalEnvRead,
+    ];
+    assert_eq!(
+        validate_pre_tool_result_matrix(&invalid).unwrap_err(),
+        "native_prompt_risk_classes_invalid"
+    );
+    invalid.prompt_risk_classes = vec![NativePromptRiskClassV1::ExfilIntent; 2];
+    assert_eq!(
+        validate_pre_tool_result_matrix(&invalid).unwrap_err(),
+        "native_prompt_risk_classes_invalid"
+    );
 }
 
 fn post_request(payload: Value) -> NativeHookRequestV1 {
@@ -465,7 +609,169 @@ fn observe_preserves_intrinsic_block_but_does_not_enforce_policy_only_floor() {
         intrinsic_observed,
     )
     .unwrap();
-    assert_eq!(intrinsic.decision, "deny");
+    assert_eq!(intrinsic.decision, "allow");
     assert_eq!(intrinsic.policy_action.as_deref(), Some("block"));
+    assert_eq!(intrinsic.observed_policy_action.as_deref(), Some("block"));
     assert!(intrinsic.observe_mode);
+}
+
+fn observe_post_tool(payload: Value, response: HookReviewResponseV1) -> HookReviewResponseV1 {
+    let mut observed_snapshot = snapshot(policy("allow"));
+    observed_snapshot.mode = "observe".into();
+    apply_post_tool_policy(
+        &observed_snapshot,
+        &post_request(payload),
+        GuardHookPayloadKindV2::Inline,
+        response,
+    )
+    .unwrap()
+}
+
+fn native_deny() -> HookReviewResponseV1 {
+    let mut response = HookReviewResponseV1::deny("output_secret_match", "output requires review");
+    response.policy_action = Some("block".to_owned());
+    response
+}
+
+#[test]
+fn test_complete_inline_recording_only_output_gets_matching_proof() {
+    let content = "complete tool output";
+    let payload = json!({"tool_response": [{"type": "text", "text": content}]});
+
+    let result = observe_post_tool(payload, native_deny());
+
+    assert_eq!(result.decision, "allow");
+    assert_eq!(result.model_output_action, "allow_original");
+    assert_eq!(
+        result.reviewed_output_sha256.as_deref(),
+        Some(guard_hook_core::sha256_text(content).as_str())
+    );
+}
+
+#[test]
+fn test_source_ref_proof_is_copied_without_hashing_an_excerpt() {
+    let digest = "a".repeat(64);
+    let payload = json!({
+        "guard_source_ref": {"output_sha256": digest},
+        "tool_response_summary": {
+            "text_excerpt": "bounded excerpt",
+            "excerpt_truncated": true,
+        },
+    });
+
+    let result = observe_post_tool(payload, native_deny());
+
+    assert_eq!(
+        result.reviewed_output_sha256.as_deref(),
+        Some(digest.as_str())
+    );
+}
+
+#[test]
+fn test_inherited_excerpt_digest_is_removed_during_allow_original_rewrite() {
+    let payload = json!({
+        "stdout": "bounded excerpt",
+        "tool_response_summary": {
+            "text_excerpt": "bounded excerpt",
+            "excerpt_truncated": true,
+        },
+    });
+    let mut native = native_deny();
+    native.reviewed_output_sha256 = Some(guard_hook_core::sha256_text("bounded excerpt"));
+
+    let result = observe_post_tool(payload, native);
+
+    assert_eq!(result.decision, "allow");
+    assert_eq!(result.model_output_action, "allow_original");
+    assert!(result.reviewed_output_sha256.is_none());
+}
+
+#[test]
+fn test_inherited_excerpt_digest_is_removed_from_existing_allow_response() {
+    let payload = json!({
+        "stdout": "bounded excerpt",
+        "tool_response_summary": {
+            "text_excerpt": "bounded excerpt",
+            "excerpt_truncated": true,
+        },
+    });
+    let mut native = HookReviewResponseV1::allow("output_scan_allow");
+    native.policy_action = Some("warn".to_owned());
+    native.reviewed_output_sha256 = Some(guard_hook_core::sha256_text("bounded excerpt"));
+
+    let result = observe_post_tool(payload, native);
+
+    assert_eq!(result.decision, "allow");
+    assert_eq!(result.model_output_action, "allow_original");
+    assert!(result.reviewed_output_sha256.is_none());
+}
+
+#[test]
+fn test_stale_allow_original_uses_canonical_inline_proof() {
+    let content = "canonical inline output";
+    let mut native = HookReviewResponseV1::allow("output_scan_allow");
+    native.policy_action = Some("warn".to_owned());
+    native.reviewed_output_sha256 = Some("b".repeat(64));
+    let payload = json!({"tool_response": [{"type": "text", "text": content}]});
+
+    let result = observe_post_tool(payload, native);
+
+    assert_eq!(
+        result.reviewed_output_sha256.as_deref(),
+        Some(guard_hook_core::sha256_text(content).as_str())
+    );
+}
+
+#[test]
+fn test_summary_without_digest_falls_back_to_complete_inline_output() {
+    let content = "complete inline output";
+    let payload = json!({
+        "tool_response_summary": {"text_excerpt": "bounded excerpt"},
+        "tool_response": [{"type": "text", "text": content}],
+    });
+
+    let result = observe_post_tool(payload, native_deny());
+
+    assert_eq!(
+        result.reviewed_output_sha256.as_deref(),
+        Some(guard_hook_core::sha256_text(content).as_str())
+    );
+}
+
+#[test]
+fn test_truncated_or_excerpt_only_output_gets_no_fabricated_proof() {
+    let payload = json!({
+        "stdout": "bounded excerpt",
+        "tool_response_summary": {
+            "text_excerpt": "bounded excerpt",
+            "excerpt_truncated": true,
+        },
+    });
+
+    let result = observe_post_tool(payload, native_deny());
+
+    assert!(result.reviewed_output_sha256.is_none());
+    assert!(result.observe_mode);
+}
+
+#[test]
+fn test_existing_observe_mode_is_preserved_during_rewrite() {
+    let payload = json!({"stdout": "bounded excerpt"});
+    let mut native = native_deny();
+    native.observe_mode = true;
+
+    let result = observe_post_tool(payload, native);
+
+    assert!(result.observe_mode);
+    assert!(result.reviewed_output_sha256.is_none());
+}
+
+#[test]
+fn test_truncated_inline_output_gets_no_proof() {
+    let payload = json!({"tool_response": vec!["x"; 25]});
+
+    let result = observe_post_tool(payload, native_deny());
+
+    assert!(result.reviewed_output_sha256.is_none());
+    assert!(result.observe_mode);
 }

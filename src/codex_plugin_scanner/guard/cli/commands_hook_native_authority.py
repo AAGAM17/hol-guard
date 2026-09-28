@@ -163,7 +163,7 @@ def route_native_hook(
                 payload,
                 harness=args.harness,
                 event_name=runtime_hook_event_name(payload),
-                reason_code="native_hook_worker_exception",
+                reason_code="native_hook_worker_unavailable",
                 reason="HOL Guard could not complete the native hook decision safely.",
                 workspace=runtime_workspace,
                 home_dir=context.home_dir,

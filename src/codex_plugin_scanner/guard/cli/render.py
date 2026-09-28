@@ -349,7 +349,11 @@ def _protect_guidance_lines(payload: PayloadDict) -> list[str]:
     signed_url = payload.get("_ephemeral_signed_approval_url")
     if isinstance(signed_url, str) and signed_url.strip():
         dashboard_url = signed_url.strip()
-    elif "dashboard_url" in user_copy_map and user_copy_map.get("dashboard_url") is None:
+    elif (
+        "dashboard_url" in user_copy_map
+        and user_copy_map.get("dashboard_url") is None
+        and not payload.get("primary_approval_url")
+    ):
         dashboard_url = ""
     else:
         dashboard_url = str(payload.get("primary_approval_url") or user_copy_map.get("dashboard_url") or "").strip()

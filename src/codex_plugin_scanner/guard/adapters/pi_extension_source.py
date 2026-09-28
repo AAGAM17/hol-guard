@@ -617,7 +617,7 @@ def managed_extension_source(
         "    if (\n"
         "      !requestId ||\n"
         "      binding === null ||\n"
-        "      !inputApprovalResumeBindingIsActive(ctx, binding) ||\n"
+        "      !inputApprovalResumeBindingIsActive(ctx, binding)\n"
         "    ) return;\n"
         "    const previousBinding = pendingApprovalResumes.get(requestId);\n"
         "    if (previousBinding && inputApprovalResumeBindingIsActive(ctx, previousBinding)) return;\n"

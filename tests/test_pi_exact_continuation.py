@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -150,6 +151,24 @@ def test_pi_runner_module_rejects_undeclared_package_wrapper(tmp_path: Path, mon
     monkeypatch.setattr(shutil, "which", lambda name: str(wrapper_path) if name == "pi" else None)
 
     assert _pi_runner_module() is None
+
+
+def test_generated_input_resume_guard_condition_is_closed(tmp_path: Path) -> None:
+    source = managed_extension_source(
+        guard_home=tmp_path / "guard-home",
+        home_dir=tmp_path,
+        settings_path=tmp_path / "settings.json",
+        harness="pi",
+        display_name="fixture",
+    )
+    assert re.search(
+        r'if \(\n'
+        r'      !requestId \|\|\n'
+        r'      binding === null \|\|\n'
+        r'      !inputApprovalResumeBindingIsActive\(ctx, binding\)\n'
+        r'    \) return;',
+        source,
+    )
 
 
 def _decode_json_object(stdout: str) -> dict[str, object]:

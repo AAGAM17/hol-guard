@@ -8790,7 +8790,7 @@ def test_guard_hook_emits_claude_native_pretooluse_notice_on_stderr(tmp_path, ca
     )
     output = json.loads(capsys.readouterr().out)
 
-    assert rc == 0
+    assert rc == 1
     assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
     assert captured_notice
     assert "HOL Guard intercepted Claude's attempt to use Read." in captured_notice[0]
@@ -10907,7 +10907,7 @@ def test_guard_hook_emits_claude_native_ask_response_for_claude_alias(tmp_path, 
     )
     output = json.loads(capsys.readouterr().out)
 
-    assert rc == 0
+    assert rc == 1
     assert "systemMessage" in output
     assert "HOL Guard intercepted Claude's attempt to use Read" in output["systemMessage"]
     assert output["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
@@ -10981,7 +10981,7 @@ def test_guard_hook_uses_deny_specific_copy_for_blocked_claude_secret_reads(
     output = json.loads(capsys.readouterr().out)
     reason = output["hookSpecificOutput"]["permissionDecisionReason"].lower()
 
-    assert rc == 0
+    assert rc == 1
     assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "hol guard blocked claude's attempt to use read" in reason
     assert "choose yes" not in reason
@@ -11541,7 +11541,7 @@ def test_guard_hook_emits_claude_notification_notice_for_permission_prompt(tmp_p
     )
     notification_capture = capsys.readouterr()
 
-    assert pre_tool_rc == 0
+    assert pre_tool_rc == 1
     assert pre_tool_output["hookSpecificOutput"]["permissionDecision"] == "ask"
     notification_payload = json.loads(notification_capture.out)
 
@@ -12322,7 +12322,7 @@ def test_guard_hook_claude_notification_notice_is_tool_scoped_and_retained_while
                 "claude-code",
             ]
         )
-        assert rc == 0
+        assert rc == 1
         capsys.readouterr()
 
     read_notification = {
@@ -12424,7 +12424,7 @@ def test_guard_hook_claude_notification_stale_notice_falls_back_to_generic_conte
         as_json=True,
     )
 
-    assert pre_tool_rc == 0
+    assert pre_tool_rc == 1
     assert notification_rc == 0
     assert "approval code:" not in notification_output["hookSpecificOutput"]["additionalContext"].lower()
     assert (
@@ -12484,7 +12484,7 @@ def test_guard_hook_claude_notification_notice_falls_back_when_tool_name_is_miss
         as_json=True,
     )
 
-    assert pre_tool_rc == 0
+    assert pre_tool_rc == 1
     assert notification_rc == 0
     assert "HOL Guard approval question" in notification_output["systemMessage"]
     assert "keep blocked" in notification_output["systemMessage"].lower()
@@ -12543,7 +12543,7 @@ def test_guard_hook_claude_notice_storage_failures_fall_back_to_generic_prompt(t
         as_json=True,
     )
 
-    assert pre_tool_rc == 0
+    assert pre_tool_rc == 1
     assert pre_tool_output["hookSpecificOutput"]["permissionDecision"] == "ask"
     assert notification_rc == 0
     assert notification_output["systemMessage"] == (
@@ -16198,7 +16198,7 @@ def test_guard_hook_claude_native_block_does_not_queue_approval_center_request(t
     output = json.loads(capsys.readouterr().out)
     pending = GuardStore(home_dir).list_approval_requests(limit=10)
 
-    assert rc == 0
+    assert rc == 1
     assert output["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
     assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert pending == []

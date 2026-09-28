@@ -361,7 +361,11 @@ def desktop_bootstrap_cache_key(*, guard_home: Path, daemon_url: str, auth_token
     """Identify a cached document without retaining the daemon auth token."""
 
     token_id = hashlib.sha256(auth_token.encode("utf-8")).hexdigest()
-    return (str(guard_home), daemon_url, token_id)
+    try:
+        home = str(guard_home.resolve(strict=False))
+    except OSError:
+        home = str(guard_home)
+    return (home, daemon_url, token_id)
 
 
 def assemble_desktop_bootstrap_document(

@@ -318,6 +318,31 @@ def test_daemon_state_executable_falls_back_when_resolution_fails(monkeypatch: p
     assert manager._daemon_state_executable() == sys.executable
 
 
+def test_bootstrap_cache_key_canonicalizes_guard_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.cli.commands_dispatch_desktop import desktop_bootstrap_cache_key
+
+    home, url, token_id = desktop_bootstrap_cache_key(
+        guard_home=tmp_path,
+        daemon_url="http://127.0.0.1:1",
+        auth_token="token",
+    )
+    assert home == str(tmp_path.resolve())
+    assert url == "http://127.0.0.1:1"
+    assert token_id
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        del self, strict
+        raise OSError("unresolvable")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    fallback, _, _ = desktop_bootstrap_cache_key(
+        guard_home=Path("guard-home"),
+        daemon_url="http://127.0.0.1:1",
+        auth_token="token",
+    )
+    assert fallback == "guard-home"
+
+
 def test_cached_bootstrap_document_covers_refresh_and_failure_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     from codex_plugin_scanner.guard.cli import commands_dispatch_desktop as desktop
 
@@ -398,6 +423,7 @@ def test_cached_bootstrap_document_covers_refresh_and_failure_paths(monkeypatch:
             desktop.cached_desktop_bootstrap_document(key, lambda: {"n": 4})
         release_hold.set()
         holder.join(timeout=2)
+        assert not holder.is_alive()
 
         desktop.reset_desktop_bootstrap_cache()
         monkeypatch.setattr(desktop, "_CACHE_WAIT_SECONDS", 2)
@@ -434,6 +460,8 @@ def test_cached_bootstrap_document_covers_refresh_and_failure_paths(monkeypatch:
         assert follower_done.wait(timeout=2)
         worker.join(timeout=2)
         waiter.join(timeout=2)
+        assert not worker.is_alive()
+        assert not waiter.is_alive()
         assert "error" in follower_error
     finally:
         desktop.reset_desktop_bootstrap_cache()

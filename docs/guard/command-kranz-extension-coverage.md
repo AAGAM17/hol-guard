@@ -22,3 +22,9 @@ Guard review is separate from Kranz's plan-bound `--confirm` flow. An external
 extension is inactive until enabled by the local Guard administrator. The
 portable fixture checks matching and policy effects using synthetic command
 strings; it never executes the target CLI.
+
+The canonical JSON source repeats complete native matcher objects because the
+source contract has no include or template mechanism. The portable fixture
+embeds the exact source in its build envelope; the preparation flow verifies
+that binding before compiling. Explicitly disabling a permission creates a
+blocking control for that capability, so its matched segment stays effective.

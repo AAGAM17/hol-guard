@@ -2505,6 +2505,7 @@
                       "--no-param"
                     ],
                     "required_flags": [
+                      "--confirm",
                       "--help"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2555,6 +2556,7 @@
                       "--no-param"
                     ],
                     "required_flags": [
+                      "--confirm",
                       "-h"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2605,6 +2607,7 @@
                       "--no-param"
                     ],
                     "required_flags": [
+                      "--confirm",
                       "--version"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2655,6 +2658,7 @@
                       "--no-param"
                     ],
                     "required_flags": [
+                      "--confirm",
                       "-v"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2704,7 +2708,8 @@
                 "fail_secure_unknown_options": true,
                 "forbidden_flags": [],
                 "interspersed_flags": [
-                  "--follow-symlinks"
+                  "--follow-symlinks",
+                  "--yes"
                 ],
                 "interspersed_options_with_values": [],
                 "inverse_flag_pairs": [],
@@ -2720,7 +2725,9 @@
                 ],
                 "options_with_values": [
                   "--param",
-                  "--no-param"
+                  "--no-param",
+                  "--from",
+                  "-o"
                 ],
                 "required_flags": [
                   "--force"
@@ -2753,7 +2760,8 @@
                     "fail_secure_unknown_options": true,
                     "forbidden_flags": [],
                     "interspersed_flags": [
-                      "--follow-symlinks"
+                      "--follow-symlinks",
+                      "--yes"
                     ],
                     "interspersed_options_with_values": [],
                     "inverse_flag_pairs": [],
@@ -2769,9 +2777,12 @@
                     ],
                     "options_with_values": [
                       "--param",
-                      "--no-param"
+                      "--no-param",
+                      "--from",
+                      "-o"
                     ],
                     "required_flags": [
+                      "--force",
                       "--help"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2802,7 +2813,8 @@
                     "fail_secure_unknown_options": true,
                     "forbidden_flags": [],
                     "interspersed_flags": [
-                      "--follow-symlinks"
+                      "--follow-symlinks",
+                      "--yes"
                     ],
                     "interspersed_options_with_values": [],
                     "inverse_flag_pairs": [],
@@ -2818,9 +2830,12 @@
                     ],
                     "options_with_values": [
                       "--param",
-                      "--no-param"
+                      "--no-param",
+                      "--from",
+                      "-o"
                     ],
                     "required_flags": [
+                      "--force",
                       "-h"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2851,7 +2866,8 @@
                     "fail_secure_unknown_options": true,
                     "forbidden_flags": [],
                     "interspersed_flags": [
-                      "--follow-symlinks"
+                      "--follow-symlinks",
+                      "--yes"
                     ],
                     "interspersed_options_with_values": [],
                     "inverse_flag_pairs": [],
@@ -2867,9 +2883,12 @@
                     ],
                     "options_with_values": [
                       "--param",
-                      "--no-param"
+                      "--no-param",
+                      "--from",
+                      "-o"
                     ],
                     "required_flags": [
+                      "--force",
                       "--version"
                     ],
                     "required_flags_in_all_arguments": true,
@@ -2900,7 +2919,8 @@
                     "fail_secure_unknown_options": true,
                     "forbidden_flags": [],
                     "interspersed_flags": [
-                      "--follow-symlinks"
+                      "--follow-symlinks",
+                      "--yes"
                     ],
                     "interspersed_options_with_values": [],
                     "inverse_flag_pairs": [],
@@ -2916,9 +2936,12 @@
                     ],
                     "options_with_values": [
                       "--param",
-                      "--no-param"
+                      "--no-param",
+                      "--from",
+                      "-o"
                     ],
                     "required_flags": [
+                      "--force",
                       "-v"
                     ],
                     "required_flags_in_all_arguments": true,

@@ -16000,6 +16000,7 @@
       "classes": {
         "external": [
           "command.blitcp",
+          "command.kranz",
           "command.mcp-filesystem",
           "command.mcp-instapods",
           "command.noodle",

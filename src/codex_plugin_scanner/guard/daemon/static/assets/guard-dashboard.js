@@ -19907,11 +19907,12 @@ function ApprovalGateSetupNotice() {
     ] })
   ] }) });
 }
-function isApprovalProofSubmitDisabled(gate, credentials, busy, requireFreshTotp = false) {
+function isApprovalProofSubmitDisabled(gate, credentials, busy, requireFreshTotp = false, requireGate = false) {
   if (busy) {
     return true;
   }
   if (gate != null && !approvalGateProofReady(gate)) {
+    if (!requireGate && gate.enabled !== true) return false;
     return true;
   }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
@@ -19944,6 +19945,7 @@ function ApprovalProofFieldInputs(props) {
     props.onApprovalTotpCodeChange(event);
   }, [props]);
   if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
+    if (!props.requireGate && props.approvalGate.enabled !== true) return null;
     return /* @__PURE__ */ jsxRuntimeExports.jsx(ApprovalGateSetupNotice, {});
   }
   if (!props.requireFreshTotp && approvalProofRecentlySatisfied(props.approvalGate)) {
@@ -20002,7 +20004,9 @@ function ApprovalProofInline(props) {
       approvalPassword: props.approvalPassword,
       approvalTotpCode: props.approvalTotpCode
     },
-    props.submitBusy
+    props.submitBusy,
+    false,
+    true
   );
   const handleKeyDown = reactExports.useCallback(
     (event) => {
@@ -20028,6 +20032,7 @@ function ApprovalProofInline(props) {
         approvalPassword: props.approvalPassword,
         approvalTotpCode: props.approvalTotpCode,
         passwordRef,
+        requireGate: true,
         onApprovalPasswordChange: props.onApprovalPasswordChange,
         onApprovalTotpCodeChange: props.onApprovalTotpCodeChange
       }

@@ -297,6 +297,8 @@ export function AddCustomExtensionWorkspace(props: {
       resolvedApprovalGate,
       { approvalPassword: password, approvalTotpCode: totp },
       busy,
+      false,
+      true,
     ),
     busy,
   });
@@ -355,6 +357,7 @@ export function AddCustomExtensionWorkspace(props: {
               approvalGate={resolvedApprovalGate}
               approvalPassword={password}
               approvalTotpCode={totp}
+              requireGate={true}
               onApprovalPasswordChange={handlePassword}
               onApprovalTotpCodeChange={handleTotp}
             />

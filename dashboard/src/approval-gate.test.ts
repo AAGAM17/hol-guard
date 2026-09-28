@@ -403,17 +403,34 @@ function testApprovalProofBlocksUnreadyGate(): void {
     enabled: true,
     configured: true,
   };
+  const corruptGate: GuardApprovalGatePublicConfig = {
+    ...unconfiguredGate,
+    enabled: true,
+  };
   assert(approvalGateProofReady(readyGate) === true, "gate proof ready only when enabled and configured");
   assert(approvalGateProofReady(unconfiguredGate) === false, "unconfigured gate is not proof ready");
   assert(approvalGateProofReady(disabledConfiguredGate) === false, "disabled gate is not proof ready");
+  assert(approvalGateProofReady(corruptGate) === false, "enabled gate without a verifier is not proof ready");
   assert(approvalGateProofReady(null) === false, "unresolved gate is not proof ready");
   assert(
-    isApprovalProofSubmitDisabled(unconfiguredGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === false,
-    "unconfigured gate routes to approval setup instead of blocking proof submission",
+    isApprovalProofSubmitDisabled(unconfiguredGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false, false, true) === true,
+    "fail-closed surfaces must block proof submission when the gate is unconfigured",
   );
   assert(
-    isApprovalProofSubmitDisabled(disabledConfiguredGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === false,
-    "disabled gate must allow fail-open submission without collecting a dead credential",
+    isApprovalProofSubmitDisabled(disabledConfiguredGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false, false, true) === true,
+    "fail-closed surfaces must block proof submission when the gate is disabled",
+  );
+  assert(
+    isApprovalProofSubmitDisabled(corruptGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false, false, true) === true,
+    "fail-closed surfaces must block when the enabled gate has no verifier",
+  );
+  assert(
+    isApprovalProofSubmitDisabled(unconfiguredGate, { approvalPassword: "", approvalTotpCode: "" }, false) === false,
+    "fail-open surfaces submit without proof while the gate is off",
+  );
+  assert(
+    isApprovalProofSubmitDisabled(corruptGate, { approvalPassword: "", approvalTotpCode: "" }, false) === true,
+    "fail-open surfaces still block when an enabled gate has no verifier",
   );
   assert(
     isApprovalProofSubmitDisabled(readyGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === false,

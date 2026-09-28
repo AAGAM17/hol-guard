@@ -2253,7 +2253,7 @@ function PolicyReviewSheet(props) {
   const [password, setPassword] = reactExports.useState("");
   const [totpCode, setTotpCode] = reactExports.useState("");
   const count = props.preview.semantic_preview.changed_target_count;
-  const submitDisabled = isApprovalProofSubmitDisabled(props.approvalGate, { approvalPassword: password, approvalTotpCode: totpCode }, props.busy);
+  const submitDisabled = isApprovalProofSubmitDisabled(props.approvalGate, { approvalPassword: password, approvalTotpCode: totpCode }, props.busy, false, true);
   const handleSubmit = (event) => {
     event.preventDefault();
     if (submitDisabled) return;
@@ -2292,6 +2292,7 @@ function PolicyReviewSheet(props) {
               approvalGate: props.approvalGate,
               approvalPassword: password,
               approvalTotpCode: totpCode,
+              requireGate: true,
               onApprovalPasswordChange: (event) => setPassword(event.target.value),
               onApprovalTotpCodeChange: (event) => setTotpCode(event.target.value)
             }
@@ -3810,7 +3811,9 @@ function AddCustomExtensionWorkspace(props) {
     proofBlocked: isApprovalProofSubmitDisabled(
       resolvedApprovalGate,
       { approvalPassword: password, approvalTotpCode: totp },
-      busy
+      busy,
+      false,
+      true
     ),
     busy
   });
@@ -3867,6 +3870,7 @@ function AddCustomExtensionWorkspace(props) {
               approvalGate: resolvedApprovalGate,
               approvalPassword: password,
               approvalTotpCode: totp,
+              requireGate: true,
               onApprovalPasswordChange: handlePassword,
               onApprovalTotpCodeChange: handleTotp
             }
@@ -4341,7 +4345,9 @@ function CustomExtensionReviewModal(props) {
   const submitDisabled = isApprovalProofSubmitDisabled(
     props.approvalGate,
     { approvalPassword: password, approvalTotpCode: totp },
-    props.busy
+    props.busy,
+    false,
+    true
   );
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { ref: dialogRef, tabIndex: -1, role: "dialog", "aria-modal": "true", "aria-labelledby": "custom-extension-review-title", onSubmit: handleSubmit, className: "w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl focus:outline-none", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "custom-extension-review-title", className: "text-xl font-semibold text-brand-dark", children: title }),
@@ -4352,6 +4358,7 @@ function CustomExtensionReviewModal(props) {
         approvalGate: props.approvalGate,
         approvalPassword: password,
         approvalTotpCode: totp,
+        requireGate: true,
         onApprovalPasswordChange: handlePassword,
         onApprovalTotpCodeChange: handleTotp
       }
@@ -6480,7 +6487,7 @@ function ReviewModal(props) {
     event.preventDefault();
     props.onConfirm(buildApprovalProofCredentials(props.approvalGate, { approvalPassword: password, approvalTotpCode: totp }));
   }, [password, props, totp]);
-  const submitDisabled = isApprovalProofSubmitDisabled(props.approvalGate, { approvalPassword: password, approvalTotpCode: totp }, props.busy);
+  const submitDisabled = isApprovalProofSubmitDisabled(props.approvalGate, { approvalPassword: password, approvalTotpCode: totp }, props.busy, false, true);
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { ref: dialogRef, tabIndex: -1, role: "dialog", "aria-modal": "true", "aria-labelledby": "protection-review-title", onSubmit: handleSubmit, className: "w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl focus:outline-none", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -6498,7 +6505,7 @@ function ReviewModal(props) {
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: requested })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm leading-6 text-brand-dark", children: "Guard's built-in minimum safety rules and organization policy remain active. This change does not disable detection." }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ApprovalProofFieldInputs, { approvalGate: props.approvalGate, approvalPassword: password, approvalTotpCode: totp, onApprovalPasswordChange: handlePassword, onApprovalTotpCodeChange: handleTotp }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ApprovalProofFieldInputs, { approvalGate: props.approvalGate, approvalPassword: password, approvalTotpCode: totp, requireGate: true, onApprovalPasswordChange: handlePassword, onApprovalTotpCodeChange: handleTotp }) }),
     props.error ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "alert", className: "mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800", children: props.error }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 flex justify-end gap-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: props.busy, onClick: props.onCancel, className: "min-h-11 rounded-xl px-4 text-sm font-semibold text-brand-dark hover:bg-white/70 disabled:opacity-50", children: "Cancel" }),

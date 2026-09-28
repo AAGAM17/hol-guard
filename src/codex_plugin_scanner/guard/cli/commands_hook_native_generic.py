@@ -806,6 +806,7 @@ def run_native_generic_payload(
         # Hook payloads are untrusted hints. They may make local policy stricter
         # but can never lower the current configured action.
         current_action_inputs.append(payload_action_normalization.action)
+    native_edge_action: GuardAction | None = None
     if isinstance(native_edge_result, Mapping):
         native_edge_action = coerce_guard_action(
             native_edge_result.get("policy_action") or native_edge_result.get("minimum_action")
@@ -865,6 +866,9 @@ def run_native_generic_payload(
     if local_tool_grant is not None and local_tool_eligibility is not None:
         current_policy_action = "allow"
         policy_action = "allow"
+    if native_edge_action == "block":
+        current_policy_action = "block"
+        policy_action = "block"
     if isinstance(command_text, str) and command_text.strip():
         observe_unlisted_cli(
             store=store,

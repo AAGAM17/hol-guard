@@ -38,6 +38,8 @@ def reviewed_stdio_package_options(packages: object) -> list[dict[str, object]]:
             or transport.get("type") != "stdio"
             or not isinstance(raw_arguments, list)
             or len(raw_arguments) > 16
+            # Empty declarations are inert; any populated environment or runtime arguments
+            # need a separate reviewed setup flow before this recipe can be offered.
             or package.get("environmentVariables")
             or package.get("runtimeArguments")
         ):

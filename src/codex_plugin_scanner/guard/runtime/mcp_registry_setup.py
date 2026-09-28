@@ -44,7 +44,7 @@ def reviewed_codex_setup_candidate(payload: dict[str, object]) -> dict[str, str]
         or parsed.query
     ):
         raise ValueError("invalid_codex_setup_endpoint")
-    query = registry_name.rsplit("/", 1)[-1]
+    query = registry_name if len(registry_name) <= 80 else registry_name.rsplit("/", 1)[-1]
     search = search_mcp_registry(query)
     results = search.get("results")
     if not isinstance(results, list):
@@ -71,6 +71,7 @@ def reviewed_codex_setup_candidate(payload: dict[str, object]) -> dict[str, str]
     ).hexdigest()
     return {
         "host": "codex",
+        "kind": "remote",
         "registry_name": registry_name,
         "version": version,
         "endpoint": endpoint,
@@ -150,7 +151,8 @@ def reviewed_codex_package_candidate(payload: dict[str, object]) -> dict[str, ob
         or not _NAME.fullmatch(setup_name)
     ):
         raise ValueError("invalid_codex_package_selection")
-    results = search_mcp_registry(registry_name.rsplit("/", 1)[-1]).get("results")
+    query = registry_name if len(registry_name) <= 80 else registry_name.rsplit("/", 1)[-1]
+    results = search_mcp_registry(query).get("results")
     if not isinstance(results, list):
         raise ValueError("registry_setup_listing_changed")
     matches = [

@@ -53,7 +53,8 @@ async function registrySearch(query: string, signal: AbortSignal): Promise<{
         || typeof option.version !== "string" || option.version.length > 80
         || !["npx", "uvx"].includes(String(option.command)) || option.transport !== "stdio"
         || option.verified_package !== false || !Array.isArray(option.arguments)
-        || option.arguments.length > 18 || !option.arguments.every((argument) => typeof argument === "string" && argument.length <= 160)) {
+        || option.arguments.length > (option.registry_type === "pypi" ? 17 : 18)
+        || !option.arguments.every((argument) => typeof argument === "string" && argument.length <= 160)) {
         throw new Error("Invalid registry package option");
       }
       return option as PackageOption;
@@ -68,7 +69,7 @@ async function registrySearch(query: string, signal: AbortSignal): Promise<{
 
 type SetupBase = { host: "codex"; registry_name: string; version: string;
   setup_name: string; selection_digest: string; permissions_granted: false; host_change_applied: false };
-type SetupCandidate = (SetupBase & { kind?: "remote"; endpoint: string })
+type SetupCandidate = (SetupBase & { kind: "remote"; endpoint: string })
   | (SetupBase & { kind: "package"; package_identifier: string; package_version: string;
     command: string; arguments: string[]; verified_package: false });
 
@@ -111,7 +112,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
       const response = await fetchLocalCliApi("/v1/local-clis/registry-setup", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operation: "preview", registry_name: entry.name, version: entry.version,
-          setup_name: setupName, ...("endpoint" in target ? { endpoint: target.endpoint }
+          setup_name: setupName, ...("endpoint" in target ? { kind: "remote", endpoint: target.endpoint }
             : { kind: "package", package_identifier: target.packageOption.identifier,
               package_version: target.packageOption.version }) }),
       });
@@ -122,7 +123,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
         || body.host_change_applied !== false || typeof body.selection_digest !== "string"
         || !/^[a-f0-9]{64}$/.test(body.selection_digest)) throw new Error("Invalid Codex setup preview");
       if ("endpoint" in target) {
-        if (body.endpoint !== target.endpoint || body.kind === "package") throw new Error("Invalid Codex endpoint preview");
+        if (body.endpoint !== target.endpoint || body.kind !== "remote") throw new Error("Invalid Codex endpoint preview");
       } else if (body.kind !== "package" || body.package_identifier !== target.packageOption.identifier
         || body.package_version !== target.packageOption.version || typeof body.command !== "string"
         || !Array.isArray(body.arguments) || !body.arguments.every((argument) => typeof argument === "string")
@@ -144,7 +145,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
         body: JSON.stringify({ operation: "apply", registry_name: candidate.registry_name,
           version: candidate.version, setup_name: candidate.setup_name,
           ...(candidate.kind === "package" ? { kind: "package", package_identifier: candidate.package_identifier,
-            package_version: candidate.package_version } : { endpoint: candidate.endpoint }),
+            package_version: candidate.package_version } : { kind: "remote", endpoint: candidate.endpoint }),
           selection_digest: candidate.selection_digest, confirm_host_change: true,
           session_nonce: crypto.randomUUID().replaceAll("-", ""), ...proof }),
       });

@@ -449,9 +449,10 @@ class LocalCliApiService:
         operation = payload.get("operation")
         if operation not in {"preview", "apply"}:
             raise LocalCliApiError(400, "invalid_registry_setup_operation")
-        if payload.get("kind") not in (None, "remote", "package"):
+        kind = payload.get("kind", "remote")
+        if kind not in ("remote", "package"):
             raise LocalCliApiError(400, "invalid_registry_setup_kind")
-        package_setup = payload.get("kind") == "package"
+        package_setup = kind == "package"
         try:
             candidate = (
                 reviewed_codex_package_candidate(payload) if package_setup else reviewed_codex_setup_candidate(payload)

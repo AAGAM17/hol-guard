@@ -29,7 +29,7 @@ for (const width of [1280, 390]) {
         requests.push(body);
         if (body.operation === "apply") await applyGate;
         await route.fulfill({ json: body.operation === "preview"
-          ? { host: "codex", registry_name: body.registry_name, version: body.version, endpoint: body.endpoint,
+          ? { host: "codex", kind: "remote", registry_name: body.registry_name, version: body.version, endpoint: body.endpoint,
             setup_name: "newserver", selection_digest: "b".repeat(64),
             permissions_granted: false, host_change_applied: false }
           : { host: "codex", kind: "remote", setup_name: "newserver",

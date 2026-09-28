@@ -16,6 +16,7 @@ _SELECTION = {"registry_name": "io.github.ComposioHQ/composio", "version": "1.0.
 
 
 def _listing(_query: str) -> dict[str, object]:
+    assert _query == _SELECTION["registry_name"]
     return {"results": [{"name": _SELECTION["registry_name"], "version": _SELECTION["version"],
                          "status": "active", "remote_endpoints": [{"url": _SELECTION["endpoint"],
                                                                      "transport": "streamable-http"}]}]}
@@ -28,6 +29,7 @@ def test_setup_preview_binds_exact_listing_and_requires_local_proof(tmp_path: Pa
     launched = []
     monkeypatch.setattr(mcp_registry_setup, "install_codex_remote_mcp", lambda candidate: launched.append(candidate))
     preview = service.registry_setup({"operation": "preview", **_SELECTION})
+    assert preview["kind"] == "remote"
     assert preview["permissions_granted"] is False and preview["host_change_applied"] is False
     assert len(preview["selection_digest"]) == 64 and launched == []
     for endpoint in ("http://connect.composio.dev/mcp", "https://user@connect.composio.dev/mcp",
@@ -94,7 +96,11 @@ def test_package_setup_revalidates_pinned_recipe_and_requires_local_proof(tmp_pa
               "verified_package": False}
     listing = {"results": [{"name": selection["registry_name"], "version": "1.0.0",
                             "status": "active", "package_options": [option]}]}
-    monkeypatch.setattr(mcp_registry_setup, "search_mcp_registry", lambda _query: listing)
+    def search(query: str):
+        assert query == selection["registry_name"]
+        return listing
+
+    monkeypatch.setattr(mcp_registry_setup, "search_mcp_registry", search)
     monkeypatch.setattr(mcp_registry_setup.shutil, "which", lambda _name: "/synthetic/npx")
     installed = []
     monkeypatch.setattr(

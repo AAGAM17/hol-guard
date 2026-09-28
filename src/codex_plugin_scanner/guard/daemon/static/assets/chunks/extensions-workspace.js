@@ -4594,7 +4594,7 @@ async function registrySearch(query, signal) {
       return { url: remote.url, transport: remote.transport };
     });
     const packages = entry.package_options.map((option) => {
-      if (!object(option) || !["npm", "pypi"].includes(String(option.registry_type)) || typeof option.identifier !== "string" || option.identifier.length > 160 || typeof option.version !== "string" || option.version.length > 80 || !["npx", "uvx"].includes(String(option.command)) || option.transport !== "stdio" || option.verified_package !== false || !Array.isArray(option.arguments) || option.arguments.length > 18 || !option.arguments.every((argument) => typeof argument === "string" && argument.length <= 160)) {
+      if (!object(option) || !["npm", "pypi"].includes(String(option.registry_type)) || typeof option.identifier !== "string" || option.identifier.length > 160 || typeof option.version !== "string" || option.version.length > 80 || !["npx", "uvx"].includes(String(option.command)) || option.transport !== "stdio" || option.verified_package !== false || !Array.isArray(option.arguments) || option.arguments.length > (option.registry_type === "pypi" ? 17 : 18) || !option.arguments.every((argument) => typeof argument === "string" && argument.length <= 160)) {
         throw new Error("Invalid registry package option");
       }
       return option;
@@ -4668,7 +4668,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
           registry_name: entry.name,
           version: entry.version,
           setup_name: setupName,
-          ..."endpoint" in target2 ? { endpoint: target2.endpoint } : {
+          ..."endpoint" in target2 ? { kind: "remote", endpoint: target2.endpoint } : {
             kind: "package",
             package_identifier: target2.packageOption.identifier,
             package_version: target2.packageOption.version
@@ -4679,7 +4679,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
       if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Could not review setup.");
       if (!object(body) || body.host !== "codex" || body.registry_name !== entry.name || body.version !== entry.version || body.setup_name !== setupName || body.permissions_granted !== false || body.host_change_applied !== false || typeof body.selection_digest !== "string" || !/^[a-f0-9]{64}$/.test(body.selection_digest)) throw new Error("Invalid Codex setup preview");
       if ("endpoint" in target2) {
-        if (body.endpoint !== target2.endpoint || body.kind === "package") throw new Error("Invalid Codex endpoint preview");
+        if (body.endpoint !== target2.endpoint || body.kind !== "remote") throw new Error("Invalid Codex endpoint preview");
       } else if (body.kind !== "package" || body.package_identifier !== target2.packageOption.identifier || body.package_version !== target2.packageOption.version || typeof body.command !== "string" || !Array.isArray(body.arguments) || !body.arguments.every((argument) => typeof argument === "string") || body.verified_package !== false) throw new Error("Invalid Codex package preview");
       setCandidate(body);
     } catch (caught) {
@@ -4715,7 +4715,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
             kind: "package",
             package_identifier: candidate.package_identifier,
             package_version: candidate.package_version
-          } : { endpoint: candidate.endpoint },
+          } : { kind: "remote", endpoint: candidate.endpoint },
           selection_digest: candidate.selection_digest,
           confirm_host_change: true,
           session_nonce: crypto.randomUUID().replaceAll("-", ""),

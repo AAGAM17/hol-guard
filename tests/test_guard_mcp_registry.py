@@ -79,6 +79,7 @@ def test_registry_exposes_only_literal_pinned_stdio_package_recipes():
     packages = [
         {"registryType": "pypi", "registryBaseUrl": "https://pypi.org", "identifier": "hol-guard",
          "version": "2.2.0", "runtimeHint": "uvx", "transport": {"type": "stdio"},
+         "environmentVariables": [], "runtimeArguments": [],
          "packageArguments": [{"type": "positional", "value": "mcp"}]},
         {"registryType": "npm", "identifier": "@safe/example", "version": "1.2.3", "runtimeHint": "npx",
          "transport": {"type": "stdio"}, "packageArguments": []},

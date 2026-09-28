@@ -16,7 +16,7 @@ from ..runtime.local_mcp_probe import mcp_launch_tokens
 from ..runtime.mcp_connection_identity import McpConnectionIdentity, build_mcp_connection_identity
 from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity
 from .contracts import display_name_for
-from .mcp_servers import ManagedMcpServer, observable_stdio_servers, proxy_process_env
+from .mcp_servers import ManagedMcpServer, observable_stdio_servers_with_proxy, proxy_process_env
 
 MAX_DISCOVERED_MCP_SERVERS = 40
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def discover_harness_mcp_servers(
     loaded = detections if detections is not None else _safe_detections(home_dir, guard_home, workspace_dir)
     groups: dict[str, _DiscoveryGroup] = {}
     for detection in loaded:
-        for server in observable_stdio_servers(detection):
+        for server in observable_stdio_servers_with_proxy(detection):
             built = _identity_for(server)
             if built is None:
                 continue
@@ -248,8 +248,15 @@ def _safe_detections(home_dir: Path, guard_home: Path, workspace_dir: Path | Non
             try:
                 detections.append(adapter.detect(adapter_context))
                 break
-            except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError) as exc:
+            except (OSError, RuntimeError, UnicodeError) as exc:
                 logger.debug("MCP inventory skipped %s adapter after %s", adapter.harness, type(exc).__name__)
+                continue
+            except (TypeError, ValueError, KeyError) as exc:
+                logger.warning(
+                    "MCP inventory skipped %s adapter after invalid data (%s)",
+                    adapter.harness,
+                    type(exc).__name__,
+                )
                 continue
     return detections
 

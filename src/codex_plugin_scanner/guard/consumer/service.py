@@ -1155,7 +1155,7 @@ def evaluate_detection(
                 "allow",
                 reason="inventory_only",
                 composition_trace={"inventory_only": True},
-                authority_finalized=True,
+                authority_finalized=False,
             )
             if persist:
                 store.record_inventory_artifact(

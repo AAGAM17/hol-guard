@@ -88,7 +88,7 @@ def managed_stdio_servers(detection: HarnessDetection) -> tuple[ManagedMcpServer
     return tuple(managed)
 
 
-def observable_stdio_servers(detection: HarnessDetection) -> tuple[ManagedMcpServer, ...]:
+def observable_stdio_servers_with_proxy(detection: HarnessDetection) -> tuple[ManagedMcpServer, ...]:
     """Include original servers recovered from Guard's managed proxy config.
 
     Discovery only observes these connections; ``managed_stdio_servers`` must
@@ -342,7 +342,7 @@ __all__ = [
     "is_guard_proxy_command",
     "is_verified_guard_mcp_companion",
     "managed_stdio_servers",
-    "observable_stdio_servers",
+    "observable_stdio_servers_with_proxy",
     "proxy_cli_args",
     "proxy_launcher_entry",
     "proxy_process_env",

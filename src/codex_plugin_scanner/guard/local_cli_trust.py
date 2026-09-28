@@ -208,6 +208,7 @@ def matching_local_mcp_grant(
             from .store_mcp_catalog import catalog_tool_authority_matches
 
             public_hash = artifact.metadata.get("mcp_tool_authority_hash")
+            # An explicitly empty or invalid public hash must fail closed.
             authority_hash = (
                 public_hash
                 if public_hash is not None

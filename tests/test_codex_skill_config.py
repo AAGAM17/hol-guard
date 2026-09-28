@@ -231,6 +231,7 @@ def test_disabled_codex_skill_is_recorded_without_launch_review(tmp_path: Path) 
 
     assert result["blocked"] is False
     assert result["artifacts"][0]["inventory_only"] is True
+    assert result["artifacts"][0]["authoritative_decision"]["enforcement"]["launch_permitted"] is False
 
 
 def test_untrusted_inventory_only_metadata_cannot_skip_mcp_policy(tmp_path: Path) -> None:

@@ -9,7 +9,7 @@
     "conflicts": [],
     "delegated_protection": null,
     "dependencies": [],
-    "description": "Reviews gEnclave (ge) security enclave operations that mutate credentials, wipe hardware tokens, modify access policies, or unlock persistent sessions.",
+    "description": "Reviews gEnclave (ge) security enclave operations that mutate credentials, modify access policies, or unlock persistent sessions.",
     "ecosystem_ids": [],
     "executables": [
       "ge",

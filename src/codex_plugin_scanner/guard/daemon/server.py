@@ -440,6 +440,7 @@ _DAEMON_CRITICAL_PATHS = frozenset(
     {
         "/healthz",
         "/v1/daemon/identity-challenge",
+        "/v1/desktop/bootstrap",
     }
 )
 

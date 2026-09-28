@@ -49,7 +49,7 @@ def test_desktop_dashboard_session_is_scoped_fragment_token(monkeypatch, tmp_pat
 def test_desktop_bootstrap_uses_canonical_dashboard_session_builder() -> None:
     source = __import__("inspect").getsource(commands_dispatch_desktop._run_guard_desktop_command)
     assert "build_desktop_dashboard_session_url" in source
-    assert 'dashboard["sessionUrl"]' in source
+    assert "session_url=session_url" in source
     assert 'dashboard["canonical"] = True' in source
     assert "scan_installed_apps=False" in source
     assert source.index("session_url = build_desktop_dashboard_session_url") < source.index(

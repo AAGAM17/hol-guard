@@ -122,7 +122,17 @@ def _write_daemon_identity(
     guard_home = home / ".hol-guard"
     guard_home.mkdir()
     discovery_key = "ab" * 32
-    state = authenticate_daemon_state({"host": host, "port": port}, discovery_key=discovery_key)
+    from codex_plugin_scanner.version import __version__
+
+    state = authenticate_daemon_state(
+        {
+            "host": host,
+            "port": port,
+            "version": __version__,
+            "executable": sys.executable,
+        },
+        discovery_key=discovery_key,
+    )
     if tamper_signature:
         signature = state["state_signature"]
         assert isinstance(signature, str)

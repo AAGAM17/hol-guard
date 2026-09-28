@@ -806,6 +806,21 @@ def run_native_generic_payload(
         # Hook payloads are untrusted hints. They may make local policy stricter
         # but can never lower the current configured action.
         current_action_inputs.append(payload_action_normalization.action)
+    if isinstance(native_edge_result, Mapping):
+        native_edge_action = coerce_guard_action(
+            native_edge_result.get("policy_action") or native_edge_result.get("minimum_action")
+        )
+        if native_edge_action is None and native_edge_result.get("decision") == "deny":
+            native_edge_action = "block"
+        if hook_event_name == "PostToolUse" and native_edge_action in {"block", "sandbox-required"}:
+            # PostToolUse cannot undo the finished action; the edge deny masks
+            # the emitted output while the policy surface stays reviewable.
+            native_edge_action = "require-reapproval"
+        if native_edge_action is not None:
+            # The edge action is a floor on the composed action, not a final
+            # verdict: local grants, saved decisions, and approval reuse are
+            # the recognized mechanisms that settle the review it demands.
+            current_action_inputs.append(native_edge_action)
     policy_action = most_restrictive_guard_action(*current_action_inputs)
     daemon_status = _optional_string(payload_map.get("daemon_status"))
     fail_mode = _optional_string(payload_map.get("fail_mode"))
@@ -874,19 +889,6 @@ def run_native_generic_payload(
             if granted != current_policy_action:
                 current_policy_action = granted
                 policy_action = granted
-    if isinstance(native_edge_result, Mapping):
-        native_edge_action = coerce_guard_action(
-            native_edge_result.get("policy_action") or native_edge_result.get("minimum_action")
-        )
-        if native_edge_action is None and native_edge_result.get("decision") == "deny":
-            native_edge_action = "block"
-        if hook_event_name == "PostToolUse" and native_edge_action in {"block", "sandbox-required"}:
-            # PostToolUse cannot undo the finished action; the edge deny masks
-            # the emitted output while the policy surface stays reviewable.
-            native_edge_action = "require-reapproval"
-        if native_edge_action is not None:
-            policy_action = most_restrictive_guard_action(policy_action, native_edge_action)
-            current_policy_action = most_restrictive_guard_action(current_policy_action, native_edge_action)
     runtime_artifact_hash = _generic_hook_approval_context_token(
         action_envelope=action_envelope,
         artifact_id=artifact_id,

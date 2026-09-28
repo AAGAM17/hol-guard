@@ -273,7 +273,7 @@ def matching_local_tool_grant(
     eligibility: LocalToolApprovalEligibility | None,
     current_action: GuardAction,
 ) -> dict[str, object] | None:
-    if eligibility is None or current_action not in {"review", "require-reapproval"}:
+    if eligibility is None or current_action not in {"review", "require-reapproval", "block"}:
         return None
     resolver = getattr(store, "resolve_policy_decision_lookup", None)
     if not callable(resolver):

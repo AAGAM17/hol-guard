@@ -134,15 +134,17 @@ def apply_local_grant_then_native_floor(
         approval_context_policy_action = granted
     if native_floor is None:
         return policy_action, current_policy_action, approval_context_policy_action
-    # The floor already entered ``current_action_inputs``, so the two context
-    # actions carry it.  ``policy_action`` is the final decision: approval
-    # reuse, trusted-request overrides, and local grants settle the review the
-    # floor demanded, and the package evaluator owns package_request verdicts.
-    # Re-flooring here would make every saved approval or granted tool re-flag
-    # the identical request forever.
+    # The floor already entered ``current_action_inputs``, so
+    # ``policy_action`` and ``current_policy_action`` carry it whenever no
+    # grant settled the review.  Re-flooring ``policy_action`` here would make
+    # every saved approval or granted tool re-flag the identical request
+    # forever, and re-flooring ``current_policy_action`` feeds that floor back
+    # into approval-reuse evaluation which then clobbers the settled allow.
+    # Only the approval-context action is re-floored: it binds the identity of
+    # the review the floor demanded so saved approvals still match exactly.
     return (
         policy_action,
-        most_restrictive_guard_action(current_policy_action, native_floor),
+        current_policy_action,
         most_restrictive_guard_action(approval_context_policy_action, native_floor),
     )
 

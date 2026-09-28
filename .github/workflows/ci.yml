@@ -558,8 +558,7 @@ jobs:
         shell: bash
         run: |
           npm ci --ignore-scripts --no-audit --no-fund \
-            --prefix "$PI_EXACT_SDK_ROOT" \
-            --cache "$RUNNER_TEMP/pi-exact-npm-cache"
+            --prefix "$PI_EXACT_SDK_ROOT"
       - name: Run actual SDK continuation module with zero-skip enforcement
         shell: bash
         run: |

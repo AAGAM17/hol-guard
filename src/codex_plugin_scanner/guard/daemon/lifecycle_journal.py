@@ -18,6 +18,7 @@ _JOURNAL_DIRECTORY = "daemon-lifecycle"
 _MAX_JOURNAL_ENTRIES = 128
 _MAX_JOURNAL_EVENT_BYTES = 2048
 _MAX_INCIDENT_JOURNAL_SCAN = 256
+_MAX_INCIDENT_TIMELINE_ENTRIES = 20
 _PRIVATE_DIRECTORY_MODE = 0o700
 _PRIVATE_FILE_MODE = 0o600
 _SAFE_LABEL = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
@@ -123,7 +124,7 @@ def load_daemon_lifecycle_events(
 def load_bounded_incident_lifecycle_events(
     guard_home: Path,
     *,
-    limit: int = 20,
+    limit: int = _MAX_INCIDENT_TIMELINE_ENTRIES,
 ) -> tuple[list[DaemonLifecycleEvent], str]:
     """Read a small journal snapshot without scanning an unbounded directory."""
 
@@ -143,7 +144,7 @@ def load_bounded_incident_lifecycle_events(
         return [], "journal_unavailable"
     events: list[DaemonLifecycleEvent] = []
     invalid_seen = False
-    for path in nlargest(max(0, min(limit, 20)), candidates, key=lambda entry: entry.name):
+    for path in nlargest(max(0, min(limit, _MAX_INCIDENT_TIMELINE_ENTRIES)), candidates, key=lambda entry: entry.name):
         event = _read_lifecycle_event(path)
         if event is None:
             invalid_seen = True

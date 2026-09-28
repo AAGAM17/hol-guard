@@ -113,6 +113,19 @@ def test_incident_reader_reports_scan_limit_instead_of_empty_history(tmp_path: P
     assert status == "journal_scan_limit"
 
 
+def test_incident_reader_omits_symlinked_records(tmp_path: Path) -> None:
+    journal_dir = tmp_path / "daemon-lifecycle"
+    journal_dir.mkdir()
+    target = tmp_path / "outside.json"
+    target.write_text('{"event":"ready","version":1,"recorded_at_ns":1,"pid":1}', encoding="utf-8")
+    (journal_dir / "99999999999999999999-linked.json").symlink_to(target)
+
+    events, status = load_bounded_incident_lifecycle_events(tmp_path)
+
+    assert events == []
+    assert status == "invalid_entries_omitted"
+
+
 def test_incident_reader_omits_read_time_io_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     record_daemon_lifecycle_event(tmp_path, event="ready")
 

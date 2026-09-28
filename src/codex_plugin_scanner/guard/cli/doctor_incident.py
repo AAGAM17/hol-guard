@@ -143,11 +143,14 @@ def _workspace_hook_observation(context: HarnessContext) -> dict[str, object]:
 
 def codex_incident_report(context: HarnessContext) -> dict[str, object]:
     hooks, config = _configured_codex_hooks(context)
-    if config["config_status"] in {"read", "missing"} and config.get("hooks_status") not in {
+    hooks_unavailable = config.get("hooks_status") in {
+        "unreadable",
+        "malformed",
         "too_large",
         "unsafe_file_type",
         "changed_during_read",
-    }:
+    }
+    if config["config_status"] in {"read", "missing"} and not hooks_unavailable:
         try:
             integrity = verify_live_hook_manifest(_hook_manifest_spec(context), hooks=hooks)
         except Exception:
@@ -170,7 +173,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
             else:
                 manifest_version = manifest_generation = bridge_digest = interpreter_digest = None
     else:
-        status, reason = "unverified", "codex_config_unavailable"
+        status, reason = "unverified", "codex_hooks_unavailable" if hooks_unavailable else "codex_config_unavailable"
         matches = {event: False for event in _EVENTS}
         manifest_version = None
         manifest_generation = None
@@ -178,7 +181,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
         interpreter_digest = None
     try:
         daemon_state = load_authenticated_daemon_state(context.guard_home)
-    except Exception:
+    except (OSError, UnicodeError, ValueError, RecursionError):
         daemon_state = None
     daemon = {
         "discovery_authentication": "verified" if daemon_state is not None else "unverified",

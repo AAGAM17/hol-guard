@@ -78,6 +78,28 @@ def test_incident_export_rejects_oversized_config_without_reading_it(tmp_path: P
     assert report["configured"]["bridge_sha256"] is None
 
 
+def test_incident_export_does_not_call_unreadable_hooks_missing(tmp_path: Path, monkeypatch) -> None:
+    context = _context(tmp_path)
+    config_path = CodexHarnessAdapter._hook_config_path(context)
+    config_path.parent.mkdir()
+    config_path.write_text("[features]\nhooks = true\n", encoding="utf-8")
+    hooks_path = CodexHarnessAdapter._hooks_path(context)
+    from codex_plugin_scanner.guard.cli import doctor_incident
+
+    original_read = doctor_incident._bounded_regular_bytes
+    monkeypatch.setattr(
+        doctor_incident,
+        "_bounded_regular_bytes",
+        lambda path: (None, "unreadable") if path == hooks_path else original_read(path),
+    )
+
+    report = codex_incident_report(context)
+
+    assert report["configured"]["hooks_status"] == "unreadable"
+    assert report["configured"]["manifest_integrity"] == "unverified"
+    assert report["configured"]["reason_code"] == "codex_hooks_unavailable"
+
+
 def test_incident_export_reports_legacy_hooks_when_toml_config_is_missing(tmp_path: Path) -> None:
     context = _context(tmp_path)
     hooks_path = CodexHarnessAdapter._hooks_path(context)
@@ -219,6 +241,19 @@ def test_incident_export_keeps_json_when_journal_path_is_unavailable(tmp_path: P
     assert report["timeline"]["status"] == "journal_unavailable"
     assert report["timeline"]["events"] == []
     assert "private incident detail" not in json.dumps(report)
+
+
+def test_incident_export_keeps_json_when_daemon_discovery_is_unreadable(tmp_path: Path, monkeypatch) -> None:
+    context = _context(tmp_path)
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.cli.doctor_incident.load_authenticated_daemon_state",
+        lambda _guard_home: (_ for _ in ()).throw(OSError("private discovery detail")),
+    )
+
+    report = codex_incident_report(context)
+
+    assert report["daemon"]["discovery_authentication"] == "unverified"
+    assert "private discovery detail" not in json.dumps(report)
 
 
 def test_incident_export_rejects_repair_without_running_diagnostics(tmp_path: Path, monkeypatch) -> None:

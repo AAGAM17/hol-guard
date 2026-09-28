@@ -75,7 +75,7 @@ type SetupCandidate = (SetupBase & { kind: "remote"; endpoint: string })
 
 export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }: {
   items: LocalCliItem[]; approvalGate: GuardApprovalGatePublicConfig | null;
-  onOpenChange: (open: boolean) => void; onConfigured: () => Promise<void>;
+  onOpenChange: (open: boolean) => void; onConfigured: () => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -156,8 +156,10 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
         || body.host_change_applied !== true || body.permissions_granted !== false) throw new Error("Codex setup outcome is uncertain.");
       setConfigured({ name: candidate.setup_name, kind: candidate.kind === "package" ? "package" : "remote" });
       setCandidate(null); setPassword(""); setTotp("");
-      try { await onConfigured(); }
-      catch { setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions."); }
+      operation.current = null; setBusy(false);
+      void onConfigured().then((refreshed) => {
+        if (refreshed === false) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      }).catch(() => setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions."));
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Codex setup did not finish."); }
     finally { operation.current = null; setBusy(false); }
   }

@@ -62,7 +62,7 @@ export function AddCustomExtensionWorkspace(props: {
   discovering?: boolean;
   onBack: () => void;
   onAdded: (cliId: string) => void;
-  onConfigured: () => Promise<void>;
+  onConfigured: () => Promise<boolean>;
 }) {
   const { resolvedApprovalGate, resolveApprovalGate, refreshApprovalGate } = useResolvedApprovalGate(null);
   const [command, setCommand] = useState("");

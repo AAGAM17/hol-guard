@@ -58,26 +58,29 @@ export function useLocalCliCatalog() {
       setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
     }
   }, []);
-  const discover = useCallback(async () => {
+  const discover = useCallback(async (): Promise<boolean> => {
     const generation = loadGeneration.current + 1;
     loadGeneration.current = generation;
     setDiscovering(true);
     setCatalogReady(false);
     try {
       const next = await fetchLocalCliDiscover();
-      if (loadGeneration.current !== generation) return;
+      if (loadGeneration.current !== generation) return true;
       setData(next);
       setError(null);
       setDiscoveryNotice(discoveryIssueMessage(next.discovery_issue));
+      return true;
     } catch (error) {
       try {
         const next = await fetchLocalCliList();
-        if (loadGeneration.current !== generation) return;
+        if (loadGeneration.current !== generation) return true;
         setData(next);
         setDiscoveryNotice(error instanceof Error ? error.message : "Guard could not refresh custom extensions.");
+        return false;
       } catch (caught) {
-        if (loadGeneration.current !== generation) return;
+        if (loadGeneration.current !== generation) return true;
         setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
+        return false;
       }
     } finally {
       if (loadGeneration.current === generation) {

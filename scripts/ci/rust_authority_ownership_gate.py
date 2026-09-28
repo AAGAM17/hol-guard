@@ -235,7 +235,7 @@ def _pretool_gate() -> None:
     _assert_policy_floor_fail_closed(pretool)
     hook = _read(Path("src/codex_plugin_scanner/guard/daemon/hook_worker.py"))
     native_hook = _read(Path("src/codex_plugin_scanner/guard/daemon/hook_worker_native.py"))
-    if "review_pre_tool_native" not in hook:
+    if "return self._review_native_edge(" not in hook:
         raise RuntimeError("PreToolUse hook path is not bound to the native runtime")
     route = re.search(
         r'if event_name\s*==\s*"PreToolUse":[\s\S]*?return self\._review_pre_tool_http',

@@ -467,13 +467,7 @@ def normalize_cursor_hook_payload(
     if tool_name not in _CURSOR_NETWORK_TOOL_NAMES:
         return envelope
     urls = _cursor_tool_input_urls(prepared.get("tool_input"))
-    hosts = tuple(
-        dict.fromkeys(
-            match.group("host")
-            for url in urls
-            for match in _NETWORK_HOST_PATTERN.finditer(url)
-        )
-    )
+    hosts = tuple(dict.fromkeys(match.group("host") for url in urls for match in _NETWORK_HOST_PATTERN.finditer(url)))
     return replace(envelope, action_id="", action_type="network_request", network_hosts=hosts)
 
 

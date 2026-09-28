@@ -4368,7 +4368,10 @@ function customExtensionRowDescription(item, catalogTitle) {
   if (item.source_label) return `${item.example_label} · ${item.source_label}`;
   return item.example_label;
 }
-function nativePublicationMessage(publication) {
+function nativePublicationMessage(publication, permissionScope) {
+  if (permissionScope === "configured-connection") {
+    return publication?.state === "failed" ? "Your choices are saved, but policy publication failed. Guard has not confirmed enforcement for this connection." : "Your choices are saved for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
+  }
   if (publication?.state === "acknowledged") {
     return `Native policy acknowledged saved revision ${publication.revision}. Live calls still check connection and tool authority.`;
   }
@@ -5665,8 +5668,8 @@ function LocalCliDetail(props) {
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white", onClick: requestAdd, children: "Add custom extension" }) })
     ] }),
     props.item.surface === "mcp" && added ? /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mt-5 rounded-xl border border-slate-200 p-4", "aria-labelledby": "mcp-publication-heading", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "mcp-publication-heading", className: "text-sm font-semibold text-brand-dark", children: "Enforcement status" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-2 text-sm leading-6 text-brand-dark/75", children: nativePublicationMessage(props.nativePublication) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "mcp-publication-heading", className: "text-sm font-semibold text-brand-dark", children: props.item.permission_scope === "configured-connection" ? "Policy status" : "Enforcement status" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-2 text-sm leading-6 text-brand-dark/75", children: nativePublicationMessage(props.nativePublication, props.item.permission_scope) }),
       props.nativePublication?.state !== "acknowledged" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
@@ -5738,7 +5741,7 @@ function LocalCliDetail(props) {
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2", children: [
           "Permission scope: ",
-          props.item.permission_scope === "configured-connection" ? "This configured host connection. Provider account not verified." : props.item.permission_scope === "host-namespace" ? "This connector namespace in its host. Account changes cannot currently be verified." : props.item.permission_scope === "legacy-device" ? "This server identity across this device. This is a legacy setting." : "Not verified. Prefer Ask while the connection is unresolved."
+          props.item.permission_scope === "configured-connection" ? "This configured host connection. Provider account and native host-hook binding are not verified." : props.item.permission_scope === "host-namespace" ? "This connector namespace in its host. Account changes cannot currently be verified." : props.item.permission_scope === "legacy-device" ? "This server identity across this device. This is a legacy setting." : "Not verified. Prefer Ask while the connection is unresolved."
         ] })
       ] })
     ] }) : null,

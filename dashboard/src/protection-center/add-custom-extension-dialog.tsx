@@ -278,6 +278,8 @@ export function AddCustomExtensionWorkspace(props: {
   }, [commands, findTool, password, pending, props, recognized, refreshApprovalGate, resolvedApprovalGate, step, totp]);
   const handleCommandState = useCallback((commandId: string, state: LocalCliCommandState) => {
     setCommands((current) => withCommandState(current, commandId, state));
+    // An individual choice turns a server-wide block into a custom mix.
+    setPending("allowed");
   }, []);
 
   const proofReady = pending !== null && recognized !== null;

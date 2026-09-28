@@ -190,8 +190,12 @@ async function runOmpInteractiveContinuation<T>(
     }
     return { kind: 'failed' };
   } catch (error) {
+    const aborted = isAbortError(error) || operationController.signal.aborted;
     completed = true;
-    return { kind: isAbortError(error) || operationController.signal.aborted ? 'aborted' : 'failed' };
+    operationController.abort();
+    return { kind: aborted ? 'aborted' : 'failed' };
+  } finally {
+    if (!operationController.signal.aborted) operationController.abort();
   }
 }
 

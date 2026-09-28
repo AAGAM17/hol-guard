@@ -528,8 +528,7 @@ class HookWorkerNativeMixin:
         event is outside native scope.
         """
         event_name = self._hook_event_name(payload)
-        status = self._native_runtime_status()
-        if native_mode() not in {"auto", "force"} or not status.available or not status.compatible:
+        if native_mode() not in {"auto", "force"}:
             return {
                 "event_name": event_name,
                 "harness": harness,
@@ -541,6 +540,31 @@ class HookWorkerNativeMixin:
         policy_snapshot = self._native_policy_snapshot(workspace, deadline=deadline)
         recording_only = policy_snapshot is not None and policy_snapshot.get("mode") == "observe"
         fenced: bool | None = None
+
+        def unavailable(reason_code: str) -> dict[str, object]:
+            # The CLI path owns presentation, but evidence persistence stays
+            # worker-owned so the daemon and CLI deliveries of the same
+            # fail-safe record identical activity.
+            _record_unavailable_native(
+                self,
+                payload,
+                harness=harness,
+                event_name=event_name,
+                reason_code=reason_code,
+                workspace=workspace,
+                home_dir=home_dir,
+                guard_home=guard_home,
+                recording_only=recording_only,
+            )
+            return {
+                "event_name": event_name,
+                "harness": harness,
+                "result": None,
+                "receipt": None,
+                "recording_only": recording_only,
+                "failure_reason_code": reason_code,
+            }
+
         try:
             with native_review_fence(
                 policy_snapshot=policy_snapshot,
@@ -564,44 +588,26 @@ class HookWorkerNativeMixin:
                 if edge is not None and deadline is not None and time.monotonic() >= deadline:
                     raise TimeoutError("native_review_fence_deadline")
         except TimeoutError:
-            return {
-                "event_name": event_name,
-                "harness": harness,
-                "result": None,
-                "receipt": None,
-                "recording_only": recording_only,
-                "failure_reason_code": "native_review_deadline_exceeded",
-            }
+            return unavailable("native_review_deadline_exceeded")
         except (OSError, NativePolicySnapshotError):
             if fenced is False:
                 raise
-            return {
-                "event_name": event_name,
-                "harness": harness,
-                "result": None,
-                "receipt": None,
-                "recording_only": recording_only,
-                "failure_reason_code": "native_command_control_fence_unavailable",
-            }
+            return unavailable("native_command_control_fence_unavailable")
         if edge is None:
-            return {
-                "event_name": event_name,
-                "harness": harness,
-                "result": None,
-                "receipt": None,
-                "recording_only": recording_only,
-                "failure_reason_code": "native_hook_event_unavailable",
-            }
+            if event_name == "PostToolUse":
+                self._record_post_tool_activity(
+                    harness=harness,
+                    payload=payload,
+                    succeeded=hook_post_succeeded(event_name, payload),
+                )
+            reason_code = {
+                "PostToolUse": "native_post_tool_unavailable",
+                "PreToolUse": "native_pre_tool_unavailable",
+            }.get(event_name, "native_hook_event_unavailable")
+            return unavailable(reason_code)
         native_result = edge["result"]
         if not isinstance(native_result, Mapping):
-            return {
-                "event_name": event_name,
-                "harness": harness,
-                "result": None,
-                "receipt": None,
-                "recording_only": recording_only,
-                "failure_reason_code": "native_hook_edge_invalid_response",
-            }
+            return unavailable("native_hook_edge_invalid_response")
         receipt = self._record_native_decision_receipt(edge.get("receipt"))
         self.metrics.record_route("native_resident")
         return {

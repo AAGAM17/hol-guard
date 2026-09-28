@@ -31,4 +31,4 @@ def sanitize_secret(message: str) -> str:
         sanitized = _GUARD_TOKEN_FRAGMENT_PATTERN.sub("#guard-token=<redacted>", sanitized)
         return _BEARER_PATTERN.sub("Bearer <redacted>", sanitized)
     except Exception:  # pragma: no cover - defensive safety boundary
-        return message
+        return "<redacted>"

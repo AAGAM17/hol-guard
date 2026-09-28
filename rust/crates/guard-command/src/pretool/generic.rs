@@ -649,6 +649,5 @@ fn workspace_relative_path(path: &str, root: &str) -> Option<String> {
     if suffix.as_os_str().is_empty() {
         return None;
     }
-    normalize(&suffix.to_string_lossy())
-        .map(|parts| parts.join("/"))
+    normalize(&suffix.to_string_lossy()).map(|parts| parts.join("/"))
 }

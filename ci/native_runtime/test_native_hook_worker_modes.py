@@ -123,6 +123,7 @@ def test_hook_worker_shadow_compares_explicit_python_oracle(
     )
     assert result["reason_code"] == "native_shadow_diagnostic_disabled"
 
+
 def test_hook_worker_shadow_ignores_native_exception(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_worker: HookWorker
 ) -> None:

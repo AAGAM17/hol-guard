@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 from ..adapters.base import HarnessContext
 from ..config import GuardConfig
@@ -30,8 +30,9 @@ def try_native_hook_authority(
     guard_home: Path,
     workspace: Path | None,
     store: GuardStore,
-) -> dict[str, Any] | None:
-    """Return native harness JSON, or None when Python CLI must continue.
+    pipeline: Callable[[HookWorker], int] | None = None,
+) -> dict[str, Any] | int | None:
+    """Run native authority, optionally composing it into the CLI pipeline.
 
     ``auto`` and ``force`` send supported generic PreToolUse and PostToolUse
     through the same fail-closed Rust worker as the daemon. Out-of-scope
@@ -51,6 +52,8 @@ def try_native_hook_authority(
             store=store,
             activity_writer=evidence_writer,
         )
+        if pipeline is not None:
+            return pipeline(worker)
         return worker.review_http_payload(
             payload=payload,
             params={},
@@ -128,18 +131,7 @@ def route_native_hook(
         return 0
     from .commands_hook_native_pipeline import run_native_hook_pipeline
 
-    worker: HookWorker | None = None
-    evidence_writer: RuntimeHookEvidenceWriter | None = None
-    try:
-        # Short-lived CLI hooks publish and await the resident-ACKed policy
-        # snapshot themselves; with no Python fallback, a missing snapshot must
-        # not silently downgrade a hook to a fail-safe allow. Teardown drains
-        # the writer independently of the native decision result.
-        evidence_writer = RuntimeHookEvidenceWriter(store=store)
-        worker = HookWorker(
-            store=store,
-            activity_writer=evidence_writer,
-        )
+    def run_pipeline(worker: HookWorker) -> int:
         return run_native_hook_pipeline(
             args,
             config=config,
@@ -154,6 +146,32 @@ def route_native_hook(
             _claimed_trusted_request_override=_claimed_trusted_request_override,
             _claimed_approval_request_id=_claimed_approval_request_id,
         )
+
+    try:
+        native_result = try_native_hook_authority(
+            payload=payload,
+            harness=args.harness,
+            home_dir=context.home_dir,
+            guard_home=context.guard_home,
+            workspace=runtime_workspace,
+            store=store,
+            pipeline=run_pipeline,
+        )
+        if isinstance(native_result, int):
+            return native_result
+        if native_result is None:
+            native_result = availability_harness_response(
+                payload,
+                harness=args.harness,
+                event_name=runtime_hook_event_name(payload),
+                reason_code="native_hook_worker_exception",
+                reason="HOL Guard could not complete the native hook decision safely.",
+                workspace=runtime_workspace,
+                home_dir=context.home_dir,
+                guard_home=context.guard_home,
+            )
+        _emit("hook", native_result, getattr(args, "json", False))
+        return 0
     except Exception:
         _emit(
             "hook",
@@ -170,13 +188,3 @@ def route_native_hook(
             getattr(args, "json", False),
         )
         return 0
-    finally:
-        if worker is not None:
-            close = getattr(worker, "close", None)
-            if callable(close):
-                close()
-        if evidence_writer is not None:
-            # A one-shot hook must not hold the harness response open for
-            # control-plane persistence. Persistence is best effort; the
-            # security result is already returned and never depends on it.
-            _ = evidence_writer.stop(timeout_seconds=_NATIVE_RECEIPT_DRAIN_TIMEOUT_SECONDS)

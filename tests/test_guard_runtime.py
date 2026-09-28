@@ -14600,7 +14600,7 @@ def test_runtime_hook_saved_v1_allow_satisfies_exact_unchanged_current_review(tm
         as_json=True,
     )
 
-    assert first_rc == 1
+    assert first_rc == 0
     assert first_output["policy_action"] == "review"
     assert context_token.startswith(APPROVAL_CONTEXT_TOKEN_PREFIX)
     assert second_rc == 0

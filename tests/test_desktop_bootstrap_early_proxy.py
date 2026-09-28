@@ -39,13 +39,23 @@ def _write_daemon_identity(
     port: int,
     token: str = "desktop-bootstrap-test-token",
     tamper_signature: bool = False,
+    executable: str | None = None,
 ) -> None:
     from codex_plugin_scanner.guard.daemon.discovery import authenticate_daemon_state
+    from codex_plugin_scanner.version import __version__
 
     guard_home = home / ".hol-guard"
     guard_home.mkdir()
     discovery_key = "ab" * 32
-    state = authenticate_daemon_state({"host": host, "port": port}, discovery_key=discovery_key)
+    state = authenticate_daemon_state(
+        {
+            "host": host,
+            "port": port,
+            "package_version": __version__,
+            "executable": executable if executable is not None else str(Path(sys.executable).resolve(strict=True)),
+        },
+        discovery_key=discovery_key,
+    )
     if tamper_signature:
         signature = state["state_signature"]
         assert isinstance(signature, str)
@@ -183,6 +193,31 @@ def test_desktop_bootstrap_proxy_skips_candidate_preflight(tmp_path: Path) -> No
     assert result.returncode != 0
     assert hits == []
     assert "guard-desktop-bootstrap.v1" not in result.stdout
+    assert marker.is_file()
+
+
+def test_desktop_bootstrap_proxy_ignores_different_executable(tmp_path: Path) -> None:
+    document = {"coreVersion": "9.9.9", "schema": "guard-desktop-bootstrap.v1"}
+    server, hits = _serve_bootstrap(json.dumps(document).encode("utf-8"))
+    try:
+        _write_daemon_identity(
+            tmp_path,
+            host="127.0.0.1",
+            port=server.server_address[1],
+            executable="/usr/bin/false",
+        )
+        marker, environment = _poison_guard_import(tmp_path)
+        result = subprocess.run(
+            [sys.executable, str(FROZEN_ENTRYPOINT), "desktop", "bootstrap", "--json"],
+            capture_output=True,
+            env=environment,
+            check=False,
+            text=True,
+        )
+    finally:
+        server.shutdown()
+    assert result.returncode != 0
+    assert hits == []
     assert marker.is_file()
 
 

@@ -185,6 +185,8 @@ def _running_desktop_bootstrap_body() -> str | None:
         return None
     if not isinstance(state, dict) or not _daemon_state_is_authentic(state, discovery_key):
         return None
+    if not _daemon_state_matches_this_binary(state):
+        return None
     host = state.get("host")
     port = state.get("port")
     if host != "127.0.0.1" or type(port) is not int or not 1 <= port <= 65535:
@@ -217,6 +219,29 @@ def _running_desktop_bootstrap_body() -> str | None:
     if not isinstance(document, dict) or document.get("schema") != _DESKTOP_BOOTSTRAP_SCHEMA:
         return None
     return json.dumps(document, sort_keys=True)
+
+
+def _running_executable() -> str:
+    try:
+        return str(Path(sys.executable).resolve(strict=True))
+    except OSError:
+        return sys.executable
+
+
+def _daemon_state_matches_this_binary(state: dict[str, object]) -> bool:
+    """Proxy only a daemon running this same package and executable.
+
+    The signed state records ``package_version`` and ``executable``. A candidate
+    preflight never reaches this check. An older daemon without ``executable``
+    falls through so Desktop still runs the binary it selected.
+    """
+
+    executable = state.get("executable")
+    return (
+        state.get("package_version") == _packaged_version()
+        and isinstance(executable, str)
+        and executable == _running_executable()
+    )
 
 
 def _desktop_preflight_requested() -> bool:

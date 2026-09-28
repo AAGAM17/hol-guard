@@ -11,7 +11,10 @@ import pytest
 
 from codex_plugin_scanner.guard.evaluation_cli import main
 from codex_plugin_scanner.guard.evaluation_contracts import EVALUATION_PROFILE_SCHEMA_VERSION
-from codex_plugin_scanner.guard.evaluation_evidence_package import build_evaluation_evidence_package
+from codex_plugin_scanner.guard.evaluation_evidence_package import (
+    EvaluationEvidencePackageError,
+    build_evaluation_evidence_package,
+)
 
 
 def _host_os() -> str:
@@ -384,6 +387,28 @@ def test_package_evidence_reports_generic_write_failure_without_calling_it_an_ov
         "message": "evaluation evidence package could not be written safely",
     }
     assert not list(tmp_path.glob("hol-guard-eval-evidence-*.zip"))
+
+
+def test_package_evidence_uses_typed_failure_code_when_message_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    profile_path, _, profile = _write_profile(tmp_path)
+    result_path = tmp_path / "result.json"
+    result_path.write_text(json.dumps(_result(profile)), encoding="utf-8")
+
+    def fail_write(*_args: object, **_kwargs: object) -> None:
+        raise EvaluationEvidencePackageError("output_exists", "changed diagnostic text")
+
+    monkeypatch.setattr("codex_plugin_scanner.guard.evaluation_cli.write_evaluation_evidence_package", fail_write)
+    status = main(["package-evidence", str(profile_path), str(result_path), str(tmp_path)])
+
+    payload = _payload(capsys)
+    assert status == 2
+    assert payload["error"] == {
+        "code": "output_exists",
+        "message": "evaluation evidence package already exists",
+    }
+    assert "changed diagnostic text" not in json.dumps(payload)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="evidence package writer requires POSIX directory descriptors")

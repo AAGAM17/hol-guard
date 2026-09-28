@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import NoReturn, cast
 
 from ..version import __version__
+from .evaluation_cli_package_errors import package_write_error
 from .evaluation_cli_recovery import (
     _CliError,
     _read_recovery_token,
@@ -27,6 +28,8 @@ from .evaluation_cli_recovery import (
 )
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile, EvaluationResult
 from .evaluation_evidence_package import (
+    EVALUATION_PROOF_BOUNDARY,
+    MAX_EVIDENCE_PACKAGE_BYTES,
     verify_evaluation_evidence_package,
     write_evaluation_evidence_package,
 )
@@ -40,7 +43,6 @@ from .evaluation_preflight import (
 CLI_SCHEMA_VERSION = "guard.evaluation-cli.v1"
 _MAX_PROFILE_BYTES = 1 * 1024 * 1024
 _MAX_RESULT_BYTES = 1 * 1024 * 1024
-_MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 
 
 class _EvaluationArgumentParser(argparse.ArgumentParser):
@@ -253,7 +255,7 @@ def _run_verify_evidence(args: argparse.Namespace) -> int:
         )
         data = _read_bounded(
             package_path,
-            _MAX_EVIDENCE_BYTES,
+            MAX_EVIDENCE_PACKAGE_BYTES,
             too_large_code="evidence_package_too_large",
             read_code="evidence_package_read_failed",
             label="evaluation evidence package",
@@ -273,47 +275,6 @@ def _run_verify_evidence(args: argparse.Namespace) -> int:
     except _CliError as error:
         _emit(_result("verify-evidence", error.status, error=error))
         return _exit_code(error.status)
-
-
-def _package_write_error(error: EvaluationContractError) -> _CliError:
-    """Map writer failures to stable, value-free CLI diagnostics."""
-
-    reason = str(error)
-    if "already exists" in reason or "without overwriting" in reason:
-        return _CliError(
-            "output_exists",
-            "evaluation evidence package already exists",
-            status="blocked_environment",
-        )
-    if "private temporary root" in reason:
-        return _CliError(
-            "output_scope_invalid",
-            "evaluation evidence output is outside the profile private temporary scope",
-            status="blocked_environment",
-        )
-    if "output limit" in reason:
-        return _CliError(
-            "evidence_package_invalid",
-            "evaluation evidence package exceeds the declared output limit",
-            status="failed",
-        )
-    if "invalid text" in reason:
-        return _CliError(
-            "evidence_package_invalid",
-            "evaluation evidence package contains invalid text",
-            status="failed",
-        )
-    if "unavailable on this platform" in reason:
-        return _CliError(
-            "output_unavailable",
-            "safe evaluation evidence package writing is unavailable",
-            status="blocked_environment",
-        )
-    return _CliError(
-        "evidence_package_write_failed",
-        "evaluation evidence package could not be written safely",
-        status="blocked_environment",
-    )
 
 
 def _run_package_evidence(args: argparse.Namespace) -> int:
@@ -336,7 +297,7 @@ def _run_package_evidence(args: argparse.Namespace) -> int:
         try:
             package = write_evaluation_evidence_package(profile, result, output_dir=output_dir)
         except EvaluationContractError as error:
-            mapped = _package_write_error(error)
+            mapped = package_write_error(error)
             _emit(_result("package-evidence", mapped.status, error=mapped))
             return _exit_code(mapped.status)
         _emit(
@@ -346,7 +307,7 @@ def _run_package_evidence(args: argparse.Namespace) -> int:
                 package={
                     "digest": package.digest,
                     "path": str(package.path),
-                    "proofBoundary": "caller_supplied_unverified",
+                    "proofBoundary": EVALUATION_PROOF_BOUNDARY,
                     "sizeBytes": package.size_bytes,
                 },
             )

@@ -474,7 +474,7 @@ def normalize_cursor_hook_payload(
             for match in _NETWORK_HOST_PATTERN.finditer(url)
         )
     )
-    return replace(envelope, action_type="network_request", network_hosts=hosts)
+    return replace(envelope, action_id="", action_type="network_request", network_hosts=hosts)
 
 
 def normalize_grok_hook_payload(

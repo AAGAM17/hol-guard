@@ -6,12 +6,14 @@ for (const width of [1280, 390]) {
   test(`registry Codex setup stays reviewed and does not grant tools at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const requests: Record<string, unknown>[] = [];
+    let discoveryCalls = 0;
     let finishApply: () => void = () => undefined;
     const applyGate = new Promise<void>((resolve) => { finishApply = resolve; });
     await mount(page);
     await page.route("**/v1/local-clis**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       const body = route.request().method() === "POST" ? route.request().postDataJSON() : {};
+      if (path.endsWith("/discover")) discoveryCalls += 1;
       if (path.endsWith("/refresh-job")) {
         await route.fulfill({ json: { job_id: "d".repeat(32), cli_id: "inventory:configured", state: "complete", error: null } });
         return;
@@ -61,13 +63,16 @@ for (const width of [1280, 390]) {
     }
     expect(requests).toHaveLength(1);
     await review.getByLabel("Authenticator code").fill("123456");
+    const beforeApply = discoveryCalls;
     await review.getByRole("button", { name: "Add to Codex", exact: true }).click();
     await expect.poll(() => requests.length).toBe(2);
+    await expect(registry.getByRole("status")).toContainText("Adding the reviewed connection to Codex…");
     await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
     await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
     await expect(review.getByRole("button", { name: "Add to Codex", exact: true })).toBeDisabled();
     finishApply();
     await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
+    await expect.poll(() => discoveryCalls).toBe(beforeApply + 1);
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ operation: "apply", registry_name: "io.github.sample/newserver",
       endpoint: "https://example.com/mcp", setup_name: "newserver", selection_digest: "b".repeat(64),
@@ -78,9 +83,11 @@ for (const width of [1280, 390]) {
   test(`pinned registry package setup shows the launch and grants no tools at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const requests: Record<string, unknown>[] = [];
+    let discoveryCalls = 0;
     await mount(page);
     await page.route("**/v1/local-clis**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/discover")) discoveryCalls += 1;
       if (path.endsWith("/registry-search")) {
         await route.fulfill({ json: { source: "official-mcp-registry", coverage: "search-page", more_available: false,
           results: [{ name: "io.github.sample/package-server", title: "Package Server", version: "1.2.3",
@@ -125,8 +132,10 @@ for (const width of [1280, 390]) {
     await expect(review).toContainText('"/synthetic/npx" "-y" "@sample/server@2.3.4"');
     expect(requests).toHaveLength(1);
     await review.getByLabel("Authenticator code").fill("123456");
+    const beforeApply = discoveryCalls;
     await review.getByRole("button", { name: "Add to Codex", exact: true }).click();
     await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
+    await expect.poll(() => discoveryCalls).toBe(beforeApply + 1);
     expect(requests[1]).toMatchObject({ operation: "apply", kind: "package",
       package_identifier: "@sample/server", package_version: "2.3.4", selection_digest: "c".repeat(64),
       confirm_host_change: true, approval_totp_code: "123456" });

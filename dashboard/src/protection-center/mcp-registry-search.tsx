@@ -73,9 +73,9 @@ type SetupCandidate = (SetupBase & { kind: "remote"; endpoint: string })
   | (SetupBase & { kind: "package"; package_identifier: string; package_version: string;
     command: string; arguments: string[]; verified_package: false });
 
-export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
+export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }: {
   items: LocalCliItem[]; approvalGate: GuardApprovalGatePublicConfig | null;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (open: boolean) => void; onConfigured: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -156,6 +156,8 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
         || body.host_change_applied !== true || body.permissions_granted !== false) throw new Error("Codex setup outcome is uncertain.");
       setConfigured({ name: candidate.setup_name, kind: candidate.kind === "package" ? "package" : "remote" });
       setCandidate(null); setPassword(""); setTotp("");
+      try { await onConfigured(); }
+      catch { setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions."); }
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Codex setup did not finish."); }
     finally { operation.current = null; setBusy(false); }
   }
@@ -177,12 +179,15 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
         <button type="button" onClick={() => { void search(); }} disabled={busy || query.trim().length < 2}
           className="min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white disabled:opacity-50">Search registry</button>
       </div>
-      {busy ? <p role="status" className="mt-3 text-sm text-brand-dark/75">Searching public listings…</p> : null}
+      {busy ? <p role="status" className="mt-3 text-sm text-brand-dark/75">
+        {operation.current === "search" ? "Searching public listings…" : operation.current === "preview"
+          ? "Checking the exact registry listing…" : "Adding the reviewed connection to Codex…"}
+      </p> : null}
       {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
       {configured ? <p role="status" className="mt-3 text-sm text-brand-dark">
         {configured.name} was added to Codex. Restart Codex and complete any provider-owned sign-in there.
         {configured.kind === "package" ? " Codex may download and run the pinned package on first use." : null}
-        {" "}Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted.
+        {" "}Review each tool in Extensions after Codex loads it. No tool permission was granted.
       </p> : null}
       {candidate ? <section aria-label="Review Codex MCP setup" className="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-brand-dark">
         <h3 className="font-semibold">Review Codex connection</h3>

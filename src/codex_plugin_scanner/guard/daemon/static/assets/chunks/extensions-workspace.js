@@ -4615,7 +4615,7 @@ async function registrySearch(query, signal) {
   });
   return { entries, moreAvailable: body.more_available };
 }
-function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
+function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) {
   const [open, setOpen] = reactExports.useState(false);
   const [query, setQuery] = reactExports.useState("");
   const [entries, setEntries] = reactExports.useState(null);
@@ -4729,6 +4729,11 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
       setCandidate(null);
       setPassword("");
       setTotp("");
+      try {
+        await onConfigured();
+      } catch {
+        setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Codex setup did not finish.");
     } finally {
@@ -4781,14 +4786,14 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
           }
         )
       ] }),
-      busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-3 text-sm text-brand-dark/75", children: "Searching public listings…" }) : null,
+      busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-3 text-sm text-brand-dark/75", children: operation.current === "search" ? "Searching public listings…" : operation.current === "preview" ? "Checking the exact registry listing…" : "Adding the reviewed connection to Codex…" }) : null,
       error ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "alert", className: "mt-3 text-sm text-red-700", children: error }) : null,
       configured ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { role: "status", className: "mt-3 text-sm text-brand-dark", children: [
         configured.name,
         " was added to Codex. Restart Codex and complete any provider-owned sign-in there.",
         configured.kind === "package" ? " Codex may download and run the pinned package on first use." : null,
         " ",
-        "Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted."
+        "Review each tool in Extensions after Codex loads it. No tool permission was granted."
       ] }) : null,
       candidate ? /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "Review Codex MCP setup", className: "mt-4 rounded-xl border border-slate-200 p-4 text-sm text-brand-dark", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold", children: "Review Codex connection" }),
@@ -5305,7 +5310,15 @@ function AddCustomExtensionWorkspace(props) {
                 onSelect: selectSuggestion
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(McpRegistrySearch, { items: props.items, approvalGate: resolvedApprovalGate, onOpenChange: setRegistryOpen })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              McpRegistrySearch,
+              {
+                items: props.items,
+                approvalGate: resolvedApprovalGate,
+                onOpenChange: setRegistryOpen,
+                onConfigured: props.onConfigured
+              }
+            )
           ] })
         ] }),
         error ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 max-w-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: error }) }) : null,
@@ -8725,7 +8738,8 @@ function ProtectionCenterWorkspace(props) {
         revision: localClis.data?.revision ?? 0,
         discovering: localClis.discovering || !localClis.catalogReady,
         onBack: closeExtension,
-        onAdded: handleCustomExtensionAdded
+        onAdded: handleCustomExtensionAdded,
+        onConfigured: localClis.discover
       }
     ) : null,
     showLocalCli && selectedLocalCli && localClis.data ? /* @__PURE__ */ jsxRuntimeExports.jsx(

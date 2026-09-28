@@ -457,6 +457,7 @@ export function ProtectionCenterWorkspace(props: {
           discovering={localClis.discovering || !localClis.catalogReady}
           onBack={closeExtension}
           onAdded={handleCustomExtensionAdded}
+          onConfigured={localClis.discover}
         />
       ) : null}
       {showLocalCli && selectedLocalCli && localClis.data ? (

@@ -62,6 +62,7 @@ export function AddCustomExtensionWorkspace(props: {
   discovering?: boolean;
   onBack: () => void;
   onAdded: (cliId: string) => void;
+  onConfigured: () => Promise<void>;
 }) {
   const { resolvedApprovalGate, resolveApprovalGate, refreshApprovalGate } = useResolvedApprovalGate(null);
   const [command, setCommand] = useState("");
@@ -474,7 +475,8 @@ export function AddCustomExtensionWorkspace(props: {
               seenSuggestions={seenSuggestions}
               onSelect={selectSuggestion}
             />
-            <McpRegistrySearch items={props.items} approvalGate={resolvedApprovalGate} onOpenChange={setRegistryOpen} />
+            <McpRegistrySearch items={props.items} approvalGate={resolvedApprovalGate}
+              onOpenChange={setRegistryOpen} onConfigured={props.onConfigured} />
             </>
           )}
         </>

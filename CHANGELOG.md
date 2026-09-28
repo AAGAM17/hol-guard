@@ -5,6 +5,73 @@ All notable changes to HOL Guard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.6](https://github.com/hashgraph-online/hol-guard/compare/v3.7.5...v3.7.6) (2026-09-28)
+
+
+### Bug Fixes
+
+* **diagnostics:** explain native extension evaluation failures ([#3155](https://github.com/hashgraph-online/hol-guard/issues/3155)) ([3ec32b1](https://github.com/hashgraph-online/hol-guard/commit/3ec32b1762f5b67dfef6086f0e5b457f3818ac02))
+* **release:** retry temporary PyPI metadata errors ([#3170](https://github.com/hashgraph-online/hol-guard/issues/3170)) ([5bfec94](https://github.com/hashgraph-online/hol-guard/commit/5bfec94bb65cb66c7cd00b04cdfaa5b545933dee))
+
+## [3.7.5](https://github.com/hashgraph-online/hol-guard/compare/v3.7.2...v3.7.5) (2026-09-27)
+
+
+### Bug Fixes
+
+* **core:** answer version probes before frozen runtime imports ([#3144](https://github.com/hashgraph-online/hol-guard/issues/3144)) ([722c97e](https://github.com/hashgraph-online/hol-guard/commit/722c97e0853d150460434f2846da8695ab5273cf))
+* **daemon:** keep a still-starting daemon alive at the start budget ([#3149](https://github.com/hashgraph-online/hol-guard/issues/3149)) ([0dae754](https://github.com/hashgraph-online/hol-guard/commit/0dae7542ba4ae640c99a6f6cf2012e1a2a6d4456))
+* **dashboard:** keep Update HOL Guard action visible on every view ([#3143](https://github.com/hashgraph-online/hol-guard/issues/3143)) ([cb72ade](https://github.com/hashgraph-online/hol-guard/commit/cb72adebe0a2863e2550dcaf3d6a530b7ed29428))
+* **diagnostics:** hide error details when redaction fails ([0ef32aa](https://github.com/hashgraph-online/hol-guard/commit/0ef32aa0ffd80027f88679a8c542c0f569ecea8f))
+* **doctor:** distinguish runtime readiness from registration ([#3136](https://github.com/hashgraph-online/hol-guard/issues/3136)) ([e4b6449](https://github.com/hashgraph-online/hol-guard/commit/e4b6449781f1a26c676a5fb8f3248c8db2a336ea))
+* **hooks:** keep Watch ready while native snapshots republish ([05b7bc2](https://github.com/hashgraph-online/hol-guard/commit/05b7bc2fadb1b3deb9fbec50e74313d028ce5dd2))
+* **release:** accept a repair attestation from the main dispatch commit ([#3141](https://github.com/hashgraph-online/hol-guard/issues/3141)) ([4c3e95a](https://github.com/hashgraph-online/hol-guard/commit/4c3e95aadf98130b25d074d5c27d6117eda067b7))
+* **release:** finish GitHub assets when PyPI visibility lags ([#3138](https://github.com/hashgraph-online/hol-guard/issues/3138)) ([e1b8ef1](https://github.com/hashgraph-online/hol-guard/commit/e1b8ef1db1996a08b39e2eed26065d43ab8d1f82))
+* **release:** retry absent registry artifacts ([#3139](https://github.com/hashgraph-online/hol-guard/issues/3139)) ([505c62e](https://github.com/hashgraph-online/hol-guard/commit/505c62e1e0fd506ff4d040d8cba2dd2ca1fb25f4))
+
+## [3.7.2](https://github.com/hashgraph-online/hol-guard/compare/v3.7.1...v3.7.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* **codex:** authenticate managed fallback after worker failure ([#3133](https://github.com/hashgraph-online/hol-guard/issues/3133)) ([bf00b65](https://github.com/hashgraph-online/hol-guard/commit/bf00b65ff8e29842692835363845911fabc22954))
+* **evaluation:** bound process probes ([#3135](https://github.com/hashgraph-online/hol-guard/issues/3135)) ([5b5508b](https://github.com/hashgraph-online/hol-guard/commit/5b5508b8a1237b1e71dfd0c487432e0781404548))
+
+## [3.7.1](https://github.com/hashgraph-online/hol-guard/compare/v3.7.0...v3.7.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **dashboard:** keep historical native reviews approvable ([#3130](https://github.com/hashgraph-online/hol-guard/issues/3130)) ([7851c8d](https://github.com/hashgraph-online/hol-guard/commit/7851c8d8525a6672ffb3ba0429324ca75fe8b944))
+
+## [3.7.0](https://github.com/hashgraph-online/hol-guard/compare/v3.6.4...v3.7.0) (2026-09-27)
+
+
+### Features
+
+* **mcp:** detect connectors and manage per-tool permissions ([#3125](https://github.com/hashgraph-online/hol-guard/issues/3125)) ([a539279](https://github.com/hashgraph-online/hol-guard/commit/a5392792063cb3e061e0a8dfb2a122fee7d13f05))
+
+## [3.6.4](https://github.com/hashgraph-online/hol-guard/compare/v3.6.3...v3.6.4) (2026-09-26)
+
+
+### Bug Fixes
+
+* **runtime:** reap detached hook workers before the replacement daemon starts ([a450f6b](https://github.com/hashgraph-online/hol-guard/commit/a450f6b0c19b3ec94a60a156b9924a7d2a038a73))
+* stabilize native approval retries and bulk inbox submission ([#3121](https://github.com/hashgraph-online/hol-guard/issues/3121)) ([e5350eb](https://github.com/hashgraph-online/hol-guard/commit/e5350eb2427d7948b0ec54d2cfbf790c62507cbc))
+
+## [3.6.3](https://github.com/hashgraph-online/hol-guard/compare/v3.6.2...v3.6.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* **runtime:** drain stale resident leases past the directory cap ([#3124](https://github.com/hashgraph-online/hol-guard/issues/3124)) ([277707b](https://github.com/hashgraph-online/hol-guard/commit/277707b3a44d7237b1470b5d88c5460ace5def3e))
+
+## [3.6.2](https://github.com/hashgraph-online/hol-guard/compare/v3.6.1...v3.6.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* **command:** hide observe-mode warnings for proven local lookups ([#3122](https://github.com/hashgraph-online/hol-guard/issues/3122)) ([3292474](https://github.com/hashgraph-online/hol-guard/commit/3292474fa2373da9a17471360fcd890dc099f237))
+
 ## [3.6.1](https://github.com/hashgraph-online/hol-guard/compare/v3.6.0...v3.6.1) (2026-09-25)
 
 

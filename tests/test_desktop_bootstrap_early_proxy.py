@@ -264,5 +264,3 @@ def test_desktop_bootstrap_route_is_critical() -> None:
     assert "/v1/desktop/bootstrap" in _DAEMON_CRITICAL_PATHS
     with pytest.raises(ValueError):
         build_desktop_dashboard_session_url_for_daemon(daemon_url="http://10.0.0.8:9", auth_token="token")
-
-

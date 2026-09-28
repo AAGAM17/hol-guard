@@ -37,7 +37,7 @@ export function nativePublicationMessage(
 
 export function detailPolicyCopy(surface: LocalCliItem["surface"]): string {
   if (surface === "mcp") {
-    return "Policy follows Guard's normal rules. Ask requires approval. Allow and Deny apply within the scope shown in Connection details. Execution wrappers require review of their underlying actions.";
+    return "Ask requires approval. Allow and Deny apply within the scope shown in Connection details. Allow does not override stricter Guard policy, so protected MCP actions may still need fresh approval. Execution wrappers require review of their underlying actions.";
   }
   if (surface === "package-scripts") {
     return "Recommended keeps Guard's usual review. Allow or block applies to that npm, pnpm, yarn, or bun script in this project. Nested names such as guard:audit stay grouped.";

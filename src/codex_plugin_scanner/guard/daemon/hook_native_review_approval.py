@@ -98,7 +98,6 @@ def pause_native_pre_tool_for_approval(
     home_dir: Path | None = None,
     claim_saved_approval: bool = True,
     claimed_saved_allow_hash: str | None = None,
-    claimed_trusted_request_override: bool = False,
     claimed_approval_request_id: str | None = None,
 ) -> dict[str, object]:
     """Pause a native review result and attach any queued approval metadata."""

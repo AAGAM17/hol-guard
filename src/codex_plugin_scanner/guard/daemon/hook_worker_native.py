@@ -270,7 +270,6 @@ class HookWorkerNativeMixin:
         deadline: float | None,
         claim_saved_approval: bool = True,
         claimed_saved_allow_hash: str | None = None,
-        claimed_trusted_request_override: bool = False,
         claimed_approval_request_id: str | None = None,
     ) -> dict[str, object]:
         policy_snapshot = self._native_policy_snapshot(workspace, deadline=deadline)
@@ -301,7 +300,6 @@ class HookWorkerNativeMixin:
                     recording_only=recording_only,
                     claim_saved_approval=claim_saved_approval,
                     claimed_saved_allow_hash=claimed_saved_allow_hash,
-                    claimed_trusted_request_override=claimed_trusted_request_override,
                     claimed_approval_request_id=claimed_approval_request_id,
                 )
                 if (
@@ -357,7 +355,6 @@ class HookWorkerNativeMixin:
         recording_only: bool,
         claim_saved_approval: bool = True,
         claimed_saved_allow_hash: str | None = None,
-        claimed_trusted_request_override: bool = False,
         claimed_approval_request_id: str | None = None,
     ) -> tuple[dict[str, object], bool]:
         edge = self._review_raw_hook_native(
@@ -474,7 +471,6 @@ class HookWorkerNativeMixin:
                     home_dir=home_dir,
                     claim_saved_approval=claim_saved_approval,
                     claimed_saved_allow_hash=claimed_saved_allow_hash,
-                    claimed_trusted_request_override=claimed_trusted_request_override,
                     claimed_approval_request_id=claimed_approval_request_id,
                 )
                 if native_harness.strip().lower().replace("_", "-") == "claude-code" and response.get("prompted"):

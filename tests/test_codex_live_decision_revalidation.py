@@ -254,7 +254,6 @@ def test_first_exact_live_allow_revalidates_through_resident_worker(tmp_path: Pa
                 **request,
                 "claim_saved_approval": False,
                 "claimed_saved_allow_hash": claimed_hash,
-                "claimed_trusted_request_override": True,
                 "claimed_approval_request_id": claimed_request_id,
             },
             stores=stores,

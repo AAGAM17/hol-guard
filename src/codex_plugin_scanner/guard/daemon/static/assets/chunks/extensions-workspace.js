@@ -4586,12 +4586,18 @@ async function registrySearch(query, signal) {
     throw new Error("Invalid registry response");
   }
   const entries = body.results.map((entry) => {
-    if (!object(entry) || entry.provenance !== "official-mcp-registry" || entry.verified_package !== false || entry.configured !== false || entry.installed !== false || !["active", "deprecated", "unknown"].includes(String(entry.status)) || typeof entry.name !== "string" || entry.name.length > 256 || typeof entry.title !== "string" || entry.title.length > 120 || typeof entry.version !== "string" || entry.version.length > 80 || typeof entry.description !== "string" || entry.description.length > 500 || !Array.isArray(entry.remote_endpoints) || entry.remote_endpoints.length > 8 || typeof entry.package_count !== "number" || !Number.isSafeInteger(entry.package_count) || entry.package_count < 0 || entry.package_count > 100) {
+    if (!object(entry) || entry.provenance !== "official-mcp-registry" || entry.verified_package !== false || entry.configured !== false || entry.installed !== false || !["active", "deprecated", "unknown"].includes(String(entry.status)) || typeof entry.name !== "string" || entry.name.length > 256 || typeof entry.title !== "string" || entry.title.length > 120 || typeof entry.version !== "string" || entry.version.length > 80 || typeof entry.description !== "string" || entry.description.length > 500 || !Array.isArray(entry.remote_endpoints) || entry.remote_endpoints.length > 8 || !Array.isArray(entry.package_options) || entry.package_options.length > 8 || typeof entry.package_count !== "number" || !Number.isSafeInteger(entry.package_count) || entry.package_count < 0 || entry.package_count > 100) {
       throw new Error("Invalid registry provenance");
     }
     const endpoints = entry.remote_endpoints.map((remote) => {
       if (!object(remote) || typeof remote.url !== "string" || !remote.url.startsWith("https://") || !["streamable-http", "sse"].includes(String(remote.transport))) throw new Error("Invalid registry endpoint");
       return { url: remote.url, transport: remote.transport };
+    });
+    const packages = entry.package_options.map((option) => {
+      if (!object(option) || !["npm", "pypi"].includes(String(option.registry_type)) || typeof option.identifier !== "string" || option.identifier.length > 160 || typeof option.version !== "string" || option.version.length > 80 || !["npx", "uvx"].includes(String(option.command)) || option.transport !== "stdio" || option.verified_package !== false || !Array.isArray(option.arguments) || option.arguments.length > 18 || !option.arguments.every((argument) => typeof argument === "string" && argument.length <= 160)) {
+        throw new Error("Invalid registry package option");
+      }
+      return option;
     });
     return {
       name: entry.name,
@@ -4601,6 +4607,7 @@ async function registrySearch(query, signal) {
       status: entry.status,
       remote_endpoints: endpoints,
       package_count: entry.package_count,
+      package_options: packages,
       verified_package: false,
       configured: false,
       installed: false
@@ -4645,7 +4652,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
       if (!next.signal.aborted) setBusy(false);
     }
   }
-  async function preview(entry, endpoint) {
+  async function preview(entry, target2) {
     if (operation.current) return;
     operation.current = "preview";
     setBusy(true);
@@ -4660,13 +4667,20 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
           operation: "preview",
           registry_name: entry.name,
           version: entry.version,
-          endpoint,
-          setup_name: setupName
+          setup_name: setupName,
+          ..."endpoint" in target2 ? { endpoint: target2.endpoint } : {
+            kind: "package",
+            package_identifier: target2.packageOption.identifier,
+            package_version: target2.packageOption.version
+          }
         })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Could not review setup.");
-      if (!object(body) || body.host !== "codex" || body.registry_name !== entry.name || body.version !== entry.version || body.endpoint !== endpoint || body.setup_name !== setupName || body.permissions_granted !== false || body.host_change_applied !== false || typeof body.selection_digest !== "string" || !/^[a-f0-9]{64}$/.test(body.selection_digest)) throw new Error("Invalid Codex setup preview");
+      if (!object(body) || body.host !== "codex" || body.registry_name !== entry.name || body.version !== entry.version || body.setup_name !== setupName || body.permissions_granted !== false || body.host_change_applied !== false || typeof body.selection_digest !== "string" || !/^[a-f0-9]{64}$/.test(body.selection_digest)) throw new Error("Invalid Codex setup preview");
+      if ("endpoint" in target2) {
+        if (body.endpoint !== target2.endpoint || body.kind === "package") throw new Error("Invalid Codex endpoint preview");
+      } else if (body.kind !== "package" || body.package_identifier !== target2.packageOption.identifier || body.package_version !== target2.packageOption.version || typeof body.command !== "string" || !Array.isArray(body.arguments) || !body.arguments.every((argument) => typeof argument === "string") || body.verified_package !== false) throw new Error("Invalid Codex package preview");
       setCandidate(body);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not review setup.");
@@ -4696,8 +4710,12 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
           operation: "apply",
           registry_name: candidate.registry_name,
           version: candidate.version,
-          endpoint: candidate.endpoint,
           setup_name: candidate.setup_name,
+          ...candidate.kind === "package" ? {
+            kind: "package",
+            package_identifier: candidate.package_identifier,
+            package_version: candidate.package_version
+          } : { endpoint: candidate.endpoint },
           selection_digest: candidate.selection_digest,
           confirm_host_change: true,
           session_nonce: crypto.randomUUID().replaceAll("-", ""),
@@ -4706,8 +4724,8 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Codex setup did not finish.");
-      if (!object(body) || body.host !== "codex" || body.setup_name !== candidate.setup_name || body.host_change_applied !== true || body.permissions_granted !== false) throw new Error("Codex setup outcome is uncertain.");
-      setConfigured(candidate.setup_name);
+      if (!object(body) || body.host !== "codex" || body.setup_name !== candidate.setup_name || body.kind !== (candidate.kind === "package" ? "package" : "remote") || body.host_change_applied !== true || body.permissions_granted !== false) throw new Error("Codex setup outcome is uncertain.");
+      setConfigured({ name: candidate.setup_name, kind: candidate.kind === "package" ? "package" : "remote" });
       setCandidate(null);
       setPassword("");
       setTotp("");
@@ -4728,7 +4746,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
   }, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("summary", { className: "min-h-11 cursor-pointer py-3 font-semibold text-brand-dark", children: "Find an MCP server in the public registry" }),
     open ? /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "Public MCP registry search", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-6 text-brand-dark/75", children: "Search official listing metadata. A listing does not verify a package, install a server, connect an account, or enable tools. App-owned connections must be configured in their host." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-6 text-brand-dark/75", children: "Search official listing metadata. Review a pinned package or HTTPS endpoint before adding it to Codex. A listing does not verify package safety, connect an account, or enable tools. App-owned connections stay in their host." }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex flex-wrap items-end gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block min-w-56 flex-1 text-sm font-semibold text-brand-dark", children: [
           "Server or app name",
@@ -4766,8 +4784,10 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
       busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-3 text-sm text-brand-dark/75", children: "Searching public listings…" }) : null,
       error ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "alert", className: "mt-3 text-sm text-red-700", children: error }) : null,
       configured ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { role: "status", className: "mt-3 text-sm text-brand-dark", children: [
-        configured,
-        " was added to Codex. Restart Codex and complete any provider-owned sign-in there. Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted."
+        configured.name,
+        " was added to Codex. Restart Codex and complete any provider-owned sign-in there.",
+        configured.kind === "package" ? " Codex may download and run the pinned package on first use." : null,
+        "Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted."
       ] }) : null,
       candidate ? /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "Review Codex MCP setup", className: "mt-4 rounded-xl border border-slate-200 p-4 text-sm text-brand-dark", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold", children: "Review Codex connection" }),
@@ -4778,11 +4798,27 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 break-all", children: [
           "Codex name: ",
-          candidate.setup_name,
-          " · HTTPS endpoint: ",
-          candidate.endpoint
+          candidate.setup_name
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2", children: "This changes Codex host configuration. It does not download a package, authenticate an account, activate this session, or allow tools in Guard." }),
+        candidate.kind === "package" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2", children: [
+            "Unverified registry package: ",
+            candidate.package_identifier,
+            " · pinned version ",
+            candidate.package_version
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 break-all font-mono text-xs", children: [
+            "Launch: ",
+            [candidate.command, ...candidate.arguments].map((part) => JSON.stringify(part)).join(" ")
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2", children: "This changes Codex configuration. Codex may download and execute this package on first use. It does not authenticate an account or allow tools in Guard." })
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 break-all", children: [
+            "HTTPS endpoint: ",
+            candidate.endpoint
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2", children: "This changes Codex configuration. It does not download a package, authenticate an account, activate this session, or allow tools in Guard." })
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 max-w-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           ApprovalProofFieldInputs,
           {
@@ -4844,14 +4880,36 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange }) {
             " listing · ",
             entry.remote_endpoints.length,
             " HTTPS endpoint(s) · ",
+            entry.package_options.length,
+            " reviewed launch option(s) of ",
             entry.package_count,
-            " package option(s) · Package unverified"
+            " package listing(s) · Packages unverified"
           ] }),
           possibleExisting ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs font-semibold text-brand-dark", children: "Possible existing connection. Inspect it before adding another." }) : null,
           entry.status === "active" && !possibleExisting && entry.remote_endpoints.some((remote) => remote.transport === "streamable-http") ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", disabled: busy, onClick: () => {
             const endpoint = entry.remote_endpoints.find((remote) => remote.transport === "streamable-http");
-            if (endpoint) void preview(entry, endpoint.url);
-          }, className: "mt-3 min-h-11 rounded-xl border border-slate-300 px-4 font-semibold text-brand-dark", children: "Review Codex setup" }) : null
+            if (endpoint) void preview(entry, { endpoint: endpoint.url });
+          }, className: "mt-3 min-h-11 rounded-xl border border-slate-300 px-4 font-semibold text-brand-dark", children: "Review HTTPS setup" }) : null,
+          entry.status === "active" && !possibleExisting ? entry.package_options.map((option) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              onClick: () => {
+                void preview(entry, { packageOption: option });
+              },
+              className: "ml-2 mt-3 min-h-11 rounded-xl border border-slate-300 px-4 font-semibold text-brand-dark",
+              children: [
+                "Review ",
+                option.registry_type,
+                " package · ",
+                option.identifier,
+                "@",
+                option.version
+              ]
+            },
+            `${option.registry_type}/${option.identifier}/${option.version}`
+          )) : null
         ] }, `${entry.name}/${entry.version}`);
       }) }) : null
     ] }) : null

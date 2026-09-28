@@ -439,13 +439,23 @@ class LocalCliApiService:
         return {"schema_version": _LOCAL_CLI_API_SCHEMA, **result}
 
     def registry_setup(self, payload: dict[str, object]) -> dict[str, object]:
-        from ..runtime.mcp_registry_setup import install_codex_remote_mcp, reviewed_codex_setup_candidate
+        from ..runtime.mcp_registry_setup import (
+            install_codex_package_mcp,
+            install_codex_remote_mcp,
+            reviewed_codex_package_candidate,
+            reviewed_codex_setup_candidate,
+        )
 
         operation = payload.get("operation")
         if operation not in {"preview", "apply"}:
             raise LocalCliApiError(400, "invalid_registry_setup_operation")
+        if payload.get("kind") not in (None, "remote", "package"):
+            raise LocalCliApiError(400, "invalid_registry_setup_kind")
+        package_setup = payload.get("kind") == "package"
         try:
-            candidate = reviewed_codex_setup_candidate(payload)
+            candidate = (
+                reviewed_codex_package_candidate(payload) if package_setup else reviewed_codex_setup_candidate(payload)
+            )
         except ValueError as error:
             raise LocalCliApiError(
                 409, str(error), "Registry listing changed or cannot be used for Codex setup."
@@ -456,7 +466,7 @@ class LocalCliApiService:
                 **candidate,
                 "permissions_granted": False,
                 "host_change_applied": False,
-                "next_action": "Review the exact Codex connection and confirm setup.",
+                "next_action": "Review the exact Codex launch recipe and confirm setup.",
             }
         if (
             payload.get("selection_digest") != candidate["selection_digest"]
@@ -464,8 +474,8 @@ class LocalCliApiService:
         ):
             raise LocalCliApiError(409, "registry_setup_review_changed", "Review this connection again before setup.")
         session_nonce = self._required_string(payload, "session_nonce")
-        action = "codex-mcp-remote-setup"
-        subject = "codex-mcp-remote-setup:" + candidate["selection_digest"]
+        action = "codex-mcp-package-setup" if package_setup else "codex-mcp-remote-setup"
+        subject = action + ":" + str(candidate["selection_digest"])
         try:
             grant = require_local_cli_trust(
                 self._store.guard_home,
@@ -485,7 +495,9 @@ class LocalCliApiService:
             raise LocalCliApiError(error.status, error.code, str(error)) from error
         try:
             with self._registry_setup_lock:
-                configured = install_codex_remote_mcp(candidate)
+                configured = (
+                    install_codex_package_mcp(candidate) if package_setup else install_codex_remote_mcp(candidate)
+                )
         except ValueError as error:
             message = (
                 "Codex may have changed its connection. Check the host configuration before retrying."
@@ -496,11 +508,15 @@ class LocalCliApiService:
         return {
             "schema_version": _LOCAL_CLI_API_SCHEMA,
             "host": "codex",
+            "kind": "package" if package_setup else "remote",
             "setup_name": configured,
             "host_change_applied": True,
             "permissions_granted": False,
             "next_action": (
-                "Restart Codex, complete provider-owned sign-in if prompted, then check host connections in Guard."
+                "Restart Codex. On first use, Codex may download and run the pinned package. "
+                "Complete provider-owned sign-in if prompted, then check host connections in Guard."
+                if package_setup
+                else "Restart Codex, complete provider-owned sign-in if prompted, then check host connections in Guard."
             ),
         }
 

@@ -21,7 +21,7 @@ for (const width of [1280, 390]) {
           name: "io.github.sample/newserver", title: "New Server", version: "1.2.3",
           description: "Synthetic remote listing.", status: "active", provenance: "official-mcp-registry",
           remote_endpoints: [{ url: "https://example.com/mcp", transport: "streamable-http" }],
-          package_count: 0, verified_package: false, configured: false, installed: false,
+          package_count: 0, package_options: [], verified_package: false, configured: false, installed: false,
         }] } });
         return;
       }
@@ -32,7 +32,8 @@ for (const width of [1280, 390]) {
           ? { host: "codex", registry_name: body.registry_name, version: body.version, endpoint: body.endpoint,
             setup_name: "newserver", selection_digest: "b".repeat(64),
             permissions_granted: false, host_change_applied: false }
-          : { host: "codex", setup_name: "newserver", permissions_granted: false, host_change_applied: true } });
+          : { host: "codex", kind: "remote", setup_name: "newserver",
+            permissions_granted: false, host_change_applied: true } });
         return;
       }
       await route.fulfill({ json: { schema_version: "guard.daemon.local-clis.v1", revision: 0, items: [],
@@ -50,7 +51,7 @@ for (const width of [1280, 390]) {
     const registry = page.getByRole("region", { name: "Public MCP registry search", exact: true });
     await registry.getByRole("searchbox", { name: "Server or app name", exact: true }).fill("newserver");
     await registry.getByRole("button", { name: "Search registry", exact: true }).click();
-    await registry.getByRole("button", { name: "Review Codex setup", exact: true }).click();
+    await registry.getByRole("button", { name: "Review HTTPS setup", exact: true }).click();
     const review = registry.getByRole("region", { name: "Review Codex MCP setup", exact: true });
     await expect(review).toContainText("https://example.com/mcp");
     await expect(review.getByRole("button", { name: "Add to Codex", exact: true })).toBeDisabled();
@@ -70,6 +71,64 @@ for (const width of [1280, 390]) {
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ operation: "apply", registry_name: "io.github.sample/newserver",
       endpoint: "https://example.com/mcp", setup_name: "newserver", selection_digest: "b".repeat(64),
+      confirm_host_change: true, approval_totp_code: "123456" });
+    expect(requests[1]).not.toHaveProperty("tool_permissions");
+  });
+
+  test(`pinned registry package setup shows the launch and grants no tools at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const requests: Record<string, unknown>[] = [];
+    await mount(page);
+    await page.route("**/v1/local-clis**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/registry-search")) {
+        await route.fulfill({ json: { source: "official-mcp-registry", coverage: "search-page", more_available: false,
+          results: [{ name: "io.github.sample/package-server", title: "Package Server", version: "1.2.3",
+            description: "Synthetic pinned listing.", status: "active", provenance: "official-mcp-registry",
+            remote_endpoints: [], package_count: 1,
+            package_options: [{ registry_type: "npm", identifier: "@sample/server", version: "2.3.4",
+              command: "npx", arguments: ["-y", "@sample/server@2.3.4"], transport: "stdio", verified_package: false }],
+            verified_package: false, configured: false, installed: false }] } });
+        return;
+      }
+      if (path.endsWith("/registry-setup")) {
+        const body = route.request().postDataJSON();
+        requests.push(body);
+        await route.fulfill({ json: body.operation === "preview"
+          ? { host: "codex", kind: "package", registry_name: body.registry_name, version: body.version,
+            package_identifier: body.package_identifier, package_version: body.package_version,
+            setup_name: body.setup_name, command: "/synthetic/npx", arguments: ["-y", "@sample/server@2.3.4"],
+            verified_package: false, selection_digest: "c".repeat(64),
+            permissions_granted: false, host_change_applied: false }
+          : { host: "codex", kind: "package", setup_name: body.setup_name,
+            permissions_granted: false, host_change_applied: true } });
+        return;
+      }
+      await route.fulfill({ json: { schema_version: "guard.daemon.local-clis.v1", revision: 0, items: [],
+        cloud: { sync_local_only: true, summary: "Synthetic fixture." } } });
+    });
+    await page.route("**/v1/settings", (route) => route.fulfill({ json: {
+      ...defaultSettingsPayload,
+      settings: { ...defaultSettingsPayload.settings, approval_gate: {
+        ...defaultSettingsPayload.settings.approval_gate, enabled: true, configured: true, totp_enabled: true,
+      } },
+    } }));
+    await initialize(page);
+    await page.getByRole("button", { name: "Add custom extension", exact: true }).click();
+    await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
+    const registry = page.getByRole("region", { name: "Public MCP registry search", exact: true });
+    await registry.getByRole("searchbox", { name: "Server or app name", exact: true }).fill("package-server");
+    await registry.getByRole("button", { name: "Search registry", exact: true }).click();
+    await registry.getByRole("button", { name: "Review npm package · @sample/server@2.3.4" }).click();
+    const review = registry.getByRole("region", { name: "Review Codex MCP setup", exact: true });
+    await expect(review).toContainText("Unverified registry package");
+    await expect(review).toContainText('"/synthetic/npx" "-y" "@sample/server@2.3.4"');
+    expect(requests).toHaveLength(1);
+    await review.getByLabel("Authenticator code").fill("123456");
+    await review.getByRole("button", { name: "Add to Codex", exact: true }).click();
+    await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
+    expect(requests[1]).toMatchObject({ operation: "apply", kind: "package",
+      package_identifier: "@sample/server", package_version: "2.3.4", selection_digest: "c".repeat(64),
       confirm_host_change: true, approval_totp_code: "123456" });
     expect(requests[1]).not.toHaveProperty("tool_permissions");
   });
@@ -105,7 +164,7 @@ for (const width of [1280, 390]) {
         body = { source: "official-mcp-registry", coverage: "search-page", more_available: false, results: [{
           name: "io.github.ComposioHQ/composio", title: "Composio", version: "1.0.5", description: "Synthetic listing.",
           status: "active", remote_endpoints: [{ url: "https://connect.composio.dev/mcp", transport: "streamable-http" }],
-          package_count: 0, provenance: "official-mcp-registry", verified_package: false,
+          package_count: 0, package_options: [], provenance: "official-mcp-registry", verified_package: false,
           configured: false, installed: false,
         }] };
       }

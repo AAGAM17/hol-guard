@@ -7,7 +7,7 @@ from typing import ClassVar
 
 import pytest
 
-from codex_plugin_scanner.guard.runtime.mcp_registry import search_mcp_registry
+from codex_plugin_scanner.guard.runtime.mcp_registry import reviewed_stdio_package_options, search_mcp_registry
 
 
 class _Response(io.BytesIO):
@@ -73,3 +73,24 @@ def test_registry_does_not_accept_oversize_or_fabricated_metadata(monkeypatch):
         monkeypatch.setattr(urllib.request, "build_opener", lambda *handlers, raw=payload: Opener(raw))
         with pytest.raises(ValueError, match=reason):
             search_mcp_registry("test")
+
+
+def test_registry_exposes_only_literal_pinned_stdio_package_recipes():
+    packages = [
+        {"registryType": "pypi", "registryBaseUrl": "https://pypi.org", "identifier": "hol-guard",
+         "version": "2.2.0", "runtimeHint": "uvx", "transport": {"type": "stdio"},
+         "packageArguments": [{"type": "positional", "value": "mcp"}]},
+        {"registryType": "npm", "identifier": "@safe/example", "version": "1.2.3", "runtimeHint": "npx",
+         "transport": {"type": "stdio"}, "packageArguments": []},
+        {"registryType": "npm", "identifier": "@safe/with-env", "version": "1.0.0", "runtimeHint": "npx",
+         "transport": {"type": "stdio"}, "environmentVariables": [{"name": "TOKEN"}]},
+        {"registryType": "npm", "identifier": "@safe/unpinned", "version": "latest", "runtimeHint": "npx",
+         "transport": {"type": "stdio"}},
+        {"registryType": "npm", "identifier": "@safe/templated", "version": "1.0.0", "runtimeHint": "npx",
+         "transport": {"type": "stdio"}, "packageArguments": [{"type": "positional", "value": "${TOKEN}"}]},
+    ]
+    options = reviewed_stdio_package_options(packages)
+    assert len(options) == 2
+    assert options[0]["command"] == "uvx" and options[0]["arguments"] == ["hol-guard==2.2.0", "mcp"]
+    assert options[1]["command"] == "npx" and options[1]["arguments"] == ["-y", "@safe/example@1.2.3"]
+    assert all(option["verified_package"] is False for option in options)

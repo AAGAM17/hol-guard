@@ -14,6 +14,73 @@ from ..strict_json_pairs import unique_json_object
 _ENDPOINT = "https://registry.modelcontextprotocol.io/v0.1/servers"
 _MAX_BYTES = 512_000
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}\Z")
+_PIN = re.compile(r"[0-9][A-Za-z0-9._+-]{0,79}\Z")
+_NPM = re.compile(r"(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*\Z")
+_PYPI = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+
+
+def reviewed_stdio_package_options(packages: object) -> list[dict[str, object]]:
+    """Expose only pinned, literal registry launch recipes that Codex can own."""
+    if not isinstance(packages, list):
+        return []
+    options: list[dict[str, object]] = []
+    for package in packages[:8]:
+        if not isinstance(package, dict):
+            continue
+        registry_type, identifier, version = (package.get(key) for key in ("registryType", "identifier", "version"))
+        transport = package.get("transport")
+        raw_arguments = package.get("packageArguments", [])
+        if (
+            not isinstance(identifier, str)
+            or not isinstance(version, str)
+            or not _PIN.fullmatch(version)
+            or not isinstance(transport, dict)
+            or transport.get("type") != "stdio"
+            or not isinstance(raw_arguments, list)
+            or len(raw_arguments) > 16
+            or package.get("environmentVariables")
+            or package.get("runtimeArguments")
+        ):
+            continue
+        if registry_type == "npm" and package.get("runtimeHint") == "npx":
+            if (
+                package.get("registryBaseUrl") not in (None, "https://registry.npmjs.org")
+                or not _NPM.fullmatch(identifier)
+            ):
+                continue
+            command, prefix = "npx", ["-y", f"{identifier}@{version}"]
+        elif registry_type == "pypi" and package.get("runtimeHint") == "uvx":
+            if package.get("registryBaseUrl") not in (None, "https://pypi.org") or not _PYPI.fullmatch(identifier):
+                continue
+            command, prefix = "uvx", [f"{identifier}=={version}"]
+        else:
+            continue
+        arguments: list[str] = []
+        for argument in raw_arguments:
+            value = (
+                argument.get("value") if isinstance(argument, dict) and argument.get("type") == "positional" else None
+            )
+            if (
+                not isinstance(value, str)
+                or not 1 <= len(value) <= 160
+                or any(ord(char) < 32 for char in value)
+                or "${" in value
+            ):
+                break
+            arguments.append(value)
+        else:
+            option: dict[str, object] = {
+                "registry_type": registry_type,
+                "identifier": identifier,
+                "version": version,
+                "command": command,
+                "arguments": prefix + arguments,
+                "transport": "stdio",
+                "verified_package": False,
+            }
+            if option not in options:
+                options.append(option)
+    return options
 
 
 def search_mcp_registry(query: str) -> dict[str, object]:
@@ -87,6 +154,7 @@ def search_mcp_registry(query: str) -> dict[str, object]:
                 "status": official.get("status") if official.get("status") in {"active", "deprecated"} else "unknown",
                 "remote_endpoints": endpoints,
                 "package_count": min(len(packages), 100),
+                "package_options": reviewed_stdio_package_options(packages),
                 "provenance": "official-mcp-registry",
                 "verified_package": False,
                 "configured": False,

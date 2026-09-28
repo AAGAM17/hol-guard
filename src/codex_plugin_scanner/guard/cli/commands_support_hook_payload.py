@@ -433,7 +433,7 @@ def _native_hook_json_document(
             "permissionDecision": "deny",
             "permissionDecisionReason": reason,
         }
-        return base, 0
+        return base, 1
 
     if canonical not in {"claude-code", "codex"}:
         return None
@@ -530,8 +530,9 @@ def _native_hook_json_document(
     # could not prove the request, legacy `event`-keyed payloads that never
     # normalized to the native protocol, and blocking decisions a package
     # evaluation contributed to (queued approvals and advisory context live
-    # in the envelope, not the protocol decision). Other harnesses keep the
-    # envelope contract for `event`-keyed payloads only.
+    # in the envelope, not the protocol decision). Claude Code keeps the
+    # envelope contract for every blocking action: the merged document
+    # carries the approval and evaluation fields its --json callers read.
     if canonical == "codex":
         policy_composition = base.get("policy_composition")
         package_evaluated = (
@@ -545,10 +546,7 @@ def _native_hook_json_document(
             or package_evaluated
         )
     else:
-        envelope_rc = not native_protocol_payload and policy_action in {
-            "review",
-            "require-reapproval",
-        }
+        envelope_rc = True
     return base, 1 if blocking and envelope_rc and not replayed_decision else 0
 
 

@@ -11,20 +11,15 @@ from . import native_workspace_review_replay as replay
 
 
 def _event_is_replay(event: Mapping[str, object]) -> bool:
-    if event.get("eventType") == "review.request.snapshot_requeued":
-        return event.get("nativeReplay") is not False
     payload = event.get("eventPayloadJson")
-    if not isinstance(payload, str):
-        return False
-    try:
-        decoded = json.loads(payload)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return "review.request.snapshot_requeued" in payload
-    return (
-        isinstance(decoded, dict)
-        and decoded.get("eventType") == "review.request.snapshot_requeued"
-        and decoded.get("nativeReplay") is not False
-    )
+    if isinstance(payload, str):
+        try:
+            decoded = json.loads(payload)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            decoded = None
+        if isinstance(decoded, dict) and decoded.get("eventType") == "review.request.snapshot_requeued":
+            return decoded.get("nativeReplay") is not False
+    return event.get("eventType") == "review.request.snapshot_requeued"
 
 
 def _replay_event_payload_valid(event: Mapping[str, object]) -> bool:

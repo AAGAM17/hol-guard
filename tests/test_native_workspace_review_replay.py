@@ -212,6 +212,8 @@ def test_replay_marker_prevents_duplicate_flood_and_projects_context(
         oauth=cast(GuardReviewOAuthMetadata, object()),
     )
     assert projected is not None
+    assert "nativeReplay" not in projected[1]
+    assert json.loads(str(projected[1]["eventPayloadJson"]))["nativeReplay"] is True
     payload = projected[1]["requestPayload"]
     assert isinstance(payload, dict)
     assert payload["nativeWorkspaceReview"] == context

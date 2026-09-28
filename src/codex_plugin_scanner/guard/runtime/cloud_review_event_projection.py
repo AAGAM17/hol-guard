@@ -320,6 +320,4 @@ def project_cloud_review_event(
         event["continuationResult"] = terminal_result
         event["continuationCapability"] = terminal_capability
         event["localUpdatedAt"] = terminal_completed_at
-    if stored_event.native_replay is not None:
-        event["nativeReplay"] = stored_event.native_replay
     return sequence, event

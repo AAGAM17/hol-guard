@@ -25,7 +25,7 @@ import { customExtensionContinuityView } from "../managed-controls/custom-extens
 import { commandPermissionChanges, mcpCatalogCopy, mcpToolCanReceiveDirectAllow, rebaseCommandDraft } from "./mcp-catalog-state";
 import { McpProviderActions, type ProviderActionDraft } from "./mcp-provider-actions";
 import { ProviderWorkflows } from "./provider-workflows";
-import { bulkPolicyCopy, continuityCopy, customExtensionRowDescription, customExtensionStateLabel, detailCatalogHeading, detailCatalogHelper, detailPolicyCopy, nativePublicationMessage, randomToken } from "./local-cli-panel-copy";
+import { bulkPolicyCopy, continuityCopy, customExtensionRowDescription, customExtensionStateLabel, detailCatalogHeading, detailCatalogHelper, detailPolicyCopy, mcpPermissionStatusLabel, nativePublicationMessage, randomToken } from "./local-cli-panel-copy";
 import { CustomExtensionReviewModal } from "./local-cli-review-modal";
 
 export { customExtensionStateLabel } from "./local-cli-panel-copy";
@@ -267,7 +267,9 @@ export function LocalCliDetail(props: {
             <>
               {props.item.state === "allowed" ? (
                 <p className="inline-flex min-h-11 items-center rounded-xl bg-slate-100 px-4 text-sm font-semibold text-brand-dark">
-                  {props.item.surface === "mcp" ? "Tool permissions saved" : "Allowed on this device"}
+                  {props.item.surface === "mcp"
+                    ? mcpPermissionStatusLabel(props.nativePublication, props.item.permission_scope)
+                    : "Allowed on this device"}
                 </p>
               ) : (
                 <button type="button" className="min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white" onClick={requestAllow}>

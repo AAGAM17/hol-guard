@@ -4370,18 +4370,24 @@ function customExtensionRowDescription(item, catalogTitle) {
 }
 function nativePublicationMessage(publication, permissionScope) {
   if (permissionScope === "configured-connection") {
-    return publication?.state === "failed" ? "Your choices are saved, but policy publication failed. Guard has not confirmed enforcement for this connection." : "Your choices are saved for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
+    return publication?.state === "failed" ? "Your choices are stored, but policy publication failed. Guard has not confirmed enforcement for this connection." : "Your choices are stored for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
   }
   if (publication?.state === "acknowledged") {
     return `Native policy acknowledged saved revision ${publication.revision}. Live calls still check host namespace and tool authority.`;
   }
   if (publication?.state === "pending") {
-    return "Your choices are saved. Waiting for the native runtime to acknowledge this revision.";
+    return "Your choices are stored. Waiting for the native runtime to acknowledge this revision before showing them as enforced.";
   }
   if (publication?.state === "failed") {
-    return "Your choices are saved, but native publication failed. Enforcement readiness is not confirmed.";
+    return "Your choices are stored, but native publication failed. Enforcement readiness is not confirmed.";
   }
-  return "Your choices are saved. Native enforcement readiness has not been confirmed.";
+  return "Your choices are stored. Native enforcement readiness has not been confirmed.";
+}
+function mcpPermissionStatusLabel(publication, permissionScope) {
+  if (permissionScope === "configured-connection") return "Connection choices stored · host binding unverified";
+  if (publication?.state === "acknowledged") return "Tool permissions saved and acknowledged";
+  if (publication?.state === "pending") return "Waiting for policy confirmation";
+  return "Policy confirmation unavailable";
 }
 function detailPolicyCopy(surface) {
   if (surface === "mcp") {
@@ -5662,7 +5668,7 @@ function LocalCliDetail(props) {
       ] }) : null,
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 max-w-2xl text-sm leading-6 text-brand-dark/75", children: detailPolicyCopy(props.item.surface) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 flex flex-wrap gap-3", children: added ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        props.item.state === "allowed" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "inline-flex min-h-11 items-center rounded-xl bg-slate-100 px-4 text-sm font-semibold text-brand-dark", children: props.item.surface === "mcp" ? "Tool permissions saved" : "Allowed on this device" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white", onClick: requestAllow, children: props.item.surface === "mcp" ? "Enable tool permissions" : "Allow this extension's commands" }),
+        props.item.state === "allowed" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "inline-flex min-h-11 items-center rounded-xl bg-slate-100 px-4 text-sm font-semibold text-brand-dark", children: props.item.surface === "mcp" ? mcpPermissionStatusLabel(props.nativePublication, props.item.permission_scope) : "Allowed on this device" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white", onClick: requestAllow, children: props.item.surface === "mcp" ? "Enable tool permissions" : "Allow this extension's commands" }),
         props.item.state === "blocked" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "inline-flex min-h-11 items-center rounded-xl bg-slate-100 px-4 text-sm font-semibold text-brand-dark", children: "Blocked" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-brand-dark", onClick: requestBlock, children: "Block this extension" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "min-h-11 rounded-xl px-4 text-sm font-semibold text-brand-dark/80", onClick: requestRemove, children: "Remove custom extension" })
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "min-h-11 rounded-xl bg-brand-blue px-4 text-sm font-semibold text-white", onClick: requestAdd, children: "Add custom extension" }) })

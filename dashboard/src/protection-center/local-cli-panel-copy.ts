@@ -20,19 +20,29 @@ export function nativePublicationMessage(
 ): string {
   if (permissionScope === "configured-connection") {
     return publication?.state === "failed"
-      ? "Your choices are saved, but policy publication failed. Guard has not confirmed enforcement for this connection."
-      : "Your choices are saved for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
+      ? "Your choices are stored, but policy publication failed. Guard has not confirmed enforcement for this connection."
+      : "Your choices are stored for this configured connection. Native host-hook calls use separately observed tool permissions until Guard verifies a binding to this connection.";
   }
   if (publication?.state === "acknowledged") {
     return `Native policy acknowledged saved revision ${publication.revision}. Live calls still check host namespace and tool authority.`;
   }
   if (publication?.state === "pending") {
-    return "Your choices are saved. Waiting for the native runtime to acknowledge this revision.";
+    return "Your choices are stored. Waiting for the native runtime to acknowledge this revision before showing them as enforced.";
   }
   if (publication?.state === "failed") {
-    return "Your choices are saved, but native publication failed. Enforcement readiness is not confirmed.";
+    return "Your choices are stored, but native publication failed. Enforcement readiness is not confirmed.";
   }
-  return "Your choices are saved. Native enforcement readiness has not been confirmed.";
+  return "Your choices are stored. Native enforcement readiness has not been confirmed.";
+}
+
+export function mcpPermissionStatusLabel(
+  publication: LocalCliListResponse["native_publication"],
+  permissionScope?: LocalCliItem["permission_scope"],
+): string {
+  if (permissionScope === "configured-connection") return "Connection choices stored · host binding unverified";
+  if (publication?.state === "acknowledged") return "Tool permissions saved and acknowledged";
+  if (publication?.state === "pending") return "Waiting for policy confirmation";
+  return "Policy confirmation unavailable";
 }
 
 export function detailPolicyCopy(surface: LocalCliItem["surface"]): string {

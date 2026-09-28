@@ -72,7 +72,6 @@ _TRANSPORT_IDENTITY_PATHS: Final = frozenset(
     {
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_resident_client.py",
-        "src/codex_plugin_scanner/guard/native_runtime_resident.py",
         "src/codex_plugin_scanner/guard/native_runtime_resilience.py",
         "src/codex_plugin_scanner/guard/codex_hook_launch_runtime.py",
     }
@@ -109,6 +108,8 @@ _ASYNC_POLICY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_policy_snapshot_publisher_inputs.py",
         "src/codex_plugin_scanner/guard/native_policy_snapshot_storage.py",
         "src/codex_plugin_scanner/guard/config.py",
+        "src/codex_plugin_scanner/guard/config_file_io.py",
+        "src/codex_plugin_scanner/guard/directory_path_authority.py",
         "src/codex_plugin_scanner/guard/runtime/command_activity_correlation.py",
     }
 )

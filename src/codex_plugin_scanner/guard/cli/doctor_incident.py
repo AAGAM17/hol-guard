@@ -139,10 +139,7 @@ def codex_incident_report(context: HarnessContext) -> dict[str, object]:
             status = _safe_code(integrity.get("integrity_status"), "unknown")
             reason = _safe_code(integrity.get("integrity_reason"), "codex_hook_integrity_unknown")
             event_matches = integrity.get("event_matches")
-            matches = {
-                event: isinstance(event_matches, dict) and event_matches.get(event) is True
-                for event in _EVENTS
-            }
+            matches = {event: isinstance(event_matches, dict) and event_matches.get(event) is True for event in _EVENTS}
             if status == "valid":
                 manifest_version = _safe_version(integrity.get("manifest_package_version"))
                 manifest_generation = _safe_generation(integrity.get("manifest_generated_at"))

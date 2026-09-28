@@ -142,9 +142,7 @@ def test_incident_export_rejects_repair_without_running_diagnostics(tmp_path: Pa
     )
     output = io.StringIO()
 
-    result = run_codex_incident_export(
-        argparse.Namespace(harness="codex", repair=True), context, output_stream=output
-    )
+    result = run_codex_incident_export(argparse.Namespace(harness="codex", repair=True), context, output_stream=output)
 
     assert result == 2
     assert json.loads(output.getvalue())["error"] == "incident_export_requires_codex_without_other_doctor_actions"

@@ -128,6 +128,7 @@ def _cloud_sync_sync_loop(
 ) -> None:
     """Drain immediately after commits and poll durably if a hint is lost."""
     from . import cloud_review_sync as sync
+    from .native_workspace_review_enrollment import refresh_native_workspace_review_authority
     from .runner import GuardSyncAuthorizationExpiredError, GuardSyncNotConfiguredError
 
     error_streak = 0
@@ -144,13 +145,16 @@ def _cloud_sync_sync_loop(
                 wake_signal.wait(observed_generation, poll_interval)
                 continue
             auth_context = sync._resolve_cloud_review_sync_auth_context(store)
+            authority_changed = refresh_native_workspace_review_authority(store, auth_context)
             binding = store.get_review_event_oauth_binding()
             binding_changed = isinstance(binding, dict) and binding != prepared_binding
             if isinstance(binding, dict) and binding != prepared_binding:
                 _ = prepare_retry_identity_replay(store, binding=binding)
                 prepared_binding = binding
             if isinstance(binding, dict):
-                _ = prepare_native_workspace_review_replay(store, binding=binding, force_probe=binding_changed)
+                _ = prepare_native_workspace_review_replay(
+                    store, binding=binding, force_probe=binding_changed or authority_changed
+                )
             result = sync.sync_cloud_review_events_once(store, auth_context)
             error_streak = 0
             with suppress(OSError, PermissionError, RuntimeError, ValueError):

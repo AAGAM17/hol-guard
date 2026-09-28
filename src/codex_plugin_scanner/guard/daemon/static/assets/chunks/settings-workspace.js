@@ -3571,9 +3571,10 @@ function SettingsWorkspace({ onApprovalGateChange }) {
     if (proofModalPending) {
       return;
     }
-    if (proofModalMode === "setup-gate" && setupGateRevertRef.current === false) {
-      setApprovalGateEnabled(false);
-      setDraft((value) => value === null ? value : applyApprovalGateDraft(value, { enabled: false, cooldown_seconds: approvalGateCooldown, strict_all_decisions: approvalGateStrictAllDecisions }));
+    const revertGateEnabled = setupGateRevertRef.current;
+    if (proofModalMode === "setup-gate" && revertGateEnabled !== null) {
+      setApprovalGateEnabled(revertGateEnabled);
+      setDraft((value) => value === null ? value : applyApprovalGateDraft(value, { enabled: revertGateEnabled, cooldown_seconds: approvalGateCooldown, strict_all_decisions: approvalGateStrictAllDecisions }));
     }
     setupGateRevertRef.current = null;
     setProofModalOpen(false);
@@ -3798,6 +3799,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
       } else {
         await executeMaintenanceWithProof(pendingProofAction.action, proof);
       }
+      setupGateRevertRef.current = null;
       setProofModalOpen(false);
       setPendingProofAction(null);
     } catch (error) {

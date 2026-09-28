@@ -1016,7 +1016,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
         assert "tool output contains credential-looking material" in output["risk_signals"]
 
@@ -1694,7 +1694,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] in {"block", "require-reapproval"}
         assert output["approval_requests"]
 
@@ -1819,7 +1819,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_hidden_file_view_with_secret_like_output(
@@ -1861,7 +1861,7 @@ clearer UX and an implementation plan with technical references.
         )
         payload = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert payload["continue"] is True
         assert "sensitive content" in payload["stopReason"]
 
@@ -1914,7 +1914,7 @@ clearer UX and an implementation plan with technical references.
         )
         payload = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert payload["continue"] is True
         assert "sensitive content" in payload["stopReason"]
 
@@ -1959,7 +1959,7 @@ clearer UX and an implementation plan with technical references.
         )
         payload = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert payload["continue"] is True
         assert "sensitive content" in payload["stopReason"]
 
@@ -2004,7 +2004,7 @@ clearer UX and an implementation plan with technical references.
         )
         payload = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert payload["continue"] is True
         assert "sensitive content" in payload["stopReason"]
 
@@ -2090,7 +2090,7 @@ clearer UX and an implementation plan with technical references.
         )
         payload = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert payload["continue"] is True
         assert "sensitive content" in payload["stopReason"]
 
@@ -2221,7 +2221,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["continue"] is True
         assert "sensitive content" in output["stopReason"]
 
@@ -2266,7 +2266,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["continue"] is True
         assert "sensitive content" in output["stopReason"]
 
@@ -2491,7 +2491,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["continue"] is True
         assert "sensitive content" in output["stopReason"]
 
@@ -2537,7 +2537,7 @@ clearer UX and an implementation plan with technical references.
         rendered = json.dumps(output)
         approval = output["approval_requests"][0]
 
-        assert rc == 0
+        assert rc == 1
         assert "local secrets" in approval["risk_summary"].lower()
         assert ".env file" in approval["risk_summary"]
         assert raw_secret not in rendered
@@ -2590,7 +2590,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["continue"] is True
         assert "sensitive content" in output["stopReason"]
 
@@ -2642,7 +2642,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["continue"] is True
         assert "sensitive content" in output["stopReason"]
 
@@ -2699,7 +2699,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["continue"] is True
         assert "sensitive content" in output["stopReason"]
 
@@ -2842,7 +2842,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_allows_ripgrep_type_not_source_search(
@@ -3080,7 +3080,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_asks_for_unspaced_operator_local_secret_output(
@@ -3123,7 +3123,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_asks_for_env_pipe_token_output_in_balanced(
@@ -3166,7 +3166,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
         assert "environment variables" in output["risk_summary"].lower()
 
@@ -3260,7 +3260,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_piped_search_with_secret_like_output(
@@ -3303,7 +3303,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_double_quoted_command_substitution_search(
@@ -3346,7 +3346,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_glued_piped_search_with_secret_like_output(
@@ -3389,7 +3389,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_sensitive_file_search_with_secret_like_output(
@@ -3432,7 +3432,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_pattern_flag_sensitive_search_target(
@@ -3475,7 +3475,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_attached_pattern_flag_sensitive_search_target(
@@ -3518,7 +3518,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_grep_initial_tab_sensitive_search_target(
@@ -3561,7 +3561,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_source_shaped_symlink_search_target(
@@ -3612,7 +3612,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_ripgrep_preprocessor_with_secret_like_output(
@@ -3655,7 +3655,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_ripgrep_configured_search_with_secret_like_output(
@@ -3699,7 +3699,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_git_grep_pager_with_secret_like_output(
@@ -3742,7 +3742,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_attached_git_grep_pager_with_secret_like_output(
@@ -3785,7 +3785,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_git_grep_external_filters_with_secret_like_output(
@@ -3828,7 +3828,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_newline_chained_search_with_secret_like_output(
@@ -3871,7 +3871,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_workspace_named_search_binary_with_secret_like_output(
@@ -3914,7 +3914,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_codex_post_tool_use_blocks_symlink_loop_search_target_without_crashing(
@@ -3964,7 +3964,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["approval_requests"]
 
     def test_sync_runtime_session_treats_missing_runtime_endpoint_as_non_fatal(
@@ -18739,7 +18739,7 @@ def test_guard_hook_codex_post_tool_use_blocks_credential_looking_output(
     )
     captured = capsys.readouterr()
 
-    assert rc == 0
+    assert rc == 1
     payload = json.loads(captured.out)
     assert payload["continue"] is True
     assert "HOL Guard" in payload["stopReason"]
@@ -18785,7 +18785,7 @@ def test_guard_hook_codex_post_tool_use_blocks_authrc_output(
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert rc == 0
+    assert rc == 1
     assert payload["continue"] is True
     assert "sensitive content" in payload["stopReason"]
 
@@ -18835,7 +18835,7 @@ def test_guard_hook_codex_post_tool_use_explains_merged_stderr_capture(
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert rc == 0
+    assert rc == 1
     assert payload["continue"] is True
     assert "Combined stdout/stderr looked credential-like before it reached Codex." in payload["stopReason"]
     assert payload["stopReason"].count("terminal policy decision") == 1
@@ -19003,7 +19003,7 @@ def test_guard_hook_codex_post_tool_use_blocks_focused_pytest_medium_secret_outp
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert rc == 0
+    assert rc == 1
     assert payload["continue"] is True
     assert "Focused pytest emitted credential-looking output before it reached Codex." in payload["stopReason"]
     assert "Pytest can execute repository-controlled code" in payload["stopReason"]
@@ -19053,7 +19053,7 @@ def test_guard_hook_codex_post_tool_use_queues_retryable_browser_approval(
     )
     captured = capsys.readouterr()
 
-    assert rc == 0
+    assert rc == 1
     payload = json.loads(captured.out)
     assert payload["decision"] == "block"
     assert payload["continue"] is True
@@ -19367,7 +19367,7 @@ def test_guard_hook_codex_post_tool_use_blocks_named_secret_output(
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert rc == 0
+    assert rc == 1
     assert payload["continue"] is True
     assert "sensitive content" in payload["stopReason"]
 

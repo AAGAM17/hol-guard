@@ -10091,34 +10091,30 @@
       {
         "extension": {
           "action_classes": [
-            "gEnclave credential mutation command",
-            "gEnclave policy modification command",
-            "gEnclave session authorization command"
+            "cogext commitment mutation"
           ],
           "aliases": [],
           "conflicts": [],
           "delegated_protection": null,
           "dependencies": [],
-          "description": "Reviews gEnclave (ge) security enclave operations that mutate credentials, modify access policies, or unlock persistent sessions.",
+          "description": "Reviews the cogext CLI's mutating commitment operations (add, fulfill, fail). Read-only commands (extract, list, get, stats) are not matched and remain automatic. Note: `cogext add` may initialize ~/.cogext on a fresh machine; that side effect is covered structurally because `add` is in the reviewed set.",
           "ecosystem_ids": [],
           "executables": [
-            "ge",
-            "ge.cmd",
-            "ge.exe"
+            "cogext",
+            "cogext.cmd",
+            "cogext.exe"
           ],
-          "extension_id": "command.genclave",
-          "homepage": "https://gitlab.com/renich/genclave",
+          "extension_id": "command.cogext",
+          "homepage": "https://cogextai.com",
           "icon": {
-            "background": "#059669",
-            "kind": "react-icon",
-            "name": "HiMiniCommandLine"
+            "kind": "none"
           },
-          "license": "GPL-3.0-or-later",
-          "name": "gEnclave command protection",
+          "license": "MIT",
+          "name": "COGEXT command protection",
           "permissions": [
             {
               "action_classes": [
-                "gEnclave credential mutation command"
+                "cogext commitment mutation"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10126,26 +10122,25 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that permanently delete, generate, import, or mutate cryptographic credentials, keys, and secrets.",
-              "example_command": "ge passkey delete key-1",
+              "description": "Identifies `cogext add`, which creates a tracked commitment and may initialize the local ~/.cogext store on a fresh machine.",
+              "example_command": "cogext add \"Send the report by Friday\"",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave credential and secret mutation",
-              "permission_id": "command.genclave.permission.mutate",
+              "introduced_version": "1.0.0",
+              "label": "cogext commitment creation",
+              "permission_id": "command.cogext.permission.add",
               "replacement_permission_id": null,
               "risk_tier": "high",
               "safer_guidance": [
-                "List and inspect existing keys or credentials with read-only subcommands before mutating or deleting them.",
-                "Verify backup or recovery shares before rekeying or removing credentials."
+                "Run `cogext list` first to confirm the target store before adding a commitment."
               ],
               "typed_capabilities": []
             },
             {
               "action_classes": [
-                "gEnclave policy modification command"
+                "cogext commitment mutation"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10153,26 +10148,25 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that modify credential caching policies, authorization TTLs, or authentication persistence.",
-              "example_command": "ge policy set key-1 15m",
+              "description": "Identifies `cogext fulfill <id>`, which marks a tracked commitment as fulfilled and writes its terminal state.",
+              "example_command": "cogext fulfill abc-123",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave policy modification",
-              "permission_id": "command.genclave.permission.policy",
+              "introduced_version": "1.0.0",
+              "label": "cogext commitment fulfillment",
+              "permission_id": "command.cogext.permission.fulfill",
               "replacement_permission_id": null,
               "risk_tier": "high",
               "safer_guidance": [
-                "Inspect current caching and confirmation policies with ge policy show <id> before making changes.",
-                "Avoid setting infinite cache TTLs on sensitive credentials."
+                "Confirm the commitment ID with `cogext get <id>` before fulfilling it."
               ],
               "typed_capabilities": []
             },
             {
               "action_classes": [
-                "gEnclave session authorization command"
+                "cogext commitment mutation"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10180,45 +10174,45 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that unlock or pre-warm authentication sessions and cryptographic caches.",
-              "example_command": "ge unlock",
+              "description": "Identifies `cogext fail <id>`, which marks a tracked commitment as failed and writes its terminal state.",
+              "example_command": "cogext fail abc-123",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave session unlock and pre-warming",
-              "permission_id": "command.genclave.permission.session-auth",
+              "introduced_version": "1.0.0",
+              "label": "cogext commitment failure",
+              "permission_id": "command.cogext.permission.fail",
               "replacement_permission_id": null,
-              "risk_tier": "medium",
+              "risk_tier": "high",
               "safer_guidance": [
-                "Use default ephemeral per-operation prompts instead of unlocking persistent sessions.",
-                "Lock the session immediately after batch operations with ge lock."
+                "Confirm the commitment ID with `cogext get <id>` before failing it."
               ],
               "typed_capabilities": []
             }
           ],
           "project_markers": [],
           "publisher": {
-            "display_name": "R\u00e9nich Bon \u0106iri\u0107",
-            "id": "community.renich",
-            "url": "https://github.com/renich"
+            "display_name": "COGEXT AI",
+            "id": "community.cogext",
+            "url": "https://github.com/yaminbinyoosuf/cogext-primitive"
           },
           "reference_urls": [
-            "https://gitlab.com/renich/genclave"
+            "https://cogextai.com/standard",
+            "https://github.com/yaminbinyoosuf/cogext-primitive"
           ],
           "required": false,
           "risk_classes": [
             "destructive_shell",
-            "policy_bypass"
+            "execution"
           ],
           "rules": [
             {
               "action_classes": [
-                "gEnclave credential mutation command"
+                "cogext commitment mutation"
               ],
               "default_mode": "review",
-              "description": "Identifies gEnclave commands that permanently delete, generate, import, or mutate cryptographic credentials, keys, and secrets.",
+              "description": "Identifies `cogext add`, which creates a tracked commitment.",
               "family": null,
               "matcher": {
                 "config": {},
@@ -10227,404 +10221,36 @@
                     "config": {
                       "allow_leading_options": false,
                       "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
+                        "cogext",
+                        "cogext.cmd",
+                        "cogext.exe"
                       ],
                       "fail_secure_unknown_options": false,
                       "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--global",
-                        "--require-confirm",
-                        "--shred",
-                        "--stdin",
-                        "-v",
-                        "--version"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [
-                        "--algorithm",
-                        "-a",
-                        "--bits",
-                        "-b",
-                        "--cache-ttl",
-                        "--comment",
-                        "-c",
-                        "--duration",
-                        "--email",
-                        "-e",
-                        "--key-type",
-                        "-t",
-                        "--name",
-                        "-n",
-                        "--pcr",
-                        "--pin",
-                        "--timeout"
-                      ],
-                      "paths": [
-                        [
-                          "gpg",
-                          "add"
-                        ],
-                        [
-                          "gpg",
-                          "generate"
-                        ],
-                        [
-                          "gpg",
-                          "import"
-                        ],
-                        [
-                          "gpg",
-                          "remove"
-                        ],
-                        [
-                          "passkey",
-                          "delete"
-                        ],
-                        [
-                          "rekey"
-                        ],
-                        [
-                          "secret",
-                          "delete"
-                        ],
-                        [
-                          "secret",
-                          "set"
-                        ],
-                        [
-                          "set-secret"
-                        ],
-                        [
-                          "ssh",
-                          "add"
-                        ],
-                        [
-                          "ssh",
-                          "generate"
-                        ],
-                        [
-                          "ssh",
-                          "import"
-                        ],
-                        [
-                          "ssh",
-                          "remove"
-                        ],
-                        [
-                          "webauthn",
-                          "delete"
-                        ]
-                      ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
-                    },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.genclave.permission.mutate",
-              "risk_classes": [
-                "destructive_shell"
-              ],
-              "rule_id": "command.genclave.mutate",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--require-confirm",
-                            "--shred",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--algorithm",
-                            "-a",
-                            "--bits",
-                            "-b",
-                            "--cache-ttl",
-                            "--comment",
-                            "-c",
-                            "--duration",
-                            "--email",
-                            "-e",
-                            "--key-type",
-                            "-t",
-                            "--name",
-                            "-n",
-                            "--pcr",
-                            "--pin",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "gpg",
-                              "add"
-                            ],
-                            [
-                              "gpg",
-                              "generate"
-                            ],
-                            [
-                              "gpg",
-                              "import"
-                            ],
-                            [
-                              "gpg",
-                              "remove"
-                            ],
-                            [
-                              "passkey",
-                              "delete"
-                            ],
-                            [
-                              "rekey"
-                            ],
-                            [
-                              "secret",
-                              "delete"
-                            ],
-                            [
-                              "secret",
-                              "set"
-                            ],
-                            [
-                              "set-secret"
-                            ],
-                            [
-                              "ssh",
-                              "add"
-                            ],
-                            [
-                              "ssh",
-                              "generate"
-                            ],
-                            [
-                              "ssh",
-                              "import"
-                            ],
-                            [
-                              "ssh",
-                              "remove"
-                            ],
-                            [
-                              "webauthn",
-                              "delete"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave mutation command help",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--require-confirm",
-                            "--shred",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--algorithm",
-                            "-a",
-                            "--bits",
-                            "-b",
-                            "--cache-ttl",
-                            "--comment",
-                            "-c",
-                            "--duration",
-                            "--email",
-                            "-e",
-                            "--key-type",
-                            "-t",
-                            "--name",
-                            "-n",
-                            "--pcr",
-                            "--pin",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "gpg",
-                              "add"
-                            ],
-                            [
-                              "gpg",
-                              "generate"
-                            ],
-                            [
-                              "gpg",
-                              "import"
-                            ],
-                            [
-                              "gpg",
-                              "remove"
-                            ],
-                            [
-                              "passkey",
-                              "delete"
-                            ],
-                            [
-                              "rekey"
-                            ],
-                            [
-                              "secret",
-                              "delete"
-                            ],
-                            [
-                              "secret",
-                              "set"
-                            ],
-                            [
-                              "set-secret"
-                            ],
-                            [
-                              "ssh",
-                              "add"
-                            ],
-                            [
-                              "ssh",
-                              "generate"
-                            ],
-                            [
-                              "ssh",
-                              "import"
-                            ],
-                            [
-                              "ssh",
-                              "remove"
-                            ],
-                            [
-                              "webauthn",
-                              "delete"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave mutation command help",
-                  "variant_id": "short-help"
-                }
-              ],
-              "safer_alternatives": [
-                "List and inspect existing keys or credentials with read-only subcommands before mutating or deleting them.",
-                "Verify backup or recovery shares before rekeying or removing credentials."
-              ],
-              "severity": "high",
-              "title": "gEnclave credential and secret mutation"
-            },
-            {
-              "action_classes": [
-                "gEnclave policy modification command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies gEnclave commands that modify credential caching policies, authorization TTLs, or authentication persistence.",
-              "family": null,
-              "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "-v",
-                        "--version"
-                      ],
+                      "interspersed_flags": [],
                       "interspersed_options_with_values": [],
                       "inverse_flag_pairs": [],
                       "leading_options_with_values": [],
                       "options_with_values": [],
-                      "paths": [
-                        [
-                          "identity",
-                          "set-cache-ttl"
-                        ],
-                        [
-                          "policy",
-                          "set"
-                        ]
-                      ],
                       "required_flags": [],
                       "required_flags_in_all_arguments": false,
-                      "required_option_values": []
+                      "required_option_values": [],
+                      "subcommands": [
+                        "add"
+                      ]
                     },
-                    "op": "executable-path-set.v1"
+                    "op": "executable.v1"
                   }
                 ],
                 "op": "any.v1"
               },
               "native_capability": null,
-              "permission_id": "command.genclave.permission.policy",
+              "permission_id": "command.cogext.permission.add",
               "risk_classes": [
-                "policy_bypass"
+                "destructive_shell",
+                "execution"
               ],
-              "rule_id": "command.genclave.policy",
+              "rule_id": "command.cogext.add",
               "rule_version": "1.0.0",
               "safe_variants": [
                 {
@@ -10635,42 +10261,32 @@
                         "config": {
                           "allow_leading_options": false,
                           "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
+                            "cogext",
+                            "cogext.cmd",
+                            "cogext.exe"
                           ],
                           "fail_secure_unknown_options": false,
                           "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "-v",
-                            "--version"
-                          ],
+                          "interspersed_flags": [],
                           "interspersed_options_with_values": [],
                           "inverse_flag_pairs": [],
                           "leading_options_with_values": [],
                           "options_with_values": [],
-                          "paths": [
-                            [
-                              "identity",
-                              "set-cache-ttl"
-                            ],
-                            [
-                              "policy",
-                              "set"
-                            ]
-                          ],
                           "required_flags": [
                             "--help"
                           ],
                           "required_flags_in_all_arguments": true,
-                          "required_option_values": []
+                          "required_option_values": [],
+                          "subcommands": [
+                            "add"
+                          ]
                         },
-                        "op": "executable-path-set.v1"
+                        "op": "executable.v1"
                       }
                     ],
                     "op": "any.v1"
                   },
-                  "title": "gEnclave policy command help",
+                  "title": "cogext add command help (--help)",
                   "variant_id": "help"
                 },
                 {
@@ -10681,58 +10297,47 @@
                         "config": {
                           "allow_leading_options": false,
                           "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
+                            "cogext",
+                            "cogext.cmd",
+                            "cogext.exe"
                           ],
                           "fail_secure_unknown_options": false,
                           "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "-v",
-                            "--version"
-                          ],
+                          "interspersed_flags": [],
                           "interspersed_options_with_values": [],
                           "inverse_flag_pairs": [],
                           "leading_options_with_values": [],
                           "options_with_values": [],
-                          "paths": [
-                            [
-                              "identity",
-                              "set-cache-ttl"
-                            ],
-                            [
-                              "policy",
-                              "set"
-                            ]
-                          ],
                           "required_flags": [
                             "-h"
                           ],
                           "required_flags_in_all_arguments": true,
-                          "required_option_values": []
+                          "required_option_values": [],
+                          "subcommands": [
+                            "add"
+                          ]
                         },
-                        "op": "executable-path-set.v1"
+                        "op": "executable.v1"
                       }
                     ],
                     "op": "any.v1"
                   },
-                  "title": "gEnclave policy command help",
+                  "title": "cogext add command help (-h)",
                   "variant_id": "short-help"
                 }
               ],
               "safer_alternatives": [
-                "Inspect current caching and confirmation policies with ge policy show <id> before making changes.",
-                "Avoid setting infinite cache TTLs on sensitive credentials."
+                "Run `cogext list` first to confirm the target store."
               ],
               "severity": "high",
-              "title": "gEnclave policy modification"
+              "title": "cogext commitment creation"
             },
             {
               "action_classes": [
-                "gEnclave session authorization command"
+                "cogext commitment mutation"
               ],
               "default_mode": "review",
-              "description": "Identifies gEnclave commands that unlock or pre-warm authentication sessions and cryptographic caches.",
+              "description": "Identifies `cogext fulfill`, which marks a commitment as fulfilled.",
               "family": null,
               "matcher": {
                 "config": {},
@@ -10741,48 +10346,36 @@
                     "config": {
                       "allow_leading_options": false,
                       "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
+                        "cogext",
+                        "cogext.cmd",
+                        "cogext.exe"
                       ],
                       "fail_secure_unknown_options": false,
                       "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--global",
-                        "--stdin",
-                        "-v",
-                        "--version"
-                      ],
+                      "interspersed_flags": [],
                       "interspersed_options_with_values": [],
                       "inverse_flag_pairs": [],
                       "leading_options_with_values": [],
-                      "options_with_values": [
-                        "--duration",
-                        "--timeout"
-                      ],
-                      "paths": [
-                        [
-                          "prewarm"
-                        ],
-                        [
-                          "unlock"
-                        ]
-                      ],
+                      "options_with_values": [],
                       "required_flags": [],
                       "required_flags_in_all_arguments": false,
-                      "required_option_values": []
+                      "required_option_values": [],
+                      "subcommands": [
+                        "fulfill"
+                      ]
                     },
-                    "op": "executable-path-set.v1"
+                    "op": "executable.v1"
                   }
                 ],
                 "op": "any.v1"
               },
               "native_capability": null,
-              "permission_id": "command.genclave.permission.session-auth",
+              "permission_id": "command.cogext.permission.fulfill",
               "risk_classes": [
-                "policy_bypass"
+                "destructive_shell",
+                "execution"
               ],
-              "rule_id": "command.genclave.session-auth",
+              "rule_id": "command.cogext.fulfill",
               "rule_version": "1.0.0",
               "safe_variants": [
                 {
@@ -10793,45 +10386,32 @@
                         "config": {
                           "allow_leading_options": false,
                           "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
+                            "cogext",
+                            "cogext.cmd",
+                            "cogext.exe"
                           ],
                           "fail_secure_unknown_options": false,
                           "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
+                          "interspersed_flags": [],
                           "interspersed_options_with_values": [],
                           "inverse_flag_pairs": [],
                           "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--duration",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "prewarm"
-                            ],
-                            [
-                              "unlock"
-                            ]
-                          ],
+                          "options_with_values": [],
                           "required_flags": [
                             "--help"
                           ],
                           "required_flags_in_all_arguments": true,
-                          "required_option_values": []
+                          "required_option_values": [],
+                          "subcommands": [
+                            "fulfill"
+                          ]
                         },
-                        "op": "executable-path-set.v1"
+                        "op": "executable.v1"
                       }
                     ],
                     "op": "any.v1"
                   },
-                  "title": "gEnclave session command help",
+                  "title": "cogext fulfill command help (--help)",
                   "variant_id": "help"
                 },
                 {
@@ -10842,59 +10422,169 @@
                         "config": {
                           "allow_leading_options": false,
                           "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
+                            "cogext",
+                            "cogext.cmd",
+                            "cogext.exe"
                           ],
                           "fail_secure_unknown_options": false,
                           "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
+                          "interspersed_flags": [],
                           "interspersed_options_with_values": [],
                           "inverse_flag_pairs": [],
                           "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--duration",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "prewarm"
-                            ],
-                            [
-                              "unlock"
-                            ]
-                          ],
+                          "options_with_values": [],
                           "required_flags": [
                             "-h"
                           ],
                           "required_flags_in_all_arguments": true,
-                          "required_option_values": []
+                          "required_option_values": [],
+                          "subcommands": [
+                            "fulfill"
+                          ]
                         },
-                        "op": "executable-path-set.v1"
+                        "op": "executable.v1"
                       }
                     ],
                     "op": "any.v1"
                   },
-                  "title": "gEnclave session command help",
+                  "title": "cogext fulfill command help (-h)",
                   "variant_id": "short-help"
                 }
               ],
               "safer_alternatives": [
-                "Use default ephemeral per-operation prompts instead of unlocking persistent sessions.",
-                "Lock the session immediately after batch operations with ge lock."
+                "Confirm the commitment ID with `cogext get <id>`."
               ],
-              "severity": "medium",
-              "title": "gEnclave session unlock and prewarm"
+              "severity": "high",
+              "title": "cogext commitment fulfillment"
+            },
+            {
+              "action_classes": [
+                "cogext commitment mutation"
+              ],
+              "default_mode": "review",
+              "description": "Identifies `cogext fail`, which marks a commitment as failed.",
+              "family": null,
+              "matcher": {
+                "config": {},
+                "matchers": [
+                  {
+                    "config": {
+                      "allow_leading_options": false,
+                      "executables": [
+                        "cogext",
+                        "cogext.cmd",
+                        "cogext.exe"
+                      ],
+                      "fail_secure_unknown_options": false,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [],
+                      "options_with_values": [],
+                      "required_flags": [],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "fail"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  }
+                ],
+                "op": "any.v1"
+              },
+              "native_capability": null,
+              "permission_id": "command.cogext.permission.fail",
+              "risk_classes": [
+                "destructive_shell",
+                "execution"
+              ],
+              "rule_id": "command.cogext.fail",
+              "rule_version": "1.0.0",
+              "safe_variants": [
+                {
+                  "matcher": {
+                    "config": {},
+                    "matchers": [
+                      {
+                        "config": {
+                          "allow_leading_options": false,
+                          "executables": [
+                            "cogext",
+                            "cogext.cmd",
+                            "cogext.exe"
+                          ],
+                          "fail_secure_unknown_options": false,
+                          "forbidden_flags": [],
+                          "interspersed_flags": [],
+                          "interspersed_options_with_values": [],
+                          "inverse_flag_pairs": [],
+                          "leading_options_with_values": [],
+                          "options_with_values": [],
+                          "required_flags": [
+                            "--help"
+                          ],
+                          "required_flags_in_all_arguments": true,
+                          "required_option_values": [],
+                          "subcommands": [
+                            "fail"
+                          ]
+                        },
+                        "op": "executable.v1"
+                      }
+                    ],
+                    "op": "any.v1"
+                  },
+                  "title": "cogext fail command help (--help)",
+                  "variant_id": "help"
+                },
+                {
+                  "matcher": {
+                    "config": {},
+                    "matchers": [
+                      {
+                        "config": {
+                          "allow_leading_options": false,
+                          "executables": [
+                            "cogext",
+                            "cogext.cmd",
+                            "cogext.exe"
+                          ],
+                          "fail_secure_unknown_options": false,
+                          "forbidden_flags": [],
+                          "interspersed_flags": [],
+                          "interspersed_options_with_values": [],
+                          "inverse_flag_pairs": [],
+                          "leading_options_with_values": [],
+                          "options_with_values": [],
+                          "required_flags": [
+                            "-h"
+                          ],
+                          "required_flags_in_all_arguments": true,
+                          "required_option_values": [],
+                          "subcommands": [
+                            "fail"
+                          ]
+                        },
+                        "op": "executable.v1"
+                      }
+                    ],
+                    "op": "any.v1"
+                  },
+                  "title": "cogext fail command help (-h)",
+                  "variant_id": "short-help"
+                }
+              ],
+              "safer_alternatives": [
+                "Confirm the commitment ID with `cogext get <id>`."
+              ],
+              "severity": "high",
+              "title": "cogext commitment failure"
             }
           ],
           "safer_alternatives": [
-            "Inspect current keys, credentials, and policies with read-only subcommands before mutating them.",
-            "Use default ephemeral per-operation authentication prompts instead of persistent unlock sessions."
+            "Run `cogext list` or `cogext get <id>` before mutating commitment state."
           ],
           "source": "built-in",
           "version": "1.0.0"
@@ -11001,477 +10691,111 @@
   },
   "cases": [
     {
-      "command": "ge passkey delete key-1",
+      "command": "cogext add \"Send the report by Friday\"",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "passkey-delete",
-      "rule_id": "command.genclave.mutate"
+      "id": "add-basic",
+      "rule_id": "command.cogext.add"
     },
     {
-      "command": "ge webauthn delete user@example.com",
+      "command": "cogext add \"Call Sarah tomorrow\"",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "webauthn-delete",
-      "rule_id": "command.genclave.mutate"
+      "id": "add-call",
+      "rule_id": "command.cogext.add"
     },
     {
-      "command": "ge secret delete api-token",
+      "command": "cogext fulfill abc-123",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "secret-delete",
-      "rule_id": "command.genclave.mutate"
+      "id": "fulfill-basic",
+      "rule_id": "command.cogext.fulfill"
     },
     {
-      "command": "ge secret set api-token secretvalue",
+      "command": "cogext fail abc-123",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "secret-set",
-      "rule_id": "command.genclave.mutate"
+      "id": "fail-basic",
+      "rule_id": "command.cogext.fail"
     },
     {
-      "command": "ge set-secret api-token secretvalue",
+      "command": "cogext extract \"I'll call you tomorrow\"",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "set-secret",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh remove id_ed25519",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ssh-remove",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh generate -a ed25519 -c \"work key\"",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ssh-generate",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh import ~/.ssh/id_ed25519 --shred",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ssh-import",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg remove 3AA5C34371567BD2",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "gpg-remove",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg generate --name \"Alice\" --email \"alice@example.com\"",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "gpg-generate",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg import private.asc",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "gpg-import",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge rekey",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "rekey",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge passkey delete --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "passkey-delete-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "extract-automatic",
+      "rule_id": "command.cogext.add"
     },
     {
-      "command": "ge passkey delete -h",
+      "command": "cogext list",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "passkey-delete-short-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "list-basic",
+      "rule_id": "command.cogext.add"
     },
     {
-      "command": "ge ssh generate --help",
+      "command": "cogext list --status open",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "ssh-generate-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "list-status-open",
+      "rule_id": "command.cogext.add"
     },
     {
-      "command": "ge secret set --help",
+      "command": "cogext get abc-123",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "secret-set-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "get-basic",
+      "rule_id": "command.cogext.add"
     },
     {
-      "command": "ge rekey --help",
+      "command": "cogext stats",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cogext"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "rekey-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge passkey delete key-1",
-      "disabled_permissions": [
-        "command.genclave.permission.mutate"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mutate-disabled",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-secret-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret get api-token",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-secret-get",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-ssh-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh public key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-ssh-public",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-gpg-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge policy set key-1 15m",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "policy-set",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge identity set-cache-ttl key-1 1h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "identity-set-cache-ttl",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-set-help",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set -h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-set-short-help",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set key-1 15m",
-      "disabled_permissions": [
-        "command.genclave.permission.policy"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "policy-disabled",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy show key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-show-passthrough",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge unlock",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "unlock",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock --stdin",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "unlock-stdin",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge prewarm --duration 10m",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "prewarm",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "unlock-help",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock -h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "unlock-short-help",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge prewarm --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "prewarm-help",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock",
-      "disabled_permissions": [
-        "command.genclave.permission.session-auth"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "session-auth-disabled",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge status",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "status-passthrough",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge lock",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "lock-passthrough",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge passkey delete key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "extension-inactive",
-      "rule_id": "command.genclave.mutate"
+      "id": "stats-basic",
+      "rule_id": "command.cogext.add"
     }
   ],
   "schema": "guard.command-extension-fixtures.v1"

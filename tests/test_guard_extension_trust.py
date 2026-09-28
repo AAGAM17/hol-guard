@@ -83,6 +83,8 @@ def test_trust_map_covers_every_builtin_extension() -> None:
     assert mapped_ids() == registry_ids
     assert ids_for_class("external") == {
         "command.blitcp",
+        "command.cogext",
+        "command.genclave",
         "command.mcp-filesystem",
         "command.mcp-instapods",
         "command.noodle",

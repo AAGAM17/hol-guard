@@ -384,9 +384,7 @@ def authoritative_decision_from_artifact(
     return decision
 
 
-def _is_disabled_codex_skill_inventory(
-    raw_item: Mapping[str, object], decision: AuthoritativeGuardDecision
-) -> bool:
+def _is_disabled_codex_skill_inventory(raw_item: Mapping[str, object], decision: AuthoritativeGuardDecision) -> bool:
     """Only a disabled Codex skill inventory row may omit launch authority."""
 
     artifact_id = raw_item.get("artifact_id")

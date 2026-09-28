@@ -109,6 +109,7 @@ def _write_pi_package(root: Path, bin_target: str) -> Path:
 
 def test_pi_runner_module_accepts_published_old_cli_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cli_path = _write_pi_package(tmp_path / "old-layout", "dist/cli.js")
+    monkeypatch.delenv(_PI_SDK_ROOT_ENV, raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: str(cli_path) if name == "pi" else None)
 
     assert _pi_runner_module() == (cli_path.parent / "index.js").resolve()
@@ -116,6 +117,7 @@ def test_pi_runner_module_accepts_published_old_cli_layout(tmp_path: Path, monke
 
 def test_pi_runner_module_accepts_published_nested_cli_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cli_path = _write_pi_package(tmp_path / "nested-layout", "dist/bundle/cli.js")
+    monkeypatch.delenv(_PI_SDK_ROOT_ENV, raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: str(cli_path) if name == "pi" else None)
 
     assert _pi_runner_module() == (cli_path.parents[1] / "index.js").resolve()
@@ -127,6 +129,7 @@ def test_pi_runner_module_rejects_undeclared_package_wrapper(tmp_path: Path, mon
     wrapper_path = package_root / "shim" / "pi"
     wrapper_path.parent.mkdir()
     wrapper_path.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    monkeypatch.delenv(_PI_SDK_ROOT_ENV, raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: str(wrapper_path) if name == "pi" else None)
 
     assert _pi_runner_module() is None

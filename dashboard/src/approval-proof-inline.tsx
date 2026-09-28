@@ -3,6 +3,7 @@ import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import { HiMiniKey } from "react-icons/hi2";
 import { ActionButton } from "./approval-center-primitives";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
+import { isBulkApproveGateReady } from "./queue-bulk-approval-credentials";
 
 type ApprovalProofFieldInputsProps = {
   approvalGate: GuardApprovalGatePublicConfig | null;
@@ -24,7 +25,7 @@ export function approvalProofRequiresPassword(gate: GuardApprovalGatePublicConfi
 }
 
 export function approvalGateProofReady(gate: GuardApprovalGatePublicConfig | null | undefined): boolean {
-  return gate?.enabled === true && gate?.configured === true;
+  return isBulkApproveGateReady(gate);
 }
 
 export function ApprovalGateSetupNotice() {
@@ -181,8 +182,6 @@ export function ApprovalProofInline(props: ApprovalProofInlineProps) {
       approvalTotpCode: props.approvalTotpCode,
     },
     props.submitBusy,
-    false,
-    true,
   );
 
   const handleKeyDown = useCallback(
@@ -216,7 +215,6 @@ export function ApprovalProofInline(props: ApprovalProofInlineProps) {
         approvalPassword={props.approvalPassword}
         approvalTotpCode={props.approvalTotpCode}
         passwordRef={passwordRef}
-        requireGate={true}
         onApprovalPasswordChange={props.onApprovalPasswordChange}
         onApprovalTotpCodeChange={props.onApprovalTotpCodeChange}
       />

@@ -19888,6 +19888,36 @@ function TabBar(props) {
     tab.value
   )) });
 }
+function isBulkApproveGateReady(gate) {
+  return gate?.enabled === true && gate?.configured === true;
+}
+function validateBulkApproveCredentials(gate, credentials) {
+  if (!isBulkApproveGateReady(gate)) {
+    return "Set up an approval gate in Settings before bulk approval.";
+  }
+  if (gate?.totp_enabled === true) {
+    return credentials.totpCode.trim() ? null : "Enter your authenticator code to continue.";
+  }
+  if (!credentials.password.trim()) {
+    return "Enter your approval password to continue.";
+  }
+  return null;
+}
+function buildBulkGateCredentials(gate, password, totpCode) {
+  if (!isBulkApproveGateReady(gate)) {
+    return void 0;
+  }
+  if (gate?.totp_enabled === true) {
+    return {
+      approval_totp_code: totpCode.trim(),
+      approval_gate_use_cooldown: false
+    };
+  }
+  return {
+    approval_password: password.trim(),
+    approval_gate_use_cooldown: false
+  };
+}
 function approvalProofRecentlySatisfied(gate) {
   return gate?.totp_enabled === true && gate.totp_recent_satisfied === true;
 }
@@ -19895,7 +19925,7 @@ function approvalProofRequiresPassword(gate) {
   return gate?.totp_enabled !== true;
 }
 function approvalGateProofReady(gate) {
-  return gate?.enabled === true && gate?.configured === true;
+  return isBulkApproveGateReady(gate);
 }
 function ApprovalGateSetupNotice() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] px-4 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
@@ -20004,9 +20034,7 @@ function ApprovalProofInline(props) {
       approvalPassword: props.approvalPassword,
       approvalTotpCode: props.approvalTotpCode
     },
-    props.submitBusy,
-    false,
-    true
+    props.submitBusy
   );
   const handleKeyDown = reactExports.useCallback(
     (event) => {
@@ -20032,7 +20060,6 @@ function ApprovalProofInline(props) {
         approvalPassword: props.approvalPassword,
         approvalTotpCode: props.approvalTotpCode,
         passwordRef,
-        requireGate: true,
         onApprovalPasswordChange: props.onApprovalPasswordChange,
         onApprovalTotpCodeChange: props.onApprovalTotpCodeChange
       }
@@ -28155,36 +28182,6 @@ function toneIcon(tone) {
     return HiMiniExclamationTriangle;
   }
   return HiMiniShieldCheck;
-}
-function isBulkApproveGateReady(gate) {
-  return gate?.enabled === true && gate?.configured === true;
-}
-function validateBulkApproveCredentials(gate, credentials) {
-  if (!isBulkApproveGateReady(gate)) {
-    return "Set up an approval gate in Settings before bulk approval.";
-  }
-  if (gate?.totp_enabled === true) {
-    return credentials.totpCode.trim() ? null : "Enter your authenticator code to continue.";
-  }
-  if (!credentials.password.trim()) {
-    return "Enter your approval password to continue.";
-  }
-  return null;
-}
-function buildBulkGateCredentials(gate, password, totpCode) {
-  if (!isBulkApproveGateReady(gate)) {
-    return void 0;
-  }
-  if (gate?.totp_enabled === true) {
-    return {
-      approval_totp_code: totpCode.trim(),
-      approval_gate_use_cooldown: false
-    };
-  }
-  return {
-    approval_password: password.trim(),
-    approval_gate_use_cooldown: false
-  };
 }
 const TIER_LABEL = {
   low: "Low risk",

@@ -13,8 +13,9 @@ from uuid import uuid4
 
 _LOG = logging.getLogger(__name__)
 _JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
-# Four distinct refreshes can progress when slow providers occupy other slots;
-# the pool remains bounded so probes cannot crowd the resident daemon.
+# Two slow providers can occupy half the pool while two other connections
+# still refresh. Four also caps concurrent job threads and their possible
+# child processes/stdio descriptors; callers beyond this ceiling get busy.
 _MAX_RUNNING_JOBS = 4
 _PUBLIC_FAILURE_CODES = frozenset(
     {

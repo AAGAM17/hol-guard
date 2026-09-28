@@ -450,6 +450,7 @@ export async function waitForMcpDiscoveryJob(cliId: string, initialJob: unknown,
           case "catalog_limit_reached":
             message = "This connector has more tools than Guard can catalog safely. Existing choices were kept."; break;
           default:
+            console.warn("Unknown discovery error code:", job.error);
             message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
         }
         throw new Error(message);

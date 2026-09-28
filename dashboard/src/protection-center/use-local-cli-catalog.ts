@@ -24,7 +24,7 @@ async function fetchLocalCliDiscover(): Promise<LocalCliListResponse> {
 function discoveryIssueMessage(issue: LocalCliListResponse["discovery_issue"]): string | null {
   switch (issue) {
     case "catalog_limit_reached":
-      return "Some observed connectors have more tools than Guard can show safely. Existing choices were kept.";
+      return "Some connectors have more tools than Guard can catalog safely. Existing choices were kept.";
     case "configured_host_scan_failed":
       return "Guard could not read configured host connections. Check the host app and retry.";
     case "observed_provider_scan_failed":
@@ -101,5 +101,5 @@ export function useLocalCliCatalog() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [data, discovering, load]);
-  return { data, error: error ?? discoveryNotice, load, discover, discovering, catalogReady };
+  return { data, error, discoveryNotice, load, discover, discovering, catalogReady };
 }

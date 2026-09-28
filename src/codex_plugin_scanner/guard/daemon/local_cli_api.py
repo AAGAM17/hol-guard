@@ -858,7 +858,7 @@ class LocalCliApiService:
                 self._discovered_servers(strict=True) if strict else self._discovered_servers(),
                 seen_at=utc_now(),
             )
-        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             if strict:
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return {}
@@ -870,7 +870,7 @@ class LocalCliApiService:
             return cached[1]
         try:
             servers = discover_harness_mcp_servers(home_dir=Path.home(), guard_home=self._store.guard_home)
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError):
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             if strict:
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return ()

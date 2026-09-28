@@ -87,6 +87,7 @@ export function ExtensionsOverview(props: {
   effective: EffectiveExtensionControls;
   localCliItems: LocalCliItem[];
   localCliError: string | null;
+  localCliNotice: string | null;
   mutationError: string | null;
   recoveryStatus: string | null;
   healthBroken: boolean;
@@ -170,6 +171,11 @@ export function ExtensionsOverview(props: {
         <div className="mt-4">
           <InlineError message={props.localCliError} />
         </div>
+      ) : null}
+      {props.localCliNotice ? (
+        <p role="status" className="mt-4 rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-3 text-sm text-brand-dark">
+          {props.localCliNotice}
+        </p>
       ) : null}
 
       <PatternSearchConsole

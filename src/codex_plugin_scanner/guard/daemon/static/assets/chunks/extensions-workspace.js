@@ -744,6 +744,7 @@ async function waitForMcpDiscoveryJob(cliId, initialJob, signal) {
             message = "This connector has more tools than Guard can catalog safely. Existing choices were kept.";
             break;
           default:
+            console.warn("Unknown discovery error code:", job.error);
             message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
         }
         throw new Error(message);
@@ -5273,7 +5274,7 @@ async function fetchLocalCliDiscover() {
 function discoveryIssueMessage(issue) {
   switch (issue) {
     case "catalog_limit_reached":
-      return "Some observed connectors have more tools than Guard can show safely. Existing choices were kept.";
+      return "Some connectors have more tools than Guard can catalog safely. Existing choices were kept.";
     case "configured_host_scan_failed":
       return "Guard could not read configured host connections. Check the host app and retry.";
     case "observed_provider_scan_failed":
@@ -5349,7 +5350,7 @@ function useLocalCliCatalog() {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [data, discovering, load]);
-  return { data, error: error ?? discoveryNotice, load, discover, discovering, catalogReady };
+  return { data, error, discoveryNotice, load, discover, discovering, catalogReady };
 }
 function CustomExtensionsSection(props) {
   const [search, setSearch] = reactExports.useState("");
@@ -7418,6 +7419,7 @@ function ExtensionsOverview(props) {
     ] }),
     props.mutationError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: props.mutationError }) }) : null,
     props.localCliError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: props.localCliError }) }) : null,
+    props.localCliNotice ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-4 rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-3 text-sm text-brand-dark", children: props.localCliNotice }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PatternSearchConsole,
       {
@@ -8632,6 +8634,7 @@ function ProtectionCenterWorkspace(props) {
         effective: state.effective,
         localCliItems: localClis.data?.items ?? [],
         localCliError: localClis.error,
+        localCliNotice: localClis.discoveryNotice,
         mutationError: mutationError && !pending ? mutationError : null,
         recoveryStatus,
         healthBroken,
@@ -8654,6 +8657,7 @@ function ProtectionCenterWorkspace(props) {
       }
     ) : null,
     showLocalCli && localClis.error && localClis.data ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "alert", className: "mb-3 text-sm font-medium text-rose-800", children: localClis.error }) : null,
+    (showLocalCli || routeState.route.kind === "add-custom") && localClis.discoveryNotice && localClis.data ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mb-3 rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-3 text-sm text-brand-dark", children: localClis.discoveryNotice }) : null,
     showLocalCli && !localClis.data && !localClis.error ? /* @__PURE__ */ jsxRuntimeExports.jsx(ExtensionsLoadingState, { label: "Loading custom extension" }) : null,
     routeState.route.kind === "add-custom" && state.kind === "ready" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
       AddCustomExtensionWorkspace,

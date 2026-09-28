@@ -114,6 +114,9 @@ for (const width of [1280, 390]) {
         discovered = true;
         body = { job_id: "d".repeat(32), cli_id: "inventory:configured", state: "complete", error: null };
       }
+      if (path.endsWith("/discover")) {
+        body = { ...body, discovery_issue: "configured_host_scan_failed" };
+      }
       if (path.endsWith("/recognize")) body = { item, summary: "Detected from Codex tool activity.", revision: 0, help_status: "ok" };
       if (path.endsWith("/preview")) body = { summary: "Save these tool permissions." };
       if (path.endsWith("/apply")) { applied = route.request().postDataJSON(); body = { ok: true }; }
@@ -130,6 +133,8 @@ for (const width of [1280, 390]) {
     expect(discovered).toBe(true);
     await page.getByRole("button", { name: "Add custom extension", exact: true }).click();
     await expect(page.getByText("MCP servers and connectors", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "could not read configured host connections" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "could not read configured host connections" })).toHaveCount(0);
     expect(registryRequests).toBe(0);
     await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
     const registry = page.getByRole("region", { name: "Public MCP registry search", exact: true });

@@ -418,6 +418,7 @@ export function ProtectionCenterWorkspace(props: {
           effective={state.effective}
           localCliItems={localClis.data?.items ?? []}
           localCliError={localClis.error}
+          localCliNotice={localClis.discoveryNotice}
           mutationError={mutationError && !pending ? mutationError : null}
           recoveryStatus={recoveryStatus}
           healthBroken={healthBroken}
@@ -440,6 +441,11 @@ export function ProtectionCenterWorkspace(props: {
       ) : null}
       {showLocalCli && localClis.error && localClis.data ? (
         <p role="alert" className="mb-3 text-sm font-medium text-rose-800">{localClis.error}</p>
+      ) : null}
+      {(showLocalCli || routeState.route.kind === "add-custom") && localClis.discoveryNotice && localClis.data ? (
+        <p role="status" className="mb-3 rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-3 text-sm text-brand-dark">
+          {localClis.discoveryNotice}
+        </p>
       ) : null}
       {showLocalCli && !localClis.data && !localClis.error ? (
         <ExtensionsLoadingState label="Loading custom extension" />

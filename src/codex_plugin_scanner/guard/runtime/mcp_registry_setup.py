@@ -170,8 +170,10 @@ def reviewed_codex_package_candidate(payload: dict[str, object]) -> dict[str, ob
         raise ValueError("registry_setup_listing_changed")
     option = matches[0]
     command_name, arguments = option["command"], option["arguments"]
-    if not isinstance(command_name, str) or not isinstance(arguments, list) or not all(
-        isinstance(value, str) for value in arguments
+    if (
+        not isinstance(command_name, str)
+        or not isinstance(arguments, list)
+        or not all(isinstance(value, str) for value in arguments)
     ):
         raise ValueError("registry_setup_listing_changed")
     command = shutil.which(command_name)

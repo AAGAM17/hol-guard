@@ -43,9 +43,8 @@ def reviewed_stdio_package_options(packages: object) -> list[dict[str, object]]:
         ):
             continue
         if registry_type == "npm" and package.get("runtimeHint") == "npx":
-            if (
-                package.get("registryBaseUrl") not in (None, "https://registry.npmjs.org")
-                or not _NPM.fullmatch(identifier)
+            if package.get("registryBaseUrl") not in (None, "https://registry.npmjs.org") or not _NPM.fullmatch(
+                identifier
             ):
                 continue
             command, prefix = "npx", ["-y", f"{identifier}@{version}"]

@@ -572,8 +572,6 @@ def test_approval_token_binds_executables_from_every_effective_project(tmp_path:
     assert first != second
 
 
-
-
 def test_unresolved_execution_context_cannot_reuse_an_approval_token(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

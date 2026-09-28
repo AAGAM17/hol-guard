@@ -1,15 +1,10 @@
 """Compatibility-only payload preparation for explicitly non-native hooks."""
 
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import os
 from argparse import Namespace
 from pathlib import Path
-
-
-from .commands_support import *  # noqa: F403
 
 from ..adapters.base import HarnessContext
 from ..cli.commands_support_command_activity import (
@@ -18,6 +13,7 @@ from ..cli.commands_support_command_activity import (
     record_post_hook_command_activity_best_effort,
 )
 from ..store import GuardStore
+from .commands_support import *  # noqa: F403
 from .commands_support_hook_payload import _normalize_hook_payload
 from .commands_support_hook_state import _cursor_conversation_id, _cursor_shell_command_from_payload
 from .commands_support_interaction import _emit

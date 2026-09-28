@@ -181,11 +181,7 @@ class HookWorkerNativeMixin:
         guard_home: Path,
         workspace: Path | None,
     ) -> dict[str, object]:
-        reason_code = (
-            "native_hook_disabled"
-            if native_mode() == "off"
-            else "native_shadow_diagnostic_disabled"
-        )
+        reason_code = "native_hook_disabled" if native_mode() == "off" else "native_shadow_diagnostic_disabled"
         return availability_harness_response(
             payload,
             harness=harness,
@@ -463,8 +459,7 @@ class HookWorkerNativeMixin:
                     guard_home=guard_home,
                     home_dir=home_dir,
                     cwd=workspace,
-                    source_ref_external_allowed=default_harness.strip().lower().replace("_", "-")
-                    in {"pi", "omp"},
+                    source_ref_external_allowed=default_harness.strip().lower().replace("_", "-") in {"pi", "omp"},
                     observe_mode=recording_only,
                     deadline=deadline,
                     policy_snapshot=policy_snapshot,

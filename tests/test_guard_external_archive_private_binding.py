@@ -58,8 +58,6 @@ def _hook_inputs(
     return artifact, config, context, store, workspace, payload
 
 
-
-
 def _save_exact_allow(store: GuardStore, *, artifact: GuardArtifact, artifact_hash: str) -> None:
     store.upsert_policy(
         PolicyDecision(

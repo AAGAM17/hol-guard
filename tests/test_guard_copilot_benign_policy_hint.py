@@ -35,8 +35,6 @@ def _copilot_payload(
     }
 
 
-
-
 def _receipt_evidence(receipt: dict[str, object], source: str) -> dict[str, object]:
     evidence = receipt["scanner_evidence"]
     assert isinstance(evidence, list)

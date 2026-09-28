@@ -64,8 +64,6 @@ def _hook_inputs(
     return artifact, config, context, store, workspace, payload
 
 
-
-
 def _save_exact_allow(store: GuardStore, *, artifact: GuardArtifact, artifact_hash: str) -> None:
     store.upsert_policy(
         PolicyDecision(
@@ -91,14 +89,6 @@ def _package_artifact(workspace: Path, command: str) -> GuardArtifact:
         config_path="hol-guard.toml",
         source_scope="project",
     )
-
-
-
-
-
-
-
-
 
 
 def test_package_firewall_reuses_one_review_to_inspect_then_launch(

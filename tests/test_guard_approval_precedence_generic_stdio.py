@@ -32,12 +32,6 @@ _GENERIC_HARNESS = "generic-test"
 _GENERIC_ARTIFACT_ID = "generic-test:project:opaque-request"
 
 
-
-
-
-
-
-
 def _generic_payload() -> dict[str, object]:
     return {
         "artifact_id": _GENERIC_ARTIFACT_ID,
@@ -47,12 +41,6 @@ def _generic_payload() -> dict[str, object]:
         "tool_name": "opaque_tool",
         "tool_input": {"target": "unchanged"},
     }
-
-
-
-
-
-
 
 
 def _record_generic_once_allow(
@@ -75,32 +63,6 @@ def _record_generic_once_allow(
     )
     assert approval_id is not None
     return approval_id
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _sensitive_read_artifact(workspace: Path, *, publisher: str | None = None) -> GuardArtifact:

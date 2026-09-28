@@ -163,10 +163,6 @@ def test_runtime_hook_evaluator_policy_version_is_the_only_changed_component(
     )
 
 
-
-
-
-
 def _tool_call_token(*, artifact: GuardArtifact, config: GuardConfig) -> str:
     assert config.workspace is not None
     return mcp_tool_calls_module.build_tool_call_hash(

@@ -25,8 +25,6 @@ def test_watch_mode_never_denies_review_or_block() -> None:
         assert payload == {"decision": "allow"}, action
 
 
-
-
 def test_emit_allows_block_when_guard_home_is_watch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     guard_home = tmp_path / ".hol-guard"
     guard_home.mkdir()

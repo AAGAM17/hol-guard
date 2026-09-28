@@ -285,8 +285,6 @@ def test_spoofed_ids_and_binding_drift_fail_closed(tmp_path: Path) -> None:
     assert claim_resolved_github_workflow_authorization(store, "request-github-1", descriptor) is None
 
 
-
-
 def test_workflow_events_do_not_expose_remote_identity(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "guard-home", prime_policy_integrity=False)
     descriptor = _descriptor()

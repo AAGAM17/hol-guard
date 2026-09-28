@@ -30,14 +30,6 @@ class _DaemonServerAccess(Protocol):
     hook_worker: HookWorker
 
 
-
-
-
-
-
-
-
-
 def test_watch_only_daemon_worker_exception_does_not_block_harnesses(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

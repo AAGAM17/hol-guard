@@ -69,10 +69,7 @@ def native_hook_force(monkeypatch: pytest.MonkeyPatch) -> Path:
         if not runtime.is_file():
             runtime = root / "rust" / "target" / "debug" / "hol-guard-runtime"
     if not runtime.is_file():
-        pytest.fail(
-            "HOL_GUARD_NATIVE_BINARY must name the compiled Rust runtime; "
-            "native retirement proof cannot skip"
-        )
+        pytest.fail("HOL_GUARD_NATIVE_BINARY must name the compiled Rust runtime; native retirement proof cannot skip")
     runtime = runtime.resolve(strict=True)
     monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
     monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(runtime))

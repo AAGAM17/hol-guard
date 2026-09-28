@@ -270,8 +270,6 @@ class TestHookWorkerNonPostTool:
         assert result["reason_code"] == "native_pre_tool_unavailable"
 
 
-
-
 class TestHookWorkerAllHarnessFallback:
     """Tests proving all harnesses without client-side guard_source_ref
     use the server-side output scanning fast path.

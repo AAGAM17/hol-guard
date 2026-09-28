@@ -167,9 +167,7 @@ def test_feed_builds_core_with_multiprocessing_safe_entrypoint() -> None:
 
 
 def test_macos_feed_avoids_bash4_only_builtins_and_binds_mode() -> None:
-    text = workflow_text() + (ROOT / "scripts/release/authorize_macos_core_source.sh").read_text(
-        encoding="utf-8"
-    )
+    text = workflow_text() + (ROOT / "scripts/release/authorize_macos_core_source.sh").read_text(encoding="utf-8")
     job = publish_job()
     assert "mapfile " not in text
     assert "readarray " not in text
@@ -191,9 +189,7 @@ def test_frozen_sidecar_stages_cloud_review_package_data() -> None:
 
 
 def test_frozen_sidecar_stages_attested_native_runtime() -> None:
-    text = workflow_text() + (ROOT / "scripts/release/authorize_macos_core_source.sh").read_text(
-        encoding="utf-8"
-    )
+    text = workflow_text() + (ROOT / "scripts/release/authorize_macos_core_source.sh").read_text(encoding="utf-8")
     build = next(step for step in publish_job()["steps"] if step.get("name") == "Build standalone Core executable")
     run = build["run"]
     assert isinstance(run, str)

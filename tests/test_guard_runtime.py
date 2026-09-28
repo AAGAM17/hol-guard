@@ -15657,8 +15657,6 @@ def test_guard_hook_codex_emits_native_deny_for_sensitive_bash_command(tmp_path,
     assert "approve" not in reason.lower()
 
 
-
-
 def test_guard_hook_codex_emits_no_native_output_for_safe_requests(tmp_path, capsys, monkeypatch):
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"

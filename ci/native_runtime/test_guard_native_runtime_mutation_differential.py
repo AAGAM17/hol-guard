@@ -167,9 +167,7 @@ def test_mutated_inline_corpus_keeps_python_rust_security_parity(tmp_path: Path,
                     try:
                         _assert_native_security_floor(native_response, expected)
                     except AssertionError:
-                        raise AssertionError(
-                            (seed, case_index, request.payload, native_response, expected)
-                        ) from None
+                        raise AssertionError((seed, case_index, request.payload, native_response, expected)) from None
         finally:
             close_native_residents()
 

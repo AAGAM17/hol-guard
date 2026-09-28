@@ -1,14 +1,13 @@
 """Guard CLI Copilot hook helpers."""
 
-# ruff: noqa: E402, F403, F405
+# ruff: noqa: F403, F405
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-
-from .commands_support import *  # noqa: F403
+from .commands_support import *
 
 if TYPE_CHECKING:
     from ..mcp_tool_calls import ToolCallDecision
@@ -17,10 +16,8 @@ if TYPE_CHECKING:
     from .commands_support_interaction import (
         _bind_hook_blocked_operation_queue,
         _codex_browser_wait_metadata,
-        _emit,
         _preferred_approval_review_url,
         _record_harness_usage_for_hook,
-        _should_emit_copilot_hook_response,
     )
     from .commands_support_prompts import (
         _copilot_hook_reason,

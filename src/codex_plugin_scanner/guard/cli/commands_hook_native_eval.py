@@ -1,6 +1,6 @@
 """Guard CLI runtime artifact hook evaluation."""
 
-# ruff: noqa: E402, F403, F405
+# ruff: noqa: F403, F405
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-
-from .commands_support import *  # noqa: F403
+from .commands_support import *
 
 if TYPE_CHECKING:
     from ._commands_shared import _now
@@ -107,9 +106,7 @@ def _native_edge_floor_action(
 
     if not isinstance(native_edge_result, Mapping):
         return None
-    action = coerce_guard_action(
-        native_edge_result.get("policy_action") or native_edge_result.get("minimum_action")
-    )
+    action = coerce_guard_action(native_edge_result.get("policy_action") or native_edge_result.get("minimum_action"))
     if event_name != "PostToolUse":
         # PreToolUse/UserPromptSubmit composition floors come from the
         # command-level native review (``native_pre_tool_floor``) and the
@@ -1406,6 +1403,6 @@ def evaluate_native_artifact_hook(
 
 
 __all__ = [
-    "evaluate_native_artifact_hook",
     "_requested_policy_action_normalization",
+    "evaluate_native_artifact_hook",
 ]

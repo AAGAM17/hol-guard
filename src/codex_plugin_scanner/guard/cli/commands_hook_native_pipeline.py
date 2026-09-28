@@ -24,9 +24,7 @@ from ..runtime.extension_control_runtime import (
 if TYPE_CHECKING:
     from ..daemon.hook_worker import HookWorker
 
-from .commands_support import *  # noqa: F403
 from ._commands_shared import *
-from .commands_parser_helpers import *
 from .commands_hook_native_claude import (
     run_native_claude_permission_prompt_notification,
     run_native_claude_permission_request,
@@ -42,6 +40,8 @@ from .commands_hook_native_generic import run_native_generic_payload
 from .commands_hook_native_prepare import prepare_native_hook_state
 from .commands_hook_native_review import review_native_artifact_hook
 from .commands_hook_native_state import NativeArtifactHookState
+from .commands_parser_helpers import *
+from .commands_support import *
 from .commands_support_claude_approval import _persist_claude_guard_question_decision
 from .commands_support_connect import _synced_policy_payload
 from .commands_support_hook_payload import _hook_action_envelope, _normalize_hook_payload

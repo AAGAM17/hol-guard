@@ -1,13 +1,12 @@
 """Guard CLI runtime artifact hook review and queue flow."""
 
-# ruff: noqa: E402, F403, F405
+# ruff: noqa: F403, F405
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
-from .commands_support import *  # noqa: F403
+from .commands_support import *
 
 if TYPE_CHECKING:
     from ._commands_shared import _hook_command_text, _now
@@ -202,13 +201,10 @@ def review_native_artifact_hook(
         guard_payload=response_payload,
     )
     observe_mode = config.mode == "observe"
-    terminal_action = (
-        policy_action
-        in {
-            "block",
-            "sandbox-required",
-        }
-    )
+    terminal_action = policy_action in {
+        "block",
+        "sandbox-required",
+    }
     if terminal_action:
         response_payload["approval_requests"] = []
         response_payload["terminal_action"] = policy_action
@@ -285,9 +281,7 @@ def review_native_artifact_hook(
                 output_stream=output_stream,
             )
             return 0
-        if _should_emit_prequeue_native_hook_response(
-            args, output_stream=output_stream, event_name=event_name
-        ):
+        if _should_emit_prequeue_native_hook_response(args, output_stream=output_stream, event_name=event_name):
             if _should_emit_claude_native_pretooluse_notice(
                 args,
                 event_name=event_name,
@@ -355,9 +349,7 @@ def review_native_artifact_hook(
                 ]
             }
             try:
-                daemon_client: GuardSurfaceDaemonClient | None = load_guard_surface_daemon_client(
-                    guard_home
-                )
+                daemon_client: GuardSurfaceDaemonClient | None = load_guard_surface_daemon_client(guard_home)
             except RuntimeError:
                 daemon_client = None
             browser_wait_metadata, browser_approval_wait_bound = _browser_wait_binding(

@@ -74,11 +74,14 @@ TEMPORARY_PATHS: Final = (
     Path("rust/AUTHORITY_BATCH_2_FINAL"),
     Path("rust/AUTHORITY_FINAL"),
 )
+
+
 def _read(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise RuntimeError(f"required authority source is missing: {path}") from exc
+
 
 def _python_imports_function(path: Path, module_suffix: str, name: str) -> bool:
     tree = ast.parse(_read(path), filename=str(path))
@@ -238,7 +241,7 @@ def _pretool_gate() -> None:
         r'if event_name\s*==\s*"PreToolUse":[\s\S]*?return self\._review_pre_tool_http',
         hook,
     )
-    region = re.search(r'def _review_pre_tool_http\([\s\S]*?(?=\n    def _review_native_edge)', native_hook)
+    region = re.search(r"def _review_pre_tool_http\([\s\S]*?(?=\n    def _review_native_edge)", native_hook)
     if route is None or region is None:
         raise RuntimeError("daemon has no Rust PreToolUse authority route")
     if "self.engine.review(" in region.group(0):
@@ -428,18 +431,34 @@ def _cli_gate() -> None:
     path = Path("src/codex_plugin_scanner/guard/cli/commands_hook_native_authority.py")
     tree = ast.parse(_read(path), filename=str(path))
     fn = next(
-        (
-            node
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef) and node.name == "route_native_hook"
-        ),
+        (node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "route_native_hook"),
         None,
     )
     if fn is None:
         raise RuntimeError("CLI native authority helper is missing")
     calls = _ordered_call_names(fn)
     if "try_native_hook_authority" not in calls:
-        raise RuntimeError("CLI hook path is missing native authority routing")
+        if "run_native_hook_pipeline" not in calls:
+            raise RuntimeError("CLI hook path is missing native authority routing")
+        pipeline_path = Path("src/codex_plugin_scanner/guard/cli/commands_hook_native_pipeline.py")
+        pipeline_tree = ast.parse(_read(pipeline_path), filename=str(pipeline_path))
+        pipeline_fn = next(
+            (
+                node
+                for node in pipeline_tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "run_native_hook_pipeline"
+            ),
+            None,
+        )
+        if pipeline_fn is None:
+            raise RuntimeError("CLI native pipeline dispatcher is missing")
+        pipeline_calls = _ordered_call_names(pipeline_fn) + [
+            child.func.attr
+            for child in ast.walk(pipeline_fn)
+            if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)
+        ]
+        if "review_native_edge_decision" not in pipeline_calls:
+            raise RuntimeError("CLI native pipeline does not reach the native edge authority")
     for retired in ("_try_source_ref_fast_path", "record_python_semantic_hook_route", "evaluate_source_file_ref"):
         if retired in calls:
             raise RuntimeError(f"CLI hook path still calls retired Python route {retired}")

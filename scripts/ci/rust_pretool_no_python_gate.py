@@ -172,8 +172,16 @@ def _native_cli_graph_failures(root: Path) -> list[str]:
     if native_route is None:
         failures.append("CLI native route is missing")
         return failures
-    if _called_node(native_route, "try_native_hook_authority") is None:
+    pipeline_call = _called_node(native_route, "run_native_hook_pipeline")
+    if pipeline_call is None and _called_node(native_route, "try_native_hook_authority") is None:
         failures.append("CLI native route does not call native authority")
+    if pipeline_call is not None:
+        pipeline_module = root / "src/codex_plugin_scanner/guard/cli/commands_hook_native_pipeline.py"
+        pipeline = _function_node_or_none(pipeline_module, "run_native_hook_pipeline")
+        if pipeline is None:
+            failures.append("CLI native pipeline dispatcher is missing")
+        elif _called_node(pipeline, "review_native_edge_decision") is None:
+            failures.append("CLI native pipeline does not reach the native edge authority")
     for retired in ("_try_source_ref_fast_path", "record_python_semantic_hook_route", "evaluate_source_file_ref"):
         if _called_node(native_route, retired) is not None:
             failures.append(f"CLI native route still calls retired Python route {retired}")

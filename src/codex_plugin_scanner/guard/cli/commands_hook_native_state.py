@@ -1,12 +1,12 @@
 """Guard CLI runtime artifact hook state."""
 
 # fmt: off
-# ruff: noqa: E402, F403, F405, I001
+# ruff: noqa: F403, F405, I001
 
 from __future__ import annotations
 
 
-from .commands_support import *  # noqa: F403
+from .commands_support import *
 
 from ._commands_shared import *
 

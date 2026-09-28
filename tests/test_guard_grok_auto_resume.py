@@ -257,8 +257,6 @@ def test_grok_live_wait_skips_observe_events_and_zero_timeout(tmp_path: Path) ->
     )
 
 
-
-
 def test_grok_emit_allows_after_live_approval(tmp_path: Path, monkeypatch) -> None:
     store = GuardStore(tmp_path / "guard-home")
     store.add_approval_request(_request(tmp_path, "req-grok-emit"), "2026-05-08T10:00:00+00:00")

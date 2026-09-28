@@ -108,16 +108,10 @@ def _resolved_request(store: GuardStore, token: str) -> GuardApprovalRequest:
     return request
 
 
-
-
-
-
 def _parse_guard_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     add_guard_root_parser(parser)
     return parser.parse_args(argv)
-
-
 
 
 @pytest.mark.parametrize("terminal_action", ["block", "sandbox-required"])

@@ -54,8 +54,7 @@ def _runtime_artifact_fail_closed_floor(artifact: GuardArtifact) -> bool:
     if not isinstance(controlling, Sequence) or isinstance(controlling, str):
         return False
     return any(
-        isinstance(reason, Mapping)
-        and reason.get("reason_code") in {"matcher-failure", "uncertainty.matcher-failure"}
+        isinstance(reason, Mapping) and reason.get("reason_code") in {"matcher-failure", "uncertainty.matcher-failure"}
         for reason in controlling
     )
 

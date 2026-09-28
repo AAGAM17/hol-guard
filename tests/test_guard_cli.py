@@ -6873,6 +6873,7 @@ url = http://127.0.0.1:8787/guard-canary
 
         assert rc == 0
         assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+
     @pytest.mark.usefixtures("native_hook_force")
     def test_guard_codex_hook_allows_quoted_process_substitution_literal(self, tmp_path, capsys):
         home_dir = tmp_path / "home"

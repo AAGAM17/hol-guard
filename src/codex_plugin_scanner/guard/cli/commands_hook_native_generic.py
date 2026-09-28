@@ -7,8 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-
-from .commands_support import *  # noqa: F403
+from .commands_support import *
 
 
 def _coalesce_string(*values: object | None) -> str:
@@ -113,7 +112,6 @@ if TYPE_CHECKING:
         _should_emit_claude_native_pretooluse_notice,
         _should_emit_copilot_hook_response,
         _should_emit_native_hook_exit_block,
-        _should_emit_native_hook_json_response,
         _should_emit_native_hook_response,
     )
     from .commands_support_prompts import (
@@ -876,10 +874,7 @@ def run_native_generic_payload(
         )
         if native_edge_action is None and native_edge_result.get("decision") == "deny":
             native_edge_action = "block"
-        if (
-            hook_event_name == "PostToolUse"
-            and native_edge_action in {"block", "sandbox-required"}
-        ):
+        if hook_event_name == "PostToolUse" and native_edge_action in {"block", "sandbox-required"}:
             # PostToolUse cannot undo the finished action; the edge deny masks
             # the emitted output while the policy surface stays reviewable.
             native_edge_action = "require-reapproval"
@@ -1450,9 +1445,7 @@ def run_native_generic_payload(
                 )
             return json_rc
     if _should_emit_native_hook_response(args) or (
-        getattr(args, "json", False)
-        and output_stream is not None
-        and _canonical_harness_name(args.harness) == "grok"
+        getattr(args, "json", False) and output_stream is not None and _canonical_harness_name(args.harness) == "grok"
     ):
         if _canonical_harness_name(args.harness) == "grok":
             from ..adapters.grok_hooks import emit_grok_hook_response, grok_hook_process_exit
@@ -1537,9 +1530,7 @@ def run_native_generic_payload(
         hook_envelope,
         getattr(args, "json", False),
     )
-    if isinstance(payload_map.get("artifact_id"), str) and isinstance(
-        payload_map.get("policy_action"), str
-    ):
+    if isinstance(payload_map.get("artifact_id"), str) and isinstance(payload_map.get("policy_action"), str):
         # The caller replayed a decision that was already recorded upstream;
         # the envelope acknowledges it without re-blocking the harness.
         return 0

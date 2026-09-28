@@ -94,10 +94,6 @@ def test_approval_resolution_implicit_timestamp_issues_claimable_capability(
     assert signed.claim.issued_at == format_utc_timestamp(_ISSUED)
 
 
-
-
-
-
 def test_workflow_approval_identity_accepts_exact_bytes_restored_after_drift(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

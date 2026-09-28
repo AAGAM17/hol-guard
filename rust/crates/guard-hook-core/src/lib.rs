@@ -407,21 +407,6 @@ fn review_source(
         return inconclusive_source();
     }
     if !scan.matches.is_empty() {
-        if scan
-            .matches
-            .iter()
-            .all(|matched| matched.sensitivity == "medium")
-        {
-            let mut response = HookReviewResponseV1::allow("source_suspect_content");
-            response.reviewed_output_sha256 = Some(source.output_sha256.clone());
-            response.reason = Some(
-                "HOL Guard flagged this output because it may contain credential-looking content."
-                    .to_owned(),
-            );
-            response.notice = "warning".to_owned();
-            response.policy_action = Some("warn".to_owned());
-            return response;
-        }
         return HookReviewResponseV1::deny(
             "source_secret_match",
             "HOL Guard blocked this output because it contains sensitive content.",
@@ -479,20 +464,6 @@ fn review_inline(request: &NativeHookRequestV1) -> HookReviewResponseV1 {
         );
     }
     if !scan.matches.is_empty() {
-        if scan
-            .matches
-            .iter()
-            .all(|matched| matched.sensitivity == "medium")
-        {
-            let mut response = allow_inline_output("output_suspect_content", &extracted.text);
-            response.reason = Some(
-                "HOL Guard flagged this output because it may contain credential-looking content."
-                    .to_owned(),
-            );
-            response.notice = "warning".to_owned();
-            response.policy_action = Some("warn".to_owned());
-            return response;
-        }
         return HookReviewResponseV1::deny(
             "output_secret_match",
             "HOL Guard blocked this output because it contains sensitive content.",

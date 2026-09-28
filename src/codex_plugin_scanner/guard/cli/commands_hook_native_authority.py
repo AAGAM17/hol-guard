@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
 
 from ..adapters.base import HarnessContext
 from ..config import GuardConfig
@@ -110,9 +111,7 @@ def route_native_hook(
         # ``off`` is an explicit disablement, not permission to restore a
         # second semantic evaluator. Shadow never escapes to Python semantics.
         reason_code = (
-            "native_hook_disabled"
-            if native_mode_is_fail_safe_disabled()
-            else "native_shadow_diagnostic_disabled"
+            "native_hook_disabled" if native_mode_is_fail_safe_disabled() else "native_shadow_diagnostic_disabled"
         )
         _emit(
             "hook",

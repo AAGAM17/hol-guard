@@ -109,9 +109,7 @@ def _retired_flag_reads(tree: ast.AST, name: str, flags: set[str]) -> list[str]:
             if not isinstance(arg, ast.Constant) or not isinstance(arg.value, str) or arg.value not in flags:
                 continue
             if (isinstance(function, ast.Name) and function.id == "getenv") or (
-                isinstance(function, ast.Attribute)
-                and function.attr in {"getenv", "get"}
-                and env_base(function.value)
+                isinstance(function, ast.Attribute) and function.attr in {"getenv", "get"} and env_base(function.value)
             ):
                 failures.append(f"{name}:{node.lineno}: reads retired runtime flag {arg.value}")
     return failures

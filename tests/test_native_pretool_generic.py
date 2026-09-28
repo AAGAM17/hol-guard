@@ -230,9 +230,7 @@ def test_hook_worker_routes_native_prompt_without_post_tool_projection(
         wait_for_native_policy=False,
         publish_native_policy=False,
     )
-    monkeypatch.setattr(
-        worker, "_native_policy_snapshot", lambda *_args, **_kwargs: {"generation": 1, "mode": mode}
-    )
+    monkeypatch.setattr(worker, "_native_policy_snapshot", lambda *_args, **_kwargs: {"generation": 1, "mode": mode})
     monkeypatch.setattr(worker, "_review_raw_hook_native", lambda **_kwargs: edge)
     try:
         rendered = worker.review_http_payload(

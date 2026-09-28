@@ -347,6 +347,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   scheduling-sensitive:
+    needs: native-command-evaluators
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -361,6 +362,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
+      - name: Download native command evaluators
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pytest-native-command-evaluators
+          path: rust/target/release
+      - name: Bind the compiled native runtime
+        run: |
+          chmod 0755 rust/target/release/hol-guard-runtime
+          echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" >> "$GITHUB_ENV"
       - name: Run scheduling-sensitive tests untraced
         run: >-
           uv run --no-sync pytest

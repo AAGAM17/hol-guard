@@ -54,10 +54,6 @@ def test_commands_facade_wrapped_helpers_report_facade_module() -> None:
     assert guard_commands_module._headless_approval_resolver.__module__ == guard_commands_module.__name__
 
 
-
-
-
-
 def test_commands_facade_restores_overrides_captured_by_modules_imported_inside_window(monkeypatch) -> None:
     import sys
     from types import ModuleType

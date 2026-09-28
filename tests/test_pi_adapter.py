@@ -123,9 +123,7 @@ class TestPiDetect:
         assert result.installed is True
         assert result.command_available is True
 
-    def test_detect_finds_omp_in_user_local_bin_when_gui_path_omits_it(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_detect_finds_omp_in_user_local_bin_when_gui_path_omits_it(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)
         executable = ctx.home_dir / ".local" / "bin" / "omp"
         executable.parent.mkdir(parents=True, exist_ok=True)
@@ -292,7 +290,9 @@ class TestPiInstall:
         assert 'pi.on("input"' in text
         assert 'hook_event_name: "PostToolUse"' in text
         assert "    if (originalOutputProof) return undefined;\n" in text
-        assert "return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);" in text
+        assert (
+            "return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);" in text
+        )
         assert '    if (response.decision === "allow") return undefined;\n' in text
         assert "const GUARD_CLI_WRAPPER_COMMAND =" in text
         assert "const GUARD_CLI_WRAPPER_ARGS =" in text

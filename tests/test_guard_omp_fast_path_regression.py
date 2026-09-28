@@ -21,6 +21,7 @@ def _is_string_object_dict(value: object) -> TypeGuard[dict[str, object]]:
 def test_omp_post_tool_read_burst_uses_resident_scanner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    native_hook_force: Path,
 ) -> None:
     home_dir = tmp_path / "home"
     workspace = tmp_path / "workspace"

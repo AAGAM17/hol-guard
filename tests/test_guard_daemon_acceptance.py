@@ -32,7 +32,10 @@ def test_adversarial_workload_nodeids_resolve() -> None:
 
 @pytest.mark.parametrize("workload", load_correctness_workloads(), ids=_fixture_id)
 def test_packaged_correctness_workloads(
-    workload: WorkloadSpec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    workload: WorkloadSpec,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    native_hook_force: Path,
 ) -> None:
     # Coverage tracing inflates every request round trip; scale the transport
     # admission deadline and the latency SLA budgets so the workload verdicts

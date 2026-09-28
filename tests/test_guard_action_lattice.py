@@ -116,10 +116,6 @@ def test_policy_engine_present_unknown_actions_do_not_fall_through_to_allow(tmp_
     assert decide_action(None, "future-action", config, changed=False) == "require-reapproval"
 
 
-
-
-
-
 def test_runtime_policy_and_receipt_boundaries_share_canonical_normalization() -> None:
     assert normalize_guard_action("sandbox-required") == "sandbox-required"
     assert _guard_action("sandbox-required") == "sandbox-required"

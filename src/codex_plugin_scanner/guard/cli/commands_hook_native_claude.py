@@ -1,13 +1,12 @@
 """Guard CLI Claude hook helpers."""
 
-# ruff: noqa: E402, F403, F405
+# ruff: noqa: F403, F405
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-
-from .commands_support import *  # noqa: F403
+from .commands_support import *
 
 if TYPE_CHECKING:
     from ._commands_shared import _now
@@ -147,9 +146,7 @@ def run_native_claude_permission_prompt_notification(
     )
     system_message = _claude_permission_prompt_system_message(payload=payload_map, notice=notice)
     additional_context = _claude_permission_prompt_additional_context(notice)
-    _emit_native_hook_notification_stderr(
-        _claude_permission_prompt_terminal_notice(payload=payload_map, notice=notice)
-    )
+    _emit_native_hook_notification_stderr(_claude_permission_prompt_terminal_notice(payload=payload_map, notice=notice))
     _emit_native_hook_response(
         harness=args.harness,
         policy_action="allow",

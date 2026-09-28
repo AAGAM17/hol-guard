@@ -44,8 +44,6 @@ def _replace_file(path: Path, content: bytes) -> None:
     replacement.replace(path)
 
 
-
-
 def _approval_reuse_reason(output: dict[str, object]) -> str:
     approval_reuse = output.get("approval_reuse")
     assert isinstance(approval_reuse, dict)
@@ -106,20 +104,6 @@ def _generic_server_action_envelope(command: str, *, workspace: Path) -> GuardAc
         package_manager=None,
         package_name=None,
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _copilot_server_config(command: str = "./server") -> dict[str, object]:

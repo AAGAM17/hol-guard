@@ -117,8 +117,12 @@ def _trusted_cursor_after_shell_env(
 def test_managed_hook_events_exclude_pretooluse() -> None:
     assert "preToolUse" not in _MANAGED_HOOK_EVENTS
     assert _MANAGED_HOOK_EVENTS == (
-        "beforeShellExecution", "beforeMCPExecution", "beforeReadFile",
-        "beforeWriteFile", "afterShellExecution", "afterMCPExecution",
+        "beforeShellExecution",
+        "beforeMCPExecution",
+        "beforeReadFile",
+        "beforeWriteFile",
+        "afterShellExecution",
+        "afterMCPExecution",
     )
 
 
@@ -1860,12 +1864,6 @@ def test_normalize_cursor_shell_command_unwraps_lean_ctx_wrapper() -> None:
 
     assert normalized.startswith("gh api graphql")
     assert "lean-ctx" not in normalized
-
-
-
-
-
-
 
 
 def test_signed_cursor_allowance_cannot_be_replayed_into_another_conversation(tmp_path: Path) -> None:

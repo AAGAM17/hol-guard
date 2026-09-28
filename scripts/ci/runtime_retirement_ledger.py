@@ -96,8 +96,7 @@ def _test_nodes(path: Path) -> set[str]:
             elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
                 # Pytest does not collect test classes with custom constructors.
                 if not any(
-                    isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and child.name in {"__init__", "__new__"}
+                    isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name in {"__init__", "__new__"}
                     for child in node.body
                 ):
                     collect(node.body, prefix + node.name + "::")

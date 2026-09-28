@@ -86,12 +86,6 @@ def _record_once_allow(
     assert approval_id is not None
 
 
-
-
-
-
-
-
 def _hook_args(harness: str, *, json_output: bool) -> argparse.Namespace:
     return argparse.Namespace(
         artifact_id=None,
@@ -136,18 +130,6 @@ def _approval_reuse_reason(receipt: dict[str, object]) -> str | None:
     return None
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 def _insert_tampered_broader_block(
     store: GuardStore,
     *,
@@ -171,8 +153,6 @@ def _insert_tampered_broader_block(
             "update policy_decisions set payload_mac = ? where decision_id = ?",
             ("00", broader_block["decision_id"]),
         )
-
-
 
 
 def test_mcp_current_allow_and_exact_allow_do_not_hide_tampered_broader_authority(

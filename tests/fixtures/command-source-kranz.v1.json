@@ -3384,7 +3384,7 @@
     },
     {
       "id": "runs-delete-help",
-      "command": "kranz runs delete --help",
+      "command": "kranz runs delete api#3 --confirm --help",
       "enabled_extensions": [
         "command.kranz"
       ],
@@ -3395,7 +3395,7 @@
     },
     {
       "id": "init-force-help",
-      "command": "kranz init --help",
+      "command": "kranz init --force --help",
       "enabled_extensions": [
         "command.kranz"
       ],
@@ -3506,6 +3506,32 @@
       ]
     },
     {
+      "id": "shell-wrapper-down",
+      "command": "zsh -lc 'kranz down'",
+      "enabled_extensions": [
+        "command.kranz"
+      ],
+      "disabled_permissions": [],
+      "expected_action": "review",
+      "rule_id": "command.kranz.down",
+      "expected_effective_segments": [
+        0
+      ]
+    },
+    {
+      "id": "quoted-directory-stop",
+      "command": "kranz -C '/workspace/shop demo' stop api",
+      "enabled_extensions": [
+        "command.kranz"
+      ],
+      "disabled_permissions": [],
+      "expected_action": "review",
+      "rule_id": "command.kranz.stop",
+      "expected_effective_segments": [
+        0
+      ]
+    },
+    {
       "id": "inactive-action",
       "command": "kranz actions run api/seed",
       "enabled_extensions": [],
@@ -3523,9 +3549,11 @@
       "disabled_permissions": [
         "command.kranz.permission.down"
       ],
-      "expected_action": "review",
+      "expected_action": "block",
       "rule_id": "command.kranz.down",
-      "expected_effective_segments": []
+      "expected_effective_segments": [
+        0
+      ]
     }
   ]
 }

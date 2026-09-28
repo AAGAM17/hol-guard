@@ -3277,6 +3277,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
   const settingsImportInputRef = reactExports.useRef(null);
   const saveSuccessTimerRef = reactExports.useRef(null);
   const savedSettingsRef = reactExports.useRef(null);
+  const setupGateRevertRef = reactExports.useRef(null);
   const [approvalGateEnabled, setApprovalGateEnabled] = reactExports.useState(false);
   const [approvalGateTotpCode, setApprovalGateTotpCode] = reactExports.useState("");
   const [approvalGateTotpDeviceLabel, setApprovalGateTotpDeviceLabel] = reactExports.useState("local-device");
@@ -3570,10 +3571,15 @@ function SettingsWorkspace({ onApprovalGateChange }) {
     if (proofModalPending) {
       return;
     }
+    if (proofModalMode === "setup-gate" && setupGateRevertRef.current === false) {
+      setApprovalGateEnabled(false);
+      setDraft((value) => value === null ? value : applyApprovalGateDraft(value, { enabled: false, cooldown_seconds: approvalGateCooldown, strict_all_decisions: approvalGateStrictAllDecisions }));
+    }
+    setupGateRevertRef.current = null;
     setProofModalOpen(false);
     setPendingProofAction(null);
     setProofModalError(null);
-  }, [proofModalPending]);
+  }, [proofModalPending, proofModalMode, approvalGateCooldown, approvalGateStrictAllDecisions]);
   const executeSave = reactExports.useCallback(async (proof, scope = "all") => {
     if (draft === null) {
       return;
@@ -3818,6 +3824,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
   }, [approvalGateEnabled, draft, executeSave, openProofModal]);
   const handleOpenPasswordChangeModal = reactExports.useCallback((mode = "change-password") => {
     if (mode === "setup-gate") {
+      setupGateRevertRef.current = approvalGateEnabled;
       setApprovalGateEnabled(true);
       setDraft(
         (value) => value === null ? value : applyApprovalGateDraft(value, {
@@ -3828,7 +3835,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
       );
     }
     openProofModal(mode, { kind: "save", scope: mode === "setup-gate" ? "approval-gate" : "all" });
-  }, [openProofModal, approvalGateCooldown, approvalGateStrictAllDecisions]);
+  }, [openProofModal, approvalGateEnabled, approvalGateCooldown, approvalGateStrictAllDecisions]);
   const handleRequestRevokeCooldown = reactExports.useCallback(() => {
     openProofModal("maintenance", { kind: "maintenance", action: "revoke-cooldown" });
   }, [openProofModal]);

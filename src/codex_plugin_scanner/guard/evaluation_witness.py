@@ -24,6 +24,26 @@ from codex_plugin_scanner.guard.evaluation_preflight import EvaluationSetup, _sa
 _MAX_ACTIVE_RECEIVER_CONNECTIONS = 8
 
 
+def _rmtree_at(directory_fd: int, entry: str) -> None:
+    try:
+        details = os.stat(entry, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(details.st_mode):
+        os.unlink(entry, dir_fd=directory_fd)
+        return
+
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    child_fd = os.open(entry, flags, dir_fd=directory_fd)
+    try:
+        with os.scandir(child_fd) as entries:
+            for child in entries:
+                _rmtree_at(child_fd, child.name)
+    finally:
+        os.close(child_fd)
+    os.rmdir(entry, dir_fd=directory_fd)
+
+
 class _PinnedWitnessDirectory:
     """Remove a witness through the workspace descriptor used to create it."""
 
@@ -34,7 +54,10 @@ class _PinnedWitnessDirectory:
 
     def cleanup(self) -> None:
         try:
-            shutil.rmtree(self._entry, dir_fd=self._workspace_fd)
+            if sys.version_info >= (3, 11):
+                shutil.rmtree(self._entry, dir_fd=self._workspace_fd)
+            else:
+                _rmtree_at(self._workspace_fd, self._entry)
         finally:
             os.close(self._workspace_fd)
 

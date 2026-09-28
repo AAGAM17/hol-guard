@@ -4624,6 +4624,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
   const [error, setError] = reactExports.useState(null);
   const controller = reactExports.useRef(null);
   const operation = reactExports.useRef(null);
+  const interactionGeneration = reactExports.useRef(0);
   const [candidate, setCandidate] = reactExports.useState(null);
   const [configured, setConfigured] = reactExports.useState(null);
   const [password, setPassword] = reactExports.useState("");
@@ -4631,6 +4632,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
   reactExports.useEffect(() => () => controller.current?.abort(), []);
   async function search() {
     if (query.trim().length < 2 || busy || operation.current) return;
+    interactionGeneration.current += 1;
     operation.current = "search";
     const next = new AbortController();
     controller.current = next;
@@ -4638,6 +4640,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
     setError(null);
     setEntries(null);
     setCandidate(null);
+    setConfigured(null);
     try {
       const result = await registrySearch(query, next.signal);
       if (!next.signal.aborted) {
@@ -4654,10 +4657,12 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
   }
   async function preview(entry, target2) {
     if (operation.current) return;
+    interactionGeneration.current += 1;
     operation.current = "preview";
     setBusy(true);
     setError(null);
     setCandidate(null);
+    setConfigured(null);
     const setupName = entry.name.split("/").at(-1)?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") ?? "mcp-server";
     try {
       const response = await fetchLocalCliApi("/v1/local-clis/registry-setup", {
@@ -4695,6 +4700,7 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
       { approvalPassword: password, approvalTotpCode: totp },
       false
     )) return;
+    const generation = ++interactionGeneration.current;
     operation.current = "apply";
     setBusy(true);
     setError(null);
@@ -4729,11 +4735,13 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
       setCandidate(null);
       setPassword("");
       setTotp("");
-      try {
-        await onConfigured();
-      } catch {
-        setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
-      }
+      operation.current = null;
+      setBusy(false);
+      void onConfigured().then((refreshed) => {
+        if (refreshed === false && interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      }).catch(() => {
+        if (interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Codex setup did not finish.");
     } finally {
@@ -5386,19 +5394,22 @@ function useLocalCliCatalog() {
     setCatalogReady(false);
     try {
       const next = await fetchLocalCliDiscover();
-      if (loadGeneration.current !== generation) return;
+      if (loadGeneration.current !== generation) return true;
       setData(next);
       setError(null);
       setDiscoveryNotice(discoveryIssueMessage(next.discovery_issue));
+      return true;
     } catch (error2) {
       try {
         const next = await fetchLocalCliList();
-        if (loadGeneration.current !== generation) return;
+        if (loadGeneration.current !== generation) return true;
         setData(next);
         setDiscoveryNotice(error2 instanceof Error ? error2.message : "Guard could not refresh custom extensions.");
+        return false;
       } catch (caught) {
-        if (loadGeneration.current !== generation) return;
+        if (loadGeneration.current !== generation) return true;
         setError(caught instanceof Error ? caught.message : "Guard could not load custom extensions.");
+        return false;
       }
     } finally {
       if (loadGeneration.current === generation) {

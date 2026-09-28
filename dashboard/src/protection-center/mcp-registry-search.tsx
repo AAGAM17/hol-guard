@@ -85,6 +85,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
   const [error, setError] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const operation = useRef<"search" | "preview" | "apply" | null>(null);
+  const interactionGeneration = useRef(0);
   const [candidate, setCandidate] = useState<SetupCandidate | null>(null);
   const [configured, setConfigured] = useState<{ name: string; kind: "remote" | "package" } | null>(null);
   const [password, setPassword] = useState("");
@@ -92,9 +93,10 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
   useEffect(() => () => controller.current?.abort(), []);
   async function search() {
     if (query.trim().length < 2 || busy || operation.current) return;
+    interactionGeneration.current += 1;
     operation.current = "search";
     const next = new AbortController();
-    controller.current = next; setBusy(true); setError(null); setEntries(null); setCandidate(null);
+    controller.current = next; setBusy(true); setError(null); setEntries(null); setCandidate(null); setConfigured(null);
     try {
       const result = await registrySearch(query, next.signal);
       if (!next.signal.aborted) { setEntries(result.entries); setMoreAvailable(result.moreAvailable); }
@@ -105,8 +107,9 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
   }
   async function preview(entry: RegistryEntry, target: { endpoint: string } | { packageOption: PackageOption }) {
     if (operation.current) return;
+    interactionGeneration.current += 1;
     operation.current = "preview";
-    setBusy(true); setError(null); setCandidate(null);
+    setBusy(true); setError(null); setCandidate(null); setConfigured(null);
     const setupName = entry.name.split("/").at(-1)?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") ?? "mcp-server";
     try {
       const response = await fetchLocalCliApi("/v1/local-clis/registry-setup", {
@@ -135,6 +138,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
   async function apply() {
     if (!candidate || busy || operation.current || isApprovalProofSubmitDisabled(approvalGate,
       { approvalPassword: password, approvalTotpCode: totp }, false)) return;
+    const generation = ++interactionGeneration.current;
     operation.current = "apply";
     setBusy(true); setError(null);
     try {
@@ -158,8 +162,10 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
       setCandidate(null); setPassword(""); setTotp("");
       operation.current = null; setBusy(false);
       void onConfigured().then((refreshed) => {
-        if (refreshed === false) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
-      }).catch(() => setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions."));
+        if (refreshed === false && interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      }).catch(() => {
+        if (interactionGeneration.current === generation) setError("Codex was configured, but Guard could not refresh host connections. Retry discovery in Extensions.");
+      });
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Codex setup did not finish."); }
     finally { operation.current = null; setBusy(false); }
   }

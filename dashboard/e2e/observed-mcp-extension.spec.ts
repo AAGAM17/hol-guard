@@ -13,7 +13,13 @@ for (const width of [1280, 390]) {
     await page.route("**/v1/local-clis**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       const body = route.request().method() === "POST" ? route.request().postDataJSON() : {};
-      if (path.endsWith("/discover")) discoveryCalls += 1;
+      if (path.endsWith("/discover")) {
+        discoveryCalls += 1;
+        if (width === 390) {
+          await route.fulfill({ status: 503, json: { message: "Synthetic host discovery failure." } });
+          return;
+        }
+      }
       if (path.endsWith("/refresh-job")) {
         await route.fulfill({ json: { job_id: "d".repeat(32), cli_id: "inventory:configured", state: "complete", error: null } });
         return;
@@ -73,6 +79,9 @@ for (const width of [1280, 390]) {
     finishApply();
     await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
     await expect.poll(() => discoveryCalls).toBe(beforeApply + 1);
+    if (width === 390) {
+      await expect(registry.getByRole("alert")).toContainText("Codex was configured, but Guard could not refresh host connections.");
+    }
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({ operation: "apply", registry_name: "io.github.sample/newserver",
       endpoint: "https://example.com/mcp", setup_name: "newserver", selection_digest: "b".repeat(64),
@@ -209,7 +218,7 @@ for (const width of [1280, 390]) {
     await registry.getByRole("searchbox", { name: "Server or app name", exact: true }).fill("composio");
     await registry.getByRole("button", { name: "Search registry", exact: true }).click();
     await expect(registry).toContainText("Possible existing connection. Inspect it before adding another.");
-    await expect(registry).toContainText("Package unverified");
+    await expect(registry).toContainText("Packages unverified");
     expect(registryRequests).toBe(1);
     await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
     await page.getByRole("button", { name: /composio.*2 tools/i }).click();

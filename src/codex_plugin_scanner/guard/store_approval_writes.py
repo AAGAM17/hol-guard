@@ -34,6 +34,33 @@ def add_approval_request(
         reject_contradiction=True,
     )
     _begin_immediate(connection)
+    # Callers may own a larger transaction and catch a failed insert. Keep
+    # expired predecessors and their replacement in one atomic unit anyway.
+    connection.execute("savepoint approval_request_write")
+    try:
+        result = _add_approval_request_in_transaction(
+            connection,
+            request,
+            now,
+            oauth_source=oauth_source,
+            canonical_decision=canonical_decision,
+        )
+    except BaseException:
+        connection.execute("rollback to savepoint approval_request_write")
+        connection.execute("release savepoint approval_request_write")
+        raise
+    connection.execute("release savepoint approval_request_write")
+    return result
+
+
+def _add_approval_request_in_transaction(
+    connection: sqlite3.Connection,
+    request: GuardApprovalRequest,
+    now: str,
+    *,
+    oauth_source: str,
+    canonical_decision: CanonicalApprovalSurfaces,
+) -> str:
     normalized_oauth_source = oauth_source.strip().lower() or "default"
     identity_key = _normalized_identity_key(request.launch_target)
     action_identity, queue_group_id = approval_queue_identity_for_request(request)

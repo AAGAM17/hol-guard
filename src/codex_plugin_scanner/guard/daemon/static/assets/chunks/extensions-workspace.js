@@ -5517,9 +5517,11 @@ function AddCustomExtensionButton(props) {
   ] });
 }
 function CustomExtensionRow(props) {
+  const cliId = props.item.cli_id;
+  const onOpen = props.onOpen;
   const handleOpen = reactExports.useCallback(() => {
-    props.onOpen(props.item.cli_id);
-  }, [props]);
+    onOpen(cliId);
+  }, [cliId, onOpen]);
   const continuity = continuityCopy(props.item);
   const catalog = mcpCatalogCopy(props.item);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(

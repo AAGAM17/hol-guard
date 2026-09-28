@@ -179,6 +179,39 @@ def test_mcp_targeted_grant_reads_only_called_tool_and_other(tmp_path: Path) -> 
     assert empty_name_grant["command_states"] == {"other": "block"}
 
 
+def test_configured_connection_does_not_inherit_another_connections_denial(tmp_path: Path) -> None:
+    from codex_plugin_scanner.guard.runtime.local_cli_identity import UnlistedCliIdentity
+
+    store = GuardStore(tmp_path / "guard-home")
+    server_hash = "c" * 64
+    other = UnlistedCliIdentity("local-cli.mcp-other", "other", "executable", server_hash, "other")
+    store.record_local_cli_observation(
+        other,
+        seen_at=utc_now(),
+        surface="mcp",
+        server_identity_hash=server_hash,
+        server_command="npx",
+        server_args_hash="d" * 64,
+    )
+    store.upsert_local_cli_grant(
+        identity=other,
+        state="blocked",
+        expected_revision=store.read_local_cli_revision(),
+        updated_at=utc_now(),
+    )
+    configured = UnlistedCliIdentity("local-cli.mcp-configured", "configured", "executable", "a" * 64, "configured")
+    store.record_local_cli_observation(
+        configured,
+        seen_at=utc_now(),
+        surface="mcp",
+        server_identity_hash=server_hash,
+        server_command="npx",
+        server_args_hash="d" * 64,
+    )
+
+    assert store.read_local_mcp_grant(server_hash, connection_identity_hash="b" * 64) is None
+
+
 def test_empty_command_filter_never_loads_every_permission(tmp_path: Path) -> None:
     from codex_plugin_scanner.guard.store_local_cli import _read_command_catalog, _read_command_states
 

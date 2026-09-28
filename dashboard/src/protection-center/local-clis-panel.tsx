@@ -92,9 +92,11 @@ export function AddCustomExtensionButton(props: { onClick: () => void }) {
 }
 
 function CustomExtensionRow(props: { item: LocalCliItem; onOpen: (cliId: string) => void }) {
+  const cliId = props.item.cli_id;
+  const onOpen = props.onOpen;
   const handleOpen = useCallback(() => {
-    props.onOpen(props.item.cli_id);
-  }, [props]);
+    onOpen(cliId);
+  }, [cliId, onOpen]);
   const continuity = continuityCopy(props.item);
   const catalog = mcpCatalogCopy(props.item);
   return (

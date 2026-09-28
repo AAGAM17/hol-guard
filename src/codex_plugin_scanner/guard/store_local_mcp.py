@@ -331,23 +331,38 @@ class StoreLocalMcpMixin:
             if not connection.in_transaction:
                 connection.execute("begin deferred")
             ensure_local_cli_schema(connection, for_read=True)
+            # Configured connections are host/configuration scoped. A legacy
+            # server-wide row must never satisfy a different connection's call.
+            lookup_hash = connection_identity_hash or server_identity_hash
             observation = connection.execute(
                 """
                 select cli_id, identity_hash
                 from local_cli_observation
-                where surface = 'mcp'
-                  and identity_hash in (?, ?)
+                where surface = 'mcp' and identity_hash = ?
                   and (server_identity_hash = ? or server_identity_hash is null)
-                order by case when identity_hash = ? then 0 else 1 end, last_seen_at desc, cli_id asc
+                order by last_seen_at desc, cli_id asc
                 limit 1
                 """,
-                (
-                    connection_identity_hash,
-                    server_identity_hash,
-                    server_identity_hash,
-                    connection_identity_hash,
-                ),
+                (lookup_hash, server_identity_hash),
             ).fetchone()
+            if observation is None and connection_identity_hash is not None:
+                # Compatibility with pre-connection grants is safe only before
+                # this server has any configured connection. Once discovered,
+                # a missing exact host/configuration match must stay missing.
+                configured = connection.execute(
+                    """select 1 from local_cli_observation where surface = 'mcp'
+                       and server_identity_hash = ? and identity_hash != ? limit 1""",
+                    (server_identity_hash, server_identity_hash),
+                ).fetchone()
+                if configured is not None:
+                    return None
+                observation = connection.execute(
+                    """select cli_id, identity_hash from local_cli_observation
+                       where surface = 'mcp' and identity_hash = ?
+                         and (server_identity_hash = ? or server_identity_hash is null)
+                       order by last_seen_at desc, cli_id asc limit 1""",
+                    (server_identity_hash, server_identity_hash),
+                ).fetchone()
             if observation is None:
                 observation = _equivalent_package_launcher_observation(
                     connection,

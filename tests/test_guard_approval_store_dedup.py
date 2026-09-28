@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from codex_plugin_scanner.guard.models import GuardApprovalRequest
@@ -103,6 +104,26 @@ class TestDuplicatePendingRequestCollapse:
         assert get_approval_request(conn, old_id)["superseded_by_request_id"] == fresh_id
         conn.execute("update approval_requests set harness = 'claude' where request_id = ?", (fresh_id,))
         assert "superseded_by_request_id" not in get_approval_request(conn, old_id)
+
+    def test_failed_fresh_insert_keeps_invalid_card_pending(self) -> None:
+        import pytest
+
+        conn = _make_conn()
+        first = _make_request(artifact_id="codex:project:mcp-review", launch_target="tool:read")
+        old_id = add_approval_request(conn, first, "2026-09-27T12:00:00Z")
+        conn.execute("update approval_requests set policy_action = 'invalid' where request_id = ?", (old_id,))
+        unrelated = _make_request(artifact_id="codex:project:other", launch_target="tool:other")
+        add_approval_request(conn, unrelated, "2026-09-27T12:00:00Z")
+        fresh = replace(
+            _make_request(artifact_id=first.artifact_id, launch_target=first.launch_target),
+            request_id=unrelated.request_id,
+        )
+
+        with pytest.raises(sqlite3.IntegrityError):
+            add_approval_request(conn, fresh, "2026-09-27T12:01:00Z")
+        conn.commit()
+        old = conn.execute("select status, reason from approval_requests where request_id = ?", (old_id,)).fetchone()
+        assert tuple(old) == ("pending", None)
 
     def test_invalid_old_request_cannot_be_repaired_using_the_same_id(self) -> None:
         import pytest

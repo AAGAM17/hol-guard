@@ -10,6 +10,7 @@ type ApprovalProofFieldInputsProps = {
   approvalTotpCode: string;
   passwordRef?: RefObject<HTMLInputElement | null>;
   requireFreshTotp?: boolean;
+  requireGate?: boolean;
   onApprovalPasswordChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onApprovalTotpCodeChange: (event: ChangeEvent<HTMLInputElement>) => void;
 };
@@ -52,11 +53,14 @@ export function isApprovalProofSubmitDisabled(
   credentials: { approvalPassword: string; approvalTotpCode: string },
   busy: boolean,
   requireFreshTotp = false,
+  requireGate = false,
 ): boolean {
   if (busy) {
     return true;
   }
   if (gate != null && !approvalGateProofReady(gate)) {
+    // Gate off on a fail-open endpoint: no proof needed.
+    if (!requireGate && gate.enabled !== true) return false;
     return true;
   }
   if (!requireFreshTotp && approvalProofRecentlySatisfied(gate)) {
@@ -95,6 +99,7 @@ export function ApprovalProofFieldInputs(props: ApprovalProofFieldInputsProps) {
     props.onApprovalTotpCodeChange(event);
   }, [props]);
   if (props.approvalGate !== null && !approvalGateProofReady(props.approvalGate)) {
+    if (!props.requireGate && props.approvalGate.enabled !== true) return null;
     return <ApprovalGateSetupNotice />;
   }
   if (!props.requireFreshTotp && approvalProofRecentlySatisfied(props.approvalGate)) {
@@ -176,6 +181,8 @@ export function ApprovalProofInline(props: ApprovalProofInlineProps) {
       approvalTotpCode: props.approvalTotpCode,
     },
     props.submitBusy,
+    false,
+    true,
   );
 
   const handleKeyDown = useCallback(
@@ -209,6 +216,7 @@ export function ApprovalProofInline(props: ApprovalProofInlineProps) {
         approvalPassword={props.approvalPassword}
         approvalTotpCode={props.approvalTotpCode}
         passwordRef={passwordRef}
+        requireGate={true}
         onApprovalPasswordChange={props.onApprovalPasswordChange}
         onApprovalTotpCodeChange={props.onApprovalTotpCodeChange}
       />

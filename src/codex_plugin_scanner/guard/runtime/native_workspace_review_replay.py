@@ -154,9 +154,9 @@ def _probe_due(
     now: datetime,
     force_probe: bool,
 ) -> bool:
-    if force_probe or not _same_binding(marker, binding):
+    if force_probe or marker is None or not _same_binding(marker, binding):
         return True
-    retry_at = _parse_timestamp(marker.get("next_probe_at")) if marker is not None else None
+    retry_at = _parse_timestamp(marker.get("next_probe_at"))
     return retry_at is None or retry_at <= now
 
 

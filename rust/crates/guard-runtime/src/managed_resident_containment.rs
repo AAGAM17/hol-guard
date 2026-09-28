@@ -378,7 +378,7 @@ pub(super) fn abort_spawned_managed(
         generation,
         token,
         &known_processes,
-        Instant::now() + Duration::from_millis(50),
+        Instant::now() + super::MANAGED_STOP_TIMEOUT,
     );
 }
 

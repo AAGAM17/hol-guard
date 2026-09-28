@@ -340,7 +340,11 @@ def _emit_native_post_tool_envelope(
         protected = _protect_ephemeral_approval_tokens(response_payload, tokens)
         masked = _redact_payload(protected, command="hook")
         restored = _restore_ephemeral_approval_tokens(masked, tokens)
-        sys.stdout.write(_render_redacted_json_payload(restored))
+        # stdout is the harness delivery channel; the ephemeral approval
+        # link must reach the operator intact.
+        sys.stdout.write(  # codeql[py/clear-text-logging-sensitive-data]
+            _render_redacted_json_payload(restored)
+        )
         sys.stdout.write("\n")
         return
     from .render import emit_guard_payload
@@ -570,19 +574,24 @@ def _emit_native_hook_json_document(
         else _render_redacted_json_payload(restored)
     )
     if output_stream is None:
-        sys.stdout.write(rendered)
+        # stdout is the harness delivery channel; the ephemeral approval
+        # link must reach the operator intact.
+        sys.stdout.write(rendered)  # codeql[py/clear-text-logging-sensitive-data]
         sys.stdout.write("\n")
     else:
         output_stream.write(rendered)
         output_stream.write("\n")
 
 
-
 def _emit_native_hook_block_stderr(reason: str) -> None:
-    print(reason, file=sys.stderr)
+    # stderr is the harness notice channel; the reason may carry the
+    # ephemeral approval link the operator needs.
+    print(reason, file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
 
 def _emit_native_hook_notification_stderr(reason: str) -> None:
-    print(reason, file=sys.stderr)
+    # stderr is the harness notice channel; the reason may carry the
+    # ephemeral approval link the operator needs.
+    print(reason, file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
 
 def _native_hook_permission_decision(policy_action: str, *, harness: str) -> str | None:
     canonical = _canonical_harness_name(harness)

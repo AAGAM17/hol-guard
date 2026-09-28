@@ -686,12 +686,18 @@ def managed_extension_source(
         '      ctx.ui.notify(reason, "warning");\n'
         "      return { block: true, reason };\n"
         "    }\n"
-        '    if (response.decision === "deny") {\n'(
-            "      const reason = ompInteractiveContext(ctx)\n"
-            '        ? approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.")\n'
-            '        : approvalManualRetryReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
-            if harness == "omp"
-            else '      const reason = approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
+        + (
+            '    if (response.decision === "deny") {\n'
+            + (
+                "      const reason = ompInteractiveContext(ctx)\n"
+                '        ? approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.")\n'
+                '        : approvalManualRetryReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
+                if harness == "omp"
+                else (
+                    "      const reason = approvalBlockedReason(response, response.reason ?? "
+                    '"Blocked by HOL Guard.");\n'
+                )
+            )
         )
         + "      const requestId = approvalRequestId(response);\n"
         "      if (!requestId) {\n"

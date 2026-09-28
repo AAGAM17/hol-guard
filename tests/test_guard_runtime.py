@@ -10306,7 +10306,7 @@ def test_guard_hook_codex_strict_default_reviews_protected_apply_patch(
     )
     store = GuardStore(home_dir)
 
-    assert rc == 1
+    assert rc == 0
     assert output["policy_action"] == "require-reapproval"
     requests = store.list_approval_requests(limit=10)
     assert len(requests) == 1

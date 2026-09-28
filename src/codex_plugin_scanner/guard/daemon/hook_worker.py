@@ -243,9 +243,8 @@ class HookWorker(HookWorkerNativeMixin):
                 transient_publication_error = (
                     isinstance(last_error, str) and last_error in _TRANSIENT_RESIDENT_PUBLICATION_ERRORS
                 )
-                if callable(wait_until_ready) and (
-                    transient_publication_error or not (isinstance(last_error, str) and last_error.strip())
-                ):
+                no_publication_error = last_error is None or (isinstance(last_error, str) and not last_error.strip())
+                if callable(wait_until_ready) and (transient_publication_error or no_publication_error):
                     readiness_deadline = time.monotonic() + _NATIVE_POLICY_READY_TIMEOUT_SECONDS
                     if deadline is not None:
                         readiness_deadline = min(readiness_deadline, deadline)

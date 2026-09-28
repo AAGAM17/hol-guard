@@ -388,16 +388,20 @@ def test_prepare_workspace_policy_waits_publish_budget_without_caller_deadline(
     assert wait_deadlines[-1] <= finished_at + budget + 0.05
 
 
+@pytest.mark.parametrize(
+    "publisher_error", ["native_policy_snapshot_runtime_unavailable", RuntimeError("native error")]
+)
 def test_prepare_workspace_policy_skips_wait_after_publisher_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    publisher_error: object,
 ) -> None:
     import codex_plugin_scanner.guard.daemon.hook_worker as hook_worker_module
 
     wait_deadlines: list[float] = []
 
     class _Publisher:
-        last_error = "native_policy_snapshot_runtime_unavailable"
+        last_error = publisher_error
 
         def start(self) -> None:
             return

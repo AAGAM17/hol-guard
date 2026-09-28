@@ -25,13 +25,7 @@ from .evaluation_cli_recovery import (
     _remove_recovery_token,
     _write_recovery_token,
 )
-from .evaluation_contracts import (
-    EvaluationContractError,
-    EvaluationProfile,
-    EvaluationResult,
-    validate_evaluation_profile,
-    validate_evaluation_result,
-)
+from .evaluation_contracts import EvaluationContractError, EvaluationProfile, EvaluationResult
 from .evaluation_evidence_package import (
     verify_evaluation_evidence_package,
     write_evaluation_evidence_package,
@@ -339,11 +333,6 @@ def _run_package_evidence(args: argparse.Namespace) -> int:
         )
         profile = _load_profile(profile_path)
         result = _load_result(result_path, profile)
-        try:
-            validate_evaluation_profile(profile.to_dict(), portable=True)
-            validate_evaluation_result(result.to_dict(), profile.to_dict(), portable=True)
-        except EvaluationContractError:
-            raise _CliError("profile_invalid", "evaluation profile is invalid") from None
         try:
             package = write_evaluation_evidence_package(profile, result, output_dir=output_dir)
         except EvaluationContractError as error:

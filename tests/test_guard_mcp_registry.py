@@ -91,6 +91,6 @@ def test_registry_exposes_only_literal_pinned_stdio_package_recipes():
     ]
     options = reviewed_stdio_package_options(packages)
     assert len(options) == 2
-    assert options[0]["command"] == "uvx" and options[0]["arguments"] == ["hol-guard==2.2.0", "mcp"]
+    assert options[0]["command"] == "uvx" and options[0]["arguments"] == ["hol-guard@2.2.0", "mcp"]
     assert options[1]["command"] == "npx" and options[1]["arguments"] == ["-y", "@safe/example@1.2.3"]
     assert all(option["verified_package"] is False for option in options)

@@ -181,7 +181,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange }: {
       {configured ? <p role="status" className="mt-3 text-sm text-brand-dark">
         {configured.name} was added to Codex. Restart Codex and complete any provider-owned sign-in there.
         {configured.kind === "package" ? " Codex may download and run the pinned package on first use." : null}
-        Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted.
+        {" "}Return to Extensions, check host connections, then review each tool in Guard. No tool permission was granted.
       </p> : null}
       {candidate ? <section aria-label="Review Codex MCP setup" className="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-brand-dark">
         <h3 className="font-semibold">Review Codex connection</h3>

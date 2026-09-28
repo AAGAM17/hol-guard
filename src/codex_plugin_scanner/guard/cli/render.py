@@ -346,7 +346,13 @@ def _protect_guidance_lines(payload: PayloadDict) -> list[str]:
     if next_step and next_step not in harness_message:
         lines.append(f"Next step: {next_step}")
 
-    dashboard_url = str(payload.get("primary_approval_url") or user_copy_map.get("dashboard_url") or "").strip()
+    signed_url = payload.get("_ephemeral_signed_approval_url")
+    if isinstance(signed_url, str) and signed_url.strip():
+        dashboard_url = signed_url.strip()
+    elif "dashboard_url" in user_copy_map and user_copy_map.get("dashboard_url") is None:
+        dashboard_url = ""
+    else:
+        dashboard_url = str(payload.get("primary_approval_url") or user_copy_map.get("dashboard_url") or "").strip()
     if dashboard_url and not any(dashboard_url in line for line in lines):
         lines.append(f"Review: {dashboard_url}")
 

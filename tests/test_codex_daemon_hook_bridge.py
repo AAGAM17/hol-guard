@@ -36,6 +36,13 @@ from tests.codex_daemon_hook_bridge_fixtures import (
 )
 
 
+def _assert_bridge_denied(payload: dict[str, object]) -> None:
+    """The bridge output holds the action with a blocking decision."""
+    hook_output = payload.get("hookSpecificOutput")
+    assert isinstance(hook_output, dict)
+    assert hook_output.get("permissionDecision") == "deny"
+
+
 def _start_daemon(daemon: GuardDaemonServer, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(daemon_server_module, "_RUNTIME_HOOK_ADMISSION_TIMEOUT_SECONDS", 10.0)
     monkeypatch.setattr(daemon_server_module, "_RUNTIME_HOOK_PROCESS_TIMEOUT_SECONDS", 10.0)
@@ -755,7 +762,7 @@ def test_bridge_real_daemon_prefers_payload_cwd_for_verified_git_fetch(
         daemon.stop()
 
     assert exit_code == 0
-    assert json.loads(capsys.readouterr().out) == {}
+    _assert_bridge_denied(json.loads(capsys.readouterr().out))
     assert store.list_approval_requests(limit=None) == []
 
 
@@ -824,37 +831,41 @@ def test_bridge_real_daemon_reviews_git_fetch_without_repository_bound_cwd(
 
 
 @pytest.mark.parametrize(
-    "command",
+    ("command", "pending_approvals"),
     (
-        "gh api -H 'Accept: application/vnd.github.raw+json' "
-        "'repos/hashgraph-online/hol-guard/contents/ci/code-quality-baseline.json?ref=main' "
-        "| jq '{tests: .tests, total: .total}'",
-        "gh pr view 1 -tREVIEW",
-        "gh pr list -q'.[] | select(.state == \"REVIEW_REQUIRED\")'",
-        "gh issue list -q'.[] | {REPO: .repository}'",
-        "gh pr list -sREVIEW_REQUIRED",
-        "gh pr list -aRandy",
-        "gh issue list -aRandy",
-        "gh pr list -SREVIEW",
-        "gh run list -cREVIEW_SHA",
-        "gh run list -aRgithub.com/owner/repo --help",
-        "gh workflow list -aRowner/repo --help",
-        "gh pr view 1 -cROwner/Repo --help",
-        "gh issue list -wRgithub.com/OWNER/REPO --help",
-        "gh pr list -dROrg/Repo --help",
-        "gh run list -aRgithub.com/OWNER/REPO --help",
-        "gh pr view 1 -wRRowner/repo --help",
-        "gh run list -aRRowner/repo --help",
-        "gh -Rowner/repo pr view 17",
-        "gh -Rgithub.com/Owner/Repo pr view 17",
+        (
+            "gh api -H 'Accept: application/vnd.github.raw+json' "
+            "'repos/hashgraph-online/hol-guard/contents/ci/code-quality-baseline.json?ref=main' "
+            "| jq '{tests: .tests, total: .total}'",
+            1,
+        ),
+        ("gh pr view 1 -tREVIEW", 0),
+        ("gh pr list -q'.[] | select(.state == \"REVIEW_REQUIRED\")'", 0),
+        ("gh issue list -q'.[] | {REPO: .repository}'", 0),
+        ("gh pr list -sREVIEW_REQUIRED", 0),
+        ("gh pr list -aRandy", 0),
+        ("gh issue list -aRandy", 0),
+        ("gh pr list -SREVIEW", 0),
+        ("gh run list -cREVIEW_SHA", 0),
+        ("gh run list -aRgithub.com/owner/repo --help", 0),
+        ("gh workflow list -aRowner/repo --help", 0),
+        ("gh pr view 1 -cROwner/Repo --help", 0),
+        ("gh issue list -wRgithub.com/OWNER/REPO --help", 0),
+        ("gh pr list -dROrg/Repo --help", 0),
+        ("gh run list -aRgithub.com/OWNER/REPO --help", 0),
+        ("gh pr view 1 -wRRowner/repo --help", 0),
+        ("gh run list -aRRowner/repo --help", 0),
+        ("gh -Rowner/repo pr view 17", 1),
+        ("gh -Rgithub.com/Owner/Repo pr view 17", 1),
     ),
 )
 @pytest.mark.usefixtures("native_hook_force")
-def test_bridge_real_daemon_allows_static_github_content_read_with_safe_jq_filter(
+def test_bridge_real_daemon_denies_unproven_github_content_reads(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     command: str,
+    pending_approvals: int,
 ) -> None:
     guard_home = tmp_path / "guard-home"
     session_workspace = tmp_path / "projects"
@@ -886,8 +897,8 @@ def test_bridge_real_daemon_allows_static_github_content_read_with_safe_jq_filte
         daemon.stop()
 
     assert exit_code == 0
-    assert json.loads(capsys.readouterr().out) == {}
-    assert store.list_approval_requests(limit=None) == []
+    _assert_bridge_denied(json.loads(capsys.readouterr().out))
+    assert len(store.list_approval_requests(limit=None)) == pending_approvals
 
 
 @pytest.mark.parametrize(
@@ -1060,7 +1071,7 @@ def test_bridge_real_daemon_uses_exec_command_workdir_for_verified_git_fetch(
         daemon.stop()
 
     assert exit_code == 0
-    assert json.loads(capsys.readouterr().out) == {}
+    _assert_bridge_denied(json.loads(capsys.readouterr().out))
 
 
 @pytest.mark.parametrize("workdir", ("relative/repository", "/"))
@@ -1180,5 +1191,5 @@ def test_bridge_real_daemon_ignores_workdir_for_opaque_tool(
     assert json.loads(capsys.readouterr().out) == {
         "continue": True,
         "hookSpecificOutput": {"hookEventName": "PreToolUse"},
-        "systemMessage": "HOL Guard native hook review is explicitly disabled; the action continues without native review.",
+        "systemMessage": "HOL Guard native hook review is explicitly disabled; the action continues without native review.",  # noqa: E501
     }

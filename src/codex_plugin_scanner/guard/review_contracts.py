@@ -359,10 +359,12 @@ def validate_remote_approval_request_binding(
     if envelope.get("nativeBindingVersion") == NATIVE_BINDING_VERSION:
         hash_matches = native_binding_commitment_matches(expected_claim) and (
             _non_empty_string(source_claim_hash) == _non_empty_string(expected_claim.get("claimHash"))
+            and _non_empty_string(envelope.get("nativeBindingDigest"))
+            == _non_empty_string(expected_claim.get("nativeBindingDigest"))
         )
     elif envelope.get("nativeBindingVersion") is None:
-        hash_matches = _non_empty_string(source_claim_hash) == compute_legacy_local_review_request_claim_hash(
-            expected_claim
+        hash_matches = envelope.get("nativeBindingDigest") is None and (
+            _non_empty_string(source_claim_hash) == compute_legacy_local_review_request_claim_hash(expected_claim)
         )
     else:
         hash_matches = False

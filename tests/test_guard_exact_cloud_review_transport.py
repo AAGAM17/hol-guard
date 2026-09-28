@@ -200,6 +200,8 @@ def test_exact_claim_binds_current_local_authority_without_queue_snapshot(
     assert advertisement["machineId"] != advertisement["machineInstallationId"]
     assert advertisement["localRequestId"] == request["request_id"]
     assert advertisement["sourceClaimHash"] == claim["claimHash"]
+    assert advertisement["nativeBindingVersion"] == claim["nativeBindingVersion"]
+    assert advertisement["nativeBindingDigest"] == claim["nativeBindingDigest"]
 
     lease = command_queue._lease_payload(store, operations=(EXACT_CLOUD_REVIEW_OPERATION,))
     assert "localRequestsSnapshot" not in lease

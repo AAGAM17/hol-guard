@@ -10,6 +10,7 @@ import pytest
 from codex_plugin_scanner.guard.runtime import cloud_review_event_delivery as delivery
 from codex_plugin_scanner.guard.runtime import cloud_review_sync
 from codex_plugin_scanner.guard.runtime import native_workspace_review_replay as replay
+from codex_plugin_scanner.guard.runtime import native_workspace_review_replay_delivery as replay_delivery
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.test_guard_review_event_outbox import _all_events
 from tests.test_native_workspace_review_replay import (
@@ -278,6 +279,55 @@ def test_crash_after_remote_acceptance_requires_duplicate_commit_attestation(
     assert (
         store.review_event_outbox_status(now="2026-09-27T12:00:01+00:00", **delivery_binding)["depth"] == expected_depth
     )
+
+
+@pytest.mark.parametrize(
+    ("marker_read_fails", "expected_ready"),
+    [(False, True), (True, False)],
+)
+def test_snapshot_requeued_markerless_attestation_reconstructs_or_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    marker_read_fails: bool,
+    expected_ready: bool,
+) -> None:
+    store = GuardStore(tmp_path / "guard")
+    binding = cast(dict[str, str], cast(object, _connect(store)))
+    event = {
+        **_accepted_event("request-markerless-replay"),
+        "eventId": "markerless-replay-event",
+        "eventType": "request_created",
+        "eventPayloadJson": json.dumps(
+            {
+                "eventType": "review.request.snapshot_requeued",
+                "requestSnapshot": {"request_id": "request-markerless-replay"},
+            }
+        ),
+    }
+    if marker_read_fails:
+
+        def fail_marker_read(*_args: object) -> tuple[str, dict[str, object] | None]:
+            raise OSError("marker read")
+
+        monkeypatch.setattr(replay, "_request_marker", fail_marker_read)
+
+    assert (
+        replay_delivery._mark_accepted_replay_contexts(
+            store,
+            [event],
+            [{"accepted": True, "nativeContextCommitted": True}],
+            binding,
+        )
+        is expected_ready
+    )
+    if expected_ready:
+        with store._connect() as connection:
+            row = connection.execute(
+                "select payload_json from sync_state where state_key like ? and state_key not like '%:commit:%'",
+                ("guard_cloud_review_native_workspace_review_replay:default:request:%",),
+            ).fetchone()
+        assert row is not None
+        assert json.loads(row["payload_json"])["accepted"] is True
 
 
 def test_malformed_snapshot_requeued_event_cannot_ack_as_noop(

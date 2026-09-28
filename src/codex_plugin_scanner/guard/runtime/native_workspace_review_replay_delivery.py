@@ -24,44 +24,38 @@ def _event_is_replay(event: Mapping[str, object]) -> bool:
 
 
 def _replay_event_payload_valid(event: Mapping[str, object]) -> bool:
+    return _replay_event_snapshot(event) is not None
+
+
+def _replay_event_snapshot(event: Mapping[str, object]) -> dict[str, object] | None:
     payload = event.get("eventPayloadJson")
     if not isinstance(payload, str):
-        return False
+        return None
     try:
         decoded = json.loads(payload)
     except (json.JSONDecodeError, TypeError, ValueError):
-        return False
+        return None
     snapshot = decoded.get("requestSnapshot") if isinstance(decoded, dict) else None
-    return (
-        isinstance(decoded, dict)
-        and decoded.get("eventType") == "review.request.snapshot_requeued"
-        and isinstance(snapshot, Mapping)
-        and bool(snapshot)
-        and snapshot.get("request_id") == event.get("localRequestId")
-    )
+    request_id = event.get("localRequestId")
+    if (
+        not isinstance(decoded, dict)
+        or decoded.get("eventType") != "review.request.snapshot_requeued"
+        or not isinstance(request_id, str)
+        or not request_id
+        or not isinstance(snapshot, Mapping)
+        or not snapshot
+        or snapshot.get("request_id") != request_id
+    ):
+        return None
+    return {str(key): value for key, value in snapshot.items()}
 
 
 def _native_replay_event_candidate(store: GuardStore, event: Mapping[str, object]) -> bool:
-    if not _event_is_replay(event):
-        return False
-    request_payload = event.get("requestPayload")
-    if isinstance(request_payload, Mapping) and "nativeWorkspaceReview" in request_payload:
-        return True
-    request_id = event.get("localRequestId")
-    if not isinstance(request_id, str) or not request_id:
-        return False
-    try:
-        replay_store = cast(replay._NativeWorkspaceReplayStore, cast(object, store))
-        _marker_key, marker = replay._request_marker(replay_store, request_id)
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return False
-    if not isinstance(marker, dict):
-        return False
-    requeued = marker.get("requeued")
-    replay_attempts = marker.get("replay_attempts")
-    return (isinstance(requeued, int) and not isinstance(requeued, bool) and requeued > 0) or (
-        isinstance(replay_attempts, int) and not isinstance(replay_attempts, bool) and replay_attempts > 0
-    )
+    del store
+    # The durable event type is the authority for replay classification. A
+    # missing or compacted local marker must never downgrade a replay event to
+    # an ordinary snapshot repair that can be acknowledged as a no-op.
+    return _event_is_replay(event)
 
 
 def _native_replay_delivery_state(
@@ -69,6 +63,7 @@ def _native_replay_delivery_state(
     *,
     event: Mapping[str, object],
     binding: Mapping[str, str],
+    allow_markerless: bool = False,
 ) -> tuple[str, dict[str, object], Mapping[str, object], str, str | None] | None:
     if _native_replay_event_candidate(store, event) and not _replay_event_payload_valid(event):
         return None
@@ -107,7 +102,9 @@ def _native_replay_delivery_state(
         event_id=event_id,
         claim_hash=claim_hash if isinstance(claim_hash, str) else None,
         context=context,
-    ) or _event_is_replay(event):
+    ):
+        return marker_key, {}, context, event_id, claim_hash if isinstance(claim_hash, str) else None
+    if allow_markerless and previous is None and _event_is_replay(event):
         return marker_key, {}, context, event_id, claim_hash if isinstance(claim_hash, str) else None
     return None
 
@@ -140,7 +137,12 @@ def _set_native_replay_commit_state(
     server_committed: bool,
 ) -> tuple[bool | None, bool]:
     try:
-        delivery = _native_replay_delivery_state(store, event=event, binding=binding)
+        delivery = _native_replay_delivery_state(
+            store,
+            event=event,
+            binding=binding,
+            allow_markerless=server_committed,
+        )
     except (OSError, RuntimeError, TypeError, ValueError):
         return None, False
     if delivery is None:
@@ -166,6 +168,8 @@ def _set_native_replay_commit_state(
         request_snapshot = previous.get("request_snapshot")
         if not isinstance(request_snapshot, dict) and existing_mapping is not None:
             request_snapshot = existing_mapping.get("request_snapshot")
+        if not isinstance(request_snapshot, dict):
+            request_snapshot = _replay_event_snapshot(event)
         replay_store.set_sync_payload(
             state_key,
             {

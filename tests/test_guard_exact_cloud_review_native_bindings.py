@@ -114,6 +114,98 @@ def test_markerless_legacy_approval_rejects_changed_native_commitment(tmp_path: 
         apply_exact_cloud_review(store, remote_approval=approval)
 
 
+@pytest.mark.parametrize("snapshot_read_fails", [False, True])
+def test_markerless_legacy_approval_requires_retained_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    snapshot_read_fails: bool,
+) -> None:
+    store, _job_payload = _exact_job(tmp_path)
+    request = store.get_approval_request("exact-transport")
+    assert isinstance(request, dict)
+    oauth = _oauth_metadata(store)
+    current = build_local_review_request_claim(request_row=request, oauth=oauth, store=store)
+    legacy = {
+        key: value
+        for key, value in current.items()
+        if key
+        not in {
+            "nativeActionBinding",
+            "nativeIntentBinding",
+            "nativePolicyBinding",
+            "nativeBindingVersion",
+            "nativeBindingDigest",
+        }
+    }
+    legacy["claimHash"] = compute_legacy_local_review_request_claim_hash(legacy)
+    if snapshot_read_fails:
+
+        def fail_snapshot_read(_request_id: str) -> list[dict[str, object]]:
+            raise OSError("snapshot store unavailable")
+
+        monkeypatch.setattr(store, "list_review_event_snapshots", fail_snapshot_read)
+    else:
+        monkeypatch.setattr(store, "list_review_event_snapshots", lambda _request_id: [])
+
+    with pytest.raises(ExactCloudReviewError, match="remote_exact_request_stale"):
+        apply_exact_cloud_review(
+            store,
+            remote_approval=_remote_approval(
+                store,
+                "exact-transport",
+                receipt_id=f"legacy-compacted-{snapshot_read_fails}",
+                source_claim=legacy,
+            ),
+        )
+
+
+def test_markerless_legacy_approval_rejects_ambiguous_newer_native_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _job_payload = _exact_job(tmp_path)
+    original = store.get_approval_request("exact-transport")
+    assert isinstance(original, dict)
+    oauth = _oauth_metadata(store)
+    original_claim = build_local_review_request_claim(request_row=original, oauth=oauth, store=store)
+    legacy = {
+        key: value
+        for key, value in original_claim.items()
+        if key
+        not in {
+            "nativeActionBinding",
+            "nativeIntentBinding",
+            "nativePolicyBinding",
+            "nativeBindingVersion",
+            "nativeBindingDigest",
+        }
+    }
+    legacy["claimHash"] = compute_legacy_local_review_request_claim_hash(legacy)
+    newer = {
+        **original,
+        "browser_intent_json": json.dumps({"intent": "browser.navigation", "target_domain": "hol.org"}),
+    }
+    newer_claim = build_local_review_request_claim(request_row=newer, oauth=oauth, store=store)
+    assert compute_legacy_local_review_request_claim_hash(newer_claim) == legacy["claimHash"]
+    with store._connect() as connection:
+        connection.execute(
+            "update approval_requests set browser_intent_json = ? where request_id = ?",
+            (newer["browser_intent_json"], "exact-transport"),
+        )
+    monkeypatch.setattr(store, "list_review_event_snapshots", lambda _request_id: [newer, original])
+
+    with pytest.raises(ExactCloudReviewError, match="remote_exact_request_stale"):
+        apply_exact_cloud_review(
+            store,
+            remote_approval=_remote_approval(
+                store,
+                "exact-transport",
+                receipt_id="legacy-ambiguous-native-snapshot",
+                source_claim=legacy,
+            ),
+        )
+
+
 def test_v2_signed_envelope_rejects_legacy_source_hash(tmp_path: Path) -> None:
     store, _job_payload = _exact_job(tmp_path)
     request = store.get_approval_request("exact-transport")
@@ -122,6 +214,28 @@ def test_v2_signed_envelope_rejects_legacy_source_hash(tmp_path: Path) -> None:
     current = build_local_review_request_claim(request_row=request, oauth=oauth, store=store)
     envelope = _remote_approval(store, "exact-transport", receipt_id="v2-legacy-hash")
     envelope["sourceClaimHash"] = compute_legacy_local_review_request_claim_hash(current)
+
+    with pytest.raises(GuardReviewContractError, match="remote_approval_claim_hash_mismatch"):
+        validate_remote_approval_request_binding(
+            envelope=envelope,
+            request_row=request,
+            claim_request_row=request,
+            oauth=oauth,
+            store=store,
+        )
+
+
+@pytest.mark.parametrize("digest", [None, "f" * 64])
+def test_v2_signed_envelope_requires_current_native_binding_digest(tmp_path: Path, digest: str | None) -> None:
+    store, _job_payload = _exact_job(tmp_path)
+    request = store.get_approval_request("exact-transport")
+    assert isinstance(request, dict)
+    oauth = _oauth_metadata(store)
+    envelope = _remote_approval(store, "exact-transport", receipt_id=f"v2-digest-{digest}")
+    if digest is None:
+        envelope.pop("nativeBindingDigest", None)
+    else:
+        envelope["nativeBindingDigest"] = digest
 
     with pytest.raises(GuardReviewContractError, match="remote_approval_claim_hash_mismatch"):
         validate_remote_approval_request_binding(

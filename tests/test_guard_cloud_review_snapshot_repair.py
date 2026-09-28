@@ -12,14 +12,14 @@ from tests.guard_exact_cloud_review_support import add_review_request, connected
 
 
 @pytest.mark.parametrize("repaired_server", [True, False])
-def test_source_gap_recovery_is_automatic_bounded_and_preserves_event_identity(
+def test_source_gap_recovery_without_native_commitment_stays_pending(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repaired_server: bool
 ) -> None:
     store = connected_exact_review_store(tmp_path)
     add_review_request(store, review_request("gap-request"))
     binding = store.get_review_event_oauth_binding()
     assert binding is not None
-    auth = {"sync_url": "https://guard.example", **binding}
+    auth: dict[str, object] = {"sync_url": "https://guard.example", **binding}
     snapshot_seen = False
     deliveries: list[tuple[str, str]] = []
 
@@ -58,16 +58,18 @@ def test_source_gap_recovery_is_automatic_bounded_and_preserves_event_identity(
     monkeypatch.setattr(delivery, "_post_json", post)
     cloud_review_sync.sync_cloud_review_events_once(store, auth)
     assert snapshot_seen
-    original_id = deliveries[0][0]
     with store._connect() as connection:
         connection.execute("update guard_review_outbox_events set next_attempt_at = null where acknowledged_at is null")
     result = cloud_review_sync.sync_cloud_review_events_once(store, auth)
-    assert sum(kind == "review.request.snapshot_requeued" for _, kind in deliveries) == 1
-    assert deliveries[-1][0] == original_id
+    snapshot_ids = [event_id for event_id, kind in deliveries if kind == "review.request.snapshot_requeued"]
+    assert len(snapshot_ids) == 2
+    assert snapshot_ids[0] == snapshot_ids[1]
     status = store.get_sync_payload("guard_cloud_review_sync_state")
     assert isinstance(status, dict)
-    assert status["state"] == ("idle" if repaired_server else "error")
-    assert result["outbox"]["depth"] == (0 if repaired_server else 1)
+    outbox = result["outbox"]
+    assert isinstance(outbox, dict)
+    assert status["state"] == "error"
+    assert outbox["depth"] == 2
 
 
 def test_snapshot_repair_does_not_upload_other_identity_or_mint_consent(tmp_path: Path) -> None:

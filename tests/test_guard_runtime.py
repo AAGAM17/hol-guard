@@ -1151,7 +1151,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
 
@@ -1189,7 +1189,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
 
@@ -1227,7 +1227,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
 
@@ -1265,7 +1265,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
 
@@ -1303,7 +1303,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
 
@@ -1346,7 +1346,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
 
@@ -1390,7 +1390,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert output["approval_requests"] == []
 
@@ -1428,7 +1428,7 @@ clearer UX and an implementation plan with technical references.
         )
         output = json.loads(capsys.readouterr().out)
 
-        assert rc == 0
+        assert rc == 1
         assert output["policy_action"] == "block"
         assert "destructive shell command" in output["artifact_name"]
         assert output["approval_requests"] == []
@@ -15221,7 +15221,7 @@ def test_runtime_hook_package_without_workspace_rejects_legacy_exact_allow(
     output = json.loads(capsys.readouterr().out)
     receipt = GuardStore(home_dir).list_receipts(limit=1)[0]
 
-    assert rc == 0
+    assert rc == 1
     assert output["policy_action"] == "review"
     assert output["approval_reuse"]["status"] == "rejected"
     assert output["approval_reuse"]["reason_code"] == "approval_reuse_content_changed"
@@ -15500,7 +15500,7 @@ def test_guard_hook_exact_v1_allow_cannot_hide_matching_legacy_block(tmp_path, c
     )
     output = json.loads(capsys.readouterr().out)
 
-    assert rc == 0
+    assert rc == 1
     assert output["policy_action"] == "block"
     assert output["approval_reuse"]["reason_code"] == "approval_reuse_saved_block"
     assert GuardStore(home_dir).list_receipts(limit=1)[0]["policy_decision"] == "block"
@@ -15593,16 +15593,16 @@ def test_guard_hook_saved_artifact_approval_never_lowers_current_payload_block(t
     )
     third_output = json.loads(capsys.readouterr().out)
 
-    assert first_rc == 0
+    assert first_rc == 1
     assert first_output["policy_action"] == "block"
     assert first_output["approval_requests"] == []
     assert first_output["terminal"] is True
     assert "recovery may require version control or a backup" in first_output["risk_summary"].lower()
-    assert second_rc == 0
+    assert second_rc == 1
     assert second_output["policy_action"] == "block"
     assert second_output["approval_reuse"]["status"] == "rejected"
     assert second_output["approval_reuse"]["reason_code"] == "approval_reuse_current_block"
-    assert third_rc == 0
+    assert third_rc == 1
     assert third_output["policy_action"] == "block"
     assert third_output["approval_requests"] == []
 
@@ -16572,7 +16572,7 @@ def test_guard_hook_requires_reapproval_for_sensitive_codex_write_targets(
         as_json=True,
     )
 
-    assert rc == 1
+    assert rc == 0
     assert output["policy_action"] == "require-reapproval"
     assert expected_summary in output["risk_summary"].lower()
     assert output["approval_requests"][0]["artifact_type"] == "tool_action_request"
@@ -19127,7 +19127,7 @@ def test_guard_hook_codex_direct_denial_does_not_inline_complete_browser_approva
     payload = json.loads(captured.out)
     worker.join(timeout=3)
 
-    assert rc == 0
+    assert rc == 1
     assert not worker.is_alive()
     assert payload["decision"] == "block"
     assert payload["continue"] is True
@@ -19648,7 +19648,7 @@ def test_guard_hook_codex_runtime_risk_ignores_broad_allow_policy(
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert rc == 0
+    assert rc == 1
     assert payload["continue"] is True
     assert "HOL Guard" in payload["stopReason"]
     assert "sensitive content" in payload["stopReason"]

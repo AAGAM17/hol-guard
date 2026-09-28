@@ -451,7 +451,11 @@ def evaluation_authority_error(
         return AUTHORITATIVE_DECISION_INCONSISTENT
     if blocked != any(decision.enforcement.blocking for decision in decisions):
         return AUTHORITATIVE_DECISION_INCONSISTENT
-    if require_launch_permitted and any(not decision.enforcement.launch_permitted for decision in decisions):
+    if require_launch_permitted and any(
+        not decision.enforcement.launch_permitted
+        for raw_item, decision in zip(raw_artifacts, artifact_decisions)
+        if not (isinstance(raw_item, Mapping) and raw_item.get("inventory_only") is True)
+    ) or (require_launch_permitted and any(not d.enforcement.launch_permitted for d in decisions[len(artifact_decisions) :])):
         return AUTHORITATIVE_DECISION_INCONSISTENT
     return None
 

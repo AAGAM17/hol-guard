@@ -277,6 +277,10 @@ def _run_resident_hook_request(
             guard_home=parsed.guard_home,
             workspace=parsed.workspace,
             deadline=parsed.deadline,
+            claim_saved_approval=parsed.claim_saved_approval,
+            claimed_saved_allow_hash=parsed.claimed_saved_allow_hash,
+            claimed_trusted_request_override=parsed.claimed_trusted_request_override,
+            claimed_approval_request_id=parsed.claimed_approval_request_id,
         )
     except Exception:
         return _native_worker_fail_safe_result(

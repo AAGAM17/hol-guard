@@ -246,6 +246,10 @@ class HookWorker(HookWorkerNativeMixin):
         guard_home: Path,
         workspace: Path | None,
         deadline: float | None = None,
+        claim_saved_approval: bool = True,
+        claimed_saved_allow_hash: str | None = None,
+        claimed_trusted_request_override: bool = False,
+        claimed_approval_request_id: str | None = None,
     ) -> dict[str, object]:
         """Review a hook HTTP payload and return harness JSON.
 
@@ -278,6 +282,10 @@ class HookWorker(HookWorkerNativeMixin):
                 home_dir=home_dir,
                 workspace=workspace,
                 deadline=deadline,
+                claim_saved_approval=claim_saved_approval,
+                claimed_saved_allow_hash=claimed_saved_allow_hash,
+                claimed_trusted_request_override=claimed_trusted_request_override,
+                claimed_approval_request_id=claimed_approval_request_id,
             )
         mode_response = self._mode_surface_response(
             harness,

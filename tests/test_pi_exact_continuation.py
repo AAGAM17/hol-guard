@@ -711,6 +711,7 @@ function makeRunner(scenario) {
     commands: new Map(),
     flags: new Map(),
     shortcuts: new Map(),
+    fileWriteFallbackHandlers: [],
   };
   const sessionManager = {
     getCwd: () => scenario.cwd,

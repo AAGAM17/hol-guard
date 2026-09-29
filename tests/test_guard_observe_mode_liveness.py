@@ -92,12 +92,12 @@ def test_observe_mode_does_not_block_failed_local_review(
         daemon.stop()
 
     if endpoint in {"pi", "omp"}:
-        assert payload["decision"] == "deny"
+        assert payload["decision"] == "allow"
         return
     hook_output = payload["hookSpecificOutput"]
     assert isinstance(hook_output, dict)
     assert hook_output["hookEventName"] == "PreToolUse"
-    assert hook_output["permissionDecision"] == "deny"
+    assert hook_output["permissionDecision"] == "allow"
 
 
 @pytest.mark.parametrize(
@@ -197,7 +197,7 @@ def test_prompt_mode_still_blocks_failed_local_review(
 
 
 @pytest.mark.parametrize("endpoint", ("pi", "claude-code"))
-def test_prompt_mode_continues_emergency_safe_inspection_when_review_cannot_complete(
+def test_prompt_mode_denies_unverified_inspection_when_review_cannot_complete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     endpoint: str,
@@ -232,7 +232,7 @@ def test_prompt_mode_continues_emergency_safe_inspection_when_review_cannot_comp
     assert payload["reason_code"] == _DEADLINE_REASON
 
 
-def test_hook_overload_continues_emergency_safe_workspace_read(
+def test_hook_overload_denies_unverified_workspace_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

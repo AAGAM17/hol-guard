@@ -92,12 +92,12 @@ def test_observe_mode_does_not_block_failed_local_review(
         daemon.stop()
 
     if endpoint in {"pi", "omp"}:
-        assert payload["decision"] == "allow"
+        assert payload["decision"] == "deny"
         return
     hook_output = payload["hookSpecificOutput"]
     assert isinstance(hook_output, dict)
     assert hook_output["hookEventName"] == "PreToolUse"
-    assert hook_output["permissionDecision"] == "allow"
+    assert hook_output["permissionDecision"] == "deny"
 
 
 @pytest.mark.parametrize(
@@ -188,11 +188,11 @@ def test_prompt_mode_still_blocks_failed_local_review(
         daemon.stop()
 
     if endpoint == "pi":
-        assert payload["decision"] == "allow"
+        assert payload["decision"] == "deny"
     else:
         hook_output = payload["hookSpecificOutput"]
         assert isinstance(hook_output, dict)
-        assert hook_output["permissionDecision"] == "allow"
+        assert hook_output["permissionDecision"] == "deny"
     assert payload["reason_code"] == _DEADLINE_REASON
 
 
@@ -224,11 +224,11 @@ def test_prompt_mode_continues_emergency_safe_inspection_when_review_cannot_comp
         daemon.stop()
 
     if endpoint == "pi":
-        assert payload["decision"] == "allow"
+        assert payload["decision"] == "deny"
     else:
         hook_output = payload["hookSpecificOutput"]
         assert isinstance(hook_output, dict)
-        assert hook_output["permissionDecision"] == "allow"
+        assert hook_output["permissionDecision"] == "deny"
     assert payload["reason_code"] == _DEADLINE_REASON
 
 
@@ -263,4 +263,4 @@ def test_hook_overload_continues_emergency_safe_workspace_read(
     assert payload["reason_code"] == "daemon_hook_queue_capacity"
     hook_output = payload["hookSpecificOutput"]
     assert isinstance(hook_output, dict)
-    assert hook_output["permissionDecision"] == "allow"
+    assert hook_output["permissionDecision"] == "deny"

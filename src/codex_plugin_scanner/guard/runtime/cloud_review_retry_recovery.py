@@ -55,9 +55,14 @@ def quarantine_terminal_binding_failures(
     events: dict[int, dict[str, object]],
     binding: dict[str, str],
 ) -> tuple[list[int], list[dict[str, object]]]:
+    """Retain retryable results and quarantine immutable continuation mismatches.
+
+    A failed store transition stays retryable so concurrent delivery or a
+    changed binding cannot silently discard unacknowledged evidence.
+    """
     retained: list[tuple[int, dict[str, object]]] = []
     for sequence, result in zip(sequences, results, strict=True):
-        event_type = events[sequence].get("eventType")
+        event_type = events.get(sequence, {}).get("eventType")
         # A frozen terminal result cannot acquire a different continuation
         # binding through retries. Keep the rejected evidence unacknowledged.
         if (

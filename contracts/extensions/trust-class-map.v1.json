@@ -81,6 +81,8 @@
       "command.blitcp",
       "command.cloudg",
       "command.cogext",
+      "command.ctty",
+      "command.digline",
       "command.genclave",
       "command.gitsync",
       "command.mcp-filesystem",
@@ -91,6 +93,7 @@
       "command.probe",
       "command.remote.essh",
       "command.repo2nb",
+      "command.skill-base",
       "command.skill-sunset",
       "command.uivoid"
     ]

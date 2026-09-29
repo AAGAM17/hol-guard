@@ -10091,30 +10091,29 @@
       {
         "extension": {
           "action_classes": [
-            "CloudG asset collection command",
-            "CloudG pipeline execution command",
-            "CloudG scanner execution command"
+            "Skill Base publication"
           ],
           "aliases": [],
           "conflicts": [],
-          "delegated_protection": null,
           "dependencies": [],
-          "description": "Reviews cloud credential use, security scanner execution, and Terraform file generation through the CloudG CLI.",
+          "description": "Reviews authenticated Skill Base CLI publications before local Skill files are uploaded as a new version.",
           "ecosystem_ids": [],
-          "executables": [],
-          "extension_id": "command.cloudg",
-          "homepage": "https://github.com/morpheuslord/cloudg",
+          "executables": [
+            "skb",
+            "skb.cmd",
+            "skb.exe"
+          ],
+          "extension_id": "command.skill-base",
+          "homepage": "https://github.com/ginuim/skill-base",
           "icon": {
-            "background": "#0E7490",
-            "kind": "react-icon",
-            "name": "HiMiniCloud"
+            "kind": "none"
           },
           "license": "MIT",
-          "name": "CloudG command protection",
+          "name": "Skill Base CLI",
           "permissions": [
             {
               "action_classes": [
-                "CloudG asset collection command"
+                "Skill Base publication"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10122,286 +10121,89 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies asset collection runs that resolve cloud credentials and enumerate resources through provider APIs.",
-              "example_command": "cloudg collect -p aws --profile prod --region us-east-1",
-              "family": null,
-              "fixed_reason": null,
+              "description": "Reviews upload of a local Skill directory to Skill Base, where it creates a public Skill or publishes a new version.",
+              "example_command": "skb publish ./my-skill --changelog 'Initial release'",
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "3.9.0",
-              "label": "CloudG asset collection",
-              "permission_id": "command.cloudg.permission.collect",
-              "replacement_permission_id": null,
+              "introduced_version": "1.0.0",
+              "label": "Publish a Skill version",
+              "permission_id": "command.skill-base.permission.publish",
               "risk_tier": "high",
               "safer_guidance": [
-                "Confirm the provider, profile, and region flags point at the account you intend to inventory."
-              ],
-              "typed_capabilities": []
-            },
-            {
-              "action_classes": [
-                "CloudG pipeline execution command"
-              ],
-              "baseline_floor": "review",
-              "configurable": true,
-              "conflicts": [],
-              "default_enabled": true,
-              "dependencies": [],
-              "deprecated": false,
-              "description": "Identifies full pipeline runs that resolve cloud credentials, enumerate assets across accounts and regions, execute security scanners, and write Terraform recreation files when --terraform is set.",
-              "example_command": "cloudg run -p aws --profile prod --terraform",
-              "family": null,
-              "fixed_reason": null,
-              "implementation_version": "1.0.0",
-              "implied_permissions": [],
-              "introduced_version": "3.9.0",
-              "label": "CloudG full pipeline",
-              "permission_id": "command.cloudg.permission.run",
-              "replacement_permission_id": null,
-              "risk_tier": "high",
-              "safer_guidance": [
-                "Check the selected providers, credential flags, regions, and scanner list before running.",
-                "Leave --terraform off unless you want .tf.json recreation files written to the output directory."
-              ],
-              "typed_capabilities": []
-            },
-            {
-              "action_classes": [
-                "CloudG scanner execution command"
-              ],
-              "baseline_floor": "review",
-              "configurable": true,
-              "conflicts": [],
-              "default_enabled": true,
-              "dependencies": [],
-              "deprecated": false,
-              "description": "Identifies scanner runs that execute external security tools such as Prowler, ScoutSuite, Checkov, and Trivy against cloud accounts, IaC directories, and container images.",
-              "example_command": "cloudg scan -p aws --scanners prowler,checkov",
-              "family": null,
-              "fixed_reason": null,
-              "implementation_version": "1.0.0",
-              "implied_permissions": [],
-              "introduced_version": "3.9.0",
-              "label": "CloudG scanner execution",
-              "permission_id": "command.cloudg.permission.scan",
-              "replacement_permission_id": null,
-              "risk_tier": "high",
-              "safer_guidance": [
-                "Review the scanner list, IaC directory, and image list before running; scanners inherit the resolved cloud credentials."
+                "Run `skb publish --dry-run` and confirm the directory, Skill ID, and included files.",
+                "Check the name, description, and changelog flags; new Skills are public by default."
               ],
               "typed_capabilities": []
             }
           ],
           "project_markers": [],
           "publisher": {
-            "display_name": "Community",
-            "id": "community.morpheuslord",
-            "url": "https://github.com/morpheuslord/cloudg"
+            "display_name": "Skill Base",
+            "id": "ginuim",
+            "url": "https://github.com/ginuim/skill-base"
           },
           "reference_urls": [
-            "https://github.com/morpheuslord/cloudg"
+            "https://github.com/ginuim/skill-base/blob/main/cli/lib/commands/publish.js",
+            "https://github.com/ginuim/skill-base/blob/main/docs/zh/cli.md"
           ],
           "required": false,
           "risk_classes": [
+            "data_flow_exfiltration",
             "execution",
             "network_egress"
           ],
           "rules": [
             {
               "action_classes": [
-                "CloudG asset collection command"
+                "Skill Base publication"
               ],
               "default_mode": "review",
-              "description": "Identifies asset collection runs that resolve cloud credentials and enumerate resources through provider APIs.",
-              "family": null,
+              "description": "Identifies `skb publish`, which packages the selected local directory and uploads it with the saved Skill Base credential to create a Skill or publish a new version.",
               "matcher": {
                 "config": {
                   "allow_leading_options": true,
                   "executables": [
-                    "cloudg",
-                    "cloudg.cmd",
-                    "cloudg.exe"
+                    "skb",
+                    "skb.cmd",
+                    "skb.exe"
                   ],
                   "fail_secure_unknown_options": true,
                   "forbidden_flags": [],
                   "interspersed_flags": [
-                    "--verbose",
-                    "-v"
+                    "--dry-run",
+                    "--help",
+                    "--no-gitignore",
+                    "-h"
                   ],
                   "interspersed_options_with_values": [
-                    "--config",
-                    "--log-file",
-                    "--output",
-                    "--profile",
-                    "--project-id",
-                    "--provider",
-                    "--region",
-                    "--subscription-id",
-                    "-c",
-                    "-o",
-                    "-p"
+                    "--changelog",
+                    "--description",
+                    "--ignore",
+                    "--name"
                   ],
                   "inverse_flag_pairs": [],
                   "leading_options_with_values": [
-                    "--config",
-                    "--log-file",
-                    "-c"
+                    "--changelog",
+                    "--description",
+                    "--ignore",
+                    "--name"
                   ],
-                  "options_with_values": [],
                   "required_flags": [],
                   "required_flags_in_all_arguments": false,
                   "required_option_values": [],
                   "subcommands": [
-                    "collect"
+                    "publish"
                   ]
                 },
                 "op": "executable.v1"
               },
-              "native_capability": null,
-              "permission_id": "command.cloudg.permission.collect",
+              "permission_id": "command.skill-base.permission.publish",
               "risk_classes": [
-                "network_egress"
-              ],
-              "rule_id": "command.cloudg.collect",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "cloudg",
-                        "cloudg.cmd",
-                        "cloudg.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--verbose",
-                        "-v"
-                      ],
-                      "interspersed_options_with_values": [
-                        "--config",
-                        "--log-file",
-                        "--output",
-                        "--profile",
-                        "--project-id",
-                        "--provider",
-                        "--region",
-                        "--subscription-id",
-                        "-c",
-                        "-o",
-                        "-p"
-                      ],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "--config",
-                        "--log-file",
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [
-                        "--help"
-                      ],
-                      "required_flags_in_all_arguments": true,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "collect"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  "title": "Command help",
-                  "variant_id": "help"
-                }
-              ],
-              "safer_alternatives": [
-                "Confirm the provider, profile, and region flags point at the account you intend to inventory."
-              ],
-              "severity": "high",
-              "title": "CloudG asset collection"
-            },
-            {
-              "action_classes": [
-                "CloudG pipeline execution command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies full pipeline runs that resolve cloud credentials, enumerate assets, execute security scanners, and write Terraform recreation files when --terraform is set.",
-              "family": null,
-              "matcher": {
-                "config": {
-                  "allow_leading_options": true,
-                  "executables": [
-                    "cloudg",
-                    "cloudg.cmd",
-                    "cloudg.exe"
-                  ],
-                  "fail_secure_unknown_options": true,
-                  "forbidden_flags": [],
-                  "interspersed_flags": [
-                    "--azure-managed-identity",
-                    "--no-ontology",
-                    "--no-rag-export",
-                    "--no-terraform",
-                    "--ontology",
-                    "--rag-export",
-                    "--terraform",
-                    "--verbose",
-                    "-v"
-                  ],
-                  "interspersed_options_with_values": [
-                    "--aws-external-id",
-                    "--aws-key",
-                    "--aws-role-arn",
-                    "--aws-secret",
-                    "--aws-session-token",
-                    "--aws-web-identity-token-file",
-                    "--azure-cert-path",
-                    "--azure-client-id",
-                    "--azure-client-secret",
-                    "--azure-federated-token-file",
-                    "--azure-tenant-id",
-                    "--config",
-                    "--gcp-credentials-file",
-                    "--gcp-impersonate-sa",
-                    "--iac-dir",
-                    "--images",
-                    "--log-file",
-                    "--output",
-                    "--profile",
-                    "--project-id",
-                    "--provider",
-                    "--region",
-                    "--regions",
-                    "--scanners",
-                    "--subscription-id",
-                    "-c",
-                    "-o",
-                    "-p"
-                  ],
-                  "inverse_flag_pairs": [],
-                  "leading_options_with_values": [
-                    "--config",
-                    "--log-file",
-                    "-c"
-                  ],
-                  "options_with_values": [],
-                  "required_flags": [],
-                  "required_flags_in_all_arguments": false,
-                  "required_option_values": [],
-                  "subcommands": [
-                    "run"
-                  ]
-                },
-                "op": "executable.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.cloudg.permission.run",
-              "risk_classes": [
+                "data_flow_exfiltration",
                 "execution",
                 "network_egress"
               ],
-              "rule_id": "command.cloudg.run",
+              "rule_id": "command.skill-base.publish",
               "rule_version": "1.0.0",
               "safe_variants": [
                 {
@@ -10409,199 +10211,141 @@
                     "config": {
                       "allow_leading_options": true,
                       "executables": [
-                        "cloudg",
-                        "cloudg.cmd",
-                        "cloudg.exe"
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
                       ],
                       "fail_secure_unknown_options": true,
                       "forbidden_flags": [],
                       "interspersed_flags": [
-                        "--azure-managed-identity",
-                        "--no-ontology",
-                        "--no-rag-export",
-                        "--no-terraform",
-                        "--ontology",
-                        "--rag-export",
-                        "--terraform",
-                        "--verbose",
-                        "-v"
+                        "--dry-run",
+                        "--no-gitignore"
                       ],
                       "interspersed_options_with_values": [
-                        "--aws-external-id",
-                        "--aws-key",
-                        "--aws-role-arn",
-                        "--aws-secret",
-                        "--aws-session-token",
-                        "--aws-web-identity-token-file",
-                        "--azure-cert-path",
-                        "--azure-client-id",
-                        "--azure-client-secret",
-                        "--azure-federated-token-file",
-                        "--azure-tenant-id",
-                        "--config",
-                        "--gcp-credentials-file",
-                        "--gcp-impersonate-sa",
-                        "--iac-dir",
-                        "--images",
-                        "--log-file",
-                        "--output",
-                        "--profile",
-                        "--project-id",
-                        "--provider",
-                        "--region",
-                        "--regions",
-                        "--scanners",
-                        "--subscription-id",
-                        "-c",
-                        "-o",
-                        "-p"
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
                       ],
                       "inverse_flag_pairs": [],
                       "leading_options_with_values": [
-                        "--config",
-                        "--log-file",
-                        "-c"
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
                       ],
-                      "options_with_values": [],
                       "required_flags": [
-                        "--help"
+                        "--dry-run"
                       ],
                       "required_flags_in_all_arguments": true,
                       "required_option_values": [],
                       "subcommands": [
-                        "run"
+                        "publish"
                       ]
                     },
                     "op": "executable.v1"
                   },
-                  "title": "Command help",
-                  "variant_id": "help"
-                }
-              ],
-              "safer_alternatives": [
-                "Check the selected providers, credential flags, regions, and scanner list before running."
-              ],
-              "severity": "high",
-              "title": "CloudG full pipeline"
-            },
-            {
-              "action_classes": [
-                "CloudG scanner execution command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies scanner runs that execute external security tools such as Prowler, ScoutSuite, Checkov, and Trivy.",
-              "family": null,
-              "matcher": {
-                "config": {
-                  "allow_leading_options": true,
-                  "executables": [
-                    "cloudg",
-                    "cloudg.cmd",
-                    "cloudg.exe"
-                  ],
-                  "fail_secure_unknown_options": true,
-                  "forbidden_flags": [],
-                  "interspersed_flags": [
-                    "--verbose",
-                    "-v"
-                  ],
-                  "interspersed_options_with_values": [
-                    "--config",
-                    "--iac-dir",
-                    "--images",
-                    "--log-file",
-                    "--output",
-                    "--profile",
-                    "--provider",
-                    "--scanners",
-                    "-c",
-                    "-o",
-                    "-p"
-                  ],
-                  "inverse_flag_pairs": [],
-                  "leading_options_with_values": [
-                    "--config",
-                    "--log-file",
-                    "-c"
-                  ],
-                  "options_with_values": [],
-                  "required_flags": [],
-                  "required_flags_in_all_arguments": false,
-                  "required_option_values": [],
-                  "subcommands": [
-                    "scan"
-                  ]
+                  "title": "List the files without uploading",
+                  "variant_id": "dry-run"
                 },
-                "op": "executable.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.cloudg.permission.scan",
-              "risk_classes": [
-                "execution",
-                "network_egress"
-              ],
-              "rule_id": "command.cloudg.scan",
-              "rule_version": "1.0.0",
-              "safe_variants": [
                 {
                   "matcher": {
                     "config": {
                       "allow_leading_options": true,
                       "executables": [
-                        "cloudg",
-                        "cloudg.cmd",
-                        "cloudg.exe"
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
                       ],
                       "fail_secure_unknown_options": true,
                       "forbidden_flags": [],
                       "interspersed_flags": [
-                        "--verbose",
-                        "-v"
+                        "--dry-run",
+                        "--help",
+                        "--no-gitignore",
+                        "-h"
                       ],
                       "interspersed_options_with_values": [
-                        "--config",
-                        "--iac-dir",
-                        "--images",
-                        "--log-file",
-                        "--output",
-                        "--profile",
-                        "--provider",
-                        "--scanners",
-                        "-c",
-                        "-o",
-                        "-p"
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
                       ],
                       "inverse_flag_pairs": [],
                       "leading_options_with_values": [
-                        "--config",
-                        "--log-file",
-                        "-c"
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
                       ],
-                      "options_with_values": [],
                       "required_flags": [
                         "--help"
                       ],
                       "required_flags_in_all_arguments": true,
                       "required_option_values": [],
                       "subcommands": [
-                        "scan"
+                        "publish"
                       ]
                     },
                     "op": "executable.v1"
                   },
-                  "title": "Command help",
+                  "title": "Publish command help (--help)",
                   "variant_id": "help"
+                },
+                {
+                  "matcher": {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--help",
+                        "--no-gitignore",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "-h"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  "title": "Publish command help (-h)",
+                  "variant_id": "short-help"
                 }
               ],
               "safer_alternatives": [
-                "Review the scanner list, IaC directory, and image list before running; scanners inherit the resolved cloud credentials."
+                "Run `skb publish --dry-run` for the same directory and ignore rules, then review the included files before publishing."
               ],
               "severity": "high",
-              "title": "CloudG scanner execution"
+              "title": "Skill Base publication"
             }
           ],
           "safer_alternatives": [
-            "Generate reports from existing scan data with `cloudg report -i findings.json`, which reads a local file and does not touch cloud credentials or scanners."
+            "Run `skb publish --dry-run` for the same directory and ignore rules, then review the included files before publishing."
           ],
           "source": "built-in",
           "version": "1.0.0"
@@ -10713,232 +10457,179 @@
   },
   "cases": [
     {
-      "command": "cloudg collect -p aws --profile prod --region us-east-1",
+      "command": "skb publish ./my-skill --dry-run --ignore '.cursor/'",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "collect-aws",
-      "rule_id": "command.cloudg.collect"
-    },
-    {
-      "command": "cloudg collect -p azure --subscription-id 00000000-0000-0000-0000-000000000000",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "collect-azure",
-      "rule_id": "command.cloudg.collect"
-    },
-    {
-      "command": "cloudg collect -p gcp --project-id my-project",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "collect-gcp",
-      "rule_id": "command.cloudg.collect"
-    },
-    {
-      "command": "cloudg collect -p aws -o ./reports",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "collect-output-dir",
-      "rule_id": "command.cloudg.collect"
-    },
-    {
-      "command": "cloudg run -p aws --profile prod",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-basic",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg run -p aws --profile prod --terraform",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-terraform",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg run -p aws -p azure --subscription-id 00000000-0000-0000-0000-000000000000",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-multi-provider",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg run -p aws --aws-role-arn arn:aws:iam::123456789012:role/scan-readonly",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-role-arn",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg run -p aws --regions all",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-all-regions",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg -v run -p gcp --project-id my-project",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-leading-verbose",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg -c ./config.yaml run -p aws",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "run-leading-config",
-      "rule_id": "command.cloudg.run"
-    },
-    {
-      "command": "cloudg scan",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "scan-default",
-      "rule_id": "command.cloudg.scan"
-    },
-    {
-      "command": "cloudg scan -p aws --scanners prowler,checkov",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "scan-scanner-list",
-      "rule_id": "command.cloudg.scan"
-    },
-    {
-      "command": "cloudg scan --scanners checkov --iac-dir ./infra",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "scan-iac-dir",
-      "rule_id": "command.cloudg.scan"
-    },
-    {
-      "command": "cloudg scan --scanners trivy --images nginx:latest,alpine:3.20",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "scan-images",
-      "rule_id": "command.cloudg.scan"
-    },
-    {
-      "command": "cloudg collect --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cloudg"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "collect-help",
-      "rule_id": "command.cloudg.collect"
+      "id": "publish-dry-run-safe",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "cloudg run --help",
+      "command": "skb publish ./my-skill --ignore '.cursor/' --no-gitignore",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cloudg"
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-with-ignore-still-reviewable",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-current-directory",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill --name \"My Skill\" --description \"A useful skill\" --changelog \"Initial release\"",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-relative-directory-with-metadata",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb --name \"My Skill\" --changelog \"Release\" publish /tmp/my-skill",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-global-options-before-subcommand",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "run-help",
-      "rule_id": "command.cloudg.run"
+      "id": "publish-help-long-safe",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "cloudg scan --help",
+      "command": "skb publish -h",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cloudg"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "scan-help",
-      "rule_id": "command.cloudg.scan"
+      "id": "publish-help-short-safe",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish --name \"My Skill\" --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "publish-with-extra-flag-and-help-safe",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill",
+      "disabled_permissions": [],
+      "enabled_extensions": [],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "extension-inactive",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill",
+      "disabled_permissions": [
+        "command.skill-base.permission.publish"
+      ],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "block",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "permission-disabled",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb install team-rules",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "skb-install-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb search vue",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "skb-search-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb import-github owner/repo",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "skb-import-github-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publishx ./my-skill",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "similar-subcommand-does-not-match",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "root-help-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
     }
   ],
   "schema": "guard.command-extension-fixtures.v1"

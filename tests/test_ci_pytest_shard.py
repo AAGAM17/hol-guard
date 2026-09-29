@@ -65,7 +65,8 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
         index for index, step in enumerate(native_steps) if "verify_native_command_program.py" in step.get("run", "")
     )
     verify_step = native_steps[verify_index]
-    assert "--compiler rust/target/release/guard-command-source --check" in verify_step["run"]
+    assert "--compiler rust/target/release/guard-command-source" in verify_step["run"]
+    assert "--changed-from" in verify_step["run"]
     assert "if" not in verify_step
     assert verify_step.get("continue-on-error", False) is False
     upload_index = next(

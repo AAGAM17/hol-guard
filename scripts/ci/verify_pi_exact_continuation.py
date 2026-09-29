@@ -26,9 +26,10 @@ EXPECTED = {
 }
 EXPECTED_NODE = "v22.19.0"
 EXPECTED_BUN = "1.3.14"
-MINIMUM_TESTCASES = 9
+MINIMUM_TESTCASES = 10
 REQUIRED_TESTS = {
     "test_installed_pi_runner_cancels_generated_pending_tool_call",
+    "test_actual_pi_runner_survives_five_second_tool_call_handler",
     "test_installed_omp_runner_contract_is_outer_signal_aware",
     "test_actual_omp_runner_executes_original_once_and_blocks_late_continuation",
 }

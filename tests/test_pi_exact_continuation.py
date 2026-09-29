@@ -393,6 +393,80 @@ console.log(JSON.stringify({{
     }
 
 
+def test_actual_pi_runner_survives_five_second_tool_call_handler(tmp_path: Path) -> None:
+    node = _node_executable()
+    runner_module = _pi_runner_module()
+    if node is None or runner_module is None:
+        pytest.skip("Node and the installed Pi SDK are required")
+
+    harness_path = tmp_path / "installed-pi-handler-timeout.mjs"
+    script = f"""
+import {{ pathToFileURL }} from 'node:url';
+const {{ ExtensionRunner, createExtensionRuntime }} = await import(
+  pathToFileURL({json.dumps(str(runner_module))}).href,
+);
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const handler = async () => {{
+  await delay(5_500);
+  return undefined;
+}};
+const extension = {{
+  path: 'fixture',
+  resolvedPath: 'fixture',
+  sourceInfo: {{}},
+  handlers: new Map([['tool_call', [handler]]]),
+  tools: new Map(),
+  messageRenderers: new Map(),
+  commands: new Map(),
+  flags: new Map(),
+  shortcuts: new Map(),
+}};
+const runtime = createExtensionRuntime();
+const runner = new ExtensionRunner([extension], runtime, '/fixture/workspace', {{
+  getCwd: () => '/fixture/workspace',
+  getSessionId: () => 'session-fixture',
+}}, {{}});
+runner.bindCore(
+  {{
+    sendMessage: () => {{}}, sendUserMessage: () => {{}}, appendEntry: () => {{}},
+    setSessionName: () => {{}}, getSessionName: () => undefined, setLabel: () => {{}},
+    getActiveTools: () => [], getAllTools: () => [], setActiveTools: () => {{}},
+    refreshTools: () => {{}}, getCommands: () => [], setModel: async () => false,
+    getThinkingLevel: () => 'high', setThinkingLevel: () => {{}},
+  }},
+  {{
+    getModel: () => undefined, isIdle: () => false, isProjectTrusted: () => true,
+    getSignal: () => undefined, abort: () => {{}}, hasPendingMessages: () => false,
+    shutdown: () => {{}}, getContextUsage: () => undefined, compact: () => {{}},
+    getSystemPrompt: () => '',
+  }},
+);
+const event = {{
+  type: 'tool_call', toolCallId: 'call-fixture', toolName: 'read',
+  input: {{ path: 'original.txt', offset: 304, limit: 243 }},
+}};
+const started = performance.now();
+const result = await runner.emitToolCall(event);
+const elapsedMs = performance.now() - started;
+console.log(JSON.stringify({{
+  result: result ?? null,
+  elapsedMs,
+  input: event.input,
+}}));
+"""
+    harness_path.write_text(script, encoding="utf-8")
+    completed = _run_child(
+        [node, "--experimental-strip-types", str(harness_path)],
+        timeout=20,
+    )
+    payload = _decode_json_object(completed.stdout)
+    assert payload["result"] is None
+    assert payload["elapsedMs"] >= 5_500
+    assert payload["elapsedMs"] < 15_000
+    assert payload["input"] == {"path": "original.txt", "offset": 304, "limit": 243}
+
+
 def test_installed_omp_runner_contract_is_outer_signal_aware() -> None:
     omp_cli = shutil.which("omp")
     if omp_cli is None:
@@ -693,7 +767,10 @@ def test_actual_omp_runner_executes_original_once_and_blocks_late_continuation(t
     script = """
 import { pathToFileURL } from "node:url";
 import installGuard from __EXTENSION_PATH__;
-const { ExtensionRunner } = await import(pathToFileURL(__RUNNER_PATH__).href);
+const { ExtensionRunner, testSetExtensionHandlerTimeoutMs } = await import(
+  pathToFileURL(__RUNNER_PATH__).href,
+);
+testSetExtensionHandlerTimeoutMs(5_000);
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const originalInput = { path: "original.txt", offset: 304, limit: 243 };
@@ -831,7 +908,8 @@ async function runScenario(name, config) {
       scenario.sessionId = `changed-${name}`;
     }
     if (config.poll === "pending") {
-      if (pollCalls === 1) return new Response(JSON.stringify({ status: "pending" }), { status: 200 });
+      const pendingPolls = config.pendingPolls ?? 1;
+      if (pollCalls <= pendingPolls) return new Response(JSON.stringify({ status: "pending" }), { status: 200 });
       return new Response(JSON.stringify({ status: "resolved", resolution_action: "allow" }), { status: 200 });
     }
     if (config.poll === "allow") {
@@ -853,6 +931,7 @@ async function runScenario(name, config) {
   };
   const controller = new AbortController();
   activeController = controller;
+  const started = performance.now();
   const pending = runner.emitToolCall(event, controller.signal);
   if (config.abort) {
     await waitFor(() => pollCalls === 1);
@@ -863,6 +942,7 @@ async function runScenario(name, config) {
     await runner.emitSessionStop({ signal: controller.signal });
   }
   const result = await pending;
+  const elapsedMs = performance.now() - started;
   if (config.abort || config.sessionStop || config.abortDuringRevalidation) {
     await delay(2_300);
   }
@@ -877,6 +957,7 @@ async function runScenario(name, config) {
     input: event.input,
     cwd: scenario.cwd,
     sessionId: scenario.sessionId,
+    elapsedMs,
   };
 }
 
@@ -889,7 +970,7 @@ const approval = {
 const allow = { decision: "allow", reason: "exact approval consumed" };
 const nativeFailure = { decision: "deny", reason: "native review failed", reason_code: "native_failure" };
 const results = {
-  success: await runScenario("success", { guardResponses: [approval, allow], poll: "allow" }),
+  success: await runScenario("success", { guardResponses: [approval, allow], poll: "pending", pendingPolls: 3 }),
   denial: await runScenario("denial", { guardResponses: [approval], poll: "block" }),
   expiry: await runScenario("expiry", { guardResponses: [approval], poll: "expiry" }),
   transport: await runScenario("transport", { guardResponses: [approval], poll: "transport" }),
@@ -921,7 +1002,9 @@ console.log(JSON.stringify(results));
     assert success["blocked"] is False
     assert success["executed"] == 1
     assert success["guardCalls"] == 2
-    assert success["pollCalls"] == 1
+    assert success["pollCalls"] == 4
+    assert success["elapsedMs"] >= 5_500
+    assert success["elapsedMs"] < 15_000
     assert success["sentMessages"] == 0
     assert success["input"] == original_input
 

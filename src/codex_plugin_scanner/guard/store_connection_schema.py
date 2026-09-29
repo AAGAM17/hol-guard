@@ -323,15 +323,16 @@ class StoreConnectionSchemaMixin:
                 local.owner = None
                 local.depth = 0
                 local.exclusive = False
-                if os.name == "nt":
-                    import msvcrt
+                if handle is not None:
+                    if os.name == "nt":
+                        import msvcrt
 
-                    handle.seek(0)
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    import fcntl
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
 
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
             if handle is not None:
                 handle.close()

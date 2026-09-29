@@ -245,15 +245,20 @@ def cursor_fallback_permission(
     guard_home: Path | None = None,
     recording_only: bool = False,
 ) -> tuple[dict[str, object], int]:
-    """Deny protected Cursor actions when no evaluator supplies a decision."""
+    """Deny protected Cursor actions when no evaluator supplies a decision.
+
+    Retain legacy keyword arguments without accepting them as mode authority.
+    """
 
     del payload, workspace, home_dir, guard_home, recording_only
     compact = hook_event_name.strip().lower().replace("_", "").replace("-", "")
     if compact in {"aftershellexecution", "aftermcpexecution"}:
         return {}, 0
+    reason = "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
     return {
         "permission": "deny",
-        "user_message": "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal.",
+        "user_message": reason,
+        "agent_message": reason,
     }, 2
 
 

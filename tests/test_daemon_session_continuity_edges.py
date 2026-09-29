@@ -115,7 +115,7 @@ def test_native_policy_not_ready_pretool_continues(tmp_path: Path) -> None:
     assert payload["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
-def test_cursor_write_is_denied_when_native_unavailable() -> None:
+def test_cursor_write_denies_when_native_unavailable() -> None:
     from codex_plugin_scanner.guard.daemon.hook_availability_policy import cursor_fallback_permission
 
     deny, code = cursor_fallback_permission(

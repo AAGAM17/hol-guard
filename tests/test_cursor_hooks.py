@@ -117,8 +117,12 @@ def _trusted_cursor_after_shell_env(
 def test_managed_hook_events_exclude_pretooluse() -> None:
     assert "preToolUse" not in _MANAGED_HOOK_EVENTS
     assert _MANAGED_HOOK_EVENTS == (
-        "beforeShellExecution", "beforeMCPExecution", "beforeReadFile",
-        "beforeWriteFile", "afterShellExecution", "afterMCPExecution",
+        "beforeShellExecution",
+        "beforeMCPExecution",
+        "beforeReadFile",
+        "beforeWriteFile",
+        "afterShellExecution",
+        "afterMCPExecution",
     )
 
 
@@ -507,7 +511,7 @@ def test_cursor_hook_recovery_honors_total_deadline(tmp_path: Path) -> None:
     )
 
 
-def test_cursor_hook_denies_workspace_read_without_blocking_on_dead_daemon(tmp_path: Path) -> None:
+def test_cursor_hook_denies_workspace_read_within_recovery_deadline(tmp_path: Path) -> None:
     from codex_plugin_scanner.guard.adapters.cursor_hooks import cursor_hook_script_source
 
     home_dir = tmp_path / "home"
@@ -759,7 +763,7 @@ def test_cursor_hook_script_uses_daemon_fast_path(tmp_path: Path, monkeypatch: p
         ({"recorded": False}, 0),
     ],
 )
-def test_generated_cursor_hook_denies_for_missing_or_unknown_guard_action(
+def test_generated_cursor_hook_denies_missing_or_unknown_guard_action(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     guard_payload: dict[str, object],

@@ -4565,8 +4565,17 @@ _OAUTH_REFRESH_CIRCUIT_DEFAULT_MAX_BACKOFF_SECONDS = 300.0
 _OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS = 3600.0
 
 
+_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT = b"hol.guard.oauth-refresh-circuit:v1"
+_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS = 210_000
+
+
 def _oauth_refresh_circuit_fingerprint(refresh_token: str) -> str:
-    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()[:24]
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        refresh_token.encode("utf-8"),
+        _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT,
+        _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS,
+    ).hex()[:24]
 
 
 def _oauth_refresh_circuit_backoff_seconds(env_key: str, default: float) -> float:

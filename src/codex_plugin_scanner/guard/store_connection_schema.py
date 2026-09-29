@@ -1145,6 +1145,15 @@ class StoreConnectionSchemaMixin:
             )
             if not self._schema_version_applied(connection, version=2):
                 self._record_schema_version(connection, version=2)
+            # Preserve the legacy wait-timeout recovery without reopening cards
+            # deliberately superseded by a fresh, canonically bound request.
+            connection.execute(
+                """
+                update approval_requests
+                set status = 'pending', reason = null, resolved_at = null
+                where status = 'expired' and reason = 'Expired after waiting for review.'
+                """
+            )
             self._repair_store_permissions()
 
     def _initialize_policy_integrity(self) -> None:

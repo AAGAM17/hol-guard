@@ -16,6 +16,7 @@ HOOK_SCRIPT_TEMPLATE_TAIL = """def _recording_only_from_guard_home(workspace: st
 
 def _cursor_permission(policy_action: str, guard_payload: dict[str, object], workspace: str | None = None) -> str:
     # Only the evaluator's decision establishes permission, never local mode or reason text.
+    del guard_payload, workspace
     if policy_action not in GUARD_ACTIONS:
         return "deny"
     if policy_action in {"block", "sandbox-required"}:
@@ -255,9 +256,11 @@ def _cursor_availability_response(
         compact = hook_event_name.strip().lower().replace("_", "").replace("-", "")
         if compact in {"aftershellexecution", "aftermcpexecution"}:
             return {}, 0
+        reason = "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
         return {
             "permission": "deny",
-            "user_message": "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal.",
+            "user_message": reason,
+            "agent_message": reason,
         }, 2
 
 
@@ -408,7 +411,8 @@ def _main_inner() -> int:
         print(json.dumps(response))
         return exit_code
     policy_action = raw_policy_action
-    if proc.returncode != 0 and policy_action in {"allow", "warn"}:
+    # Exit 2 is the CLI's intentional restriction; other failures cannot authorize.
+    if proc.returncode not in {0, 2} or (proc.returncode == 2 and policy_action in {"allow", "warn"}):
         response, exit_code = _cursor_availability_response(
             prepared, hook_event_name=hook_event_name, workspace=workspace
         )

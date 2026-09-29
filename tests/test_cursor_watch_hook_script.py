@@ -172,7 +172,7 @@ def test_generated_cursor_hook_ignores_stale_allow_on_completed_block(tmp_path: 
                 "hookSpecificOutput": {"permissionDecision": "deny"},
             },
         )
-        == "allow"
+        == "deny"
     )
 
 

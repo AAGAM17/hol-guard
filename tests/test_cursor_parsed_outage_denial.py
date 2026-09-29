@@ -17,7 +17,7 @@ from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.cursor_hooks import cursor_hook_script_source
 
 _EVENTS = ["beforeReadFile", "beforeShellExecution", "beforeMCPExecution", "beforeWriteFile", "preToolUse"]
-_FAILURES = ["exception", "timeout", "invalid-json", "missing-decision", "nonzero-allow"]
+_FAILURES = ["exception", "timeout", "invalid-json", "missing-decision", "nonzero-allow", "nonzero-review"]
 
 
 def _unavailable(failure: str) -> subprocess.CompletedProcess[str]:
@@ -29,8 +29,9 @@ def _unavailable(failure: str) -> subprocess.CompletedProcess[str]:
         "invalid-json": "not-json",
         "missing-decision": "{}",
         "nonzero-allow": '{"policy_action":"allow"}',
+        "nonzero-review": '{"policy_action":"review"}',
     }[failure]
-    return subprocess.CompletedProcess([], 1 if failure == "nonzero-allow" else 0, stdout, "")
+    return subprocess.CompletedProcess([], 1 if failure.startswith("nonzero-") else 0, stdout, "")
 
 
 def _generated(context: HarnessContext) -> dict[str, Any]:
@@ -84,7 +85,7 @@ def test_generated_parsed_cursor_unavailable_denies(
 
 @pytest.mark.parametrize("event", _EVENTS)
 @pytest.mark.parametrize("local_watch", [False, True])
-@pytest.mark.parametrize("policy", ["allow", "warn", "review", "block"])
+@pytest.mark.parametrize("policy", ["allow", "warn", "review", "require-reapproval", "sandbox-required", "block"])
 @pytest.mark.parametrize("reason_code", ["policy", "native_pre_tool_unavailable"])
 def test_generated_parsed_cursor_preserves_trusted_decision(
     tmp_path: Path,
@@ -101,11 +102,21 @@ def test_generated_parsed_cursor_preserves_trusted_decision(
     response = {"policy_action": policy, "reason_code": reason_code, "reason": "fixture decision"}
     namespace["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
     namespace["_run_guard_fallback"] = lambda *_args, **_kwargs: subprocess.CompletedProcess(
-        [], 2 if policy == "block" else 0, json.dumps(response), ""
+        [],
+        2 if policy in {"review", "require-reapproval", "sandbox-required", "block"} else 0,
+        json.dumps(response),
+        "",
     )
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": event, "command": "git push"})))
     monkeypatch.setattr(sys, "argv", ["cursor-hook"])
-    permission = {"allow": "allow", "warn": "allow", "review": "ask", "block": "deny"}[policy]
+    permission = {
+        "allow": "allow",
+        "warn": "allow",
+        "review": "ask",
+        "require-reapproval": "ask",
+        "sandbox-required": "deny",
+        "block": "deny",
+    }[policy]
     if event == "beforeReadFile" and permission == "ask":
         permission = "deny"
     assert namespace["main"]() == (2 if permission == "deny" else 0)

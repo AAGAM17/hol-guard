@@ -5,6 +5,8 @@ from __future__ import annotations
 import threading
 from typing import Protocol, final
 
+from ..models import GuardRuntimeRegistration
+
 
 class RuntimeHeartbeatStore(Protocol):
     def try_touch_runtime_state(
@@ -13,6 +15,7 @@ class RuntimeHeartbeatStore(Protocol):
         session_id: str,
         last_heartbeat_at: str,
         timeout_seconds: float,
+        registration: GuardRuntimeRegistration | None = None,
     ) -> bool: ...
 
 
@@ -34,6 +37,7 @@ class RuntimeHeartbeatWriter:
         self._retry_interval_seconds = max(retry_interval_seconds, 0.001)
         self._condition = threading.Condition()
         self._pending_heartbeat: str | None = None
+        self._registration: GuardRuntimeRegistration | None = None
         self._stopping = False
         self._thread: threading.Thread | None = None
 
@@ -48,6 +52,14 @@ class RuntimeHeartbeatWriter:
                 name="guard-runtime-heartbeat-writer",
             )
             self._thread.start()
+
+    def register(self, registration: GuardRuntimeRegistration) -> None:
+        with self._condition:
+            self._registration = registration
+
+    def clear_registration(self) -> None:
+        with self._condition:
+            self._registration = None
 
     def touch(self, last_heartbeat_at: str) -> None:
         with self._condition:
@@ -76,6 +88,7 @@ class RuntimeHeartbeatWriter:
                 if self._stopping:
                     return
                 heartbeat = self._pending_heartbeat
+                registration = self._registration
             assert heartbeat is not None
             succeeded = False
             try:
@@ -83,6 +96,7 @@ class RuntimeHeartbeatWriter:
                     session_id=self._session_id,
                     last_heartbeat_at=heartbeat,
                     timeout_seconds=self._write_timeout_seconds,
+                    registration=registration,
                 )
             except Exception:
                 succeeded = False

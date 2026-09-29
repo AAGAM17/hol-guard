@@ -3243,6 +3243,7 @@ export class GuardProtectionRepairError extends Error {
   readonly failedCheckIds: string[];
   readonly failedHarnesses: string[];
   readonly pendingCheckIds: string[];
+  readonly checkReasons: Record<string, string>;
 
   constructor(status: number, payload: Record<string, unknown> | null) {
     const message = payload === null ? null : stringValue(payload.message);
@@ -3254,7 +3255,21 @@ export class GuardProtectionRepairError extends Error {
     this.failedCheckIds = stringArrayValue(payload?.failed_check_ids);
     this.failedHarnesses = stringArrayValue(payload?.failed_harnesses);
     this.pendingCheckIds = stringArrayValue(payload?.pending_check_ids);
+    this.checkReasons = checkReasonMapValue(payload?.check_reasons);
   }
+}
+
+const REASON_CODE_ID = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
+
+function checkReasonMapValue(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const reasons: Record<string, string> = {};
+  for (const [checkId, reason] of Object.entries(value)) {
+    if (!REASON_CODE_ID.test(checkId) || checkId.length > 96) continue;
+    if (typeof reason !== "string" || reason.length > 96 || !REASON_CODE_ID.test(reason)) continue;
+    reasons[checkId] = reason;
+  }
+  return reasons;
 }
 
 function stringArrayValue(value: unknown): string[] {

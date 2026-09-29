@@ -291,15 +291,31 @@ export function remainingProtectionRepairMessage(
   const failedHookApps = remainingParts.failedHookHarnesses.map(displayName);
   const remainingMessages: string[] = [];
   const unsupportedCount = health.checks.filter(isUnsupportedPlatformCheck).length;
+  const repairableGaps = repairableProtectionGaps(health.checks);
+  const daemonCheck = health.checks.find((check) => check.check_id === "daemon");
+  const decisionStreamCheck = health.checks.find((check) => check.check_id === "decision_stream");
   if (remainingParts.needsConnectedApp) {
     remainingMessages.push("Connect an AI app to start local protection.");
+  }
+  if (daemonCheck?.status !== "pass" && daemonCheck?.reason_code === "daemon_registration_missing") {
+    remainingMessages.push("The local runtime is re-registering; check again in a moment.");
   }
   if (failedHookApps.length > 0) {
     remainingMessages.push(
       `${failedHookApps.join(", ")} still ${failedHookApps.length === 1 ? "needs" : "need"} hook repair.`,
     );
   }
-  if (remainingParts.evidenceFailed) remainingMessages.push("Command evidence still needs repair.");
+  if (remainingParts.evidenceFailed) {
+    if (decisionStreamCheck?.reason_code === "native_evaluation_unavailable") {
+      remainingMessages.push(
+        "Guard could not run the native policy engine to prove command evidence.",
+      );
+    } else if (repairableGaps.length === 1 && repairableGaps[0]?.check_id === "decision_stream") {
+      remainingMessages.push("Run a protected command to produce fresh command evidence.");
+    } else {
+      remainingMessages.push("Command evidence still needs repair.");
+    }
+  }
   if (unsupportedCount > 0) {
     remainingMessages.push(
       "Containment remains unavailable on this platform, so full protection cannot be reached here.",

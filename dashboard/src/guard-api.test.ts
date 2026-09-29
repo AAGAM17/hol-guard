@@ -65,6 +65,27 @@ assert(
   "protection repair preserves actionable failed-layer metadata",
 );
 
+const reasonedRepairError = new GuardProtectionRepairError(409, {
+  error: "protection_repair_incomplete",
+  repair_scope: "local_integrity",
+  message: "Repair paused.",
+  pending_check_ids: ["decision_stream"],
+  check_reasons: {
+    decision_stream: "native_evaluation_unavailable",
+    injected: "not a reason!!",
+    "not a check!!": "daemon_registration_missing",
+  },
+});
+assert(
+  reasonedRepairError.checkReasons.decision_stream === "native_evaluation_unavailable" &&
+    Object.keys(reasonedRepairError.checkReasons).length === 1,
+  "protection repair preserves stable per-check reason codes only",
+);
+assert(
+  localIntegrityRepairError.checkReasons && Object.keys(localIntegrityRepairError.checkReasons).length === 0,
+  "protection repair errors without check_reasons parse to an empty map",
+);
+
 const missingRuntimeStateSnapshot = normalizeRuntimeSnapshot({
   ...snapshot,
   runtime_state: undefined,

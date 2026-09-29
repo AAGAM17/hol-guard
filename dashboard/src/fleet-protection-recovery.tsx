@@ -24,10 +24,30 @@ import {
   isUnsupportedPlatformCheck,
   remainingProtectionRepairParts,
 } from "./protection-health";
-import { recoverySummary, repairButtonLabel } from "./fleet-protection-recovery-copy";
-import { activeFailedHarnesses, ProtectionRepairFlowError } from "./protection-repair-flow";
+import { protectionReasonText } from "./protection-reason-copy";
+import {
+  recoverySummary,
+  repairButtonLabel,
+  RUNTIME_START_COMMAND,
+  RUNTIME_STOP_COMMAND,
+  STALLED_RECHECK_SUMMARY,
+  STALLED_REPAIR_SUMMARY,
+} from "./fleet-protection-recovery-copy";
+import {
+  activeFailedHarnesses,
+  nextProtectionRepairOutcome,
+  protectionGapSignature,
+  ProtectionRepairFlowError,
+  RECHECK_UNAVAILABLE_SIGNATURE,
+  repairOutcomeIsStalled,
+  resetRepairOutcomeTracker,
+} from "./protection-repair-flow";
+import type { ProtectionRepairOutcomeTracker } from "./protection-repair-flow";
 
 export { hasRepairableProtectionGap, isUnsupportedPlatformCheck } from "./protection-health";
+
+const INLINE_COMMAND_CLASS =
+  "rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px]";
 
 type GapAction = {
   label: string;
@@ -174,10 +194,23 @@ function ProtectionGapItem({
             {statusLabel}
           </span>
           <span className="mt-0.5 block">{action.detail}</span>
+          <ProtectionGapReason check={check} />
         </span>
       </div>
     </li>
   );
+}
+
+function ProtectionGapReason({ check }: { check: GuardProtectionCheck }) {
+  const reasonText = protectionReasonText(check.reason_code);
+  if (reasonText === null) {
+    return (
+      <span className="mt-0.5 block font-mono text-[10px] text-slate-400">
+        Reason code: {check.reason_code}
+      </span>
+    );
+  }
+  return <span className="mt-0.5 block text-slate-500">{reasonText}</span>;
 }
 
 function TargetedRepairButton({
@@ -228,6 +261,7 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
   const [repairState, setRepairState] = useState<RepairState | null>(null);
   const [cloudConnectState, setCloudConnectState] = useState<CloudConnectState | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [repairOutcomeTracker, setRepairOutcomeTracker] = useState<ProtectionRepairOutcomeTracker | null>(null);
   const cloudConnectControllerRef = useRef<AbortController | null>(null);
   const gaps = props.health.checks.filter((check) => check.status !== "pass");
   const hasRepairableGaps = hasRepairableProtectionGap(gaps);
@@ -238,6 +272,8 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
   const failCount = repairableGaps.filter((check) => check.status === "fail").length;
   const unknownCount = repairableGaps.length - failCount;
   const needsConnectedApp = remainingProtectionRepairParts(props.health).needsConnectedApp;
+  const currentGapSignature = protectionGapSignature(props.health.checks);
+  const repairStalled = repairOutcomeIsStalled(repairOutcomeTracker, currentGapSignature);
   const cloudPolicyHint = cloudPolicyRecoveryHint(props.cloudPolicy);
   const repairHarnessKey = props.repairHarnesses.join("\u0000");
   const repairHarnessList = useMemo(
@@ -261,12 +297,24 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
     try {
       const message = await props.onRepairProtection(props.repairHarnesses);
       setRepairState({ status: "success", message });
+      setRepairOutcomeTracker(null);
       setDetailsOpen(true);
     } catch (error: unknown) {
       const message =
         error instanceof Error
           ? error.message
           : "Repair paused before every protection step completed. Retry to continue safely.";
+      const outcomeSignature =
+        error instanceof ProtectionRepairFlowError && error.signature
+          ? error.signature
+          : protectionGapSignature(props.health.checks);
+      const outcomeHealthSignature =
+        outcomeSignature === RECHECK_UNAVAILABLE_SIGNATURE
+          ? protectionGapSignature(props.health.checks)
+          : outcomeSignature;
+      setRepairOutcomeTracker((tracker) =>
+        nextProtectionRepairOutcome(tracker, outcomeSignature, outcomeHealthSignature),
+      );
       setRepairState({
         status: "error",
         message,
@@ -275,7 +323,13 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
       });
       setDetailsOpen(true);
     }
-  }, [hasRepairableGaps, hasUnsupportedGaps, props.onRepairProtection, props.repairHarnesses]);
+  }, [
+    hasRepairableGaps,
+    hasUnsupportedGaps,
+    props.health.checks,
+    props.onRepairProtection,
+    props.repairHarnesses,
+  ]);
   const connectHarness = props.connectHarness ?? defaultConnectHarness(props.repairHarness, props.repairHarnesses);
   const handleRepairClick = useCallback(() => {
     if (needsConnectedApp && props.onRepairHarness) {
@@ -376,6 +430,10 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
     });
   }, [repairHarnessList]);
 
+  useEffect(() => {
+    setRepairOutcomeTracker((tracker) => resetRepairOutcomeTracker(tracker, currentGapSignature));
+  }, [currentGapSignature]);
+
   if (gaps.length === 0) return null;
   const working = repairState?.status === "working";
   const cloudConnectDisabled = ["working", "success"].includes(
@@ -390,7 +448,10 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
     targetedRepairHarnesses = repairHarnessList;
   }
   const showTargetedRepairActions =
-    hasRepairableGaps && targetedRepairHarnesses.length > 0 && Boolean(props.onRepairHarness);
+    !repairStalled
+    && hasRepairableGaps
+    && targetedRepairHarnesses.length > 0
+    && Boolean(props.onRepairHarness);
   const onRepairHarness = props.onRepairHarness;
   let recoveryHeading = "Restore local protection";
   if (unsupportedOnly) {
@@ -429,7 +490,7 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
                 )}
           </p>
         </div>
-        {hasRepairableGaps ? (
+        {hasRepairableGaps && !repairStalled ? (
           <ActionButton onClick={handleRepairClick} disabled={working}>
             {repairButtonLabel(repairState, needsConnectedApp, hasUnsupportedGaps)}
           </ActionButton>
@@ -466,7 +527,32 @@ export function FleetProtectionRecovery(props: FleetProtectionRecoveryProps) {
           )}
         </div>
       ) : null}
-      {repairState && hasRepairableGaps ? (
+      {repairStalled ? (
+        <div className="mt-3 text-sm text-slate-600" aria-live="polite" role="status">
+          <p className="font-medium text-brand-dark">
+            {repairOutcomeTracker?.signature === RECHECK_UNAVAILABLE_SIGNATURE
+              ? STALLED_RECHECK_SUMMARY
+              : STALLED_REPAIR_SUMMARY}
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {repairableGaps.map((check) => (
+              <li key={check.check_id}>
+                {actionForCheck(check, props.repairHarness).label}
+                {" — "}
+                {protectionReasonText(check.reason_code) ?? (
+                  <code className="font-mono text-[11px]">Reason code: {check.reason_code}</code>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2">
+            Quit and reopen HOL Guard to restart the local runtime. Without the desktop app, run{" "}
+            <code className={INLINE_COMMAND_CLASS}>{RUNTIME_STOP_COMMAND}</code>, then{" "}
+            <code className={INLINE_COMMAND_CLASS}>{RUNTIME_START_COMMAND}</code>.
+          </p>
+        </div>
+      ) : null}
+      {!repairStalled && repairState && hasRepairableGaps ? (
         <p
           className={`mt-3 flex items-start gap-2 text-sm ${repairState.status === "error" ? "text-red-600" : "text-slate-600"}`}
           aria-live="polite"

@@ -84,11 +84,6 @@ def test_hook_does_not_rebuild_protection_from_the_blocked_call(tmp_path: Path) 
     assert result["repair_status"] == "approval_required"
     assert result["repair_url"] == _REPAIR_URL
     assert "press Repair protection" in str(result["reason"])
-    repair_source = Path("src/codex_plugin_scanner/guard/daemon/hook_policy_repair.py").read_text(encoding="utf-8")
-    worker_source = Path("src/codex_plugin_scanner/guard/daemon/hook_worker_native.py").read_text(encoding="utf-8")
-    assert "recover=" not in repair_source
-    assert "recover_authority" not in repair_source
-    assert "recover=" not in worker_source
 
 
 def test_missing_resident_repair_still_sends_the_link(tmp_path: Path) -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
 import importlib.metadata
 import io
 import json
@@ -4569,6 +4568,10 @@ _OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS = 3600.0
 
 
 _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY = "guard_oauth_refresh_circuit_fingerprint_salt"
+# OWASP-recommended PBKDF2-HMAC-SHA256 work factor; the fingerprint only needs
+# non-reversibility and determinism, but a strong work factor defeats offline
+# brute force against the truncated digest if state ever leaks.
+_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS = 600_000
 
 
 def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
@@ -4579,18 +4582,39 @@ def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
             return base64.b64decode(encoded.encode("ascii"), validate=True)
         except ValueError:
             pass
-    salt = os.urandom(16)
+    salt = os.urandom(32)
     store.set_sync_payload(
         _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY,
         {"salt": base64.b64encode(salt).decode("ascii")},
         _now(),
     )
+    # Two racing processes can both land here; converging on whatever the
+    # winning write stored keeps every caller's fingerprints consistent.
+    persisted = store.get_sync_payload(_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY)
+    persisted_encoded = (
+        _optional_string(persisted.get("salt")) if isinstance(persisted, dict) else None
+    )
+    if persisted_encoded:
+        try:
+            return base64.b64decode(persisted_encoded.encode("ascii"), validate=True)
+        except ValueError:
+            pass
     return salt
 
 
 def _oauth_refresh_circuit_fingerprint(refresh_token: str, salt: bytes) -> str:
-    """Deterministic, non-reversible lookup key for circuit-state matching."""
-    return hmac.new(salt, refresh_token.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+    """Deterministic, non-reversible fingerprint for circuit-state matching.
+
+    PBKDF2-HMAC-SHA256 with a persisted per-installation salt; truncation to
+    32 hex chars (128 bits) is a lookup key, not a credential, so truncation
+    is safe while the work factor keeps brute-force recovery impractical.
+    """
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        refresh_token.encode("utf-8"),
+        salt,
+        _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS,
+    ).hex()[:32]
 
 
 def _oauth_refresh_circuit_backoff_seconds(env_key: str, default: float) -> float:

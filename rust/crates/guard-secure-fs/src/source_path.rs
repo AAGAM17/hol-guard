@@ -136,6 +136,8 @@ pub fn credential_named_path(path: &Path) -> bool {
             .any(|part| sensitive_external_filename(Path::new(part)))
 }
 
+/// Code syntax eligible for source inspection. Data formats such as JSON,
+/// TOML, YAML, and Markdown still require credential-name and glob checks.
 pub fn is_source_code_extension(extension: &str) -> bool {
     matches!(
         extension.to_ascii_lowercase().as_str(),

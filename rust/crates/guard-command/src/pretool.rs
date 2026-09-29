@@ -124,6 +124,7 @@ fn has_argument(arguments: &[String], exact: &[&str], prefixes: &[&str]) -> bool
 }
 
 fn safe_git_arguments(arguments: &[String], allow_helper_context: bool) -> bool {
+    // Git magic pathspec semantics are not proven by this classifier; retain review.
     if arguments
         .iter()
         .any(|value| value.starts_with(':') || sensitive_read_path_argument(value))

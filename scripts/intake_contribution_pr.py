@@ -132,6 +132,7 @@ def main() -> int:
         # deliberately excluded — their trust field is rebound in place.
         "tests/fixtures/extension-controls/catalog-baseline.v1.json",
         "tests/fixtures/guard-command-corpus/decision-diff-report.json",
+        "tests/fixtures/guard-command-corpus/decision-diff-report.framed-sha256",
     )
     machine_touched: set[str] = set()
     salvaged: set[str] = set()

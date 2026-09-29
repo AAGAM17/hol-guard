@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request
 
 from .adapters.hook_python_subprocess import run_probe
-from .evaluation_contracts import EvaluationContractError, EvaluationProfile
+from .evaluation_contracts import EVALUATION_STATUSES, EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import EvaluationSetup
 from .evaluation_witness import FileWitnessPair, LocalSideEffectWitness, WitnessObservation
 from .mdm.contracts import ManagedNetworkPolicy
@@ -383,12 +383,13 @@ def run_synthetic_cases(
             cleanup_error = EvaluationRunnerError("witness_cleanup_failed", "synthetic witness cleanup failed")
     if cleanup_error is not None and not cases:
         raise cleanup_error
-    statuses = {case.get("status") for case in cases}
-    known = {"passed", "failed", "blocked_environment", "not_run"}
-    if "failed" in statuses or not statuses or not statuses <= known:
+    statuses = {s if isinstance(s := case.get("status"), str) else "" for case in cases}
+    if "failed" in statuses or not statuses or not statuses <= EVALUATION_STATUSES:
         status = "failed"
     elif "blocked_environment" in statuses:
         status = "blocked_environment"
+    elif "unsupported" in statuses:
+        status = "unsupported"
     elif "not_run" in statuses:
         status = "not_run"
     else:

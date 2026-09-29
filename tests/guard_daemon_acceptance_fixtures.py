@@ -127,6 +127,49 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
         timeout_seconds=15,
     ):
         raise RuntimeError("production hook workers did not become ready")
+    # Worker-capacity readiness does not cover native policy prep: under
+    # HOL_GUARD_NATIVE=force the resident edge still compiles its snapshot on
+    # first use, and early requests would race it. Production callers retry
+    # `native_policy_not_ready` until the edge answers, so prime the same way
+    # before the measured workload begins.
+    warmup_query = (
+        f"guard-home={urllib.parse.quote(str(guard_home))}&"
+        f"home={urllib.parse.quote(str(root))}&"
+        f"workspace={urllib.parse.quote(str(workspace))}"
+    )
+    warmup_deadline = time.monotonic() + 60 * under_coverage_scale(1.0)
+    while time.monotonic() < warmup_deadline:
+        warmup_request = urllib.request.Request(
+            f"http://127.0.0.1:{daemon.port}/v1/hooks/pi?{warmup_query}",
+            data=json.dumps(
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Read",
+                    "tool_input": {"path": "docs/warmup.md"},
+                    "tool_response": [{"type": "text", "text": "warmup"}],
+                    "stdout": "warmup",
+                    "session_id": "warmup",
+                    "guard_remaining_ms": 30_000,
+                }
+            ).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "X-Guard-Token": daemon._server.auth_token,
+                "X-Guard-Remaining-Ms": "30000",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(warmup_request, timeout=30) as response:
+                warmup_result = cast(dict[str, object], json.loads(response.read()))
+        except Exception:
+            time.sleep(0.1)
+            continue
+        if warmup_result.get("reason_code") != "native_policy_not_ready":
+            break
+        time.sleep(0.1)
+    else:
+        raise RuntimeError("native policy did not become ready")
     initial_pid = os.getpid()
     initial_workers = threading.active_count()
     initial_rss = _rss_bytes()
@@ -234,11 +277,27 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             with urllib.request.urlopen(request, timeout=12) as response:
                 return cast(dict[str, object], json.loads(response.read()))
 
+        transient_reason_codes = {
+            "daemon_hook_process_not_ready",
+            "daemon_hook_deadline_exhausted",
+            "daemon_hook_process_deadline_exhausted",
+            "daemon_hook_queue_capacity",
+            "native_overloaded",
+            "native_hook_event_unavailable",
+            "native_pre_tool_unavailable",
+            "native_post_tool_unavailable",
+            "native_hook_worker_unavailable",
+            "native_hook_worker_unavailable_before_compatibility",
+            "native_hook_worker_exception",
+            "native_hook_edge_unavailable",
+            "native_policy_not_ready",
+        }
         try:
-            # The server advertises a bounded worker not-ready window while a
-            # resident process warms up, and an overloaded listener can drop a
-            # connection mid-request. Production callers retry both transient
-            # signals, so mirror that here instead of counting them as denials.
+            # The server advertises bounded transient signals while a resident
+            # worker warms up or sheds load, and an overloaded listener can drop
+            # a connection mid-request. Production callers retry every one of
+            # these "review did not finish" signals, so mirror that here instead
+            # of counting them as denials.
             for transient_attempt in range(5):
                 try:
                     result = _submit_once()
@@ -247,7 +306,7 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
                         raise
                     time.sleep(0.05 * (transient_attempt + 1))
                     continue
-                if result.get("reason_code") != "daemon_hook_process_not_ready" or transient_attempt == 2:
+                if result.get("reason_code") not in transient_reason_codes or transient_attempt == 4:
                     break
                 time.sleep(0.05 * (transient_attempt + 1))
             blocked = _response_blocks_action(result)

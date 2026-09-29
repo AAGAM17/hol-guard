@@ -206,6 +206,7 @@ fn is_command_tool(tool: &str) -> bool {
             "run_commands",
             "run_terminal_command",
             "execute_command",
+            "exec_command",
             "execute_command_line",
         ],
     )

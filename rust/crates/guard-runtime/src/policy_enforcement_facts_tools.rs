@@ -134,6 +134,7 @@ pub(crate) fn classify_tool_name(tool: &str) -> PreToolActionTypeV1 {
             "terminal",
             "run_command",
             "execute_command",
+            "exec_command",
         ],
     ) {
         PreToolActionTypeV1::Command

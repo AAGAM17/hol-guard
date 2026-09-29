@@ -135,7 +135,10 @@ def classify_declared_content(
     """
 
     version = classifier_rule_version(schema)
-    deadline = min(time.monotonic() + MAX_DURATION_SECONDS, deadline_monotonic or float("inf"))
+    deadline = min(
+        time.monotonic() + MAX_DURATION_SECONDS,
+        deadline_monotonic if deadline_monotonic is not None else float("inf"),
+    )
     matches: list[SensitiveMatch] = []
     scanned = 0
     fields_scanned = 0

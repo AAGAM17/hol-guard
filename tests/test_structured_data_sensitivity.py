@@ -95,8 +95,9 @@ def test_unclassifiable_inputs_never_become_no_match(payload: bytes | str, reaso
     assert result.reason_code == reason
 
 
-def test_expired_deadline_is_unsupported_even_for_benign_text() -> None:
-    result = classify_declared_content("ordinary contact", deadline_monotonic=time.monotonic() - 1)
+@pytest.mark.parametrize("deadline", (0.0, time.monotonic() - 1))
+def test_expired_deadline_is_unsupported_even_for_benign_text(deadline: float) -> None:
+    result = classify_declared_content("ordinary contact", deadline_monotonic=deadline)
 
     assert result.status == "unsupported"
     assert result.complete is False

@@ -7046,10 +7046,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             return True
         if self.command != "POST":
             return False
-        # Setup must go through a dedicated endpoint that accepts only an
-        # initial approval_gate payload; never generic /v1/settings.
-        if path == "/v1/protection/repair/approval-gate/setup":
-            return self._protection_repair_approval_gate_setup_payload_is_allowed(payload)
         return path in {
             "/v1/initialize",
             "/v1/extension-controls/recover-authority",

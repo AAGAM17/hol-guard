@@ -427,13 +427,13 @@ def _write_new_private(path: Path, data: bytes) -> None:
                 raise OSError("authority output write made no progress")
             view = view[written:]
         _ = os.fsync(descriptor)
-        os.close(descriptor)
-        descriptor = None
 
         _link_without_following(temporary, path)
         published = True
         published_identity = _file_identity(path)
         _assert_published_file(path, temporary_identity)
+        os.close(descriptor)
+        descriptor = None
         _fsync_parent(path)
         os.unlink(temporary)
         temporary = None

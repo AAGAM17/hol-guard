@@ -335,6 +335,47 @@ def test_refresh_rejects_trusted_comment_without_valid_id() -> None:
         MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True)
 
 
+def test_refresh_withdraws_link_after_claim_authority_is_removed() -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.withdrawn", ["400"], tip_ids=[])
+    client.comment_rows = [
+        {
+            "id": 123,
+            "body": f"{MODULE.MARKER}\n[Old claim link](https://example.com)",
+            "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"},
+        }
+    ]
+
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
+    assert client.posted == []
+    assert client.updated == [(123, MODULE.build_withdrawn_comment())]
+    assert "no longer current" in client.updated[0][1]
+    assert "?claim=" not in client.updated[0][1]
+
+
+def test_refresh_retains_existing_link_during_portal_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.portal-gated", ["400"])
+    client.comment_rows = [
+        {
+            "id": 123,
+            "body": f"{MODULE.MARKER}\nOld claim notice",
+            "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"},
+        }
+    ]
+    monkeypatch.setattr(MODULE, "portal_readiness", lambda _url: ("provider_unavailable", "portal unreachable"))
+
+    assert MODULE.process(
+        client,
+        9,
+        MODULE.DEFAULT_STUDIO_URL,
+        refresh_existing=True,
+        portal_readiness_url="https://portal.example/ready",
+    ) == 0
+    assert client.posted == []
+    assert client.updated == []
+
+
 def test_contributor_cannot_spoof_notice_marker() -> None:
     client = FakeGitHub()
     configure_new_contribution(client, "command.marker-spoof", ["400"])

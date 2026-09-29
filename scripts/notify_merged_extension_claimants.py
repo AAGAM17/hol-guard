@@ -479,6 +479,21 @@ def build_comment(items: list[NoticeItem], studio_url: str) -> str:
     return "\n".join(lines)
 
 
+def build_withdrawn_comment() -> str:
+    """Remove obsolete claim links when current reviewed authority no longer permits them."""
+    return "\n".join(
+        [
+            MARKER,
+            "This extension claim invitation is no longer current.",
+            "",
+            (
+                "The accepted publisher mapping or native contribution has changed since this notice was posted. "
+                "Claim access is checked against canonical `main`; this comment no longer provides a claim link."
+            ),
+        ]
+    )
+
+
 def _resolve_identities(client: GitHubApi, github_ids: tuple[str, ...]) -> tuple[tuple[str, str | None], ...]:
     return tuple((account_id, client.user_login(account_id)) for account_id in github_ids)
 
@@ -868,6 +883,7 @@ def process(
     records: list[ExtensionReadiness] = []
     items, _ = _plan_notice_items(client, pr_number, allow_renames=allow_renames, records=records)
     unmapped = current_unmapped_contributions(client, pr_number, records)
+    portal_blocked = False
     if items and portal_readiness_url:
         portal_status, portal_detail = portal_readiness(portal_readiness_url)
         if portal_status != "ok":
@@ -877,6 +893,7 @@ def process(
                 f"({portal_status}: {portal_detail}); skipping claim notice"
             )
             items = []
+            portal_blocked = True
     if unmapped and not guidance_exists:
         body = build_guidance_comment(unmapped)
         if dry_run:
@@ -904,6 +921,23 @@ def process(
             print(f"PR #{pr_number}: posted Extension Studio claim notice for {len(items)} extension(s)")
     elif notice_exists:
         print(f"PR #{pr_number}: trusted extension claim notice already exists; skipping duplicate")
+    if (
+        refresh_existing
+        and existing_notice is not None
+        and not items
+        and not portal_blocked
+        and records
+        and all(record.status in {"no_mapping", "source_not_current"} for record in records)
+    ):
+        body = build_withdrawn_comment()
+        if dry_run:
+            print(body)
+        elif existing_notice.get("body") != body:
+            comment_id = existing_notice.get("id")
+            if type(comment_id) is not int or comment_id <= 0:
+                raise ClaimNoticeError("trusted claim notice comment ID is invalid")
+            client.update_comment(comment_id, body)
+            print(f"PR #{pr_number}: withdrew obsolete Extension Studio claim links")
     return 0
 
 

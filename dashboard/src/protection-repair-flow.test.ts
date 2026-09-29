@@ -243,7 +243,7 @@ const degradedMessage = remainingProtectionRepairMessage(
   healthWith(evidenceDegraded),
   (harness) => harness,
 ).message;
-assert.match(degradedMessage, /Command evidence still needs repair\./);
+assert.match(degradedMessage, /Guard could not restore command evidence persistence\./);
 assert.doesNotMatch(
   degradedMessage,
   /Run a protected command/,
@@ -266,7 +266,7 @@ const mixedMessage = remainingProtectionRepairMessage(
   (harness) => harness,
 ).message;
 assert.doesNotMatch(mixedMessage, /Run a protected command/);
-assert.match(mixedMessage, /Command evidence still needs repair\./);
+assert.match(mixedMessage, /Guard could not restore command evidence persistence\./);
 
 // A successful recheck after a repair that reported reasons is qualified, not
 // claimed as a clean pass.

@@ -38,13 +38,15 @@ def test_version_probe_avoids_full_command_surface_for_guard_executable_names(
 
 
 @pytest.mark.parametrize("program_name", ["plugin-scanner", "plugin-scanner-extra"])
+@pytest.mark.parametrize("frozen", [False, True])
 def test_non_guard_version_keeps_argparse_exit(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     program_name: str,
+    frozen: bool,
 ) -> None:
     monkeypatch.setattr(sys, "argv", [program_name, "--version"])
-    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "frozen", frozen, raising=False)
 
     with pytest.raises(SystemExit) as exit_info:
         _ = cli.main()

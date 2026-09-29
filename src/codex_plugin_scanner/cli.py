@@ -406,8 +406,8 @@ def main(argv: list[str] | None = None) -> int:
         program_mode in {"guard", "hol-guard"}
         or (program_name.startswith("hol-guard-") and program_name.endswith(".partial"))
     ):
-        # Update candidates run under temporary names; their version probe
-        # must not build the full command surface.
+        # Desktop stages Core as hol-guard-*.partial. Keep other executable
+        # names on their existing parser path, including scanner/combined CLIs.
         print(f"{program_name} {__version__}")
         return 0
     if program_mode != "scanner":

@@ -63,6 +63,10 @@ function resolvedActionCopy(
   return "Blocked: action stopped";
 }
 
+export function approvalGateRefreshFailureMessage(message: string): string {
+  return `${message} Unable to refresh approval settings. Retry to refresh.`;
+}
+
 export function ReviewDecisionCard(props: {
   detail: ReviewViewModel | null;
   onResolve: ReviewWorkspaceProps["onResolve"];
@@ -207,9 +211,11 @@ export function ReviewDecisionCard(props: {
           err.payload?.["error"] === "approval_gate_locked"
         ) {
           setSubmitting(null);
-          const refreshedGate = await fetchResolvedApprovalGate().catch(() => null);
-          if (refreshedGate !== null) {
+          try {
+            const refreshedGate = await fetchResolvedApprovalGate();
             setEffectiveApprovalGate(refreshedGate);
+          } catch {
+            setErrorMessage(approvalGateRefreshFailureMessage(message));
           }
         }
       } finally {

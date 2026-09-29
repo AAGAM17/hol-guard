@@ -189,9 +189,9 @@ export function ApprovalProofInline(props: ApprovalProofInlineProps) {
 
   useEffect(() => {
     if (!gateLocked) return undefined;
-    const timer = window.setTimeout(() => setNow(Date.now()), 1000);
-    return () => window.clearTimeout(timer);
-  }, [gateLocked, lockRemainingSeconds]);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [gateLocked]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

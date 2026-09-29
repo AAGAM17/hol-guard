@@ -20092,9 +20092,9 @@ function ApprovalProofInline(props) {
   const gateLocked = lockRemainingSeconds > 0;
   reactExports.useEffect(() => {
     if (!gateLocked) return void 0;
-    const timer = window.setTimeout(() => setNow(Date.now()), 1e3);
-    return () => window.clearTimeout(timer);
-  }, [gateLocked, lockRemainingSeconds]);
+    const timer = window.setInterval(() => setNow(Date.now()), 1e3);
+    return () => window.clearInterval(timer);
+  }, [gateLocked]);
   reactExports.useEffect(() => {
     const timer = window.setTimeout(() => {
       passwordRef.current?.focus();
@@ -29883,6 +29883,9 @@ function resolvedActionCopy(item, action, persistedExactAction) {
   if (action === "allow") return "Approved: action can proceed";
   return "Blocked: action stopped";
 }
+function approvalGateRefreshFailureMessage(message) {
+  return `${message} Unable to refresh approval settings. Retry to refresh.`;
+}
 function ReviewDecisionCard(props) {
   const detail = props.detail;
   const item = detail?.item ?? null;
@@ -30009,9 +30012,11 @@ function ReviewDecisionCard(props) {
         setErrorMessage(message);
         if (err instanceof GuardRequestResolutionError && err.status === 423 && err.payload?.["error"] === "approval_gate_locked") {
           setSubmitting(null);
-          const refreshedGate = await fetchResolvedApprovalGate().catch(() => null);
-          if (refreshedGate !== null) {
+          try {
+            const refreshedGate = await fetchResolvedApprovalGate();
             setEffectiveApprovalGate(refreshedGate);
+          } catch {
+            setErrorMessage(approvalGateRefreshFailureMessage(message));
           }
         }
       } finally {

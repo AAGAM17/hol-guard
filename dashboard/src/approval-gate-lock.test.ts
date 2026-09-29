@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
@@ -8,6 +9,7 @@ import {
 } from "./approval-gate-utils";
 import { ApprovalPasswordModal } from "./approval-center-review-cards";
 import { isApprovalProofSubmitDisabled } from "./approval-proof-inline";
+import { approvalGateRefreshFailureMessage } from "./review-decision-card";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -85,5 +87,26 @@ const markup = renderToStaticMarkup(
 assert(markup.includes("Approval gate is temporarily locked"), "locked modal explains the gate lock");
 assert(markup.includes("Try again in"), "locked modal provides retry timing");
 assert(!markup.includes("Approval password"), "locked modal does not invite another credential attempt");
+assert(
+  approvalGateRefreshFailureMessage("Approval gate is temporarily locked.").includes(
+    "Unable to refresh approval settings. Retry to refresh.",
+  ),
+  "failed 423 lock refresh tells the reviewer how to recover",
+);
+
+const inlineProofSource = readFileSync(new URL("./approval-proof-inline.tsx", import.meta.url), "utf8");
+assert(
+  /window\.setInterval\(\(\) => setNow\(Date\.now\(\)\), 1000\);\s*return \(\) => window\.clearInterval\(timer\);\s*}, \[gateLocked\]\);/.test(
+    inlineProofSource,
+  ),
+  "inline proof countdown refreshes until the lock expires",
+);
+const reviewCardsSource = readFileSync(new URL("./approval-center-review-cards.tsx", import.meta.url), "utf8");
+assert(
+  /window\.setInterval\(\(\) => setNow\(Date\.now\(\)\), 1000\);\s*return \(\) => window\.clearInterval\(timer\);\s*}, \[gateLocked\]\);/.test(
+    reviewCardsSource,
+  ),
+  "modal countdown keeps a stable interval dependency and cleanup",
+);
 
 console.log("✓ approval gate lock behavior");

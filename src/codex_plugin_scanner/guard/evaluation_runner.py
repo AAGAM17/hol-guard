@@ -21,8 +21,8 @@ from urllib.request import Request
 from .adapters.hook_python_subprocess import run_probe
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import EvaluationSetup
-from .mdm.network import managed_opener
 from .evaluation_witness import FileWitnessPair, LocalSideEffectWitness, WitnessObservation
+from .mdm.network import managed_opener
 
 SHELL_CASE_ID = "eval.shell.disposable_delete"
 EGRESS_CASE_ID = "eval.egress.loopback"

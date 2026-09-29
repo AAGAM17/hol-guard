@@ -412,8 +412,14 @@ def _main_inner() -> int:
         return exit_code
     policy_action = raw_policy_action
     _restrictive = {"review", "require-reapproval", "sandbox-required", "block"}
-    # The --json CLI path exits 1 (daemon/native paths may exit 2) for intentional restrictions.
-    if proc.returncode != 0 and not (proc.returncode in {1, 2} and policy_action in _restrictive):
+    # The --json CLI path exits 1 for intentional restrictions; native paths may exit 2.
+    reason_code = guard_payload.get("reason_code")
+    has_decision_reason = isinstance(reason_code, str) and bool(reason_code.strip())
+    if proc.returncode != 0 and not (
+        proc.returncode in {1, 2}
+        and policy_action in _restrictive
+        and (proc.returncode == 2 or has_decision_reason)
+    ):
         response, exit_code = _cursor_availability_response(
             prepared, hook_event_name=hook_event_name, workspace=workspace
         )

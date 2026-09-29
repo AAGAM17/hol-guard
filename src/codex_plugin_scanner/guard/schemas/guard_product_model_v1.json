@@ -390,6 +390,14 @@
             ],
             "auth_required": true,
             "writes_state": true
+        },
+        {
+            "route": "/protection/repair",
+            "persona": [
+                "solo"
+            ],
+            "auth_required": true,
+            "writes_state": true
         }
     ],
     "local_apis": [

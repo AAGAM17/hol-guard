@@ -14,7 +14,6 @@ from pathlib import Path
 
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from ..runtime.extension_control_authority import AuthorityHealth
-from .extension_control_errors import ExtensionControlApiError
 
 _AUTHORITY_BLOCK_REASON = "native_command_control_authority_block"
 _REPAIRABLE_HEALTH = frozenset({AuthorityHealth.TAMPERED, AuthorityHealth.RECOVERY_REQUIRED})

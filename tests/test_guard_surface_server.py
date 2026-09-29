@@ -604,6 +604,81 @@ class TestGuardSurfaceServer:
                 "protection-repair"
             )
 
+            dashboard_token = build_local_dashboard_session_token(
+                auth_token=daemon._server.auth_token,
+                surface="dashboard",
+            )
+            invalid_setup = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/protection/repair/approval-gate/setup",
+                data=json.dumps({"settings": {}}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {dashboard_token}",
+                },
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as invalid_setup_error:
+                urllib.request.urlopen(invalid_setup, timeout=5)
+            assert invalid_setup_error.value.code == 400
+
+            setup_body = json.dumps(
+                {
+                    "settings": {
+                        "approval_gate": {
+                            "enabled": True,
+                            "new_password": "correct-horse",
+                            "confirm_password": "correct-horse",
+                        }
+                    }
+                }
+            ).encode()
+            first_setup = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/protection/repair/approval-gate/setup",
+                data=setup_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {dashboard_token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(first_setup, timeout=5) as response:
+                assert response.status == 200
+            second_setup = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/protection/repair/approval-gate/setup",
+                data=setup_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {dashboard_token}",
+                },
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as second_setup_error:
+                urllib.request.urlopen(second_setup, timeout=5)
+            assert second_setup_error.value.code == 409
+
+            other_surface = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/initialize",
+                data=json.dumps({"client_name": "guard-dashboard-web", "surface": "other"}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Guard-Dashboard-Session": dashboard_token,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(other_surface, timeout=5) as response:
+                other_payload = json.loads(response.read().decode("utf-8"))
+            assert _decode_dashboard_session_claims(other_payload["dashboard_session_token"])["surface"] == (
+                "dashboard"
+            )
+
+            get_other = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/protection/repair",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with pytest.raises(urllib.error.HTTPError) as get_other_error:
+                urllib.request.urlopen(get_other, timeout=5)
+            assert get_other_error.value.code == 401
+
             captured: dict[str, bool] = {}
 
             def recover(_payload: dict[str, object], *, require_fresh_totp: bool = False) -> dict[str, object]:

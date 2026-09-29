@@ -146,6 +146,103 @@ def test_repair_link_session_is_limited_to_the_repair_page(monkeypatch: pytest.M
     assert claims["surface"] == "protection-repair"
 
 
+def test_unreadable_native_result_stays_empty(tmp_path: Path) -> None:
+    assert apply_command_policy_repair(_Store(AuthorityHealth.TAMPERED), object(), guard_home=tmp_path) == {}
+
+
+def test_reader_failure_keeps_the_original_denial(tmp_path: Path) -> None:
+    class Boom:
+        def read_extension_control_authority_for_registry(self, _registry: object) -> object:
+            raise RuntimeError("boom")
+
+    result = apply_command_policy_repair(Boom(), _blocked(), guard_home=tmp_path)
+    assert result["decision"] == "deny"
+    assert "repair_url" not in result
+
+
+def test_allowed_authority_block_is_not_rewritten(tmp_path: Path) -> None:
+    result = apply_command_policy_repair(
+        _Store(AuthorityHealth.TAMPERED),
+        _blocked(decision="allow"),
+        guard_home=tmp_path,
+    )
+    assert result["decision"] == "allow"
+    assert result.get("repair_status") is None
+
+
+def test_missing_reader_keeps_the_denial(tmp_path: Path) -> None:
+    result = apply_command_policy_repair(object(), _blocked(), guard_home=tmp_path)
+    assert result.get("repair_status") is None
+
+
+def test_repair_link_failures_use_the_fallback(tmp_path: Path) -> None:
+    def boom(_home: Path) -> str:
+        raise RuntimeError("nope")
+
+    raised = apply_command_policy_repair(
+        _Store(AuthorityHealth.TAMPERED),
+        _blocked(),
+        guard_home=tmp_path,
+        repair_page_url=boom,
+    )
+    blank = apply_command_policy_repair(
+        _Store(AuthorityHealth.TAMPERED),
+        _blocked(),
+        guard_home=tmp_path,
+        repair_page_url=lambda _home: "",
+    )
+    assert raised["repair_status"] == "approval_required"
+    assert "repair_url" not in raised
+    assert blank["repair_status"] == "approval_required"
+    assert "repair_url" not in blank
+
+
+def test_page_url_rejects_unsafe_locators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.manager.read_approval_center_locator",
+        lambda _home: type("Locator", (), {"daemon_url": None})(),
+    )
+    assert command_policy_repair_page_url(tmp_path) is None
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.manager.read_approval_center_locator",
+        lambda _home: type("Locator", (), {"daemon_url": "https://example.com"})(),
+    )
+    assert command_policy_repair_page_url(tmp_path) is None
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.manager.read_approval_center_locator",
+        lambda _home: type("Locator", (), {"daemon_url": "http://127.0.0.1:9"})(),
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.approval_hook_copy.authenticated_approval_review_url",
+        lambda *_args, **_kwargs: "https://example.com/protection/repair",
+    )
+    assert command_policy_repair_page_url(tmp_path) is None
+
+
+def test_fresh_totp_is_forced_onto_the_repair_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.daemon import extension_control_api as api
+
+    captured: dict[str, object] = {}
+
+    def require(_home: Path, *, approval_gate_input: object, **_kwargs: object) -> object:
+        captured["input"] = approval_gate_input
+        return object()
+
+    monkeypatch.setattr(api, "require_extension_control", require)
+    monkeypatch.setattr(api, "consume_extension_control_grant", lambda *_args, **_kwargs: None)
+    service = api.ExtensionControlApiService.__new__(api.ExtensionControlApiService)
+    service._store = type("Store", (), {"guard_home": tmp_path})()
+    service._require_action_grant(
+        {"session_nonce": "nonce-1"},
+        action="recover-authority",
+        subject="subject",
+        require_fresh_totp=True,
+    )
+    assert captured["input"].require_fresh_totp is True
+
+
 def test_hook_repair_does_not_shell_out() -> None:
     source = Path("src/codex_plugin_scanner/guard/daemon/hook_policy_repair.py").read_text(encoding="utf-8")
     assert "subprocess" not in source

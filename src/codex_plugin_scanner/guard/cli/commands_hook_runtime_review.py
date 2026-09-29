@@ -58,6 +58,7 @@ from ..action_lattice import is_guard_action, most_restrictive_guard_action
 from ..adapters.cursor_hooks import cursor_hook_requires_approval_center_queue
 from ..daemon.client import GuardSurfaceDaemonClient, load_guard_surface_daemon_client
 from ..models import GuardAction
+from ..retry_lineage import capture_retry_lineage
 from ._commands_shared import *
 from .commands_hook_runtime_state import (
     RuntimeArtifactHookState,
@@ -355,6 +356,27 @@ def _review_runtime_artifact_hook(
                 config=config,
                 payload=payload_map,
             )
+            hook_metadata: dict[str, object] = {
+                "tool_name": str(payload.get("tool_name", "")),
+                "event": str(payload.get("event", "")),
+                "hook_event_name": event_name,
+                **browser_wait_metadata,
+                "command_text": _hook_command_text(payload_map),
+                "workspace": str(workspace) if workspace else None,
+                **(
+                    codex_resume_metadata_from_hook_payload(payload_map)
+                    if _canonical_harness_name(args.harness) == "codex"
+                    else {}
+                ),
+            }
+            retry_lineage = capture_retry_lineage(
+                payload_map,
+                harness=str(args.harness),
+                workspace=str(workspace) if workspace else None,
+                action_envelope=action_envelope.to_dict() if action_envelope is not None else None,
+            )
+            if retry_lineage is not None:
+                hook_metadata["retry_lineage"] = retry_lineage
             try:
                 daemon_client = load_guard_surface_daemon_client(guard_home)
                 session = daemon_client.start_session(
@@ -371,19 +393,7 @@ def _review_runtime_artifact_hook(
                     session_id=str(session["session_id"]),
                     operation_type="tool_call",
                     harness=args.harness,
-                    metadata={
-                        "tool_name": str(payload.get("tool_name", "")),
-                        "event": str(payload.get("event", "")),
-                        "hook_event_name": event_name,
-                        **browser_wait_metadata,
-                        "command_text": _hook_command_text(payload_map),
-                        "workspace": str(workspace) if workspace else None,
-                        **(
-                            codex_resume_metadata_from_hook_payload(payload_map)
-                            if _canonical_harness_name(args.harness) == "codex"
-                            else {}
-                        ),
-                    },
+                    metadata=hook_metadata,
                     detection=runtime_detection.to_dict(),
                     evaluation=evaluation_payload,
                     approval_center_url=approval_center_url,
@@ -403,6 +413,13 @@ def _review_runtime_artifact_hook(
                     store=store,
                     approval_center_url=approval_center_url,
                     now=_now(),
+                    continuation_operation={
+                        "created_at": _now(),
+                        "harness": args.harness,
+                        "metadata": hook_metadata,
+                        "status": "waiting_on_approval",
+                        "updated_at": _now(),
+                    },
                 )
                 _bind_hook_blocked_operation_queue(
                     harness=args.harness,

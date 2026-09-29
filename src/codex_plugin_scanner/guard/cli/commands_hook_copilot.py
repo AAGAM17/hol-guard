@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 from ..mcp_tool_calls import resolve_tool_call_policy_action
 from ..models import GuardAction
+from ..retry_lineage import capture_retry_lineage
 from ..runtime.command_activity_contract import ActivityApprovalReuseStatus
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _copilot_tool_decision_scanner_evidence
 from ._commands_shared import *
@@ -439,6 +440,28 @@ def _run_hook_copilot_permission_request(
         home_dir=context.home_dir,
     )
     approval_flow = get_adapter(args.harness).approval_flow(managed_install=managed_install)
+    hook_metadata: dict[str, object] = {
+        "tool_name": str(payload.get("tool_name", "")),
+        "hook_name": "permissionRequest",
+        "hook_event_name": "PermissionRequest",
+        **_codex_browser_wait_metadata(
+            args=args,
+            event_name="PermissionRequest",
+            policy_action=policy_action,
+            config=config,
+            payload=payload,
+        ),
+        "command_text": _hook_command_text(payload),
+        "workspace": str(runtime_workspace) if runtime_workspace else None,
+    }
+    retry_lineage = capture_retry_lineage(
+        payload,
+        harness=str(args.harness),
+        workspace=str(runtime_workspace) if runtime_workspace else None,
+        action_envelope=action_envelope.to_dict() if action_envelope is not None else None,
+    )
+    if retry_lineage is not None:
+        hook_metadata["retry_lineage"] = retry_lineage
     try:
         daemon_client = load_guard_surface_daemon_client(guard_home)
         session = daemon_client.start_session(
@@ -454,20 +477,7 @@ def _run_hook_copilot_permission_request(
             session_id=str(session["session_id"]),
             operation_type="tool_call",
             harness=args.harness,
-            metadata={
-                "tool_name": str(payload.get("tool_name", "")),
-                "hook_name": "permissionRequest",
-                "hook_event_name": "PermissionRequest",
-                **_codex_browser_wait_metadata(
-                    args=args,
-                    event_name="PermissionRequest",
-                    policy_action=policy_action,
-                    config=config,
-                    payload=payload,
-                ),
-                "command_text": _hook_command_text(payload),
-                "workspace": str(runtime_workspace) if runtime_workspace else None,
-            },
+            metadata=hook_metadata,
             detection=runtime_detection.to_dict(),
             evaluation=evaluation_payload,
             approval_center_url=approval_center_url,
@@ -486,6 +496,13 @@ def _run_hook_copilot_permission_request(
             store=store,
             approval_center_url=approval_center_url,
             now=now,
+            continuation_operation={
+                "created_at": now,
+                "harness": args.harness,
+                "metadata": hook_metadata,
+                "status": "waiting_on_approval",
+                "updated_at": now,
+            },
         )
         _bind_hook_blocked_operation_queue(
             harness=args.harness,

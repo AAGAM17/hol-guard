@@ -17,7 +17,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-
+#[path = "workspace_review_authority_issuer_tests.rs"]
+mod issuer_tests;
 const NOW_MS: u64 = 2_000;
 const ROOT_SEED: [u8; 32] = [42u8; 32];
 static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
@@ -43,7 +44,6 @@ fn test_root() -> PathBuf {
     }
     path
 }
-
 fn write_candidate(root: &Path, name: &str, record: &WorkspaceReviewAuthorityV1) -> PathBuf {
     let path = root.join(name);
     let bytes = canonical_bytes(&sign_record(
@@ -74,7 +74,6 @@ fn write_candidate(root: &Path, name: &str, record: &WorkspaceReviewAuthorityV1)
     }
     path
 }
-
 fn seed_local_enrollment(root: &Path, record: &WorkspaceReviewAuthorityV1) {
     super::super::approval_enrollment::write_test_enrollment_bindings(
         root,

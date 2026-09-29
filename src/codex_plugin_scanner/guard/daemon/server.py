@@ -6185,7 +6185,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             workspace=workspace_path,
             home_dir=home_path,
             guard_home=guard_home,
-            recording_only=observe_mode,
+            recording_only=observe_mode and not native_authoritative,
         )
 
     def _validated_fail_safe_hook_paths(

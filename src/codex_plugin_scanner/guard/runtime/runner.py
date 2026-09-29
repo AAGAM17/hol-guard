@@ -4644,8 +4644,7 @@ def _oauth_refresh_circuit_record_dead_grant(
     )
     notice_sent = bool(state.get("notice_sent"))
     if not notice_sent:
-        _notify_oauth_reauthorization_required(issuer=issuer, fingerprint=fingerprint)
-        notice_sent = True
+        notice_sent = _notify_oauth_reauthorization_required(issuer=issuer, fingerprint=fingerprint)
     _save_oauth_refresh_circuit(
         store,
         {
@@ -4705,14 +4704,14 @@ def _oauth_refresh_circuit_clear(store: GuardStore) -> None:
         _save_oauth_refresh_circuit(store, {"cleared_at": _now()})
 
 
-def _notify_oauth_reauthorization_required(*, issuer: str, fingerprint: str) -> None:
+def _notify_oauth_reauthorization_required(*, issuer: str, fingerprint: str) -> bool:
     """Send the single user-visible reconnect notice via the existing path."""
     from ..desktop_notifications import (
         DesktopApprovalNotification,
         notify_pending_approval_once,
     )
 
-    _ = notify_pending_approval_once(
+    return notify_pending_approval_once(
         DesktopApprovalNotification(
             request_id=f"oauth-reauth-{fingerprint}",
             title="HOL Guard lost its connection to hol.org",
@@ -4983,9 +4982,12 @@ def _resolve_guard_sync_auth_context_from_oauth_credentials(
         raise
     except GuardSyncAuthorizationExpiredError as error:
         if str(error) == _guard_oauth_reconnect_after_revoked_message():
+            failed_refresh_token = (
+                _optional_string(effective_credentials_ref["value"].get("refresh_token")) or refresh_token
+            )
             _oauth_refresh_circuit_record_dead_grant(
                 store=store,
-                refresh_token=refresh_token,
+                refresh_token=failed_refresh_token,
                 issuer=issuer,
                 now=datetime.now(timezone.utc),
             )

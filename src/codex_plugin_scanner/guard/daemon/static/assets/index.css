@@ -1467,6 +1467,10 @@
     max-width: var(--container-md);
   }
 
+  .max-w-prose {
+    max-width: 65ch;
+  }
+
   .max-w-sm {
     max-width: var(--container-sm);
   }
@@ -4361,6 +4365,11 @@
     line-height: calc(var(--spacing) * 6);
   }
 
+  .leading-7 {
+    --tw-leading: calc(var(--spacing) * 7);
+    line-height: calc(var(--spacing) * 7);
+  }
+
   .leading-8 {
     --tw-leading: calc(var(--spacing) * 8);
     line-height: calc(var(--spacing) * 8);
@@ -4479,6 +4488,10 @@
   .tracking-widest {
     --tw-tracking: var(--tracking-widest);
     letter-spacing: var(--tracking-widest);
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 
   .\[overflow-wrap\:anywhere\] {

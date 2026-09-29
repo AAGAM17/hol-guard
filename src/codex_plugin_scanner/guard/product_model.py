@@ -226,6 +226,12 @@ LOCAL_ROUTE_OWNERSHIP = (
     RouteOwnership(route="/policy", persona=("solo", "team_manager"), auth_required=True, writes_state=True),
     RouteOwnership(route="/feed-health", persona=("solo", "team_manager"), auth_required=True, writes_state=True),
     RouteOwnership(route="/settings", persona=("solo",), auth_required=True, writes_state=True),
+    RouteOwnership(
+        route="/protection/repair",
+        persona=("solo",),
+        auth_required=True,
+        writes_state=True,
+    ),
 )
 LOCAL_API_OWNERSHIP = (
     ApiOwnership(path="/v1/initialize", method="POST", category="config", auth_required=False, writes_state=True),

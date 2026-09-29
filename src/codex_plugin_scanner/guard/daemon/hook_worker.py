@@ -17,8 +17,11 @@ Security:
   mechanical emergency-safe action-class floor: local inspection may continue,
   while mutating, network, secret, destructive, and uncertain actions pause.
   Explicit off/shadow have no production semantic fallback. Native block
-  results stay mechanical. Native review pauses the tool and queues an
-  approval-center request; it never escapes to the Python semantic CLI path.
+  results stay mechanical. A command-policy authority block may attempt
+  in-process recovery and, when approval is required, include a local repair
+  link. The current action stays denied, and this worker never calls the CLI.
+  Native review pauses the tool and queues an approval-center request; it
+  never escapes to the Python semantic CLI path.
 """
 
 from __future__ import annotations
@@ -120,6 +123,7 @@ class HookWorker(HookWorkerNativeMixin):
     ):
         self.store = store
         self.guard_home = store.guard_home
+        self.policy_repair = None
         self.activity_writer = activity_writer
         self._publish_native_policy = publish_native_policy
         self._last_native_decision_receipt: dict[str, object] | None = None

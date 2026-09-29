@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard.js","assets/chunks/home-protection-module.js","assets/chunks/fleet-workspace.js","assets/chunks/app-catalog.js","assets/chunks/harness-detection.js","assets/chunks/connect-guard-cloud-button.js","assets/chunks/settings-workspace.js","assets/chunks/confirm-dialog.js","assets/chunks/extensions-workspace.js","assets/chunks/approval-proof-modal.js","assets/chunks/app-detail-workspace.js","assets/chunks/supply-chain-hub-workspace.js","assets/chunks/policy-workspace-page.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard.js","assets/chunks/home-protection-module.js","assets/chunks/fleet-workspace.js","assets/chunks/app-catalog.js","assets/chunks/harness-detection.js","assets/chunks/connect-guard-cloud-button.js","assets/chunks/settings-workspace.js","assets/chunks/confirm-dialog.js","assets/chunks/extensions-workspace.js","assets/chunks/extension-controls-api.js","assets/chunks/approval-proof-modal.js","assets/chunks/app-detail-workspace.js","assets/chunks/supply-chain-hub-workspace.js","assets/chunks/policy-workspace-page.js","assets/chunks/protection-repair-page.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -20947,6 +20947,7 @@ const NAVIGATION_GROUPS = [
 function canonicalNavigationView(view) {
   if (view === "app-detail") return "fleet";
   if (view === "audit" || view === "feed-health") return "supply-chain";
+  if (view === "protection-repair") return "extensions";
   return view;
 }
 function navigationItemForView(view) {
@@ -31564,6 +31565,9 @@ function renderViewContent(props) {
   if (props.view === "extensions") {
     return props.extensionsContent;
   }
+  if (props.view === "protection-repair") {
+    return props.protectionRepairContent ?? null;
+  }
   if (props.view === "settings") {
     return props.settingsContent;
   }
@@ -31818,21 +31822,25 @@ const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() =
 const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace.js"), true ? __vite__mapDeps([6,3,7,5]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
 const ExtensionsWorkspace = lazyWorkspace(
   "extensions-workspace",
-  () => __vitePreload(() => import("./chunks/extensions-workspace.js"), true ? __vite__mapDeps([8,9,7]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
+  () => __vitePreload(() => import("./chunks/extensions-workspace.js"), true ? __vite__mapDeps([8,9,10,7]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
 );
-const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePreload(() => import("./chunks/app-detail-workspace.js"), true ? __vite__mapDeps([10,9,4]) : void 0).then((m) => ({ default: m.AppDetailWorkspace })));
+const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePreload(() => import("./chunks/app-detail-workspace.js"), true ? __vite__mapDeps([11,10,4]) : void 0).then((m) => ({ default: m.AppDetailWorkspace })));
 const HelpModal = lazyWorkspace("help-modal", () => __vitePreload(() => import("./chunks/help-modal.js"), true ? [] : void 0).then((m) => ({ default: m.HelpModal })));
 const SupplyChainHubWorkspace = lazyWorkspace(
   "supply-chain-hub-workspace",
-  () => __vitePreload(() => import("./chunks/supply-chain-hub-workspace.js").then((n) => n.d), true ? __vite__mapDeps([11,9]) : void 0).then((m) => ({ default: m.SupplyChainHubWorkspace }))
+  () => __vitePreload(() => import("./chunks/supply-chain-hub-workspace.js").then((n) => n.d), true ? __vite__mapDeps([12,10]) : void 0).then((m) => ({ default: m.SupplyChainHubWorkspace }))
 );
 const PolicyWorkspacePage = lazyWorkspace(
   "policy-workspace-page",
-  () => __vitePreload(() => import("./chunks/policy-workspace-page.js"), true ? __vite__mapDeps([12,5]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
+  () => __vitePreload(() => import("./chunks/policy-workspace-page.js"), true ? __vite__mapDeps([13,5]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
 );
 const AboutWorkspace = lazyWorkspace(
   "about-workspace",
   () => __vitePreload(() => import("./chunks/about-workspace.js"), true ? [] : void 0).then((m) => ({ default: m.AboutWorkspace }))
+);
+const ProtectionRepairPage = lazyWorkspace(
+  "protection-repair-page",
+  () => __vitePreload(() => import("./chunks/protection-repair-page.js"), true ? __vite__mapDeps([14,10,9]) : void 0).then((m) => ({ default: m.ProtectionRepairPage }))
 );
 function LazyFallback() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[200px] items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "guard-skeleton h-8 w-48" }) });
@@ -31874,6 +31882,7 @@ function viewTitle(view) {
   if (view === "feed-health") return "Feed Health";
   if (view === "about") return "About";
   if (view === "extensions") return "Extensions";
+  if (view === "protection-repair") return "Repair protection";
   return "App detail";
 }
 function parseAppDetail(pathname) {
@@ -31896,6 +31905,9 @@ function resolveView(pathname) {
   }
   if (pathname === "/extensions" || pathname.startsWith("/extensions/")) {
     return "extensions";
+  }
+  if (pathname === "/protection/repair") {
+    return "protection-repair";
   }
   if (pathname === "/settings") {
     return "settings";
@@ -32614,6 +32626,7 @@ function App() {
         ) }) : null,
         appDetailContent: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { onReset: handleGoHome, children: /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.Suspense, { fallback: /* @__PURE__ */ jsxRuntimeExports.jsx(LazyFallback, {}), children: appDetailContent }) }),
         extensionsContent: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { onReset: handleGoHome, children: /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.Suspense, { fallback: /* @__PURE__ */ jsxRuntimeExports.jsx(LazyFallback, {}), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExtensionsWorkspace, { runtime: runtime.kind === "ready" ? runtime.snapshot : null, onRefreshRuntime: refreshStateAfterAction, onNavigate: navigate }) }) }),
+        protectionRepairContent: /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorBoundary, { onReset: handleGoHome, children: /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.Suspense, { fallback: /* @__PURE__ */ jsxRuntimeExports.jsx(LazyFallback, {}), children: /* @__PURE__ */ jsxRuntimeExports.jsx(ProtectionRepairPage, { onNavigate: navigate }) }) }),
         settingsContent: /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.Suspense, { fallback: /* @__PURE__ */ jsxRuntimeExports.jsx(LazyFallback, {}), children: /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsWorkspace, { onApprovalGateChange: setApprovalGate }) }),
         supplyChainHubContent: runtime.kind === "ready" ? /* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.Suspense, { fallback: /* @__PURE__ */ jsxRuntimeExports.jsx(LazyFallback, {}), children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           SupplyChainHubWorkspace,
@@ -32684,7 +32697,7 @@ export {
   waitForAuthorizeUrl as Z,
   startOrRecoverCloudConnect as _,
   EvidenceActivityHeatmapMini as a,
-  HiMiniArrowLeft as a$,
+  HiMiniPlus as a$,
   openPackageFirewallAuthorizeFallback as a0,
   waitForCloudConnection as a1,
   activeFailedHarnesses as a2,
@@ -32709,19 +32722,19 @@ export {
   Tag as aL,
   approvalGateCooldownLabel as aM,
   fetchLocalCliApi as aN,
-  fetchExtensionControlApi as aO,
-  HiMiniNoSymbol as aP,
-  useResolvedApprovalGate as aQ,
-  HiMiniInformationCircle as aR,
-  GenIcon as aS,
-  HiMiniGlobeAlt as aT,
-  HiMiniCube as aU,
-  HiMiniServerStack as aV,
-  HiMiniFolder as aW,
-  FaWindows as aX,
-  FaAws as aY,
-  approvalProofRecentlySatisfied as aZ,
-  isBulkApproveGateReady as a_,
+  HiMiniNoSymbol as aO,
+  useResolvedApprovalGate as aP,
+  HiMiniInformationCircle as aQ,
+  GenIcon as aR,
+  HiMiniGlobeAlt as aS,
+  HiMiniCube as aT,
+  HiMiniServerStack as aU,
+  HiMiniFolder as aV,
+  FaWindows as aW,
+  FaAws as aX,
+  approvalProofRecentlySatisfied as aY,
+  isBulkApproveGateReady as aZ,
+  HiMiniArrowLeft as a_,
   PROTECTION_POSTURE_COPY as aa,
   POSTURE_OUTCOME_COLUMNS as ab,
   getDefaultExportFromCjs as ac,
@@ -32750,11 +32763,11 @@ export {
   enrollApprovalGateTotp as az,
   HiMiniCommandLine as b,
   HiMiniUsers as b$,
-  HiMiniPlus as b0,
-  HiMiniCheck as b1,
-  startGuardCloudConnect as b2,
-  HiMiniArrowTopRightOnSquare as b3,
-  guardAwareHref as b4,
+  HiMiniCheck as b0,
+  startGuardCloudConnect as b1,
+  HiMiniArrowTopRightOnSquare as b2,
+  guardAwareHref as b3,
+  fetchExtensionControlApi as b4,
   GuardModalLayer as b5,
   runHarnessAction as b6,
   GuardHarnessActionError as b7,
@@ -32828,21 +32841,22 @@ export {
   HiMiniQueueList as cb,
   Surface as cc,
   HiMiniCheckBadge as cd,
-  fetchMcpPolicyRequest as ce,
-  resolveMcpPolicyRequest as cf,
-  HiMiniDocumentPlus as cg,
-  HiMiniDocumentMagnifyingGlass as ch,
-  fetchSupplyChainBundle as ci,
-  isSupplyChainScannerEvidence as cj,
-  isBlockedGuardAction as ck,
-  HiMiniShieldExclamation as cl,
-  HiMiniComputerDesktop as cm,
-  HiMiniChevronLeft as cn,
-  HiMiniFunnel as co,
-  HiMiniArrowDown as cp,
-  HiMiniArrowUp as cq,
-  runAuditRemediation as cr,
-  HiMiniSignal as cs,
+  fetchResolvedApprovalGate as ce,
+  fetchMcpPolicyRequest as cf,
+  resolveMcpPolicyRequest as cg,
+  HiMiniDocumentPlus as ch,
+  HiMiniDocumentMagnifyingGlass as ci,
+  fetchSupplyChainBundle as cj,
+  isSupplyChainScannerEvidence as ck,
+  isBlockedGuardAction as cl,
+  HiMiniShieldExclamation as cm,
+  HiMiniComputerDesktop as cn,
+  HiMiniChevronLeft as co,
+  HiMiniFunnel as cp,
+  HiMiniArrowDown as cq,
+  HiMiniArrowUp as cr,
+  runAuditRemediation as cs,
+  HiMiniSignal as ct,
   createCommandActivityClient as d,
   updateSettings as e,
   fetchCommandActivityApi as f,

@@ -198,6 +198,8 @@ def test_local_route_and_api_ownership_contracts_are_explicit() -> None:
     assert routes["/audit"].writes_state is True
     assert routes["/policy"].writes_state is True
     assert routes["/feed-health"].writes_state is True
+    assert routes["/protection/repair"].writes_state is True
+    assert routes["/protection/repair"].auth_required is True
     for route in routes:
         assert _GuardDaemonHandler._is_dashboard_route(route)
     assert _GuardDaemonHandler._is_dashboard_route("/extensions/command.git")

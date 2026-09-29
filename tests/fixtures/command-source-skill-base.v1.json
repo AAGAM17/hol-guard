@@ -10091,34 +10091,29 @@
       {
         "extension": {
           "action_classes": [
-            "gEnclave credential mutation command",
-            "gEnclave policy modification command",
-            "gEnclave session authorization command"
+            "Skill Base publication"
           ],
           "aliases": [],
           "conflicts": [],
-          "delegated_protection": null,
           "dependencies": [],
-          "description": "Reviews gEnclave (ge) security enclave operations that mutate credentials, modify access policies, or unlock persistent sessions.",
+          "description": "Reviews authenticated Skill Base CLI publications before local Skill files are uploaded as a new version.",
           "ecosystem_ids": [],
           "executables": [
-            "ge",
-            "ge.cmd",
-            "ge.exe"
+            "skb",
+            "skb.cmd",
+            "skb.exe"
           ],
-          "extension_id": "command.genclave",
-          "homepage": "https://gitlab.com/renich/genclave",
+          "extension_id": "command.skill-base",
+          "homepage": "https://github.com/ginuim/skill-base",
           "icon": {
-            "background": "#059669",
-            "kind": "react-icon",
-            "name": "HiMiniCommandLine"
+            "kind": "none"
           },
-          "license": "GPL-3.0-or-later",
-          "name": "gEnclave command protection",
+          "license": "MIT",
+          "name": "Skill Base CLI",
           "permissions": [
             {
               "action_classes": [
-                "gEnclave credential mutation command"
+                "Skill Base publication"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10126,775 +10121,231 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that permanently delete, generate, import, or mutate cryptographic credentials, keys, and secrets.",
-              "example_command": "ge passkey delete key-1",
-              "family": null,
-              "fixed_reason": null,
+              "description": "Reviews upload of a local Skill directory to Skill Base, where it creates a public Skill or publishes a new version.",
+              "example_command": "skb publish ./my-skill --changelog 'Initial release'",
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave credential and secret mutation",
-              "permission_id": "command.genclave.permission.mutate",
-              "replacement_permission_id": null,
+              "introduced_version": "1.0.0",
+              "label": "Publish a Skill version",
+              "permission_id": "command.skill-base.permission.publish",
               "risk_tier": "high",
               "safer_guidance": [
-                "List and inspect existing keys or credentials with read-only subcommands before mutating or deleting them.",
-                "Verify backup or recovery shares before rekeying or removing credentials."
-              ],
-              "typed_capabilities": []
-            },
-            {
-              "action_classes": [
-                "gEnclave policy modification command"
-              ],
-              "baseline_floor": "review",
-              "configurable": true,
-              "conflicts": [],
-              "default_enabled": true,
-              "dependencies": [],
-              "deprecated": false,
-              "description": "Identifies gEnclave commands that modify credential caching policies, authorization TTLs, or authentication persistence.",
-              "example_command": "ge policy set key-1 15m",
-              "family": null,
-              "fixed_reason": null,
-              "implementation_version": "1.0.0",
-              "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave policy modification",
-              "permission_id": "command.genclave.permission.policy",
-              "replacement_permission_id": null,
-              "risk_tier": "high",
-              "safer_guidance": [
-                "Inspect current caching and confirmation policies with ge policy show <id> before making changes.",
-                "Avoid setting infinite cache TTLs on sensitive credentials."
-              ],
-              "typed_capabilities": []
-            },
-            {
-              "action_classes": [
-                "gEnclave session authorization command"
-              ],
-              "baseline_floor": "review",
-              "configurable": true,
-              "conflicts": [],
-              "default_enabled": true,
-              "dependencies": [],
-              "deprecated": false,
-              "description": "Identifies gEnclave commands that unlock or pre-warm authentication sessions and cryptographic caches.",
-              "example_command": "ge unlock",
-              "family": null,
-              "fixed_reason": null,
-              "implementation_version": "1.0.0",
-              "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave session unlock and pre-warming",
-              "permission_id": "command.genclave.permission.session-auth",
-              "replacement_permission_id": null,
-              "risk_tier": "medium",
-              "safer_guidance": [
-                "Use default ephemeral per-operation prompts instead of unlocking persistent sessions.",
-                "Lock the session immediately after batch operations with ge lock."
+                "Run `skb publish --dry-run` and confirm the directory, Skill ID, and included files.",
+                "Check the name, description, and changelog flags; new Skills are public by default."
               ],
               "typed_capabilities": []
             }
           ],
           "project_markers": [],
           "publisher": {
-            "display_name": "R\u00e9nich Bon \u0106iri\u0107",
-            "id": "community.renich",
-            "url": "https://github.com/renich"
+            "display_name": "Skill Base",
+            "id": "ginuim",
+            "url": "https://github.com/ginuim/skill-base"
           },
           "reference_urls": [
-            "https://gitlab.com/renich/genclave"
+            "https://github.com/ginuim/skill-base/blob/main/cli/lib/commands/publish.js",
+            "https://github.com/ginuim/skill-base/blob/main/docs/zh/cli.md"
           ],
           "required": false,
           "risk_classes": [
-            "destructive_shell",
-            "policy_bypass"
+            "data_flow_exfiltration",
+            "execution",
+            "network_egress"
           ],
           "rules": [
             {
               "action_classes": [
-                "gEnclave credential mutation command"
+                "Skill Base publication"
               ],
               "default_mode": "review",
-              "description": "Identifies gEnclave commands that permanently delete, generate, import, or mutate cryptographic credentials, keys, and secrets.",
-              "family": null,
+              "description": "Identifies `skb publish`, which packages the selected local directory and uploads it with the saved Skill Base credential to create a Skill or publish a new version.",
               "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--global",
-                        "--require-confirm",
-                        "--shred",
-                        "--stdin",
-                        "-v",
-                        "--version"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [
-                        "--algorithm",
-                        "-a",
-                        "--bits",
-                        "-b",
-                        "--cache-ttl",
-                        "--comment",
-                        "-c",
-                        "--duration",
-                        "--email",
-                        "-e",
-                        "--key-type",
-                        "-t",
-                        "--name",
-                        "-n",
-                        "--pcr",
-                        "--pin",
-                        "--timeout"
-                      ],
-                      "paths": [
-                        [
-                          "gpg",
-                          "add"
-                        ],
-                        [
-                          "gpg",
-                          "generate"
-                        ],
-                        [
-                          "gpg",
-                          "import"
-                        ],
-                        [
-                          "gpg",
-                          "remove"
-                        ],
-                        [
-                          "passkey",
-                          "delete"
-                        ],
-                        [
-                          "rekey"
-                        ],
-                        [
-                          "secret",
-                          "delete"
-                        ],
-                        [
-                          "secret",
-                          "set"
-                        ],
-                        [
-                          "set-secret"
-                        ],
-                        [
-                          "ssh",
-                          "add"
-                        ],
-                        [
-                          "ssh",
-                          "generate"
-                        ],
-                        [
-                          "ssh",
-                          "import"
-                        ],
-                        [
-                          "ssh",
-                          "remove"
-                        ],
-                        [
-                          "webauthn",
-                          "delete"
-                        ]
-                      ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
-                    },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
+                "config": {
+                  "allow_leading_options": true,
+                  "executables": [
+                    "skb",
+                    "skb.cmd",
+                    "skb.exe"
+                  ],
+                  "fail_secure_unknown_options": true,
+                  "forbidden_flags": [],
+                  "interspersed_flags": [
+                    "--dry-run",
+                    "--help",
+                    "--no-gitignore",
+                    "-h"
+                  ],
+                  "interspersed_options_with_values": [
+                    "--changelog",
+                    "--description",
+                    "--ignore",
+                    "--name"
+                  ],
+                  "inverse_flag_pairs": [],
+                  "leading_options_with_values": [
+                    "--changelog",
+                    "--description",
+                    "--ignore",
+                    "--name"
+                  ],
+                  "required_flags": [],
+                  "required_flags_in_all_arguments": false,
+                  "required_option_values": [],
+                  "subcommands": [
+                    "publish"
+                  ]
+                },
+                "op": "executable.v1"
               },
-              "native_capability": null,
-              "permission_id": "command.genclave.permission.mutate",
+              "permission_id": "command.skill-base.permission.publish",
               "risk_classes": [
-                "destructive_shell"
+                "data_flow_exfiltration",
+                "execution",
+                "network_egress"
               ],
-              "rule_id": "command.genclave.mutate",
+              "rule_id": "command.skill-base.publish",
               "rule_version": "1.0.0",
               "safe_variants": [
                 {
                   "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--require-confirm",
-                            "--shred",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--algorithm",
-                            "-a",
-                            "--bits",
-                            "-b",
-                            "--cache-ttl",
-                            "--comment",
-                            "-c",
-                            "--duration",
-                            "--email",
-                            "-e",
-                            "--key-type",
-                            "-t",
-                            "--name",
-                            "-n",
-                            "--pcr",
-                            "--pin",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "gpg",
-                              "add"
-                            ],
-                            [
-                              "gpg",
-                              "generate"
-                            ],
-                            [
-                              "gpg",
-                              "import"
-                            ],
-                            [
-                              "gpg",
-                              "remove"
-                            ],
-                            [
-                              "passkey",
-                              "delete"
-                            ],
-                            [
-                              "rekey"
-                            ],
-                            [
-                              "secret",
-                              "delete"
-                            ],
-                            [
-                              "secret",
-                              "set"
-                            ],
-                            [
-                              "set-secret"
-                            ],
-                            [
-                              "ssh",
-                              "add"
-                            ],
-                            [
-                              "ssh",
-                              "generate"
-                            ],
-                            [
-                              "ssh",
-                              "import"
-                            ],
-                            [
-                              "ssh",
-                              "remove"
-                            ],
-                            [
-                              "webauthn",
-                              "delete"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--no-gitignore"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "--dry-run"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
                   },
-                  "title": "gEnclave mutation command help",
+                  "title": "List the files without uploading",
+                  "variant_id": "dry-run"
+                },
+                {
+                  "matcher": {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--help",
+                        "--no-gitignore",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "--help"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  "title": "Publish command help (--help)",
                   "variant_id": "help"
                 },
                 {
                   "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--require-confirm",
-                            "--shred",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--algorithm",
-                            "-a",
-                            "--bits",
-                            "-b",
-                            "--cache-ttl",
-                            "--comment",
-                            "-c",
-                            "--duration",
-                            "--email",
-                            "-e",
-                            "--key-type",
-                            "-t",
-                            "--name",
-                            "-n",
-                            "--pcr",
-                            "--pin",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "gpg",
-                              "add"
-                            ],
-                            [
-                              "gpg",
-                              "generate"
-                            ],
-                            [
-                              "gpg",
-                              "import"
-                            ],
-                            [
-                              "gpg",
-                              "remove"
-                            ],
-                            [
-                              "passkey",
-                              "delete"
-                            ],
-                            [
-                              "rekey"
-                            ],
-                            [
-                              "secret",
-                              "delete"
-                            ],
-                            [
-                              "secret",
-                              "set"
-                            ],
-                            [
-                              "set-secret"
-                            ],
-                            [
-                              "ssh",
-                              "add"
-                            ],
-                            [
-                              "ssh",
-                              "generate"
-                            ],
-                            [
-                              "ssh",
-                              "import"
-                            ],
-                            [
-                              "ssh",
-                              "remove"
-                            ],
-                            [
-                              "webauthn",
-                              "delete"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--help",
+                        "--no-gitignore",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "-h"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
                   },
-                  "title": "gEnclave mutation command help",
+                  "title": "Publish command help (-h)",
                   "variant_id": "short-help"
                 }
               ],
               "safer_alternatives": [
-                "List and inspect existing keys or credentials with read-only subcommands before mutating or deleting them.",
-                "Verify backup or recovery shares before rekeying or removing credentials."
+                "Run `skb publish --dry-run` for the same directory and ignore rules, then review the included files before publishing."
               ],
               "severity": "high",
-              "title": "gEnclave credential and secret mutation"
-            },
-            {
-              "action_classes": [
-                "gEnclave policy modification command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies gEnclave commands that modify credential caching policies, authorization TTLs, or authentication persistence.",
-              "family": null,
-              "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "-v",
-                        "--version"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [],
-                      "paths": [
-                        [
-                          "identity",
-                          "set-cache-ttl"
-                        ],
-                        [
-                          "policy",
-                          "set"
-                        ]
-                      ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
-                    },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.genclave.permission.policy",
-              "risk_classes": [
-                "policy_bypass"
-              ],
-              "rule_id": "command.genclave.policy",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "paths": [
-                            [
-                              "identity",
-                              "set-cache-ttl"
-                            ],
-                            [
-                              "policy",
-                              "set"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave policy command help",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "paths": [
-                            [
-                              "identity",
-                              "set-cache-ttl"
-                            ],
-                            [
-                              "policy",
-                              "set"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave policy command help",
-                  "variant_id": "short-help"
-                }
-              ],
-              "safer_alternatives": [
-                "Inspect current caching and confirmation policies with ge policy show <id> before making changes.",
-                "Avoid setting infinite cache TTLs on sensitive credentials."
-              ],
-              "severity": "high",
-              "title": "gEnclave policy modification"
-            },
-            {
-              "action_classes": [
-                "gEnclave session authorization command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies gEnclave commands that unlock or pre-warm authentication sessions and cryptographic caches.",
-              "family": null,
-              "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--global",
-                        "--stdin",
-                        "-v",
-                        "--version"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [
-                        "--duration",
-                        "--timeout"
-                      ],
-                      "paths": [
-                        [
-                          "prewarm"
-                        ],
-                        [
-                          "unlock"
-                        ]
-                      ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
-                    },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.genclave.permission.session-auth",
-              "risk_classes": [
-                "policy_bypass"
-              ],
-              "rule_id": "command.genclave.session-auth",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--duration",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "prewarm"
-                            ],
-                            [
-                              "unlock"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave session command help",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--duration",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "prewarm"
-                            ],
-                            [
-                              "unlock"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave session command help",
-                  "variant_id": "short-help"
-                }
-              ],
-              "safer_alternatives": [
-                "Use default ephemeral per-operation prompts instead of unlocking persistent sessions.",
-                "Lock the session immediately after batch operations with ge lock."
-              ],
-              "severity": "medium",
-              "title": "gEnclave session unlock and prewarm"
+              "title": "Skill Base publication"
             }
           ],
           "safer_alternatives": [
-            "Inspect current keys, credentials, and policies with read-only subcommands before mutating them.",
-            "Use default ephemeral per-operation authentication prompts instead of persistent unlock sessions."
+            "Run `skb publish --dry-run` for the same directory and ignore rules, then review the included files before publishing."
           ],
           "source": "built-in",
           "version": "1.0.0"
@@ -11006,477 +10457,179 @@
   },
   "cases": [
     {
-      "command": "ge passkey delete key-1",
+      "command": "skb publish ./my-skill --dry-run --ignore '.cursor/'",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "passkey-delete",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge webauthn delete user@example.com",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "webauthn-delete",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret delete api-token",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "secret-delete",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret set api-token secretvalue",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "secret-set",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge set-secret api-token secretvalue",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "set-secret",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh remove id_ed25519",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ssh-remove",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh generate -a ed25519 -c \"work key\"",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ssh-generate",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh import ~/.ssh/id_ed25519 --shred",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ssh-import",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg remove 3AA5C34371567BD2",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "gpg-remove",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg generate --name \"Alice\" --email \"alice@example.com\"",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "gpg-generate",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg import private.asc",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "gpg-import",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge rekey",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "rekey",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge passkey delete --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "passkey-delete-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "publish-dry-run-safe",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge passkey delete -h",
+      "command": "skb publish ./my-skill --ignore '.cursor/' --no-gitignore",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "passkey-delete-short-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh generate --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "ssh-generate-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret set --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "secret-set-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge rekey --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "rekey-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge passkey delete key-1",
-      "disabled_permissions": [
-        "command.genclave.permission.mutate"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mutate-disabled",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-secret-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret get api-token",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-secret-get",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-ssh-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh public key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-ssh-public",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-gpg-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge policy set key-1 15m",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "policy-set",
-      "rule_id": "command.genclave.policy"
+      "id": "publish-with-ignore-still-reviewable",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge identity set-cache-ttl key-1 1h",
+      "command": "skb publish",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "identity-set-cache-ttl",
-      "rule_id": "command.genclave.policy"
+      "id": "publish-current-directory",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge policy set --help",
+      "command": "skb publish ./my-skill --name \"My Skill\" --description \"A useful skill\" --changelog \"Initial release\"",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-set-help",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set -h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-set-short-help",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set key-1 15m",
-      "disabled_permissions": [
-        "command.genclave.permission.policy"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "policy-disabled",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy show key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-show-passthrough",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge unlock",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "unlock",
-      "rule_id": "command.genclave.session-auth"
+      "id": "publish-relative-directory-with-metadata",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge unlock --stdin",
+      "command": "skb --name \"My Skill\" --changelog \"Release\" publish /tmp/my-skill",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "unlock-stdin",
-      "rule_id": "command.genclave.session-auth"
+      "id": "publish-global-options-before-subcommand",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge prewarm --duration 10m",
+      "command": "skb publish --help",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "prewarm",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "unlock-help",
-      "rule_id": "command.genclave.session-auth"
+      "id": "publish-help-long-safe",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge unlock -h",
+      "command": "skb publish -h",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "unlock-short-help",
-      "rule_id": "command.genclave.session-auth"
+      "id": "publish-help-short-safe",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge prewarm --help",
+      "command": "skb publish --name \"My Skill\" --help",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "prewarm-help",
-      "rule_id": "command.genclave.session-auth"
+      "id": "publish-with-extra-flag-and-help-safe",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "ge unlock",
-      "disabled_permissions": [
-        "command.genclave.permission.session-auth"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "session-auth-disabled",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge status",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "status-passthrough",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge lock",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "lock-passthrough",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge passkey delete key-1",
+      "command": "skb publish ./my-skill",
       "disabled_permissions": [],
       "enabled_extensions": [],
       "expected_action": "review",
       "expected_effective_segments": [],
       "id": "extension-inactive",
-      "rule_id": "command.genclave.mutate"
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill",
+      "disabled_permissions": [
+        "command.skill-base.permission.publish"
+      ],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "block",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "permission-disabled",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb install team-rules",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "skb-install-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb search vue",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "skb-search-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb import-github owner/repo",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "skb-import-github-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publishx ./my-skill",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "similar-subcommand-does-not-match",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "root-help-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
     }
   ],
   "schema": "guard.command-extension-fixtures.v1"

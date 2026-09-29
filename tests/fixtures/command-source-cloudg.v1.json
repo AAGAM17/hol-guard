@@ -10091,34 +10091,30 @@
       {
         "extension": {
           "action_classes": [
-            "gEnclave credential mutation command",
-            "gEnclave policy modification command",
-            "gEnclave session authorization command"
+            "CloudG asset collection command",
+            "CloudG pipeline execution command",
+            "CloudG scanner execution command"
           ],
           "aliases": [],
           "conflicts": [],
           "delegated_protection": null,
           "dependencies": [],
-          "description": "Reviews gEnclave (ge) security enclave operations that mutate credentials, modify access policies, or unlock persistent sessions.",
+          "description": "Reviews cloud credential use, security scanner execution, and Terraform file generation through the CloudG CLI.",
           "ecosystem_ids": [],
-          "executables": [
-            "ge",
-            "ge.cmd",
-            "ge.exe"
-          ],
-          "extension_id": "command.genclave",
-          "homepage": "https://gitlab.com/renich/genclave",
+          "executables": [],
+          "extension_id": "command.cloudg",
+          "homepage": "https://github.com/morpheuslord/cloudg",
           "icon": {
-            "background": "#059669",
+            "background": "#0E7490",
             "kind": "react-icon",
-            "name": "HiMiniCommandLine"
+            "name": "HiMiniCloud"
           },
-          "license": "GPL-3.0-or-later",
-          "name": "gEnclave command protection",
+          "license": "MIT",
+          "name": "CloudG command protection",
           "permissions": [
             {
               "action_classes": [
-                "gEnclave credential mutation command"
+                "CloudG asset collection command"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10126,26 +10122,25 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that permanently delete, generate, import, or mutate cryptographic credentials, keys, and secrets.",
-              "example_command": "ge passkey delete key-1",
+              "description": "Identifies asset collection runs that resolve cloud credentials and enumerate resources through provider APIs.",
+              "example_command": "cloudg collect -p aws --profile prod --region us-east-1",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave credential and secret mutation",
-              "permission_id": "command.genclave.permission.mutate",
+              "introduced_version": "3.9.0",
+              "label": "CloudG asset collection",
+              "permission_id": "command.cloudg.permission.collect",
               "replacement_permission_id": null,
               "risk_tier": "high",
               "safer_guidance": [
-                "List and inspect existing keys or credentials with read-only subcommands before mutating or deleting them.",
-                "Verify backup or recovery shares before rekeying or removing credentials."
+                "Confirm the provider, profile, and region flags point at the account you intend to inventory."
               ],
               "typed_capabilities": []
             },
             {
               "action_classes": [
-                "gEnclave policy modification command"
+                "CloudG pipeline execution command"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10153,26 +10148,26 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that modify credential caching policies, authorization TTLs, or authentication persistence.",
-              "example_command": "ge policy set key-1 15m",
+              "description": "Identifies full pipeline runs that resolve cloud credentials, enumerate assets across accounts and regions, execute security scanners, and write Terraform recreation files when --terraform is set.",
+              "example_command": "cloudg run -p aws --profile prod --terraform",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave policy modification",
-              "permission_id": "command.genclave.permission.policy",
+              "introduced_version": "3.9.0",
+              "label": "CloudG full pipeline",
+              "permission_id": "command.cloudg.permission.run",
               "replacement_permission_id": null,
               "risk_tier": "high",
               "safer_guidance": [
-                "Inspect current caching and confirmation policies with ge policy show <id> before making changes.",
-                "Avoid setting infinite cache TTLs on sensitive credentials."
+                "Check the selected providers, credential flags, regions, and scanner list before running.",
+                "Leave --terraform off unless you want .tf.json recreation files written to the output directory."
               ],
               "typed_capabilities": []
             },
             {
               "action_classes": [
-                "gEnclave session authorization command"
+                "CloudG scanner execution command"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10180,721 +10175,433 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies gEnclave commands that unlock or pre-warm authentication sessions and cryptographic caches.",
-              "example_command": "ge unlock",
+              "description": "Identifies scanner runs that execute external security tools such as Prowler, ScoutSuite, Checkov, and Trivy against cloud accounts, IaC directories, and container images.",
+              "example_command": "cloudg scan -p aws --scanners prowler,checkov",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gEnclave session unlock and pre-warming",
-              "permission_id": "command.genclave.permission.session-auth",
+              "introduced_version": "3.9.0",
+              "label": "CloudG scanner execution",
+              "permission_id": "command.cloudg.permission.scan",
               "replacement_permission_id": null,
-              "risk_tier": "medium",
+              "risk_tier": "high",
               "safer_guidance": [
-                "Use default ephemeral per-operation prompts instead of unlocking persistent sessions.",
-                "Lock the session immediately after batch operations with ge lock."
+                "Review the scanner list, IaC directory, and image list before running; scanners inherit the resolved cloud credentials."
               ],
               "typed_capabilities": []
             }
           ],
           "project_markers": [],
           "publisher": {
-            "display_name": "R\u00e9nich Bon \u0106iri\u0107",
-            "id": "community.renich",
-            "url": "https://github.com/renich"
+            "display_name": "Community",
+            "id": "community.morpheuslord",
+            "url": "https://github.com/morpheuslord/cloudg"
           },
           "reference_urls": [
-            "https://gitlab.com/renich/genclave"
+            "https://github.com/morpheuslord/cloudg"
           ],
           "required": false,
           "risk_classes": [
-            "destructive_shell",
-            "policy_bypass"
+            "execution",
+            "network_egress"
           ],
           "rules": [
             {
               "action_classes": [
-                "gEnclave credential mutation command"
+                "CloudG asset collection command"
               ],
               "default_mode": "review",
-              "description": "Identifies gEnclave commands that permanently delete, generate, import, or mutate cryptographic credentials, keys, and secrets.",
+              "description": "Identifies asset collection runs that resolve cloud credentials and enumerate resources through provider APIs.",
               "family": null,
               "matcher": {
-                "config": {},
-                "matchers": [
-                  {
+                "config": {
+                  "allow_leading_options": true,
+                  "executables": [
+                    "cloudg",
+                    "cloudg.cmd",
+                    "cloudg.exe"
+                  ],
+                  "fail_secure_unknown_options": true,
+                  "forbidden_flags": [],
+                  "interspersed_flags": [
+                    "--verbose",
+                    "-v"
+                  ],
+                  "interspersed_options_with_values": [
+                    "--config",
+                    "--log-file",
+                    "--output",
+                    "--profile",
+                    "--project-id",
+                    "--provider",
+                    "--region",
+                    "--subscription-id",
+                    "-c",
+                    "-o",
+                    "-p"
+                  ],
+                  "inverse_flag_pairs": [],
+                  "leading_options_with_values": [
+                    "--config",
+                    "--log-file",
+                    "-c"
+                  ],
+                  "options_with_values": [],
+                  "required_flags": [],
+                  "required_flags_in_all_arguments": false,
+                  "required_option_values": [],
+                  "subcommands": [
+                    "collect"
+                  ]
+                },
+                "op": "executable.v1"
+              },
+              "native_capability": null,
+              "permission_id": "command.cloudg.permission.collect",
+              "risk_classes": [
+                "network_egress"
+              ],
+              "rule_id": "command.cloudg.collect",
+              "rule_version": "1.0.0",
+              "safe_variants": [
+                {
+                  "matcher": {
                     "config": {
-                      "allow_leading_options": false,
+                      "allow_leading_options": true,
                       "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
+                        "cloudg",
+                        "cloudg.cmd",
+                        "cloudg.exe"
                       ],
-                      "fail_secure_unknown_options": false,
+                      "fail_secure_unknown_options": true,
                       "forbidden_flags": [],
                       "interspersed_flags": [
-                        "--global",
-                        "--require-confirm",
-                        "--shred",
-                        "--stdin",
-                        "-v",
-                        "--version"
+                        "--verbose",
+                        "-v"
                       ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [
-                        "--algorithm",
-                        "-a",
-                        "--bits",
-                        "-b",
-                        "--cache-ttl",
-                        "--comment",
+                      "interspersed_options_with_values": [
+                        "--config",
+                        "--log-file",
+                        "--output",
+                        "--profile",
+                        "--project-id",
+                        "--provider",
+                        "--region",
+                        "--subscription-id",
                         "-c",
-                        "--duration",
-                        "--email",
-                        "-e",
-                        "--key-type",
-                        "-t",
-                        "--name",
-                        "-n",
-                        "--pcr",
-                        "--pin",
-                        "--timeout"
+                        "-o",
+                        "-p"
                       ],
-                      "paths": [
-                        [
-                          "gpg",
-                          "add"
-                        ],
-                        [
-                          "gpg",
-                          "generate"
-                        ],
-                        [
-                          "gpg",
-                          "import"
-                        ],
-                        [
-                          "gpg",
-                          "remove"
-                        ],
-                        [
-                          "passkey",
-                          "delete"
-                        ],
-                        [
-                          "rekey"
-                        ],
-                        [
-                          "secret",
-                          "delete"
-                        ],
-                        [
-                          "secret",
-                          "set"
-                        ],
-                        [
-                          "set-secret"
-                        ],
-                        [
-                          "ssh",
-                          "add"
-                        ],
-                        [
-                          "ssh",
-                          "generate"
-                        ],
-                        [
-                          "ssh",
-                          "import"
-                        ],
-                        [
-                          "ssh",
-                          "remove"
-                        ],
-                        [
-                          "webauthn",
-                          "delete"
-                        ]
-                      ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
-                    },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.genclave.permission.mutate",
-              "risk_classes": [
-                "destructive_shell"
-              ],
-              "rule_id": "command.genclave.mutate",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--require-confirm",
-                            "--shred",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--algorithm",
-                            "-a",
-                            "--bits",
-                            "-b",
-                            "--cache-ttl",
-                            "--comment",
-                            "-c",
-                            "--duration",
-                            "--email",
-                            "-e",
-                            "--key-type",
-                            "-t",
-                            "--name",
-                            "-n",
-                            "--pcr",
-                            "--pin",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "gpg",
-                              "add"
-                            ],
-                            [
-                              "gpg",
-                              "generate"
-                            ],
-                            [
-                              "gpg",
-                              "import"
-                            ],
-                            [
-                              "gpg",
-                              "remove"
-                            ],
-                            [
-                              "passkey",
-                              "delete"
-                            ],
-                            [
-                              "rekey"
-                            ],
-                            [
-                              "secret",
-                              "delete"
-                            ],
-                            [
-                              "secret",
-                              "set"
-                            ],
-                            [
-                              "set-secret"
-                            ],
-                            [
-                              "ssh",
-                              "add"
-                            ],
-                            [
-                              "ssh",
-                              "generate"
-                            ],
-                            [
-                              "ssh",
-                              "import"
-                            ],
-                            [
-                              "ssh",
-                              "remove"
-                            ],
-                            [
-                              "webauthn",
-                              "delete"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave mutation command help",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--require-confirm",
-                            "--shred",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--algorithm",
-                            "-a",
-                            "--bits",
-                            "-b",
-                            "--cache-ttl",
-                            "--comment",
-                            "-c",
-                            "--duration",
-                            "--email",
-                            "-e",
-                            "--key-type",
-                            "-t",
-                            "--name",
-                            "-n",
-                            "--pcr",
-                            "--pin",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "gpg",
-                              "add"
-                            ],
-                            [
-                              "gpg",
-                              "generate"
-                            ],
-                            [
-                              "gpg",
-                              "import"
-                            ],
-                            [
-                              "gpg",
-                              "remove"
-                            ],
-                            [
-                              "passkey",
-                              "delete"
-                            ],
-                            [
-                              "rekey"
-                            ],
-                            [
-                              "secret",
-                              "delete"
-                            ],
-                            [
-                              "secret",
-                              "set"
-                            ],
-                            [
-                              "set-secret"
-                            ],
-                            [
-                              "ssh",
-                              "add"
-                            ],
-                            [
-                              "ssh",
-                              "generate"
-                            ],
-                            [
-                              "ssh",
-                              "import"
-                            ],
-                            [
-                              "ssh",
-                              "remove"
-                            ],
-                            [
-                              "webauthn",
-                              "delete"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave mutation command help",
-                  "variant_id": "short-help"
-                }
-              ],
-              "safer_alternatives": [
-                "List and inspect existing keys or credentials with read-only subcommands before mutating or deleting them.",
-                "Verify backup or recovery shares before rekeying or removing credentials."
-              ],
-              "severity": "high",
-              "title": "gEnclave credential and secret mutation"
-            },
-            {
-              "action_classes": [
-                "gEnclave policy modification command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies gEnclave commands that modify credential caching policies, authorization TTLs, or authentication persistence.",
-              "family": null,
-              "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "-v",
-                        "--version"
-                      ],
-                      "interspersed_options_with_values": [],
                       "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
+                      "leading_options_with_values": [
+                        "--config",
+                        "--log-file",
+                        "-c"
+                      ],
                       "options_with_values": [],
-                      "paths": [
-                        [
-                          "identity",
-                          "set-cache-ttl"
-                        ],
-                        [
-                          "policy",
-                          "set"
-                        ]
+                      "required_flags": [
+                        "--help"
                       ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "collect"
+                      ]
                     },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.genclave.permission.policy",
-              "risk_classes": [
-                "policy_bypass"
-              ],
-              "rule_id": "command.genclave.policy",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "paths": [
-                            [
-                              "identity",
-                              "set-cache-ttl"
-                            ],
-                            [
-                              "policy",
-                              "set"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
+                    "op": "executable.v1"
                   },
-                  "title": "gEnclave policy command help",
+                  "title": "Command help",
                   "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "paths": [
-                            [
-                              "identity",
-                              "set-cache-ttl"
-                            ],
-                            [
-                              "policy",
-                              "set"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave policy command help",
-                  "variant_id": "short-help"
                 }
               ],
               "safer_alternatives": [
-                "Inspect current caching and confirmation policies with ge policy show <id> before making changes.",
-                "Avoid setting infinite cache TTLs on sensitive credentials."
+                "Confirm the provider, profile, and region flags point at the account you intend to inventory."
               ],
               "severity": "high",
-              "title": "gEnclave policy modification"
+              "title": "CloudG asset collection"
             },
             {
               "action_classes": [
-                "gEnclave session authorization command"
+                "CloudG pipeline execution command"
               ],
               "default_mode": "review",
-              "description": "Identifies gEnclave commands that unlock or pre-warm authentication sessions and cryptographic caches.",
+              "description": "Identifies full pipeline runs that resolve cloud credentials, enumerate assets, execute security scanners, and write Terraform recreation files when --terraform is set.",
               "family": null,
               "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "ge",
-                        "ge.cmd",
-                        "ge.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--global",
-                        "--stdin",
-                        "-v",
-                        "--version"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [
-                        "--duration",
-                        "--timeout"
-                      ],
-                      "paths": [
-                        [
-                          "prewarm"
-                        ],
-                        [
-                          "unlock"
-                        ]
-                      ],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": []
-                    },
-                    "op": "executable-path-set.v1"
-                  }
-                ],
-                "op": "any.v1"
+                "config": {
+                  "allow_leading_options": true,
+                  "executables": [
+                    "cloudg",
+                    "cloudg.cmd",
+                    "cloudg.exe"
+                  ],
+                  "fail_secure_unknown_options": true,
+                  "forbidden_flags": [],
+                  "interspersed_flags": [
+                    "--azure-managed-identity",
+                    "--no-ontology",
+                    "--no-rag-export",
+                    "--no-terraform",
+                    "--ontology",
+                    "--rag-export",
+                    "--terraform",
+                    "--verbose",
+                    "-v"
+                  ],
+                  "interspersed_options_with_values": [
+                    "--aws-external-id",
+                    "--aws-key",
+                    "--aws-role-arn",
+                    "--aws-secret",
+                    "--aws-session-token",
+                    "--aws-web-identity-token-file",
+                    "--azure-cert-path",
+                    "--azure-client-id",
+                    "--azure-client-secret",
+                    "--azure-federated-token-file",
+                    "--azure-tenant-id",
+                    "--config",
+                    "--gcp-credentials-file",
+                    "--gcp-impersonate-sa",
+                    "--iac-dir",
+                    "--images",
+                    "--log-file",
+                    "--output",
+                    "--profile",
+                    "--project-id",
+                    "--provider",
+                    "--region",
+                    "--regions",
+                    "--scanners",
+                    "--subscription-id",
+                    "-c",
+                    "-o",
+                    "-p"
+                  ],
+                  "inverse_flag_pairs": [],
+                  "leading_options_with_values": [
+                    "--config",
+                    "--log-file",
+                    "-c"
+                  ],
+                  "options_with_values": [],
+                  "required_flags": [],
+                  "required_flags_in_all_arguments": false,
+                  "required_option_values": [],
+                  "subcommands": [
+                    "run"
+                  ]
+                },
+                "op": "executable.v1"
               },
               "native_capability": null,
-              "permission_id": "command.genclave.permission.session-auth",
+              "permission_id": "command.cloudg.permission.run",
               "risk_classes": [
-                "policy_bypass"
+                "execution",
+                "network_egress"
               ],
-              "rule_id": "command.genclave.session-auth",
+              "rule_id": "command.cloudg.run",
               "rule_version": "1.0.0",
               "safe_variants": [
                 {
                   "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--duration",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "prewarm"
-                            ],
-                            [
-                              "unlock"
-                            ]
-                          ],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "cloudg",
+                        "cloudg.cmd",
+                        "cloudg.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--azure-managed-identity",
+                        "--no-ontology",
+                        "--no-rag-export",
+                        "--no-terraform",
+                        "--ontology",
+                        "--rag-export",
+                        "--terraform",
+                        "--verbose",
+                        "-v"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--aws-external-id",
+                        "--aws-key",
+                        "--aws-role-arn",
+                        "--aws-secret",
+                        "--aws-session-token",
+                        "--aws-web-identity-token-file",
+                        "--azure-cert-path",
+                        "--azure-client-id",
+                        "--azure-client-secret",
+                        "--azure-federated-token-file",
+                        "--azure-tenant-id",
+                        "--config",
+                        "--gcp-credentials-file",
+                        "--gcp-impersonate-sa",
+                        "--iac-dir",
+                        "--images",
+                        "--log-file",
+                        "--output",
+                        "--profile",
+                        "--project-id",
+                        "--provider",
+                        "--region",
+                        "--regions",
+                        "--scanners",
+                        "--subscription-id",
+                        "-c",
+                        "-o",
+                        "-p"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--config",
+                        "--log-file",
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [
+                        "--help"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "run"
+                      ]
+                    },
+                    "op": "executable.v1"
                   },
-                  "title": "gEnclave session command help",
+                  "title": "Command help",
                   "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "ge",
-                            "ge.cmd",
-                            "ge.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [
-                            "--global",
-                            "--stdin",
-                            "-v",
-                            "--version"
-                          ],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [
-                            "--duration",
-                            "--timeout"
-                          ],
-                          "paths": [
-                            [
-                              "prewarm"
-                            ],
-                            [
-                              "unlock"
-                            ]
-                          ],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": []
-                        },
-                        "op": "executable-path-set.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "gEnclave session command help",
-                  "variant_id": "short-help"
                 }
               ],
               "safer_alternatives": [
-                "Use default ephemeral per-operation prompts instead of unlocking persistent sessions.",
-                "Lock the session immediately after batch operations with ge lock."
+                "Check the selected providers, credential flags, regions, and scanner list before running."
               ],
-              "severity": "medium",
-              "title": "gEnclave session unlock and prewarm"
+              "severity": "high",
+              "title": "CloudG full pipeline"
+            },
+            {
+              "action_classes": [
+                "CloudG scanner execution command"
+              ],
+              "default_mode": "review",
+              "description": "Identifies scanner runs that execute external security tools such as Prowler, ScoutSuite, Checkov, and Trivy.",
+              "family": null,
+              "matcher": {
+                "config": {
+                  "allow_leading_options": true,
+                  "executables": [
+                    "cloudg",
+                    "cloudg.cmd",
+                    "cloudg.exe"
+                  ],
+                  "fail_secure_unknown_options": true,
+                  "forbidden_flags": [],
+                  "interspersed_flags": [
+                    "--verbose",
+                    "-v"
+                  ],
+                  "interspersed_options_with_values": [
+                    "--config",
+                    "--iac-dir",
+                    "--images",
+                    "--log-file",
+                    "--output",
+                    "--profile",
+                    "--provider",
+                    "--scanners",
+                    "-c",
+                    "-o",
+                    "-p"
+                  ],
+                  "inverse_flag_pairs": [],
+                  "leading_options_with_values": [
+                    "--config",
+                    "--log-file",
+                    "-c"
+                  ],
+                  "options_with_values": [],
+                  "required_flags": [],
+                  "required_flags_in_all_arguments": false,
+                  "required_option_values": [],
+                  "subcommands": [
+                    "scan"
+                  ]
+                },
+                "op": "executable.v1"
+              },
+              "native_capability": null,
+              "permission_id": "command.cloudg.permission.scan",
+              "risk_classes": [
+                "execution",
+                "network_egress"
+              ],
+              "rule_id": "command.cloudg.scan",
+              "rule_version": "1.0.0",
+              "safe_variants": [
+                {
+                  "matcher": {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "cloudg",
+                        "cloudg.cmd",
+                        "cloudg.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--verbose",
+                        "-v"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--config",
+                        "--iac-dir",
+                        "--images",
+                        "--log-file",
+                        "--output",
+                        "--profile",
+                        "--provider",
+                        "--scanners",
+                        "-c",
+                        "-o",
+                        "-p"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--config",
+                        "--log-file",
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [
+                        "--help"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "scan"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  "title": "Command help",
+                  "variant_id": "help"
+                }
+              ],
+              "safer_alternatives": [
+                "Review the scanner list, IaC directory, and image list before running; scanners inherit the resolved cloud credentials."
+              ],
+              "severity": "high",
+              "title": "CloudG scanner execution"
             }
           ],
           "safer_alternatives": [
-            "Inspect current keys, credentials, and policies with read-only subcommands before mutating them.",
-            "Use default ephemeral per-operation authentication prompts instead of persistent unlock sessions."
+            "Generate reports from existing scan data with `cloudg report -i findings.json`, which reads a local file and does not touch cloud credentials or scanners."
           ],
           "source": "built-in",
           "version": "1.0.0"
@@ -11006,477 +10713,232 @@
   },
   "cases": [
     {
-      "command": "ge passkey delete key-1",
+      "command": "cloudg collect -p aws --profile prod --region us-east-1",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "passkey-delete",
-      "rule_id": "command.genclave.mutate"
+      "id": "collect-aws",
+      "rule_id": "command.cloudg.collect"
     },
     {
-      "command": "ge webauthn delete user@example.com",
+      "command": "cloudg collect -p azure --subscription-id 00000000-0000-0000-0000-000000000000",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "webauthn-delete",
-      "rule_id": "command.genclave.mutate"
+      "id": "collect-azure",
+      "rule_id": "command.cloudg.collect"
     },
     {
-      "command": "ge secret delete api-token",
+      "command": "cloudg collect -p gcp --project-id my-project",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "secret-delete",
-      "rule_id": "command.genclave.mutate"
+      "id": "collect-gcp",
+      "rule_id": "command.cloudg.collect"
     },
     {
-      "command": "ge secret set api-token secretvalue",
+      "command": "cloudg collect -p aws -o ./reports",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "secret-set",
-      "rule_id": "command.genclave.mutate"
+      "id": "collect-output-dir",
+      "rule_id": "command.cloudg.collect"
     },
     {
-      "command": "ge set-secret api-token secretvalue",
+      "command": "cloudg run -p aws --profile prod",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "set-secret",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-basic",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge ssh remove id_ed25519",
+      "command": "cloudg run -p aws --profile prod --terraform",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "ssh-remove",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-terraform",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge ssh generate -a ed25519 -c \"work key\"",
+      "command": "cloudg run -p aws -p azure --subscription-id 00000000-0000-0000-0000-000000000000",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "ssh-generate",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-multi-provider",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge ssh import ~/.ssh/id_ed25519 --shred",
+      "command": "cloudg run -p aws --aws-role-arn arn:aws:iam::123456789012:role/scan-readonly",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "ssh-import",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-role-arn",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge gpg remove 3AA5C34371567BD2",
+      "command": "cloudg run -p aws --regions all",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "gpg-remove",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-all-regions",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge gpg generate --name \"Alice\" --email \"alice@example.com\"",
+      "command": "cloudg -v run -p gcp --project-id my-project",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "gpg-generate",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-leading-verbose",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge gpg import private.asc",
+      "command": "cloudg -c ./config.yaml run -p aws",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "gpg-import",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-leading-config",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge rekey",
+      "command": "cloudg scan",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "rekey",
-      "rule_id": "command.genclave.mutate"
+      "id": "scan-default",
+      "rule_id": "command.cloudg.scan"
     },
     {
-      "command": "ge passkey delete --help",
+      "command": "cloudg scan -p aws --scanners prowler,checkov",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "scan-scanner-list",
+      "rule_id": "command.cloudg.scan"
+    },
+    {
+      "command": "cloudg scan --scanners checkov --iac-dir ./infra",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.cloudg"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "scan-iac-dir",
+      "rule_id": "command.cloudg.scan"
+    },
+    {
+      "command": "cloudg scan --scanners trivy --images nginx:latest,alpine:3.20",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.cloudg"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "scan-images",
+      "rule_id": "command.cloudg.scan"
+    },
+    {
+      "command": "cloudg collect --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "passkey-delete-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "collect-help",
+      "rule_id": "command.cloudg.collect"
     },
     {
-      "command": "ge passkey delete -h",
+      "command": "cloudg run --help",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "passkey-delete-short-help",
-      "rule_id": "command.genclave.mutate"
+      "id": "run-help",
+      "rule_id": "command.cloudg.run"
     },
     {
-      "command": "ge ssh generate --help",
+      "command": "cloudg scan --help",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.genclave"
+        "command.cloudg"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "ssh-generate-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret set --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "secret-set-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge rekey --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "rekey-help",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge passkey delete key-1",
-      "disabled_permissions": [
-        "command.genclave.permission.mutate"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mutate-disabled",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-secret-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge secret get api-token",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-secret-get",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-ssh-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge ssh public key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-ssh-public",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge gpg list",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "mutate-gpg-list",
-      "rule_id": "command.genclave.mutate"
-    },
-    {
-      "command": "ge policy set key-1 15m",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "policy-set",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge identity set-cache-ttl key-1 1h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "identity-set-cache-ttl",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-set-help",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set -h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-set-short-help",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy set key-1 15m",
-      "disabled_permissions": [
-        "command.genclave.permission.policy"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "policy-disabled",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge policy show key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "policy-show-passthrough",
-      "rule_id": "command.genclave.policy"
-    },
-    {
-      "command": "ge unlock",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "unlock",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock --stdin",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "unlock-stdin",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge prewarm --duration 10m",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "prewarm",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "unlock-help",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock -h",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "unlock-short-help",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge prewarm --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "prewarm-help",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge unlock",
-      "disabled_permissions": [
-        "command.genclave.permission.session-auth"
-      ],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "session-auth-disabled",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge status",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "status-passthrough",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge lock",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.genclave"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "lock-passthrough",
-      "rule_id": "command.genclave.session-auth"
-    },
-    {
-      "command": "ge passkey delete key-1",
-      "disabled_permissions": [],
-      "enabled_extensions": [],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "extension-inactive",
-      "rule_id": "command.genclave.mutate"
+      "id": "scan-help",
+      "rule_id": "command.cloudg.scan"
     }
   ],
   "schema": "guard.command-extension-fixtures.v1"

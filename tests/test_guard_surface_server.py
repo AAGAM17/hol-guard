@@ -603,6 +603,43 @@ class TestGuardSurfaceServer:
             assert _decode_dashboard_session_claims(payload["dashboard_session_token"])["surface"] == (
                 "protection-repair"
             )
+
+            captured: dict[str, bool] = {}
+
+            def recover(_payload: dict[str, object], *, require_fresh_totp: bool = False) -> dict[str, object]:
+                captured["require_fresh_totp"] = require_fresh_totp
+                return {"ok": True}
+
+            daemon._server.extension_control_api.recover_authority = recover
+            repair_recover = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/extension-controls/recover-authority",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(repair_recover, timeout=5) as response:
+                assert response.status == 200
+            assert captured["require_fresh_totp"] is True
+
+            dashboard_token = build_local_dashboard_session_token(
+                auth_token=daemon._server.auth_token,
+                surface="dashboard",
+            )
+            dashboard_recover = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/extension-controls/recover-authority",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {dashboard_token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(dashboard_recover, timeout=5) as response:
+                assert response.status == 200
+            assert captured["require_fresh_totp"] is False
         finally:
             daemon.stop()
 

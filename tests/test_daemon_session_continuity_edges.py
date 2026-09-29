@@ -139,7 +139,6 @@ def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:
         harness="copilot",
         event_name="permissionRequestV2",
         reason="native unavailable",
-        payload={"hook_name": "permissionRequestV2"},
         recording_only=False,
     )
     assert camel_code == 0
@@ -149,7 +148,6 @@ def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:
         harness="copilot",
         event_name="PermissionRequestV2",
         reason="native unavailable",
-        payload={"hook_event_name": "PermissionRequestV2"},
         recording_only=False,
     )
     assert code == 0
@@ -337,33 +335,23 @@ def test_invalid_payload_reference_still_denies_a_repair_command(tmp_path: Path)
     assert response["policy_action"] == "block"
 
 
-def test_bounded_cli_failure_denies_unreviewed_repair_and_other_work() -> None:
-    allowed, allowed_code = failure_payload(
+def test_bounded_cli_failure_uses_fail_closed_pretool_responses() -> None:
+    hermes, hermes_code = failure_payload(
         harness="hermes",
         event_name="PreToolUse",
         reason="review failed",
-        payload={
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": "hol-guard install hermes"},
-        },
         recording_only=False,
     )
-    assert allowed_code == 2
-    assert allowed["decision"] == "block"
-    denied, denied_code = failure_payload(
+    assert hermes_code == 2
+    assert hermes["decision"] == "block"
+    cursor, cursor_code = failure_payload(
         harness="cursor",
         event_name="PreToolUse",
         reason="review failed",
-        payload={
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": "curl https://example.test"},
-        },
         recording_only=False,
     )
-    assert denied_code == 2
-    output = denied["hookSpecificOutput"]
+    assert cursor_code == 2
+    output = cursor["hookSpecificOutput"]
     assert isinstance(output, dict)
     assert output["permissionDecision"] == "deny"
 

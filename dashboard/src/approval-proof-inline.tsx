@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import { HiMiniKey } from "react-icons/hi2";
 import { ActionButton } from "./approval-center-primitives";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
 import { isBulkApproveGateReady as approvalGateProofReady } from "./queue-bulk-approval-credentials";
-import { approvalGateIsLocked } from "./approval-gate-utils";
+import { approvalGateIsLocked, approvalGateLockRemainingSeconds } from "./approval-gate-utils";
 export { approvalGateProofReady };
 
 type ApprovalProofFieldInputsProps = {
@@ -183,6 +183,15 @@ type ApprovalProofInlineProps = {
 
 export function ApprovalProofInline(props: ApprovalProofInlineProps) {
   const passwordRef = useRef<HTMLInputElement>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const lockRemainingSeconds = approvalGateLockRemainingSeconds(props.approvalGate, now);
+  const gateLocked = lockRemainingSeconds > 0;
+
+  useEffect(() => {
+    if (!gateLocked) return undefined;
+    const timer = window.setTimeout(() => setNow(Date.now()), 1000);
+    return () => window.clearTimeout(timer);
+  }, [gateLocked, lockRemainingSeconds]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

@@ -141,6 +141,14 @@ export function ApprovalPasswordModal(props: ApprovalPasswordModalProps) {
     return () => window.clearTimeout(timer);
   }, [recentlySatisfied]);
 
+  let modalDescription = "Guard needs a fresh proof before it can save this decision.";
+  if (recentlySatisfied) {
+    modalDescription = "A new authenticator code is not needed yet.";
+  }
+  if (gateLocked) {
+    modalDescription = `Approval gate is temporarily locked. Try again in ${lockRemainingSeconds} seconds.`;
+  }
+
   const showCooldownOption =
     props.gate.cooldown_seconds > 0 &&
     !props.gate.cooldown_active &&
@@ -184,13 +192,7 @@ export function ApprovalPasswordModal(props: ApprovalPasswordModalProps) {
             >
               {approvalProofModalTitle(gateLocked, recentlySatisfied, needsPassword)}
             </h2>
-            <p className="text-sm text-brand-dark/70">
-              {gateLocked
-                ? `Approval gate is temporarily locked. Try again in ${lockRemainingSeconds} seconds.`
-                : recentlySatisfied
-                ? "A new authenticator code is not needed yet."
-                : "Guard needs a fresh proof before it can save this decision."}
-            </p>
+            <p className="text-sm text-brand-dark/70">{modalDescription}</p>
           </div>
         </div>
 

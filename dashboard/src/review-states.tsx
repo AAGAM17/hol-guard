@@ -13,6 +13,7 @@ import {
   harnessDisplayName,
   isWatchOnlyObservation,
   resolveRequestWorkingDirectory,
+  watchProtectedOutcome,
 } from "./approval-center-utils";
 import type {
   GuardApprovalRequest,
@@ -243,7 +244,7 @@ export function PrimaryActionCard({ item }: { item: GuardApprovalRequest }) {
 
 export function buildWhatWouldHappen(item: GuardApprovalRequest): string | null {
   if (isWatchOnlyObservation(item)) {
-    return "Watch allowed this action to continue. In Protected mode, Guard would have stopped it for review.";
+    return `Watch allowed this action to continue. ${watchProtectedOutcome(item)}`;
   }
   const type = item.artifact_type;
   if (type?.includes("file_write") || type?.includes("file_read")) {

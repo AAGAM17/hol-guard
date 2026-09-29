@@ -17,8 +17,10 @@ import {
   buildCodexResumeUx,
   resolveApprovalShareUrl,
   resolveRequestWorkingDirectory,
+  watchObservedPolicyAction,
+  watchProtectedOutcome,
 } from "./approval-center-utils";
-import type { GuardActionEnvelope, GuardApprovalRequest, GuardCodexResumeResult } from "./guard-types";
+import type { GuardAction, GuardActionEnvelope, GuardApprovalRequest, GuardCodexResumeResult } from "./guard-types";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildWhatWouldHappen, PrimaryActionCard } from "./review-states";
 import { ReviewDecisionCard } from "./review-decision-card";
@@ -416,6 +418,31 @@ assert(
   buildWhatWouldHappen(explicitWatchOnlyRequest)?.includes("Watch allowed this action to continue") === true,
   "Watch-only consequence copy describes an allowed observation instead of a paused action",
 );
+assert(
+  watchObservedPolicyAction(watchOnlyRequest) === "require-reapproval",
+  "Watch-only copy reads the observed policy action from scanner evidence",
+);
+for (const [action, expected] of [
+  ["block", "would have blocked it"],
+  ["sandbox-required", "would have required a sandbox"],
+  ["review", "would have sent it for review"],
+] as const satisfies ReadonlyArray<readonly [GuardAction, string]>) {
+  const actionRequest = {
+    ...watchOnlyRequest,
+    scanner_evidence: [
+      {
+        source: "observe_mode_inbox",
+        observed_policy_action: action,
+        queued_policy_action: "require-reapproval",
+        authoritative_action: "allow",
+      },
+    ],
+  } as GuardApprovalRequest;
+  assert(
+    watchProtectedOutcome(actionRequest).includes(expected),
+    `Watch Protected outcome preserves the observed ${action} action`,
+  );
+}
 const watchOnlyActionMarkup = renderToStaticMarkup(
   createElement(PrimaryActionCard, { item: explicitWatchOnlyRequest }),
 );

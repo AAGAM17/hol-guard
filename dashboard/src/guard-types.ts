@@ -104,10 +104,18 @@ export type PackageExecutionContextEvidence = {
   changed_components?: string[];
 };
 
+export type GuardWatchOnlyScannerEvidence = {
+  source: "observe_mode_inbox";
+  observed_policy_action: GuardAction;
+  queued_policy_action: GuardAction;
+  authoritative_action: GuardAction;
+};
+
 export type GuardScannerEvidence =
   | RiskSignalV2
   | GuardSupplyChainScannerEvidence
-  | PackageExecutionContextEvidence;
+  | PackageExecutionContextEvidence
+  | GuardWatchOnlyScannerEvidence;
 
 export type GuardDecisionV2 = {
   /** Exact six-valued enforcement action. */

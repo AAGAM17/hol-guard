@@ -39,6 +39,7 @@ import { guardActionPresentation } from "./guard-action";
 import {
   approvalGateIsLocked,
   approvalGateLockRemainingSeconds,
+  approvalGateRequiredForResolution,
   requiresApprovalPasswordPrompt,
 } from "./approval-gate-utils";
 import { buildEvidenceItems, buildTopAlertItems } from "./review-evidence";
@@ -151,27 +152,32 @@ export function ReviewDecisionCard(props: {
   const handleResolve = useCallback(
     async (action: "allow" | "block") => {
       if (!item || resolutionBlockReason !== null) return;
-      if (approvalGateIsLocked(approvalGate)) {
+      const requestedScope = action === "allow" ? allowScope : blockScope;
+      const gate = approvalGate;
+      const gateRequired = approvalGateRequiredForResolution(gate, action, requestedScope);
+      if (gateRequired && approvalGateIsLocked(gate)) {
         setErrorMessage(
-          `Approval gate is temporarily locked. Try again in ${approvalGateLockRemainingSeconds(approvalGate)} seconds.`,
+          `Approval gate is temporarily locked. Try again in ${approvalGateLockRemainingSeconds(gate)} seconds.`,
         );
         return;
       }
       setSubmitting(action);
       setErrorMessage(null);
       try {
-        const requestedScope = action === "allow" ? allowScope : blockScope;
         const persistExactAction = willPersistExactAction(
           item,
           action,
           requestedScope,
           action === "allow" ? rememberExactAction : watchOnlyObservation,
         );
-        const gate = approvalGate;
         const includeGateFields =
-          gate?.enabled === true &&
+          gateRequired &&
           gate?.configured === true &&
-          requiresApprovalPasswordPrompt(gate.cooldown_active, gate.strict_all_decisions, requestedScope);
+          requiresApprovalPasswordPrompt(
+            gate.cooldown_active,
+            gate.strict_all_decisions,
+            requestedScope,
+          );
         const proof = includeGateFields
           ? buildApprovalProofCredentials(gate, { approvalPassword, approvalTotpCode })
           : {};
@@ -193,17 +199,19 @@ export function ReviewDecisionCard(props: {
         setPendingAction(null);
         setPendingContractKey(null);
       } catch (err) {
+        const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
+        setErrorMessage(message);
         if (
           err instanceof GuardRequestResolutionError &&
           err.status === 423 &&
           err.payload?.["error"] === "approval_gate_locked"
         ) {
+          setSubmitting(null);
           const refreshedGate = await fetchResolvedApprovalGate().catch(() => null);
           if (refreshedGate !== null) {
             setEffectiveApprovalGate(refreshedGate);
           }
         }
-        setErrorMessage(err instanceof Error ? err.message : "Something went wrong. Try again.");
       } finally {
         setSubmitting(null);
       }
@@ -237,16 +245,21 @@ export function ReviewDecisionCard(props: {
       setLastAction(action);
       const requestedScope = action === "allow" ? allowScope : blockScope;
       const gate = approvalGate;
-      if (approvalGateIsLocked(gate)) {
+      const gateRequired = approvalGateRequiredForResolution(gate, action, requestedScope);
+      if (gateRequired && approvalGateIsLocked(gate)) {
         setErrorMessage(
           `Approval gate is temporarily locked. Try again in ${approvalGateLockRemainingSeconds(gate)} seconds.`,
         );
         return;
       }
       const gateEnabled =
-        gate?.enabled === true &&
+        gateRequired &&
         gate?.configured === true &&
-        requiresApprovalPasswordPrompt(gate.cooldown_active, gate.strict_all_decisions, requestedScope);
+        requiresApprovalPasswordPrompt(
+          gate.cooldown_active,
+          gate.strict_all_decisions,
+          requestedScope,
+        );
       if (!gateEnabled) {
         void handleResolve(action);
         return;

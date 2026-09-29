@@ -26,6 +26,7 @@ from .evaluation_cli_recovery import (
     _remove_recovery_token,
     _write_recovery_token,
 )
+from .evaluation_cli_run import run_synthetic_command
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile, EvaluationResult
 from .evaluation_evidence_package import (
     EVALUATION_PROOF_BOUNDARY,
@@ -39,12 +40,7 @@ from .evaluation_preflight import (
     preflight_evaluation,
     setup_evaluation,
 )
-from .evaluation_runner import (
-    BUILT_IN_CASE_IDS,
-    EvaluationRunnerError,
-    run_synthetic_cases,
-    validate_case_selection,
-)
+from .evaluation_runner import BUILT_IN_CASE_IDS
 
 CLI_SCHEMA_VERSION = "guard.evaluation-cli.v1"
 _MAX_PROFILE_BYTES = 1 * 1024 * 1024
@@ -256,142 +252,26 @@ def _run_preflight(args: argparse.Namespace) -> int:
 def _run_synthetic(args: argparse.Namespace) -> int:
     """Run fixed local adapters while keeping recovery outside the setup root."""
 
-    setup = None
-    token_path: Path | None = None
-    declared_parent: Path | None = None
-    run_report: Mapping[str, object] | None = None
-    runner_error: _CliError | None = None
-    cleanup_removed = False
-    token_retained = False
+    if os.name == "nt":
+        error = _CliError(
+            "recovery_windows_unavailable",
+            "private recovery token storage is unavailable on Windows",
+            status="blocked_environment",
+        )
+        _emit(_result("run", error.status, error=error))
+        return _exit_code(error.status)
     try:
         profile_path = _path_argument(
             args, "profile_path", "profile_option", "evaluation profile", code="profile_argument_required"
         )
         profile = _load_profile(profile_path)
         requested = tuple(cast(list[str], args.case)) if args.case else None
-        validate_case_selection(profile, requested)
-        if os.name == "nt":
-            raise _CliError(
-                "recovery_windows_unavailable",
-                "private recovery token storage is unavailable on Windows",
-                status="blocked_environment",
-            )
-        setup = setup_evaluation(
-            profile,
-            allow_host_execution=False,
-            execution_mode="synthetic_adapter",
-        )
-        if setup.report.status != "passed":
-            run_report = {
-                "mode": "synthetic_adapter",
-                "proofBoundary": "synthetic_adapter_test",
-                "setupBoundary": "fixture_only",
-                "hostExecution": "not_run",
-                "status": setup.report.status,
-                "cases": [],
-                "summary": {"passed": 0, "failed": 0, "blockedEnvironment": 0, "unsupported": 0, "notRun": 0},
-            }
-            runner_error = _CliError(
-                "setup_unavailable",
-                "synthetic evaluation setup is unavailable",
-                status=setup.report.status,
-            )
-        else:
-            target_scope = cast(Mapping[str, object], profile.data["targetScope"])
-            declared_parent = Path(cast(str, target_scope["rootPath"]))
-            try:
-                _write_recovery_token(setup, declared_parent=declared_parent)
-                root_path = setup.root_path
-                if root_path is None:
-                    raise _CliError("cleanup_token_unavailable", "evaluation setup did not produce a cleanup token")
-                token_path = _recovery_token_path(root_path, declared_parent=declared_parent)
-            except _CliError as error:
-                runner_error = error
-            if runner_error is None:
-                try:
-                    run_report = run_synthetic_cases(profile, setup, requested=requested)
-                except EvaluationRunnerError as error:
-                    runner_error = _CliError(
-                        error.code,
-                        "synthetic evaluation run could not complete",
-                        status=error.status,
-                    )
-                    run_report = {
-                        "mode": "synthetic_adapter",
-                        "proofBoundary": "synthetic_adapter_test",
-                        "setupBoundary": "fixture_only",
-                        "hostExecution": "not_run",
-                        "status": error.status,
-                        "cases": [],
-                        "summary": {
-                            "passed": 0,
-                            "failed": 0,
-                            "blockedEnvironment": 0,
-                            "unsupported": 0,
-                            "notRun": 0,
-                        },
-                    }
-                except (OSError, RuntimeError, ValueError):
-                    runner_error = _CliError(
-                        "runner_failed",
-                        "synthetic evaluation run could not complete",
-                        status="blocked_environment",
-                    )
-                    run_report = {
-                        "mode": "synthetic_adapter",
-                        "proofBoundary": "synthetic_adapter_test",
-                        "setupBoundary": "fixture_only",
-                        "hostExecution": "not_run",
-                        "status": "blocked_environment",
-                        "cases": [],
-                        "summary": {
-                            "passed": 0,
-                            "failed": 0,
-                            "blockedEnvironment": 0,
-                            "unsupported": 0,
-                            "notRun": 0,
-                        },
-                    }
+        result = run_synthetic_command(profile, requested)
     except _CliError as error:
-        runner_error = error
-    except EvaluationRunnerError as error:
-        runner_error = _CliError(
-            error.code,
-            "synthetic evaluation run could not complete",
-            status=error.status,
-        )
-    finally:
-        if setup is not None and setup.root_path is not None and setup.marker_token is not None:
-            try:
-                cleanup_removed = setup.cleanup()
-            except EvaluationContractError:
-                cleanup_removed = False
-            if cleanup_removed and token_path is not None and declared_parent is not None:
-                try:
-                    _remove_recovery_token(token_path, expected_parent=Path(os.path.realpath(declared_parent)))
-                except _CliError:
-                    token_retained = True
-            elif token_path is not None:
-                token_retained = True
-
-    if runner_error is None and run_report is not None:
-        status = cast(str, run_report.get("status", "blocked_environment"))
-    elif runner_error is not None:
-        status = runner_error.status
-    else:
-        status = "blocked_environment"
-    cleanup: dict[str, object] = {"removed": cleanup_removed, "recoveryTokenRetained": token_retained}
-    if not cleanup_removed and setup is not None and setup.root_path is not None:
-        cleanup["reason"] = "cleanup_failed"
-        if runner_error is None:
-            runner_error = _CliError(
-                "cleanup_failed",
-                "synthetic evaluation cleanup failed",
-                status="blocked_environment",
-            )
-            status = runner_error.status
-    _emit(_result("run", status, run=run_report, cleanup=cleanup, error=runner_error))
-    return _exit_code(status)
+        _emit(_result("run", error.status, error=error))
+        return _exit_code(error.status)
+    _emit(_result("run", result.status, run=result.run, cleanup=result.cleanup, error=result.error))
+    return _exit_code(result.status)
 
 
 def _run_verify_evidence(args: argparse.Namespace) -> int:

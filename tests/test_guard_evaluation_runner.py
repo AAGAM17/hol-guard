@@ -89,7 +89,7 @@ def test_run_reports_receiver_and_control_failures(
 ) -> None:
     profile_path, _ = _write_runner_profile(tmp_path, (runner.EGRESS_CASE_ID,))
     if patch_name == "check_network_ready":
-        monkeypatch.setattr(runner.LocalSideEffectWitness, patch_name, lambda _self: False)
+        monkeypatch.setattr(runner.LocalSideEffectWitness, patch_name, lambda _self, **_kwargs: False)
     else:
         monkeypatch.setattr(
             runner,
@@ -105,6 +105,47 @@ def test_run_reports_receiver_and_control_failures(
     assert payload["run"]["cases"][0]["errorCode"] == error_code
     assert payload["cleanup"]["removed"] is True
     assert not list(tmp_path.glob("hol-guard-eval-*"))
+
+
+def test_run_reports_witness_operation_failure_per_case(monkeypatch, tmp_path: Path, capsys) -> None:
+    profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
+    monkeypatch.setattr(
+        runner.LocalSideEffectWitness,
+        "new_file_pair",
+        lambda _self: (_ for _ in ()).throw(RuntimeError("fixture unavailable")),
+    )
+
+    code, payload = _run_payload(capsys, profile_path)
+
+    assert code == 2
+    assert payload["run"]["cases"][0]["errorCode"] == "witness_failed"
+    assert payload["cleanup"]["removed"] is True
+
+
+def test_network_readiness_uses_remaining_run_deadline(monkeypatch, tmp_path: Path, capsys) -> None:
+    profile_path, profile_data = _write_runner_profile(tmp_path, (runner.EGRESS_CASE_ID,))
+    profile_data["resourceLimits"]["maxDurationSeconds"] = 1  # type: ignore[index]
+    profile_path.write_text(json.dumps(profile_data), encoding="utf-8")
+    observed: list[float] = []
+
+    def not_ready(_self, **kwargs):
+        observed.append(kwargs["timeout_seconds"])
+        return False
+
+    monkeypatch.setattr(runner.LocalSideEffectWitness, "check_network_ready", not_ready)
+    _run_payload(capsys, profile_path)
+
+    assert observed and 0 < observed[0] <= 1
+
+
+def test_summary_counts_unknown_status_as_failed() -> None:
+    assert runner._summary([{"status": "unexpected"}, {}]) == {
+        "passed": 0,
+        "failed": 2,
+        "blockedEnvironment": 0,
+        "unsupported": 0,
+        "notRun": 0,
+    }
 
 
 def test_run_preserves_unrelated_bytes_and_never_invokes_host(tmp_path: Path, capsys) -> None:

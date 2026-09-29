@@ -16,13 +16,12 @@ from pathlib import Path
 from typing import Protocol, cast
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import Request
+from urllib.request import ProxyHandler, Request, build_opener
 
 from .adapters.hook_python_subprocess import run_probe
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import EvaluationSetup
 from .evaluation_witness import FileWitnessPair, LocalSideEffectWitness, WitnessObservation
-from .mdm.network import managed_opener
 
 SHELL_CASE_ID = "eval.shell.disposable_delete"
 EGRESS_CASE_ID = "eval.egress.loopback"
@@ -32,7 +31,6 @@ _SYNTHETIC_BOUNDARY_REASON = "synthetic_adapter_does_not_bind_installed_host"
 _MAX_ADAPTER_OUTPUT_BYTES = 2 * 64 * 1024
 _MAX_ADAPTER_TIMEOUT_SECONDS = 30.0
 _MAX_SYNTHETIC_DURATION_SECONDS = 120.0
-_LOOPBACK_OPENER = managed_opener()
 
 
 class EvaluationRunnerError(EvaluationContractError):
@@ -42,6 +40,18 @@ class EvaluationRunnerError(EvaluationContractError):
         super().__init__(message)
         self.code = code
         self.status = status
+
+
+class _WitnessSetupError(Exception):
+    """Internal marker separating witness setup from case execution."""
+
+
+class _WitnessCaseError(Exception):
+    """Internal marker for non-contract witness operation failures."""
+
+
+class _WitnessCleanupError(Exception):
+    """Internal marker separating witness cleanup from case execution."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,20 +132,24 @@ def _fixed_file_control(pair: FileWitnessPair, *, ctx: EvaluationRunContext) -> 
 
     if pair.allowed_target.parent != pair.denied_target.parent:
         raise EvaluationRunnerError("fixture_rejected", "generated fixture is outside the owned witness")
+    target_literal = repr(str(pair.allowed_target))
     command = [
         str(Path(sys.executable)),
         "-c",
-        f"from pathlib import Path\nPath({str(pair.allowed_target)!r}).write_bytes(b'synthetic-control')\n",
+        f"from pathlib import Path\nPath({target_literal}).write_bytes(b'synthetic-control')\n",
     ]
+    timeout_seconds = min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS)
     try:
         result = run_probe(
             command,
             cwd=pair.allowed_target.parent,
             env={},
-            timeout_seconds=min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS),
+            timeout_seconds=timeout_seconds,
             output_limit_bytes=min(ctx.output_limit_bytes, _MAX_ADAPTER_OUTPUT_BYTES),
         )
-    except (OSError, ValueError):
+    except EvaluationRunnerError:
+        raise
+    except (OSError, RuntimeError, ValueError):
         raise EvaluationRunnerError("control_failed", "allowed control did not complete") from None
     if result.timed_out:
         raise EvaluationRunnerError("run_timeout", "evaluation run exceeded its configured deadline")
@@ -167,7 +181,8 @@ def _fixed_network_control(url: str, *, ctx: EvaluationRunContext) -> None:
     _ensure_time(ctx)
     try:
         request = Request(url, data=b"", method="POST")
-        with _LOOPBACK_OPENER.open(request, timeout=min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS)) as response:
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(request, timeout=min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS)) as response:
             if response.status != 204:
                 raise EvaluationRunnerError("control_failed", "allowed control did not complete")
     except EvaluationRunnerError:
@@ -203,6 +218,7 @@ def _case_record(
 
 
 def _run_shell_case(witness: LocalSideEffectWitness, *, ctx: EvaluationRunContext) -> dict[str, object]:
+    _ensure_time(ctx)
     if not witness.check_file_ready():
         raise EvaluationRunnerError("receiver_not_ready", "file witness is not ready")
     pair = witness.new_file_pair()
@@ -218,8 +234,9 @@ def _run_shell_case(witness: LocalSideEffectWitness, *, ctx: EvaluationRunContex
 
 
 def _run_egress_case(witness: LocalSideEffectWitness, *, ctx: EvaluationRunContext) -> dict[str, object]:
+    _ensure_time(ctx)
     pair = witness.new_network_pair()
-    if not witness.check_network_ready():
+    if not witness.check_network_ready(timeout_seconds=min(_remaining(ctx), 2.0)):
         raise EvaluationRunnerError("receiver_not_ready", "loopback receiver is not ready")
     _ensure_time(ctx)
     # The denied adapter is a local stub: it makes no request.  The allowed
@@ -260,14 +277,58 @@ def _summary(cases: Sequence[Mapping[str, object]]) -> dict[str, int]:
     counts = {"passed": 0, "failed": 0, "blockedEnvironment": 0, "unsupported": 0, "notRun": 0}
     for case in cases:
         status = case.get("status")
-        if isinstance(status, str):
-            key = {
-                "blocked_environment": "blockedEnvironment",
-                "not_run": "notRun",
-            }.get(status, status)
-            if key in counts:
-                counts[key] += 1
+        if not isinstance(status, str):
+            counts["failed"] += 1
+            continue
+        key = {
+            "blocked_environment": "blockedEnvironment",
+            "not_run": "notRun",
+        }.get(status, status)
+        if key in counts:
+            counts[key] += 1
+        else:
+            counts["failed"] += 1
     return counts
+
+
+def _append_aborted(cases: list[dict[str, object]], remaining: Sequence[str]) -> None:
+    for case_id in remaining:
+        cases.append(
+            _case_record(
+                case_id,
+                status="not_run",
+                error=EvaluationRunnerError("run_aborted", "evaluation run stopped after an earlier case"),
+            )
+        )
+
+
+def _enter_witness(witness: LocalSideEffectWitness) -> LocalSideEffectWitness:
+    try:
+        return witness.__enter__()
+    except Exception as exc:
+        raise _WitnessSetupError from exc
+
+
+def _run_adapter_case(
+    adapter: EvaluationAdapter,
+    case_id: str,
+    witness: LocalSideEffectWitness,
+    *,
+    ctx: EvaluationRunContext,
+) -> dict[str, object]:
+    try:
+        return adapter.run_case(case_id, witness, ctx=ctx)
+    except EvaluationRunnerError:
+        raise
+    except Exception as exc:
+        raise _WitnessCaseError from exc
+
+
+def _exit_witness(witness: LocalSideEffectWitness) -> None:
+    try:
+        witness.__exit__(None, None, None)
+    except Exception as exc:
+        raise _WitnessCleanupError from exc
 
 
 def run_synthetic_cases(
@@ -291,45 +352,40 @@ def run_synthetic_cases(
     if selected_adapter.mode != "synthetic_adapter" or selected_adapter.proof_type != SYNTHETIC_PROOF_TYPE:
         raise EvaluationRunnerError("adapter_rejected", "evaluation adapter is not synthetic", status="not_run")
     cases: list[dict[str, object]] = []
+    cleanup_error: EvaluationRunnerError | None = None
+    witness = LocalSideEffectWitness(setup=setup, network_enabled=EGRESS_CASE_ID in selected)
     try:
-        with LocalSideEffectWitness(setup=setup) as witness:
-            for index, case_id in enumerate(selected):
-                try:
-                    cases.append(selected_adapter.run_case(case_id, witness, ctx=ctx))
-                except EvaluationRunnerError as error:
-                    cases.append(_case_record(case_id, status=error.status, error=error))
-                    for remaining in selected[index + 1 :]:
-                        cases.append(
-                            _case_record(
-                                remaining,
-                                status="not_run",
-                                error=EvaluationRunnerError(
-                                    "run_aborted", "evaluation run stopped after an earlier case"
-                                ),
-                            )
-                        )
-                    break
-                except (OSError, RuntimeError, ValueError):
-                    error = EvaluationRunnerError("witness_failed", "synthetic witness operation failed")
-                    cases.append(_case_record(case_id, status=error.status, error=error))
-                    for remaining in selected[index + 1 :]:
-                        cases.append(
-                            _case_record(
-                                remaining,
-                                status="not_run",
-                                error=EvaluationRunnerError(
-                                    "run_aborted", "evaluation run stopped after an earlier case"
-                                ),
-                            )
-                        )
-                    break
-    except EvaluationRunnerError:
-        raise
-    except (OSError, RuntimeError, ValueError):
-        raise EvaluationRunnerError("witness_cleanup_failed", "synthetic witness cleanup failed") from None
+        active_witness = _enter_witness(witness)
+    except _WitnessSetupError:
+        raise EvaluationRunnerError("witness_setup_failed", "synthetic witness setup failed") from None
+    try:
+        for index, case_id in enumerate(selected):
+            try:
+                cases.append(_run_adapter_case(selected_adapter, case_id, active_witness, ctx=ctx))
+            except EvaluationRunnerError as error:
+                cases.append(_case_record(case_id, status=error.status, error=error))
+                _append_aborted(cases, selected[index + 1 :])
+                break
+            except _WitnessCaseError:
+                error = EvaluationRunnerError("witness_failed", "synthetic witness operation failed")
+                cases.append(_case_record(case_id, status=error.status, error=error))
+                _append_aborted(cases, selected[index + 1 :])
+                break
+    finally:
+        try:
+            _exit_witness(witness)
+        except _WitnessCleanupError:
+            cleanup_error = EvaluationRunnerError("witness_cleanup_failed", "synthetic witness cleanup failed")
+    if cleanup_error is not None and not cases:
+        raise cleanup_error
     statuses = {str(case["status"]) for case in cases}
-    status = "failed" if "failed" in statuses else "blocked_environment"
-    return {
+    if "failed" in statuses:
+        status = "failed"
+    elif "not_run" in statuses:
+        status = "not_run"
+    else:
+        status = "blocked_environment"
+    report: dict[str, object] = {
         "mode": "synthetic_adapter",
         "proofBoundary": SYNTHETIC_PROOF_TYPE,
         "setupBoundary": "fixture_only",
@@ -338,6 +394,9 @@ def run_synthetic_cases(
         "cases": cases,
         "summary": _summary(cases),
     }
+    if cleanup_error is not None:
+        report["cleanupErrorCode"] = cleanup_error.code
+    return report
 
 
 __all__ = [

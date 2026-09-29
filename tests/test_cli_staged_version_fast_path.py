@@ -10,12 +10,24 @@ from codex_plugin_scanner import cli
 from codex_plugin_scanner.version import __version__
 
 
-def test_staged_candidate_version_avoids_full_command_surface(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("program_name", "frozen"),
+    [
+        ("hol-guard-3.8.1-123-456.partial", True),
+        ("hol-guard-3.8.1-123-456.partial", False),
+        ("hol-guard", False),
+        ("plugin-guard", False),
+        ("plugin-scanner", False),
+    ],
+)
+def test_version_probe_avoids_full_command_surface_for_executable_names(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    program_name: str,
+    frozen: bool,
 ) -> None:
-    candidate_name = "hol-guard-3.8.1-123-456.partial"
-    monkeypatch.setattr(sys, "argv", [candidate_name, "--version"])
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "argv", [program_name, "--version"])
+    monkeypatch.setattr(sys, "frozen", frozen, raising=False)
 
     def unexpected_parser(*_args: object, **_kwargs: object) -> None:
         pytest.fail("a version probe must not build the full command surface")
@@ -23,4 +35,4 @@ def test_staged_candidate_version_avoids_full_command_surface(
     monkeypatch.setattr(cli, "_build_parser", unexpected_parser)
 
     assert cli.main() == 0
-    assert capsys.readouterr().out.strip() == f"{candidate_name} {__version__}"
+    assert capsys.readouterr().out.strip() == f"{program_name} {__version__}"

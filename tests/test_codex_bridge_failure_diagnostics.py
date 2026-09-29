@@ -109,7 +109,7 @@ def test_unusable_managed_launcher_reports_both_causes_without_running_children(
     assert str(tmp_path) not in captured.err
 
 
-@pytest.mark.parametrize("event", ["PreToolUse", "PermissionRequest"])
+@pytest.mark.parametrize("event", ["PreToolUse", "PermissionRequest", "permissionRequestV2"])
 @pytest.mark.parametrize(
     "command",
     [
@@ -197,6 +197,7 @@ def test_total_outage_blocks_mutating_action_without_authenticated_fallback(
         assert decision.get("permissionDecision") == "deny"
     else:
         assert decision.get("decision", {}).get("behavior") == "deny"
+        assert decision["hookEventName"] == "PermissionRequest"
     assert "private-daemon-endpoint" not in captured.out + captured.err
     assert command not in captured.out + captured.err
 

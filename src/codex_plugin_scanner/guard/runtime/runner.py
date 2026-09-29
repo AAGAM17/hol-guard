@@ -3755,6 +3755,8 @@ def _parse_retry_after_header(error: urllib.error.HTTPError) -> int:
         pass
     try:
         retry_date = datetime.fromisoformat(retry_after.replace("Z", "+00:00"))
+        if retry_date.tzinfo is None:
+            retry_date = retry_date.replace(tzinfo=timezone.utc)
         delta = (retry_date - datetime.now(timezone.utc)).total_seconds()
         return max(1, int(delta))
     except (ValueError, TypeError):
@@ -4566,7 +4568,10 @@ _OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS = 3600.0
 
 
 _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY = "guard_oauth_refresh_circuit_fingerprint_salt"
-_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS = 210_000
+# OWASP-recommended PBKDF2-HMAC-SHA256 work factor; the fingerprint only needs
+# non-reversibility and determinism, but a strong work factor defeats offline
+# brute force against the truncated 24-hex digest if state ever leaks.
+_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS = 600_000
 
 
 def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
@@ -4587,6 +4592,12 @@ def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
 
 
 def _oauth_refresh_circuit_fingerprint(refresh_token: str, salt: bytes) -> str:
+    """Deterministic, non-reversible fingerprint for circuit-state matching.
+
+    PBKDF2-HMAC-SHA256 with a persisted per-installation salt; the 24-hex
+    truncation is a lookup key, not a credential, so truncation is safe while
+    the work factor keeps brute-force recovery impractical.
+    """
     return hashlib.pbkdf2_hmac(
         "sha256",
         refresh_token.encode("utf-8"),
@@ -4631,7 +4642,7 @@ def _oauth_refresh_circuit_check(
     if fingerprint is None:
         return
     if fingerprint != _oauth_refresh_circuit_fingerprint(refresh_token, _oauth_refresh_circuit_salt(store)):
-        _save_oauth_refresh_circuit(store, {"cleared_at": _now()})
+        _oauth_refresh_circuit_clear(store)
         return
     next_allowed = _parse_iso_timestamp(str(state.get("next_refresh_allowed_at") or ""))
     if next_allowed is None or next_allowed <= now:

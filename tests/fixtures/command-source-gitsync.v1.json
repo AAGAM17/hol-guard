@@ -10091,30 +10091,28 @@
       {
         "extension": {
           "action_classes": [
-            "cogext commitment mutation"
+            "gitsync mirror-mutating command",
+            "gitsync webhook-rewriting command",
+            "gitsync service-install command"
           ],
           "aliases": [],
           "conflicts": [],
           "delegated_protection": null,
           "dependencies": [],
-          "description": "Reviews the cogext CLI's mutating commitment operations (add, fulfill, fail). Read-only commands (extract, list, get, stats) are not matched and remain automatic. Note: `cogext add` may initialize ~/.cogext on a fresh machine; that side effect is covered structurally because `add` is in the reviewed set.",
+          "description": "Reviews gitsync's live mirror sync, server-side webhook rewrites, and service install/uninstall. `check`, `status`, and plain `hooks` do not match any rule here; Guard's default floor still applies to them since gitsync is not on the built-in safe-command list and no rule in this extension matches those subcommands. Every mutating subcommand covered here always requires review, even with --help, -h or --dry-run present, because gitsync's flag parser can silently drop those flags depending on argument order and this matcher engine cannot detect when that happened.",
           "ecosystem_ids": [],
-          "executables": [
-            "cogext",
-            "cogext.cmd",
-            "cogext.exe"
-          ],
-          "extension_id": "command.cogext",
-          "homepage": "https://cogextai.com",
+          "executables": [],
+          "extension_id": "command.gitsync",
+          "homepage": "https://github.com/cristobaltormo/git-sync",
           "icon": {
             "kind": "none"
           },
-          "license": "MIT",
-          "name": "COGEXT command protection",
+          "license": "Apache-2.0",
+          "name": "gitsync command protection",
           "permissions": [
             {
               "action_classes": [
-                "cogext commitment mutation"
+                "gitsync mirror-mutating command"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10122,25 +10120,27 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies `cogext add`, which creates a tracked commitment and may initialize the local ~/.cogext store on a fresh machine.",
-              "example_command": "cogext add \"Send the report by Friday\"",
+              "description": "Identifies `gitsync sync` and `gitsync run`, which force-push and prune every configured repo's branches and tags to GitHub so the two sides end up identical, and can eventually delete the GitHub mirror once a repo disappears from the source (subject to gitsync's own delete_grace and delete_limit safeguards). Both accept --help/-h, and `run` also accepts --dry-run, but gitsync's flag parser (Go's stdlib flag.FlagSet) stops at the first token that isn't a flag and never looks at anything after it - so a flag placed after a repo name, or after any other token, is silently ignored and the command still runs live. No safe variant is reliable against that, so this rule always reviews sync and run regardless of which flags are present.",
+              "example_command": "gitsync sync",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "1.0.0",
-              "label": "cogext commitment creation",
-              "permission_id": "command.cogext.permission.add",
+              "introduced_version": "2.2.0",
+              "label": "gitsync live mirror sync",
+              "permission_id": "command.gitsync.permission.mirror-mutation",
               "replacement_permission_id": null,
               "risk_tier": "high",
               "safer_guidance": [
-                "Run `cogext list` first to confirm the target store before adding a commitment."
+                "Run `gitsync run --dry-run` as the very first argument, nothing before it, and review what it reports before running it live - never rely on --dry-run appearing safe by itself.",
+                "Run `gitsync check` to confirm token scopes and account mapping before mirroring."
               ],
               "typed_capabilities": []
             },
             {
               "action_classes": [
-                "cogext commitment mutation"
+                "gitsync webhook-rewriting command",
+                "gitsync service-install command"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10148,95 +10148,103 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies `cogext fulfill <id>`, which marks a tracked commitment as fulfilled and writes its terminal state.",
-              "example_command": "cogext fulfill abc-123",
+              "description": "Identifies `gitsync hooks --force`/`-force` (rewrites existing webhooks on the git server), `gitsync hooks --remove`/`-remove` (deletes them), and `gitsync install` / `gitsync uninstall` (registers or removes the persistent background service). Go's flag parser treats a single dash the same as a double dash for a named flag, so both spellings are matched. Plain `gitsync hooks` (no flags) still mutates - it creates any missing webhooks - but never rewrites or deletes an existing one, so it is not covered here. No safe variant is offered for --help/-h on any of these: gitsync's flag parser stops at the first non-flag token and never looks at anything after it, so a flag placed after any other token is silently ignored rather than shown as help, and a declarative matcher cannot tell that case apart from one where the flag actually took effect. `uninstall` additionally never parses flags at all - it ignores every argument on both Linux and Windows and always removes the service and binary - so it was never going to have a safe variant regardless.",
+              "example_command": "gitsync hooks --remove",
               "family": null,
               "fixed_reason": null,
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "1.0.0",
-              "label": "cogext commitment fulfillment",
-              "permission_id": "command.cogext.permission.fulfill",
+              "introduced_version": "2.2.0",
+              "label": "gitsync webhook rewrite, removal, or service install/uninstall",
+              "permission_id": "command.gitsync.permission.operational-mutation",
               "replacement_permission_id": null,
-              "risk_tier": "high",
+              "risk_tier": "medium",
               "safer_guidance": [
-                "Confirm the commitment ID with `cogext get <id>` before fulfilling it."
-              ],
-              "typed_capabilities": []
-            },
-            {
-              "action_classes": [
-                "cogext commitment mutation"
-              ],
-              "baseline_floor": "review",
-              "configurable": true,
-              "conflicts": [],
-              "default_enabled": true,
-              "dependencies": [],
-              "deprecated": false,
-              "description": "Identifies `cogext fail <id>`, which marks a tracked commitment as failed and writes its terminal state.",
-              "example_command": "cogext fail abc-123",
-              "family": null,
-              "fixed_reason": null,
-              "implementation_version": "1.0.0",
-              "implied_permissions": [],
-              "introduced_version": "1.0.0",
-              "label": "cogext commitment failure",
-              "permission_id": "command.cogext.permission.fail",
-              "replacement_permission_id": null,
-              "risk_tier": "high",
-              "safer_guidance": [
-                "Confirm the commitment ID with `cogext get <id>` before failing it."
+                "Prefer plain `gitsync hooks`, which only creates missing webhooks and does not rewrite or delete existing ones.",
+                "Run `gitsync run --dry-run` interactively before installing it as an unattended service."
               ],
               "typed_capabilities": []
             }
           ],
           "project_markers": [],
           "publisher": {
-            "display_name": "COGEXT AI",
-            "id": "community.cogext",
-            "url": "https://github.com/yaminbinyoosuf/cogext-primitive"
+            "display_name": "Community",
+            "id": "community.gitsync",
+            "url": null
           },
           "reference_urls": [
-            "https://cogextai.com/standard",
-            "https://github.com/yaminbinyoosuf/cogext-primitive"
+            "https://github.com/cristobaltormo/git-sync#commands",
+            "https://github.com/cristobaltormo/git-sync#things-worth-knowing"
           ],
           "required": false,
           "risk_classes": [
             "destructive_shell",
+            "network_egress",
             "execution"
           ],
           "rules": [
             {
               "action_classes": [
-                "cogext commitment mutation"
+                "gitsync mirror-mutating command"
               ],
               "default_mode": "review",
-              "description": "Identifies `cogext add`, which creates a tracked commitment.",
+              "description": "Identifies `gitsync sync` and `gitsync run`, which force-push and prune every configured repo's branches and tags to GitHub so the two sides end up identical, and can eventually delete the GitHub mirror once a repo disappears from the source (subject to gitsync's own delete_grace and delete_limit safeguards). Both accept --help/-h, and `run` also accepts --dry-run, but gitsync's flag parser (Go's stdlib flag.FlagSet) stops at the first token that isn't a flag and never looks at anything after it - so a flag placed after a repo name, or after any other token, is silently ignored and the command still runs live. No safe variant is reliable against that, so this rule always reviews sync and run regardless of which flags are present.",
               "family": null,
               "matcher": {
                 "config": {},
                 "matchers": [
                   {
                     "config": {
-                      "allow_leading_options": false,
+                      "allow_leading_options": true,
                       "executables": [
-                        "cogext",
-                        "cogext.cmd",
-                        "cogext.exe"
+                        "gitsync",
+                        "gitsync.exe"
                       ],
-                      "fail_secure_unknown_options": false,
+                      "fail_secure_unknown_options": true,
                       "forbidden_flags": [],
-                      "interspersed_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
                       "interspersed_options_with_values": [],
                       "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
                       "options_with_values": [],
                       "required_flags": [],
                       "required_flags_in_all_arguments": false,
                       "required_option_values": [],
                       "subcommands": [
-                        "add"
+                        "sync"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "gitsync",
+                        "gitsync.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "run"
                       ]
                     },
                     "op": "executable.v1"
@@ -10245,123 +10253,204 @@
                 "op": "any.v1"
               },
               "native_capability": null,
-              "permission_id": "command.cogext.permission.add",
+              "permission_id": "command.gitsync.permission.mirror-mutation",
               "risk_classes": [
                 "destructive_shell",
-                "execution"
+                "network_egress"
               ],
-              "rule_id": "command.cogext.add",
+              "rule_id": "command.gitsync.mirror-mutation",
               "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "cogext",
-                            "cogext.cmd",
-                            "cogext.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": [],
-                          "subcommands": [
-                            "add"
-                          ]
-                        },
-                        "op": "executable.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "cogext add command help (--help)",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "cogext",
-                            "cogext.cmd",
-                            "cogext.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": [],
-                          "subcommands": [
-                            "add"
-                          ]
-                        },
-                        "op": "executable.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "cogext add command help (-h)",
-                  "variant_id": "short-help"
-                }
-              ],
+              "safe_variants": [],
               "safer_alternatives": [
-                "Run `cogext list` first to confirm the target store."
+                "Run `gitsync run --dry-run` as the very first argument, nothing before it, and review what it reports before running it live - never rely on --dry-run appearing safe by itself.",
+                "Run `gitsync check` to confirm token scopes and account mapping before mirroring."
               ],
               "severity": "high",
-              "title": "cogext commitment creation"
+              "title": "gitsync live mirror sync"
             },
             {
               "action_classes": [
-                "cogext commitment mutation"
+                "gitsync webhook-rewriting command",
+                "gitsync service-install command"
               ],
               "default_mode": "review",
-              "description": "Identifies `cogext fulfill`, which marks a commitment as fulfilled.",
+              "description": "Identifies `gitsync hooks --force`/`-force` (rewrites existing webhooks on the git server), `gitsync hooks --remove`/`-remove` (deletes them), and `gitsync install` / `gitsync uninstall` (registers or removes the persistent background service). Go's flag parser treats a single dash the same as a double dash for a named flag, so both spellings are matched. Plain `gitsync hooks` (no flags) still mutates - it creates any missing webhooks - but never rewrites or deletes an existing one, so it is not covered here. No safe variant is offered for --help/-h on any of these: gitsync's flag parser stops at the first non-flag token and never looks at anything after it, so a flag placed after any other token is silently ignored rather than shown as help, and a declarative matcher cannot tell that case apart from one where the flag actually took effect. `uninstall` additionally never parses flags at all - it ignores every argument on both Linux and Windows and always removes the service and binary - so it was never going to have a safe variant regardless.",
               "family": null,
               "matcher": {
                 "config": {},
                 "matchers": [
                   {
                     "config": {
-                      "allow_leading_options": false,
+                      "allow_leading_options": true,
                       "executables": [
-                        "cogext",
-                        "cogext.cmd",
-                        "cogext.exe"
+                        "gitsync",
+                        "gitsync.exe"
                       ],
-                      "fail_secure_unknown_options": false,
+                      "fail_secure_unknown_options": true,
                       "forbidden_flags": [],
-                      "interspersed_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
                       "interspersed_options_with_values": [],
                       "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [
+                        "--force"
+                      ],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "hooks"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "gitsync",
+                        "gitsync.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [
+                        "-force"
+                      ],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "hooks"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "gitsync",
+                        "gitsync.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [
+                        "--remove"
+                      ],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "hooks"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "gitsync",
+                        "gitsync.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [
+                        "-remove"
+                      ],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "hooks"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "gitsync",
+                        "gitsync.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
                       "options_with_values": [],
                       "required_flags": [],
                       "required_flags_in_all_arguments": false,
                       "required_option_values": [],
                       "subcommands": [
-                        "fulfill"
+                        "install"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "gitsync",
+                        "gitsync.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--help",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "-c"
+                      ],
+                      "options_with_values": [],
+                      "required_flags": [],
+                      "required_flags_in_all_arguments": false,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "uninstall"
                       ]
                     },
                     "op": "executable.v1"
@@ -10370,221 +10459,26 @@
                 "op": "any.v1"
               },
               "native_capability": null,
-              "permission_id": "command.cogext.permission.fulfill",
+              "permission_id": "command.gitsync.permission.operational-mutation",
               "risk_classes": [
-                "destructive_shell",
+                "network_egress",
                 "execution"
               ],
-              "rule_id": "command.cogext.fulfill",
+              "rule_id": "command.gitsync.operational-mutation",
               "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "cogext",
-                            "cogext.cmd",
-                            "cogext.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": [],
-                          "subcommands": [
-                            "fulfill"
-                          ]
-                        },
-                        "op": "executable.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "cogext fulfill command help (--help)",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "cogext",
-                            "cogext.cmd",
-                            "cogext.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": [],
-                          "subcommands": [
-                            "fulfill"
-                          ]
-                        },
-                        "op": "executable.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "cogext fulfill command help (-h)",
-                  "variant_id": "short-help"
-                }
-              ],
+              "safe_variants": [],
               "safer_alternatives": [
-                "Confirm the commitment ID with `cogext get <id>`."
+                "Prefer plain `gitsync hooks`, which only creates missing webhooks and does not rewrite or delete existing ones.",
+                "Run `gitsync run --dry-run` interactively before installing it as an unattended service."
               ],
-              "severity": "high",
-              "title": "cogext commitment fulfillment"
-            },
-            {
-              "action_classes": [
-                "cogext commitment mutation"
-              ],
-              "default_mode": "review",
-              "description": "Identifies `cogext fail`, which marks a commitment as failed.",
-              "family": null,
-              "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": false,
-                      "executables": [
-                        "cogext",
-                        "cogext.cmd",
-                        "cogext.exe"
-                      ],
-                      "fail_secure_unknown_options": false,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [],
-                      "options_with_values": [],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "fail"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.cogext.permission.fail",
-              "risk_classes": [
-                "destructive_shell",
-                "execution"
-              ],
-              "rule_id": "command.cogext.fail",
-              "rule_version": "1.0.0",
-              "safe_variants": [
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "cogext",
-                            "cogext.cmd",
-                            "cogext.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "required_flags": [
-                            "--help"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": [],
-                          "subcommands": [
-                            "fail"
-                          ]
-                        },
-                        "op": "executable.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "cogext fail command help (--help)",
-                  "variant_id": "help"
-                },
-                {
-                  "matcher": {
-                    "config": {},
-                    "matchers": [
-                      {
-                        "config": {
-                          "allow_leading_options": false,
-                          "executables": [
-                            "cogext",
-                            "cogext.cmd",
-                            "cogext.exe"
-                          ],
-                          "fail_secure_unknown_options": false,
-                          "forbidden_flags": [],
-                          "interspersed_flags": [],
-                          "interspersed_options_with_values": [],
-                          "inverse_flag_pairs": [],
-                          "leading_options_with_values": [],
-                          "options_with_values": [],
-                          "required_flags": [
-                            "-h"
-                          ],
-                          "required_flags_in_all_arguments": true,
-                          "required_option_values": [],
-                          "subcommands": [
-                            "fail"
-                          ]
-                        },
-                        "op": "executable.v1"
-                      }
-                    ],
-                    "op": "any.v1"
-                  },
-                  "title": "cogext fail command help (-h)",
-                  "variant_id": "short-help"
-                }
-              ],
-              "safer_alternatives": [
-                "Confirm the commitment ID with `cogext get <id>`."
-              ],
-              "severity": "high",
-              "title": "cogext commitment failure"
+              "severity": "medium",
+              "title": "gitsync webhook rewrite, removal, or service install/uninstall"
             }
           ],
           "safer_alternatives": [
-            "Run `cogext list` or `cogext get <id>` before mutating commitment state."
+            "There is no reliably safe invocation to detect here - review every sync, run, hooks --force/--remove, install and uninstall regardless of flags.",
+            "Run `gitsync check` to confirm token scopes and account mapping before mirroring.",
+            "Only set adopt_existing on a GitHub repo you are fine handing lifecycle ownership of to gitsync."
           ],
           "source": "built-in",
           "version": "1.0.0"
@@ -10697,111 +10591,411 @@
   },
   "cases": [
     {
-      "command": "cogext add \"Send the report by Friday\"",
+      "command": "gitsync sync",
+      "disabled_permissions": [],
+      "enabled_extensions": [],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "mirror-inactive",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync sync",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "add-basic",
-      "rule_id": "command.cogext.add"
+      "id": "mirror-sync-active",
+      "rule_id": "command.gitsync.mirror-mutation"
     },
     {
-      "command": "cogext add \"Call Sarah tomorrow\"",
+      "command": "gitsync sync alice/example",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "add-call",
-      "rule_id": "command.cogext.add"
+      "id": "mirror-sync-one-repo-active",
+      "rule_id": "command.gitsync.mirror-mutation"
     },
     {
-      "command": "cogext fulfill abc-123",
+      "command": "gitsync run",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "fulfill-basic",
-      "rule_id": "command.cogext.fulfill"
+      "id": "mirror-run-active",
+      "rule_id": "command.gitsync.mirror-mutation"
     },
     {
-      "command": "cogext fail abc-123",
+      "command": "gitsync run --dry-run",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [
         0
       ],
-      "id": "fail-basic",
-      "rule_id": "command.cogext.fail"
+      "id": "mirror-run-dry-run-still-reviewed",
+      "rule_id": "command.gitsync.mirror-mutation"
     },
     {
-      "command": "cogext extract \"I'll call you tomorrow\"",
+      "command": "gitsync run --help",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-run-help-still-reviewed",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync sync --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-sync-help-still-reviewed",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync sync alice/example --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-sync-help-positional-order-still-live",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync sync alice/example --dry-run",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-sync-dry-run-positional-order-still-live",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync run whatever --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-run-help-after-bare-token-still-live",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync -c /etc/gitsync/config.toml sync",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-config-flag-leading",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync run --dry-run; gitsync sync",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0,
+        1
+      ],
+      "id": "mirror-compound",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync sync",
+      "disabled_permissions": [
+        "command.gitsync.permission.mirror-mutation"
+      ],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "block",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "mirror-disabled-permission",
+      "rule_id": "command.gitsync.mirror-mutation"
+    },
+    {
+      "command": "gitsync status",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "extract-automatic",
-      "rule_id": "command.cogext.add"
+      "id": "mirror-unrelated-safe",
+      "rule_id": "command.gitsync.mirror-mutation"
     },
     {
-      "command": "cogext list",
+      "command": "another-unrelated-tool sync",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "list-basic",
-      "rule_id": "command.cogext.add"
+      "id": "mirror-unknown-cli",
+      "rule_id": "command.gitsync.mirror-mutation"
     },
     {
-      "command": "cogext list --status open",
+      "command": "gitsync hooks --force",
+      "disabled_permissions": [],
+      "enabled_extensions": [],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "ops-inactive",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks --force",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-force-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks --remove",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-remove-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks -force",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-force-single-dash-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks -force=true",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-force-single-dash-equals-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks -remove",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-remove-single-dash-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks -remove=true",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-remove-single-dash-equals-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks -force",
+      "disabled_permissions": [
+        "command.gitsync.permission.operational-mutation"
+      ],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "block",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-force-single-dash-disabled-permission",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "list-status-open",
-      "rule_id": "command.cogext.add"
+      "id": "ops-hooks-bare-not-covered",
+      "rule_id": "command.gitsync.operational-mutation"
     },
     {
-      "command": "cogext get abc-123",
+      "command": "gitsync hooks --force --help",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.cogext"
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-force-help-still-reviewed",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync hooks --force whatever --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-hooks-force-help-after-bare-token-still-live",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync install",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-install-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync install --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-install-help-still-reviewed",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync uninstall",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-uninstall-active",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync uninstall --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-uninstall-help-still-destructive",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync uninstall",
+      "disabled_permissions": [
+        "command.gitsync.permission.operational-mutation"
+      ],
+      "enabled_extensions": [
+        "command.gitsync"
+      ],
+      "expected_action": "block",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "ops-disabled-permission",
+      "rule_id": "command.gitsync.operational-mutation"
+    },
+    {
+      "command": "gitsync check",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.gitsync"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "get-basic",
-      "rule_id": "command.cogext.add"
-    },
-    {
-      "command": "cogext stats",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.cogext"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "stats-basic",
-      "rule_id": "command.cogext.add"
+      "id": "ops-unrelated-safe",
+      "rule_id": "command.gitsync.operational-mutation"
     }
   ],
   "schema": "guard.command-extension-fixtures.v1"

@@ -723,6 +723,20 @@ class TestGuardSurfaceServer:
             with urllib.request.urlopen(dashboard_recover, timeout=5) as response:
                 assert response.status == 200
             assert captured["require_fresh_totp"] is False
+
+            mixed = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/extension-controls/recover-authority",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Guard-Dashboard-Session": dashboard_token,
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(mixed, timeout=5) as response:
+                assert response.status == 200
+            assert captured["require_fresh_totp"] is True
         finally:
             daemon.stop()
 

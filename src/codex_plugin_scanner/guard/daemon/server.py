@@ -2842,9 +2842,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 elif parsed.path.endswith("/recover-authority"):
                     response = self._daemon_server().extension_control_api.recover_authority(
                         payload,
-                        require_fresh_totp=(
-                            self._request_dashboard_session_surface() == PROTECTION_REPAIR_DASHBOARD_SURFACE
-                        ),
+                        require_fresh_totp=self._request_uses_protection_repair_session(),
                     )
                 else:
                     response = self._daemon_server().extension_control_api.refresh()
@@ -6953,11 +6951,20 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             session_started_at=started_at,
         )
 
-    def _request_dashboard_session_surface(self) -> str | None:
-        claims = self._refreshable_dashboard_session_claims()
-        if claims is None:
-            return None
-        return self._optional_string(claims.get("surface"))
+    def _request_uses_protection_repair_session(self) -> bool:
+        session_token = self.headers.get("X-Guard-Dashboard-Session")
+        authorization = self.headers.get("Authorization")
+        bearer_token = None
+        if isinstance(authorization, str) and authorization.lower().startswith("bearer "):
+            bearer_token = authorization[7:].strip()
+        candidates = [
+            candidate for candidate in (session_token, bearer_token) if isinstance(candidate, str) and candidate.strip()
+        ]
+        for candidate in candidates:
+            claims = self._dashboard_session_token_claims(candidate)
+            if claims is not None and claims.get("surface") == PROTECTION_REPAIR_DASHBOARD_SURFACE:
+                return True
+        return False
 
     def _refreshable_dashboard_session_claims(self) -> dict[str, object] | None:
         session_token = self.headers.get("X-Guard-Dashboard-Session")

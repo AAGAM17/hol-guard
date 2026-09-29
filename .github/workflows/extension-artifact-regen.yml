@@ -97,10 +97,15 @@ jobs:
           gh pr create --repo "${GH_REPO}" --base main --head "${regen_branch}" \
             --title "chore(extensions): regenerate contribution artifacts" \
             --body "Maintainer-owned projections regenerated from contributions on main ($(git rev-parse --short origin/main)). Auto-merge is armed; the ruleset still requires one maintainer approval." \
-            || echo "a pull request already exists for ${regen_branch}"
-          gh pr merge --repo "${GH_REPO}" --auto --squash "${regen_branch}" || true
+            || true
+          if ! gh pr view --repo "${GH_REPO}" "${regen_branch}" --json number >/dev/null; then
+            echo "failed to open regen PR for ${regen_branch}" >&2
+            exit 1
+          fi
+          gh pr merge --repo "${GH_REPO}" --auto --squash "${regen_branch}" \
+            || echo "::warning::could not arm auto-merge for ${regen_branch}"
           for pr in $(gh pr list --repo "${GH_REPO}" --state open \
               --json number,headRefName \
               --jq ".[] | select(.headRefName | startswith(\"regen/artifacts-\")) | select(.headRefName != \"${regen_branch}\") | .number"); do
-            gh pr close --repo "${GH_REPO}" --comment "superseded by ${regen_branch}" "${pr}"
+            gh pr close --repo "${GH_REPO}" --delete-branch --comment "superseded by ${regen_branch}" "${pr}"
           done

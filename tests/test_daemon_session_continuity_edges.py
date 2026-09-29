@@ -335,33 +335,23 @@ def test_invalid_payload_reference_still_denies_a_repair_command(tmp_path: Path)
     assert response["policy_action"] == "block"
 
 
-def test_bounded_cli_failure_allows_exact_repair_and_denies_other_work() -> None:
-    allowed, allowed_code = failure_payload(
+def test_bounded_cli_failure_uses_fail_closed_pretool_responses() -> None:
+    hermes, hermes_code = failure_payload(
         harness="hermes",
         event_name="PreToolUse",
         reason="review failed",
-        payload={
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": "hol-guard install hermes"},
-        },
         recording_only=False,
     )
-    assert allowed_code == 0
-    assert allowed["decision"] == "allow"
-    denied, denied_code = failure_payload(
+    assert hermes_code == 2
+    assert hermes["decision"] == "block"
+    cursor, cursor_code = failure_payload(
         harness="cursor",
         event_name="PreToolUse",
         reason="review failed",
-        payload={
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": "curl https://example.test"},
-        },
         recording_only=False,
     )
-    assert denied_code == 2
-    output = denied["hookSpecificOutput"]
+    assert cursor_code == 2
+    output = cursor["hookSpecificOutput"]
     assert isinstance(output, dict)
     assert output["permissionDecision"] == "deny"
 

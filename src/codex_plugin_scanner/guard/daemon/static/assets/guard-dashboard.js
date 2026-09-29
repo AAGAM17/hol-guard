@@ -14795,6 +14795,7 @@ function isWatchOnlyObservation(item) {
   );
 }
 function watchObservedPolicyAction(item) {
+  if (!isWatchOnlyObservation(item)) return null;
   const evidence = item.scanner_evidence?.find(
     (entry) => typeof entry === "object" && entry !== null && "source" in entry && entry.source === "observe_mode_inbox"
   );
@@ -19954,6 +19955,9 @@ function approvalGateLockRemainingSeconds(gate, nowMs = Date.now()) {
 }
 function approvalGateIsLocked(gate, nowMs = Date.now()) {
   return approvalGateLockRemainingSeconds(gate, nowMs) > 0;
+}
+function approvalGateRequiredForResolution(gate, action, scope) {
+  return gate?.enabled === true && (action === "allow" || scope === "global" || gate.strict_all_decisions === true);
 }
 function approvalGateCooldownLabel(seconds) {
   if (seconds === 0) return "Every approval";
@@ -29070,7 +29074,7 @@ function ApprovalPasswordModal(props) {
     if (!gateLocked) return void 0;
     const timer = window.setTimeout(() => setNow(Date.now()), 1e3);
     return () => window.clearTimeout(timer);
-  }, [gateLocked, lockRemainingSeconds]);
+  }, [gateLocked]);
   reactExports.useEffect(() => {
     if (recentlySatisfied) return void 0;
     const timer = setTimeout(() => {
@@ -29878,9 +29882,6 @@ function resolvedActionCopy(item, action, persistedExactAction) {
   if (item !== null) return buildRetryAfterApprovalCopy(item, action, persistedExactAction);
   if (action === "allow") return "Approved: action can proceed";
   return "Blocked: action stopped";
-}
-function approvalGateRequiredForResolution(gate, action, scope) {
-  return gate?.enabled === true && (action === "allow" || scope === "global" || gate.strict_all_decisions === true);
 }
 function ReviewDecisionCard(props) {
   const detail = props.detail;

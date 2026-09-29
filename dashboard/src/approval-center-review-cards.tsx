@@ -132,7 +132,7 @@ export function ApprovalPasswordModal(props: ApprovalPasswordModalProps) {
     if (!gateLocked) return undefined;
     const timer = window.setTimeout(() => setNow(Date.now()), 1000);
     return () => window.clearTimeout(timer);
-  }, [gateLocked, lockRemainingSeconds]);
+  }, [gateLocked]);
   useEffect(() => {
     if (recentlySatisfied) return undefined;
     const timer = setTimeout(() => {

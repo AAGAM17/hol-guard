@@ -46,7 +46,9 @@ def _run(command: list[str], *, capture: bool = True) -> str:
     if completed.returncode:
         detail = (completed.stderr or completed.stdout or "").strip()
         raise SystemExit(f"intake failed: {' '.join(command)}\n{detail[:2048]}")
-    return (completed.stdout or "").strip()
+    # Only the trailing newline is stripped: git -z path lists are consumed
+    # verbatim and must not lose leading/trailing whitespace in filenames.
+    return (completed.stdout or "").rstrip("\n")
 
 
 def _gh(*args: str) -> str:

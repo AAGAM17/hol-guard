@@ -435,6 +435,7 @@ fn resident_install_requires_the_existing_local_enrollment_identity() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn resident_owner_can_install_root_signed_authority_while_holding_state_lock() {
     let root = test_root();

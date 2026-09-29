@@ -170,6 +170,11 @@ def test_resolved_native_delivery_is_reverified_without_restaging(
             "envelope_digest": "a" * 64 if len(calls) == 1 else "b" * 64,
         }
 
+    monkeypatch.setattr(
+        native,
+        "matching_workspace_review_snapshot",
+        lambda _store, _home, _request_id, _decision, current: dict(current),
+    )
     monkeypatch.setattr(native, "_native_response", native_response)
     native.apply_native_workspace_review_decision(store, tmp_path / "guard-home", "request-1", {})
     staged = tmp_path / "guard-home/native-runtime/workspace-review-requests/request-1.json"

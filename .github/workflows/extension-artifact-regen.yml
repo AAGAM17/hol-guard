@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          token: ${{ secrets.GUARD_AUTOMATION_TOKEN || github.token }}
+          token: ${{ secrets.GUARD_AUTOMATION_TOKEN }}
           persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
@@ -57,8 +57,13 @@ jobs:
         run: rustup toolchain install 1.88.0 --profile minimal
       - name: Regenerate, commit, and push refreshed artifacts
         env:
-          PUSH_TOKEN: ${{ secrets.GUARD_AUTOMATION_TOKEN || github.token }}
+          PUSH_TOKEN: ${{ secrets.GUARD_AUTOMATION_TOKEN }}
         run: |
+          if [ -z "${PUSH_TOKEN}" ]; then
+            echo "GUARD_AUTOMATION_TOKEN is not set; refusing to publish generated" >&2
+            echo "artifacts without a token whose pushes trigger main-branch CI." >&2
+            exit 1
+          fi
           export GIT_CONFIG_COUNT=3
           export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
           export GIT_CONFIG_VALUE_0="AUTHORIZATION: Bearer ${PUSH_TOKEN}"
@@ -67,6 +72,8 @@ jobs:
           export GIT_CONFIG_KEY_2="user.email"
           export GIT_CONFIG_VALUE_2="41898282+github-actions[bot]@users.noreply.github.com"
           for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
             uv run --no-sync python scripts/refresh_extension_artifacts.py
             git add -A contracts/extensions contracts/managed-controls docs/guard/extensions \
               contributions/extensions \
@@ -80,13 +87,10 @@ jobs:
               exit 0
             fi
             git commit -m "chore(extensions): regenerate contribution artifacts"
-            git fetch origin main
-            git rebase origin/main
             if git push origin HEAD:main; then
               exit 0
             fi
             echo "push rejected (main moved); retrying regen against new head (attempt $attempt)"
-            git reset --hard origin/main
           done
           echo "regen push did not converge after 3 attempts" >&2
           exit 1

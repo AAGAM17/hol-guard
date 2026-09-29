@@ -43,7 +43,11 @@ nodes, 64 scalar fields, and 16 returned matches. A 200 ms deadline is checked
 between scanner chunks and object nodes; individual regex and JSON parser
 calls are not preempted mid-call.
 Oversize, expired, malformed, duplicate-key, unknown-field, wrong-type, array,
-and escaped input is `unsupported`. The closed schema currently permits exact
+and escaped input is `unsupported`. This includes otherwise valid JSON with
+escaped backslashes or quotes; the credential scan sees raw input and cannot
+claim complete coverage after decoding. Empty or whitespace-only strings in
+declared personal fields count as absent; integer zero counts as present. The
+closed schema currently permits exact
 object paths with string or integer leaves. Streaming, binary attachments,
 compressed or encoded payloads, arbitrary arrays, and free-form personal-data
 inference are outside this contract. No bytes may be forwarded based on this

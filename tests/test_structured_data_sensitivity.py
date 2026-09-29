@@ -62,6 +62,14 @@ def test_zero_integer_identifier_is_still_present() -> None:
     assert any(match.category == "personal.employee_id" for match in result.matches)
 
 
+@pytest.mark.parametrize("value", ("", "   "))
+def test_blank_declared_personal_string_is_absent(value: str) -> None:
+    result = classify_declared_content(json.dumps({"employee": {"email": value}}), schema=_schema())
+
+    assert result.status == "no_declared_match"
+    assert result.complete is True
+
+
 def test_existing_credential_rules_are_reused_without_value_or_hash() -> None:
     sample = "ghp_" + "A" * 24
     result = classify_declared_content(f"token={sample}")
@@ -93,6 +101,7 @@ def test_early_credential_match_reports_only_scanned_bytes_with_schema() -> None
         ("x" * (MAX_INPUT_BYTES + 1), "input_too_large"),
         ('{"note":"a","note":"b"}', "invalid_or_duplicate_json"),
         ('{"note":"\\u0061"}', "encoded_or_escaped_content"),
+        (json.dumps({"note": "C:\\Users\\sample"}), "encoded_or_escaped_content"),
         ('{"note":["a"]}', "array_unsupported"),
         ('{"employee":{"id":true}}', "field_type_invalid"),
         ('{"employee":{"email":{}}}', "field_type_invalid"),

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import asdict
 
 import pytest
@@ -108,7 +107,7 @@ def test_unclassifiable_inputs_never_become_no_match(payload: bytes | str, reaso
     assert result.reason_code == reason
 
 
-@pytest.mark.parametrize("deadline", (0.0, time.monotonic() - 1))
+@pytest.mark.parametrize("deadline", (0.0, -1.0))
 def test_expired_deadline_is_unsupported_even_for_benign_text(deadline: float) -> None:
     result = classify_declared_content("ordinary contact", deadline_monotonic=deadline)
 

@@ -29072,8 +29072,8 @@ function ApprovalPasswordModal(props) {
   );
   reactExports.useEffect(() => {
     if (!gateLocked) return void 0;
-    const timer = window.setTimeout(() => setNow(Date.now()), 1e3);
-    return () => window.clearTimeout(timer);
+    const timer = window.setInterval(() => setNow(Date.now()), 1e3);
+    return () => window.clearInterval(timer);
   }, [gateLocked]);
   reactExports.useEffect(() => {
     if (recentlySatisfied) return void 0;

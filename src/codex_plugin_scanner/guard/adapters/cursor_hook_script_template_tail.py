@@ -411,8 +411,9 @@ def _main_inner() -> int:
         print(json.dumps(response))
         return exit_code
     policy_action = raw_policy_action
-    # Exit 2 is the CLI's intentional restriction; other failures cannot authorize.
-    if proc.returncode not in {0, 2} or (proc.returncode == 2 and policy_action in {"allow", "warn"}):
+    _restrictive = {"review", "require-reapproval", "sandbox-required", "block"}
+    # The --json CLI path exits 1 (daemon/native paths may exit 2) for intentional restrictions.
+    if proc.returncode != 0 and not (proc.returncode in {1, 2} and policy_action in _restrictive):
         response, exit_code = _cursor_availability_response(
             prepared, hook_event_name=hook_event_name, workspace=workspace
         )

@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
 
 from codex_plugin_scanner.guard import evaluation_cli_run as cli_run
 from codex_plugin_scanner.guard import evaluation_runner as runner
+from codex_plugin_scanner.guard.adapters.hook_python_subprocess import ProbeResult
 from codex_plugin_scanner.guard.evaluation_cli import main
 from codex_plugin_scanner.guard.evaluation_contracts import EvaluationContractError, EvaluationProfile
 from codex_plugin_scanner.guard.evaluation_preflight import EvaluationSetup, setup_evaluation
+from codex_plugin_scanner.guard.evaluation_witness import FileWitnessPair
 
 from .evaluation_cli_fixtures import _profile
 
@@ -300,3 +303,59 @@ def test_synthetic_runner_rejects_an_installed_mode_adapter(tmp_path: Path) -> N
         assert error.value.status == "not_run"
     finally:
         assert setup.cleanup() is True
+
+
+@pytest.mark.parametrize(
+    ("timed_out", "overflow", "incomplete", "returncode", "expected_code"),
+    (
+        (True, False, False, 0, "run_timeout"),
+        (False, True, False, 0, "output_limit_exceeded"),
+        (False, False, True, 0, "control_capture_incomplete"),
+        (False, False, False, 1, "control_failed"),
+    ),
+)
+def test_file_control_never_accepts_incomplete_or_failed_execution(
+    monkeypatch,
+    tmp_path: Path,
+    timed_out: bool,
+    overflow: bool,
+    incomplete: bool,
+    returncode: int,
+    expected_code: str,
+) -> None:
+    pair = FileWitnessPair(tmp_path / "denied", tmp_path / "allowed")
+    result = ProbeResult(
+        returncode=returncode,
+        stdout=b"",
+        stderr=b"",
+        timed_out=timed_out,
+        output_overflow=overflow,
+        capture_incomplete=incomplete,
+    )
+    monkeypatch.setattr(runner, "run_probe", lambda *_args, **_kwargs: result)
+    ctx = runner.EvaluationRunContext(deadline=time.monotonic() + 5, output_limit_bytes=1024)
+
+    with pytest.raises(runner.EvaluationRunnerError) as error:
+        runner._fixed_file_control(pair, ctx=ctx)
+
+    assert error.value.code == expected_code
+    assert not pair.allowed_target.exists()
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://127.0.0.1:8080/probe/allowed",
+        "http://localhost:8080/probe/allowed",
+        "http://127.0.0.1:8080/outside",
+        "http://127.0.0.1:invalid/probe/allowed",
+    ),
+)
+def test_network_control_rejects_non_loopback_witness_routes(monkeypatch, url: str) -> None:
+    monkeypatch.setattr(runner, "managed_urlopen", lambda *_args, **_kwargs: pytest.fail("unexpected network call"))
+    ctx = runner.EvaluationRunContext(deadline=time.monotonic() + 5, output_limit_bytes=1024)
+
+    with pytest.raises(runner.EvaluationRunnerError) as error:
+        runner._fixed_network_control(url, ctx=ctx)
+
+    assert error.value.code == "fixture_rejected"

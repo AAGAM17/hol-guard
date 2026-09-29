@@ -327,9 +327,7 @@ def test_explicit_refresh_updates_only_existing_trusted_notice() -> None:
 def test_refresh_rejects_trusted_comment_without_valid_id() -> None:
     client = FakeGitHub()
     configure_new_contribution(client, "command.refresh", ["400"])
-    client.comment_rows = [
-        {"body": MODULE.MARKER, "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"}}
-    ]
+    client.comment_rows = [{"body": MODULE.MARKER, "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"}}]
 
     with pytest.raises(MODULE.ClaimNoticeError, match="comment ID is invalid"):
         MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True)

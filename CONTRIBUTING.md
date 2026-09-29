@@ -60,6 +60,13 @@ permission; this repository cannot enable it for the contributor. If GitHub inst
 **Allow edits and access to secrets by maintainers**, leave it disabled and apply Gitar's
 suggestion yourself.
 
+PRs from organization-owned forks — or with maintainer edits disabled — cannot
+receive maintainer pushes at all. Maintainers land those through an upstream
+`intake/pr-NNNN` branch prepared by `scripts/intake_contribution_pr.py`, which
+keeps the contributor commits as ancestors so attribution and the original PR
+stay intact. Several contributions can also be batched onto one
+`intake/batch-...` branch so artifact regeneration runs once.
+
 ## Development setup
 
 Install Git, [uv](https://docs.astral.sh/uv/getting-started/installation/), and

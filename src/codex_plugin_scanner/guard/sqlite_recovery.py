@@ -344,6 +344,7 @@ class _QuarantineEvent:
     sort_key: tuple[str, str, float] | None = None
     bytes: int = 0
     mtime: float = 0.0
+    has_snapshot: bool = False
 
 
 def prune_quarantined_store_snapshots(
@@ -384,9 +385,10 @@ def prune_quarantined_store_snapshots(
                 event.sort_key = key
             if not entry.name.endswith(QUARANTINE_FORENSICS_SUFFIX):
                 event.bytes += metadata.st_size
+                event.has_snapshot = True
             event.mtime = max(event.mtime, metadata.st_mtime)
     ordered = sorted(
-        events.items(),
+        ((base, event) for base, event in events.items() if event.has_snapshot),
         key=lambda item: item[1].sort_key or ("0", "", 0.0),
         reverse=True,
     )
@@ -433,10 +435,11 @@ def quarantined_store_summary(guard_home: Path) -> dict[str, object]:
             total_bytes += metadata.st_size
             if entry.name.endswith(QUARANTINE_FORENSICS_SUFFIX):
                 forensic_record_count += 1
-            base = _quarantine_event_base(entry.name)
-            epoch = _quarantine_event_epoch_seconds(base, metadata.st_mtime)
-            previous = events.get(base)
-            events[base] = epoch if previous is None else max(previous, epoch)
+            if not entry.name.endswith(QUARANTINE_FORENSICS_SUFFIX):
+                base = _quarantine_event_base(entry.name)
+                epoch = _quarantine_event_epoch_seconds(base, metadata.st_mtime)
+                previous = events.get(base)
+                events[base] = epoch if previous is None else max(previous, epoch)
     count = len(events)
     if events:
         newest_epoch = max(events.values())

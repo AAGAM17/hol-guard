@@ -249,7 +249,8 @@ def await_persisted_native_receipt(
                 writer_progress = None
                 should_read = True
             elif processed > processed_mark:
-                writer_progress = (progress_writer, processed)
+                # Keep checking until SQLite exposes the row; do not consume the
+                # progress marker after a read that may still miss persistence.
                 should_read = True
         if should_read:
             new_ids = persisted_native_receipt_ids(store) - known_ids

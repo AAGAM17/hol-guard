@@ -383,8 +383,9 @@ def run_synthetic_cases(
             cleanup_error = EvaluationRunnerError("witness_cleanup_failed", "synthetic witness cleanup failed")
     if cleanup_error is not None and not cases:
         raise cleanup_error
-    statuses = {str(case["status"]) for case in cases}
-    if "failed" in statuses:
+    statuses = {case.get("status") for case in cases}
+    known = {"passed", "failed", "blocked_environment", "not_run"}
+    if "failed" in statuses or not statuses or not statuses <= known:
         status = "failed"
     elif "blocked_environment" in statuses:
         status = "blocked_environment"

@@ -34,6 +34,9 @@ if pythonpath_prefix:
 os.environ["HOL_GUARD_TEST_DISABLE_BROWSER_OPEN"] = "1"
 os.environ.pop("HOL_GUARD_TEST_ALLOW_BROWSER_OPEN", None)
 
+# Unit tests must never deliver real OS notifications.
+os.environ["HOL_GUARD_DESKTOP_NOTIFICATIONS"] = "0"
+
 
 @pytest.fixture(autouse=True)
 def _default_unit_tests_to_python_rollback(monkeypatch: pytest.MonkeyPatch) -> None:

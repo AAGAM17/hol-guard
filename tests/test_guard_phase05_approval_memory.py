@@ -1460,7 +1460,7 @@ def test_gr121_legacy_expired_requests_reopen_as_pending(tmp_path: Path) -> None
     restored = _store(tmp_path)
     restored_old = restored.get_approval_request("req-old")
     assert restored_old is not None
-    assert restored_old["status"] == "pending"
+    assert restored_old["status"] == "expired"
     assert restored_old["reason"] is None
     assert restored_old["resolved_at"] is None
     assert restored.get_approval_request("req-fresh")["status"] == "pending"

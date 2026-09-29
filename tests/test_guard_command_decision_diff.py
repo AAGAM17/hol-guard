@@ -39,6 +39,25 @@ def _fixture() -> dict[str, object]:
     return cast(dict[str, object], value)
 
 
+def test_report_cli_writes_and_checks_framed_digest(tmp_path: Path, monkeypatch) -> None:
+    from tests import guard_command_decision_diff as module
+
+    report = {"schema": "synthetic-report"}
+    path = tmp_path / "decision-diff-report.json"
+    digest_path = path.with_name("decision-diff-report.framed-sha256")
+    monkeypatch.setattr(module, "REPORT_PATH", path)
+    monkeypatch.setattr(module, "_generate_decision_diff_report", lambda: (report, 1.0))
+    monkeypatch.setattr(sys, "argv", ["guard_command_decision_diff.py", "--write"])
+    module._main()
+    assert path.read_bytes() == canonical_json_bytes(report)
+    assert digest_path.read_text(encoding="ascii") == report_framed_sha256(report) + "\n"
+    monkeypatch.setattr(sys, "argv", ["guard_command_decision_diff.py", "--check"])
+    module._main()
+    digest_path.write_text("0" * 64 + "\n", encoding="ascii")
+    with pytest.raises(SystemExit, match="framed digest is stale"):
+        module._main()
+
+
 def teardown_module() -> None:
     from codex_plugin_scanner.guard.cli.commands_support import _sync_namespace
 

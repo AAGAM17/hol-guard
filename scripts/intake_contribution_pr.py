@@ -17,10 +17,10 @@ Because the contributor commit SHAs remain ancestors, merging the intake PR
 with a merge commit marks the original PRs merged. With squash merge, close the
 original PRs manually with a reference comment.
 
-The refresh step executes build tooling from the merged tree, so a
-contribution that itself modifies tooling (``scripts/``, ``.github/``,
-``rust/``, packaging manifests) is refused unless ``--trust-tooling-changes``
-is passed after manual review of that diff.
+The refresh step executes code from the merged tree (``src/`` imports, test
+helpers, build tooling), so a contribution that touches anything outside
+``contributions/`` and ``tests/fixtures/`` is refused unless
+``--trust-tooling-changes`` is passed after manual review of that diff.
 
 Requires ``gh`` authenticated as a maintainer and push access to origin.
 """
@@ -96,15 +96,17 @@ def main() -> int:
         contributor_heads.append(_run(["git", "rev-parse", "FETCH_HEAD"]))
     _run(["git", "fetch", "origin", "main"])
 
-    tooling_paths = ("scripts/", ".github/", "rust/", "pyproject.toml", "uv.lock")
+    contributor_owned = ("contributions/", "tests/fixtures/")
     for (pr_number, _, _), contributor_head in zip(contributions, contributor_heads, strict=True):
         merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
-        tooling_changes = _run(["git", "diff", "--name-only", merge_base, contributor_head, "--", *tooling_paths])
-        if tooling_changes and not (args.trust_tooling_changes or args.skip_regen):
+        changed = _run(["git", "diff", "--name-only", merge_base, contributor_head]).splitlines()
+        outside = [path for path in changed if not path.startswith(contributor_owned)]
+        if outside and not (args.trust_tooling_changes or args.skip_regen):
             raise SystemExit(
-                f"PR #{pr_number} modifies tooling/build files; refresh would execute them "
-                "with maintainer credentials. Review the diff, then rerun with "
-                "--trust-tooling-changes or --skip-regen:\n" + tooling_changes
+                f"PR #{pr_number} changes files outside contributions/ and tests/fixtures/; "
+                "refresh executes src/, tests/, scripts/, and build tooling from the merged "
+                "tree with maintainer credentials. Review the diff, then rerun with "
+                "--trust-tooling-changes or --skip-regen:\n" + "\n".join(outside)
             )
 
     if _run(["git", "branch", "--list", branch]):

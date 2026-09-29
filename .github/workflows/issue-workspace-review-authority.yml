@@ -47,37 +47,12 @@ jobs:
       - name: Write bounded public request
         env:
           AUTHORITY_REQUEST: ${{ inputs.authority_request }}
-        run: |
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          raw = os.environ['AUTHORITY_REQUEST'].encode('utf-8')
-          if len(raw) > 16 * 1024:
-              raise SystemExit('Authority request exceeds the size limit.')
-          os.umask(0o077)
-          with Path('authority-request.json').open('xb') as output:
-              output.write(raw)
-          PY
+        run: uv run --no-sync python scripts/approval/workspace_review_authority_workflow.py write-request --output authority-request.json
       - name: Validate authority contract
         run: uv run --no-sync python scripts/approval/issue_workspace_review_authority.py --request authority-request.json --validate-only
       - name: Record request for custodian review
         id: request
-        run: |
-          python - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          raw = Path('authority-request.json').read_bytes()
-          digest = hashlib.sha256(raw).hexdigest()
-          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
-              output.write(f'digest={digest}\n')
-          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as summary:
-              summary.write(f'Request SHA-256: `{digest}`\n\n')
-              summary.write('Approve only after verifying the workspace, installation, scope and generation bindings.\n\n')
-              summary.write(f'Approval comment: `authority-request-sha256:{digest}`\n\n')
-              summary.write('```json\n' + json.dumps(json.loads(raw), indent=2, sort_keys=True) + '\n```\n')
-          PY
+        run: uv run --no-sync python scripts/approval/workspace_review_authority_workflow.py record-request --request authority-request.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: workspace-review-authority-request
@@ -102,41 +77,6 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/environments/guard-approval-root" \
             --jq '.protection_rules | any(.type == "required_reviewers" and .prevent_self_review == true and (.reviewers | any(.type == "User")))' \
             | grep -qx true
-      - name: Verify independent custodian reviewed these bytes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_REQUEST_DIGEST: ${{ needs.validate.outputs.request_digest }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/environments/guard-approval-root" > authority-environment.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" > authority-reviews.json
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          environment = json.loads(Path('authority-environment.json').read_text())
-          reviews = json.loads(Path('authority-reviews.json').read_text())
-          custodians = {
-              reviewer['reviewer']['id']
-              for rule in environment['protection_rules']
-              if rule['type'] == 'required_reviewers' and rule.get('prevent_self_review') is True
-              for reviewer in rule['reviewers'] if reviewer['type'] == 'User'
-          }
-          initiators = {
-              os.environ['GITHUB_ACTOR'].casefold(),
-              os.environ['GITHUB_TRIGGERING_ACTOR'].casefold(),
-          }
-          expected_comment = 'authority-request-sha256:' + os.environ['EXPECTED_REQUEST_DIGEST']
-          approved = any(
-              review.get('state') == 'approved'
-              and review.get('comment', '').strip() == expected_comment
-              and review.get('user', {}).get('id') in custodians
-              and review.get('user', {}).get('login', '').casefold() not in initiators
-              and any(item.get('id') == environment['id'] for item in review.get('environments', []))
-              for review in reviews
-          )
-          if not approved:
-              raise SystemExit('Independent custodian approval of this request digest is required.')
-          PY
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           ref: ${{ github.sha }}
@@ -148,22 +88,21 @@ jobs:
         with:
           version: '0.9.26'
       - run: uv sync --frozen --no-dev --no-install-project
+      - name: Verify independent custodian reviewed these bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REQUEST_DIGEST: ${{ needs.validate.outputs.request_digest }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/environments/guard-approval-root" > authority-environment.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" > authority-reviews.json
+          uv run --no-sync python scripts/approval/workspace_review_authority_workflow.py verify-custodian-approval --environment authority-environment.json --reviews authority-reviews.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: workspace-review-authority-request
       - name: Verify reviewed request digest
         env:
           EXPECTED_REQUEST_DIGEST: ${{ needs.validate.outputs.request_digest }}
-        run: |
-          python - <<'PY'
-          import hashlib
-          import hmac
-          import os
-          from pathlib import Path
-          actual = hashlib.sha256(Path('authority-request.json').read_bytes()).hexdigest()
-          if not hmac.compare_digest(actual, os.environ['EXPECTED_REQUEST_DIGEST']):
-              raise SystemExit('Reviewed authority request changed.')
-          PY
+        run: uv run --no-sync python scripts/approval/workspace_review_authority_workflow.py verify-request-digest --request authority-request.json
       - name: Sign approved public authority
         env:
           EXPECTED_REQUEST_DIGEST: ${{ needs.validate.outputs.request_digest }}

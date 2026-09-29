@@ -363,13 +363,16 @@ def test_refresh_retains_existing_link_during_portal_outage(monkeypatch: pytest.
     ]
     monkeypatch.setattr(MODULE, "portal_readiness", lambda _url: ("provider_unavailable", "portal unreachable"))
 
-    assert MODULE.process(
-        client,
-        9,
-        MODULE.DEFAULT_STUDIO_URL,
-        refresh_existing=True,
-        portal_readiness_url="https://portal.example/ready",
-    ) == 0
+    assert (
+        MODULE.process(
+            client,
+            9,
+            MODULE.DEFAULT_STUDIO_URL,
+            refresh_existing=True,
+            portal_readiness_url="https://portal.example/ready",
+        )
+        == 0
+    )
     assert client.posted == []
     assert client.updated == []
 

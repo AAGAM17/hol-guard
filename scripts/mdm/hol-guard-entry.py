@@ -861,6 +861,14 @@ if __name__ == "__main__":
 
     daemon_gate_released = _consume_frozen_daemon_serve_gate()
 
+    # Stamp the onefile extraction dir before any launch that reaches the heavy
+    # Guard imports, so a hard-killed launch can be proven dead and reclaimed.
+    # Kept after the fast paths above so `--version` and the daemon bridge stay
+    # import-light.
+    from codex_plugin_scanner.guard.onefile_extraction import record_extraction_owner
+
+    record_extraction_owner(meipass=getattr(sys, "_MEIPASS", None))
+
     from codex_plugin_scanner.guard.frozen_daemon_runtime import install_frozen_daemon_runtime
 
     install_frozen_daemon_runtime()

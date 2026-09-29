@@ -134,7 +134,9 @@ def main() -> int:
 
     for (pr_number, _, _), contributor_head in zip(contributions, contributor_heads, strict=True):
         merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
-        changed = _run(["git", "diff", "--name-only", merge_base, contributor_head]).splitlines()
+        changed = _run(
+            ["git", "diff", "--no-renames", "--name-only", merge_base, contributor_head]
+        ).splitlines()
         machine_touched.update(p for p in changed if managed(p))
         outside = [p for p in changed if not p.startswith(contributor_owned) and not managed(p)]
         if outside:

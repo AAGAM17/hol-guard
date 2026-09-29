@@ -63,6 +63,7 @@ class FakeGitHub:
         self.comment_rows: list[dict[str, Any]] = []
         self.logins: dict[str, str | None] = {}
         self.posted: list[tuple[int, str]] = []
+        self.updated: list[tuple[int, str]] = []
 
     def repo_metadata(self) -> dict[str, Any]:
         return {"default_branch": self.default_branch}
@@ -101,6 +102,9 @@ class FakeGitHub:
 
     def post_comment(self, number: int, body: str) -> None:
         self.posted.append((number, body))
+
+    def update_comment(self, comment_id: int, body: str) -> None:
+        self.updated.append((comment_id, body))
 
 
 def configure_new_contribution(
@@ -149,6 +153,15 @@ def test_new_contribution_notifies_only_reviewed_numeric_ids() -> None:
     assert "extension=command.example" not in body
     assert "PR author" not in body
     assert "runtime trust" in body
+    assert "## Claim your extension" in body
+    assert "continue with GitHub" in body
+    assert "public publisher page" in body
+    assert "launch story" in body
+    assert "setup guide and blog content" in body
+    assert "verified publisher badge toolkit" in body
+    assert "claiming alone does not publish" in body
+    assert "trust score" not in body
+    assert "installs" not in body
 
 
 def test_pr_authorship_never_creates_claim_authority() -> None:
@@ -285,14 +298,52 @@ def test_existing_marker_from_trusted_actions_identity_is_idempotent() -> None:
     assert client.posted == []
 
 
+def test_explicit_refresh_updates_only_existing_trusted_notice() -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.refresh", ["400"])
+    client.logins = {"400": "reviewed-maintainer"}
+    client.comment_rows = [
+        {
+            "id": 123,
+            "body": f"{MODULE.MARKER}\nOld notice",
+            "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"},
+        }
+    ]
+
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True, dry_run=True) == 0
+    assert client.updated == []
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
+    assert client.posted == []
+    assert len(client.updated) == 1
+    assert client.updated[0][0] == 123
+    assert "@reviewed-maintainer" in client.updated[0][1]
+    assert "launch story" in client.updated[0][1]
+
+    client.comment_rows[0]["body"] = client.updated[0][1]
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
+    assert len(client.updated) == 1
+
+
+def test_refresh_rejects_trusted_comment_without_valid_id() -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.refresh", ["400"])
+    client.comment_rows = [
+        {"body": MODULE.MARKER, "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"}}
+    ]
+
+    with pytest.raises(MODULE.ClaimNoticeError, match="comment ID is invalid"):
+        MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True)
+
+
 def test_contributor_cannot_spoof_notice_marker() -> None:
     client = FakeGitHub()
     configure_new_contribution(client, "command.marker-spoof", ["400"])
     client.logins = {"400": "real-maintainer"}
     client.comment_rows = [{"body": MODULE.MARKER, "user": {"id": 1234, "type": "User"}}]
 
-    assert MODULE.process(client, 13, MODULE.DEFAULT_STUDIO_URL) == 0
+    assert MODULE.process(client, 13, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
     assert len(client.posted) == 1
+    assert client.updated == []
 
 
 def test_renamed_contributions_require_explicit_maintainer_backfill() -> None:
@@ -434,12 +485,14 @@ def test_workflow_is_merge_only_and_supports_reviewed_rename_backfill() -> None:
     assert "pr_number:" in text
     assert "allow_renames:" in text
     assert "dry_run:" in text
+    assert "refresh_existing:" in text
     assert "contributions/extension-listings/**" in text
     assert "pull-requests: write" in text
     assert "issues: write" not in text
     assert "persist-credentials: false" in text
     assert "--allow-renames" in text
     assert "--dry-run" in text
+    assert "--refresh-existing" in text
     assert "notify_merged_extension_claimants.py" in text
     assert "https://hol.org/guard/extension-studio" in text
 

@@ -208,6 +208,11 @@ class GitHubApi:
     def post_comment(self, number: int, body: str) -> None:
         self._request(f"{self.base_url}/issues/{number}/comments", method="POST", payload={"body": body})
 
+    def update_comment(self, comment_id: int, body: str) -> None:
+        if comment_id <= 0:
+            raise ClaimNoticeError("claim notice comment ID is invalid")
+        self._request(f"{self.base_url}/issues/comments/{comment_id}", method="PATCH", payload={"body": body})
+
 
 def _extension_id_from_path(path: str, prefix: str) -> str | None:
     if not path.startswith(prefix) or not path.endswith(".json"):
@@ -436,10 +441,9 @@ def contribution_path(extension_id: str) -> str:
 def build_comment(items: list[NoticeItem], studio_url: str) -> str:
     lines = [
         MARKER,
-        (
-            "The merged extension metadata now authorizes the GitHub account(s) below "
-            "to manage publisher profiles in HOL Guard Extension Studio."
-        ),
+        "Your HOL Guard extension contribution is merged and its publisher page is ready to claim.",
+        "",
+        "## Claim your extension",
         "",
     ]
     for item in items:
@@ -450,9 +454,17 @@ def build_comment(items: list[NoticeItem], studio_url: str) -> str:
         link = f"{studio_url}?{urllib.parse.urlencode(intent)}"
         identities = [f"@{login}" if login else f"GitHub ID `{account_id}`" for account_id, login in item.identities]
         identity_text = ", ".join(identities) if identities else "accepted maintainer identity"
-        lines.append(f"- `{item.extension_id}`: {identity_text} · [Open Extension Studio]({link})")
+        lines.append(f"- [Claim `{item.extension_id}` in Extension Studio]({link}) — {identity_text}")
     lines.extend(
         [
+            "",
+            (
+                "Open your link and continue with GitHub using an account named above. "
+                "Claiming creates a public publisher page that credits your GitHub account. "
+                "From Extension Studio, you can shape a launch story, prepare a setup guide and blog content, "
+                "and use the verified publisher badge toolkit. Launch content is submitted for review; "
+                "claiming alone does not publish it."
+            ),
             "",
             (
                 "Claim verification re-reads canonical `main` and checks the accepted numeric GitHub ID "
@@ -477,6 +489,17 @@ def has_trusted_marker(comments: list[dict[str, Any]], marker: str) -> bool:
         if isinstance(user, dict) and user.get("id") == TRUSTED_NOTICE_ACTOR_ID and user.get("type") == "Bot":
             return True
     return False
+
+
+def trusted_notice_comment(comments: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Find a claim notice posted by the trusted GitHub Actions identity."""
+    for comment in comments:
+        if MARKER not in str(comment.get("body") or ""):
+            continue
+        user = comment.get("user")
+        if isinstance(user, dict) and user.get("id") == TRUSTED_NOTICE_ACTOR_ID and user.get("type") == "Bot":
+            return comment
+    return None
 
 
 def has_trusted_notice(comments: list[dict[str, Any]]) -> bool:
@@ -819,6 +842,7 @@ def process(
     allow_renames: bool = False,
     portal_readiness_url: str | None = None,
     report_only: bool = False,
+    refresh_existing: bool = False,
 ) -> int:
     if report_only:
         print(
@@ -835,7 +859,8 @@ def process(
         )
         return 0
     comments = client.comments(pr_number)
-    notice_exists = has_trusted_notice(comments)
+    existing_notice = trusted_notice_comment(comments)
+    notice_exists = existing_notice is not None
     guidance_exists = has_trusted_guidance(comments)
     records: list[ExtensionReadiness] = []
     items, _ = _plan_notice_items(client, pr_number, allow_renames=allow_renames, records=records)
@@ -858,10 +883,19 @@ def process(
             print(f"PR #{pr_number}: posted claim guidance for {len(unmapped)} extension(s)")
     elif guidance_exists:
         print(f"PR #{pr_number}: trusted claim guidance already exists; skipping duplicate")
-    if items and not notice_exists:
+    if items and (not notice_exists or refresh_existing):
         body = build_comment(resolve_notice_identities(client, items), studio_url.rstrip("/"))
         if dry_run:
             print(body)
+        elif existing_notice is not None:
+            comment_id = existing_notice.get("id")
+            if type(comment_id) is not int or comment_id <= 0:
+                raise ClaimNoticeError("trusted claim notice comment ID is invalid")
+            if existing_notice.get("body") == body:
+                print(f"PR #{pr_number}: trusted extension claim notice is already current")
+            else:
+                client.update_comment(comment_id, body)
+                print(f"PR #{pr_number}: refreshed Extension Studio claim notice for {len(items)} extension(s)")
         else:
             client.post_comment(pr_number, body)
             print(f"PR #{pr_number}: posted Extension Studio claim notice for {len(items)} extension(s)")
@@ -877,6 +911,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--studio-url", default=os.environ.get("GUARD_EXTENSION_STUDIO_URL", DEFAULT_STUDIO_URL))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-renames", action="store_true")
+    parser.add_argument(
+        "--refresh-existing",
+        action="store_true",
+        help="Update an existing trusted claim notice after rechecking current claim authority.",
+    )
     parser.add_argument(
         "--report",
         action="store_true",
@@ -903,6 +942,7 @@ def main(argv: list[str] | None = None) -> int:
             args.studio_url,
             dry_run=args.dry_run,
             allow_renames=args.allow_renames,
+            refresh_existing=args.refresh_existing,
             portal_readiness_url=args.portal_readiness_url or None,
             report_only=args.report,
         )

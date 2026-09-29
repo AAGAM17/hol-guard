@@ -67,9 +67,26 @@ def test_checkout_import_invalidates_evidence(tmp_path: Path, monkeypatch: pytes
 
     def injected_run(_arguments, *, plugins):
         plugins[0].passed = 10
+        plugins[0].group_passed = {"import_unavailable": 5, "unacknowledged_watch": 5}
         module = ModuleType("codex_plugin_scanner.fixture_source_injection")
         module.__file__ = str(tmp_path / "src" / "fixture.py")
         monkeypatch.setitem(sys.modules, module.__name__, module)
+        return 0
+
+    monkeypatch.setattr(runner.pytest, "main", injected_run)
+    assert runner.main() == 1
+    assert not output.exists()
+
+
+def test_wrong_case_group_counts_cannot_produce_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "evidence.json"
+    _arguments(monkeypatch, tmp_path, output)
+    monkeypatch.setattr(runner, "load_subject", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(runner, "verify_install", lambda *_args: {"outside_checkout": True})
+
+    def injected_run(_arguments, *, plugins):
+        plugins[0].passed = 10
+        plugins[0].group_passed = {"import_unavailable": 10, "unacknowledged_watch": 0}
         return 0
 
     monkeypatch.setattr(runner.pytest, "main", injected_run)

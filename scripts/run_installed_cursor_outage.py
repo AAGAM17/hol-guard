@@ -18,10 +18,18 @@ class _Results:
     def __init__(self) -> None:
         self.passed = 0
         self.skipped = 0
+        self.group_passed = {"import_unavailable": 0, "unacknowledged_watch": 0}
 
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         if report.when == "call" and report.passed:
             self.passed += 1
+            test_name = report.nodeid.rsplit("::", 1)[-1].split("[", 1)[0]
+            group = {
+                "test_generated_cursor_import_failure_denies_unparsed_actions": "import_unavailable",
+                "test_generated_cursor_unparsed_input_ignores_unacknowledged_watch": "unacknowledged_watch",
+            }.get(test_name)
+            if group is not None:
+                self.group_passed[group] += 1
         if report.skipped:
             self.skipped += 1
 
@@ -54,6 +62,8 @@ def main() -> int:
             )
         if status != 0 or results.passed != 10 or results.skipped != 0:
             raise InstalledCanaryError("Installed Cursor outage qualification requires all ten cases to pass")
+        if results.group_passed != {"import_unavailable": 5, "unacknowledged_watch": 5}:
+            raise InstalledCanaryError("Installed Cursor outage qualification requires both five-case groups")
         for name, module in tuple(sys.modules.items()):
             if name == "codex_plugin_scanner" or name.startswith("codex_plugin_scanner."):
                 origin = getattr(module, "__file__", None)
@@ -67,8 +77,17 @@ def main() -> int:
             "passed": results.passed,
             "skipped": results.skipped,
             "unparsed_input_fixture": True,
-            "guard_imports_unavailable": True,
-            "unacknowledged_watch_fixture": True,
+            "case_groups": {
+                "import_unavailable": {
+                    "passed": results.group_passed["import_unavailable"],
+                    "guard_imports_unavailable": True,
+                },
+                "unacknowledged_watch": {
+                    "passed": results.group_passed["unacknowledged_watch"],
+                    "guard_imports_unavailable": False,
+                    "mode_authority_fixture": True,
+                },
+            },
             "requested_actions_executed": False,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)

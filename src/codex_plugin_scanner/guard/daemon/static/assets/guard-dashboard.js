@@ -14905,7 +14905,7 @@ function resolveActionEnvelopeDetailText(envelope, options = {}) {
     }
   }
   if (envelope.action_type === "mcp_tool" || envelope.event_name === "PreToolUse") {
-    const baseText = resolveEnvelopeDisplayText(envelope) ?? envelope.mcp_tool ?? envelope.tool_name ?? envelope.action_type;
+    const baseText = friendlyMcpToolName(envelope.tool_name) ?? friendlyMcpToolName(envelope.mcp_tool) ?? resolveEnvelopeDisplayText(envelope) ?? envelope.mcp_tool ?? envelope.tool_name ?? envelope.action_type;
     const inputSummary = serializeMcpInput(envelope.raw_payload_redacted, options.mcpInputMaxLength ?? null);
     if (inputSummary !== null) return `${baseText}
 
@@ -15005,6 +15005,9 @@ function requestResolutionBlockReason(item) {
   }
   if (item.policy_action === "block") {
     return "Policy terminally blocked this action. This queue record is diagnostic and cannot be overridden by an approval.";
+  }
+  if (item.status === "expired") {
+    return item.superseded_by_request_id ? "This request expired and was superseded by a fresh review." : "This request expired. Rerun the action to create a fresh review.";
   }
   return null;
 }
@@ -15112,7 +15115,22 @@ function harnessDisplayName(harness) {
   }
 }
 function displayArtifactName(item) {
+  if (item.artifact_type === "tool_call") {
+    const friendly = friendlyMcpToolName(item.artifact_name);
+    if (friendly) return friendly;
+  }
   return item.artifact_name || item.artifact_id || "this action";
+}
+function friendlyMcpToolName(raw) {
+  if (!raw || raw.length > 256) return null;
+  const parts = raw.startsWith("mcp__") ? raw.slice(5).split("__") : [];
+  if (parts.length < 2 || parts.some((part) => !/^[a-zA-Z0-9_-]{1,80}$/.test(part))) return null;
+  const codexApp = parts[0] === "codex_apps" && parts.length > 2;
+  const connector = codexApp ? parts[1] : parts[0];
+  const tool = parts.slice(codexApp ? 2 : 1).join("__");
+  const humanize = (part) => part.replaceAll("_", " ").replaceAll("-", " ").toLowerCase().replace(/\s+/g, " ").replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+  const shortTool = tool.toLowerCase().startsWith(`${connector.toLowerCase()}_`) ? tool.slice(connector.length + 1) : tool;
+  return `${humanize(connector)} · ${humanize(shortTool)}`;
 }
 function formatNumber(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M`;
@@ -15229,7 +15247,7 @@ function buildCodexResumeUx(resume) {
   }
   return {
     headline: "Guard could not locate the Codex chat.",
-    body: resume.message ?? "Return to Codex and retry the same request.",
+    body: resume.message ?? "Return to Codex and retry. A new tool call may need fresh approval.",
     showRetry: false
   };
 }
@@ -16659,7 +16677,7 @@ async function fetchExtensionControlApi(input, init) {
   return fetchWithGuardAuth(input, init);
 }
 async function fetchLocalCliApi(input, init) {
-  const approvedPath = typeof input === "string" && /^\/v1\/local-clis(?:\/(?:preview|apply|recognize|discover))?$/.test(input);
+  const approvedPath = typeof input === "string" && /^\/v1\/local-clis(?:\/(?:preview|apply|recognize|discover|provider-actions|provider-workflows|registry-search|registry-setup|refresh-job|skills|mcp-skills))?$/.test(input);
   if (!approvedPath) {
     throw new Error("Invalid local CLI API path");
   }
@@ -16989,6 +17007,7 @@ function normalizeApprovalRequest(item) {
   const scopeRestrictions = parseStringList(item.scope_restrictions);
   return {
     ...baseItem,
+    superseded_by_request_id: item.status === "expired" && typeof item.superseded_by_request_id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(item.superseded_by_request_id) ? item.superseded_by_request_id : void 0,
     policy_action: failClosedPolicyAction,
     recommended_scope: isDecisionScope(item.recommended_scope) ? item.recommended_scope : null,
     allowed_scopes: allowedScopes ?? void 0,
@@ -30222,6 +30241,7 @@ function ReviewDecisionCard(props) {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { tone: watchOnlyObservation ? "info" : actionPresentation.tone, children: watchOnlyObservation ? "Would have stopped" : actionPresentation.label })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(PrimaryActionCard, { item }),
+      item.scope_restrictions?.includes("provider_account_unverified_once_only") ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm leading-6 text-brand-dark", children: "Guard cannot verify this provider account. Approval applies once to this exact call; remembered approvals are unavailable." }) : null,
       resolutionBlockReason !== null && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 rounded-xl border border-brand-attention/30 bg-brand-attention/[0.06] p-4", role: "alert", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           HiMiniExclamationTriangle,
@@ -30232,7 +30252,15 @@ function ReviewDecisionCard(props) {
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-brand-attention", children: "This decision cannot be overridden" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark", children: resolutionBlockReason })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark", children: resolutionBlockReason }),
+          item.superseded_by_request_id ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "a",
+            {
+              className: "mt-3 inline-flex min-h-11 items-center font-semibold text-brand-blue underline",
+              href: guardAwareHref(`/requests/${encodeURIComponent(item.superseded_by_request_id)}`),
+              children: "Open the fresh review"
+            }
+          ) : null
         ] })
       ] }) }),
       topAlertItems.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 rounded-xl border border-slate-100 bg-slate-50/50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ConsolidatedEvidenceAlert, { items: topAlertItems }, item.request_id) }),
@@ -32751,10 +32779,10 @@ export {
   HiMiniCommandLine as b,
   HiMiniUsers as b$,
   HiMiniPlus as b0,
-  HiMiniCheck as b1,
-  startGuardCloudConnect as b2,
-  HiMiniArrowTopRightOnSquare as b3,
-  guardAwareHref as b4,
+  guardAwareHref as b1,
+  HiMiniCheck as b2,
+  startGuardCloudConnect as b3,
+  HiMiniArrowTopRightOnSquare as b4,
   GuardModalLayer as b5,
   runHarnessAction as b6,
   GuardHarnessActionError as b7,

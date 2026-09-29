@@ -2075,6 +2075,21 @@ def _detection_with_prompt_artifacts(
     context: HarnessContext,
     passthrough_args: list[str],
 ) -> HarnessDetection:
+    # Disabled Codex skills remain visible to inventory and AIBOM, but cannot
+    # execute in this launch. They must not create launch approval requests.
+    if detection.harness == "codex":
+        detection = replace(
+            detection,
+            artifacts=tuple(
+                replace(
+                    artifact,
+                    runtime_private_metadata={**artifact.runtime_private_metadata, "inventory_only": True},
+                )
+                if artifact.artifact_type == "skill" and artifact.metadata.get("enabled") is False
+                else artifact
+                for artifact in detection.artifacts
+            ),
+        )
     prompt_text = " ".join(value.strip() for value in passthrough_args if value.strip())
     prompt_requests = extract_prompt_requests(prompt_text)
     if not prompt_requests:
@@ -4591,9 +4606,7 @@ def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
     # Two racing processes can both land here; converging on whatever the
     # winning write stored keeps every caller's fingerprints consistent.
     persisted = store.get_sync_payload(_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY)
-    persisted_encoded = (
-        _optional_string(persisted.get("salt")) if isinstance(persisted, dict) else None
-    )
+    persisted_encoded = _optional_string(persisted.get("salt")) if isinstance(persisted, dict) else None
     if persisted_encoded:
         try:
             return base64.b64decode(persisted_encoded.encode("ascii"), validate=True)

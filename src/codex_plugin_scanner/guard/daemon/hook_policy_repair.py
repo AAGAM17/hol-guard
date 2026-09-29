@@ -30,7 +30,6 @@ _APPROVAL_REASON_WITHOUT_URL = (
     "Open HOL Guard Extensions and press Repair protection."
 )
 
-RepairCaller = Callable[[dict[str, object]], object]
 RepairUrl = Callable[[Path], str | None]
 
 
@@ -39,12 +38,10 @@ def apply_command_policy_repair(
     native_result: Mapping[str, object],
     *,
     guard_home: Path,
-    recover: RepairCaller | None = None,
     repair_page_url: RepairUrl | None = None,
 ) -> dict[str, object]:
     """Return the native denial, with a repair link when this block can be repaired."""
 
-    del recover
     try:
         result = dict(native_result)
     except Exception as exc:

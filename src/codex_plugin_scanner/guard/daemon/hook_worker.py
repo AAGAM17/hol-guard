@@ -123,7 +123,6 @@ class HookWorker(HookWorkerNativeMixin):
     ):
         self.store = store
         self.guard_home = store.guard_home
-        self.policy_repair = None
         self.activity_writer = activity_writer
         self._publish_native_policy = publish_native_policy
         self._last_native_decision_receipt: dict[str, object] | None = None

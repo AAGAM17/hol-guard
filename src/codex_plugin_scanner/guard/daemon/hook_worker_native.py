@@ -486,7 +486,6 @@ class HookWorkerNativeMixin:
                 self.store,
                 native_result,
                 guard_home=guard_home,
-                recover=getattr(self, "policy_repair", None),
             )
             return (
                 _record_native_pre_activity(

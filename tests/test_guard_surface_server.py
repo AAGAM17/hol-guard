@@ -533,10 +533,7 @@ class TestGuardSurfaceServer:
         daemon.start()
 
         try:
-            repair = daemon._server.hook_worker.policy_repair
-            recover = daemon._server.extension_control_api.recover_authority
-            assert repair.__func__ is recover.__func__
-            assert repair.__self__ is daemon._server.extension_control_api
+            assert getattr(daemon._server.hook_worker, "policy_repair", None) is None
             for route in (
                 "/",
                 "/home",

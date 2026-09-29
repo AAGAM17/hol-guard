@@ -693,7 +693,6 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 registry=BUILT_IN_COMMAND_EXTENSION_REGISTRY,
                 runtime=self.extension_control_runtime,
             )
-            self.hook_worker.policy_repair = self.extension_control_api.recover_authority
             self.local_cli_api = LocalCliApiService(store=self.store)
             self.approval_attention = ApprovalAttentionCoordinator(
                 store=self.store,

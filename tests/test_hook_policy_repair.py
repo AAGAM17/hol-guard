@@ -49,7 +49,6 @@ def _apply(store: _Store, result: dict[str, object], tmp_path: Path, **kwargs: o
         result,
         guard_home=tmp_path,
         repair_page_url=kwargs.get("repair_page_url", lambda _home: _REPAIR_URL),
-        recover=kwargs.get("recover"),
     )
 
 
@@ -79,23 +78,21 @@ def test_auth_failure_denies_and_links_the_repair_page(tmp_path: Path) -> None:
 
 
 def test_hook_does_not_rebuild_protection_from_the_blocked_call(tmp_path: Path) -> None:
-    calls = {"count": 0}
-
-    def recover(_payload: dict[str, object]) -> dict[str, object]:
-        calls["count"] += 1
-        return {"health": "protected"}
-
-    result = _apply(_Store(AuthorityHealth.TAMPERED), _blocked(), tmp_path, recover=recover)
-    assert calls["count"] == 0
+    result = _apply(_Store(AuthorityHealth.TAMPERED), _blocked(), tmp_path)
     assert result["decision"] == "deny"
     assert result["minimum_action"] == "block"
     assert result["repair_status"] == "approval_required"
     assert result["repair_url"] == _REPAIR_URL
     assert "press Repair protection" in str(result["reason"])
+    repair_source = Path("src/codex_plugin_scanner/guard/daemon/hook_policy_repair.py").read_text(encoding="utf-8")
+    worker_source = Path("src/codex_plugin_scanner/guard/daemon/hook_worker_native.py").read_text(encoding="utf-8")
+    assert "recover=" not in repair_source
+    assert "recover_authority" not in repair_source
+    assert "recover=" not in worker_source
 
 
 def test_missing_resident_repair_still_sends_the_link(tmp_path: Path) -> None:
-    result = _apply(_Store(AuthorityHealth.TAMPERED), _blocked(), tmp_path, recover=None)
+    result = _apply(_Store(AuthorityHealth.TAMPERED), _blocked(), tmp_path)
     assert result["repair_status"] == "approval_required"
     assert result["repair_url"] == _REPAIR_URL
 

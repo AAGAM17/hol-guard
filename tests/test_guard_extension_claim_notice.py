@@ -374,6 +374,28 @@ def test_refresh_retains_existing_link_during_portal_outage(monkeypatch: pytest.
     assert client.updated == []
 
 
+def test_refresh_does_not_withdraw_rename_backfill_without_opt_in() -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.unmapped", [])
+    client.files.append(
+        {
+            "status": "renamed",
+            "filename": "contributions/extensions/command.renamed.json",
+            "previous_filename": "contributions/extensions/command.old.json",
+        }
+    )
+    client.comment_rows = [
+        {
+            "id": 123,
+            "body": f"{MODULE.MARKER}\nEarlier rename claim link",
+            "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"},
+        }
+    ]
+
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
+    assert client.updated == []
+
+
 def test_contributor_cannot_spoof_notice_marker() -> None:
     client = FakeGitHub()
     configure_new_contribution(client, "command.marker-spoof", ["400"])
@@ -648,7 +670,7 @@ def test_readiness_report_uses_first_entry_for_mixed_noneligible_statuses(
         *,
         allow_renames: bool = False,
         records: list[Any] | None = None,
-    ) -> tuple[list[Any], str]:
+    ) -> tuple[list[Any], str, bool]:
         assert records is not None
         records.extend(
             [
@@ -656,7 +678,7 @@ def test_readiness_report_uses_first_entry_for_mixed_noneligible_statuses(
                 MODULE.ExtensionReadiness("command.no-mapping", "no_mapping"),
             ]
         )
-        return [], "source_not_current"
+        return [], "source_not_current", False
 
     monkeypatch.setattr(MODULE, "_plan_notice_items", mixed_statuses)
     report = MODULE.readiness_report(client, 40)

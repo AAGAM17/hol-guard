@@ -188,6 +188,8 @@ export function CatalogFilterBar(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   panelId: string;
+  /** Called after clearing so the parent can restore focus to the trigger: both clear buttons unmount themselves. */
+  onAfterClear?: () => void;
 }) {
   const areas = useMemo(() => populatedCatalogAreaOptions(props.catalog), [props.catalog]);
   const filtering = catalogFiltersActive(props.filters);
@@ -220,6 +222,7 @@ export function CatalogFilterBar(props: {
 
   const handleClear = useCallback(() => {
     props.onChange(EMPTY_CATALOG_FILTERS);
+    props.onAfterClear?.();
   }, [props]);
 
   return (

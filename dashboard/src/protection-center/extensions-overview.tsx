@@ -170,6 +170,8 @@ export function ExtensionsOverview(props: {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // A modal dialog (e.g. the policy review sheet) owns Escape while open.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       event.stopPropagation();
       setFilterPanelOpen(false);
       filterTriggerRef.current?.focus();
@@ -186,6 +188,8 @@ export function ExtensionsOverview(props: {
     if (!props.active) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "f" || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      // Never move focus out of a modal dialog such as the policy review sheet.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       event.preventDefault();
@@ -282,6 +286,7 @@ export function ExtensionsOverview(props: {
               open={filterPanelOpen}
               onOpenChange={setFilterPanelOpen}
               panelId={filterPanelId}
+              onAfterClear={() => filterTriggerRef.current?.focus()}
             />
           }
         />

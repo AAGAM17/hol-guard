@@ -6083,6 +6083,7 @@ function CatalogFilterBar(props) {
   }, [props]);
   const handleClear = reactExports.useCallback(() => {
     props.onChange(EMPTY_CATALOG_FILTERS);
+    props.onAfterClear?.();
   }, [props]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     filtering ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 flex flex-wrap items-center gap-2", "data-testid": "catalog-filter-tokens", children: [
@@ -6869,50 +6870,58 @@ function ExtensionsOverview(props) {
     props.mutationError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: props.mutationError }) }) : null,
     props.localCliError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: props.localCliError }) }) : null,
     props.localCliNotice ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-4 rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-3 text-sm text-brand-dark", children: props.localCliNotice }) : null,
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: filterToolbarRef, "data-testid": "catalog-filters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      PatternSearchConsole,
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
       {
-        catalog: visibleCatalog,
-        effective: props.effective,
-        active: props.active,
-        query,
-        onQueryChange: setQuery,
-        onRefresh: props.onRefresh,
-        onOpenExtension: props.onOpenExtension,
-        actionSlot: searching ? /* @__PURE__ */ jsxRuntimeExports.jsx(AddCustomExtensionButton, { onClick: props.onAddCustom }) : null,
-        toolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            CatalogFilterTrigger,
-            {
-              open: filterPanelOpen,
-              activeCount: filters.trusts.length + filters.kinds.length + filters.areas.length,
-              panelId: filterPanelId,
-              buttonRef: filterTriggerRef,
-              onToggle: () => setFilterPanelOpen((open) => !open)
-            }
-          ),
-          props.active ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-            ConnectorDiscoveryControl,
-            {
-              discovering,
-              error: discoveryError,
-              onRetry: () => setDiscoveryAttempt((attempt) => attempt + 1)
-            }
-          ) : null
-        ] }),
-        subtoolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          CatalogFilterBar,
+        ref: filterToolbarRef,
+        "data-testid": "catalog-filters",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          PatternSearchConsole,
           {
-            catalog: props.catalogExtensions,
-            filters,
-            onChange: setFilters,
-            open: filterPanelOpen,
-            onOpenChange: setFilterPanelOpen,
-            panelId: filterPanelId
+            catalog: visibleCatalog,
+            effective: props.effective,
+            active: props.active,
+            query,
+            onQueryChange: setQuery,
+            onRefresh: props.onRefresh,
+            onOpenExtension: props.onOpenExtension,
+            actionSlot: searching ? /* @__PURE__ */ jsxRuntimeExports.jsx(AddCustomExtensionButton, { onClick: props.onAddCustom }) : null,
+            toolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                CatalogFilterTrigger,
+                {
+                  open: filterPanelOpen,
+                  activeCount: filters.trusts.length + filters.kinds.length + filters.areas.length,
+                  panelId: filterPanelId,
+                  buttonRef: filterTriggerRef,
+                  onToggle: () => setFilterPanelOpen((open) => !open)
+                }
+              ),
+              props.active ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ConnectorDiscoveryControl,
+                {
+                  discovering,
+                  error: discoveryError,
+                  onRetry: () => setDiscoveryAttempt((attempt) => attempt + 1)
+                }
+              ) : null
+            ] }),
+            subtoolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              CatalogFilterBar,
+              {
+                catalog: props.catalogExtensions,
+                filters,
+                onChange: setFilters,
+                open: filterPanelOpen,
+                onOpenChange: setFilterPanelOpen,
+                panelId: filterPanelId,
+                onAfterClear: () => filterTriggerRef.current?.focus()
+              }
+            )
           }
         )
       }
-    ) }),
+    ),
     searching ? null : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       addedCustomCount ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         CustomExtensionsSection,

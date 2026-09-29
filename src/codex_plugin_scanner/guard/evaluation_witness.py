@@ -350,7 +350,7 @@ class LocalSideEffectWitness:
         if self._server is None:
             raise RuntimeError("Witness is not active")
         if isinstance(timeout_seconds, bool) or not 0 < timeout_seconds <= 2.0:
-            raise ValueError("Witness readiness timeout is invalid")
+            raise ValueError("witness readiness timeout must be a non-boolean number in (0, 2.0] seconds")
         connection = HTTPConnection("127.0.0.1", self._server.server_port, timeout=timeout_seconds)
         try:
             connection.request("GET", "/health")

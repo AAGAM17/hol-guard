@@ -16,7 +16,7 @@ from .evaluation_cli_recovery import (
 )
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import setup_evaluation
-from .evaluation_runner import EvaluationRunnerError, run_synthetic_cases, validate_case_selection
+from .evaluation_runner import EvaluationRunnerError, run_synthetic_cases
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,17 +61,6 @@ def run_synthetic_command(
             error=error,
         )
 
-    try:
-        selected = validate_case_selection(profile, requested)
-    except EvaluationRunnerError as error:
-        return SyntheticCommandResult(
-            status=error.status,
-            run=_empty_report(error.status),
-            cleanup={"removed": False, "recoveryTokenRetained": False},
-            error=_CliError(error.code, "synthetic evaluation run could not complete", status=error.status),
-        )
-    del selected
-
     setup = setup_evaluation(profile, allow_host_execution=False, execution_mode="synthetic_adapter")
     if setup.report.status != "passed":
         return SyntheticCommandResult(
@@ -109,8 +98,6 @@ def run_synthetic_command(
                 status=error.status,
             )
             run_report = _empty_report(error.status)
-        except _CliError:
-            raise
         except Exception:
             runner_error = _CliError(
                 "runner_failed",

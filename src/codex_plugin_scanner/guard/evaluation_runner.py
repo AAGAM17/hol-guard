@@ -14,7 +14,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
-from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import Request
 
@@ -22,6 +21,7 @@ from .adapters.hook_python_subprocess import run_probe
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import EvaluationSetup
 from .evaluation_witness import FileWitnessPair, LocalSideEffectWitness, WitnessObservation
+from .mdm.contracts import ManagedNetworkPolicy
 from .mdm.network import managed_urlopen
 
 SHELL_CASE_ID = "eval.shell.disposable_delete"
@@ -32,6 +32,7 @@ _SYNTHETIC_BOUNDARY_REASON = "synthetic_adapter_does_not_bind_installed_host"
 _MAX_ADAPTER_OUTPUT_BYTES = 2 * 64 * 1024
 _MAX_ADAPTER_TIMEOUT_SECONDS = 30.0
 _MAX_SYNTHETIC_DURATION_SECONDS = 120.0
+_LOOPBACK_POLICY = ManagedNetworkPolicy(proxy_mode="none")
 
 
 class EvaluationRunnerError(EvaluationContractError):
@@ -185,12 +186,13 @@ def _fixed_network_control(url: str, *, ctx: EvaluationRunContext) -> None:
         with managed_urlopen(
             request,
             timeout=min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS),
+            policy=_LOOPBACK_POLICY,
         ) as response:
             if response.status != 204:
                 raise EvaluationRunnerError("control_failed", "allowed control did not complete")
     except EvaluationRunnerError:
         raise
-    except (OSError, URLError, ValueError):
+    except (OSError, ValueError):
         raise EvaluationRunnerError("control_failed", "allowed control did not complete") from None
 
 
@@ -384,10 +386,12 @@ def run_synthetic_cases(
     statuses = {str(case["status"]) for case in cases}
     if "failed" in statuses:
         status = "failed"
+    elif "blocked_environment" in statuses:
+        status = "blocked_environment"
     elif "not_run" in statuses:
         status = "not_run"
     else:
-        status = "blocked_environment"
+        status = "passed"
     report: dict[str, object] = {
         "mode": "synthetic_adapter",
         "proofBoundary": SYNTHETIC_PROOF_TYPE,

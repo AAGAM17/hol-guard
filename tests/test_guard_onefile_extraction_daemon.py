@@ -82,6 +82,7 @@ def test_reclaim_worker_starts_only_when_frozen(monkeypatch: pytest.MonkeyPatch)
         assert status["killed_launches_last_run"] == 2
         assert status["unmarked_legacy_count"] == 1
         assert status["unmarked_legacy_bytes_estimate"] == 512
+        assert status["error_count"] == 0
         assert isinstance(status["last_run_at"], str)
         assert "onefile_extraction_reclaimed" in server._diagnostics.events
     finally:

@@ -8709,6 +8709,7 @@ class GuardDaemonServer:
             "killed_launches_last_run": result.killed_launches,
             "unmarked_legacy_count": result.unmarked_count,
             "unmarked_legacy_bytes_estimate": result.unmarked_bytes_estimate,
+            "error_count": len(result.errors),
         }
         self._diagnostics.record(
             "onefile_extraction_reclaimed",

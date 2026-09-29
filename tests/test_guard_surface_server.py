@@ -1956,14 +1956,14 @@ class TestGuardSurfaceServer:
     @pytest.mark.parametrize(
         ("harness", "event", "expected"),
         [
-            ("pi", "PreToolUse", {"decision": "allow", "reason_code": "daemon_hook_queue_capacity"}),
+            ("pi", "PreToolUse", {"decision": "deny", "reason_code": "daemon_hook_queue_capacity"}),
             (
                 "claude-code",
                 "PreToolUse",
                 {
                     "hookSpecificOutput": {
                         "hookEventName": "PreToolUse",
-                        "permissionDecision": "allow",
+                        "permissionDecision": "deny",
                     }
                 },
             ),

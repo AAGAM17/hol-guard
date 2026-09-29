@@ -85,6 +85,7 @@ def test_trust_map_covers_every_builtin_extension() -> None:
         "command.blitcp",
         "command.cloudg",
         "command.cogext",
+        "command.digline",
         "command.genclave",
         "command.gitsync",
         "command.mcp-filesystem",

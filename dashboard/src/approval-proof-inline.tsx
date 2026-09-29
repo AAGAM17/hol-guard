@@ -4,6 +4,7 @@ import { HiMiniKey } from "react-icons/hi2";
 import { ActionButton } from "./approval-center-primitives";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
 import { isBulkApproveGateReady as approvalGateProofReady } from "./queue-bulk-approval-credentials";
+import { approvalGateIsLocked } from "./approval-gate-utils";
 export { approvalGateProofReady };
 
 type ApprovalProofFieldInputsProps = {
@@ -58,6 +59,9 @@ export function isApprovalProofSubmitDisabled(
   if (busy) {
     return true;
   }
+  if (approvalGateIsLocked(gate)) {
+    return true;
+  }
   if (requireGate && gate == null) {
     return true;
   }
@@ -80,6 +84,9 @@ export function buildApprovalProofCredentials(
   credentials: { approvalPassword: string; approvalTotpCode: string },
   requireFreshTotp = false,
 ): { approval_password?: string; approval_totp_code?: string } {
+  if (approvalGateIsLocked(gate)) {
+    return {};
+  }
   if (gate != null && !approvalGateProofReady(gate)) {
     return {};
   }

@@ -276,6 +276,8 @@ export type GuardApprovalRequest = {
   dedupe_count?: number;
   last_seen_at?: string | null;
   display_status?: string;
+  /** Explicit Core classification; absent on older daemons that only emit scanner evidence. */
+  watch_only_observation?: boolean;
   scanner_evidence?: GuardScannerEvidence[];
   temporary_mcp_approval?: GuardTemporaryMcpApproval | null;
   local_tool_approval?: GuardLocalToolApproval | null;

@@ -32,6 +32,9 @@ export type DataFlowEvidenceSummary = {
 };
 
 export function isWatchOnlyObservation(item: GuardApprovalRequest): boolean {
+  if (typeof item.watch_only_observation === "boolean") {
+    return item.watch_only_observation;
+  }
   return (item.scanner_evidence as unknown[] | undefined ?? []).some(
     (evidence) =>
       typeof evidence === "object" &&

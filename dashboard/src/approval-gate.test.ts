@@ -1,7 +1,15 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import type { GuardApprovalGatePublicConfig, GuardSettings } from "./guard-types";
-import { approvalGateCooldownLabel, requiresApprovalPasswordPrompt } from "./approval-gate-utils";
+import {
+  approvalGateCooldownLabel,
+  approvalGateIsLocked,
+  approvalGateLockRemainingSeconds,
+  requiresApprovalPasswordPrompt,
+} from "./approval-gate-utils";
 import { approvalGateProofReady, buildApprovalProofCredentials, isApprovalProofSubmitDisabled } from "./approval-proof-inline";
+import { ApprovalPasswordModal } from "./approval-center-review-cards";
 import { applyApprovalGateDraft, effectiveApprovalGateCooldownSeconds, hasUnsavedChanges } from "./settings-workspace";
 import { cloudReviewConfirmationError, cloudReviewProofIncomplete } from "./settings/cloud-review-settings";
 
@@ -74,6 +82,46 @@ function testApprovalGateCooldownLabels(): void {
   assert(approvalGateCooldownLabel(3600) === "1 hour", "3600 should be '1 hour'");
   assert(approvalGateCooldownLabel(60) === "60 seconds", "60 should be '60 seconds'");
   assert(approvalGateCooldownLabel(1800) === "1800 seconds", "1800 should be '1800 seconds'");
+}
+
+function testApprovalGateLockBlocksProofSubmission(): void {
+  const now = Date.parse("2026-05-08T10:00:00.000Z");
+  const gate: GuardApprovalGatePublicConfig = {
+    enabled: true,
+    configured: true,
+    cooldown_seconds: 0,
+    cooldown_active: false,
+    cooldown_expires_at: null,
+    locked_until: "2026-05-08T10:01:00.000Z",
+    fail_closed: false,
+    strict_all_decisions: false,
+  };
+  assert(approvalGateLockRemainingSeconds(gate, now) === 60, "lock helper reports the remaining lock duration");
+  assert(approvalGateIsLocked(gate, now) === true, "future locked_until marks the gate as locked");
+  assert(approvalGateIsLocked(gate, now + 60_000) === false, "expired locked_until no longer marks the gate as locked");
+  const activeGate = { ...gate, locked_until: new Date(Date.now() + 60_000).toISOString() };
+  assert(
+    isApprovalProofSubmitDisabled(activeGate, { approvalPassword: "secret123", approvalTotpCode: "" }, false) === true,
+    "locked gates disable proof submission even when credentials are present",
+  );
+
+  const markup = renderToStaticMarkup(
+    createElement(ApprovalPasswordModal, {
+      gate: { ...gate, locked_until: new Date(Date.now() + 60_000).toISOString() },
+      approvalPassword: "secret123",
+      approvalTotpCode: "",
+      useCooldown: false,
+      onApprovalPasswordChange: () => undefined,
+      onApprovalTotpCodeChange: () => undefined,
+      onUseCooldownChange: () => undefined,
+      onSubmit: () => undefined,
+      onCancel: () => undefined,
+      submitLabel: "Keep allowing",
+    }),
+  );
+  assert(markup.includes("Approval gate is temporarily locked"), "locked modal explains the gate lock");
+  assert(markup.includes("Try again in"), "locked modal provides retry timing");
+  assert(!markup.includes("Approval password"), "locked modal does not invite another credential attempt");
 }
 
 function testApprovalGateCooldownIsUnavailableWithTotp(): void {
@@ -456,6 +504,7 @@ const tests: Array<[string, () => void]> = [
   ["testApprovalGatePublicConfigEnabled", testApprovalGatePublicConfigEnabled],
   ["testApprovalGatePublicConfigDisabled", testApprovalGatePublicConfigDisabled],
   ["testApprovalGateCooldownLabels", testApprovalGateCooldownLabels],
+  ["testApprovalGateLockBlocksProofSubmission", testApprovalGateLockBlocksProofSubmission],
   ["testApprovalGateCooldownIsUnavailableWithTotp", testApprovalGateCooldownIsUnavailableWithTotp],
   ["testApprovalPasswordPromptVisibility", testApprovalPasswordPromptVisibility],
   ["testApprovalGatePasswordFieldsNotPersisted", testApprovalGatePasswordFieldsNotPersisted],

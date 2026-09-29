@@ -20,7 +20,7 @@ import {
 } from "./approval-center-utils";
 import type { GuardActionEnvelope, GuardApprovalRequest, GuardCodexResumeResult } from "./guard-types";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PrimaryActionCard } from "./review-states";
+import { buildWhatWouldHappen, PrimaryActionCard } from "./review-states";
 import { ReviewDecisionCard } from "./review-decision-card";
 
 function assert(condition: boolean, message: string): void {
@@ -361,6 +361,18 @@ const watchOnlyRequest: GuardApprovalRequest = {
   ] as unknown as NonNullable<GuardApprovalRequest["scanner_evidence"]>,
 };
 assert(isWatchOnlyObservation(watchOnlyRequest), "Watch-only findings are identified from trusted queue evidence");
+const explicitWatchOnlyRequest: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  watch_only_observation: true,
+};
+assert(
+  isWatchOnlyObservation(explicitWatchOnlyRequest),
+  "Watch-only findings use the explicit Core classification without scanner metadata",
+);
+assert(
+  !isWatchOnlyObservation({ ...watchOnlyRequest, watch_only_observation: false }),
+  "An explicit actionable classification takes precedence over a legacy scanner marker",
+);
 assert(
   buildPauseLine(watchOnlyRequest).startsWith("Would have stopped."),
   "Watch-only findings never claim the action was paused",
@@ -383,7 +395,7 @@ assert(
 );
 const watchOnlyDecisionMarkup = renderToStaticMarkup(
   createElement(ReviewDecisionCard, {
-    detail: { item: watchOnlyRequest, diff: null, receipt: null, policy: [] },
+    detail: { item: explicitWatchOnlyRequest, diff: null, receipt: null, policy: [] },
     onResolve: () => undefined,
     onGoHome: () => undefined,
     approvalGate: null,
@@ -393,8 +405,26 @@ assert(
   watchOnlyDecisionMarkup.includes("Watch-only finding")
     && watchOnlyDecisionMarkup.includes("Would have stopped")
     && watchOnlyDecisionMarkup.includes("Keep allowing")
-    && watchOnlyDecisionMarkup.includes("Stop this next time"),
+    && watchOnlyDecisionMarkup.includes("Stop this next time")
+    && watchOnlyDecisionMarkup.includes("What Watch observed")
+    && !watchOnlyDecisionMarkup.includes("What was stopped")
+    && !watchOnlyDecisionMarkup.includes("Why paused")
+    && watchOnlyDecisionMarkup.includes("What Protected mode would do"),
   "Watch-only decision card renders its observation state without crashing",
+);
+assert(
+  buildWhatWouldHappen(explicitWatchOnlyRequest)?.includes("Watch allowed this action to continue") === true,
+  "Watch-only consequence copy describes an allowed observation instead of a paused action",
+);
+const watchOnlyActionMarkup = renderToStaticMarkup(
+  createElement(PrimaryActionCard, { item: explicitWatchOnlyRequest }),
+);
+assert(
+  watchOnlyActionMarkup.includes("What Watch observed")
+    && watchOnlyActionMarkup.includes("Would have stopped")
+    && !watchOnlyActionMarkup.includes("What was stopped")
+    && !watchOnlyActionMarkup.includes("Needs fresh approval"),
+  "Watch-only action details are labeled as observed rather than stopped",
 );
 
 const sandboxRequest: GuardApprovalRequest = { ...BASE_REQUEST, policy_action: "sandbox-required" };

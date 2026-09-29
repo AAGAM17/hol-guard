@@ -7015,6 +7015,9 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         return self.command == "POST" and path in {
             "/v1/initialize",
             "/v1/extension-controls/recover-authority",
+            "/v1/settings",
+            "/v1/approval-gate/totp/enroll",
+            "/v1/approval-gate/totp/verify",
         }
 
     def _path_supports_dashboard_session(self, path: str, path_parts: list[str]) -> bool:

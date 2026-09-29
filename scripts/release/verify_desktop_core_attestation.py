@@ -14,6 +14,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -215,6 +216,10 @@ _ONEDIR_REQUIRED_MEMBERS = (
 )
 
 
+def _fold(name: str) -> list[str]:
+    return unicodedata.normalize("NFC", name.rstrip("/")).casefold().split("/")
+
+
 def _check_onedir_zip_symlink(zipped: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
     """R2: a symlink member's target must be a short relative path that stays in-tree."""
     name = info.filename
@@ -298,11 +303,14 @@ def _extract_onedir_zip(archive: Path, destination: Path) -> Path:
                 names.add(name)
     except zipfile.BadZipFile as error:
         raise DesktopAttestationError("Desktop Core onedir archive is not a readable zip") from error
+    folded = [tuple(_fold(name)) for name in names]
+    if len(set(folded)) != len(folded):
+        raise DesktopAttestationError("Onedir zip archive contains colliding members")
     # R3: nothing may sit beneath a symlink member, so extraction can never
     # write through a link.
-    link_parts = [name.rstrip("/").split("/") for name in link_names]
+    link_parts = [_fold(name) for name in link_names]
     for name in names:
-        parts = name.rstrip("/").split("/")
+        parts = _fold(name)
         if any(len(link) < len(parts) and parts[: len(link)] == link for link in link_parts):
             raise DesktopAttestationError(f"Onedir zip member is nested under a symlink: {name!r}")
     # R4: the launcher and sealed-bundle anchors must be regular files, never links.

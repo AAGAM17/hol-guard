@@ -14,6 +14,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import urllib.error
 import urllib.request
 import zipfile
@@ -608,6 +609,10 @@ _ZIP_SYMLINK_MODE = 0o120000
 _ZIP_MODE_MASK = 0o170000
 
 
+def _fold(name: str) -> list[str]:
+    return unicodedata.normalize("NFC", name.rstrip("/")).casefold().split("/")
+
+
 def _check_onedir_zip_symlink(zipped: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
     """R2: a symlink member's target must be a short relative path that stays in-tree."""
     name = info.filename
@@ -646,11 +651,14 @@ def _validate_onedir_zip_members(archive: Path) -> None:
                 names.add(name)
     except (OSError, zipfile.BadZipFile) as error:
         raise DesktopCoreUpdateError("desktop_core_install_failed") from error
+    folded = [tuple(_fold(name)) for name in names]
+    if len(set(folded)) != len(folded):
+        raise DesktopCoreUpdateError("desktop_core_install_failed")
     # R3: nothing may sit beneath a symlink member, so extraction can never
     # write through a link.
-    link_parts = [name.rstrip("/").split("/") for name in link_names]
+    link_parts = [_fold(name) for name in link_names]
     for name in names:
-        parts = name.rstrip("/").split("/")
+        parts = _fold(name)
         if any(len(link) < len(parts) and parts[: len(link)] == link for link in link_parts):
             raise DesktopCoreUpdateError("desktop_core_install_failed")
     # R4: the launcher and sealed-bundle anchors must be regular files, never links.

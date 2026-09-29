@@ -7,6 +7,7 @@ import hashlib
 import json
 import posixpath
 import re
+import unicodedata
 import zipfile
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -146,6 +147,10 @@ def _onedir_launcher_path(tree: Path) -> Path:
 _ONEDIR_SYMLINK_TARGET_MAX = 1024
 
 
+def _fold(name: str) -> list[str]:
+    return unicodedata.normalize("NFC", name.rstrip("/")).casefold().split("/")
+
+
 def _check_onedir_zip_symlink(zipped: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
     """R2: a symlink member's target must be a short relative path that stays in-tree."""
     name = info.filename
@@ -185,11 +190,14 @@ def validate_onedir_zip_members(archive: Path) -> None:
                 names.add(name)
     except (OSError, zipfile.BadZipFile) as error:
         raise SystemExit(f"Onedir archive is not a readable zip: {archive}") from error
+    folded = [tuple(_fold(name)) for name in names]
+    if len(set(folded)) != len(folded):
+        raise SystemExit("Onedir archive contains colliding members")
     # R3: nothing may sit beneath a symlink member, so extraction can never
     # write through a link.
-    link_parts = [name.rstrip("/").split("/") for name in link_names]
+    link_parts = [_fold(name) for name in link_names]
     for name in names:
-        parts = name.rstrip("/").split("/")
+        parts = _fold(name)
         if any(len(link) < len(parts) and parts[: len(link)] == link for link in link_parts):
             raise SystemExit(f"Onedir archive member is nested under a symlink: {name!r}")
     required = (

@@ -28,24 +28,32 @@ def _read_bounded_stream(
     chunks: list[bytes],
     overflow: threading.Event,
     process: subprocess.Popen[bytes],
+    output_limit_bytes: int,
 ) -> None:
     total = 0
     while True:
         chunk = stream.read(4096)
         if not chunk:
             return
-        remaining = _PROBE_OUTPUT_LIMIT_BYTES - total
+        remaining = output_limit_bytes - total
         if remaining > 0:
             chunks.append(chunk[:remaining])
         total += len(chunk)
-        if total > _PROBE_OUTPUT_LIMIT_BYTES:
+        if total > output_limit_bytes:
             overflow.set()
             with contextlib.suppress(OSError):
                 process.kill()
             return
 
 
-def run_probe(command: list[str], *, cwd: Path, env: dict[str, str]) -> ProbeResult:
+def run_probe(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout_seconds: float = _PROBE_TIMEOUT_SECONDS,
+    output_limit_bytes: int = _PROBE_OUTPUT_LIMIT_BYTES,
+) -> ProbeResult:
     """Run a probe with no stdin and strictly bounded output and duration."""
 
     try:
@@ -66,17 +74,21 @@ def run_probe(command: list[str], *, cwd: Path, env: dict[str, str]) -> ProbeRes
     overflow = threading.Event()
     readers = (
         threading.Thread(
-            target=_read_bounded_stream, args=(process.stdout, stdout_chunks, overflow, process), daemon=True
+            target=_read_bounded_stream,
+            args=(process.stdout, stdout_chunks, overflow, process, output_limit_bytes),
+            daemon=True,
         ),
         threading.Thread(
-            target=_read_bounded_stream, args=(process.stderr, stderr_chunks, overflow, process), daemon=True
+            target=_read_bounded_stream,
+            args=(process.stderr, stderr_chunks, overflow, process, output_limit_bytes),
+            daemon=True,
         ),
     )
     for reader in readers:
         reader.start()
     timed_out = False
     try:
-        _ = process.wait(timeout=_PROBE_TIMEOUT_SECONDS)
+        _ = process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         timed_out = True
         process.kill()

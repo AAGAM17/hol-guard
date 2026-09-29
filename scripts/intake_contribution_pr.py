@@ -95,7 +95,22 @@ def main() -> int:
 
     if _run(["git", "branch", "--list", branch]):
         _run(["git", "checkout", branch])
-        _run(["git", "reset", "--hard", contributor_head])
+        head_merge = subprocess.run(
+            ["git", "merge", "--no-edit", contributor_head],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if head_merge.returncode:
+            print(
+                f"intake branch {branch} diverged from the contributor head "
+                "(the contributor likely rebased). Resolve the merge manually, or "
+                "rebuild fresh with:\n"
+                f"  git checkout main && git branch -D {branch} && rerun this script",
+                file=sys.stderr,
+            )
+            return 1
     else:
         _run(["git", "checkout", "-b", branch, contributor_head])
 

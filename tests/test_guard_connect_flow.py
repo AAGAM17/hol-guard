@@ -1138,9 +1138,24 @@ def test_unpaid_plan_with_denied_claim_reports_paid_required(tmp_path: Path) -> 
     assert entitlement["tier"] == "solo"
 
 
-def test_unpaid_bundle_tier_yields_to_paid_oauth_plan_conflict(tmp_path: Path) -> None:
+def test_fresh_oauth_denied_claim_beats_stale_unpaid_bundle(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "guard-home")
     _seed_oauth_entitlement(store, plan_id="team", firewall=False, expires_at="2027-07-05T01:39:51+00:00")
+    store.set_sync_payload(
+        "supply_chain_bundle_entitlement",
+        {"tier": "free"},
+        "2026-06-05T01:39:51+00:00",
+    )
+
+    entitlement = resolve_package_firewall_entitlement(store)
+
+    assert entitlement["reason"] == "paid_guard_cloud_required"
+    assert entitlement["tier"] == "team"
+
+
+def test_stale_oauth_denied_claim_overrides_unpaid_bundle(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    _seed_oauth_entitlement(store, plan_id="team", firewall=False, expires_at=None)
     store.set_sync_payload(
         "supply_chain_bundle_entitlement",
         {"tier": "free"},

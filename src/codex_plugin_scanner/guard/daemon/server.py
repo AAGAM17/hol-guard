@@ -2817,7 +2817,12 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 elif parsed.path.endswith("/acknowledge-degraded"):
                     response = self._daemon_server().extension_control_api.acknowledge_degraded(payload)
                 elif parsed.path.endswith("/recover-authority"):
-                    response = self._daemon_server().extension_control_api.recover_authority(payload)
+                    response = self._daemon_server().extension_control_api.recover_authority(
+                        payload,
+                        require_fresh_totp=(
+                            self._request_dashboard_session_surface() == PROTECTION_REPAIR_DASHBOARD_SURFACE
+                        ),
+                    )
                 else:
                     response = self._daemon_server().extension_control_api.refresh()
             except ExtensionControlApiError as error:
@@ -6834,6 +6839,12 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             expires_in_seconds=min(DEFAULT_LOCAL_DASHBOARD_SESSION_TTL_SECONDS, int(remaining_seconds)),
             session_started_at=started_at,
         )
+
+    def _request_dashboard_session_surface(self) -> str | None:
+        claims = self._refreshable_dashboard_session_claims()
+        if claims is None:
+            return None
+        return self._optional_string(claims.get("surface"))
 
     def _refreshable_dashboard_session_claims(self) -> dict[str, object] | None:
         session_token = self.headers.get("X-Guard-Dashboard-Session")

@@ -194,6 +194,7 @@ export function ProtectionRepairPage(props: {
           detail="Rebuilding the trusted settings needs your approval password. Guard verifies the repair before protection changes unlock again."
           confirmLabel="Repair protection"
           approvalGate={page.approvalGate}
+          requireFreshTotp={page.approvalGate?.totp_enabled === true}
           busy={busy}
           busyLabel="Repairing…"
           error={error}

@@ -130,7 +130,8 @@ def main() -> int:
         # Fully rewritten refresh outputs that live under the contributor-owned
         # tests/fixtures/ prefix: refresh_baseline rebuilds the baseline from
         # the registry and the decision-diff report is a regenerated corpus
-        # artifact. Contributor-owned command-source-*.v1.json fixtures are
+        # artifact, and the framed-sha256 file is that report's digest
+        # sidecar. Contributor-owned command-source-*.v1.json fixtures are
         # deliberately excluded — their trust field is rebound in place.
         "tests/fixtures/extension-controls/catalog-baseline.v1.json",
         "tests/fixtures/guard-command-corpus/decision-diff-report.json",

@@ -16,11 +16,12 @@ from pathlib import Path
 from typing import Protocol, cast
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from .adapters.hook_python_subprocess import run_probe
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import EvaluationSetup
+from .mdm.network import managed_opener
 from .evaluation_witness import FileWitnessPair, LocalSideEffectWitness, WitnessObservation
 
 SHELL_CASE_ID = "eval.shell.disposable_delete"
@@ -31,7 +32,7 @@ _SYNTHETIC_BOUNDARY_REASON = "synthetic_adapter_does_not_bind_installed_host"
 _MAX_ADAPTER_OUTPUT_BYTES = 2 * 64 * 1024
 _MAX_ADAPTER_TIMEOUT_SECONDS = 30.0
 _MAX_SYNTHETIC_DURATION_SECONDS = 120.0
-_LOOPBACK_OPENER = build_opener(ProxyHandler({}))
+_LOOPBACK_OPENER = managed_opener()
 
 
 class EvaluationRunnerError(EvaluationContractError):
@@ -259,12 +260,13 @@ def _summary(cases: Sequence[Mapping[str, object]]) -> dict[str, int]:
     counts = {"passed": 0, "failed": 0, "blockedEnvironment": 0, "unsupported": 0, "notRun": 0}
     for case in cases:
         status = case.get("status")
-        key = {
-            "blocked_environment": "blockedEnvironment",
-            "not_run": "notRun",
-        }.get(status, status)
-        if isinstance(key, str) and key in counts:
-            counts[key] += 1
+        if isinstance(status, str):
+            key = {
+                "blocked_environment": "blockedEnvironment",
+                "not_run": "notRun",
+            }.get(status, status)
+            if key in counts:
+                counts[key] += 1
     return counts
 
 

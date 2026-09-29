@@ -301,7 +301,10 @@ def _run_synthetic(args: argparse.Namespace) -> int:
             declared_parent = Path(cast(str, target_scope["rootPath"]))
             try:
                 _write_recovery_token(setup, declared_parent=declared_parent)
-                token_path = _recovery_token_path(setup.root_path, declared_parent=declared_parent)
+                root_path = setup.root_path
+                if root_path is None:
+                    raise _CliError("cleanup_token_unavailable", "evaluation setup did not produce a cleanup token")
+                token_path = _recovery_token_path(root_path, declared_parent=declared_parent)
             except _CliError as error:
                 runner_error = error
             if runner_error is None:
@@ -377,7 +380,7 @@ def _run_synthetic(args: argparse.Namespace) -> int:
         status = runner_error.status
     else:
         status = "blocked_environment"
-    cleanup = {"removed": cleanup_removed, "recoveryTokenRetained": token_retained}
+    cleanup: dict[str, object] = {"removed": cleanup_removed, "recoveryTokenRetained": token_retained}
     if not cleanup_removed and setup is not None and setup.root_path is not None:
         cleanup["reason"] = "cleanup_failed"
         if runner_error is None:

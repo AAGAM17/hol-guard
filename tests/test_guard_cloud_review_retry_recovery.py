@@ -71,7 +71,9 @@ def test_terminal_binding_rejection_is_preserved_without_endless_retry(
     monkeypatch.setattr(delivery, "_post_json", post)
     auth: dict[str, object] = {"sync_url": "https://guard.example", **binding}
     _ = cloud_review_sync.sync_cloud_review_events_once(store, auth)
-    _ = cloud_review_sync.sync_cloud_review_events_once(store, auth)
+    result = cloud_review_sync.sync_cloud_review_events_once(store, auth)
+    outbox = result["outbox"]
+    assert isinstance(outbox, dict)
     with store._connect() as connection:
         terminal = connection.execute(
             "select binding_status, quarantine_reason, acknowledged_at, attempt_count "
@@ -80,11 +82,15 @@ def test_terminal_binding_rejection_is_preserved_without_endless_retry(
     assert terminal is not None
     assert terminal["acknowledged_at"] is None
     if code == "review_continuation_binding_mismatch":
+        assert outbox["depth"] == 0
+        assert outbox["quarantined_depth"] == 1
         assert terminal["binding_status"] == "quarantined"
         assert terminal["quarantine_reason"] == code
         assert terminal["attempt_count"] == 0
         assert deliveries.count("continuation_unsupported") == 1
     else:
+        assert outbox["depth"] == 1
+        assert outbox["quarantined_depth"] == 0
         assert terminal["binding_status"] == "ready"
         assert terminal["quarantine_reason"] is None
         assert terminal["attempt_count"] >= 1

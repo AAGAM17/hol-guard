@@ -94,24 +94,7 @@ def _apply_command_policy_repair(
     barrier_key = (health.value, int(revision)) if isinstance(revision, int) else None
     if barrier_key is not None and barrier_key == _auth_barrier:
         return _approval_required(result, guard_home, repair_page_url)
-    if recover is not None and barrier_key != _auth_barrier:
-        try:
-            outcome = recover({"session_nonce": secrets.token_hex(16)})
-        except ExtensionControlApiError as exc:
-            if exc.code == "authority_not_recoverable":
-                return result
-            if barrier_key is not None:
-                _auth_barrier = barrier_key
-            return _approval_required(result, guard_home, repair_page_url)
-        except Exception:
-            return _approval_required(result, guard_home, repair_page_url)
-        else:
-            outcome_health = outcome.get("health") if isinstance(outcome, Mapping) else None
-            if outcome_health == _PROTECTED:
-                _auth_barrier = None
-                result["reason"] = _RETRY_REASON
-                result["repair_status"] = "repaired"
-                return result
+    # Recovery needs a fresh human approval; never attempt it from an agent-triggered hook.
     return _approval_required(result, guard_home, repair_page_url)
 
 

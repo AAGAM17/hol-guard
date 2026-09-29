@@ -26,6 +26,31 @@ from tests.coverage_ci import under_coverage_scale
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "guard-daemon-acceptance" / "workloads.json"
 
+# The server advertises bounded transient signals while a resident worker warms
+# up or sheds load. Production callers retry every one of these "review did not
+# finish" signals, so workload clients mirror that instead of counting them as
+# denials.
+TRANSIENT_HOOK_REASON_CODES = {
+    "daemon_hook_process_not_ready",
+    "native_hook_event_unavailable",
+    "native_pre_tool_unavailable",
+    "native_post_tool_unavailable",
+    "native_hook_worker_unavailable",
+    "native_hook_worker_unavailable_before_compatibility",
+    "native_hook_edge_unavailable",
+    "native_policy_not_ready",
+}
+
+# Transport errors the hook endpoint can surface during the same warm-up and
+# overload windows as the reason codes above.
+TRANSIENT_HOOK_EXCEPTIONS = (
+    urllib.error.URLError,
+    http.client.HTTPException,
+    ConnectionError,
+    TimeoutError,
+    json.JSONDecodeError,
+)
+
 
 class ClientSpec(TypedDict):
     harness: str
@@ -162,10 +187,10 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
         try:
             with urllib.request.urlopen(warmup_request, timeout=30) as response:
                 warmup_result = cast(dict[str, object], json.loads(response.read()))
-        except Exception:
+        except TRANSIENT_HOOK_EXCEPTIONS:
             time.sleep(0.1)
             continue
-        if warmup_result.get("reason_code") != "native_policy_not_ready":
+        if warmup_result.get("reason_code") not in TRANSIENT_HOOK_REASON_CODES:
             break
         time.sleep(0.1)
     else:
@@ -277,16 +302,6 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             with urllib.request.urlopen(request, timeout=12) as response:
                 return cast(dict[str, object], json.loads(response.read()))
 
-        transient_reason_codes = {
-            "daemon_hook_process_not_ready",
-            "native_hook_event_unavailable",
-            "native_pre_tool_unavailable",
-            "native_post_tool_unavailable",
-            "native_hook_worker_unavailable",
-            "native_hook_worker_unavailable_before_compatibility",
-            "native_hook_edge_unavailable",
-            "native_policy_not_ready",
-        }
         try:
             # The server advertises bounded transient signals while a resident
             # worker warms up or sheds load, and an overloaded listener can drop
@@ -301,7 +316,7 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
                         raise
                     time.sleep(0.05 * (transient_attempt + 1))
                     continue
-                if result.get("reason_code") not in transient_reason_codes or transient_attempt == 4:
+                if result.get("reason_code") not in TRANSIENT_HOOK_REASON_CODES or transient_attempt == 4:
                     break
                 time.sleep(0.05 * (transient_attempt + 1))
             blocked = _response_blocks_action(result)

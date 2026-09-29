@@ -120,13 +120,13 @@ def main() -> int:
         "tests/test_policy_bundle_delivery_runtime.py",
     )
     machine_touched: set[str] = set()
+
+    def managed(path: str) -> bool:
+        return path.startswith(machine_dirs) or path in machine_files
+
     for (pr_number, _, _), contributor_head in zip(contributions, contributor_heads, strict=True):
         merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
         changed = _run(["git", "diff", "--name-only", merge_base, contributor_head]).splitlines()
-
-        def managed(path: str) -> bool:
-            return path.startswith(machine_dirs) or path in machine_files
-
         machine_touched.update(p for p in changed if managed(p))
         outside = [p for p in changed if not p.startswith(contributor_owned) and not managed(p)]
         if outside and not (args.trust_tooling_changes or args.skip_regen):

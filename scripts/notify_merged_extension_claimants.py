@@ -460,10 +460,13 @@ def build_comment(items: list[NoticeItem], studio_url: str) -> str:
             "",
             (
                 "Open your link and continue with GitHub using an account named above. "
-                "Claiming creates a public publisher page that credits your GitHub account. "
-                "From Extension Studio, you can shape a launch story, prepare a setup guide and blog content, "
-                "and use the verified publisher badge toolkit. Launch content is submitted for review; "
-                "claiming alone does not publish it."
+                "Claiming creates a public publisher page that credits your GitHub account."
+            ),
+            "",
+            (
+                "After claiming, Extension Studio lets you shape a launch story, prepare a setup guide "
+                "and blog content, and use the verified publisher badge toolkit. "
+                "Submit launch content for review when ready; claiming alone does not publish it."
             ),
             "",
             (

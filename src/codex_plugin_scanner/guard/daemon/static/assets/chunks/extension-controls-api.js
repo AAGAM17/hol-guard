@@ -1,4 +1,4 @@
-import { b4 as fetchExtensionControlApi } from "../guard-dashboard.js";
+import { ba as fetchExtensionControlApi } from "../guard-dashboard.js";
 const DIGEST$2 = /^[a-f0-9]{64}$/;
 const EXTENSION_ID$1 = /^command\.[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
 const PERMISSION_ID$1 = /^command\.[a-z0-9]+(?:[.-][a-z0-9]+)*\.permission\.[a-z0-9]+(?:[.-][a-z0-9]+)*$/;

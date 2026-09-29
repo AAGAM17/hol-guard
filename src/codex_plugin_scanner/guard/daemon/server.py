@@ -2891,6 +2891,9 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         if parsed.path == "/v1/read-state":
             self._handle_read_state_update(payload)
             return
+        if parsed.path == "/v1/protection/repair/approval-gate/setup":
+            self._handle_protection_repair_approval_gate_setup(payload)
+            return
         if parsed.path == "/v1/settings":
             self._handle_settings_update(payload)
             return
@@ -5025,6 +5028,30 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
     def _handle_settings_update(self, payload: dict[str, object]) -> None:
         self._apply_settings_payload(payload, missing_error="invalid_settings")
 
+    def _handle_protection_repair_approval_gate_setup(self, payload: dict[str, object]) -> None:
+        if not self._protection_repair_approval_gate_setup_payload_is_allowed(payload):
+            self._write_json({"error": "invalid_settings"}, status=400)
+            return
+        guard_home = self.server.store.guard_home  # type: ignore[attr-defined]
+        gate_config = approval_gate_public_config(guard_home)
+        if gate_config.configured or gate_config.enabled:
+            self._write_json({"error": "approval_gate_setup_unavailable"}, status=409)
+            return
+        self._apply_settings_payload(payload, missing_error="invalid_settings")
+
+    def _protection_repair_approval_gate_setup_payload_is_allowed(self, payload: object) -> bool:
+        if not isinstance(payload, dict) or set(payload) != {"settings"}:
+            return False
+        settings = payload.get("settings")
+        if not isinstance(settings, dict) or set(settings) != {"approval_gate"}:
+            return False
+        gate_payload = settings.get("approval_gate")
+        return (
+            isinstance(gate_payload, dict)
+            and set(gate_payload) == {"enabled", "new_password", "confirm_password"}
+            and gate_payload.get("enabled") is True
+        )
+
     def _apply_settings_payload(self, payload: dict[str, object], *, missing_error: str) -> None:
         settings = payload.get("settings")
         if not isinstance(settings, dict):
@@ -6844,7 +6871,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         path_parts = [part for part in path.split("/") if part]
         if surface == PROTECTION_REPAIR_DASHBOARD_SURFACE:
-            return self._protection_repair_session_request_is_allowed(path)
+            return self._protection_repair_session_request_is_allowed(path, payload=payload)
         if surface in {"approval-center", "dashboard", "cloud-dashboard"}:
             return self._path_supports_dashboard_session(path, path_parts)
         action_path = self._optional_string(claims.get("action_path"))
@@ -7004,7 +7031,12 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 return True
         return False
 
-    def _protection_repair_session_request_is_allowed(self, path: str) -> bool:
+    def _protection_repair_session_request_is_allowed(
+        self,
+        path: str,
+        *,
+        payload: dict[str, object] | None,
+    ) -> bool:
         if self.command == "GET" and path in {
             "/v1/runtime",
             "/v1/settings",
@@ -7012,12 +7044,15 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             "/v1/update/status",
         }:
             return True
-        return self.command == "POST" and path in {
+        if self.command != "POST":
+            return False
+        # Setup must go through a dedicated endpoint that accepts only an
+        # initial approval_gate payload; never generic /v1/settings.
+        if path == "/v1/protection/repair/approval-gate/setup":
+            return self._protection_repair_approval_gate_setup_payload_is_allowed(payload)
+        return path in {
             "/v1/initialize",
             "/v1/extension-controls/recover-authority",
-            "/v1/settings",
-            "/v1/approval-gate/totp/enroll",
-            "/v1/approval-gate/totp/verify",
         }
 
     def _path_supports_dashboard_session(self, path: str, path_parts: list[str]) -> bool:
@@ -7291,6 +7326,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             "/v1/receipts/latest",
             "/v1/runtime",
             "/v1/settings",
+            "/v1/protection/repair/approval-gate/setup",
             "/v1/settings/export",
             "/v1/settings/import",
             "/v1/settings/reset",

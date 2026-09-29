@@ -151,41 +151,6 @@ def test_bridge_keeps_inline_browser_wait_within_consumer_limit(
     }
 
 
-def test_unavailable_prompt_warns_but_actions_require_review() -> None:
-    assert bridge._unavailable_response("UserPromptSubmit", "review failed") == {
-        "continue": True,
-        "systemMessage": "review failed",
-    }
-    pretool = bridge._unavailable_response("PreToolUse", "review failed")
-    assert pretool == {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": "review failed",
-        },
-    }
-    local_read = bridge._unavailable_response(
-        "PreToolUse",
-        "review failed",
-        json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "src/app.ts"}}),
-    )
-    assert local_read["hookSpecificOutput"] == {"hookEventName": "PreToolUse"}
-    assert local_read["continue"] is True
-    recovery = bridge._unavailable_response(
-        "PreToolUse",
-        "review failed",
-        json.dumps(
-            {
-                "hook_event_name": "PreToolUse",
-                "tool_name": "Bash",
-                "tool_input": {"command": "hol-guard daemon status --json"},
-            }
-        ),
-    )
-    assert recovery["hookSpecificOutput"] == {"hookEventName": "PreToolUse"}
-    assert recovery["continue"] is True
-
-
 def test_launcher_integrity_failure_does_not_stop_user_prompt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

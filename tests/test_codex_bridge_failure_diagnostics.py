@@ -19,6 +19,41 @@ from codex_plugin_scanner.guard.codex_hook_runtime_trust import TrustedCodexHook
 from tests.codex_daemon_hook_bridge_fixtures import _bridge_config
 
 
+def test_unavailable_prompt_warns_but_actions_require_review() -> None:
+    assert bridge._unavailable_response("UserPromptSubmit", "review failed") == {
+        "continue": True,
+        "systemMessage": "review failed",
+    }
+    pretool = bridge._unavailable_response("PreToolUse", "review failed")
+    assert pretool == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "review failed",
+        },
+    }
+    local_read = bridge._unavailable_response(
+        "PreToolUse",
+        "review failed",
+        json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "src/app.ts"}}),
+    )
+    assert local_read["hookSpecificOutput"] == {"hookEventName": "PreToolUse"}
+    assert local_read["continue"] is True
+    recovery = bridge._unavailable_response(
+        "PreToolUse",
+        "review failed",
+        json.dumps(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "hol-guard daemon status --json"},
+            }
+        ),
+    )
+    assert recovery["hookSpecificOutput"] == {"hookEventName": "PreToolUse"}
+    assert recovery["continue"] is True
+
+
 @pytest.mark.parametrize("event", ["PreToolUse", "PermissionRequest"])
 def test_unusable_managed_launcher_reports_both_causes_without_running_children(
     tmp_path: Path,

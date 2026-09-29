@@ -282,7 +282,7 @@ def test_availability_watch_config_allows_git_and_network(tmp_path: Path) -> Non
         workspace=tmp_path,
         home_dir=tmp_path / "home",
     )
-    assert git_cmd["decision"] == "allow"
+    assert git_cmd["decision"] == "deny"
     gh_cmd = availability_harness_response(
         {"hook_event_name": "PreToolUse", "tool_input": {"command": "gh pr view 1"}},
         harness="grok",
@@ -291,7 +291,7 @@ def test_availability_watch_config_allows_git_and_network(tmp_path: Path) -> Non
         reason="native unavailable",
         guard_home=guard_home,
     )
-    assert gh_cmd["decision"] == "allow"
+    assert gh_cmd["decision"] == "deny"
 
 
 def test_cursor_fallback_watch_allows_shell() -> None:
@@ -332,7 +332,7 @@ def test_watch_unavailable_pretool_records_command_activity(
         guard_home=guard_home,
         workspace=tmp_path / "workspace",
     )
-    assert result["decision"] == "allow"
+    assert result["decision"] == "deny"
     writer.submit_command_activity.assert_called_once()
     recorded = writer.submit_command_activity.call_args.kwargs
     assert recorded["event"] == "PreToolUse"

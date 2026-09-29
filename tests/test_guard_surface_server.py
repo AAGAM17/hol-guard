@@ -1470,7 +1470,7 @@ class TestGuardSurfaceServer:
             daemon.stop()
 
         assert response.status == 200
-        assert payload["decision"] == "allow"
+        assert payload["decision"] == "deny"
         assert payload["reason_code"] == "daemon_hook_deadline_exhausted"
 
     def test_guard_daemon_pi_hook_endpoint_rejects_missing_temporary_workspace(self, tmp_path, monkeypatch) -> None:

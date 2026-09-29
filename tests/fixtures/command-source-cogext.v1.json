@@ -10608,6 +10608,7 @@
           "command.probe",
           "command.remote.essh",
           "command.repo2nb",
+          "command.skill-base",
           "command.skill-sunset",
           "command.uivoid"
         ],

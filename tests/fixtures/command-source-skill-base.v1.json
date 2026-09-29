@@ -10091,28 +10091,29 @@
       {
         "extension": {
           "action_classes": [
-            "gitsync mirror-mutating command",
-            "gitsync webhook-rewriting command",
-            "gitsync service-install command"
+            "Skill Base publication"
           ],
           "aliases": [],
           "conflicts": [],
-          "delegated_protection": null,
           "dependencies": [],
-          "description": "Reviews gitsync's live mirror sync, server-side webhook rewrites, and service install/uninstall. `check`, `status`, and plain `hooks` do not match any rule here; Guard's default floor still applies to them since gitsync is not on the built-in safe-command list and no rule in this extension matches those subcommands. Every mutating subcommand covered here always requires review, even with --help, -h or --dry-run present, because gitsync's flag parser can silently drop those flags depending on argument order and this matcher engine cannot detect when that happened.",
+          "description": "Reviews authenticated Skill Base CLI publications before local Skill files are uploaded as a new version.",
           "ecosystem_ids": [],
-          "executables": [],
-          "extension_id": "command.gitsync",
-          "homepage": "https://github.com/cristobaltormo/git-sync",
+          "executables": [
+            "skb",
+            "skb.cmd",
+            "skb.exe"
+          ],
+          "extension_id": "command.skill-base",
+          "homepage": "https://github.com/ginuim/skill-base",
           "icon": {
             "kind": "none"
           },
-          "license": "Apache-2.0",
-          "name": "gitsync command protection",
+          "license": "MIT",
+          "name": "Skill Base CLI",
           "permissions": [
             {
               "action_classes": [
-                "gitsync mirror-mutating command"
+                "Skill Base publication"
               ],
               "baseline_floor": "review",
               "configurable": true,
@@ -10120,365 +10121,231 @@
               "default_enabled": true,
               "dependencies": [],
               "deprecated": false,
-              "description": "Identifies `gitsync sync` and `gitsync run`, which force-push and prune every configured repo's branches and tags to GitHub so the two sides end up identical, and can eventually delete the GitHub mirror once a repo disappears from the source (subject to gitsync's own delete_grace and delete_limit safeguards). Both accept --help/-h, and `run` also accepts --dry-run, but gitsync's flag parser (Go's stdlib flag.FlagSet) stops at the first token that isn't a flag and never looks at anything after it - so a flag placed after a repo name, or after any other token, is silently ignored and the command still runs live. No safe variant is reliable against that, so this rule always reviews sync and run regardless of which flags are present.",
-              "example_command": "gitsync sync",
-              "family": null,
-              "fixed_reason": null,
+              "description": "Reviews upload of a local Skill directory to Skill Base, where it creates a public Skill or publishes a new version.",
+              "example_command": "skb publish ./my-skill --changelog 'Initial release'",
               "implementation_version": "1.0.0",
               "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gitsync live mirror sync",
-              "permission_id": "command.gitsync.permission.mirror-mutation",
-              "replacement_permission_id": null,
+              "introduced_version": "1.0.0",
+              "label": "Publish a Skill version",
+              "permission_id": "command.skill-base.permission.publish",
               "risk_tier": "high",
               "safer_guidance": [
-                "Run `gitsync run --dry-run` as the very first argument, nothing before it, and review what it reports before running it live - never rely on --dry-run appearing safe by itself.",
-                "Run `gitsync check` to confirm token scopes and account mapping before mirroring."
-              ],
-              "typed_capabilities": []
-            },
-            {
-              "action_classes": [
-                "gitsync webhook-rewriting command",
-                "gitsync service-install command"
-              ],
-              "baseline_floor": "review",
-              "configurable": true,
-              "conflicts": [],
-              "default_enabled": true,
-              "dependencies": [],
-              "deprecated": false,
-              "description": "Identifies `gitsync hooks --force`/`-force` (rewrites existing webhooks on the git server), `gitsync hooks --remove`/`-remove` (deletes them), and `gitsync install` / `gitsync uninstall` (registers or removes the persistent background service). Go's flag parser treats a single dash the same as a double dash for a named flag, so both spellings are matched. Plain `gitsync hooks` (no flags) still mutates - it creates any missing webhooks - but never rewrites or deletes an existing one, so it is not covered here. No safe variant is offered for --help/-h on any of these: gitsync's flag parser stops at the first non-flag token and never looks at anything after it, so a flag placed after any other token is silently ignored rather than shown as help, and a declarative matcher cannot tell that case apart from one where the flag actually took effect. `uninstall` additionally never parses flags at all - it ignores every argument on both Linux and Windows and always removes the service and binary - so it was never going to have a safe variant regardless.",
-              "example_command": "gitsync hooks --remove",
-              "family": null,
-              "fixed_reason": null,
-              "implementation_version": "1.0.0",
-              "implied_permissions": [],
-              "introduced_version": "2.2.0",
-              "label": "gitsync webhook rewrite, removal, or service install/uninstall",
-              "permission_id": "command.gitsync.permission.operational-mutation",
-              "replacement_permission_id": null,
-              "risk_tier": "medium",
-              "safer_guidance": [
-                "Prefer plain `gitsync hooks`, which only creates missing webhooks and does not rewrite or delete existing ones.",
-                "Run `gitsync run --dry-run` interactively before installing it as an unattended service."
+                "Run `skb publish --dry-run` and confirm the directory, Skill ID, and included files.",
+                "Check the name, description, and changelog flags; new Skills are public by default."
               ],
               "typed_capabilities": []
             }
           ],
           "project_markers": [],
           "publisher": {
-            "display_name": "Community",
-            "id": "community.gitsync",
-            "url": null
+            "display_name": "Skill Base",
+            "id": "ginuim",
+            "url": "https://github.com/ginuim/skill-base"
           },
           "reference_urls": [
-            "https://github.com/cristobaltormo/git-sync#commands",
-            "https://github.com/cristobaltormo/git-sync#things-worth-knowing"
+            "https://github.com/ginuim/skill-base/blob/main/cli/lib/commands/publish.js",
+            "https://github.com/ginuim/skill-base/blob/main/docs/zh/cli.md"
           ],
           "required": false,
           "risk_classes": [
-            "destructive_shell",
-            "network_egress",
-            "execution"
+            "data_flow_exfiltration",
+            "execution",
+            "network_egress"
           ],
           "rules": [
             {
               "action_classes": [
-                "gitsync mirror-mutating command"
+                "Skill Base publication"
               ],
               "default_mode": "review",
-              "description": "Identifies `gitsync sync` and `gitsync run`, which force-push and prune every configured repo's branches and tags to GitHub so the two sides end up identical, and can eventually delete the GitHub mirror once a repo disappears from the source (subject to gitsync's own delete_grace and delete_limit safeguards). Both accept --help/-h, and `run` also accepts --dry-run, but gitsync's flag parser (Go's stdlib flag.FlagSet) stops at the first token that isn't a flag and never looks at anything after it - so a flag placed after a repo name, or after any other token, is silently ignored and the command still runs live. No safe variant is reliable against that, so this rule always reviews sync and run regardless of which flags are present.",
-              "family": null,
+              "description": "Identifies `skb publish`, which packages the selected local directory and uploads it with the saved Skill Base credential to create a Skill or publish a new version.",
               "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "sync"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "run"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  }
-                ],
-                "op": "any.v1"
+                "config": {
+                  "allow_leading_options": true,
+                  "executables": [
+                    "skb",
+                    "skb.cmd",
+                    "skb.exe"
+                  ],
+                  "fail_secure_unknown_options": true,
+                  "forbidden_flags": [],
+                  "interspersed_flags": [
+                    "--dry-run",
+                    "--help",
+                    "--no-gitignore",
+                    "-h"
+                  ],
+                  "interspersed_options_with_values": [
+                    "--changelog",
+                    "--description",
+                    "--ignore",
+                    "--name"
+                  ],
+                  "inverse_flag_pairs": [],
+                  "leading_options_with_values": [
+                    "--changelog",
+                    "--description",
+                    "--ignore",
+                    "--name"
+                  ],
+                  "required_flags": [],
+                  "required_flags_in_all_arguments": false,
+                  "required_option_values": [],
+                  "subcommands": [
+                    "publish"
+                  ]
+                },
+                "op": "executable.v1"
               },
-              "native_capability": null,
-              "permission_id": "command.gitsync.permission.mirror-mutation",
+              "permission_id": "command.skill-base.permission.publish",
               "risk_classes": [
-                "destructive_shell",
+                "data_flow_exfiltration",
+                "execution",
                 "network_egress"
               ],
-              "rule_id": "command.gitsync.mirror-mutation",
+              "rule_id": "command.skill-base.publish",
               "rule_version": "1.0.0",
-              "safe_variants": [],
+              "safe_variants": [
+                {
+                  "matcher": {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--no-gitignore"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "--dry-run"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  "title": "List the files without uploading",
+                  "variant_id": "dry-run"
+                },
+                {
+                  "matcher": {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--help",
+                        "--no-gitignore",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "--help"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  "title": "Publish command help (--help)",
+                  "variant_id": "help"
+                },
+                {
+                  "matcher": {
+                    "config": {
+                      "allow_leading_options": true,
+                      "executables": [
+                        "skb",
+                        "skb.cmd",
+                        "skb.exe"
+                      ],
+                      "fail_secure_unknown_options": true,
+                      "forbidden_flags": [],
+                      "interspersed_flags": [
+                        "--dry-run",
+                        "--help",
+                        "--no-gitignore",
+                        "-h"
+                      ],
+                      "interspersed_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "inverse_flag_pairs": [],
+                      "leading_options_with_values": [
+                        "--changelog",
+                        "--description",
+                        "--ignore",
+                        "--name"
+                      ],
+                      "required_flags": [
+                        "-h"
+                      ],
+                      "required_flags_in_all_arguments": true,
+                      "required_option_values": [],
+                      "subcommands": [
+                        "publish"
+                      ]
+                    },
+                    "op": "executable.v1"
+                  },
+                  "title": "Publish command help (-h)",
+                  "variant_id": "short-help"
+                }
+              ],
               "safer_alternatives": [
-                "Run `gitsync run --dry-run` as the very first argument, nothing before it, and review what it reports before running it live - never rely on --dry-run appearing safe by itself.",
-                "Run `gitsync check` to confirm token scopes and account mapping before mirroring."
+                "Run `skb publish --dry-run` for the same directory and ignore rules, then review the included files before publishing."
               ],
               "severity": "high",
-              "title": "gitsync live mirror sync"
-            },
-            {
-              "action_classes": [
-                "gitsync webhook-rewriting command",
-                "gitsync service-install command"
-              ],
-              "default_mode": "review",
-              "description": "Identifies `gitsync hooks --force`/`-force` (rewrites existing webhooks on the git server), `gitsync hooks --remove`/`-remove` (deletes them), and `gitsync install` / `gitsync uninstall` (registers or removes the persistent background service). Go's flag parser treats a single dash the same as a double dash for a named flag, so both spellings are matched. Plain `gitsync hooks` (no flags) still mutates - it creates any missing webhooks - but never rewrites or deletes an existing one, so it is not covered here. No safe variant is offered for --help/-h on any of these: gitsync's flag parser stops at the first non-flag token and never looks at anything after it, so a flag placed after any other token is silently ignored rather than shown as help, and a declarative matcher cannot tell that case apart from one where the flag actually took effect. `uninstall` additionally never parses flags at all - it ignores every argument on both Linux and Windows and always removes the service and binary - so it was never going to have a safe variant regardless.",
-              "family": null,
-              "matcher": {
-                "config": {},
-                "matchers": [
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [
-                        "--force"
-                      ],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "hooks"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [
-                        "-force"
-                      ],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "hooks"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [
-                        "--remove"
-                      ],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "hooks"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [
-                        "-remove"
-                      ],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "hooks"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "install"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  },
-                  {
-                    "config": {
-                      "allow_leading_options": true,
-                      "executables": [
-                        "gitsync",
-                        "gitsync.exe"
-                      ],
-                      "fail_secure_unknown_options": true,
-                      "forbidden_flags": [],
-                      "interspersed_flags": [
-                        "--help",
-                        "-h"
-                      ],
-                      "interspersed_options_with_values": [],
-                      "inverse_flag_pairs": [],
-                      "leading_options_with_values": [
-                        "-c"
-                      ],
-                      "options_with_values": [],
-                      "required_flags": [],
-                      "required_flags_in_all_arguments": false,
-                      "required_option_values": [],
-                      "subcommands": [
-                        "uninstall"
-                      ]
-                    },
-                    "op": "executable.v1"
-                  }
-                ],
-                "op": "any.v1"
-              },
-              "native_capability": null,
-              "permission_id": "command.gitsync.permission.operational-mutation",
-              "risk_classes": [
-                "network_egress",
-                "execution"
-              ],
-              "rule_id": "command.gitsync.operational-mutation",
-              "rule_version": "1.0.0",
-              "safe_variants": [],
-              "safer_alternatives": [
-                "Prefer plain `gitsync hooks`, which only creates missing webhooks and does not rewrite or delete existing ones.",
-                "Run `gitsync run --dry-run` interactively before installing it as an unattended service."
-              ],
-              "severity": "medium",
-              "title": "gitsync webhook rewrite, removal, or service install/uninstall"
+              "title": "Skill Base publication"
             }
           ],
           "safer_alternatives": [
-            "There is no reliably safe invocation to detect here - review every sync, run, hooks --force/--remove, install and uninstall regardless of flags.",
-            "Run `gitsync check` to confirm token scopes and account mapping before mirroring.",
-            "Only set adopt_existing on a GitHub repo you are fine handing lifecycle ownership of to gitsync."
+            "Run `skb publish --dry-run` for the same directory and ignore rules, then review the included files before publishing."
           ],
           "source": "built-in",
           "version": "1.0.0"
@@ -10588,411 +10455,179 @@
   },
   "cases": [
     {
-      "command": "gitsync sync",
+      "command": "skb publish ./my-skill --dry-run --ignore '.cursor/'",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "publish-dry-run-safe",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill --ignore '.cursor/' --no-gitignore",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-with-ignore-still-reviewable",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-current-directory",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill --name \"My Skill\" --description \"A useful skill\" --changelog \"Initial release\"",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-relative-directory-with-metadata",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb --name \"My Skill\" --changelog \"Release\" publish /tmp/my-skill",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [
+        0
+      ],
+      "id": "publish-global-options-before-subcommand",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "publish-help-long-safe",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish -h",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "publish-help-short-safe",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish --name \"My Skill\" --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "publish-with-extra-flag-and-help-safe",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb publish ./my-skill",
       "disabled_permissions": [],
       "enabled_extensions": [],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "mirror-inactive",
-      "rule_id": "command.gitsync.mirror-mutation"
+      "id": "extension-inactive",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "gitsync sync",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-sync-active",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync sync alice/example",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-sync-one-repo-active",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync run",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-run-active",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync run --dry-run",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-run-dry-run-still-reviewed",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync run --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-run-help-still-reviewed",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync sync --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-sync-help-still-reviewed",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync sync alice/example --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-sync-help-positional-order-still-live",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync sync alice/example --dry-run",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-sync-dry-run-positional-order-still-live",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync run whatever --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-run-help-after-bare-token-still-live",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync -c /etc/gitsync/config.toml sync",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "mirror-config-flag-leading",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync run --dry-run; gitsync sync",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0,
-        1
-      ],
-      "id": "mirror-compound",
-      "rule_id": "command.gitsync.mirror-mutation"
-    },
-    {
-      "command": "gitsync sync",
+      "command": "skb publish ./my-skill",
       "disabled_permissions": [
-        "command.gitsync.permission.mirror-mutation"
+        "command.skill-base.permission.publish"
       ],
       "enabled_extensions": [
-        "command.gitsync"
+        "command.skill-base"
       ],
       "expected_action": "block",
       "expected_effective_segments": [
         0
       ],
-      "id": "mirror-disabled-permission",
-      "rule_id": "command.gitsync.mirror-mutation"
+      "id": "permission-disabled",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "gitsync status",
+      "command": "skb install team-rules",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.gitsync"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "mirror-unrelated-safe",
-      "rule_id": "command.gitsync.mirror-mutation"
+      "id": "skb-install-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "another-unrelated-tool sync",
+      "command": "skb search vue",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.gitsync"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "mirror-unknown-cli",
-      "rule_id": "command.gitsync.mirror-mutation"
+      "id": "skb-search-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "gitsync hooks --force",
-      "disabled_permissions": [],
-      "enabled_extensions": [],
-      "expected_action": "review",
-      "expected_effective_segments": [],
-      "id": "ops-inactive",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks --force",
+      "command": "skb import-github owner/repo",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-force-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks --remove",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-remove-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks -force",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-force-single-dash-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks -force=true",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-force-single-dash-equals-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks -remove",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-remove-single-dash-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks -remove=true",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-remove-single-dash-equals-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks -force",
-      "disabled_permissions": [
-        "command.gitsync.permission.operational-mutation"
-      ],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-force-single-dash-disabled-permission",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "ops-hooks-bare-not-covered",
-      "rule_id": "command.gitsync.operational-mutation"
+      "id": "skb-import-github-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
     },
     {
-      "command": "gitsync hooks --force --help",
+      "command": "skb publishx ./my-skill",
       "disabled_permissions": [],
       "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-force-help-still-reviewed",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync hooks --force whatever --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-hooks-force-help-after-bare-token-still-live",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync install",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-install-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync install --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-install-help-still-reviewed",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync uninstall",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-uninstall-active",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync uninstall --help",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "review",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-uninstall-help-still-destructive",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync uninstall",
-      "disabled_permissions": [
-        "command.gitsync.permission.operational-mutation"
-      ],
-      "enabled_extensions": [
-        "command.gitsync"
-      ],
-      "expected_action": "block",
-      "expected_effective_segments": [
-        0
-      ],
-      "id": "ops-disabled-permission",
-      "rule_id": "command.gitsync.operational-mutation"
-    },
-    {
-      "command": "gitsync check",
-      "disabled_permissions": [],
-      "enabled_extensions": [
-        "command.gitsync"
+        "command.skill-base"
       ],
       "expected_action": "review",
       "expected_effective_segments": [],
-      "id": "ops-unrelated-safe",
-      "rule_id": "command.gitsync.operational-mutation"
+      "id": "similar-subcommand-does-not-match",
+      "rule_id": "command.skill-base.publish"
+    },
+    {
+      "command": "skb --help",
+      "disabled_permissions": [],
+      "enabled_extensions": [
+        "command.skill-base"
+      ],
+      "expected_action": "review",
+      "expected_effective_segments": [],
+      "id": "root-help-is-outside-publish-rule",
+      "rule_id": "command.skill-base.publish"
     }
   ],
   "schema": "guard.command-extension-fixtures.v1"

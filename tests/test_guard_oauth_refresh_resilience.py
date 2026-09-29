@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 
 import pytest
 
@@ -418,6 +419,88 @@ def test_rate_limited_refresh_honors_retry_after(tmp_path, monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="rate limited"):
         guard_runner_module._resolve_guard_sync_auth_context(store)
     assert calls["count"] == 1
+
+
+def test_rate_limited_refresh_honors_http_date_retry_after(tmp_path, monkeypatch) -> None:
+    """An HTTP-date Retry-After header parks refresh for the requested delay."""
+    store = _store_with_oauth_credentials(tmp_path)
+    calls = {"count": 0}
+    http_date = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=120), usegmt=True)
+
+    def _always_rate_limited(_request, timeout):
+        calls["count"] += 1
+        raise _rate_limited_http_error(http_date)
+
+    stub_authenticated_urlopen(monkeypatch, _always_rate_limited)
+    _allow_refresh(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="rate limited"):
+        guard_runner_module._resolve_guard_sync_auth_context(store)
+    assert calls["count"] == 1
+
+    state = _oauth_circuit_state(store)
+    assert int(str(state["backoff_seconds"])) > 60
+
+
+def test_rate_limited_refresh_respects_long_server_retry_after(tmp_path, monkeypatch) -> None:
+    """A server Retry-After beyond the dead-grant cap is honored, not truncated."""
+    store = _store_with_oauth_credentials(tmp_path)
+
+    def _always_rate_limited(_request, timeout):
+        raise _rate_limited_http_error("900")
+
+    stub_authenticated_urlopen(monkeypatch, _always_rate_limited)
+    _allow_refresh(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="rate limited"):
+        guard_runner_module._resolve_guard_sync_auth_context(store)
+
+    state = _oauth_circuit_state(store)
+    assert state["backoff_seconds"] == 900
+
+
+def test_rate_limit_circuit_fingerprints_reloaded_token(tmp_path, monkeypatch) -> None:
+    """A 429 on a peer-reloaded refresh token records that token's fingerprint."""
+    store = _store_with_oauth_credentials(tmp_path)
+    initial = store.get_oauth_local_credentials(allow_primary=True)
+    assert initial is not None
+    rotated = dict(initial)
+    rotated["refresh_token"] = "refresh-token-2"
+
+    seen_tokens: list[str] = []
+
+    def _fake_urlopen(_request, timeout):
+        form = dict(urllib.parse.parse_qsl(_request.data.decode("utf-8")))
+        seen_tokens.append(form["refresh_token"])
+        if len(seen_tokens) == 1:
+            raise _invalid_grant_http_error()
+        raise _rate_limited_http_error("120")
+
+    stub_authenticated_urlopen(monkeypatch, _fake_urlopen)
+    _allow_refresh(monkeypatch)
+
+    original_get = GuardStore.get_oauth_local_credentials
+
+    def _patched_get(self, *args, **kwargs):
+        if self is store:
+            return rotated
+        return original_get(self, *args, **kwargs)
+
+    monkeypatch.setattr(GuardStore, "get_oauth_local_credentials", _patched_get)
+
+    with pytest.raises(RuntimeError, match="rate limited"):
+        guard_runner_module._resolve_guard_sync_auth_context_from_oauth_credentials(
+            store,
+            initial,
+            force_refresh=True,
+            persist_recovered_secret=False,
+        )
+
+    assert seen_tokens == ["refresh-token-1", "refresh-token-2"]
+    state = _oauth_circuit_state(store)
+    assert state["refresh_token_fingerprint"] == guard_runner_module._oauth_refresh_circuit_fingerprint(
+        "refresh-token-2"
+    )
 
 
 def test_fresh_peer_credentials_clear_needs_reauthorization(tmp_path, monkeypatch) -> None:

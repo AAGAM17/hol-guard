@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -3746,6 +3747,13 @@ def _parse_retry_after_header(error: urllib.error.HTTPError) -> int:
     except ValueError:
         pass
     try:
+        retry_date = parsedate_to_datetime(retry_after)
+        if retry_date.tzinfo is None:
+            retry_date = retry_date.replace(tzinfo=timezone.utc)
+        return max(1, int((retry_date - datetime.now(timezone.utc)).total_seconds()))
+    except (ValueError, TypeError):
+        pass
+    try:
         retry_date = datetime.fromisoformat(retry_after.replace("Z", "+00:00"))
         delta = (retry_date - datetime.now(timezone.utc)).total_seconds()
         return max(1, int(delta))
@@ -4554,6 +4562,7 @@ _OAUTH_REFRESH_CIRCUIT_BASE_BACKOFF_ENV = "GUARD_OAUTH_REFRESH_CIRCUIT_BASE_BACK
 _OAUTH_REFRESH_CIRCUIT_MAX_BACKOFF_ENV = "GUARD_OAUTH_REFRESH_CIRCUIT_MAX_BACKOFF_SECONDS"
 _OAUTH_REFRESH_CIRCUIT_DEFAULT_BASE_BACKOFF_SECONDS = 30.0
 _OAUTH_REFRESH_CIRCUIT_DEFAULT_MAX_BACKOFF_SECONDS = 300.0
+_OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS = 3600.0
 
 
 def _oauth_refresh_circuit_fingerprint(refresh_token: str) -> str:
@@ -4673,12 +4682,7 @@ def _oauth_refresh_circuit_record_rate_limit(
         1,
         min(
             int(retry_after_seconds),
-            int(
-                _oauth_refresh_circuit_backoff_seconds(
-                    _OAUTH_REFRESH_CIRCUIT_MAX_BACKOFF_ENV,
-                    _OAUTH_REFRESH_CIRCUIT_DEFAULT_MAX_BACKOFF_SECONDS,
-                )
-            ),
+            int(_OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS),
         ),
     )
     _save_oauth_refresh_circuit(
@@ -4971,9 +4975,12 @@ def _resolve_guard_sync_auth_context_from_oauth_credentials(
             credential_reloader=_reload_current_oauth_credentials,
         )
     except _GuardOAuthRefreshRateLimitedError as error:
+        failed_refresh_token = (
+            _optional_string(effective_credentials_ref["value"].get("refresh_token")) or refresh_token
+        )
         _oauth_refresh_circuit_record_rate_limit(
             store=store,
-            refresh_token=refresh_token,
+            refresh_token=failed_refresh_token,
             retry_after_seconds=error.retry_after_seconds,
             now=datetime.now(timezone.utc),
         )

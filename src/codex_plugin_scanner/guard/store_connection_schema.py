@@ -1145,13 +1145,6 @@ class StoreConnectionSchemaMixin:
             )
             if not self._schema_version_applied(connection, version=2):
                 self._record_schema_version(connection, version=2)
-            connection.execute(
-                """
-                update approval_requests
-                set status = 'pending', reason = null, resolved_at = null
-                where status = 'expired'
-                """
-            )
             self._repair_store_permissions()
 
     def _initialize_policy_integrity(self) -> None:

@@ -15219,7 +15219,7 @@ function buildCodexResumeUx(resume) {
   }
   return {
     headline: "Guard could not locate the Codex chat.",
-    body: resume.message ?? "Return to Codex and retry the same request.",
+    body: resume.message ?? "Return to Codex and retry. A new tool call may need fresh approval.",
     showRetry: false
   };
 }

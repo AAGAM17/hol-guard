@@ -81,6 +81,27 @@ def _make_request(
 class TestDuplicatePendingRequestCollapse:
     """T719-T720: Duplicate pending requests collapse to one row."""
 
+    def test_expired_inconsistent_card_stays_expired_after_store_reopens(self, tmp_path: Path) -> None:
+        store = GuardStore(tmp_path)
+        first = _make_request(artifact_id="codex:project:mcp-review", launch_target="tool:get_file_info")
+        old_id = store.add_approval_request(first, "2026-09-29T00:00:00Z")
+        with store._connect() as connection:
+            connection.execute(
+                "update approval_requests set decision_v2_json = ? where request_id = ?",
+                ("{invalid-json", old_id),
+            )
+        fresh = _make_request(artifact_id=first.artifact_id, launch_target=first.launch_target)
+        fresh_id = store.add_approval_request(fresh, "2026-09-29T00:01:00Z")
+        assert fresh_id != old_id
+
+        reopened = GuardStore(tmp_path)
+        with reopened._connect() as connection:
+            old = connection.execute(
+                "select status, reason from approval_requests where request_id = ?", (old_id,)
+            ).fetchone()
+            assert tuple(old) == ("expired", "superseded_by_fresh_review:" + fresh_id)
+            assert count_approval_requests(connection, status="pending") == 1
+
     def test_corrupt_pending_authority_requires_a_new_host_attempt_and_request_id(self) -> None:
         conn = _make_conn()
         first = _make_request(artifact_id="codex:project:mcp-review", launch_target="tool:composio_search_tools")

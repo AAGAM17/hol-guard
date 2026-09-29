@@ -31874,9 +31874,12 @@ function activeFailedHarnesses(failedHarnesses, repairHarnesses) {
   const repairable = new Set(repairHarnesses);
   return Array.from(new Set(failedHarnesses)).filter((harness) => repairable.has(harness));
 }
-function protectionRepairFinishMessage(checkReasons) {
+function protectionRepairUnfinishedDetail(checkReasons) {
   const details = Object.entries(checkReasons).sort(([left], [right]) => left.localeCompare(right)).map(([, reason]) => protectionReasonText(reason) ?? `Reason code: ${reason}`);
-  return `Protection checks pass, but Guard could not finish: ${details.join(" ")}`;
+  return `Guard could not finish: ${details.join(" ")}`;
+}
+function protectionRepairFinishMessage(checkReasons) {
+  return `Protection checks pass, but ${protectionRepairUnfinishedDetail(checkReasons)}`;
 }
 async function runAutomaticProtectionRepair(input) {
   const failures = [];
@@ -31924,12 +31927,13 @@ async function runAutomaticProtectionRepair(input) {
     return "Automatic repairs completed. Guard rechecked every protection layer below.";
   }
   if (!hasRepairableProtectionGap(remainingHealth.checks)) {
-    if (Object.keys(repairCheckReasons).length > 0) {
-      return protectionRepairFinishMessage(repairCheckReasons);
-    }
     const hasUnsupportedGaps = remainingHealth.checks.some(isUnsupportedPlatformCheck);
     if (hasUnsupportedGaps) {
-      return "Supported protection repairs completed. Containment remains unavailable on this platform; Guard remains fail-closed.";
+      const base = "Supported protection repairs completed. Containment remains unavailable on this platform; Guard remains fail-closed.";
+      return Object.keys(repairCheckReasons).length > 0 ? `${base} ${protectionRepairUnfinishedDetail(repairCheckReasons)}` : base;
+    }
+    if (Object.keys(repairCheckReasons).length > 0) {
+      return protectionRepairFinishMessage(repairCheckReasons);
     }
     return "Automatic repairs completed. Guard rechecked every repairable protection layer below.";
   }

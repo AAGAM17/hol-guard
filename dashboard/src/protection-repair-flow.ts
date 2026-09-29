@@ -89,11 +89,15 @@ export function activeFailedHarnesses(failedHarnesses: string[], repairHarnesses
   return Array.from(new Set(failedHarnesses)).filter((harness) => repairable.has(harness));
 }
 
-export function protectionRepairFinishMessage(checkReasons: Record<string, string>): string {
+function protectionRepairUnfinishedDetail(checkReasons: Record<string, string>): string {
   const details = Object.entries(checkReasons)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([, reason]) => protectionReasonText(reason) ?? `Reason code: ${reason}`);
-  return `Protection checks pass, but Guard could not finish: ${details.join(" ")}`;
+  return `Guard could not finish: ${details.join(" ")}`;
+}
+
+export function protectionRepairFinishMessage(checkReasons: Record<string, string>): string {
+  return `Protection checks pass, but ${protectionRepairUnfinishedDetail(checkReasons)}`;
 }
 
 export async function runAutomaticProtectionRepair(input: {
@@ -152,7 +156,7 @@ export async function runAutomaticProtectionRepair(input: {
     if (hasUnsupportedGaps) {
       const base = "Supported protection repairs completed. Containment remains unavailable on this platform; Guard remains fail-closed.";
       return Object.keys(repairCheckReasons).length > 0
-        ? `${base} ${protectionRepairFinishMessage(repairCheckReasons).replace(/^Protection checks pass, but /, "")}`
+        ? `${base} ${protectionRepairUnfinishedDetail(repairCheckReasons)}`
         : base;
     }
     if (Object.keys(repairCheckReasons).length > 0) {

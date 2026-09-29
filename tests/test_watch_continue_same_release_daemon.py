@@ -350,8 +350,13 @@ def test_watch_http_pretool_unavailable_records_command_activity(
         'mode = "observe"\nprotection_posture = "watch"\n',
         encoding="utf-8",
     )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.native_mode",
+        lambda: "auto",
+    )
     writer = MagicMock()
     worker = HookWorker(store=GuardStore(guard_home), activity_writer=writer)
+    monkeypatch.setattr(worker, "_native_policy_snapshot", lambda _workspace, **_kwargs: {"mode": "observe"})
     monkeypatch.setattr(worker, "_review_pre_tool_native", lambda *_args, **_kwargs: None)
     result = worker._review_pre_tool_http(
         {"hook_event_name": "PreToolUse", "tool_input": {"command": "git status"}},

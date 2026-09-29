@@ -4565,15 +4565,32 @@ _OAUTH_REFRESH_CIRCUIT_DEFAULT_MAX_BACKOFF_SECONDS = 300.0
 _OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS = 3600.0
 
 
-_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT = b"hol.guard.oauth-refresh-circuit:v1"
+_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY = "guard_oauth_refresh_circuit_fingerprint_salt"
 _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS = 210_000
 
 
-def _oauth_refresh_circuit_fingerprint(refresh_token: str) -> str:
+def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
+    payload = store.get_sync_payload(_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY)
+    encoded = _optional_string(payload.get("salt")) if isinstance(payload, dict) else None
+    if encoded:
+        try:
+            return base64.b64decode(encoded.encode("ascii"), validate=True)
+        except ValueError:
+            pass
+    salt = os.urandom(16)
+    store.set_sync_payload(
+        _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY,
+        {"salt": base64.b64encode(salt).decode("ascii")},
+        _now(),
+    )
+    return salt
+
+
+def _oauth_refresh_circuit_fingerprint(refresh_token: str, salt: bytes) -> str:
     return hashlib.pbkdf2_hmac(
         "sha256",
         refresh_token.encode("utf-8"),
-        _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT,
+        salt,
         _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS,
     ).hex()[:24]
 
@@ -4613,7 +4630,7 @@ def _oauth_refresh_circuit_check(
     fingerprint = _optional_string(state.get("refresh_token_fingerprint"))
     if fingerprint is None:
         return
-    if fingerprint != _oauth_refresh_circuit_fingerprint(refresh_token):
+    if fingerprint != _oauth_refresh_circuit_fingerprint(refresh_token, _oauth_refresh_circuit_salt(store)):
         _save_oauth_refresh_circuit(store, {"cleared_at": _now()})
         return
     next_allowed = _parse_iso_timestamp(str(state.get("next_refresh_allowed_at") or ""))
@@ -4637,7 +4654,7 @@ def _oauth_refresh_circuit_record_dead_grant(
     one record flips the binding into needs-reauthorization and fires the
     single user-visible notice; later failures only extend the probe backoff.
     """
-    fingerprint = _oauth_refresh_circuit_fingerprint(refresh_token)
+    fingerprint = _oauth_refresh_circuit_fingerprint(refresh_token, _oauth_refresh_circuit_salt(store))
     state = _load_oauth_refresh_circuit(store)
     if _optional_string(state.get("refresh_token_fingerprint")) != fingerprint:
         state = {}
@@ -4683,7 +4700,7 @@ def _oauth_refresh_circuit_record_rate_limit(
     now: datetime,
 ) -> None:
     """Park refresh attempts until the server-provided Retry-After elapses."""
-    fingerprint = _oauth_refresh_circuit_fingerprint(refresh_token)
+    fingerprint = _oauth_refresh_circuit_fingerprint(refresh_token, _oauth_refresh_circuit_salt(store))
     state = _load_oauth_refresh_circuit(store)
     if _optional_string(state.get("refresh_token_fingerprint")) != fingerprint:
         state = {}

@@ -351,7 +351,10 @@ def test_circuit_probe_extends_backoff_geometrically(tmp_path, monkeypatch) -> N
     store = _store_with_oauth_credentials(tmp_path)
     credentials = store.get_oauth_local_credentials(allow_primary=True)
     assert credentials is not None
-    fingerprint = guard_runner_module._oauth_refresh_circuit_fingerprint(str(credentials["refresh_token"]))
+    fingerprint = guard_runner_module._oauth_refresh_circuit_fingerprint(
+        str(credentials["refresh_token"]),
+        guard_runner_module._oauth_refresh_circuit_salt(store),
+    )
     past = "2026-06-01T00:00:00+00:00"
     store.set_sync_payload(
         "guard_oauth_refresh_circuit",
@@ -499,7 +502,7 @@ def test_rate_limit_circuit_fingerprints_reloaded_token(tmp_path, monkeypatch) -
     assert seen_tokens == ["refresh-token-1", "refresh-token-2"]
     state = _oauth_circuit_state(store)
     assert state["refresh_token_fingerprint"] == guard_runner_module._oauth_refresh_circuit_fingerprint(
-        "refresh-token-2"
+        "refresh-token-2", guard_runner_module._oauth_refresh_circuit_salt(store)
     )
 
 

@@ -8613,6 +8613,10 @@ class GuardDaemonServer:
             )
         except Exception:
             self._diagnostics.record_exception("onefile_extraction_reclaim_failed")
+            self._server.onefile_extraction_status = {
+                "last_run_at": datetime.now(timezone.utc).isoformat(),
+                "error": "reclaim_failed",
+            }
             return
         self._server.onefile_extraction_status = {
             "last_run_at": datetime.now(timezone.utc).isoformat(),

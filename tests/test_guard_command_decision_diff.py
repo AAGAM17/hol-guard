@@ -31,12 +31,19 @@ from tests.guard_command_decision_diff import (
 from tests.support.extension_freshness import requires_fresh_projections
 
 _OPAQUE_ID = re.compile(r"c-[0-9a-f]{24}")
+_REPORT_FRAMED_DIGEST_PATH = REPORT_PATH.with_name("decision-diff-report.framed-sha256")
 
 
 def _fixture() -> dict[str, object]:
     value = cast(object, json.loads(REPORT_PATH.read_text(encoding="utf-8")))
     assert isinstance(value, dict)
     return cast(dict[str, object], value)
+
+
+def _golden_report_framed_digest() -> str:
+    value = _REPORT_FRAMED_DIGEST_PATH.read_text(encoding="ascii")
+    assert re.fullmatch(r"[0-9a-f]{64}\n", value), "invalid report framed digest fixture"
+    return value[:-1]
 
 
 def test_report_cli_writes_and_checks_framed_digest(tmp_path: Path, monkeypatch) -> None:
@@ -297,7 +304,7 @@ def test_fresh_process_report_is_environment_independent_and_bounded(
     hash_seed: str, timezone: str, locale: str
 ) -> None:
     script = Path(__file__).with_name("guard_command_decision_diff.py")
-    expected_digest = report_framed_sha256(_fixture())
+    expected_digest = _golden_report_framed_digest()
     manifest = load_seed_manifest()
     evaluation_budget_seconds = int(str(manifest["evaluation_budget_seconds"]))
     spawn_overhead_seconds = 15

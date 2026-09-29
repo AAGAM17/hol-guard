@@ -52,8 +52,8 @@ def main() -> int:
                 ],
                 plugins=[results],
             )
-        if status != 0 or results.passed != 5 or results.skipped != 0:
-            raise InstalledCanaryError("Installed Cursor outage qualification requires all five cases to pass")
+        if status != 0 or results.passed != 10 or results.skipped != 0:
+            raise InstalledCanaryError("Installed Cursor outage qualification requires all ten cases to pass")
         for name, module in tuple(sys.modules.items()):
             if name == "codex_plugin_scanner" or name.startswith("codex_plugin_scanner."):
                 origin = getattr(module, "__file__", None)
@@ -68,6 +68,7 @@ def main() -> int:
             "skipped": results.skipped,
             "unparsed_input_fixture": True,
             "guard_imports_unavailable": True,
+            "unacknowledged_watch_fixture": True,
             "requested_actions_executed": False,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)

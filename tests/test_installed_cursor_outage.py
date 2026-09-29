@@ -50,7 +50,7 @@ def test_skipped_cases_cannot_produce_evidence(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(runner, "verify_install", lambda *_args: {"outside_checkout": True})
 
     def partial_run(_arguments, *, plugins):
-        plugins[0].passed = 4
+        plugins[0].passed = 9
         plugins[0].skipped = 1
         return 0
 
@@ -66,7 +66,7 @@ def test_checkout_import_invalidates_evidence(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(runner, "verify_install", lambda *_args: {"outside_checkout": True})
 
     def injected_run(_arguments, *, plugins):
-        plugins[0].passed = 5
+        plugins[0].passed = 10
         module = ModuleType("codex_plugin_scanner.fixture_source_injection")
         module.__file__ = str(tmp_path / "src" / "fixture.py")
         monkeypatch.setitem(sys.modules, module.__name__, module)

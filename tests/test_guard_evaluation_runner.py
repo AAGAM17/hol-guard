@@ -39,6 +39,7 @@ def _run_payload(capsys, profile_path: Path, *extra: str) -> tuple[int, dict[str
     return code, payload
 
 
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_run_rejects_profile_capability_outside_builtin_cases(tmp_path: Path, capsys) -> None:
     profile_path, _ = _write_runner_profile(tmp_path, ("synthetic.read",))
 
@@ -49,6 +50,7 @@ def test_run_rejects_profile_capability_outside_builtin_cases(tmp_path: Path, ca
     assert payload["error"]["code"] == "case_not_supported"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_run_rejects_partial_case_selection(tmp_path: Path, capsys) -> None:
     profile_path, _ = _write_runner_profile(
         tmp_path,
@@ -62,6 +64,7 @@ def test_run_rejects_partial_case_selection(tmp_path: Path, capsys) -> None:
     assert payload["error"]["code"] == "case_coverage_invalid"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_run_reports_timeout_and_cleans_owned_setup(monkeypatch, tmp_path: Path, capsys) -> None:
     profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
 
@@ -85,6 +88,7 @@ def test_run_reports_timeout_and_cleans_owned_setup(monkeypatch, tmp_path: Path,
         ("_fixed_network_control", "control_failed"),
     ),
 )
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_run_reports_receiver_and_control_failures(
     monkeypatch,
     tmp_path: Path,
@@ -112,6 +116,7 @@ def test_run_reports_receiver_and_control_failures(
     assert not list(tmp_path.glob("hol-guard-eval-*"))
 
 
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_run_reports_witness_operation_failure_per_case(monkeypatch, tmp_path: Path, capsys) -> None:
     profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
     monkeypatch.setattr(
@@ -127,6 +132,7 @@ def test_run_reports_witness_operation_failure_per_case(monkeypatch, tmp_path: P
     assert payload["cleanup"]["removed"] is True
 
 
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_network_readiness_uses_remaining_run_deadline(monkeypatch, tmp_path: Path, capsys) -> None:
     profile_path, profile_data = _write_runner_profile(tmp_path, (runner.EGRESS_CASE_ID,))
     profile_data["resourceLimits"]["maxDurationSeconds"] = 1  # type: ignore[index]
@@ -153,6 +159,7 @@ def test_summary_counts_unknown_status_as_failed() -> None:
     }
 
 
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
 def test_run_preserves_unrelated_bytes_and_never_invokes_host(tmp_path: Path, capsys) -> None:
     profile_path, profile = _write_runner_profile(
         tmp_path,

@@ -204,8 +204,6 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
         )
 
         def _transient_disconnect(error: Exception) -> bool:
-            if isinstance(error, urllib.error.HTTPError):
-                return error.code == 503
             if isinstance(error, http.client.RemoteDisconnected):
                 return True
             return isinstance(error, urllib.error.URLError) and isinstance(

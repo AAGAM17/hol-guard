@@ -413,12 +413,8 @@ class StoreReviewEventOutboxMixin:
             row = connection.execute(query, parameters).fetchone()
             diagnostics = connection.execute(diagnostics_query, diagnostics_parameters).fetchone()
         quarantined = int(diagnostics["quarantined_depth"] or 0) if diagnostics is not None else 0
-        identity_quarantined = (
-            int(diagnostics["identity_quarantined_depth"] or 0) if diagnostics is not None else 0
-        )
-        identity_mismatch = (
-            int(diagnostics["identity_mismatch_depth"] or 0) if diagnostics is not None else 0
-        )
+        identity_quarantined = int(diagnostics["identity_quarantined_depth"] or 0) if diagnostics is not None else 0
+        identity_mismatch = int(diagnostics["identity_mismatch_depth"] or 0) if diagnostics is not None else 0
         unbound = int(diagnostics["unbound_depth"] or 0) if diagnostics is not None else 0
         other_workspace = int(diagnostics["other_workspace_depth"] or 0) if diagnostics is not None else 0
         return {

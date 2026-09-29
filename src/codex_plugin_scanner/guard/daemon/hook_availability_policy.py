@@ -259,14 +259,17 @@ def cursor_unparseable_input_permission(
     *,
     recording_only: bool = False,
 ) -> tuple[dict[str, object], int]:
-    """Keep Cursor moving when stdin is empty or invalid but the event is known."""
+    """Deny unparsed actions unless acknowledged recording-only authority exists."""
 
     compact = hook_event_name.strip().lower().replace("_", "").replace("-", "")
     if compact in {"aftershellexecution", "aftermcpexecution"}:
         return {}, 0
-    if recording_only or compact in {"", "beforereadfile"}:
+    if recording_only:
         return {"permission": "allow"}, 0
-    return dict(_CURSOR_UNAVAILABLE_DENY), 2
+    return {
+        "permission": "deny",
+        "user_message": "Guard could not process this hook request safely. Retry or repair Guard from a terminal.",
+    }, 2
 
 
 __all__ = [

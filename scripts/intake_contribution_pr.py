@@ -97,13 +97,17 @@ def main() -> int:
         _run(["git", "checkout", branch])
         prior = _run(["git", "merge-base", branch, contributor_head])
         rewritten = _run(["git", "rev-list", "--no-merges", f"{prior}..{branch}", "--not", "origin/main"])
-        head_merge = subprocess.run(
-            ["git", "merge", "--no-edit", contributor_head],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        ) if not rewritten else None
+        head_merge = (
+            subprocess.run(
+                ["git", "merge", "--no-edit", contributor_head],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if not rewritten
+            else None
+        )
         if head_merge is None or head_merge.returncode:
             subprocess.run(["git", "merge", "--abort"], cwd=ROOT, check=False)
             print(

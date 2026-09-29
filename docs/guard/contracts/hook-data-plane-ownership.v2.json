@@ -435,6 +435,7 @@
       "paths": [
         "rust/crates/guard-command/**",
         "rust/crates/guard-contracts/**",
+        "rust/crates/guard-offline-regex-pilot/**",
         "rust/crates/guard-policy-snapshot/**",
         "rust/crates/guard-rule-contract/**",
         "rust/crates/guard-rules/**",

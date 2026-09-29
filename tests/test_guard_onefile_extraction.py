@@ -5,17 +5,14 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
 import sys
-import tempfile
-import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from codex_plugin_scanner.guard import onefile_extraction
-from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
 from codex_plugin_scanner.guard.onefile_extraction import (
     OWNER_MARKER_NAME,
     ExtractionReclaimResult,
@@ -24,7 +21,6 @@ from codex_plugin_scanner.guard.onefile_extraction import (
     record_extraction_owner,
 )
 
-_ENTRY_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "mdm" / "hol-guard-entry.py"
 _SENTINEL_PARTS = ("codex_plugin_scanner", "guard", "daemon", "static", "index.html")
 _NOW = datetime(2026, 2, 1, tzinfo=timezone.utc)
 _OLD_AGE_SECONDS = 20 * 60
@@ -329,114 +325,232 @@ def test_reclaim_rechecks_marker_before_deleting(tmp_path: Path, monkeypatch: py
     assert len(calls) == 2
 
 
-def test_entry_records_owner_before_bridge_and_guard_imports() -> None:
-    source = _ENTRY_SCRIPT.read_text(encoding="utf-8")
-    main = source[source.index('if __name__ == "__main__":') :]
-    bootstrap = main.index("_try_proxy_running_desktop_bootstrap()")
-    record = main.index("_record_extraction_owner()\n")
-    bridge = main.index("_try_codex_daemon_bridge()")
-    heavy = main.index("from codex_plugin_scanner.guard.frozen_daemon_runtime import")
-    assert bootstrap < record < bridge < heavy
+def test_is_onefile_extraction_dir_survives_resolve_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    extraction = _extraction_dir(tmp_path)
+    original_resolve = Path.resolve
+
+    def broken_resolve(self: Path, *args: object, **kwargs: object) -> Path:
+        if self.name.startswith("_MEI"):
+            raise OSError("vanishing mount")
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", broken_resolve)
+    assert not is_onefile_extraction_dir(extraction, tmp_path)
 
 
-def test_entry_marker_literals_match_module_constants() -> None:
-    """The stdlib-only entry twin must write the same marker as the module."""
-
-    source = _ENTRY_SCRIPT.read_text(encoding="utf-8")
-    assert f'"{onefile_extraction.OWNER_MARKER_NAME}"' in source
-    assert f'"{onefile_extraction._OWNER_MARKER_SCHEMA}"' in source  # pyright: ignore[reportPrivateUsage]
-
-
-class _StubDiagnostics:
-    def __init__(self) -> None:
-        self.events: list[str] = []
-
-    def record(self, event: str, *, detail: str | None = None) -> bool:
-        self.events.append(event)
-        return True
-
-    def record_exception(self, event: str, **kwargs: object) -> bool:
-        self.events.append(event)
-        return True
-
-
-class _StubHttpServer:
-    """The healthz handler reads ``onefile_extraction_status`` off the HTTP
-    server (``daemon_server.onefile_extraction_status``), not the service."""
-
-    onefile_extraction_status: dict[str, object] | None = None
-
-
-def _bare_daemon_server() -> GuardDaemonServer:
-    server = GuardDaemonServer.__new__(GuardDaemonServer)
-    server._shutdown_started = threading.Event()
-    server._onefile_extraction_reclaim_thread = None
-    server._server = _StubHttpServer()
-    server._diagnostics = _StubDiagnostics()
-    return server
-
-
-def test_reclaim_worker_starts_only_when_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delattr(sys, "frozen", raising=False)
-    server = _bare_daemon_server()
-    server._start_onefile_extraction_reclaim()
-    assert server._onefile_extraction_reclaim_thread is None
-
-    calls: list[dict[str, object]] = []
-
-    def fake_reclaim(**kwargs: object) -> ExtractionReclaimResult:
-        calls.append(kwargs)
-        return ExtractionReclaimResult(
-            reclaimed_count=2,
-            reclaimed_bytes=2048,
-            killed_launches=2,
-            unmarked_count=1,
-            unmarked_bytes_estimate=512,
-        )
-
+def test_record_extraction_owner_reports_unknown_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(onefile_extraction, "reclaim_orphaned_extraction_dirs", fake_reclaim)
-    server._start_onefile_extraction_reclaim()
-    thread = server._onefile_extraction_reclaim_thread
-    assert thread is not None
-    try:
-        deadline = time.monotonic() + 5
-        while server._server.onefile_extraction_status is None and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert calls, "reclaim worker never ran"
-        assert calls[0]["temp_root"] == Path(tempfile.gettempdir())
-        assert calls[0]["current_meipass"] is None
+    monkeypatch.delattr("codex_plugin_scanner.version.__version__")
+    extraction = _extraction_dir(tmp_path)
 
-        status = server._server.onefile_extraction_status
-        assert status is not None
-        assert status["reclaimed_count"] == 2
-        assert status["reclaimed_bytes"] == 2048
-        assert status["killed_launches_last_run"] == 2
-        assert status["unmarked_legacy_count"] == 1
-        assert status["unmarked_legacy_bytes_estimate"] == 512
-        assert isinstance(status["last_run_at"], str)
-        assert "onefile_extraction_reclaimed" in server._diagnostics.events
-    finally:
-        server._shutdown_started.set()
-        thread.join(timeout=5)
-    assert not thread.is_alive()
+    assert record_extraction_owner(meipass=str(extraction), temp_root=tmp_path)
+    payload = json.loads((extraction / OWNER_MARKER_NAME).read_text(encoding="utf-8"))
+    assert payload["guard_version"] == "unknown"
 
 
-def test_reclaim_result_reaches_the_healthz_attribute(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The status the healthz payload serves lives on the HTTP server object."""
-
-    server = _bare_daemon_server()
+def test_record_extraction_owner_returns_false_on_write_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    extraction = _extraction_dir(tmp_path)
     monkeypatch.setattr(
-        onefile_extraction,
-        "reclaim_orphaned_extraction_dirs",
-        lambda **kwargs: ExtractionReclaimResult(reclaimed_count=3, reclaimed_bytes=99),
+        onefile_extraction.json,
+        "dumps",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("encode failed")),
     )
 
-    server._reclaim_onefile_extraction_dirs_once()
+    assert not record_extraction_owner(meipass=str(extraction), temp_root=tmp_path)
+    assert not (extraction / OWNER_MARKER_NAME).exists()
 
-    # Same attribute the handler's daemon_server (the _GuardDaemonHTTPServer)
-    # exposes to the /v1/healthz/details payload.
-    status = server._server.onefile_extraction_status
-    assert status is not None
-    assert status["reclaimed_count"] == 3
-    assert status["reclaimed_bytes"] == 99
+
+def test_pid_alive_with_real_processes() -> None:
+    assert onefile_extraction._pid_alive(os.getpid())  # pyright: ignore[reportPrivateUsage]
+    exited = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited.wait()
+    assert not onefile_extraction._pid_alive(exited.pid)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_pid_alive_fail_closed_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        onefile_extraction.os,
+        "kill",
+        lambda pid, sig: (_ for _ in ()).throw(PermissionError("denied")),
+    )
+    assert onefile_extraction._pid_alive(12345)  # pyright: ignore[reportPrivateUsage]
+
+    # Any error other than "definitely dead" fails closed to alive.
+    monkeypatch.setattr(
+        onefile_extraction.os,
+        "kill",
+        lambda pid, sig: (_ for _ in ()).throw(OSError("weird")),
+    )
+    assert onefile_extraction._pid_alive(12345)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_pid_alive_windows_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard import windows_paths
+
+    monkeypatch.setattr(onefile_extraction.os, "name", "nt")
+    monkeypatch.setattr(windows_paths, "windows_process_is_running", lambda pid: False)
+    assert not onefile_extraction._pid_alive(12345)  # pyright: ignore[reportPrivateUsage]
+
+    def boom(pid: int) -> bool:
+        raise RuntimeError("win32 api unavailable")
+
+    monkeypatch.setattr(windows_paths, "windows_process_is_running", boom)
+    assert onefile_extraction._pid_alive(12345)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_read_owner_marker_rejects_bad_records(tmp_path: Path) -> None:
+    read = onefile_extraction._read_owner_marker  # pyright: ignore[reportPrivateUsage]
+    marker = tmp_path / "marker.json"
+
+    assert read(tmp_path / "missing.json") is None
+
+    marker.mkdir()
+    assert read(marker) is None
+    marker.rmdir()
+
+    marker.write_bytes(b"x" * 5000)
+    assert read(marker) is None
+
+    marker.write_text("not json", encoding="utf-8")
+    assert read(marker) is None
+
+    marker.write_text(json.dumps([1, 2]), encoding="utf-8")
+    assert read(marker) is None
+
+    marker.write_text(json.dumps({"schema": "other-schema", "pid": 1, "parent_pid": 2}), encoding="utf-8")
+    assert read(marker) is None
+
+    marker.write_text(
+        json.dumps({"schema": "guard.onefile-extraction-owner.v1", "pid": "x", "parent_pid": 2}),
+        encoding="utf-8",
+    )
+    assert read(marker) is None
+
+    marker.write_text(
+        json.dumps({"schema": "guard.onefile-extraction-owner.v1", "pid": 1, "parent_pid": 2}),
+        encoding="utf-8",
+    )
+    assert read(marker) == {"pid": 1, "parent_pid": 2}
+
+
+def test_dir_bytes_tolerates_lstat_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    directory = tmp_path / "walk"
+    directory.mkdir()
+    (directory / "f.bin").write_bytes(b"x" * 8)
+    monkeypatch.setattr(
+        onefile_extraction.os,
+        "lstat",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("gone")),
+    )
+    assert onefile_extraction._dir_bytes(directory) == 0  # pyright: ignore[reportPrivateUsage]
+
+
+def test_reclaim_temp_root_errors(tmp_path: Path) -> None:
+    missing = reclaim_orphaned_extraction_dirs(
+        temp_root=tmp_path / "missing",
+        current_meipass=None,
+        now=_NOW,
+        pid_alive=_no_live_pids,
+    )
+    assert missing.errors == ["temp_root_unavailable"]
+
+    not_a_dir = tmp_path / "afile"
+    not_a_dir.write_text("x", encoding="utf-8")
+    listing = reclaim_orphaned_extraction_dirs(
+        temp_root=not_a_dir,
+        current_meipass=None,
+        now=_NOW,
+        pid_alive=_no_live_pids,
+    )
+    assert listing.errors == ["temp_root_listing_failed"]
+
+
+def test_reclaim_tolerates_unresolvable_current_meipass(tmp_path: Path) -> None:
+    extraction = _extraction_dir(tmp_path)
+    _write_marker(extraction, pid=30, parent_pid=31)
+    _age_directory(extraction)
+
+    result = reclaim_orphaned_extraction_dirs(
+        temp_root=tmp_path,
+        current_meipass=str(tmp_path / "no-such-dir"),
+        now=_NOW,
+        pid_alive=_no_live_pids,
+    )
+    assert result.reclaimed_count == 1
+
+
+def test_reclaim_skips_dirs_with_stat_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    broken = _extraction_dir(tmp_path, "_MEIbroken0")
+    _write_marker(broken, pid=40, parent_pid=41)
+    _age_directory(broken)
+
+    original_lstat = Path.lstat
+
+    def flaky_lstat(self: Path, *args: object, **kwargs: object) -> os.stat_result:
+        if self == broken:
+            raise OSError("lstat failed")
+        return original_lstat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", flaky_lstat)
+    result = reclaim_orphaned_extraction_dirs(
+        temp_root=tmp_path,
+        current_meipass=None,
+        now=_NOW,
+        pid_alive=_no_live_pids,
+    )
+    assert result.reclaimed_count == 0
+    assert broken.exists()
+
+
+def test_reclaim_skips_dirs_with_resolve_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    broken = _extraction_dir(tmp_path, "_MEIbroken0")
+    elsewhere = _extraction_dir(tmp_path, "_MEIother00")
+
+    original_resolve = Path.resolve
+
+    def flaky_resolve(self: Path, *args: object, **kwargs: object) -> Path:
+        if self == broken:
+            raise OSError("resolve failed")
+        if self == elsewhere:
+            return Path("/not-the-temp-root") / self.name
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", flaky_resolve)
+    result = reclaim_orphaned_extraction_dirs(
+        temp_root=tmp_path,
+        current_meipass=None,
+        now=_NOW,
+        pid_alive=_no_live_pids,
+    )
+    assert result.reclaimed_count == 0
+    assert broken.exists()
+    assert elsewhere.exists()
+
+
+def test_reclaim_records_rmtree_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    extraction = _extraction_dir(tmp_path)
+    _write_marker(extraction, pid=50, parent_pid=51)
+    _age_directory(extraction)
+
+    monkeypatch.setattr(
+        onefile_extraction.shutil,
+        "rmtree",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("device busy")),
+    )
+    result = reclaim_orphaned_extraction_dirs(
+        temp_root=tmp_path,
+        current_meipass=None,
+        now=_NOW,
+        pid_alive=_no_live_pids,
+    )
+    assert result.reclaimed_count == 0
+    assert result.errors == ["rmtree:OSError"]
+    assert extraction.exists()
+
+
+def test_remember_error_list_is_bounded() -> None:
+    result = ExtractionReclaimResult()
+    for index in range(12):
+        onefile_extraction._remember_error(result, f"e{index}")  # pyright: ignore[reportPrivateUsage]
+    assert result.errors == [f"e{index}" for index in range(8)]

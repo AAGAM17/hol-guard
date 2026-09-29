@@ -1150,7 +1150,7 @@ class StoreConnectionSchemaMixin:
             connection.execute(
                 """
                 update approval_requests
-                set status = 'pending', reason = null, resolved_at = null
+                set status = 'pending', resolved_at = null
                 where status = 'expired' and reason = 'Expired after waiting for review.'
                 """
             )

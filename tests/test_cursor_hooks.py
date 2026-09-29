@@ -230,7 +230,7 @@ def test_cursor_hook_script_source_includes_daemon_fast_path(tmp_path: Path) -> 
     assert "cursor_fallback_permission" in source
     assert "run_isolated_hook_process = None" in source
     assert 'hook_event_name.strip().lower() == "beforereadfile"' in source
-    assert "hook_action_is_emergency_safe" in source
+    assert "_cursor_permission" in source
     assert "/v1/hooks/cursor?" in source
     assert '"hook_env"' in source
     assert "subprocess.CompletedProcess(" in source
@@ -645,8 +645,8 @@ def test_cursor_hook_timeout_kills_fallback_descendants(
     )
     time.sleep(1)
 
-    assert proc.returncode == 0
-    assert json.loads(proc.stdout)["permission"] == "allow"
+    assert proc.returncode == 2
+    assert json.loads(proc.stdout)["permission"] == "deny"
     assert not marker.exists()
 
 

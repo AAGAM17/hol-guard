@@ -341,6 +341,9 @@ mod tests {
             "hol-guard-resident-enrollment-test-{}-{suffix}",
             std::process::id()
         ));
+        #[cfg(windows)]
+        let root = crate::resident_state::ensure_private_directory(&root, true).unwrap();
+        #[cfg(not(windows))]
         fs::create_dir(&root).unwrap();
         #[cfg(unix)]
         {
@@ -348,6 +351,13 @@ mod tests {
             fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
         }
         let key_path = root.join("policy-verifier.key");
+        #[cfg(windows)]
+        {
+            use std::io::Write;
+            let mut file = crate::resident_state::private_file(&key_path, false, &root).unwrap();
+            file.write_all(&[23u8; 32]).unwrap();
+        }
+        #[cfg(not(windows))]
         fs::write(&key_path, [23u8; 32]).unwrap();
         #[cfg(unix)]
         {

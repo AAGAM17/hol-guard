@@ -293,7 +293,10 @@ def _exit_unparseable_cursor_input() -> int:
         )
 
         # Unparsed input provides no acknowledged mode or action scope.
-        response, code = cursor_unparseable_input_permission(event_name)
+        response, code = cursor_unparseable_input_permission(
+            event_name,
+            recording_only=_recording_only_from_guard_home(),
+        )
     except Exception:
         compact = event_name.strip().lower().replace("_", "").replace("-", "")
         if compact in {"aftershellexecution", "aftermcpexecution"}:

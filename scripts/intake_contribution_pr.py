@@ -19,10 +19,12 @@ original PRs manually with a reference comment.
 
 The refresh step executes code from the merged tree (``src/`` imports, test
 helpers, build tooling), so the contribution diff is gated: paths inside
-``contributions/`` and ``tests/fixtures/`` always pass, generated-projection
-paths pass only for files that already exist on ``origin/main`` (the refresh
-overwrites them before anything executes them, and the existence check stops
-planted files from surviving regeneration), and anything else is refused
+``contributions/`` and ``tests/fixtures/`` pass as contributor-owned, and
+machine-managed paths (generated projections, rendered docs, and refresh
+inputs such as the trust-class map, managed-controls vectors,
+``extension_builder`` modules, and the anchored test files) pass because the
+script resets them to ``origin/main`` — restoring trusted content and
+deleting planted files — before refresh runs. Anything else is refused
 unless ``--trust-tooling-changes`` is passed after manual review.
 
 Requires ``gh`` authenticated as a maintainer and push access to origin.
@@ -100,45 +102,33 @@ def main() -> int:
     _run(["git", "fetch", "origin", "main"])
 
     contributor_owned = ("contributions/", "tests/fixtures/")
-    generated_owned = (
+    # Machine-managed paths are reset to origin/main before the refresh runs,
+    # so contributor edits to them never reach the maintainer credential
+    # context: generated projections get rebuilt, refresh inputs (the
+    # append-only trust map, the signature vector, extension_builder modules,
+    # the anchored test files) revert to main's trusted content, and files
+    # planted under these directories are deleted rather than carried.
+    machine_managed = (
         "contracts/extensions/",
         "contracts/managed-controls/",
         "docs/guard/extensions/",
         "src/codex_plugin_scanner/guard/contracts/data/extensions/",
-    )
-    generated_files = (
+        "src/codex_plugin_scanner/guard/extension_builder/",
         "tests/test_guard_extension_trust.py",
         "tests/test_policy_bundle_delivery_runtime.py",
     )
+    machine_touched: set[str] = set()
     for (pr_number, _, _), contributor_head in zip(contributions, contributor_heads, strict=True):
         merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
         changed = _run(["git", "diff", "--name-only", merge_base, contributor_head]).splitlines()
-        outside = []
-        for path in changed:
-            if path.startswith(contributor_owned):
-                continue
-            # Generated projections are overwritten by the artifact refresh
-            # before anything executes them, but only for files that already
-            # exist on main — a new file planted in a generated directory
-            # would survive regeneration and reach the maintainer credential
-            # context.
-            if path.startswith(generated_owned) or path in generated_files:
-                probe = subprocess.run(
-                    ["git", "cat-file", "-e", f"origin/main:{path}"],
-                    cwd=ROOT,
-                    capture_output=True,
-                    check=False,
-                )
-                if probe.returncode == 0:
-                    continue
-            outside.append(path)
+        machine_touched.update(p for p in changed if p.startswith(machine_managed))
+        outside = [p for p in changed if not p.startswith(contributor_owned) and not p.startswith(machine_managed)]
         if outside and not (args.trust_tooling_changes or args.skip_regen):
             raise SystemExit(
                 f"PR #{pr_number} changes files outside contributions/, tests/fixtures/, "
-                "or generated paths not already present on main; refresh executes src/, "
-                "tests/, scripts/, and build tooling from the merged tree with maintainer "
-                "credentials. Review the diff, then rerun with "
-                "--trust-tooling-changes or --skip-regen:\n" + "\n".join(outside)
+                "and machine-managed paths; refresh executes src/, tests/, scripts/, and "
+                "build tooling from the merged tree with maintainer credentials. Review "
+                "the diff, then rerun with --trust-tooling-changes or --skip-regen:\n" + "\n".join(outside)
             )
 
     if _run(["git", "branch", "--list", branch]):
@@ -202,6 +192,27 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # Reset every machine-managed path the contributions touched to main's
+    # content before anything from the merged tree executes: refresh outputs
+    # get rebuilt below, refresh inputs revert to trusted main content, and
+    # files planted under managed directories are deleted.
+    for path in sorted(machine_touched):
+        probe = subprocess.run(
+            ["git", "cat-file", "-e", f"origin/main:{path}"],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if probe.returncode == 0:
+            _run(["git", "checkout", "origin/main", "--", path])
+        else:
+            _run(["git", "rm", "-f", "-q", "--ignore-unmatch", "--", path])
+    if (
+        machine_touched
+        and subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    ):
+        _run(["git", "commit", "-m", "reset machine-managed paths to main"])
 
     print(f"intake branch {branch} prepared at {'+'.join(head[:9] for head in contributor_heads)} + origin/main")
     if not args.skip_regen:

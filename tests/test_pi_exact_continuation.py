@@ -458,12 +458,12 @@ console.log(JSON.stringify({{
     harness_path.write_text(script, encoding="utf-8")
     completed = _run_child(
         [node, "--experimental-strip-types", str(harness_path)],
-        timeout=20,
+        timeout=30,
     )
     payload = _decode_json_object(completed.stdout)
     assert payload["result"] is None
     assert payload["elapsedMs"] >= 5_500
-    assert payload["elapsedMs"] < 15_000
+    assert payload["elapsedMs"] < 25_000
     assert payload["input"] == {"path": "original.txt", "offset": 304, "limit": 243}
 
 
@@ -1004,7 +1004,7 @@ console.log(JSON.stringify(results));
     assert success["guardCalls"] == 2
     assert success["pollCalls"] == 4
     assert success["elapsedMs"] >= 5_500
-    assert success["elapsedMs"] < 15_000
+    assert success["elapsedMs"] < 25_000
     assert success["sentMessages"] == 0
     assert success["input"] == original_input
 

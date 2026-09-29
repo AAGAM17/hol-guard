@@ -7902,6 +7902,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             "/v1/approval-gate/totp/disable",
             "/v1/daemon/repair",
             "/v1/protection/repair",
+            "/v1/protection/repair/approval-gate/setup",
             "/v1/insights/share",
             "/v1/cloud/connect",
             "/v1/notifications/setup",

@@ -549,6 +549,39 @@ class TestGuardSurfaceServer:
                 urllib.request.urlopen(repair, timeout=5)
             assert error.value.code == 401
 
+            anonymous_setup = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/protection/repair/approval-gate/setup",
+                data=json.dumps(
+                    {
+                        "settings": {
+                            "approval_gate": {
+                                "enabled": True,
+                                "new_password": "correct-horse",
+                                "confirm_password": "correct-horse",
+                            }
+                        }
+                    }
+                ).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as anonymous_error:
+                urllib.request.urlopen(anonymous_setup, timeout=5)
+            assert anonymous_error.value.code == 401
+
+            settings_write = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/settings",
+                data=json.dumps({"settings": {"desktop_notifications": False}}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as settings_error:
+                urllib.request.urlopen(settings_write, timeout=5)
+            assert settings_error.value.code == 401
+
             effective = urllib.request.Request(
                 f"http://127.0.0.1:{daemon.port}/v1/extension-controls/effective",
                 headers={"Authorization": f"Bearer {token}"},

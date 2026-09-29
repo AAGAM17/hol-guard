@@ -361,6 +361,13 @@ LOCAL_API_OWNERSHIP = (
     ),
     ApiOwnership(path="/v1/daemon/repair", method="POST", category="config", auth_required=True, writes_state=True),
     ApiOwnership(path="/v1/protection/repair", method="POST", category="config", auth_required=True, writes_state=True),
+    ApiOwnership(
+        path="/v1/protection/repair/approval-gate/setup",
+        method="POST",
+        category="config",
+        auth_required=True,
+        writes_state=True,
+    ),
     ApiOwnership(path="/v1/settings", method="GET", category="config", auth_required=True, writes_state=False),
     ApiOwnership(path="/v1/settings", method="POST", category="config", auth_required=True, writes_state=True),
     ApiOwnership(path="/v1/settings/export", method="GET", category="config", auth_required=True, writes_state=False),

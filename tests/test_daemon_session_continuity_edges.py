@@ -139,7 +139,6 @@ def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:
         harness="copilot",
         event_name="permissionRequestV2",
         reason="native unavailable",
-        payload={"hook_name": "permissionRequestV2"},
         recording_only=False,
     )
     assert camel_code == 0
@@ -149,7 +148,6 @@ def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:
         harness="copilot",
         event_name="PermissionRequestV2",
         reason="native unavailable",
-        payload={"hook_event_name": "PermissionRequestV2"},
         recording_only=False,
     )
     assert code == 0

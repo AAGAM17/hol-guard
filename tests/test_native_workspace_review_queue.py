@@ -23,11 +23,13 @@ from codex_plugin_scanner.guard.runtime.exact_cloud_review_transport import (
     exact_result,
     exact_transport_job,
 )
+from codex_plugin_scanner.guard.runtime.native_workspace_review import NativeWorkspaceReviewError
 from codex_plugin_scanner.guard.runtime.native_workspace_review_queue import (
     NativeWorkspaceReviewQueueError,
     is_native_workspace_review_job,
     native_workspace_review_payload,
     native_workspace_review_transport_candidate,
+    require_native_workspace_review_authority,
 )
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.guard_exact_cloud_review_support import (
@@ -237,6 +239,34 @@ def test_native_authorization_rejects_wrong_target_revocation_and_not_enrolled(
     )
     with pytest.raises(CommandCapabilityError, match="native_workspace_review_not_enrolled"):
         authorize_exact_cloud_review_job(store, job, now="2026-09-27T12:00:00+00:00")
+
+
+def test_native_preflight_preserves_binding_failure_and_distinguishes_local_io(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _native_store(tmp_path)
+    command = native_workspace_review_payload(_native_job(store)["payload"])
+    assert command is not None
+
+    def reject_binding(*_args: object) -> None:
+        raise NativeWorkspaceReviewError("native_workspace_review_decision_binding_mismatch")
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.runtime.native_workspace_review_queue.matching_workspace_review_snapshot",
+        reject_binding,
+    )
+    with pytest.raises(NativeWorkspaceReviewQueueError, match="native_workspace_review_decision_binding_mismatch"):
+        require_native_workspace_review_authority(store, command)
+
+    def fail_local_io(*_args: object) -> None:
+        raise OSError("unavailable")
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.runtime.native_workspace_review_queue.matching_workspace_review_snapshot",
+        fail_local_io,
+    )
+    with pytest.raises(NativeWorkspaceReviewQueueError, match="native_workspace_review_not_enrolled"):
+        require_native_workspace_review_authority(store, command)
 
 
 def test_native_transport_requires_exact_route_and_payload_shape(

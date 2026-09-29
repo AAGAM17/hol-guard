@@ -130,7 +130,9 @@ def require_native_workspace_review_authority(
         raise NativeWorkspaceReviewQueueError("native_workspace_review_not_enrolled")
     try:
         matching_workspace_review_snapshot(store, guard_home, command.local_request_id, command.envelope, request)
-    except (NativeWorkspaceReviewError, OSError, TypeError, ValueError) as error:
+    except NativeWorkspaceReviewError as error:
+        raise NativeWorkspaceReviewQueueError(error.code) from error
+    except (OSError, TypeError, ValueError) as error:
         raise NativeWorkspaceReviewQueueError("native_workspace_review_not_enrolled") from error
 
 

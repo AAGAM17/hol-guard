@@ -228,6 +228,7 @@ from ..shims import (
     probe_package_shim_intercepts,
     uninstall_package_shims,
 )
+from ..sqlite_recovery import quarantined_store_summary
 from ..sqlite_tuning import sqlite_connect_timeout_override
 from ..stable_digest import stable_digest_hex
 from ..store import GuardStore
@@ -7586,6 +7587,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             "hook_evidence_writer": evidence_writer_stats,
             "sqlite_profile": sqlite_profile,
             "sqlite_migration_gate": sqlite_migration_gate,
+            "quarantined_store": quarantined_store_summary(store.guard_home),
             "uptime_seconds": uptime,
             "pid": os.getpid(),
             "tables": store.list_table_names(),

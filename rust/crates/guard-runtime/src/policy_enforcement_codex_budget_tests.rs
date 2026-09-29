@@ -38,11 +38,17 @@ fn codex_budget_metadata_preserves_credential_named_read_review() {
             "rg -n key credentials.yaml",
             "grep -n key token.txt",
             "git show --no-ext-diff --no-textconv HEAD:credentials.yaml",
+            "git show --no-ext-diff --no-textconv HEAD:*.yaml",
+            "git diff --no-ext-diff --no-textconv -- '*.json'",
+            "git show --no-ext-diff --no-textconv HEAD -- ':(top)credentials.yaml'",
+            "git diff --no-ext-diff --no-textconv -- ':(literal)credentials.yaml'",
+            "cat credentials/cache.dat",
             "cat auth.json",
             "cat authorization.yaml",
             "cat passwd.txt",
             "cat id_dsa",
             "rg -n key -g 'creden[t]ials.yaml' .",
+            "rg -n key -g 'access-?o?e?.json' .",
         ] {
             let payload = json!({"tool_name": tool, "tool_input": {
                 "cmd": command, "max_output_tokens": 2000
@@ -63,6 +69,7 @@ fn codex_budget_metadata_keeps_ordinary_relative_reads_exact_safe() {
         "cat README.md",
         "cat tokenizer.rs",
         "cat auth.ts",
+        "cat src/auth/handlers.ts",
         "rg -g*.ts authority src",
     ] {
         let payload = json!({"tool_name": "exec_command", "tool_input": {

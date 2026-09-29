@@ -124,8 +124,16 @@ pub fn credential_named_path(path: &Path) -> bool {
         return false;
     };
     let last = Path::new(last);
-    let extension = last.extension().and_then(|value| value.to_str()).unwrap_or_default();
-    !is_source_code_extension(extension) && sensitive_external_filename(last)
+    let extension = last
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    // Keep bounded source-code inspection; credential data directories still
+    // retain review even when their final filename has no credential marker.
+    !is_source_code_extension(extension)
+        && normalized
+            .split('/')
+            .any(|part| sensitive_external_filename(Path::new(part)))
 }
 
 pub fn is_source_code_extension(extension: &str) -> bool {

@@ -105,6 +105,8 @@ def test_early_credential_match_reports_only_scanned_bytes_with_schema() -> None
         ('{"note":["a"]}', "array_unsupported"),
         ('{"employee":{"id":true}}', "field_type_invalid"),
         ('{"employee":{"email":{}}}', "field_type_invalid"),
+        ('{"other":{}}', "unknown_field"),
+        ('{"employee":{"other":{}}}', "unknown_field"),
         ('{"note":NaN}', "invalid_or_duplicate_json"),
     ),
 )
@@ -114,6 +116,13 @@ def test_unclassifiable_inputs_never_become_no_match(payload: bytes | str, reaso
     assert result.status == "unsupported"
     assert result.complete is False
     assert result.reason_code == reason
+
+
+def test_empty_declared_parent_object_has_no_present_fields() -> None:
+    result = classify_declared_content('{"employee":{}}', schema=_schema())
+
+    assert result.status == "no_declared_match"
+    assert result.complete is True
 
 
 @pytest.mark.parametrize("deadline", (0.0, -1.0))
@@ -127,10 +136,7 @@ def test_expired_deadline_is_unsupported_even_for_benign_text(deadline: float) -
 
 def test_match_limit_is_strict_and_returns_no_values() -> None:
     schema = DeclaredSchema(
-        tuple(
-            DeclaredField((f"person{i}",), "protected_personal", category="person_name")
-            for i in range(17)
-        )
+        tuple(DeclaredField((f"person{i}",), "protected_personal", category="person_name") for i in range(17))
     )
     payload = json.dumps({f"person{i}": f"Synthetic Person {i}" for i in range(17)})
 

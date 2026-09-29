@@ -212,6 +212,7 @@ def classify_declared_content(
         return finish("unsupported", "root_object_required")
 
     declared = {field.path: field for field in schema.fields}
+    object_paths = {field.path[:depth] for field in schema.fields for depth in range(1, len(field.path))}
     nodes_scanned = 0
     stack: list[tuple[tuple[str, ...], object]] = [((), document)]
     while stack:
@@ -224,6 +225,8 @@ def classify_declared_content(
         if isinstance(value, dict):
             if path in declared:
                 return finish("unsupported", "field_type_invalid")
+            if path and path not in object_paths:
+                return finish("unsupported", "unknown_field")
             stack.extend(((*path, key), child) for key, child in value.items())
             continue
         if isinstance(value, list):

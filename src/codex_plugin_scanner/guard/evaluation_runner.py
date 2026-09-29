@@ -8,20 +8,21 @@ Those bindings are required before an enforcement outcome can be reported.
 
 from __future__ import annotations
 
-import sys
-import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+import sys
+import time
 from typing import Protocol, cast
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from .adapters.hook_python_subprocess import run_probe
 from .evaluation_contracts import EvaluationContractError, EvaluationProfile
 from .evaluation_preflight import EvaluationSetup
 from .evaluation_witness import FileWitnessPair, LocalSideEffectWitness, WitnessObservation
+from .mdm.network import managed_urlopen
 
 SHELL_CASE_ID = "eval.shell.disposable_delete"
 EGRESS_CASE_ID = "eval.egress.loopback"
@@ -181,8 +182,7 @@ def _fixed_network_control(url: str, *, ctx: EvaluationRunContext) -> None:
     _ensure_time(ctx)
     try:
         request = Request(url, data=b"", method="POST")
-        opener = build_opener(ProxyHandler({}))
-        with opener.open(request, timeout=min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS)) as response:
+        with managed_urlopen(request, timeout=min(_remaining(ctx), _MAX_ADAPTER_TIMEOUT_SECONDS)) as response:
             if response.status != 204:
                 raise EvaluationRunnerError("control_failed", "allowed control did not complete")
     except EvaluationRunnerError:

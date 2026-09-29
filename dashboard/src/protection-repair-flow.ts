@@ -148,12 +148,15 @@ export async function runAutomaticProtectionRepair(input: {
     return "Automatic repairs completed. Guard rechecked every protection layer below.";
   }
   if (!hasRepairableProtectionGap(remainingHealth.checks)) {
-    if (Object.keys(repairCheckReasons).length > 0) {
-      return protectionRepairFinishMessage(repairCheckReasons);
-    }
     const hasUnsupportedGaps = remainingHealth.checks.some(isUnsupportedPlatformCheck);
     if (hasUnsupportedGaps) {
-      return "Supported protection repairs completed. Containment remains unavailable on this platform; Guard remains fail-closed.";
+      const base = "Supported protection repairs completed. Containment remains unavailable on this platform; Guard remains fail-closed.";
+      return Object.keys(repairCheckReasons).length > 0
+        ? `${base} ${protectionRepairFinishMessage(repairCheckReasons).replace(/^Protection checks pass, but /, "")}`
+        : base;
+    }
+    if (Object.keys(repairCheckReasons).length > 0) {
+      return protectionRepairFinishMessage(repairCheckReasons);
     }
     return "Automatic repairs completed. Guard rechecked every repairable protection layer below.";
   }

@@ -305,11 +305,9 @@ def resolve_package_firewall_entitlement(
             oauth_payload.get("supply_chain_plan_id") if isinstance(oauth_payload, dict) else None
         )
         oauth_freshly_denied = oauth is not None and oauth.get("reason") == "paid_guard_cloud_required"
-        if (
-            not oauth_freshly_denied
-            and oauth_plan is not None
-            and oauth_plan.lower() in PACKAGE_FIREWALL_PAID_TIERS
-        ):
+        if oauth_freshly_denied:
+            return oauth
+        if oauth_plan is not None and oauth_plan.lower() in PACKAGE_FIREWALL_PAID_TIERS:
             # A paid-plan OAuth record contradicting the bundle's unpaid tier is a
             # stale claim pair, not proof the account is unpaid. Reconnect re-syncs both.
             return _reconnect_required_entitlement(bundle=bundle, oauth=oauth, oauth_payload=oauth_payload)

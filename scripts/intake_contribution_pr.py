@@ -18,9 +18,12 @@ with a merge commit marks the original PRs merged. With squash merge, close the
 original PRs manually with a reference comment.
 
 The refresh step executes code from the merged tree (``src/`` imports, test
-helpers, build tooling), so a contribution that touches anything outside
-``contributions/`` and ``tests/fixtures/`` is refused unless
-``--trust-tooling-changes`` is passed after manual review of that diff.
+helpers, build tooling), so the contribution diff is gated: paths inside
+``contributions/`` and ``tests/fixtures/`` always pass, generated-projection
+paths pass only for files that already exist on ``origin/main`` (the refresh
+overwrites them before anything executes them, and the existence check stops
+planted files from surviving regeneration), and anything else is refused
+unless ``--trust-tooling-changes`` is passed after manual review.
 
 Requires ``gh`` authenticated as a maintainer and push access to origin.
 """
@@ -97,15 +100,45 @@ def main() -> int:
     _run(["git", "fetch", "origin", "main"])
 
     contributor_owned = ("contributions/", "tests/fixtures/")
+    generated_owned = (
+        "contracts/extensions/",
+        "contracts/managed-controls/",
+        "docs/guard/extensions/",
+        "src/codex_plugin_scanner/guard/contracts/data/extensions/",
+        "src/codex_plugin_scanner/guard/extension_builder/",
+    )
+    generated_files = (
+        "tests/test_guard_extension_trust.py",
+        "tests/test_policy_bundle_delivery_runtime.py",
+    )
     for (pr_number, _, _), contributor_head in zip(contributions, contributor_heads, strict=True):
         merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
         changed = _run(["git", "diff", "--name-only", merge_base, contributor_head]).splitlines()
-        outside = [path for path in changed if not path.startswith(contributor_owned)]
+        outside = []
+        for path in changed:
+            if path.startswith(contributor_owned):
+                continue
+            # Generated projections are overwritten by the artifact refresh
+            # before anything executes them, but only for files that already
+            # exist on main — a new file planted in a generated directory
+            # would survive regeneration and reach the maintainer credential
+            # context.
+            if path.startswith(generated_owned) or path in generated_files:
+                probe = subprocess.run(
+                    ["git", "cat-file", "-e", f"origin/main:{path}"],
+                    cwd=ROOT,
+                    capture_output=True,
+                    check=False,
+                )
+                if probe.returncode == 0:
+                    continue
+            outside.append(path)
         if outside and not (args.trust_tooling_changes or args.skip_regen):
             raise SystemExit(
-                f"PR #{pr_number} changes files outside contributions/ and tests/fixtures/; "
-                "refresh executes src/, tests/, scripts/, and build tooling from the merged "
-                "tree with maintainer credentials. Review the diff, then rerun with "
+                f"PR #{pr_number} changes files outside contributions/, tests/fixtures/, "
+                "or generated paths not already present on main; refresh executes src/, "
+                "tests/, scripts/, and build tooling from the merged tree with maintainer "
+                "credentials. Review the diff, then rerun with "
                 "--trust-tooling-changes or --skip-regen:\n" + "\n".join(outside)
             )
 

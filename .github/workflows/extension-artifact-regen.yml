@@ -91,7 +91,7 @@ jobs:
             stale_prs=$(gh pr list --repo "${GH_REPO}" --state open --limit 200 \
               --search "head:regen/artifacts-" \
               --json number,headRefName,headRepositoryOwner \
-              --jq ".[] | select(.headRepositoryOwner.login == \"hashgraph-online\") | select(.headRefName != \"${1:-}\") | .number") || return 1
+              --jq ".[] | select(.headRepositoryOwner.login == \"hashgraph-online\") | select(.headRefName | startswith(\"regen/artifacts-\")) | select(.headRefName != \"${1:-}\") | .number") || return 1
             for pr in ${stale_prs}; do
               gh pr close --repo "${GH_REPO}" --delete-branch \
                 --comment "superseded by ${1:-main reaching artifact parity}" "${pr}"

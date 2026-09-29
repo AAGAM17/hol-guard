@@ -239,11 +239,11 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             # resident process warms up, and an overloaded listener can drop a
             # connection mid-request. Production callers retry both transient
             # signals, so mirror that here instead of counting them as denials.
-            for transient_attempt in range(3):
+            for transient_attempt in range(5):
                 try:
                     result = _submit_once()
                 except Exception as disconnect_error:
-                    if not _transient_disconnect(disconnect_error) or transient_attempt == 2:
+                    if not _transient_disconnect(disconnect_error) or transient_attempt == 4:
                         raise
                     time.sleep(0.05 * (transient_attempt + 1))
                     continue

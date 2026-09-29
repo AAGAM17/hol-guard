@@ -312,7 +312,7 @@ class StoreReviewEventOutboxMixin:
                 set binding_status = 'quarantined', quarantine_reason = ?, last_error = ?
                 where stream_sequence = ? and oauth_source = ? and oauth_subject_hash = ?
                   and workspace_id = ? and machine_id = ? and machine_installation_id = ?
-                  and binding_status = 'ready'
+                  and binding_status = 'ready' and acknowledged_at is null
                 """,
                 (reason[:128], error[:512], int(sequence), self._guard_source, *binding),
             )

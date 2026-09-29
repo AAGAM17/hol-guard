@@ -527,6 +527,52 @@ class TestGuardSurfaceServer:
         assert claims["expires_at"] != "1970-01-01T00:00:00+00:00"
         assert claims["custom"] == "value"
 
+    def test_protection_repair_session_cannot_call_integrity_repair(self, tmp_path) -> None:
+        store = GuardStore(tmp_path / "guard-home")
+        daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
+        daemon.start()
+        token = build_local_dashboard_session_token(
+            auth_token=daemon._server.auth_token,
+            surface="protection-repair",
+        )
+        try:
+            repair = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/protection/repair",
+                data=json.dumps({"check_id": "all"}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(repair, timeout=5)
+            assert error.value.code == 401
+
+            effective = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/extension-controls/effective",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urllib.request.urlopen(effective, timeout=5) as response:
+                assert response.status == 200
+
+            initialize = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/initialize",
+                data=json.dumps({"client_name": "guard-dashboard-web", "surface": "dashboard"}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Guard-Dashboard-Session": token,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(initialize, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            assert _decode_dashboard_session_claims(payload["dashboard_session_token"])["surface"] == (
+                "protection-repair"
+            )
+        finally:
+            daemon.stop()
+
     def test_guard_daemon_serves_dashboard_shell_for_home_and_section_routes(self, tmp_path) -> None:
         store = GuardStore(tmp_path / "guard-home")
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)

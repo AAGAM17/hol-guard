@@ -125,6 +125,7 @@ from ..local_dashboard_session import (
     LOCAL_DASHBOARD_SESSION_AUDIENCE,
     LOCAL_DASHBOARD_SESSION_STARTED_AT_CLAIM,
     MAX_LOCAL_DASHBOARD_SESSION_AGE_SECONDS,
+    PROTECTION_REPAIR_DASHBOARD_SURFACE,
     build_local_dashboard_session_token,
 )
 from ..local_supply_chain import (
@@ -6786,7 +6787,13 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         remaining_seconds = absolute_expires_at - time.time()
         if remaining_seconds < 1:
             return None
-        refreshed_surface = surface if surface in {"approval-center", "dashboard", "cloud-dashboard"} else "dashboard"
+        claim_surface = self._optional_string(claims.get("surface"))
+        if claim_surface == PROTECTION_REPAIR_DASHBOARD_SURFACE:
+            refreshed_surface = PROTECTION_REPAIR_DASHBOARD_SURFACE
+        elif surface in {"approval-center", "dashboard", "cloud-dashboard"}:
+            refreshed_surface = surface
+        else:
+            refreshed_surface = "dashboard"
         return build_local_dashboard_session_token(
             auth_token=self.server.auth_token,  # type: ignore[attr-defined]
             surface=refreshed_surface,
@@ -6811,7 +6818,12 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             if claims is None:
                 continue
             surface = self._optional_string(claims.get("surface"))
-            if surface in {"approval-center", "dashboard", "cloud-dashboard"}:
+            if surface in {
+                "approval-center",
+                "dashboard",
+                "cloud-dashboard",
+                PROTECTION_REPAIR_DASHBOARD_SURFACE,
+            }:
                 return claims
         return None
 
@@ -6824,6 +6836,8 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         surface = self._optional_string(claims.get("surface"))
         path = urlparse(self.path).path
         path_parts = [part for part in path.split("/") if part]
+        if surface == PROTECTION_REPAIR_DASHBOARD_SURFACE:
+            return self._protection_repair_session_request_is_allowed(path)
         if surface in {"approval-center", "dashboard", "cloud-dashboard"}:
             return self._path_supports_dashboard_session(path, path_parts)
         action_path = self._optional_string(claims.get("action_path"))
@@ -6982,6 +6996,19 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             ):
                 return True
         return False
+
+    def _protection_repair_session_request_is_allowed(self, path: str) -> bool:
+        if self.command == "GET" and path in {
+            "/v1/runtime",
+            "/v1/settings",
+            "/v1/extension-controls/effective",
+            "/v1/update/status",
+        }:
+            return True
+        return self.command == "POST" and path in {
+            "/v1/initialize",
+            "/v1/extension-controls/recover-authority",
+        }
 
     def _path_supports_dashboard_session(self, path: str, path_parts: list[str]) -> bool:
         return self._is_hosted_dashboard_api_path(path, path_parts) or self._local_surface_session_request_is_allowed(

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import json
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import pytest
 
@@ -114,12 +117,33 @@ def test_page_url_signs_the_loopback_repair_route(monkeypatch: pytest.MonkeyPatc
     )
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.approval_hook_copy.authenticated_approval_review_url",
-        lambda url, guard_home: f"{url}#guard-token=gld1.test",
+        lambda url, guard_home, **_kwargs: f"{url}#guard-token=gld1.test",
     )
 
     assert command_policy_repair_page_url(tmp_path) == (
         "http://127.0.0.1:5474/protection/repair#guard-token=gld1.test"
     )
+
+
+def test_repair_link_session_is_limited_to_the_repair_page(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class _Locator:
+        daemon_url = "http://127.0.0.1:5474/"
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.manager.read_approval_center_locator",
+        lambda _home: _Locator(),
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.approval_hook_copy.load_guard_daemon_auth_token",
+        lambda _home: "repair-test-token",
+    )
+
+    signed = command_policy_repair_page_url(tmp_path)
+    assert signed is not None
+    token = parse_qs(signed.split("#", 1)[1])["guard-token"][0]
+    payload = token.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    assert claims["surface"] == "protection-repair"
 
 
 def test_hook_repair_does_not_shell_out() -> None:

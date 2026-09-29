@@ -13,6 +13,7 @@ import logging
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from ..local_dashboard_session import PROTECTION_REPAIR_DASHBOARD_SURFACE
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from ..runtime.extension_control_authority import AuthorityHealth
 
@@ -123,7 +124,11 @@ def command_policy_repair_page_url(guard_home: Path) -> str | None:
     page = f"{daemon_url.rstrip('/')}/protection/repair"
     if not is_loopback_approval_url(page):
         return None
-    signed = authenticated_approval_review_url(page, guard_home=guard_home)
+    signed = authenticated_approval_review_url(
+        page,
+        guard_home=guard_home,
+        surface=PROTECTION_REPAIR_DASHBOARD_SURFACE,
+    )
     if not isinstance(signed, str) or not is_loopback_approval_url(signed):
         return None
     return signed

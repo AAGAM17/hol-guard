@@ -168,16 +168,19 @@ def test_validate_only_needs_no_root_environment_and_does_not_write(
     assert not output_path.exists()
 
 
-def test_signing_requires_lowercase_expected_request_digest(tmp_path: Path) -> None:
+def test_signing_requires_lowercase_expected_request_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in _environment().items():
+        monkeypatch.setenv(name, value)
     request_path = tmp_path / "request.json"
     output_path = tmp_path / "authority.json"
-    _write_request(request_path, _request())
+    _write_request(request_path, _request(now_ms=int(time.time() * 1000)))
     expected = _request_digest(request_path)
 
     with pytest.raises(SystemExit) as missing_digest:
         _ = main(["--request", str(request_path), "--output", str(output_path)])
     assert missing_digest.value.code == 2
     assert not output_path.exists()
+
     assert (
         main(
             [
@@ -192,11 +195,60 @@ def test_signing_requires_lowercase_expected_request_digest(tmp_path: Path) -> N
         == 1
     )
     assert not output_path.exists()
+    assert (
+        main(
+            [
+                "--request",
+                str(request_path),
+                "--output",
+                str(output_path),
+                "--expected-request-sha256",
+                expected,
+            ]
+        )
+        == 0
+    )
 
 
-def test_same_size_request_substitution_fails_expected_digest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("failed_stage", ["request validation", "root signing", "output publication"])
+def test_failure_reports_only_static_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failed_stage: str
 ) -> None:
+    from scripts.approval import issue_workspace_review_authority as issuer
+
+    request_path = tmp_path / "request.json"
+    output_path = tmp_path / "authority.json"
+    _write_request(request_path, _request(now_ms=int(time.time() * 1000)))
+    for name, value in _environment().items():
+        monkeypatch.setenv(name, value)
+    function = {
+        "request validation": "_read_request",
+        "root signing": "sign_request",
+        "output publication": "_write_new_private",
+    }[failed_stage]
+
+    def sensitive_failure(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError(ROOT_SEED.hex())
+
+    monkeypatch.setattr(issuer, function, sensitive_failure)
+    assert (
+        main(
+            [
+                "--request",
+                str(request_path),
+                "--output",
+                str(output_path),
+                "--expected-request-sha256",
+                _request_digest(request_path),
+            ]
+        )
+        == 1
+    )
+    assert capsys.readouterr().err == f"workspace review authority operation rejected during {failed_stage}\n"
+    assert not output_path.exists()
+
+
+def test_same_size_request_substitution_fails_expected_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     for name, value in _environment().items():
         monkeypatch.setenv(name, value)
     request_path = tmp_path / "request.json"
@@ -204,8 +256,10 @@ def test_same_size_request_substitution_fails_expected_digest(
     original = _request(now_ms=int(time.time() * 1000))
     _write_request(request_path, original)
     expected = _request_digest(request_path)
+    original_size = request_path.stat().st_size
     original["workspace_binding"] = "9" * 64
     _write_request(request_path, original)
+    assert request_path.stat().st_size == original_size
     args = ["--request", str(request_path), "--output", str(output_path), "--expected-request-sha256"]
     assert main([*args, expected]) == 1
     assert not output_path.exists()

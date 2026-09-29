@@ -29,7 +29,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 MAX_AUTHORITY_BYTES: Final = 16 * 1024
 MAX_TTL_MS: Final = 365 * 24 * 60 * 60 * 1000
 MAX_SAFE_INTEGER: Final = (1 << 53) - 1
-U64_MAX: Final = (1 << 64) - 1
 ED25519_PUBLIC_KEY_BYTES: Final = 32
 ED25519_SIGNATURE_BYTES: Final = 64
 SHA256_DIGEST_BYTES: Final = 32
@@ -119,7 +118,7 @@ def _require_lower_hex(value: object, byte_count: int) -> str:
 
 
 def _require_safe_u64(value: object, *, positive: bool = False) -> int:
-    if type(value) is not int or value < 0 or value > MAX_SAFE_INTEGER or value > U64_MAX:
+    if type(value) is not int or value < 0 or value > MAX_SAFE_INTEGER:
         raise AuthorityIssuerError("invalid workspace review request")
     if positive and value == 0:
         raise AuthorityIssuerError("invalid workspace review request")
@@ -475,16 +474,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error("--output is required unless --validate-only is used")
         if expected_sha256 is None:
             parser.error("--expected-request-sha256 is required for signing")
+    stage = "request validation"
     try:
         request = _read_request(cast(Path, args.request), expected_sha256)
         if validate_only:
             return 0
+        stage = "root signing"
         signed = sign_request(request)
         assert output is not None
+        stage = "output publication"
         _write_new_private(output, canonical_json_bytes(signed))
         return 0
     except Exception:
-        print("workspace review authority operation rejected", file=sys.stderr)
+        print(f"workspace review authority operation rejected during {stage}", file=sys.stderr)
         return 1
 
 

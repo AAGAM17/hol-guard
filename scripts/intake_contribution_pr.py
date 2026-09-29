@@ -197,7 +197,8 @@ def main() -> int:
     # content before anything from the merged tree executes: refresh outputs
     # get rebuilt below, refresh inputs revert to trusted main content, and
     # files planted under managed directories are deleted.
-    for path in sorted(machine_touched):
+    reset_paths = set() if (args.trust_tooling_changes or args.skip_regen) else machine_touched
+    for path in sorted(reset_paths):
         probe = subprocess.run(
             ["git", "cat-file", "-e", f"origin/main:{path}"],
             cwd=ROOT,
@@ -212,7 +213,7 @@ def main() -> int:
         machine_touched
         and subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     ):
-        _run(["git", "commit", "-m", "reset machine-managed paths to main"])
+        _run(["git", "commit", "-m", f"chore(extensions): reset machine-managed paths before regenerate artifacts for intake of PRs {pr_refs}"])
 
     print(f"intake branch {branch} prepared at {'+'.join(head[:9] for head in contributor_heads)} + origin/main")
     if not args.skip_regen:

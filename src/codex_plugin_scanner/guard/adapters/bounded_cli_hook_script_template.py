@@ -64,7 +64,7 @@ _APPROVAL_KEYS = (
     "guardApprovalUrl",
     "approval_requests",
 )
-_FAILURE_REASON = "HOL Guard could not complete this review before the hook deadline. Retry the action."
+_FAILURE_REASON = "HOL Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
 _AUTHORITY_MARKER = "native command extension policy"
 _AUTHORITY_REMEDIATION = (
     " Run `hol-guard command controls acknowledge-degraded` after reviewing the "
@@ -207,13 +207,6 @@ def _toml_scalar(raw: str, key: str) -> str:
             continue
         return right.strip().strip('"').strip("'")
     return ""
-
-
-def _recording_only() -> bool:
-    raw = _read_private_text(Path(GUARD_HOME) / "config.toml", max_bytes=64 * 1024)
-    if raw is None:
-        return False
-    return _toml_scalar(raw, "protection_posture") == "watch" or _toml_scalar(raw, "mode") == "observe"
 
 
 def _approval_wait_seconds() -> float:
@@ -396,12 +389,7 @@ def _to_native(daemon_response: dict[str, object], event_name: str) -> tuple[str
 
 
 def _failure_payload(event_name: str, reason: str) -> tuple[dict[str, object], int]:
-    if _recording_only():
-        if HARNESS == "copilot":
-            return {"permissionDecision": "allow"}, 0
-        if HARNESS in _DECISION_HARNESSES:
-            return {"decision": "allow"}, 0
-        return {"hookSpecificOutput": {"hookEventName": event_name, "permissionDecision": "allow"}}, 0
+    # Local configuration cannot authenticate the mode of an unavailable evaluator.
     if not _pauses_when_unavailable(event_name):
         if HARNESS == "copilot":
             return {"permissionDecision": "allow"}, 0

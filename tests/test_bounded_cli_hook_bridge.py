@@ -19,13 +19,13 @@ from .bounded_cli_hook_test_support import runner_result as _runner_result
 @pytest.mark.parametrize(
     ("harness", "expected"),
     [
-        ("copilot", {"permissionDecision": "allow"}),
-        ("grok", {"decision": "allow"}),
-        ("hermes", {"decision": "allow"}),
-        ("openclaw", {"decision": "allow"}),
+        ("copilot", {"permissionDecision": "deny"}),
+        ("grok", {"decision": "deny"}),
+        ("hermes", {"decision": "block"}),
+        ("openclaw", {"decision": "deny"}),
     ],
 )
-def test_timeout_continues_when_review_cannot_finish(
+def test_timeout_denies_when_review_cannot_finish(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     harness: str,
@@ -44,12 +44,12 @@ def test_timeout_continues_when_review_cannot_finish(
         )
 
     payload = _json_object(output.getvalue())
-    assert returncode == 0
+    assert returncode == (2 if harness == "hermes" else 0)
     for key, value in expected.items():
         assert payload[key] == value
 
 
-def test_timeout_allows_emergency_safe_read(
+def test_timeout_denies_unreviewed_read(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -72,14 +72,14 @@ def test_timeout_allows_emergency_safe_read(
         )
 
     payload = _json_object(output.getvalue())
-    assert returncode == 0
+    assert returncode == 2
     hook_output = payload["hookSpecificOutput"]
     assert isinstance(hook_output, dict)
-    assert hook_output["permissionDecision"] == "allow"
+    assert hook_output["permissionDecision"] == "deny"
 
 
 @pytest.mark.parametrize("harness", ["kimi", "zcode", "devin"])
-def test_claude_shaped_timeout_continues_when_review_cannot_finish(
+def test_claude_shaped_timeout_denies_when_review_cannot_finish(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     harness: str,
@@ -97,10 +97,10 @@ def test_claude_shaped_timeout_continues_when_review_cannot_finish(
         )
 
     payload = _json_object(output.getvalue())
-    assert returncode == 0
+    assert returncode == 2
     hook_output = payload["hookSpecificOutput"]
     assert isinstance(hook_output, dict)
-    assert hook_output["permissionDecision"] == "allow"
+    assert hook_output["permissionDecision"] == "deny"
 
 
 def test_success_preserves_child_stdout_and_returncode(
@@ -123,7 +123,7 @@ def test_success_preserves_child_stdout_and_returncode(
     assert output.getvalue() == '{"decision":"deny"}\n'
 
 
-def test_empty_failed_child_continues_when_review_cannot_finish(
+def test_empty_failed_child_denies_when_review_cannot_finish(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -140,10 +140,10 @@ def test_empty_failed_child_continues_when_review_cannot_finish(
         )
 
     assert returncode == 0
-    assert _json_object(output.getvalue())["permissionDecision"] == "allow"
+    assert _json_object(output.getvalue())["permissionDecision"] == "deny"
 
 
-def test_malformed_success_continues_when_review_cannot_finish(
+def test_malformed_success_denies_when_review_cannot_finish(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -160,7 +160,7 @@ def test_malformed_success_continues_when_review_cannot_finish(
         )
 
     assert returncode == 0
-    assert _json_object(output.getvalue())["decision"] == "allow"
+    assert _json_object(output.getvalue())["decision"] == "deny"
 
 
 def test_copilot_permission_timeout_uses_permission_request_contract(

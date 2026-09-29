@@ -75,7 +75,10 @@ def failure_payload(
     event_name: str,
     reason: str,
     recording_only: bool,
+    payload: dict[str, object] | None = None,
+    continue_session: bool = False,
 ) -> tuple[dict[str, object], int]:
+    """Preserve caller compatibility without using payload shape or continuation as authority."""
     if recording_only:
         return watch_continue_payload(harness, event_name), 0
     pauses = hook_event_pauses_when_unavailable(event_name)

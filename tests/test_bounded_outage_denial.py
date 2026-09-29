@@ -9,6 +9,7 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters import bounded_cli_hook_bridge as bridge
 from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon as daemon
+from codex_plugin_scanner.guard.adapters.bounded_cli_hook_failure import failure_payload
 from codex_plugin_scanner.guard.codex_hook_launch_runtime import BoundedHookProcessResult
 
 from .bounded_cli_hook_test_support import config
@@ -60,3 +61,35 @@ def test_bounded_bridge_unavailable_pretool_denies(
     else:
         assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
         assert result == 2
+
+
+@pytest.mark.parametrize("harness", _HARNESSES)
+def test_legacy_continuation_flag_cannot_authorize_pretool(harness: str) -> None:
+    response, _code = failure_payload(
+        harness=harness,
+        event_name="PreToolUse",
+        reason="evaluation unavailable",
+        recording_only=False,
+        payload=_ACTIONS[1],
+        continue_session=True,
+    )
+    decisions = [response.get("decision"), response.get("permissionDecision")]
+    nested = response.get("hookSpecificOutput")
+    if isinstance(nested, dict):
+        decisions.append(nested.get("permissionDecision"))
+    assert "allow" not in decisions
+    assert any(value in {"deny", "block"} for value in decisions)
+
+
+@pytest.mark.parametrize("harness", _HARNESSES)
+@pytest.mark.parametrize("policy", [None, "block"])
+def test_unavailable_daemon_reason_cannot_become_an_allow(harness: str, policy: str | None) -> None:
+    unavailable = {"reason_code": "native_pre_tool_unavailable", "reason": "native miss"}
+    if policy is not None:
+        unavailable["policy_action"] = policy
+    stdout, _stderr, _code = daemon._daemon_response_to_native(unavailable, harness=harness, event_name="PreToolUse")
+    response = json.loads(stdout)
+    nested = response.get("hookSpecificOutput", {})
+    decisions = [response.get("decision"), response.get("permissionDecision"), nested.get("permissionDecision")]
+    assert "allow" not in decisions
+    assert any(value in {"deny", "block"} for value in decisions)

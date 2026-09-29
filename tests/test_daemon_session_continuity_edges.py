@@ -337,7 +337,7 @@ def test_invalid_payload_reference_still_denies_a_repair_command(tmp_path: Path)
     assert response["policy_action"] == "block"
 
 
-def test_bounded_cli_failure_allows_exact_repair_and_denies_other_work() -> None:
+def test_bounded_cli_failure_denies_unreviewed_repair_and_other_work() -> None:
     allowed, allowed_code = failure_payload(
         harness="hermes",
         event_name="PreToolUse",
@@ -349,8 +349,8 @@ def test_bounded_cli_failure_allows_exact_repair_and_denies_other_work() -> None
         },
         recording_only=False,
     )
-    assert allowed_code == 0
-    assert allowed["decision"] == "allow"
+    assert allowed_code == 2
+    assert allowed["decision"] == "block"
     denied, denied_code = failure_payload(
         harness="cursor",
         event_name="PreToolUse",
@@ -368,7 +368,7 @@ def test_bounded_cli_failure_allows_exact_repair_and_denies_other_work() -> None
     assert output["permissionDecision"] == "deny"
 
 
-def test_bounded_cli_cannot_finish_without_policy_action_allows_write() -> None:
+def test_bounded_cli_cannot_finish_without_policy_action_denies_write() -> None:
     from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _daemon_response_to_native
 
     stdout, _stderr, code = _daemon_response_to_native(
@@ -377,8 +377,8 @@ def test_bounded_cli_cannot_finish_without_policy_action_allows_write() -> None:
         event_name="PreToolUse",
     )
     payload = json.loads(stdout)
-    assert code == 0
-    assert payload["hookSpecificOutput"]["permissionDecision"] == "allow"
+    assert code == 2
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     invalid_stdout, _invalid_stderr, invalid_code = _daemon_response_to_native(
         {"policy_action": "invalid", "reason": "nope"},
         harness="kimi",

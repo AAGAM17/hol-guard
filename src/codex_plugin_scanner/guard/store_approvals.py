@@ -338,7 +338,8 @@ def list_approval_requests(
                 normalized_identity_key, action_identity, queue_group_id, dedupe_count, last_seen_at, transport,
                 risk_summary, risk_signals_json, artifact_label, source_label, trigger_summary, why_now,
                 launch_summary, risk_headline, action_envelope_json, decision_v2_json,
-                fallback_cli_command, scanner_evidence_json, watch_only_observation, browser_intent_json, continuation_snapshot_json,
+                fallback_cli_command, scanner_evidence_json, watch_only_observation,
+                browser_intent_json, continuation_snapshot_json,
                 review_command,
                 approval_url, status, resolution_action, resolution_scope, reason, created_at, resolved_at,
                 raw_command_text, guard_version, first_seen_guard_version, last_seen_guard_version
@@ -747,7 +748,8 @@ def list_approval_request_summary_rows(
                decision_v2_json, action_envelope_json,
                changed_fields_json, source_scope, config_path, workspace, launch_target,
                risk_summary, risk_headline, action_identity, queue_group_id, dedupe_count,
-               raw_command_text, fallback_cli_command, watch_only_observation, review_command, created_at, last_seen_at, status
+               raw_command_text, fallback_cli_command, watch_only_observation,
+               review_command, created_at, last_seen_at, status
         from approval_requests
         {where_clause}
         order by last_seen_at desc, request_id desc

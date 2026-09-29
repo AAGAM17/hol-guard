@@ -35,7 +35,8 @@ def ensure_watch_only_approval_schema(
         """
         update approval_requests
         set watch_only_observation = 1
-        where exists (
+        where coalesce(dedupe_count, 1) = 1
+          and exists (
               select 1
               from json_each(coalesce(scanner_evidence_json, '[]'))
               where json_extract(value, '$.source') = 'observe_mode_inbox'

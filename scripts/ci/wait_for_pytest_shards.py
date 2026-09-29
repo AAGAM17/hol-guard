@@ -15,7 +15,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from datetime import datetime
 
-SHARD_COUNT = 192
+SHARD_COUNT = 128
 # The planner and each dependent shard have separate five-minute watchdogs.
 # Include one minute for polling and scheduling overhead; this bound does not
 # delay successful producers or define the CI performance target.
@@ -34,6 +34,10 @@ def _progress(message: str) -> None:
 
 class ShardWaitError(ValueError):
     """The current attempt cannot safely supply complete coverage."""
+
+
+class _SchedulingRaceError(ShardWaitError):
+    """Pagination changed while GitHub was creating the coverage matrix."""
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -146,6 +150,8 @@ def _snapshot(
             if type(job_id) is not int or job_id <= 0 or not isinstance(name, str):
                 raise ShardWaitError("GitHub jobs API returned an invalid job identity")
             if job_id in job_ids:
+                if not plan_seen and not seen_shards:
+                    raise _SchedulingRaceError("GitHub jobs API paginated a changing job list")
                 raise ShardWaitError("GitHub jobs API returned a duplicate job")
             job_ids.add(job_id)
             if type(job.get("run_id")) is not int or job["run_id"] != run_id:
@@ -161,6 +167,8 @@ def _snapshot(
                 continue
             match = _SHARD_NAME.fullmatch(name)
             if match is None or int(match[1]) >= SHARD_COUNT:
+                if not plan_seen and not seen_shards:
+                    raise _SchedulingRaceError("GitHub jobs API exposed an unexpanded coverage matrix")
                 raise ShardWaitError("GitHub jobs API returned an invalid Python coverage shard index")
             index = int(match[1])
             if index in seen_shards:
@@ -202,7 +210,13 @@ def wait_for_shards(
     previous: tuple[str, ...] | None = None
     log(f"Waiting for {SHARD_COUNT} Python coverage shards in run {run_id}, attempt {attempt}")
     while True:
-        states = _snapshot(repository, run_id, attempt, fetch_json=fetch_json, deadline=deadline, clock=clock)
+        try:
+            states = _snapshot(repository, run_id, attempt, fetch_json=fetch_json, deadline=deadline, clock=clock)
+        except _SchedulingRaceError:
+            if clock() >= deadline:
+                raise ShardWaitError("Timed out waiting for Python coverage shard jobs") from None
+            sleep(min(poll_seconds, max(0.0, deadline - clock())))
+            continue
         if clock() >= deadline:
             raise ShardWaitError("Timed out waiting for Python coverage shard jobs")
         if states != previous:

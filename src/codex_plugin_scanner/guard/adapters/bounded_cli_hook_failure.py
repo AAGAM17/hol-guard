@@ -87,6 +87,6 @@ def failure_payload(
         return watch_continue_payload(harness, event_name), 0
     pauses = hook_event_pauses_when_unavailable(event_name)
     if not pauses:
-        # Observations report completed activity; they cannot authorize a tool action.
+        # Observations continue processing completed activity without authorizing a tool action.
         return _observe_payload(harness, event_name, reason), 0
     return _pause_payload(harness, event_name, reason)

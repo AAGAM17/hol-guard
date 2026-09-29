@@ -19,6 +19,7 @@ from scripts.installed_canary_proof import (
 )
 
 # Nine harnesses: 18 process failures, one legacy flag, and two daemon misses each.
+# Keep this count independent of collected tests so dropped cases invalidate proof.
 EXPECTED_CASES = 9 * (2 * 3 * 3 + 1 + 2)
 
 

@@ -17,7 +17,7 @@ from .bounded_cli_hook_test_support import runner_result as _runner_result
 @pytest.mark.parametrize("harness", ["copilot", "grok", "hermes", "openclaw", "kimi", "zcode", "devin", "pi", "omp"])
 @pytest.mark.parametrize("explicit_block", [False, True])
 def test_unavailable_posttool_observation_preserves_explicit_decision(harness: str, explicit_block: bool) -> None:
-    response = {"reason_code": "native_pre_tool_unavailable", "reason": "native miss"}
+    response = {"reason_code": "native_post_tool_unavailable", "reason": "native miss"}
     if explicit_block:
         response["policy_action"] = "block"
     stdout, _stderr, code = bounded_cli_hook_daemon._daemon_response_to_native(

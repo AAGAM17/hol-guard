@@ -88,6 +88,7 @@ def run_synthetic_command(
     target_scope = cast(Mapping[str, object], profile.data["targetScope"])
     declared_parent = Path(cast(str, target_scope["rootPath"]))
     token_path: Path | None = None
+    token_written = False
     run_report: Mapping[str, object] | None = None
     runner_error: _CliError | None = None
     cleanup_removed = False
@@ -98,6 +99,7 @@ def run_synthetic_command(
             raise _CliError("cleanup_token_unavailable", "evaluation setup did not produce a cleanup token")
         token_path = _recovery_token_path(root_path, declared_parent=declared_parent)
         _write_recovery_token(setup, declared_parent=declared_parent)
+        token_written = True
         try:
             run_report = run_synthetic_cases(profile, setup, requested=requested)
         except EvaluationRunnerError as error:
@@ -123,12 +125,12 @@ def run_synthetic_command(
             cleanup_removed = setup.cleanup()
         except EvaluationContractError:
             cleanup_removed = False
-        if cleanup_removed and token_path is not None:
+        if cleanup_removed and token_written and token_path is not None:
             try:
                 _remove_recovery_token(token_path, expected_parent=Path(os.path.realpath(declared_parent)))
             except _CliError:
                 token_retained = True
-        elif token_path is not None:
+        elif token_written:
             token_retained = True
 
     if runner_error is None and run_report is not None:

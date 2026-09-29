@@ -134,7 +134,16 @@ def main() -> int:
 
     for (pr_number, _, _), contributor_head in zip(contributions, contributor_heads, strict=True):
         merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
-        changed = _run(["git", "diff", "--name-only", merge_base, contributor_head]).splitlines()
+        # --no-renames -z keeps literal paths: a renamed managed file must show
+        # its source path so the reset below restores it rather than leaving a
+        # trusted file deleted, and -z avoids quoted/octal-escaped names.
+        changed = [
+            p
+            for p in _run(["git", "diff", "--name-only", "--no-renames", "-z", merge_base, contributor_head]).split(
+                "\0"
+            )
+            if p
+        ]
         machine_touched.update(p for p in changed if managed(p))
         outside = [p for p in changed if not p.startswith(contributor_owned) and not managed(p)]
         if outside:
@@ -183,6 +192,30 @@ def main() -> int:
         _run(["git", "checkout", "-b", branch, contributor_heads[0]])
         pending_heads = contributor_heads[1:]
 
+    def salvage_conflicts() -> bool:
+        """Under --salvage, resolve conflicts on non-contributor paths to the
+        incoming side — the reset below normalizes them to origin/main anyway.
+        Conflicts inside contributor-owned paths stay manual."""
+        unmerged = [p for p in _run(["git", "diff", "--name-only", "--diff-filter=U", "-z"]).split("\0") if p]
+        resolvable = [p for p in unmerged if not p.startswith(contributor_owned)]
+        if len(resolvable) != len(unmerged):
+            return False
+        for path in resolvable:
+            probe = subprocess.run(
+                ["git", "checkout", "--theirs", "--", path],
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+            )
+            if probe.returncode:
+                # modify/delete conflicts have no --theirs stage; the incoming
+                # side deleted it
+                _run(["git", "rm", "-f", "-q", "--ignore-unmatch", "--", path])
+        if resolvable:
+            _run(["git", "add", "-A", *resolvable])
+        _run(["git", "commit", "--no-edit"])
+        return True
+
     for contributor_head in pending_heads:
         head_merge = subprocess.run(
             ["git", "merge", "--no-edit", contributor_head],
@@ -191,7 +224,7 @@ def main() -> int:
             text=True,
             check=False,
         )
-        if head_merge.returncode:
+        if head_merge.returncode and not (args.salvage and salvage_conflicts()):
             print(
                 "conflicts merging a contributor head: resolve, commit, then rerun:\n"
                 "  git add -A && git commit && python scripts/intake_contribution_pr.py ...",
@@ -206,7 +239,7 @@ def main() -> int:
         text=True,
         check=False,
     )
-    if merge.returncode:
+    if merge.returncode and not (args.salvage and salvage_conflicts()):
         print(
             "merge conflicts: resolve generated artifacts by regeneration, then run\n"
             "  git checkout --theirs/ours as needed && git commit && "

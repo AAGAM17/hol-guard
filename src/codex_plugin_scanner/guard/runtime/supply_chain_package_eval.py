@@ -1209,6 +1209,13 @@ def _evaluate_with_cloud(
                 message="Guard cloud evaluation was not authorized, so Guard used local package intelligence.",
             )
         failure_decision = resolve_cloud_failure_decision()
+        if failure_decision == "block" and resolve_fail_closed_decision() != "block":
+            # An expired sign-in is a credential-state failure, not a package
+            # verdict. Keep the install stopped, but put it in the approval
+            # queue so a human can decide after reconnecting. An operator
+            # configured cloud_advisory block (or strict security level) stays
+            # a block.
+            failure_decision = "ask"
         return (
             _cloud_fail_closed_evaluation(
                 code="cloud_auth_error",
@@ -1218,10 +1225,7 @@ def _evaluate_with_cloud(
                 workspace_dir=workspace_dir,
                 workspace_fingerprint=workspace_fingerprint,
                 bundle_meta=bundle_meta,
-                # An expired sign-in is a credential-state failure, not a package
-                # verdict. Keep the install stopped, but put it in the approval
-                # queue so a human can decide after reconnecting.
-                fail_closed_decision="ask" if failure_decision == "block" else failure_decision,
+                fail_closed_decision=failure_decision,
             ),
             None,
         )

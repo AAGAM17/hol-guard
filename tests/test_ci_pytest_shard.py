@@ -62,7 +62,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert "needs" not in jobs["coverage-plan"]
     native_steps = jobs["native-command-evaluators"]["steps"]
     verify_index = next(
-        index for index, step in enumerate(native_steps) if "build_native_command_program.py" in step.get("run", "")
+        index for index, step in enumerate(native_steps) if "verify_native_command_program.py" in step.get("run", "")
     )
     verify_step = native_steps[verify_index]
     assert "--compiler rust/target/release/guard-command-source --check" in verify_step["run"]

@@ -203,8 +203,10 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             f"workspace={urllib.parse.quote(str(workspace))}"
         )
 
-        def _transient_disconnect(error: Exception) -> bool:
+        def _transient_error(error: Exception) -> bool:
             if isinstance(error, http.client.RemoteDisconnected):
+                return True
+            if isinstance(error, urllib.error.HTTPError) and error.code == 503:
                 return True
             return isinstance(error, urllib.error.URLError) and isinstance(
                 getattr(error, "reason", None), http.client.RemoteDisconnected
@@ -294,8 +296,8 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             for transient_attempt in range(5):
                 try:
                     result = _submit_once()
-                except Exception as disconnect_error:
-                    if not _transient_disconnect(disconnect_error) or transient_attempt == 4:
+                except Exception as transient_error:
+                    if not _transient_error(transient_error) or transient_attempt == 4:
                         raise
                     time.sleep(0.05 * (transient_attempt + 1))
                     continue

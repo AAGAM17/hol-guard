@@ -581,8 +581,8 @@ def test_cursor_hook_emits_json_when_guard_package_import_fails(tmp_path: Path) 
         env={"PATH": os.environ.get("PATH", ""), "HOME": str(home_dir)},
         timeout=10,
     )
-    assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout)["permission"] == "allow"
+    assert proc.returncode == 2, proc.stderr
+    assert json.loads(proc.stdout)["permission"] == "deny"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="process-group descendant assertion requires POSIX")

@@ -42,6 +42,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           token: ${{ secrets.GUARD_AUTOMATION_TOKEN || github.token }}
+          persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.13"
@@ -54,19 +55,38 @@ jobs:
         run: uv sync --frozen --extra dev
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install 1.88.0 --profile minimal
-      - name: Regenerate maintainer-owned extension artifacts
-        run: uv run --no-sync python scripts/refresh_extension_artifacts.py
-      - name: Commit refreshed artifacts
+      - name: Regenerate, commit, and push refreshed artifacts
+        env:
+          PUSH_TOKEN: ${{ secrets.GUARD_AUTOMATION_TOKEN || github.token }}
         run: |
-          git add -A contracts/extensions contracts/managed-controls docs/guard/extensions \
-            contributions/extensions \
-            src/codex_plugin_scanner/guard/contracts/data/extensions \
-            src/codex_plugin_scanner/guard/extension_builder tests/fixtures/extension-controls \
-            tests/fixtures/command-source-*.v1.json \
-            tests/fixtures/guard-command-corpus/decision-diff-report.json \
-            tests/test_guard_extension_trust.py tests/test_policy_bundle_delivery_runtime.py
-          if git diff --cached --quiet; then echo "artifacts already current"; exit 0; fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(extensions): regenerate contribution artifacts"
-          git pull --rebase origin main && git push origin HEAD:main
+          export GIT_CONFIG_COUNT=3
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: Bearer ${PUSH_TOKEN}"
+          export GIT_CONFIG_KEY_1="user.name"
+          export GIT_CONFIG_VALUE_1="github-actions[bot]"
+          export GIT_CONFIG_KEY_2="user.email"
+          export GIT_CONFIG_VALUE_2="41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            uv run --no-sync python scripts/refresh_extension_artifacts.py
+            git add -A contracts/extensions contracts/managed-controls docs/guard/extensions \
+              contributions/extensions \
+              src/codex_plugin_scanner/guard/contracts/data/extensions \
+              src/codex_plugin_scanner/guard/extension_builder tests/fixtures/extension-controls \
+              tests/fixtures/command-source-*.v1.json \
+              tests/fixtures/guard-command-corpus/decision-diff-report.json \
+              tests/test_guard_extension_trust.py tests/test_policy_bundle_delivery_runtime.py
+            if git diff --cached --quiet; then
+              echo "artifacts already current"
+              exit 0
+            fi
+            git commit -m "chore(extensions): regenerate contribution artifacts"
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push rejected (main moved); retrying regen against new head (attempt $attempt)"
+            git reset --hard origin/main
+          done
+          echo "regen push did not converge after 3 attempts" >&2
+          exit 1

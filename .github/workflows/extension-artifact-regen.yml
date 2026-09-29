@@ -86,6 +86,7 @@ jobs:
               exit 0
             fi
             echo "push rejected (main moved); retrying regen against new head (attempt $attempt)"
+            git fetch origin main
             git reset --hard origin/main
           done
           echo "regen push did not converge after 3 attempts" >&2

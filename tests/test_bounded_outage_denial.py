@@ -14,7 +14,7 @@ from codex_plugin_scanner.guard.codex_hook_launch_runtime import BoundedHookProc
 
 from .bounded_cli_hook_test_support import config
 
-_HARNESSES = ["copilot", "grok", "hermes", "openclaw", "kimi", "zcode", "devin"]
+_HARNESSES = ["copilot", "grok", "hermes", "openclaw", "kimi", "zcode", "devin", "pi", "omp"]
 _FAILURES = [
     BoundedHookProcessResult(None, "", False, True),
     BoundedHookProcessResult(None, "", False, False),

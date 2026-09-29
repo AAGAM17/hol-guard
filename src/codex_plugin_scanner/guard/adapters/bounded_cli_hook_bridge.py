@@ -280,6 +280,7 @@ def _emit_failure(
     reason: str = _FAILURE_REASON,
     guard_home: Path | None = None,
 ) -> int:
+    # Retain the legacy caller argument; a state-home path supplies no mode authority.
     payload, returncode = _failure_payload(
         harness=harness,
         event_name=_event_name(input_text),

@@ -78,10 +78,15 @@ def failure_payload(
     payload: dict[str, object] | None = None,
     continue_session: bool = False,
 ) -> tuple[dict[str, object], int]:
-    """Preserve caller compatibility without using payload shape or continuation as authority."""
+    """Preserve caller compatibility without treating request shape as authority.
+
+    recording_only requires independently acknowledged mode authority. A raw
+    local configuration flag cannot establish it during evaluation failure.
+    """
     if recording_only:
         return watch_continue_payload(harness, event_name), 0
     pauses = hook_event_pauses_when_unavailable(event_name)
     if not pauses:
+        # Observations report completed activity; they cannot authorize a tool action.
         return _observe_payload(harness, event_name, reason), 0
     return _pause_payload(harness, event_name, reason)

@@ -11,7 +11,15 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.installed_canary_proof import InstalledCanaryError, load_subject, verify_install
+from scripts.installed_canary_proof import (
+    InstalledCanaryError,
+    add_installed_canary_arguments,
+    load_subject,
+    verify_install,
+)
+
+# Nine harnesses: 18 process failures, one legacy flag, and two daemon misses each.
+EXPECTED_CASES = 9 * (2 * 3 * 3 + 1 + 2)
 
 
 class _Results:
@@ -28,11 +36,7 @@ class _Results:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--subject", type=Path, required=True)
-    parser.add_argument("--version", required=True)
-    parser.add_argument("--source-sha", required=True)
-    parser.add_argument("--repo-root", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    add_installed_canary_arguments(parser)
     args = parser.parse_args()
     try:
         subject = load_subject(args.subject, version=args.version, source_sha=args.source_sha)
@@ -53,8 +57,10 @@ def main() -> int:
                 ],
                 plugins=[results],
             )
-        if status != 0 or results.passed != 147 or results.skipped != 0:
-            raise InstalledCanaryError("Installed bounded hook outage qualification requires all 147 cases to pass")
+        if status != 0 or results.passed != EXPECTED_CASES or results.skipped != 0:
+            raise InstalledCanaryError(
+                f"Installed bounded hook outage qualification requires all {EXPECTED_CASES} cases to pass"
+            )
         for name, module in tuple(sys.modules.items()):
             if name == "codex_plugin_scanner" or name.startswith("codex_plugin_scanner."):
                 origin = getattr(module, "__file__", None)

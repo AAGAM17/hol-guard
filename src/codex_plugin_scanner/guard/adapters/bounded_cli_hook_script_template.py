@@ -391,6 +391,7 @@ def _to_native(daemon_response: dict[str, object], event_name: str) -> tuple[str
 def _failure_payload(event_name: str, reason: str) -> tuple[dict[str, object], int]:
     # Local configuration cannot authenticate the mode of an unavailable evaluator.
     if not _pauses_when_unavailable(event_name):
+        # Observations report completed activity; they cannot authorize a tool action.
         if HARNESS == "copilot":
             return {"permissionDecision": "allow"}, 0
         if HARNESS in _DECISION_HARNESSES:

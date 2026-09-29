@@ -553,6 +553,12 @@ def resolve_call(
 ) -> RecordT | None:
     """Resolve a call or fail closed when duplicate helpers remain ambiguous."""
 
+    if "." not in name:
+        nested = [c for c in records.get((record.path, name), []) if c.qualname == f"{record.qualname}.{name}"]
+        if len(nested) == 1:
+            return nested[0]
+        if len(nested) > 1:
+            raise RuntimeError(f"ambiguous nested helper call {name!r} from {record.path}:{record.qualname}")
     imported = imported_symbol_path(root, record, name)
     if (
         "." not in name

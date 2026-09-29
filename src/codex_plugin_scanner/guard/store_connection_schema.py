@@ -19,16 +19,17 @@ from .sqlite_profile import (
     SQLiteProfileSnapshot,
     sqlite_error_is_busy_locked,
 )
+from .sqlite_quarantine_forensics import (
+    quarantine_file_stats,
+    update_quarantine_forensics_outcome,
+    write_quarantine_forensics,
+)
 from .sqlite_recovery import (
     FATAL_SQLITE_ERROR_MARKERS,
     SQLITE_IO_ERROR_MARKER,
-    quarantine_file_stats,
     restore_readable_sqlite_store,
     salvage_local_cli_state,
-    sqlite_store_is_proven_unusable,
     sqlite_store_probe_detail,
-    update_quarantine_forensics_outcome,
-    write_quarantine_forensics,
 )
 
 # ruff: noqa: F403,F405
@@ -336,12 +337,14 @@ class StoreConnectionSchemaMixin:
                 handle.close()
 
     def _store_is_proven_unusable(self, error: BaseException) -> bool:
-        return sqlite_store_is_proven_unusable(
+        detail = sqlite_store_probe_detail(
             path=self.path,
             guard_home=self.guard_home,
             error=error,
             fatal_error=self._is_fatal_sqlite_error(error),
         )
+        self._storage_recovery_local.last_probe_detail = detail
+        return detail.proven_unusable
 
     def _recover_fatal_sqlite_store(
         self,
@@ -377,16 +380,14 @@ class StoreConnectionSchemaMixin:
                 return True
 
             if not self._store_is_proven_unusable(error):
+                self._storage_recovery_local.last_probe_detail = None
                 return False
 
-            # The decision above is the behavioral seam; re-collect the probe
-            # detail here purely so the forensics record carries it.
-            probe_detail = sqlite_store_probe_detail(
-                path=self.path,
-                guard_home=self.guard_home,
-                error=error,
-                fatal_error=self._is_fatal_sqlite_error(error),
-            )
+            # The decision above already ran the probe; reuse its detail for
+            # forensics so recovery holds the exclusive gate for one probe
+            # sequence, not two. A monkeypatched decision leaves this None.
+            probe_detail = getattr(self._storage_recovery_local, "last_probe_detail", None)
+            self._storage_recovery_local.last_probe_detail = None
             quarantined_at = datetime.now(timezone.utc)
             stamp = quarantined_at.strftime("%Y%m%dT%H%M%S%fZ")
             quarantine_id = f"{stamp}-{uuid4().hex[:8]}"

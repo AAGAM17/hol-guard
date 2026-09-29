@@ -160,6 +160,13 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             f"workspace={urllib.parse.quote(str(workspace))}"
         )
 
+        def _transient_disconnect(error: Exception) -> bool:
+            if isinstance(error, http.client.RemoteDisconnected):
+                return True
+            return isinstance(error, urllib.error.URLError) and isinstance(
+                getattr(error, "reason", None), http.client.RemoteDisconnected
+            )
+
         def _submit_once() -> dict[str, object]:
             if harness in {"codex", "claude-code"}:
                 result = None
@@ -227,10 +234,17 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
 
         try:
             # The server advertises a bounded worker not-ready window while a
-            # resident process warms up; production callers retry the transient
-            # signal, so mirror that here instead of counting it as a denial.
+            # resident process warms up, and an overloaded listener can drop a
+            # connection mid-request. Production callers retry both transient
+            # signals, so mirror that here instead of counting them as denials.
             for transient_attempt in range(3):
-                result = _submit_once()
+                try:
+                    result = _submit_once()
+                except Exception as disconnect_error:
+                    if not _transient_disconnect(disconnect_error) or transient_attempt == 2:
+                        raise
+                    time.sleep(0.05 * (transient_attempt + 1))
+                    continue
                 if result.get("reason_code") != "daemon_hook_process_not_ready" or transient_attempt == 2:
                     break
                 time.sleep(0.05 * (transient_attempt + 1))

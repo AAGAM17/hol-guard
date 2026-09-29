@@ -87,8 +87,17 @@ jobs:
             tests/fixtures/command-source-*.v1.json \
             tests/fixtures/guard-command-corpus/decision-diff-report.json \
             tests/test_guard_extension_trust.py tests/test_policy_bundle_delivery_runtime.py
+          close_superseded() {
+            for pr in $(gh pr list --repo "${GH_REPO}" --state open \
+                --json number,headRefName,headRepositoryOwner \
+                --jq ".[] | select(.headRepositoryOwner.login == \"hashgraph-online\") | select(.headRefName | startswith(\"regen/artifacts-\")) | select(.headRefName != \"${1:-}\") | .number"); do
+              gh pr close --repo "${GH_REPO}" --delete-branch \
+                --comment "superseded by ${1:-main reaching artifact parity}" "${pr}"
+            done
+          }
           if git diff --cached --quiet; then
             echo "artifacts already current"
+            close_superseded
             exit 0
           fi
           git commit -m "chore(extensions): regenerate contribution artifacts"
@@ -104,8 +113,4 @@ jobs:
           fi
           gh pr merge --repo "${GH_REPO}" --auto --squash "${regen_branch}" \
             || echo "::warning::could not arm auto-merge for ${regen_branch}"
-          for pr in $(gh pr list --repo "${GH_REPO}" --state open \
-              --json number,headRefName \
-              --jq ".[] | select(.headRefName | startswith(\"regen/artifacts-\")) | select(.headRefName != \"${regen_branch}\") | .number"); do
-            gh pr close --repo "${GH_REPO}" --delete-branch --comment "superseded by ${regen_branch}" "${pr}"
-          done
+          close_superseded "${regen_branch}"

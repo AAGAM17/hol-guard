@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import importlib.metadata
 import io
 import json
@@ -4568,10 +4569,6 @@ _OAUTH_REFRESH_CIRCUIT_MAX_RATE_LIMIT_SECONDS = 3600.0
 
 
 _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_SALT_KEY = "guard_oauth_refresh_circuit_fingerprint_salt"
-# OWASP-recommended PBKDF2-HMAC-SHA256 work factor; the fingerprint only needs
-# non-reversibility and determinism, but a strong work factor defeats offline
-# brute force against the truncated 24-hex digest if state ever leaks.
-_OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS = 600_000
 
 
 def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
@@ -4592,18 +4589,8 @@ def _oauth_refresh_circuit_salt(store: GuardStore) -> bytes:
 
 
 def _oauth_refresh_circuit_fingerprint(refresh_token: str, salt: bytes) -> str:
-    """Deterministic, non-reversible fingerprint for circuit-state matching.
-
-    PBKDF2-HMAC-SHA256 with a persisted per-installation salt; the 24-hex
-    truncation is a lookup key, not a credential, so truncation is safe while
-    the work factor keeps brute-force recovery impractical.
-    """
-    return hashlib.pbkdf2_hmac(
-        "sha256",
-        refresh_token.encode("utf-8"),
-        salt,
-        _OAUTH_REFRESH_CIRCUIT_FINGERPRINT_ITERATIONS,
-    ).hex()[:24]
+    """Deterministic, non-reversible lookup key for circuit-state matching."""
+    return hmac.new(salt, refresh_token.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
 
 
 def _oauth_refresh_circuit_backoff_seconds(env_key: str, default: float) -> float:

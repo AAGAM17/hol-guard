@@ -55,7 +55,7 @@ def test_packaged_correctness_workloads(
     assert result.requests in {240, 480, 960}
     assert result.secrets_denied == expected_secrets
     assert result.secrets_denied >= result.requests * 0.10
-    assert result.routine_allowed + result.secrets_denied == result.requests
+    assert result.routine_allowed + result.secrets_denied == result.requests, result.failure_reasons
     assert result.capacity_denials == 0
     assert result.generic_failures == 0
     assert result.pid_stable

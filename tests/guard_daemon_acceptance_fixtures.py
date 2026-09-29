@@ -159,7 +159,8 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
             f"home={urllib.parse.quote(str(root))}&"
             f"workspace={urllib.parse.quote(str(workspace))}"
         )
-        try:
+
+        def _submit_once() -> dict[str, object]:
             if harness in {"codex", "claude-code"}:
                 result = None
                 for attempt in range(2):
@@ -210,19 +211,29 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
                         connection.close()
                 if result is None:
                     raise RuntimeError("codex-review-unavailable")
-            else:
-                request = urllib.request.Request(
-                    f"http://127.0.0.1:{daemon.port}/v1/hooks/{harness}?{query}",
-                    data=json.dumps(payload).encode(),
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-Guard-Token": daemon._server.auth_token,
-                        "X-Guard-Remaining-Ms": remaining_ms,
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(request, timeout=12) as response:
-                    result = cast(dict[str, object], json.loads(response.read()))
+                return result
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{daemon.port}/v1/hooks/{harness}?{query}",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Guard-Token": daemon._server.auth_token,
+                    "X-Guard-Remaining-Ms": remaining_ms,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=12) as response:
+                return cast(dict[str, object], json.loads(response.read()))
+
+        try:
+            # The server advertises a bounded worker not-ready window while a
+            # resident process warms up; production callers retry the transient
+            # signal, so mirror that here instead of counting it as a denial.
+            for transient_attempt in range(3):
+                result = _submit_once()
+                if result.get("reason_code") != "daemon_hook_process_not_ready" or transient_attempt == 2:
+                    break
+                time.sleep(0.05 * (transient_attempt + 1))
             blocked = _response_blocks_action(result)
             reason_code = result.get("reason_code")
             outcome = (

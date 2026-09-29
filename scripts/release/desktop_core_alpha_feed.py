@@ -180,6 +180,11 @@ def validate_onedir_zip_members(archive: Path) -> None:
                 member = PurePosixPath(name)
                 if member.is_absolute() or ".." in member.parts:
                     raise SystemExit(f"Onedir archive member escapes the tree: {name!r}")
+                # PurePosixPath folds "." and empty components away; check the raw
+                # split so a "./" detour cannot dodge the nested-under-link rule.
+                raw_parts = name.split("/")
+                if "." in raw_parts or "" in raw_parts[:-1]:
+                    raise SystemExit(f"Onedir archive member has a malformed path: {name!r}")
                 if name != ONEDIR_TREE_ROOT and not name.startswith(f"{ONEDIR_TREE_ROOT}/"):
                     raise SystemExit(f"Onedir archive member is outside {ONEDIR_TREE_ROOT}/: {name!r}")
                 if member.name.startswith("._") or "__MACOSX" in member.parts:

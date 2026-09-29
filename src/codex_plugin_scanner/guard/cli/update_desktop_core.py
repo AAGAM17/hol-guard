@@ -641,6 +641,11 @@ def _validate_onedir_zip_members(archive: Path) -> None:
                 member = PurePosixPath(name)
                 if member.is_absolute() or ".." in member.parts:
                     raise DesktopCoreUpdateError("desktop_core_install_failed")
+                # PurePosixPath folds "." and empty components away; check the raw
+                # split so a "./" detour cannot dodge the nested-under-link rule.
+                raw_parts = name.split("/")
+                if "." in raw_parts or "" in raw_parts[:-1]:
+                    raise DesktopCoreUpdateError("desktop_core_install_failed")
                 if name != _ONEDIR_TREE_ROOT and not name.startswith(f"{_ONEDIR_TREE_ROOT}/"):
                     raise DesktopCoreUpdateError("desktop_core_install_failed")
                 if member.name.startswith("._") or "__MACOSX" in member.parts:
@@ -727,7 +732,7 @@ def _verify_onedir_tree_signatures(tree: Path, *, expected_team: str) -> None:
     internal = tree / "_internal"
     if not internal.is_dir():
         raise DesktopCoreUpdateError("desktop_core_install_failed")
-    for path in sorted(internal.rglob("*")):
+    for path in sorted(tree.rglob("*")):
         if path.is_symlink() or not path.is_file() or not _is_macho_file(path):
             continue
         if _macos_signing_team(path) != expected_team:

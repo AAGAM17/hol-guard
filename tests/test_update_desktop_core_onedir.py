@@ -524,6 +524,24 @@ class TestValidateOnedirZipMembers:
     @pytest.mark.parametrize(
         "member",
         [
+            "hol-guard/_internal/./link/x",
+            "hol-guard/./x",
+            "hol-guard//x",
+        ],
+    )
+    def test_rejects_dot_and_empty_components(self, tmp_path: Path, member: str) -> None:
+        archive = tmp_path / "bad.zip"
+        archive.write_bytes(self._good(tmp_path).read_bytes())
+        self._write_link(archive, "hol-guard/_internal/link", b"target-file")
+        with zipfile.ZipFile(archive, "a") as zipped:
+            zipped.writestr(member, b"x")
+        with pytest.raises(DesktopCoreUpdateError) as error:
+            update_desktop_core._validate_onedir_zip_members(archive)
+        assert error.value.reason_code == "desktop_core_install_failed"
+
+    @pytest.mark.parametrize(
+        "member",
+        [
             "hol-guard/hol-guard",
             "hol-guard/Info.plist",
             "hol-guard/_CodeSignature/CodeResources",
@@ -735,6 +753,46 @@ class TestInstallFrameworkLinks:
         current_link = installed / "_internal" / "Python.framework" / "Versions" / "Current"
         assert current_link.is_symlink()
         assert os.readlink(current_link) == "3.12"
+
+
+class TestVerifyOnedirTreeSignatures:
+    """Every Mach-O anywhere in the tree must carry the expected team."""
+
+    def _tree(self, tmp_path: Path) -> Path:
+        tree = tmp_path / "hol-guard"
+        (tree / "_internal").mkdir(parents=True)
+        (tree / "hol-guard").write_bytes(b"\xcf\xfa\xed\xfe" + b"launcher")
+        (tree / "_internal" / "libx.dylib").write_bytes(b"\xcf\xfa\xed\xfe" + b"lib")
+        return tree
+
+    def test_whole_tree_matching_teams_pass(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(update_desktop_core, "_macos_signing_team", lambda _p: "TEAMID")
+        tree = self._tree(tmp_path)
+        (tree / "tool").write_bytes(b"\xcf\xfa\xed\xfe" + b"tool")
+        update_desktop_core._verify_onedir_tree_signatures(tree, expected_team="TEAMID")
+
+    def test_macho_outside_internal_with_wrong_team_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tree = self._tree(tmp_path)
+        (tree / "tool").write_bytes(b"\xcf\xfa\xed\xfe" + b"tool")
+        monkeypatch.setattr(
+            update_desktop_core,
+            "_macos_signing_team",
+            lambda path: "OTHERTEAM" if path.name == "tool" else "TEAMID",
+        )
+        with pytest.raises(DesktopCoreUpdateError) as error:
+            update_desktop_core._verify_onedir_tree_signatures(tree, expected_team="TEAMID")
+        assert error.value.reason_code == "desktop_core_signature_mismatch"
+
+    def test_missing_internal_fails(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tree = tmp_path / "hol-guard"
+        tree.mkdir(parents=True)
+        (tree / "hol-guard").write_bytes(b"\xcf\xfa\xed\xfe" + b"launcher")
+        monkeypatch.setattr(update_desktop_core, "_macos_signing_team", lambda _p: "TEAMID")
+        with pytest.raises(DesktopCoreUpdateError) as error:
+            update_desktop_core._verify_onedir_tree_signatures(tree, expected_team="TEAMID")
+        assert error.value.reason_code == "desktop_core_install_failed"
 
 
 class TestRequireSealedOnedir:

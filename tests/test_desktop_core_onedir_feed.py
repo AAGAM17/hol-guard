@@ -273,6 +273,26 @@ class TestOnedirZipMembers:
     @pytest.mark.parametrize(
         "member",
         [
+            "hol-guard/_internal/./link/x",
+            "hol-guard/./x",
+            "hol-guard//x",
+        ],
+    )
+    def test_rejects_dot_and_empty_components(self, tmp_path: Path, member: str) -> None:
+        namespace = _feed()
+        archive = _sealed_zip(
+            tmp_path / "core.onedir.zip",
+            extra=[
+                ("hol-guard/_internal/link", b"target-file", 0o120777),
+                (member, b"x", 0o644),
+            ],
+        )
+        with pytest.raises(SystemExit):
+            namespace.validate_onedir_zip_members(archive)
+
+    @pytest.mark.parametrize(
+        "member",
+        [
             "hol-guard/hol-guard",
             "hol-guard/Info.plist",
             "hol-guard/_CodeSignature/CodeResources",
@@ -758,6 +778,24 @@ class TestVerifyArchiveAttestation:
             tmp_path,
             [("hol-guard/_internal/link", b"target-file")],
             extra=("hol-guard/_internal/link/x",),
+        )
+        with pytest.raises(module.DesktopAttestationError):
+            module._extract_onedir_zip(archive, tmp_path / "out")
+
+    @pytest.mark.parametrize(
+        "member",
+        [
+            "hol-guard/_internal/./link/x",
+            "hol-guard/./x",
+            "hol-guard//x",
+        ],
+    )
+    def test_extract_rejects_dot_and_empty_components(self, tmp_path: Path, member: str) -> None:
+        module = _load(ATTEST, "verify_desktop_core_attestation")
+        archive = self._zip_with_links(
+            tmp_path,
+            [("hol-guard/_internal/link", b"target-file")],
+            extra=(member,),
         )
         with pytest.raises(module.DesktopAttestationError):
             module._extract_onedir_zip(archive, tmp_path / "out")

@@ -289,9 +289,14 @@ def _extract_onedir_zip(archive: Path, destination: Path) -> Path:
             for info in zipped.infolist():
                 name = info.filename
                 member = PurePosixPath(name)
+                # PurePosixPath folds "." and empty components away; check the raw
+                # split so a "./" detour cannot dodge the nested-under-link rule.
+                raw_parts = name.split("/")
                 if (
                     member.is_absolute()
                     or ".." in member.parts
+                    or "." in raw_parts
+                    or "" in raw_parts[:-1]
                     or member.parts[:1] != (_ONEDIR_ROOT,)
                     or member.name.startswith("._")
                     or "__MACOSX" in member.parts

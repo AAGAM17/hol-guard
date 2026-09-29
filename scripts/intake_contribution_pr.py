@@ -105,7 +105,6 @@ def main() -> int:
         "contracts/managed-controls/",
         "docs/guard/extensions/",
         "src/codex_plugin_scanner/guard/contracts/data/extensions/",
-        "src/codex_plugin_scanner/guard/extension_builder/",
     )
     generated_files = (
         "tests/test_guard_extension_trust.py",

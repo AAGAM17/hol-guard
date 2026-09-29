@@ -118,6 +118,46 @@ fn sensitive_external_filename(path: &Path) -> bool {
         .any(|token| !token.is_empty() && EXTERNAL_SENSITIVE_PARTS.contains(&token))
 }
 
+pub fn credential_named_path(path: &Path) -> bool {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .split('/')
+        .any(|part| {
+            let part = Path::new(part);
+            let extension = part
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
+            !is_source_code_extension(extension) && sensitive_external_filename(part)
+        })
+}
+
+pub fn is_source_code_extension(extension: &str) -> bool {
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "c" | "cc"
+            | "cpp"
+            | "css"
+            | "go"
+            | "h"
+            | "hpp"
+            | "html"
+            | "java"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "py"
+            | "rs"
+            | "sh"
+            | "ts"
+            | "tsx"
+    )
+}
+
+pub fn credential_path_markers() -> &'static [&'static str] {
+    EXTERNAL_SENSITIVE_PARTS
+}
+
 fn source_shape_allowed(path: &Path, parts: &[String]) -> bool {
     parts
         .iter()

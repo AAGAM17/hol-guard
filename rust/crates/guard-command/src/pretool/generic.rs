@@ -196,6 +196,7 @@ fn is_file_read_tool(tool: &str) -> bool {
 }
 
 fn is_command_tool(tool: &str) -> bool {
+    // tool_matches also recognizes namespaced forms such as functions.exec_command.
     tool_matches(
         tool,
         &[

@@ -227,6 +227,9 @@ pub(super) fn sensitive_key(key: &str) -> bool {
     .any(|marker| normalized.contains(marker))
 }
 
+/// Borrow only the top-level arguments of a known Codex command envelope.
+/// The caller supplies the normalized `codex` harness; other harness names,
+/// tools, action types and empty commands retain ordinary sensitive-key checks.
 fn codex_command_budget_input<'a>(
     payload: &'a Value,
     harness: &str,
@@ -255,6 +258,10 @@ pub(super) fn payload_sensitive_target(
     codex_budget_input: Option<&Map<String, Value>>,
 ) -> Result<bool, String> {
     let mut sensitive = path_values_sensitive(maps)?;
+    // Traversal borrows maps from the original JSON tree. Identity, rather
+    // than value equality, excludes nested and sibling copies. Zero is also
+    // numeric metadata; this does not interpret its budget semantics or relax
+    // command, path, intrinsic or managed floors.
     for record in maps {
         for (key, value) in *record {
             if key == "sensitive_target" {

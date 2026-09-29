@@ -29,6 +29,54 @@ fn codex_command_output_budget_is_not_a_credential_read() {
 }
 
 #[test]
+fn codex_budget_metadata_preserves_credential_named_read_review() {
+    for tool in ["exec_command", "functions.exec_command"] {
+        for command in [
+            "cat credentials.yaml",
+            "head token.txt",
+            "cat ./config/access-token.json",
+            "rg -n key credentials.yaml",
+            "grep -n key token.txt",
+            "git show --no-ext-diff --no-textconv HEAD:credentials.yaml",
+            "cat auth.json",
+            "cat authorization.yaml",
+            "cat passwd.txt",
+            "cat id_dsa",
+            "rg -n key -g 'creden[t]ials.yaml' .",
+        ] {
+            let payload = json!({"tool_name": tool, "tool_input": {
+                "cmd": command, "max_output_tokens": 2000
+            }});
+            let native_result =
+                guard_command::pretool::evaluate_pre_tool_envelope("codex", "PreToolUse", &payload);
+            let output = apply_pre_tool_policy(&snapshot(policy("allow")), &payload, native_result)
+                .expect("credential-named read fixture");
+            assert_eq!(output.decision, "deny", "{tool}: {command}");
+            assert_ne!(output.minimum_action, "allow");
+        }
+    }
+}
+
+#[test]
+fn codex_budget_metadata_keeps_ordinary_relative_reads_exact_safe() {
+    for command in [
+        "cat README.md",
+        "cat tokenizer.rs",
+        "cat auth.ts",
+        "rg -g*.ts authority src",
+    ] {
+        let payload = json!({"tool_name": "exec_command", "tool_input": {
+            "cmd": command, "max_output_tokens": 2000
+        }});
+        let native_result =
+            guard_command::pretool::evaluate_pre_tool_envelope("codex", "PreToolUse", &payload);
+        let output = apply_pre_tool_policy(&snapshot(policy("allow")), &payload, native_result)
+            .expect("ordinary relative read fixture");
+        assert_eq!(output.decision, "allow", "{command}");
+    }
+}
+
+#[test]
 fn codex_budget_metadata_preserves_native_command_review() {
     let payload = json!({"tool_name": "exec_command", "tool_input": {
         "cmd": "touch allowed.marker", "max_output_tokens": 2000
@@ -126,7 +174,8 @@ fn codex_budget_exception_preserves_other_harnesses_and_deny_floors() {
 }
 
 #[test]
-fn codex_post_command_budget_is_metadata_but_output_credentials_are_not() {
+fn codex_post_budget_preserves_sensitive_output_policy_facts() {
+    // This covers policy facts after scanning, not the native output scanner.
     let mut effective = policy("allow");
     effective
         .risk_actions

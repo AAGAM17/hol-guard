@@ -21,6 +21,4 @@
 /src/codex_plugin_scanner/guard/contracts/data/extensions/*.json text eol=lf
 /src/codex_plugin_scanner/guard/extension_builder/*.json text eol=lf
 
-# Trust-class membership is a sorted one-entry-per-line list; adjacent inserts
-# from parallel contributions should merge by keeping both sides.
-/contracts/extensions/trust-class-map.v1.json text eol=lf merge=union
+/contracts/extensions/trust-class-map.v1.json text eol=lf

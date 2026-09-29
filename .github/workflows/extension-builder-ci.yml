@@ -121,12 +121,17 @@ jobs:
             arguments+=(--changed-from "${{ github.event.pull_request.base.sha }}")
           fi
           if [[ "$pending" == "true" ]]; then
-            # Source-only contribution: projections are maintainer-owned and
-            # regenerated after merge. Validate by regenerating, not by
-            # requiring checked-in artifacts to match.
+            if git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD -- \
+                contracts/extensions/command-catalog.v1.json \
+                src/codex_plugin_scanner/guard/contracts/data/extensions \
+                src/codex_plugin_scanner/guard/extension_builder \
+                contracts/managed-controls | grep -q .; then
+              echo "generated projections are maintainer-owned; remove them from this PR" >&2
+              exit 1
+            fi
             uv run --no-sync python scripts/prepare_extension_contribution.py "${arguments[@]}"
             uv run --no-sync python scripts/render_command_extension_directory.py
-            git checkout -- .  # leave generated artifacts out of the contribution diff
+            git checkout -- . && git clean -fdq -- contracts src docs
           else
             uv run --no-sync python scripts/prepare_extension_contribution.py --check "${arguments[@]}"
             uv run --no-sync python scripts/render_command_extension_directory.py --check

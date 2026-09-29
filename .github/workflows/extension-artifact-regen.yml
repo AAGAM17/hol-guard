@@ -20,9 +20,6 @@ on:
       - .github/workflows/extension-artifact-regen.yml
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 # Serialized so back-to-back merges batch: each run regenerates against the
 # HEAD it checks out, so a queued run absorbs intermediate merges.
 concurrency:
@@ -37,6 +34,8 @@ jobs:
   regen:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -57,22 +56,14 @@ jobs:
         run: uv run --no-sync python scripts/refresh_extension_artifacts.py
       - name: Commit refreshed artifacts
         run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "artifacts already current"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A \
-            contracts/extensions \
-            contracts/managed-controls \
-            docs/guard/extensions \
+          git add -A contracts/extensions contracts/managed-controls docs/guard/extensions \
             src/codex_plugin_scanner/guard/contracts/data/extensions \
-            src/codex_plugin_scanner/guard/extension_builder \
-            tests/fixtures/extension-controls \
+            src/codex_plugin_scanner/guard/extension_builder tests/fixtures/extension-controls \
             tests/fixtures/command-source-*.v1.json \
             tests/fixtures/guard-command-corpus/decision-diff-report.json \
-            tests/test_guard_extension_trust.py \
-            tests/test_policy_bundle_delivery_runtime.py
+            tests/test_guard_extension_trust.py tests/test_policy_bundle_delivery_runtime.py
+          if git diff --cached --quiet; then echo "artifacts already current"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(extensions): regenerate contribution artifacts"
-          git push origin main
+          git pull --rebase origin main && git push origin HEAD:main

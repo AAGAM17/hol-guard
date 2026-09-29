@@ -274,7 +274,8 @@ def main() -> int:
                 "git",
                 "commit",
                 "-m",
-                f"chore(extensions): reset managed paths before regenerate artifacts for intake of PRs {pr_refs}",
+                "chore(extensions): reset managed and salvaged paths "
+                f"before regenerate artifacts for intake of PRs {pr_refs}",
             ]
         )
 

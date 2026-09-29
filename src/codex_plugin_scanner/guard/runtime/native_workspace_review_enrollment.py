@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.error import HTTPError
 
-from ..native_runtime import _run_native_process, native_runtime_status
+from ..native_resident_client import native_resident_client_request
+from ..native_runtime import _isolated_environment, _run_native_process, native_runtime_status
 from .command_queue_protocol import command_api_url
 from .exact_cloud_review import EXACT_CLOUD_REVIEW_OPERATION, exact_cloud_review_operations
 from .runner import _guard_sync_request, _urlopen_json_with_timeout_retry
@@ -24,6 +25,7 @@ _STATE_KEY = "guard_cloud_review_workspace_enrollment"
 _AUTHORITY_PATH = "/api/guard/review/v2/authority/current"
 _CHECK_INTERVAL = timedelta(minutes=5)
 _MAX_RECORD_BYTES = 16 * 1024
+_RESIDENT_ENROLLMENT_FEATURE = "native-workspace-review-enrollment-resident-v1"
 
 
 def _binding(auth_context: dict[str, object]) -> list[str] | None:
@@ -106,7 +108,32 @@ def _install_authority(state_base: Path, encoded: bytes) -> None:
             timeout_seconds=5,
         )
         if result is None:
-            raise ValueError("native_workspace_review_authority_install_failed")
+            capabilities = status.capabilities
+            if capabilities is None or _RESIDENT_ENROLLMENT_FEATURE not in capabilities.features:
+                raise ValueError("native_workspace_review_authority_install_failed")
+            payload = json.dumps(
+                {
+                    "operation": "workspace_review_authority_enroll",
+                    "request": {"record_path": str(candidate_path)},
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+            response = native_resident_client_request(
+                executable=status.identity.path,
+                guard_home=state_base.parent,
+                environment=_isolated_environment(),
+                payload=payload,
+                timeout_seconds=5,
+            )
+            if response is None:
+                raise ValueError("native_workspace_review_authority_install_failed")
+            try:
+                accepted = json.loads(response)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError("native_workspace_review_authority_install_failed") from error
+            if accepted != {"status": "enrolled"}:
+                raise ValueError("native_workspace_review_authority_install_failed")
     finally:
         if candidate_path is not None:
             candidate_path.unlink(missing_ok=True)

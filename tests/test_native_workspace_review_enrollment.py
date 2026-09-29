@@ -108,7 +108,12 @@ def test_native_installer_verifies_private_candidate_and_removes_it(
     monkeypatch.setattr(
         enrollment,
         "native_runtime_status",
-        lambda: SimpleNamespace(available=True, compatible=True, identity=SimpleNamespace(path=tmp_path / "native")),
+        lambda: SimpleNamespace(
+            available=True,
+            compatible=True,
+            identity=SimpleNamespace(path=tmp_path / "native"),
+            capabilities=SimpleNamespace(features={enrollment._RESIDENT_ENROLLMENT_FEATURE}),
+        ),
     )
     candidate_paths: list[Path] = []
 
@@ -120,10 +125,34 @@ def test_native_installer_verifies_private_candidate_and_removes_it(
         return ""
 
     monkeypatch.setattr(enrollment, "_run_native_process", accept)
+    monkeypatch.setattr(
+        enrollment,
+        "native_resident_client_request",
+        lambda **_kwargs: pytest.fail("resident must not run after direct enrollment"),
+    )
     enrollment._install_authority(state_base, ENCODED)
     assert len(candidate_paths) == 1
     assert not candidate_paths[0].exists()
+
+    def accept_resident(**kwargs: object) -> bytes:
+        request_bytes = kwargs["payload"]
+        assert isinstance(request_bytes, bytes)
+        payload = json.loads(request_bytes)
+        candidate = Path(payload["request"]["record_path"])
+        assert payload["operation"] == "workspace_review_authority_enroll"
+        assert kwargs["guard_home"] == tmp_path
+        assert candidate.read_bytes() == ENCODED
+        assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
+        candidate_paths.append(candidate)
+        return b'{"status":"enrolled"}'
+
     monkeypatch.setattr(enrollment, "_run_native_process", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(enrollment, "native_resident_client_request", accept_resident)
+    enrollment._install_authority(state_base, ENCODED)
+    assert len(candidate_paths) == 2
+    assert not candidate_paths[-1].exists()
+
+    monkeypatch.setattr(enrollment, "native_resident_client_request", lambda **_kwargs: b'{"status":"ignored"}')
     with pytest.raises(ValueError, match="native_workspace_review_authority_install_failed"):
         enrollment._install_authority(state_base, ENCODED)
     assert not list(state_base.glob(".workspace-review-authority-*.json"))

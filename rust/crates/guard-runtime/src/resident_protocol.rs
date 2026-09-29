@@ -10,6 +10,7 @@ use guard_hook_core::review_post_tool;
 use guard_policy_snapshot::canonical_json_bytes;
 use serde::Deserialize;
 use serde_json::Value;
+use std::path::Path;
 
 use crate::policy_store::PolicySnapshotStore;
 
@@ -25,6 +26,7 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalChallengeV4(ApprovalChallengeRequestV4),
     ApprovalValidateV4(ApprovalValidateRequestV4),
     ApprovalConsumeV4(ApprovalConsumeRequestV4),
+    WorkspaceReviewAuthorityEnroll(WorkspaceReviewAuthorityEnrollRequestV1),
     WorkspaceReviewContext(WorkspaceReviewContextRequestV1),
     WorkspaceReviewDecision(WorkspaceReviewDecisionRequestV1),
     Health(Value),
@@ -42,6 +44,12 @@ pub(crate) struct WorkspaceReviewDecisionRequestV1 {
 #[serde(deny_unknown_fields)]
 pub(crate) struct WorkspaceReviewContextRequestV1 {
     pub(crate) request_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WorkspaceReviewAuthorityEnrollRequestV1 {
+    pub(crate) record_path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +90,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "native-approval-consume-v4".into(),
         "native-approval-replay-memory-v1".into(),
         "native-workspace-review-authority-v1".into(),
+        "native-workspace-review-enrollment-resident-v1".into(),
         "native-workspace-review-context-v1".into(),
         "native-workspace-review-decision-v1".into(),
         "native-policy-in-memory-v1".into(),
@@ -112,7 +121,11 @@ pub(crate) fn evaluate_resident_bytes(
     let value = strict_json_value(bytes)?;
     if matches!(
         value.get("operation").and_then(Value::as_str),
-        Some("workspace_review_context" | "workspace_review_decision")
+        Some(
+            "workspace_review_authority_enroll"
+                | "workspace_review_context"
+                | "workspace_review_decision"
+        )
     ) {
         let canonical = canonical_json_bytes(&value)
             .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
@@ -200,6 +213,21 @@ pub(crate) fn evaluate_resident_bytes(
                 let policy_store =
                     policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
                 crate::approval::approval_v4::consume_approval(request, policy_store)
+            }
+            ResidentOperationV1::WorkspaceReviewAuthorityEnroll(request) => {
+                let policy_store =
+                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                if request.record_path.is_empty()
+                    || request.record_path.len() > 4096
+                    || !Path::new(&request.record_path).is_absolute()
+                {
+                    return Err("native_workspace_review_authority_invalid".to_owned());
+                }
+                crate::policy_store::workspace_review_authority::install_record(
+                    policy_store.state_base(),
+                    Path::new(&request.record_path),
+                )?;
+                encode_response(&serde_json::json!({"status": "enrolled"}))
             }
             ResidentOperationV1::WorkspaceReviewContext(request) => {
                 let policy_store =
@@ -300,6 +328,35 @@ pub(crate) fn safe_error_response(code: &str, retryable: bool) -> Vec<u8> {
 mod tests {
     use super::{evaluate_resident_bytes, safe_error_response};
     use serde_json::Value;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn policy_store() -> (crate::policy_store::PolicySnapshotStore, PathBuf) {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "hol-guard-resident-enrollment-test-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let key_path = root.join("policy-verifier.key");
+        fs::write(&key_path, [23u8; 32]).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let store = crate::policy_store::PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+        (store, root)
+    }
 
     #[test]
     fn approval_error_transport_is_finite() {
@@ -346,5 +403,31 @@ mod tests {
             evaluate_resident_bytes(request.as_bytes(), None).unwrap_err(),
             "native_approval_request_bounds_exceeded"
         );
+    }
+
+    #[test]
+    fn resident_workspace_enrollment_requires_canonical_absolute_candidate() {
+        let (store, root) = policy_store();
+        let relative = br#"{"operation":"workspace_review_authority_enroll","request":{"record_path":"relative.json"}}"#;
+        assert_eq!(
+            evaluate_resident_bytes(relative, Some(&store)).unwrap_err(),
+            "native_workspace_review_authority_invalid"
+        );
+        let noncanonical = br#"{"request":{"record_path":"relative.json"},"operation":"workspace_review_authority_enroll"}"#;
+        assert_eq!(
+            evaluate_resident_bytes(noncanonical, Some(&store)).unwrap_err(),
+            "native_workspace_review_decision_noncanonical"
+        );
+        let absent = serde_json::json!({
+            "operation": "workspace_review_authority_enroll",
+            "request": {"record_path": root.join("absent.json").to_string_lossy()},
+        });
+        let canonical = guard_policy_snapshot::canonical_json_bytes(&absent).unwrap();
+        assert_eq!(
+            evaluate_resident_bytes(&canonical, Some(&store)).unwrap_err(),
+            "native_workspace_review_authority_missing"
+        );
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -436,6 +436,33 @@ fn resident_install_requires_the_existing_local_enrollment_identity() {
 }
 
 #[test]
+fn resident_owner_can_install_root_signed_authority_while_holding_state_lock() {
+    let root = test_root();
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let mut record = base_record(9, 1, None, "active");
+    record.issued_at_ms = now_ms - 1_000;
+    record.expires_at_ms = now_ms + 60_000;
+    seed_local_enrollment(&root, &record);
+    let candidate = write_candidate(&root, "live-resident.json", &record);
+
+    let owner = crate::state_directory_lock::acquire(&root).unwrap();
+    super::install_record(&root, &candidate).unwrap();
+    assert_eq!(
+        load_at_for_test(&root, now_ms)
+            .unwrap()
+            .unwrap()
+            .enrollment_generation,
+        1
+    );
+
+    drop(owner);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn resident_load_recovers_a_pending_authority_file_after_crash() {
     let root = test_root();
     let initial = initial_record();

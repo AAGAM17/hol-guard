@@ -119,17 +119,13 @@ fn sensitive_external_filename(path: &Path) -> bool {
 }
 
 pub fn credential_named_path(path: &Path) -> bool {
-    path.to_string_lossy()
-        .replace('\\', "/")
-        .split('/')
-        .any(|part| {
-            let part = Path::new(part);
-            let extension = part
-                .extension()
-                .and_then(|value| value.to_str())
-                .unwrap_or_default();
-            !is_source_code_extension(extension) && sensitive_external_filename(part)
-        })
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let Some(last) = normalized.rsplit('/').find(|part| !part.is_empty()) else {
+        return false;
+    };
+    let last = Path::new(last);
+    let extension = last.extension().and_then(|value| value.to_str()).unwrap_or_default();
+    !is_source_code_extension(extension) && sensitive_external_filename(last)
 }
 
 pub fn is_source_code_extension(extension: &str) -> bool {

@@ -231,13 +231,12 @@ fn glob_can_select_sensitive_path(value: &str) -> bool {
                 .rsplit_once('.')
                 .is_some_and(|(_, extension)| guard_secure_fs::is_source_code_extension(extension));
             if !code_extension
-                && guard_secure_fs::credential_path_markers()
-                    .iter()
-                    .any(|marker| {
-                        glob_matches(bytes, marker.as_bytes())
-                            || glob_intersects_prefix_family(bytes, format!("{marker}.").as_bytes())
-                            || glob_intersects_contains_family(bytes, marker.as_bytes(), true)
-                    })
+                && guard_secure_fs::credential_path_markers().iter().any(|marker| {
+                    glob_matches(bytes, marker.as_bytes())
+                        || glob_intersects_prefix_family(bytes, format!("{marker}.").as_bytes())
+                        || (hint::glob_constrained_lcs(bytes, marker.as_bytes()) >= 3
+                            && glob_intersects_contains_family(bytes, marker.as_bytes(), true))
+                })
             {
                 return true;
             }

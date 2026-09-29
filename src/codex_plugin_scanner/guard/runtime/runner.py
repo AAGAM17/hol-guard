@@ -2074,6 +2074,21 @@ def _detection_with_prompt_artifacts(
     context: HarnessContext,
     passthrough_args: list[str],
 ) -> HarnessDetection:
+    # Disabled Codex skills remain visible to inventory and AIBOM, but cannot
+    # execute in this launch. They must not create launch approval requests.
+    if detection.harness == "codex":
+        detection = replace(
+            detection,
+            artifacts=tuple(
+                replace(
+                    artifact,
+                    runtime_private_metadata={**artifact.runtime_private_metadata, "inventory_only": True},
+                )
+                if artifact.artifact_type == "skill" and artifact.metadata.get("enabled") is False
+                else artifact
+                for artifact in detection.artifacts
+            ),
+        )
     prompt_text = " ".join(value.strip() for value in passthrough_args if value.strip())
     prompt_requests = extract_prompt_requests(prompt_text)
     if not prompt_requests:

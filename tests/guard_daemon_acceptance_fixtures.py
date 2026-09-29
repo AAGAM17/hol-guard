@@ -279,16 +279,11 @@ def run_workload(spec: WorkloadSpec, *, root: Path) -> WorkloadResult:
 
         transient_reason_codes = {
             "daemon_hook_process_not_ready",
-            "daemon_hook_deadline_exhausted",
-            "daemon_hook_process_deadline_exhausted",
-            "daemon_hook_queue_capacity",
-            "native_overloaded",
             "native_hook_event_unavailable",
             "native_pre_tool_unavailable",
             "native_post_tool_unavailable",
             "native_hook_worker_unavailable",
             "native_hook_worker_unavailable_before_compatibility",
-            "native_hook_worker_exception",
             "native_hook_edge_unavailable",
             "native_policy_not_ready",
         }

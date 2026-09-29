@@ -8,11 +8,11 @@ Those bindings are required before an enforcement outcome can be reported.
 
 from __future__ import annotations
 
+import sys
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-import sys
-import time
 from typing import Protocol, cast
 from urllib.error import URLError
 from urllib.parse import urlsplit

@@ -6810,7 +6810,6 @@ function ExtensionsOverview(props) {
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      event.stopPropagation();
       setFilterPanelOpen(false);
       filterTriggerRef.current?.focus();
     };

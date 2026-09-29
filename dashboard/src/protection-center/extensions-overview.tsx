@@ -172,7 +172,6 @@ export function ExtensionsOverview(props: {
       if (event.key !== "Escape") return;
       // A modal dialog (e.g. the policy review sheet) owns Escape while open.
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      event.stopPropagation();
       setFilterPanelOpen(false);
       filterTriggerRef.current?.focus();
     };

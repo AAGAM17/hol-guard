@@ -17,7 +17,6 @@ from ..runtime.hook_output_text import extract_payload_output
 from ..runtime.hook_review_types import HookReviewRequest, HookReviewResponse
 from .hook_availability_policy import (
     availability_harness_response,
-    hook_review_is_recording_only,
     recording_only_pre_tool_response,
 )
 from .hook_native_review_approval import pause_native_pre_tool_for_approval
@@ -259,7 +258,8 @@ class HookWorkerNativeMixin:
         command = pre_tool_command(payload)
         if command is None:
             raise HookWorkerUnsupported("fast path PreToolUse requires a command")
-        recording_only = hook_review_is_recording_only(guard_home=guard_home, workspace=workspace)
+        policy_snapshot = self._native_policy_snapshot(workspace)
+        recording_only = policy_snapshot is not None and policy_snapshot.get("mode") == "observe"
         native = self._review_pre_tool_native(command, guard_home=guard_home, cwd=workspace, home_dir=home_dir)
         if native is not None:
             if recording_only:

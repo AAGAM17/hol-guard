@@ -193,7 +193,7 @@ def test_acknowledgement_compacts_only_contiguous_binding_prefix(tmp_path) -> No
     assert cursor is not None
     assert cursor["acknowledged_stream_sequence"] == third
     assert [(row["stream_sequence"], row["binding_status"]) for row in retained] == [(quarantined, "quarantined")]
-    status = store.review_event_outbox_status(now=_NOW)
+    status = store.review_event_outbox_status(now=_NOW, **binding)
     assert status["quarantined_depth"] == 1
     assert status["binding_state"] == "healthy"
     assert status["binding_hint"] is None

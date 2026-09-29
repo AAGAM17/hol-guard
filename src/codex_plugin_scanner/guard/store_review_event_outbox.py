@@ -358,6 +358,8 @@ class StoreReviewEventOutboxMixin:
               and machine_id = ? and machine_installation_id = ?
             """
             parameters.extend(binding)
+        # Terminal continuation quarantine preserves evidence, not a broken
+        # OAuth identity. Only identity-specific reasons require identity repair.
         diagnostics_query = """
             select
               sum(case when binding_status = 'quarantined' then 1 else 0 end) as quarantined_depth,

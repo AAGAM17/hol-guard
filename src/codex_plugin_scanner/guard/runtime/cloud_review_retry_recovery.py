@@ -59,6 +59,7 @@ def quarantine_terminal_binding_failures(
 
     A failed store transition stays retryable so concurrent delivery or a
     changed binding cannot silently discard unacknowledged evidence.
+    Unknown event sequences also stay retryable instead of aborting the batch.
     """
     retained: list[tuple[int, dict[str, object]]] = []
     for sequence, result in zip(sequences, results, strict=True):

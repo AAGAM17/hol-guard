@@ -194,30 +194,22 @@ def test_signing_requires_lowercase_expected_request_digest(tmp_path: Path) -> N
     assert not output_path.exists()
 
 
-def test_same_size_request_substitution_fails_expected_digest(tmp_path: Path) -> None:
+def test_same_size_request_substitution_fails_expected_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name, value in _environment().items():
+        monkeypatch.setenv(name, value)
     request_path = tmp_path / "request.json"
     output_path = tmp_path / "authority.json"
-    original = _request()
+    original = _request(now_ms=int(time.time() * 1000))
     _write_request(request_path, original)
     expected = _request_digest(request_path)
-    original_bytes = request_path.read_bytes()
     original["workspace_binding"] = "9" * 64
     _write_request(request_path, original)
-    assert len(request_path.read_bytes()) == len(original_bytes)
-    assert (
-        main(
-            [
-                "--request",
-                str(request_path),
-                "--output",
-                str(output_path),
-                "--expected-request-sha256",
-                expected,
-            ]
-        )
-        == 1
-    )
+    args = ["--request", str(request_path), "--output", str(output_path), "--expected-request-sha256"]
+    assert main([*args, expected]) == 1
     assert not output_path.exists()
+    assert main([*args, _request_digest(request_path)]) == 0
 
 
 def test_output_is_new_private_file_and_existing_file_is_never_overwritten(

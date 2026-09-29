@@ -23,8 +23,8 @@ _CURSOR_UNAVAILABLE_DENY: dict[str, object] = {
 
 # Native review covers PreToolUse and PostToolUse. Lifecycle events are inventory
 # only: fail-closing them freezes the conversation without adding an enforcement
-# boundary. When native review cannot complete, PreToolUse and PostToolUse continue
-# so the session stays moving. Completed policy and secret blocks still protect.
+# boundary. Unavailable pre-tool decisions deny in protected mode; explicit Watch
+# mode and post-tool observations continue without claiming an evaluated allow.
 LIFECYCLE_OBSERVE_EVENTS = frozenset(
     {
         "UserPromptSubmit",
@@ -187,10 +187,9 @@ def availability_harness_response(
 ) -> dict[str, object]:
     """Render a schema-valid harness result when native review is unavailable."""
 
-    from .hook_launcher_recovery import hook_action_is_launcher_recovery_safe
     from .hook_worker_responses import observe_lifecycle_fail_safe_response
 
-    del guard_home, recording_only
+    del guard_home
     canonical_lifecycle = _LIFECYCLE_CANONICAL_BY_COMPACT.get(_compact_hook_event_name(event_name))
     if canonical_lifecycle is not None:
         return observe_lifecycle_fail_safe_response(
@@ -209,25 +208,19 @@ def availability_harness_response(
         )
     compact = _compact_hook_event_name(event_name)
     pre_tool_event = compact in {"pretooluse", "pretool"} or compact.startswith("before")
-    if pre_tool_event and reason_code.strip() in _INTEGRITY_FAIL_CLOSED_REASON_CODES:
-        from .hook_worker_responses import integrity_fail_closed_pre_tool_response
-
-        if hook_action_is_launcher_recovery_safe(payload, workspace=workspace, home_dir=home_dir):
+    if pre_tool_event:
+        if recording_only and reason_code.strip() not in _INTEGRITY_FAIL_CLOSED_REASON_CODES:
             return recording_only_pre_tool_response(
                 harness,
                 reason_code=reason_code,
                 reason=reason,
             )
+        from .hook_worker_responses import integrity_fail_closed_pre_tool_response
+
         return integrity_fail_closed_pre_tool_response(
             harness,
             reason=reason,
             reason_code=reason_code,
-        )
-    if pre_tool_event:
-        return recording_only_pre_tool_response(
-            harness,
-            reason_code=reason_code,
-            reason=reason,
         )
     return observe_lifecycle_fail_safe_response(
         harness,

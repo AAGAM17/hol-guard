@@ -88,9 +88,11 @@ jobs:
             tests/fixtures/guard-command-corpus/decision-diff-report.json \
             tests/test_guard_extension_trust.py tests/test_policy_bundle_delivery_runtime.py
           close_superseded() {
-            for pr in $(gh pr list --repo "${GH_REPO}" --state open \
-                --json number,headRefName,headRepositoryOwner \
-                --jq ".[] | select(.headRepositoryOwner.login == \"hashgraph-online\") | select(.headRefName | startswith(\"regen/artifacts-\")) | select(.headRefName != \"${1:-}\") | .number"); do
+            stale_prs=$(gh pr list --repo "${GH_REPO}" --state open --limit 200 \
+              --search "head:regen/artifacts-" \
+              --json number,headRefName,headRepositoryOwner \
+              --jq ".[] | select(.headRepositoryOwner.login == \"hashgraph-online\") | select(.headRefName != \"${1:-}\") | .number") || return 1
+            for pr in ${stale_prs}; do
               gh pr close --repo "${GH_REPO}" --delete-branch \
                 --comment "superseded by ${1:-main reaching artifact parity}" "${pr}"
             done

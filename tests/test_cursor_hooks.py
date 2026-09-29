@@ -502,7 +502,11 @@ def test_cursor_hook_recovery_honors_total_deadline(tmp_path: Path) -> None:
     # Includes cold interpreter startup, which can dominate the injected 200 ms hook budget on loaded CI.
     assert time.monotonic() - started < 2
     assert proc.returncode == 2
-    assert json.loads(proc.stdout)["permission"] == "deny"
+    response = json.loads(proc.stdout)
+    assert response["permission"] == "deny"
+    assert response["user_message"] == (
+        "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
+    )
 
 
 def test_cursor_hook_denies_workspace_read_within_recovery_deadline(tmp_path: Path) -> None:
@@ -529,18 +533,16 @@ def test_cursor_hook_denies_workspace_read_within_recovery_deadline(tmp_path: Pa
     (guard_home / "daemon-auth-token").write_text("stale-token", encoding="utf-8")
     context = HarnessContext(home_dir=home_dir, guard_home=guard_home, workspace_dir=workspace_dir)
     script_path = tmp_path / "cursor-hook.py"
-    script_path.write_text(
-        cursor_hook_script_source(
-            context,
-            guard_cli=[sys.executable, str(fallback)],
-            recovery_command=[sys.executable, str(recovery)],
-        ).replace(
-            f"GUARD_HOOK_TIMEOUT_SECONDS = {_MANAGED_HOOK_TIMEOUT_SECONDS - 3}",
-            "GUARD_HOOK_TIMEOUT_SECONDS = 0.2",
-            1,
-        ),
-        encoding="utf-8",
+    source = cursor_hook_script_source(
+        context,
+        guard_cli=[sys.executable, str(fallback)],
+        recovery_command=[sys.executable, str(recovery)],
+    ).replace(
+        f"GUARD_HOOK_TIMEOUT_SECONDS = {_MANAGED_HOOK_TIMEOUT_SECONDS - 3}",
+        "GUARD_HOOK_TIMEOUT_SECONDS = 0.2",
+        1,
     )
+    script_path.write_text(source, encoding="utf-8")
     started = time.monotonic()
     proc = subprocess.run(
         [sys.executable, str(script_path)],
@@ -558,7 +560,11 @@ def test_cursor_hook_denies_workspace_read_within_recovery_deadline(tmp_path: Pa
     )
     assert time.monotonic() - started < 2
     assert proc.returncode == 2, proc.stderr
-    assert json.loads(proc.stdout)["permission"] == "deny"
+    response = json.loads(proc.stdout)
+    assert response["permission"] == "deny"
+    assert response["user_message"] == (
+        "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
+    )
     assert not fallback_marker.exists()
 
 
@@ -800,6 +806,9 @@ def test_generated_cursor_hook_denies_missing_or_unknown_guard_action(
     assert proc.returncode == 2
     response = json.loads(proc.stdout)
     assert response["permission"] == "deny"
+    assert response["user_message"] == (
+        "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
+    )
 
 
 def test_cursor_resolve_guard_cli_command_ignores_path_collisions(

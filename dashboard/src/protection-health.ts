@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { protectionReasonText } from "./protection-reason-copy";
 import type {
   GuardProtectionAppHealth,
   GuardProtectionCheck,
@@ -305,13 +306,10 @@ export function remainingProtectionRepairMessage(
     );
   }
   if (remainingParts.evidenceFailed) {
-    if (decisionStreamCheck?.reason_code === "native_evaluation_unavailable") {
-      remainingMessages.push(
-        "Guard could not run the native policy engine to prove command evidence.",
-      );
-    } else {
-      remainingMessages.push("Command evidence still needs repair.");
-    }
+    const reasonText = decisionStreamCheck?.reason_code
+      ? protectionReasonText(decisionStreamCheck.reason_code)
+      : null;
+    remainingMessages.push(reasonText ?? "Command evidence still needs repair.");
   }
   if (unsupportedCount > 0) {
     remainingMessages.push(

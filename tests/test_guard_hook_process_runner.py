@@ -818,6 +818,9 @@ def test_prewarmed_runner_scans_post_tool_output_in_isolated_worker(tmp_path: Pa
 
     assert result.reason_code is None
     assert result.payload is not None
+    # Native authority returns allow for a benign PostToolUse; the retired
+    # Python oracle's warn/recorded contract no longer exists. This test pins
+    # the prewarmed-worker lifecycle, not the decision surface.
     assert result.payload["policy_action"] in {"allow", "warn"}
     assert runner.stats()["workers"] == 0
 
@@ -860,6 +863,8 @@ def test_idempotent_review_retries_once_after_worker_death(tmp_path: Path) -> No
 
     assert result.reason_code is None
     assert result.payload is not None
+    # Same native contract as above: the retired oracle's warn/recorded pair
+    # no longer exists; this test pins the idempotent retry, not the action.
     assert result.payload["policy_action"] in {"allow", "warn"}
 
 

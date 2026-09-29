@@ -53,7 +53,7 @@ def main() -> int:
         "--compiler",
         args.compiler,
     ]
-    if pending or changed:
+    if args.changed_from and (pending or changed):
         print(
             f"pending contribution regeneration (ids={pending}, changed={changed}); "
             "validating sources by generating instead of checking freshness",

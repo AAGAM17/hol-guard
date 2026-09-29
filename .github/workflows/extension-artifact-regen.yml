@@ -9,6 +9,8 @@ name: Extension artifact regen
 # push-triggered workflows such as ci.yml. Provision a PAT as the
 # GUARD_AUTOMATION_TOKEN secret so regen commits get full main-branch CI.
 
+permissions: {}
+
 on:
   push:
     branches: [main]

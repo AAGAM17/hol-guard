@@ -59,6 +59,7 @@ jobs:
       - name: Commit refreshed artifacts
         run: |
           git add -A contracts/extensions contracts/managed-controls docs/guard/extensions \
+            contributions/extensions \
             src/codex_plugin_scanner/guard/contracts/data/extensions \
             src/codex_plugin_scanner/guard/extension_builder tests/fixtures/extension-controls \
             tests/fixtures/command-source-*.v1.json \

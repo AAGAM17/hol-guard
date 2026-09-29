@@ -13,6 +13,11 @@ Because the contributor's commit SHAs remain ancestors, merging the intake PR
 with a merge commit marks the original PR merged. With squash merge, close the
 original PR manually with a reference comment.
 
+The refresh step executes build tooling from the merged tree, so a
+contribution that itself modifies tooling (``scripts/``, ``.github/``,
+``rust/``, packaging manifests) is refused unless ``--trust-tooling-changes``
+is passed after manual review of that diff.
+
 Requires ``gh`` authenticated as a maintainer and push access to origin.
 """
 
@@ -28,9 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(command: list[str], *, capture: bool = True) -> str:
-    completed = subprocess.run(
-        command, cwd=ROOT, capture_output=capture, text=True, check=False
-    )
+    completed = subprocess.run(command, cwd=ROOT, capture_output=capture, text=True, check=False)
     if completed.returncode:
         detail = (completed.stderr or completed.stdout).strip()
         raise SystemExit(f"intake failed: {' '.join(command)}\n{detail[:2048]}")
@@ -47,6 +50,11 @@ def main() -> int:
     parser.add_argument("--repo", default="hashgraph-online/hol-guard")
     parser.add_argument("--skip-regen", action="store_true")
     parser.add_argument("--push", action="store_true", help="push the intake branch to origin")
+    parser.add_argument(
+        "--trust-tooling-changes",
+        action="store_true",
+        help="allow refresh to run when the contribution modifies build/tooling files",
+    )
     args = parser.parse_args()
 
     pr = _gh(
@@ -68,9 +76,22 @@ def main() -> int:
     head_branch = info["headRefName"]
     branch = f"intake/pr-{args.pr}"
 
+    if _run(["git", "status", "--porcelain"]):
+        raise SystemExit("worktree or index is not clean; commit or stash before intake")
+
     _run(["git", "fetch", clone_url, head_branch])
     contributor_head = _run(["git", "rev-parse", "FETCH_HEAD"])
     _run(["git", "fetch", "origin", "main"])
+
+    tooling_paths = ("scripts/", ".github/", "rust/", "pyproject.toml", "uv.lock")
+    merge_base = _run(["git", "merge-base", contributor_head, "origin/main"])
+    tooling_changes = _run(["git", "diff", "--name-only", merge_base, contributor_head, "--", *tooling_paths])
+    if tooling_changes and not (args.trust_tooling_changes or args.skip_regen):
+        raise SystemExit(
+            "contribution modifies tooling/build files; refresh would execute them "
+            "with maintainer credentials. Review the diff, then rerun with "
+            "--trust-tooling-changes or --skip-regen:\n" + tooling_changes
+        )
 
     if _run(["git", "branch", "--list", branch]):
         _run(["git", "checkout", branch])
@@ -105,6 +126,7 @@ def main() -> int:
                 "contracts/extensions",
                 "contracts/managed-controls",
                 "docs/guard/extensions",
+                "contributions/extensions",
                 "src/codex_plugin_scanner/guard/contracts/data/extensions",
                 "src/codex_plugin_scanner/guard/extension_builder",
                 "tests/fixtures",
@@ -124,11 +146,8 @@ def main() -> int:
         else:
             print("regeneration produced no changes")
     if args.push:
-        _run(["git", "push", "-u", "origin", branch], capture=False)
-        print(
-            f"open a PR from {branch} to main; prefer a merge commit so "
-            f"PR #{args.pr} auto-closes as merged"
-        )
+        _run(["git", "push", "--force-with-lease", "-u", "origin", branch], capture=False)
+        print(f"open a PR from {branch} to main; prefer a merge commit so PR #{args.pr} auto-closes as merged")
     return 0
 
 

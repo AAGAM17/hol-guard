@@ -95,18 +95,19 @@ def main() -> int:
 
     if _run(["git", "branch", "--list", branch]):
         _run(["git", "checkout", branch])
+        prior = _run(["git", "merge-base", branch, contributor_head])
+        rewritten = _run(["git", "rev-list", "--no-merges", f"{prior}..{branch}", "--not", "origin/main"])
         head_merge = subprocess.run(
             ["git", "merge", "--no-edit", contributor_head],
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
-        )
-        if head_merge.returncode:
+        ) if not rewritten else None
+        if head_merge is None or head_merge.returncode:
+            subprocess.run(["git", "merge", "--abort"], cwd=ROOT, check=False)
             print(
-                f"intake branch {branch} diverged from the contributor head "
-                "(the contributor likely rebased). Resolve the merge manually, or "
-                "rebuild fresh with:\n"
+                f"intake branch {branch} diverged from the contributor head; rebuild with:\n"
                 f"  git checkout main && git branch -D {branch} && rerun this script",
                 file=sys.stderr,
             )

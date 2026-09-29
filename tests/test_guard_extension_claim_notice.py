@@ -648,7 +648,7 @@ def test_readiness_report_uses_first_entry_for_mixed_noneligible_statuses(
         *,
         allow_renames: bool = False,
         records: list[Any] | None = None,
-    ) -> tuple[list[Any], str]:
+    ) -> tuple[list[Any], str, bool]:
         assert records is not None
         records.extend(
             [
@@ -656,7 +656,7 @@ def test_readiness_report_uses_first_entry_for_mixed_noneligible_statuses(
                 MODULE.ExtensionReadiness("command.no-mapping", "no_mapping"),
             ]
         )
-        return [], "source_not_current"
+        return [], "source_not_current", False
 
     monkeypatch.setattr(MODULE, "_plan_notice_items", mixed_statuses)
     report = MODULE.readiness_report(client, 40)

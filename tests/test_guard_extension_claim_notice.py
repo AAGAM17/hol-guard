@@ -121,6 +121,7 @@ def configure_new_contribution(
         {"status": "added", "filename": listing_path},
     ]
     client.file_payloads[(MERGE_SHA, contribution_path)] = {"schemaVersion": "v1"}
+    client.file_payloads[(client.default_branch, contribution_path)] = {"schemaVersion": "v1"}
     client.file_payloads[(MERGE_SHA, listing_path)] = listing(extension_id, ids)
     # Current canonical state used by the delayed/backfill revalidation pass.
     client.file_payloads[(client.default_branch, listing_path)] = listing(
@@ -264,6 +265,7 @@ def test_listing_change_notifies_only_newly_accepted_ids() -> None:
     client.files = [{"status": "modified", "filename": listing_path}]
     client.file_payloads[(MERGE_SHA, contribution_path)] = {"schemaVersion": "v1"}
     client.file_payloads[(BEFORE_SHA, contribution_path)] = {"schemaVersion": "v1"}
+    client.file_payloads[(client.default_branch, contribution_path)] = {"schemaVersion": "v1"}
     client.file_payloads[(MERGE_SHA, listing_path)] = listing(extension_id, ["100", "200"])
     client.file_payloads[(BEFORE_SHA, listing_path)] = listing(extension_id, ["100"])
     client.file_payloads[(client.default_branch, listing_path)] = listing(extension_id, ["100", "200"])
@@ -396,6 +398,44 @@ def test_refresh_does_not_withdraw_rename_backfill_without_opt_in() -> None:
     assert client.updated == []
 
 
+def test_refresh_keeps_rename_link_when_another_extension_is_eligible() -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.eligible", ["400"])
+    client.files.append(
+        {
+            "status": "renamed",
+            "filename": "contributions/extensions/command.renamed.json",
+            "previous_filename": "contributions/extensions/command.old.json",
+        }
+    )
+    client.comment_rows = [
+        {
+            "id": 123,
+            "body": f"{MODULE.MARKER}\nEarlier rename claim link",
+            "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"},
+        }
+    ]
+
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
+    assert client.updated == []
+
+
+def test_refresh_withdraws_link_after_native_contribution_is_removed() -> None:
+    client = FakeGitHub()
+    configure_new_contribution(client, "command.removed", ["400"])
+    client.file_payloads.pop((client.default_branch, "contributions/extensions/command.removed.json"))
+    client.comment_rows = [
+        {
+            "id": 123,
+            "body": f"{MODULE.MARKER}\nEarlier claim link",
+            "user": {"id": MODULE.TRUSTED_NOTICE_ACTOR_ID, "type": "Bot"},
+        }
+    ]
+
+    assert MODULE.process(client, 9, MODULE.DEFAULT_STUDIO_URL, refresh_existing=True) == 0
+    assert client.updated == [(123, MODULE.build_withdrawn_comment())]
+
+
 def test_contributor_cannot_spoof_notice_marker() -> None:
     client = FakeGitHub()
     configure_new_contribution(client, "command.marker-spoof", ["400"])
@@ -422,6 +462,7 @@ def test_renamed_contributions_require_explicit_maintainer_backfill() -> None:
     client.file_payloads[(BEFORE_SHA, old_contribution)] = {"schemaVersion": "v1"}
     client.file_payloads[(BEFORE_SHA, old_listing)] = listing(old_id, ["700"])
     client.file_payloads[(MERGE_SHA, new_contribution)] = {"schemaVersion": "v1"}
+    client.file_payloads[(client.default_branch, new_contribution)] = {"schemaVersion": "v1"}
     client.file_payloads[(MERGE_SHA, new_listing)] = listing(new_id, ["700"])
     client.file_payloads[(client.default_branch, new_listing)] = listing(new_id, ["700"])
     client.logins = {"700": "renamed-maintainer"}

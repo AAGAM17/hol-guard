@@ -668,6 +668,10 @@ def _plan_notice_items(
         native_path = contribution_path(extension_id)
         if not client.file_exists(native_path, merge_sha):
             raise ClaimNoticeError(f"{extension_id}: authority sidecar exists without a canonical native contribution")
+        if not client.file_exists(native_path, default_branch):
+            print(f"PR #{pr_number}: {extension_id}: native contribution is absent from canonical {default_branch}")
+            record(extension_id, "source_not_current")
+            continue
         contribution_existed = client.file_exists(native_path, before_sha)
 
         if not contribution_existed:
@@ -905,7 +909,7 @@ def process(
             print(f"PR #{pr_number}: posted claim guidance for {len(unmapped)} extension(s)")
     elif guidance_exists:
         print(f"PR #{pr_number}: trusted claim guidance already exists; skipping duplicate")
-    if items and (not notice_exists or refresh_existing):
+    if items and (not notice_exists or (refresh_existing and not renames_excluded)):
         body = build_comment(resolve_notice_identities(client, items), studio_url.rstrip("/"))
         if dry_run:
             print(body)

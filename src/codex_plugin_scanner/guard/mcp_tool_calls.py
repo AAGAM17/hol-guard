@@ -624,6 +624,11 @@ def _apply_temporary_mcp_grant(
             source="composio-action-deny",
             summary="A denied app action blocks this execution. No batch member may run.",
         )
+    # A decisive extension choice fixes the action. Temporary grants only add
+    # Allow, so probing them cannot change that choice.
+    granted = apply_local_mcp_extension_decision(store, artifact, original_action)
+    if granted is not None and (granted[0] in {"block", "review"} or current.action != "allow"):
+        return replace(current, action=granted[0], source=granted[1], summary=granted[2])
     if original_action == "review":
         selectors = runtime_grant_selectors(
             normalize_browser_mcp_intent(artifact, arguments),
@@ -646,9 +651,6 @@ def _apply_temporary_mcp_grant(
                     summary="A time-bounded approval covers this routine MCP capability.",
                 )
                 break
-    granted = apply_local_mcp_extension_decision(store, artifact, original_action)
-    if granted is not None and (granted[0] in {"block", "review"} or current.action != "allow"):
-        return replace(current, action=granted[0], source=granted[1], summary=granted[2])
     if composio_requires_action_review(artifact.command or ""):
         return replace(
             current,

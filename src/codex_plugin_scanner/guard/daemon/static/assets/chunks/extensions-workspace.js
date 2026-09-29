@@ -5426,6 +5426,7 @@ function useLocalCliCatalog() {
         const next = await fetchLocalCliList();
         if (loadGeneration.current !== generation) return "superseded";
         setData(next);
+        setError(null);
         setDiscoveryNotice(error2 instanceof Error ? error2.message : "Guard could not refresh custom extensions.");
         return "partial";
       } catch (caught) {

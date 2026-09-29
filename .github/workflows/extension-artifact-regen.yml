@@ -1,0 +1,78 @@
+name: Extension artifact regen
+
+# Contributors own canonical contribution sources. The generated projections
+# derived from them (command catalog, native command program, trust map,
+# baselines, digest vectors, directory render) are maintainer-owned and
+# regenerated here after merges so contribution PRs never conflict on them.
+#
+# NOTE: a commit pushed with the default GITHUB_TOKEN does not trigger
+# push-triggered workflows such as ci.yml. Provision a PAT as the
+# GUARD_AUTOMATION_TOKEN secret so regen commits get full main-branch CI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - contributions/**
+      - contracts/extensions/**
+      - tests/fixtures/command-source-*.v1.json
+      - scripts/refresh_extension_artifacts.py
+      - .github/workflows/extension-artifact-regen.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Serialized so back-to-back merges batch: each run regenerates against the
+# HEAD it checks out, so a queued run absorbs intermediate merges.
+concurrency:
+  group: extension-artifact-regen-main
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  regen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          token: ${{ secrets.GUARD_AUTOMATION_TOKEN || github.token }}
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        with:
+          version: "0.9.26"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked development environment
+        run: uv sync --frozen --extra dev
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.88.0 --profile minimal
+      - name: Regenerate maintainer-owned extension artifacts
+        run: uv run --no-sync python scripts/refresh_extension_artifacts.py
+      - name: Commit refreshed artifacts
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "artifacts already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A \
+            contracts/extensions \
+            contracts/managed-controls \
+            docs/guard/extensions \
+            src/codex_plugin_scanner/guard/contracts/data/extensions \
+            src/codex_plugin_scanner/guard/extension_builder \
+            tests/fixtures/extension-controls \
+            tests/fixtures/command-source-*.v1.json \
+            tests/fixtures/guard-command-corpus/decision-diff-report.json \
+            tests/test_guard_extension_trust.py \
+            tests/test_policy_bundle_delivery_runtime.py
+          git commit -m "chore(extensions): regenerate contribution artifacts"
+          git push origin main

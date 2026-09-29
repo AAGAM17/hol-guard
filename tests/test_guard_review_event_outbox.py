@@ -102,7 +102,10 @@ def test_identity_incomplete_event_is_quarantined_with_valid_hash(tmp_path) -> N
         machine_installation_id=event["machine_installation_id"],
     )
     assert store.list_ready_review_events(now=_NOW, limit=10) == []
-    assert store.review_event_outbox_status(now=_NOW)["quarantined_depth"] == 1
+    status = store.review_event_outbox_status(now=_NOW)
+    assert status["quarantined_depth"] == 1
+    assert status["binding_state"] == "quarantined"
+    assert status["binding_hint"] == "Review events require explicit identity repair."
 
 
 def test_later_credential_availability_does_not_silently_adopt_quarantine(tmp_path) -> None:
@@ -190,6 +193,11 @@ def test_acknowledgement_compacts_only_contiguous_binding_prefix(tmp_path) -> No
     assert cursor is not None
     assert cursor["acknowledged_stream_sequence"] == third
     assert [(row["stream_sequence"], row["binding_status"]) for row in retained] == [(quarantined, "quarantined")]
+    status = store.review_event_outbox_status(now=_NOW)
+    assert status["quarantined_depth"] == 1
+    assert status["binding_state"] == "healthy"
+    assert status["binding_hint"] is None
+    assert status["identity_mismatch_depth"] == 0
 
 
 def test_quarantine_cannot_reclassify_an_acknowledged_event(tmp_path) -> None:

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import cast
 
 from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.daemon.local_cli_api import LocalCliApiService
@@ -92,14 +93,22 @@ with tempfile.TemporaryDirectory(prefix="guard-mcp-scale-") as scratch:
         )
     setup_seconds = time.perf_counter() - setup_start
 
-    list_times = []
+    list_times: list[float] = []
     api = LocalCliApiService(store=store)
+    items: list[dict[str, object]] = []
     for _ in range(30):
         started = time.perf_counter()
-        items = api.list_items()["items"]
+        items = cast(list[dict[str, object]], api.list_items()["items"])
         list_times.append((time.perf_counter() - started) * 1000)
     assert len(items) == connection_count
-    assert sum(item["mcp_catalog"]["known_count"] for item in items) == connection_count * 100
+    known_count = 0
+    for item in items:
+        summary = item.get("mcp_catalog")
+        assert isinstance(summary, dict)
+        count = summary.get("known_count")
+        assert isinstance(count, int)
+        known_count += count
+    assert known_count == connection_count * 100
 
     store._policy_integrity_secret_material = lambda *, create: (b"m" * 32, "fixture")
     publisher = NativePolicySnapshotPublisher(
@@ -126,7 +135,8 @@ with tempfile.TemporaryDirectory(prefix="guard-mcp-scale-") as scratch:
     )
     arguments = {}
     artifact_hash = build_tool_call_hash(artifact, arguments, workspace=root, config=config)
-    decision_times = []
+    decision_times: list[float] = []
+    decision = None
     for _ in range(300):
         started = time.perf_counter()
         decision = evaluate_tool_call(
@@ -138,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix="guard-mcp-scale-") as scratch:
             claim_saved_approval=False,
         )
         decision_times.append((time.perf_counter() - started) * 1000)
-    assert decision.action == "allow"
+    assert decision is not None and decision.action == "allow"
     print(
         {
             "machine": platform.machine(),

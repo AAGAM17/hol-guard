@@ -200,6 +200,7 @@ def main() -> int:
         resolvable = [p for p in unmerged if not p.startswith(contributor_owned)]
         if len(resolvable) != len(unmerged):
             return False
+        checked_out = []
         for path in resolvable:
             probe = subprocess.run(
                 ["git", "checkout", "--theirs", "--", path],
@@ -211,8 +212,10 @@ def main() -> int:
                 # modify/delete conflicts have no --theirs stage; the incoming
                 # side deleted it
                 _run(["git", "rm", "-f", "-q", "--ignore-unmatch", "--", path])
-        if resolvable:
-            _run(["git", "add", "-A", *resolvable])
+            else:
+                checked_out.append(path)
+        if checked_out:
+            _run(["git", "add", "-A", "--", *checked_out])
         _run(["git", "commit", "--no-edit"])
         return True
 

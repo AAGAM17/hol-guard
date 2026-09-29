@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard import evaluation_cli_run as cli_run
 from codex_plugin_scanner.guard import evaluation_runner as runner
 from codex_plugin_scanner.guard.evaluation_cli import main
-from codex_plugin_scanner.guard.evaluation_contracts import EvaluationProfile
-from codex_plugin_scanner.guard.evaluation_preflight import setup_evaluation
+from codex_plugin_scanner.guard.evaluation_contracts import EvaluationContractError, EvaluationProfile
+from codex_plugin_scanner.guard.evaluation_preflight import EvaluationSetup, setup_evaluation
 
 from .evaluation_cli_fixtures import _profile
 
@@ -191,5 +193,110 @@ def test_synthetic_setup_skips_host_probe_and_artifacts(tmp_path: Path) -> None:
         assert {check["reason"] for check in setup.report.checks if check["name"] == "host_version"} == {
             "synthetic_adapter_mode"
         }
+    finally:
+        assert setup.cleanup() is True
+
+
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
+def test_run_hides_unexpected_runner_error_and_cleans_owned_setup(monkeypatch, tmp_path: Path, capsys) -> None:
+    profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
+
+    def fail_runner(*_args, **_kwargs):
+        raise RuntimeError("private-diagnostic-marker")
+
+    monkeypatch.setattr(cli_run, "run_synthetic_cases", fail_runner)
+    code, payload = _run_payload(capsys, profile_path)
+
+    assert code == 2
+    assert payload["status"] == "blocked_environment"
+    assert payload["error"]["code"] == "runner_failed"
+    assert payload["cleanup"] == {"removed": True, "recoveryTokenRetained": False}
+    assert "private-diagnostic-marker" not in json.dumps(payload)
+    assert not list(tmp_path.glob("hol-guard-eval-*"))
+    assert not list(tmp_path.glob(".hol-guard-evaluation-recovery-*.token"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
+def test_run_fails_closed_when_witness_setup_fails(monkeypatch, tmp_path: Path, capsys) -> None:
+    profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
+
+    def fail_setup(_self):
+        raise RuntimeError("private-witness-marker")
+
+    monkeypatch.setattr(runner.LocalSideEffectWitness, "__enter__", fail_setup)
+    code, payload = _run_payload(capsys, profile_path)
+
+    assert code == 2
+    assert payload["status"] == "blocked_environment"
+    assert payload["error"]["code"] == "witness_setup_failed"
+    assert payload["run"]["cases"] == []
+    assert "private-witness-marker" not in json.dumps(payload)
+    assert payload["cleanup"] == {"removed": True, "recoveryTokenRetained": False}
+    assert not list(tmp_path.glob("hol-guard-eval-*"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
+def test_run_cleans_setup_when_recovery_token_cannot_be_written(monkeypatch, tmp_path: Path, capsys) -> None:
+    profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
+
+    def fail_token_write(*_args, **_kwargs):
+        raise cli_run._CliError(
+            "cleanup_token_unavailable",
+            "recovery token could not be written",
+            status="blocked_environment",
+        )
+
+    monkeypatch.setattr(cli_run, "_write_recovery_token", fail_token_write)
+    code, payload = _run_payload(capsys, profile_path)
+
+    assert code == 2
+    assert payload["status"] == "blocked_environment"
+    assert payload["error"]["code"] == "cleanup_token_unavailable"
+    assert payload["cleanup"] == {"removed": True, "recoveryTokenRetained": False}
+    assert not list(tmp_path.glob("hol-guard-eval-*"))
+    assert not list(tmp_path.glob(".hol-guard-evaluation-recovery-*.token"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
+def test_run_retains_recovery_token_when_cleanup_is_uncertain(monkeypatch, tmp_path: Path, capsys) -> None:
+    profile_path, _ = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
+    original_cleanup = EvaluationSetup.cleanup
+
+    def uncertain_cleanup(self):
+        assert original_cleanup(self) is True
+        raise EvaluationContractError("cleanup outcome uncertain")
+
+    monkeypatch.setattr(EvaluationSetup, "cleanup", uncertain_cleanup)
+    code, payload = _run_payload(capsys, profile_path)
+
+    assert code == 2
+    assert payload["status"] == "blocked_environment"
+    assert payload["error"]["code"] == "cleanup_failed"
+    assert payload["cleanup"] == {
+        "removed": False,
+        "recoveryTokenRetained": True,
+        "reason": "cleanup_failed",
+    }
+    assert not list(tmp_path.glob("hol-guard-eval-*"))
+    assert len(list(tmp_path.glob(".hol-guard-evaluation-recovery-*.token"))) == 1
+
+
+def test_synthetic_runner_rejects_an_installed_mode_adapter(tmp_path: Path) -> None:
+    _, profile_data = _write_runner_profile(tmp_path, (runner.SHELL_CASE_ID,))
+    profile = EvaluationProfile.from_dict(profile_data)
+    setup = setup_evaluation(profile, execution_mode="synthetic_adapter")
+
+    class InstalledAdapter:
+        mode = "installed"
+        proof_type = "installed_host"
+
+        def run_case(self, *_args, **_kwargs):
+            pytest.fail("installed adapter must not run in synthetic mode")
+
+    try:
+        with pytest.raises(runner.EvaluationRunnerError) as error:
+            runner.run_synthetic_cases(profile, setup, adapter=InstalledAdapter())
+        assert error.value.code == "adapter_rejected"
+        assert error.value.status == "not_run"
     finally:
         assert setup.cleanup() is True

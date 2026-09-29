@@ -63,7 +63,10 @@ def test_packaged_correctness_workloads(
     assert result.queue_bounded
     assert result.rss_growth_bytes < 128 * 1024 * 1024
     # Codex requests add an authenticated challenge round trip in the mixed-harness profile.
-    p95_limit_ms = (1_000 if workload["id"] == "mixed-harness-fairness" else 750) * coverage_scale
+    # The bound also absorbs real native review latency: this test previously
+    # ran the stub fail-safe surface, and real evaluation plus the challenge
+    # round trip lands near 1.1s on scheduling-sensitive runners.
+    p95_limit_ms = (1_500 if workload["id"] == "mixed-harness-fairness" else 750) * coverage_scale
     assert result.p95_ms < p95_limit_ms
     assert result.p99_ms < 2_500 * coverage_scale
     assert result.browser_launches == 0

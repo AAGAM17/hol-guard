@@ -43,14 +43,12 @@ TOOLCHAIN = "1.88.0"
 
 def _run(command: list[str], *, env: dict[str, str] | None = None) -> str:
     merged = dict(os.environ)
-    merged["PYTHONPATH"] = os.pathsep.join(
-        [str(ROOT / "src"), str(ROOT), merged.get("PYTHONPATH", "")]
-    ).rstrip(os.pathsep)
+    merged["PYTHONPATH"] = os.pathsep.join([str(ROOT / "src"), str(ROOT), merged.get("PYTHONPATH", "")]).rstrip(
+        os.pathsep
+    )
     if env:
         merged.update(env)
-    completed = subprocess.run(
-        command, cwd=ROOT, capture_output=True, text=True, env=merged, timeout=900, check=False
-    )
+    completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, env=merged, timeout=900, check=False)
     if completed.returncode:
         detail = (completed.stderr or completed.stdout).strip()
         raise SystemExit(f"refresh failed: {' '.join(command)}\n{detail[:2048]}")
@@ -73,26 +71,20 @@ def _write_json(path: Path, value: object, *, sort_keys: bool = True) -> bool:
     return True
 
 
+def _detector():
+    sys.path.insert(0, str(ROOT / "scripts" / "ci"))
+    import detect_pending_extension_regen
+
+    return detect_pending_extension_regen
+
+
 def contribution_ids() -> list[str]:
     """Extension ids declared by in-tree contribution sources."""
-    ids = {
-        str(_read(path)["id"])
-        for path in (ROOT / "contributions/extensions").glob("*.json")
-    }
-    ids.update(
-        str(_read(path)["extension"]["extension_id"])
-        for path in (ROOT / "contributions/command-sources").glob("command.*.json")
-    )
-    ids.update(
-        "command.mcp-" + str(_read(path)["id"]).removeprefix("mcp.")
-        for path in (ROOT / "contributions/mcp-servers").glob("*.json")
-    )
-    return sorted(ids)
+    return sorted(_detector().contribution_ids())
 
 
 def catalog_ids() -> set[str]:
-    catalog = _read(ROOT / "contracts/extensions/command-catalog.v1.json")
-    return {entry["extension_id"] for entry in catalog["catalog"]}
+    return _detector().catalog_ids()
 
 
 def pending_contribution_ids() -> list[str]:
@@ -158,9 +150,7 @@ def regenerate_projections() -> None:
         if result.returncode == 0:
             return
         if iteration == 2:
-            raise SystemExit(
-                "projection fixpoint did not converge\n" + (result.stderr or result.stdout)[-2048:]
-            )
+            raise SystemExit("projection fixpoint did not converge\n" + (result.stderr or result.stdout)[-2048:])
     return None
 
 
@@ -182,14 +172,10 @@ def refresh_baseline() -> None:
             "extension_ids": [extension.extension_id for extension in registry.extensions],
             "permission_count": sum(len(extension.permissions) for extension in registry.extensions),
             "permission_ids": [
-                permission.permission_id
-                for extension in registry.extensions
-                for permission in extension.permissions
+                permission.permission_id for extension in registry.extensions for permission in extension.permissions
             ],
             "rule_count": sum(len(extension.rules) for extension in registry.extensions),
-            "rule_ids": [
-                rule.rule_id for extension in registry.extensions for rule in extension.rules
-            ],
+            "rule_ids": [rule.rule_id for extension in registry.extensions for rule in extension.rules],
             "permission_examples": {
                 permission.permission_id: permission.example_command
                 for extension in registry.extensions
@@ -215,16 +201,12 @@ def refresh_digest_vector() -> tuple[str, str]:
     from codex_plugin_scanner.guard.runtime import runner
     from tests.managed_controls_activation_support import parse_managed_bundle
 
-    wire = runner.build_builtin_extension_catalog_wire(
-        guard_version="test", generated_at="2026-08-25T12:00:00Z"
-    )
+    wire = runner.build_builtin_extension_catalog_wire(guard_version="test", generated_at="2026-08-25T12:00:00Z")
     catalog_digest = str(wire["catalogDigest"])
     bundle = parse_managed_bundle(_read(SIGNATURE_VECTOR)["bundle"])
     vector = _read(VECTOR)
     vector["catalogDigest"] = catalog_digest
-    vector["canonicalProjectionJson"] = signed_cloud_extension_projection_json(
-        bundle, catalog_digest=catalog_digest
-    )
+    vector["canonicalProjectionJson"] = signed_cloud_extension_projection_json(bundle, catalog_digest=catalog_digest)
     vector["expectedExtensionProjectionDigest"] = signed_cloud_extension_projection_digest(
         bundle, catalog_digest=catalog_digest
     )

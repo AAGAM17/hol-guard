@@ -11,6 +11,7 @@ import { computeTrendBuckets } from "./evidence/evidence-metrics";
 import { normalizeOperatorHealth } from "./operator-health";
 import { canonicalizeGuardDaemonOrigin, standardGuardDaemonOrigin } from "./guard-daemon-origin";
 import { normalizeProtectionHealth, protectionHeadlineFor } from "./protection-health";
+import { checkReasonMapValue } from "./protection-repair-reasons";
 import { normalizeSupplyChainRepairResult } from "./supply-chain-repair-result";
 export { normalizeOperatorHealth } from "./operator-health";
 import {
@@ -3261,19 +3262,6 @@ export class GuardProtectionRepairError extends Error {
     this.pendingCheckIds = stringArrayValue(payload?.pending_check_ids);
     this.checkReasons = checkReasonMapValue(payload?.check_reasons);
   }
-}
-
-const REASON_CODE_ID = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
-
-function checkReasonMapValue(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  const reasons: Record<string, string> = {};
-  for (const [checkId, reason] of Object.entries(value)) {
-    if (!REASON_CODE_ID.test(checkId) || checkId.length > 96) continue;
-    if (typeof reason !== "string" || reason.length > 96 || !REASON_CODE_ID.test(reason)) continue;
-    reasons[checkId] = reason;
-  }
-  return reasons;
 }
 
 function stringArrayValue(value: unknown): string[] {

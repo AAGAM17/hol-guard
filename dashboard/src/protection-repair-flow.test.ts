@@ -8,6 +8,7 @@ import type { GuardProtectionCheck } from "./guard-types";
 import {
   nextProtectionRepairOutcome,
   protectionGapSignature,
+  protectionRepairFinishMessage,
   RECHECK_UNAVAILABLE_SIGNATURE,
   repairOutcomeIsStalled,
   resetRepairOutcomeTracker,
@@ -238,9 +239,15 @@ evidenceDegraded[PROTECTION_CHECK_IDS.indexOf("decision_stream")] = {
   status: "fail",
   reason_code: "decision_stream_degraded",
 };
-assert.match(
-  remainingProtectionRepairMessage(healthWith(evidenceDegraded), (harness) => harness).message,
-  /Run a protected command to produce fresh command evidence\./,
+const degradedMessage = remainingProtectionRepairMessage(
+  healthWith(evidenceDegraded),
+  (harness) => harness,
+).message;
+assert.match(degradedMessage, /Command evidence still needs repair\./);
+assert.doesNotMatch(
+  degradedMessage,
+  /Run a protected command/,
+  "repair copy never instructs the user to run a protected command",
 );
 
 const mixedFailure = checks();
@@ -261,25 +268,48 @@ const mixedMessage = remainingProtectionRepairMessage(
 assert.doesNotMatch(mixedMessage, /Run a protected command/);
 assert.match(mixedMessage, /Command evidence still needs repair\./);
 
+// A successful recheck after a repair that reported reasons is qualified, not
+// claimed as a clean pass.
+assert.equal(
+  protectionRepairFinishMessage({
+    decision_stream: "native_evaluation_unavailable",
+    daemon: "daemon_registration_missing",
+  }),
+  "Protection checks pass, but Guard could not finish: " +
+    "Guard is re-registering the running local runtime. This clears on the next check. " +
+    "Guard could not run the native policy engine to prove command evidence.",
+);
+assert.equal(
+  protectionRepairFinishMessage({ decision_stream: "unlisted_reason_code" }),
+  "Protection checks pass, but Guard could not finish: Reason code: unlisted_reason_code",
+);
+
+const flowSource = readFileSync(new URL("./protection-repair-flow.ts", import.meta.url), "utf8");
+assert.match(flowSource, /protectionRepairFinishMessage\(repairCheckReasons\)/);
+
 // The recovery surface renders stable reason copy and the stalled restart step.
 const recoverySource = readFileSync(new URL("./fleet-protection-recovery.tsx", import.meta.url), "utf8");
+const recoveryPartsSource = readFileSync(
+  new URL("./fleet-protection-recovery-parts.tsx", import.meta.url),
+  "utf8",
+);
 const recoveryCopySource = readFileSync(
   new URL("./fleet-protection-recovery-copy.ts", import.meta.url),
   "utf8",
 );
-assert.match(recoverySource, /protectionReasonText\(check\.reason_code\)/);
-assert.match(recoverySource, /Reason code: \{check\.reason_code\}/);
+assert.match(recoveryPartsSource, /protectionReasonText\(check\.reason_code\)/);
+assert.match(recoveryPartsSource, /Reason code: \{check\.reason_code\}/);
 assert.match(recoverySource, /repairOutcomeIsStalled\(repairOutcomeTracker, currentGapSignature\)/);
 assert.match(
   recoverySource,
   /nextProtectionRepairOutcome\(tracker, outcomeSignature, outcomeHealthSignature\)/,
 );
-assert.match(recoverySource, /STALLED_REPAIR_SUMMARY/);
-assert.match(recoverySource, /STALLED_RECHECK_SUMMARY/);
+assert.match(recoveryPartsSource, /STALLED_REPAIR_SUMMARY/);
+assert.match(recoveryPartsSource, /STALLED_RECHECK_SUMMARY/);
 assert.match(recoverySource, /RECHECK_UNAVAILABLE_SIGNATURE/);
 assert.match(recoverySource, /actionForCheck\(check, props\.repairHarness\)\.label/);
-assert.match(recoverySource, /\{RUNTIME_STOP_COMMAND\}/);
-assert.match(recoverySource, /\{RUNTIME_START_COMMAND\}/);
+assert.match(recoveryPartsSource, /\{RUNTIME_STOP_COMMAND\}/);
+assert.match(recoveryPartsSource, /\{RUNTIME_START_COMMAND\}/);
 assert.match(recoveryCopySource, /Repair stopped after two attempts ended the same way\./);
 assert.match(recoveryCopySource, /Repair stopped after two attempts could not recheck protection\./);
 assert.match(recoveryCopySource, /hol-guard daemon stop/);

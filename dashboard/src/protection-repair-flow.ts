@@ -12,6 +12,7 @@ import {
   remainingProtectionRepairMessage,
   repairableProtectionGaps,
 } from "./protection-health";
+import { protectionReasonText } from "./protection-reason-copy";
 
 export class ProtectionRepairFlowError extends Error {
   readonly failedHarnesses: string[];
@@ -88,6 +89,13 @@ export function activeFailedHarnesses(failedHarnesses: string[], repairHarnesses
   return Array.from(new Set(failedHarnesses)).filter((harness) => repairable.has(harness));
 }
 
+export function protectionRepairFinishMessage(checkReasons: Record<string, string>): string {
+  const details = Object.entries(checkReasons)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, reason]) => protectionReasonText(reason) ?? `Reason code: ${reason}`);
+  return `Protection checks pass, but Guard could not finish: ${details.join(" ")}`;
+}
+
 export async function runAutomaticProtectionRepair(input: {
   harnesses: string[];
   displayName: (harness: string) => string;
@@ -134,9 +142,15 @@ export async function runAutomaticProtectionRepair(input: {
   }
   const remainingHealth = protectionHealthFor(refreshedSnapshot);
   if (remainingHealth.state === "protected") {
+    if (Object.keys(repairCheckReasons).length > 0) {
+      return protectionRepairFinishMessage(repairCheckReasons);
+    }
     return "Automatic repairs completed. Guard rechecked every protection layer below.";
   }
   if (!hasRepairableProtectionGap(remainingHealth.checks)) {
+    if (Object.keys(repairCheckReasons).length > 0) {
+      return protectionRepairFinishMessage(repairCheckReasons);
+    }
     const hasUnsupportedGaps = remainingHealth.checks.some(isUnsupportedPlatformCheck);
     if (hasUnsupportedGaps) {
       return "Supported protection repairs completed. Containment remains unavailable on this platform; Guard remains fail-closed.";

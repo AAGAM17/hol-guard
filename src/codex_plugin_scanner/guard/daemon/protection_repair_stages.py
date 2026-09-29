@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import Protocol
 
 from ..models import GuardRuntimeRegistration
@@ -76,10 +77,27 @@ def protection_repair_reason_detail(check_reasons: Mapping[str, str]) -> str:
     return " ".join(f"{check_id}:{reason}" for check_id, reason in sorted(check_reasons.items()))
 
 
+class IncompleteRepairDiagnostics(Protocol):
+    def record(self, event: str, *, detail: str | None = None) -> object: ...
+
+
+def record_incomplete_protection_repair(
+    diagnostics: IncompleteRepairDiagnostics | None,
+    check_reasons: Mapping[str, str],
+) -> None:
+    """Log one incomplete repair attempt with stable per-check reasons."""
+
+    detail = protection_repair_reason_detail(check_reasons)
+    with suppress(Exception):
+        if diagnostics is not None:
+            _ = diagnostics.record("protection_repair_incomplete", detail=detail or None)
+
+
 __all__ = (
     "RuntimeRegistrationStore",
     "harness_hooks_repair_reason",
     "integrity_repair_reasons",
     "protection_repair_reason_detail",
+    "record_incomplete_protection_repair",
     "repair_daemon_registration",
 )

@@ -1,4 +1,4 @@
-import { r as reactExports, U as hasRepairableProtectionGap, V as isUnsupportedPlatformCheck, X as remainingProtectionRepairParts, Y as protectionGapSignature, Z as repairOutcomeIsStalled, _ as ProtectionRepairFlowError, $ as RECHECK_UNAVAILABLE_SIGNATURE, a0 as nextProtectionRepairOutcome, a1 as waitForAuthorizeUrl, a2 as startOrRecoverCloudConnect, a3 as safeCloudConnectUrl, a4 as openPackageFirewallAuthorizeFallback, a5 as waitForCloudConnection, a6 as activeFailedHarnesses, a7 as resetRepairOutcomeTracker, j as jsxRuntimeExports, a8 as HiMiniWrenchScrewdriver, A as ActionButton, s as HiMiniCheckCircle, I as HiMiniChevronDown, i as harnessDisplayName, a9 as HiMiniExclamationCircle, k as isConnectableAppHarness, p as protectionHealthFor, l as useProtectionPresentationState, t as GuardHero, aa as ProofStrip, S as SectionLabel, n as EmptyState, c as HiMiniChevronRight, ab as HiMiniEye, ac as HiMiniXCircle, ad as HiMiniClipboardDocumentCheck, ae as HiMiniClipboard } from "../guard-dashboard.js";
+import { U as isUnsupportedPlatformCheck, i as harnessDisplayName, j as jsxRuntimeExports, V as RECHECK_UNAVAILABLE_SIGNATURE, X as protectionReasonText, r as reactExports, A as ActionButton, Y as HiMiniExclamationCircle, Z as hasRepairableProtectionGap, _ as remainingProtectionRepairParts, $ as protectionGapSignature, a0 as repairOutcomeIsStalled, a1 as ProtectionRepairFlowError, a2 as nextProtectionRepairOutcome, a3 as waitForAuthorizeUrl, a4 as startOrRecoverCloudConnect, a5 as safeCloudConnectUrl, a6 as openPackageFirewallAuthorizeFallback, a7 as waitForCloudConnection, a8 as activeFailedHarnesses, a9 as resetRepairOutcomeTracker, aa as HiMiniWrenchScrewdriver, s as HiMiniCheckCircle, I as HiMiniChevronDown, k as isConnectableAppHarness, p as protectionHealthFor, l as useProtectionPresentationState, t as GuardHero, ab as ProofStrip, S as SectionLabel, n as EmptyState, c as HiMiniChevronRight, ac as HiMiniEye, ad as HiMiniXCircle, ae as HiMiniClipboardDocumentCheck, af as HiMiniClipboard } from "../guard-dashboard.js";
 import { S as SUPPORTED_APPS_BRIEF, d as defaultConnectHarness, A as APP_STATUS_LABELS } from "./app-catalog.js";
 import { u as useHarnessDetection, d as detectedHarnesses, v as visibleHarnessesFor, r as resolveDetectedAppStatus } from "./harness-detection.js";
 import { C as ConnectGuardCloudButton } from "./connect-guard-cloud-button.js";
@@ -71,54 +71,6 @@ function resolveFleetHeroCopy(cloudState, activeInstallCount, protectionState, u
     secondaryCtaStartsCloudConnect: false
   };
 }
-const PROTECTION_REASON_COPY = {
-  // Runtime registration and heartbeat.
-  daemon_registration_missing: "Guard is re-registering the running local runtime. This clears on the next check.",
-  daemon_registration_unavailable: "Guard could not write the local runtime registration.",
-  daemon_registration_foreign: "A different Guard session owns the runtime registration, so this runtime will not overwrite it.",
-  daemon_runtime_unavailable: "The local Guard runtime is not answering. Restart Guard to restore local protection.",
-  daemon_heartbeat_stale: "The local Guard runtime stopped reporting heartbeats. Restart Guard to restore local protection.",
-  daemon_heartbeat_unavailable: "Guard has no recorded heartbeat for the local runtime yet.",
-  daemon_heartbeat_invalid: "The recorded runtime heartbeat is unreadable.",
-  daemon_heartbeat_future: "The recorded runtime heartbeat is dated in the future, so Guard cannot trust it yet.",
-  daemon_healthy: "The local Guard runtime is healthy.",
-  daemon_runtime_drift: "The running runtime does not match the registered runtime. Restart Guard to converge.",
-  daemon_containment_health_invalid: "The runtime reported unreadable containment health. Guard stays fail-closed.",
-  // Containment compatibility.
-  containment_health_invalid: "Guard could not read containment health from the local runtime.",
-  containment_health_unavailable: "Guard could not obtain containment health from the local runtime.",
-  containment_probe_failed: "The containment self-probe did not confirm enforcement. Guard stays fail-closed.",
-  containment_probe_stale: "The containment self-probe proof is stale and needs to be refreshed.",
-  containment_probe_future: "The containment self-probe proof is dated in the future, so Guard cannot trust it yet.",
-  containment_schema_mismatch: "The containment schema version does not match this Guard build.",
-  policy_version_mismatch: "The containment policy version does not match this Guard build.",
-  policy_digest_mismatch: "The containment policy contents do not match this Guard build.",
-  effect_contract_mismatch: "The effect contract version does not match this Guard build.",
-  decision_plane_mismatch: "The decision plane schema version does not match this Guard build.",
-  unsupported_platform: "Containment controls are not available on this platform.",
-  // Command evidence.
-  native_evaluation_unavailable: "Guard could not run the native policy engine to prove command evidence.",
-  decision_stream_degraded: "Guard could not restore command evidence persistence.",
-  decision_stream_health_unavailable: "Guard could not read the command evidence health store.",
-  // App hooks.
-  no_managed_harness: "No managed AI app is connected, so there are no hooks to verify.",
-  hook_verification_failed: "Guard could not verify the managed app hooks.",
-  one_or_more_hooks_inactive: "One or more managed app hooks are inactive.",
-  hooks_inactive: "One or more managed app hooks are inactive.",
-  hook_attestation_unavailable: "Guard could not obtain hook attestation proof.",
-  hook_repair_failed: "Guard tried to repair managed app hooks and some did not recover.",
-  hook_repair_unknown: "Guard could not confirm whether managed app hook repair finished.",
-  // Integrity.
-  rule_pack_runtime_proof_unavailable: "Guard has no runtime proof for the active local rule packs yet.",
-  rule_packs_disabled: "Local rule packs are disabled until their integrity is proven.",
-  tamper_checks_failed: "Managed Guard files or hooks did not pass integrity checks.",
-  tamper_proof_unavailable: "Guard has no integrity proof for its managed files yet.",
-  local_integrity_unproven: "Guard could not establish a local integrity proof.",
-  proof_unavailable: "Guard has no proof for this check yet."
-};
-function protectionReasonText(reasonCode) {
-  return PROTECTION_REASON_COPY[reasonCode] ?? null;
-}
 function recoverySummary(failCount, unknownCount, needsConnectedApp, failedLabels = [], unsupportedCount = 0) {
   const unsupportedNote = unsupportedCount > 0 ? " Containment remains unavailable on this platform, so full protection cannot be reached here." : "";
   const protectionScope = unsupportedCount > 0 ? "supported" : "local";
@@ -188,17 +140,6 @@ const PROTECTION_CHECK_ACTIONS = {
     detail: "Managed Guard files or hooks did not pass integrity checks."
   }
 };
-function cloudPolicyRecoveryHint(input) {
-  const cloudFailed = input.cloudSyncState === "failed" || Boolean(input.cloudPolicySyncError);
-  if (input.cloudState !== "local_only" && (!cloudFailed || !input.dashboardUrl)) return null;
-  return {
-    actionLabel: input.cloudState === "local_only" ? "Connect Guard Cloud" : "Open Guard Cloud",
-    detail: "Local Guard remains active. Guard Cloud policy proof is separate from local repair and is not changed here.",
-    href: input.cloudState === "local_only" ? input.connectUrl : input.dashboardUrl,
-    startsOAuth: input.cloudState === "local_only",
-    title: "Guard Cloud policy proof"
-  };
-}
 function actionForCheck(check, repairHarness) {
   if (isUnsupportedPlatformCheck(check)) {
     return {
@@ -217,6 +158,16 @@ function actionForCheck(check, repairHarness) {
     label: check.check_id.replace(/_/g, " "),
     detail: "Guard could not confirm this protection proof."
   };
+}
+function ProtectionGapReason({ check }) {
+  const reasonText = protectionReasonText(check.reason_code);
+  if (reasonText === null) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 block font-mono text-[10px] text-slate-400", children: [
+      "Reason code: ",
+      check.reason_code
+    ] });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-slate-500", children: reasonText });
 }
 function ProtectionGapItem({
   action,
@@ -245,15 +196,31 @@ function ProtectionGapItem({
     ] })
   ] }) });
 }
-function ProtectionGapReason({ check }) {
-  const reasonText = protectionReasonText(check.reason_code);
-  if (reasonText === null) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "mt-0.5 block font-mono text-[10px] text-slate-400", children: [
-      "Reason code: ",
-      check.reason_code
-    ] });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-slate-500", children: reasonText });
+function StalledRepairPanel({
+  tracker,
+  repairableGaps,
+  repairHarness
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 text-sm text-slate-600", "aria-live": "polite", role: "status", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium text-brand-dark", children: tracker?.signature === RECHECK_UNAVAILABLE_SIGNATURE ? STALLED_RECHECK_SUMMARY : STALLED_REPAIR_SUMMARY }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-1 list-disc space-y-0.5 pl-4", children: repairableGaps.map((check) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { children: [
+      actionForCheck(check, repairHarness).label,
+      " — ",
+      protectionReasonText(check.reason_code) ?? /* @__PURE__ */ jsxRuntimeExports.jsxs("code", { className: "font-mono text-[11px]", children: [
+        "Reason code: ",
+        check.reason_code
+      ] })
+    ] }, check.check_id)) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2", children: [
+      "Quit and reopen HOL Guard to restart the local runtime. Without the desktop app, run",
+      " ",
+      /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: INLINE_COMMAND_CLASS, children: RUNTIME_STOP_COMMAND }),
+      ", then",
+      " ",
+      /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: INLINE_COMMAND_CLASS, children: RUNTIME_START_COMMAND }),
+      "."
+    ] })
+  ] });
 }
 function TargetedRepairButton({
   harness,
@@ -265,6 +232,17 @@ function TargetedRepairButton({
     harnessDisplayName(harness),
     " repair"
   ] });
+}
+function cloudPolicyRecoveryHint(input) {
+  const cloudFailed = input.cloudSyncState === "failed" || Boolean(input.cloudPolicySyncError);
+  if (input.cloudState !== "local_only" && (!cloudFailed || !input.dashboardUrl)) return null;
+  return {
+    actionLabel: input.cloudState === "local_only" ? "Connect Guard Cloud" : "Open Guard Cloud",
+    detail: "Local Guard remains active. Guard Cloud policy proof is separate from local repair and is not changed here.",
+    href: input.cloudState === "local_only" ? input.connectUrl : input.dashboardUrl,
+    startsOAuth: input.cloudState === "local_only",
+    title: "Guard Cloud policy proof"
+  };
 }
 function cloudConnectPendingMessage(hasAuthorizeUrl, opened) {
   if (opened) {
@@ -497,26 +475,14 @@ function FleetProtectionRecovery(props) {
             cloudConnectState ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: cloudConnectMessageClassName, role: "status", children: cloudConnectState.message }) : null
           ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { href: cloudPolicyHint.href, variant: "outline", className: "mt-2", children: cloudPolicyHint.actionLabel })
         ] }) : null,
-        repairStalled ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 text-sm text-slate-600", "aria-live": "polite", role: "status", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium text-brand-dark", children: repairOutcomeTracker?.signature === RECHECK_UNAVAILABLE_SIGNATURE ? STALLED_RECHECK_SUMMARY : STALLED_REPAIR_SUMMARY }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-1 list-disc space-y-0.5 pl-4", children: repairableGaps.map((check) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { children: [
-            actionForCheck(check, props.repairHarness).label,
-            " — ",
-            protectionReasonText(check.reason_code) ?? /* @__PURE__ */ jsxRuntimeExports.jsxs("code", { className: "font-mono text-[11px]", children: [
-              "Reason code: ",
-              check.reason_code
-            ] })
-          ] }, check.check_id)) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2", children: [
-            "Quit and reopen HOL Guard to restart the local runtime. Without the desktop app, run",
-            " ",
-            /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: INLINE_COMMAND_CLASS, children: RUNTIME_STOP_COMMAND }),
-            ", then",
-            " ",
-            /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: INLINE_COMMAND_CLASS, children: RUNTIME_START_COMMAND }),
-            "."
-          ] })
-        ] }) : null,
+        repairStalled ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+          StalledRepairPanel,
+          {
+            tracker: repairOutcomeTracker,
+            repairableGaps,
+            repairHarness: props.repairHarness
+          }
+        ) : null,
         !repairStalled && repairState && hasRepairableGaps ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "p",
           {

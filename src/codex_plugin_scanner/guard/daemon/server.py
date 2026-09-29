@@ -298,7 +298,7 @@ from .protection_repair_retry import containment_repair_outcome, incomplete_prot
 from .protection_repair_stages import (
     harness_hooks_repair_reason,
     integrity_repair_reasons,
-    protection_repair_reason_detail,
+    record_incomplete_protection_repair,
     repair_daemon_registration,
 )
 from .request_executor import BoundedRequestExecutor as _BoundedRequestExecutor
@@ -4913,12 +4913,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         return parsed if isinstance(parsed, dict) else None
 
     def _record_incomplete_protection_repair(self, check_reasons: Mapping[str, str]) -> None:
-        detail = protection_repair_reason_detail(check_reasons)
-        with suppress(Exception):
-            self._daemon_server().diagnostics.record(
-                "protection_repair_incomplete",
-                detail=detail or None,
-            )
+        record_incomplete_protection_repair(self._daemon_server().diagnostics, check_reasons)
 
     def _handle_protection_repair(self, payload: dict[str, object]) -> None:
         check_id = self._optional_string(payload.get("check_id"))
@@ -8366,6 +8361,11 @@ class GuardDaemonServer:
             start_serve_thread(self, already_locked=True)
             if not self._serve_loop_started.wait(timeout=_DAEMON_SERVE_THREAD_START_TIMEOUT_SECONDS):
                 raise RuntimeError("Guard daemon serve thread did not become ready")
+            # Re-check under _finish_service_lock: shutdown may have been
+            # requested while the serve loop was coming up. Publishing or
+            # registering after shutdown would resurrect a stopped daemon.
+            if self._shutdown_started.is_set() or not startup_generation_is_current(self, generation):
+                raise RuntimeError("Guard daemon stopped during startup")
             self._publish_listen_state()
             self._diagnostics.record("daemon_listen_ready")
             self._warm_desktop_bootstrap_cache()
@@ -8391,7 +8391,12 @@ class GuardDaemonServer:
         self._persist_aibom_inventory_context()
 
         def start_post_listen_workers() -> None:
-            if generation is not None and not startup_generation_is_current(self, generation):
+            # The shutdown/generation re-check and the registration publish
+            # must stay atomic under _finish_service_lock: _finish_service
+            # takes the same lock, so a completed shutdown can never be
+            # followed by a late register()/heartbeat start resurrecting the
+            # runtime row.
+            if self._shutdown_started.is_set() or not startup_generation_is_current(self, generation):
                 raise RuntimeError("Guard daemon stopped during startup")
             self._publish_listen_state()
             self._server.start_unclassified_watchdog()

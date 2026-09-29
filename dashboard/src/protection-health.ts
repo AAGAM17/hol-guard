@@ -291,7 +291,6 @@ export function remainingProtectionRepairMessage(
   const failedHookApps = remainingParts.failedHookHarnesses.map(displayName);
   const remainingMessages: string[] = [];
   const unsupportedCount = health.checks.filter(isUnsupportedPlatformCheck).length;
-  const repairableGaps = repairableProtectionGaps(health.checks);
   const daemonCheck = health.checks.find((check) => check.check_id === "daemon");
   const decisionStreamCheck = health.checks.find((check) => check.check_id === "decision_stream");
   if (remainingParts.needsConnectedApp) {
@@ -310,8 +309,6 @@ export function remainingProtectionRepairMessage(
       remainingMessages.push(
         "Guard could not run the native policy engine to prove command evidence.",
       );
-    } else if (repairableGaps.length === 1 && repairableGaps[0]?.check_id === "decision_stream") {
-      remainingMessages.push("Run a protected command to produce fresh command evidence.");
     } else {
       remainingMessages.push("Command evidence still needs repair.");
     }

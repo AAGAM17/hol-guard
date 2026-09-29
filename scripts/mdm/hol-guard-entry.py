@@ -873,7 +873,7 @@ def _record_extraction_owner() -> None:
             return
         try:
             guard_version = _packaged_version()
-        except Exception:
+        except (Exception, SystemExit):
             guard_version = "unknown"
         payload = {
             "schema": "guard.onefile-extraction-owner.v1",

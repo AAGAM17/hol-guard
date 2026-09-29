@@ -101,6 +101,79 @@ def test_staging_uses_only_persisted_request_material(tmp_path: Path) -> None:
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_uploaded_snapshot_only_survives_scope_narrowing() -> None:
+    current = _request()
+    current["decision_v2_json"] = {"action": "review", "approval_scopes": ["artifact"]}
+    uploaded = copy.deepcopy(current)
+    cast(dict[str, object], uploaded["decision_v2_json"])["approval_scopes"] = ["artifact", "task"]
+    assert native._compatible_uploaded_snapshot("request-1", current, uploaded)
+
+    altered = copy.deepcopy(uploaded)
+    altered["raw_command_text"] = "git push"
+    assert not native._compatible_uploaded_snapshot("request-1", current, altered)
+    altered = copy.deepcopy(uploaded)
+    cast(dict[str, object], altered["decision_v2_json"])["action"] = "allow"
+    assert not native._compatible_uploaded_snapshot("request-1", current, altered)
+    altered = copy.deepcopy(uploaded)
+    cast(dict[str, object], altered["decision_v2_json"])["approval_scopes"] = ["task"]
+    assert not native._compatible_uploaded_snapshot("request-1", current, altered)
+
+
+def test_native_delivery_selects_matching_authenticated_upload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    current = _request()
+    current["decision_v2_json"] = {"action": "review", "approval_scopes": ["artifact"]}
+    uploaded = copy.deepcopy(current)
+    cast(dict[str, object], uploaded["decision_v2_json"])["approval_scopes"] = ["artifact", "task"]
+    unrelated = copy.deepcopy(uploaded)
+    unrelated["raw_command_text"] = "git push"
+
+    class StoreWithSnapshots(_Store):
+        def list_review_event_snapshots(self, request_id: str) -> list[dict[str, object]]:
+            assert request_id == "request-1"
+            return [unrelated, uploaded, copy.deepcopy(uploaded)]
+
+    probes: list[dict[str, object]] = []
+
+    def context_probe(_store: object, _home: Path, _request_id: str, snapshot: object) -> dict[str, object]:
+        assert isinstance(snapshot, dict)
+        probes.append(snapshot)
+        marker = "a" if snapshot == uploaded else "b"
+        return {
+            field: marker
+            for field in (
+                "request_binding",
+                "action_binding",
+                "intent_binding",
+                "revision_binding",
+                "policy_binding",
+                "retry_scope_binding",
+            )
+        }
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.runtime.native_workspace_review_context.build_native_workspace_review_context",
+        context_probe,
+    )
+    decision = {
+        field: "a"
+        for field in (
+            "request_binding",
+            "action_binding",
+            "intent_binding",
+            "revision_binding",
+            "policy_binding",
+            "retry_scope_binding",
+        )
+    }
+    store = StoreWithSnapshots(current)
+    assert native.matching_workspace_review_snapshot(store, tmp_path, "request-1", decision, current) == uploaded
+    assert probes == [current, uploaded]
+    with pytest.raises(native.NativeWorkspaceReviewError, match="native_workspace_review_decision_binding_mismatch"):
+        native.matching_workspace_review_snapshot(
+            store, tmp_path, "request-1", {**decision, "policy_binding": "wrong"}, current
+        )
+
+
 def test_windows_staging_uses_acl_bound_atomic_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = _Store(_request())
     ensured: list[Path] = []
@@ -206,6 +279,11 @@ def test_signed_deny_is_block_to_real_waiter_and_grok_harness(
         action_envelope_json={"command": "git status"},
     )
     store.add_approval_request(request, "2026-09-25T12:00:00+00:00")
+    monkeypatch.setattr(
+        native,
+        "matching_workspace_review_snapshot",
+        lambda _store, _home, _request_id, _decision, current: dict(current),
+    )
     monkeypatch.setattr(native, "native_runtime_status", _status)
     monkeypatch.setattr(native, "_isolated_environment", lambda: {})
     monkeypatch.setattr(

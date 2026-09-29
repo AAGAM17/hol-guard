@@ -13,8 +13,8 @@ from .native_workspace_review import (
     NativeWorkspaceReviewError,
     NativeWorkspaceReviewStore,
     apply_native_workspace_review_decision,
+    matching_workspace_review_snapshot,
 )
-from .native_workspace_review_context import build_native_workspace_review_context
 
 _NATIVE_PAYLOAD_FIELDS = frozenset({"localRequestId", "receiptId", "envelope"})
 _MAX_IDENTIFIER_LENGTH = 128
@@ -129,11 +129,9 @@ def require_native_workspace_review_authority(
     if not isinstance(guard_home, Path):
         raise NativeWorkspaceReviewQueueError("native_workspace_review_not_enrolled")
     try:
-        context = build_native_workspace_review_context(store, guard_home, command.local_request_id)
-    except (OSError, TypeError, ValueError):
-        context = None
-    if context is None:
-        raise NativeWorkspaceReviewQueueError("native_workspace_review_not_enrolled")
+        matching_workspace_review_snapshot(store, guard_home, command.local_request_id, command.envelope, request)
+    except (NativeWorkspaceReviewError, OSError, TypeError, ValueError) as error:
+        raise NativeWorkspaceReviewQueueError("native_workspace_review_not_enrolled") from error
 
 
 def execute_native_workspace_review_command(

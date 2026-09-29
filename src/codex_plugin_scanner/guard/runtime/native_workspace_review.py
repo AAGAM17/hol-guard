@@ -161,6 +161,89 @@ def _request_state(request_id: str, request: Mapping[str, object]) -> dict[str, 
     }
 
 
+def _compatible_uploaded_snapshot(
+    request_id: str,
+    current: Mapping[str, object],
+    uploaded: Mapping[str, object],
+) -> bool:
+    """Accept a frozen upload only when local scope projection narrowed it."""
+
+    try:
+        current_state = _request_state(request_id, current)
+        uploaded_state = _request_state(request_id, uploaded)
+    except NativeWorkspaceReviewError:
+        return False
+    if any(current_state[field] != uploaded_state[field] for field in ("action", "intent", "revision")):
+        return False
+    current_policy = current_state["policy"]
+    uploaded_policy = uploaded_state["policy"]
+    if not isinstance(current_policy, dict) or not isinstance(uploaded_policy, dict):
+        return False
+    current_decision_value = current_policy.get("decision_v2")
+    uploaded_decision_value = uploaded_policy.get("decision_v2")
+    if not isinstance(current_decision_value, dict) or not isinstance(uploaded_decision_value, dict):
+        return current_policy == uploaded_policy
+    current_decision = cast(dict[str, object], current_decision_value)
+    uploaded_decision = cast(dict[str, object], uploaded_decision_value)
+    if set(current_decision) != set(uploaded_decision):
+        return False
+    current_scopes = current_decision.get("approval_scopes")
+    uploaded_scopes = uploaded_decision.get("approval_scopes")
+    if not isinstance(current_scopes, list) or not isinstance(uploaded_scopes, list):
+        return current_policy == uploaded_policy
+    current_scopes = cast(list[object], current_scopes)
+    uploaded_scopes = cast(list[object], uploaded_scopes)
+    narrowed = [scope for scope in uploaded_scopes if scope in current_scopes]
+    if narrowed != current_scopes:
+        return False
+    return {
+        **current_policy,
+        "decision_v2": {**current_decision, "approval_scopes": uploaded_scopes},
+    } == uploaded_policy
+
+
+def matching_workspace_review_snapshot(
+    store: NativeWorkspaceReviewStore,
+    guard_home: Path,
+    request_id: str,
+    decision: Mapping[str, object],
+    current: Mapping[str, object],
+) -> dict[str, object]:
+    """Find the immutable upload bound to this decision without widening it."""
+
+    list_snapshots = getattr(store, "list_review_event_snapshots", None)
+    if not callable(list_snapshots):
+        return dict(current)
+    from .native_workspace_review_context import build_native_workspace_review_context
+
+    snapshots: object = list_snapshots(request_id)
+    if not isinstance(snapshots, list):
+        raise NativeWorkspaceReviewError("native_workspace_review_request_invalid")
+    bindings = (
+        "request_binding",
+        "action_binding",
+        "intent_binding",
+        "revision_binding",
+        "policy_binding",
+        "retry_scope_binding",
+    )
+    seen_states: set[bytes] = set()
+    for candidate_value in (current, *cast(list[object], snapshots)):
+        if not isinstance(candidate_value, Mapping):
+            continue
+        candidate = cast(Mapping[str, object], candidate_value)
+        if not _compatible_uploaded_snapshot(request_id, current, candidate):
+            continue
+        encoded = _canonical_json_bytes(_request_state(request_id, candidate))
+        if encoded in seen_states:
+            continue
+        seen_states.add(encoded)
+        context = build_native_workspace_review_context(store, guard_home, request_id, candidate)
+        if context is not None and all(context.get(field) == decision.get(field) for field in bindings):
+            return dict(candidate)
+    raise NativeWorkspaceReviewError("native_workspace_review_decision_binding_mismatch")
+
+
 def stage_workspace_review_request(
     store: NativeWorkspaceReviewStore,
     guard_home: Path,
@@ -310,7 +393,13 @@ def apply_native_workspace_review_decision(
     request = store.get_approval_request(request_id)
     if isinstance(request, dict) and request.get("status") == "resolved":
         return _reverify_resolved_decision(store, guard_home, request_id, request, decision, resolved_at=resolved_at)
-    expected_request, request_snapshot_digest = _stage_workspace_review_request(store, guard_home, request_id)
+    if not isinstance(request, dict):
+        raise NativeWorkspaceReviewError("native_workspace_review_request_missing")
+    snapshot = matching_workspace_review_snapshot(store, guard_home, request_id, decision, request)
+    _, request_snapshot_digest = _stage_workspace_review_request(
+        store, guard_home, request_id, request_snapshot=snapshot
+    )
+    expected_request = request
     response = _native_response(
         guard_home=guard_home,
         request_id=request_id,

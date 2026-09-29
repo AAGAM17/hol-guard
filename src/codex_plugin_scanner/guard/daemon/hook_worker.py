@@ -10,15 +10,17 @@ Security:
   request that supplied only ``guard_source_ref`` without full output.
 - Never calls ``run_guard_command()``.
 - Native PostToolUse is decided by Rust for ``auto``/``force``. When review
-  cannot complete, PostToolUse continues; PreToolUse uses the emergency-safe
-  floor. Explicit ``off`` is a fail-safe disablement in production; only a
-  test-injected oracle may run.
-- Supported generic PreToolUse is decided by Rust. Native failure uses the
-  mechanical emergency-safe action-class floor: local inspection may continue,
-  while mutating, network, secret, destructive, and uncertain actions pause.
+  cannot complete, PostToolUse continues; protected PreToolUse pauses unless
+  acknowledged recording-only mode applies. Explicit ``off`` is a fail-safe
+  disablement in production; only a test-injected oracle may run.
+- Supported generic PreToolUse is decided by Rust. Native failure denies
+  protected actions without acknowledged recording-only mode authority.
   Explicit off/shadow have no production semantic fallback. Native block
-  results stay mechanical. Native review pauses the tool and queues an
-  approval-center request; it never escapes to the Python semantic CLI path.
+  results stay mechanical. A command-policy authority block includes a local
+  repair link and does not rebuild protection from the hook. The current
+  action stays denied, and this worker never calls the CLI.
+  Native review pauses the tool and queues an approval-center request; it
+  never escapes to the Python semantic CLI path.
 """
 
 from __future__ import annotations

@@ -307,6 +307,20 @@ def run_synthetic_cases(
                             )
                         )
                     break
+                except (OSError, RuntimeError, ValueError):
+                    error = EvaluationRunnerError("witness_failed", "synthetic witness operation failed")
+                    cases.append(_case_record(case_id, status=error.status, error=error))
+                    for remaining in selected[index + 1 :]:
+                        cases.append(
+                            _case_record(
+                                remaining,
+                                status="not_run",
+                                error=EvaluationRunnerError(
+                                    "run_aborted", "evaluation run stopped after an earlier case"
+                                ),
+                            )
+                        )
+                    break
     except EvaluationRunnerError:
         raise
     except (OSError, RuntimeError, ValueError):

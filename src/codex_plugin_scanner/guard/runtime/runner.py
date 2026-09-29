@@ -4546,9 +4546,7 @@ class _GuardOAuthRefreshRateLimitedError(RuntimeError):
 
     def __init__(self, retry_after_seconds: int) -> None:
         self.retry_after_seconds = retry_after_seconds
-        super().__init__(
-            f"Guard OAuth token refresh was rate limited. Retry after {retry_after_seconds} seconds."
-        )
+        super().__init__(f"Guard OAuth token refresh was rate limited. Retry after {retry_after_seconds} seconds.")
 
 
 _OAUTH_REFRESH_CIRCUIT_STATE_KEY = "guard_oauth_refresh_circuit"

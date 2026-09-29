@@ -354,7 +354,7 @@ def test_reclaim_worker_starts_only_when_frozen(monkeypatch: pytest.MonkeyPatch)
     assert thread is not None
     try:
         deadline = time.monotonic() + 5
-        while not calls and time.monotonic() < deadline:
+        while server.onefile_extraction_status is None and time.monotonic() < deadline:
             time.sleep(0.01)
         assert calls, "reclaim worker never ran"
         assert calls[0]["temp_root"] == Path(tempfile.gettempdir())

@@ -272,6 +272,36 @@ def test_reclaim_ignores_symlinked_extraction_dirs(tmp_path: Path) -> None:
     assert target.exists()
 
 
+def test_reclaim_stops_when_should_stop_flips(tmp_path: Path) -> None:
+    dirs = [_extraction_dir(tmp_path, f"_MEIdead{index:03d}") for index in range(5)]
+    for directory in dirs:
+        _write_marker(directory, pid=20, parent_pid=21)
+        _age_directory(directory)
+
+    checks = 0
+
+    def stop_after_two() -> bool:
+        nonlocal checks
+        checks += 1
+        return checks > 2
+
+    result = reclaim_orphaned_extraction_dirs(
+        temp_root=tmp_path,
+        current_meipass=None,
+        now=_NOW,
+        pid_alive=_no_live_pids,
+        should_stop=stop_after_two,
+    )
+
+    assert result.reclaimed_count == 2
+    assert sum(directory.exists() for directory in dirs) == 3
+
+
+def test_pid_alive_fails_closed_on_malformed_pid() -> None:
+    assert onefile_extraction._pid_alive(0)  # pyright: ignore[reportPrivateUsage]
+    assert onefile_extraction._pid_alive(-42)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_reclaim_rechecks_marker_before_deleting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     extraction = _extraction_dir(tmp_path)
     _write_marker(extraction, pid=11, parent_pid=12)
@@ -299,12 +329,22 @@ def test_reclaim_rechecks_marker_before_deleting(tmp_path: Path, monkeypatch: py
     assert len(calls) == 2
 
 
-def test_entry_records_owner_after_fast_paths_before_guard_imports() -> None:
+def test_entry_records_owner_before_bridge_and_guard_imports() -> None:
     source = _ENTRY_SCRIPT.read_text(encoding="utf-8")
-    bridge = source.index("_try_codex_daemon_bridge()")
-    record = source.index("record_extraction_owner(meipass=")
-    heavy = source.index("from codex_plugin_scanner.guard.frozen_daemon_runtime import")
-    assert bridge < record < heavy
+    main = source[source.index('if __name__ == "__main__":') :]
+    bootstrap = main.index("_try_proxy_running_desktop_bootstrap()")
+    record = main.index("_record_extraction_owner()\n")
+    bridge = main.index("_try_codex_daemon_bridge()")
+    heavy = main.index("from codex_plugin_scanner.guard.frozen_daemon_runtime import")
+    assert bootstrap < record < bridge < heavy
+
+
+def test_entry_marker_literals_match_module_constants() -> None:
+    """The stdlib-only entry twin must write the same marker as the module."""
+
+    source = _ENTRY_SCRIPT.read_text(encoding="utf-8")
+    assert f'"{onefile_extraction.OWNER_MARKER_NAME}"' in source
+    assert f'"{onefile_extraction._OWNER_MARKER_SCHEMA}"' in source  # pyright: ignore[reportPrivateUsage]
 
 
 class _StubDiagnostics:
@@ -320,11 +360,18 @@ class _StubDiagnostics:
         return True
 
 
+class _StubHttpServer:
+    """The healthz handler reads ``onefile_extraction_status`` off the HTTP
+    server (``daemon_server.onefile_extraction_status``), not the service."""
+
+    onefile_extraction_status: dict[str, object] | None = None
+
+
 def _bare_daemon_server() -> GuardDaemonServer:
     server = GuardDaemonServer.__new__(GuardDaemonServer)
     server._shutdown_started = threading.Event()
     server._onefile_extraction_reclaim_thread = None
-    server.onefile_extraction_status = None
+    server._server = _StubHttpServer()
     server._diagnostics = _StubDiagnostics()
     return server
 
@@ -354,13 +401,13 @@ def test_reclaim_worker_starts_only_when_frozen(monkeypatch: pytest.MonkeyPatch)
     assert thread is not None
     try:
         deadline = time.monotonic() + 5
-        while server.onefile_extraction_status is None and time.monotonic() < deadline:
+        while server._server.onefile_extraction_status is None and time.monotonic() < deadline:
             time.sleep(0.01)
         assert calls, "reclaim worker never ran"
         assert calls[0]["temp_root"] == Path(tempfile.gettempdir())
         assert calls[0]["current_meipass"] is None
 
-        status = server.onefile_extraction_status
+        status = server._server.onefile_extraction_status
         assert status is not None
         assert status["reclaimed_count"] == 2
         assert status["reclaimed_bytes"] == 2048
@@ -375,10 +422,21 @@ def test_reclaim_worker_starts_only_when_frozen(monkeypatch: pytest.MonkeyPatch)
     assert not thread.is_alive()
 
 
-def test_detailed_healthz_exposes_onefile_extraction_status() -> None:
-    import inspect
+def test_reclaim_result_reaches_the_healthz_attribute(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The status the healthz payload serves lives on the HTTP server object."""
 
-    from codex_plugin_scanner.guard.daemon import server as server_module
+    server = _bare_daemon_server()
+    monkeypatch.setattr(
+        onefile_extraction,
+        "reclaim_orphaned_extraction_dirs",
+        lambda **kwargs: ExtractionReclaimResult(reclaimed_count=3, reclaimed_bytes=99),
+    )
 
-    source = inspect.getsource(server_module._GuardDaemonHandler._detailed_healthz_payload)
-    assert '"onefile_extraction": daemon_server.onefile_extraction_status' in source
+    server._reclaim_onefile_extraction_dirs_once()
+
+    # Same attribute the handler's daemon_server (the _GuardDaemonHTTPServer)
+    # exposes to the /v1/healthz/details payload.
+    status = server._server.onefile_extraction_status
+    assert status is not None
+    assert status["reclaimed_count"] == 3
+    assert status["reclaimed_bytes"] == 99

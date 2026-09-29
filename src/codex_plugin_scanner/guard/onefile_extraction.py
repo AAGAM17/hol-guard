@@ -107,7 +107,7 @@ def _pid_alive(pid: int) -> bool:
     """Fail closed: a pid that cannot be proven dead counts as alive."""
 
     if pid <= 0:
-        return False
+        return True
     if os.name == "nt":
         try:
             from .windows_paths import windows_process_is_running
@@ -180,6 +180,7 @@ def reclaim_orphaned_extraction_dirs(
     now: datetime,
     min_age: timedelta = timedelta(minutes=10),
     pid_alive: Callable[[int], bool] = _pid_alive,
+    should_stop: Callable[[], bool] = lambda: False,
 ) -> ExtractionReclaimResult:
     """Reclaim ``_MEI*`` dirs whose marked owner launch is provably dead.
 
@@ -210,6 +211,8 @@ def reclaim_orphaned_extraction_dirs(
     unmarked_sampled_count = 0
     unmarked_sampled_bytes = 0
     for child in children:
+        if should_stop():
+            return result
         if not _EXTRACTION_DIR_NAME.fullmatch(child.name):
             continue
         try:

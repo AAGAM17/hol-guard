@@ -8235,7 +8235,6 @@ class GuardDaemonServer:
         self._headless_cloud_sync_thread: threading.Thread | None = None
         self._command_activity_maintenance_thread: threading.Thread | None = None
         self._onefile_extraction_reclaim_thread: threading.Thread | None = None
-        self.onefile_extraction_status: dict[str, object] | None = None
         self._extension_control_refresh_thread: threading.Thread | None = None
         self._extension_control_refresh_interval_seconds = extension_control_refresh_interval_seconds
         self._cloud_review_sync_worker: CloudReviewSyncWorker | None = None
@@ -8610,11 +8609,12 @@ class GuardDaemonServer:
                 temp_root=Path(tempfile.gettempdir()),
                 current_meipass=getattr(sys, "_MEIPASS", None),
                 now=datetime.now(timezone.utc),
+                should_stop=self._shutdown_started.is_set,
             )
         except Exception:
             self._diagnostics.record_exception("onefile_extraction_reclaim_failed")
             return
-        self.onefile_extraction_status = {
+        self._server.onefile_extraction_status = {
             "last_run_at": datetime.now(timezone.utc).isoformat(),
             "reclaimed_count": result.reclaimed_count,
             "reclaimed_bytes": result.reclaimed_bytes,

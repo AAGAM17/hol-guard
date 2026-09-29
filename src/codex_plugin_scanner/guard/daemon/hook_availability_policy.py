@@ -261,7 +261,8 @@ def cursor_unparseable_input_permission(
 ) -> tuple[dict[str, object], int]:
     """Deny unparsed actions unless the caller supplies acknowledged mode authority.
 
-    A local configuration flag alone cannot establish that authority. Generated
+    Set recording_only only after independently verifying acknowledged mode
+    authority. A local configuration flag alone cannot establish it. Generated
     hooks with unparsed input cannot establish it and use the protected default.
     """
 

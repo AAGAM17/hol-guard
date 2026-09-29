@@ -36,7 +36,7 @@ def test_live_hook_copy_loads_auth_once_and_builds_signed_link_once(
         loads.append(home)
         return "synthetic-daemon-token"
 
-    def build_url(url: str, *, auth_token: str | None) -> str:
+    def build_url(url: str, *, auth_token: str | None, surface: str = "approval-center") -> str:
         builds.append((url, auth_token))
         return f"{url}#guard-token=fixture"
 

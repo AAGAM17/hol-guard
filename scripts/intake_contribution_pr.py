@@ -96,7 +96,20 @@ def main() -> int:
     if _run(["git", "branch", "--list", branch]):
         _run(["git", "checkout", branch])
         prior = _run(["git", "merge-base", branch, contributor_head])
-        rewritten = _run(["git", "rev-list", "--no-merges", f"{prior}..{branch}", "--not", "origin/main"])
+        old_contrib = _run(
+            [
+                "git",
+                "rev-list",
+                "--no-merges",
+                f"{prior}..{branch}",
+                "--not",
+                "origin/main",
+                "--invert-grep",
+                "--grep",
+                f"regenerate artifacts for intake of PR #{args.pr}",
+            ]
+        )
+        rewritten = old_contrib
         head_merge = (
             subprocess.run(
                 ["git", "merge", "--no-edit", contributor_head],

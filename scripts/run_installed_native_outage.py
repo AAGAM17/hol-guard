@@ -49,11 +49,12 @@ def main() -> int:
                     "addopts=",
                     "-q",
                     str(args.repo_root / "tests/test_native_unavailable_denial.py"),
+                    str(args.repo_root / "tests/test_native_outage_mode_authority.py"),
                 ],
                 plugins=[results],
             )
-        if status != 0 or results.passed != 17 or results.skipped != 0:
-            raise InstalledCanaryError("Installed native outage qualification requires all 17 cases to pass")
+        if status != 0 or results.passed != 32 or results.skipped != 0:
+            raise InstalledCanaryError("Installed native outage qualification requires all 32 cases to pass")
         for name, module in tuple(sys.modules.items()):
             if name == "codex_plugin_scanner" or name.startswith("codex_plugin_scanner."):
                 origin = getattr(module, "__file__", None)

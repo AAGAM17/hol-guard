@@ -22,6 +22,7 @@ from ..native_mode import (
 from ..native_mode import (
     native_mode_requires_rust as _native_mode_requires_rust,
 )
+from ..native_policy_snapshot_acked import recording_only_from_acked_snapshot
 from ..native_route_receipt import record_python_semantic_hook_route
 from ..store import GuardStore
 from .commands_hook_source_ref import _try_source_ref_fast_path
@@ -80,6 +81,7 @@ def try_native_hook_authority(
             workspace=workspace,
             home_dir=home_dir,
             guard_home=guard_home,
+            recording_only=recording_only_from_acked_snapshot(store),
         )
     finally:
         if worker is not None:
@@ -153,6 +155,7 @@ def try_native_or_source_ref_hook(
                 workspace=runtime_workspace,
                 home_dir=context.home_dir,
                 guard_home=context.guard_home,
+                recording_only=recording_only_from_acked_snapshot(store),
             ),
             getattr(args, "json", False),
         )

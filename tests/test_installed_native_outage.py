@@ -52,14 +52,14 @@ def test_skipped_cases_cannot_produce_complete_evidence(
     monkeypatch.setattr(runner, "verify_install", lambda *_args: {"outside_checkout": True})
 
     def partial_run(_arguments, *, plugins):
-        plugins[0].passed = 16
+        plugins[0].passed = 31
         plugins[0].skipped = 1
         return 0
 
     monkeypatch.setattr(runner.pytest, "main", partial_run)
     assert runner.main() == 1
     assert not output.exists()
-    assert "all 17 cases" in capsys.readouterr().err
+    assert "all 32 cases" in capsys.readouterr().err
 
 
 def test_checkout_import_invalidates_installed_evidence(
@@ -71,7 +71,7 @@ def test_checkout_import_invalidates_installed_evidence(
     monkeypatch.setattr(runner, "verify_install", lambda *_args: {"outside_checkout": True})
 
     def injected_run(_arguments, *, plugins):
-        plugins[0].passed = 17
+        plugins[0].passed = 32
         module = ModuleType("codex_plugin_scanner.fixture_source_injection")
         module.__file__ = str(tmp_path / "src" / "fixture.py")
         monkeypatch.setitem(sys.modules, module.__name__, module)

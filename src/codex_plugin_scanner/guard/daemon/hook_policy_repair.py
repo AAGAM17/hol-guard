@@ -1,25 +1,26 @@
-"""Repair a tampered command policy from the resident hook worker.
+"""Point a tampered command-policy block at the local repair page.
 
-The hook never launches the CLI. Recovery runs through the daemon's
-extension-control service. When that service needs approval, the deny reason
-includes one signed loopback link to the local Repair protection page.
-The current tool call stays denied either way.
+The hook never launches the CLI and never calls authority recovery. A recent
+authenticator proof can satisfy that call, so the blocked tool call must not
+rebuild protection. The deny reason includes one signed loopback link. The
+person opens that page and presses Repair protection. The current tool call
+stays denied.
 """
 
 from __future__ import annotations
 
-import secrets
+import logging
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from ..runtime.extension_control_authority import AuthorityHealth
 
+_LOGGER = logging.getLogger(__name__)
+
 _AUTHORITY_BLOCK_REASON = "native_command_control_authority_block"
 _REPAIRABLE_HEALTH = frozenset({AuthorityHealth.TAMPERED, AuthorityHealth.RECOVERY_REQUIRED})
-_PROTECTED = AuthorityHealth.PROTECTED.value
 
-_RETRY_REASON = "HOL Guard repaired trusted protection settings. Retry this action."
 _APPROVAL_REASON = (
     "HOL Guard blocked this action because trusted protection settings need repair. "
     "Open this local page and press Repair protection: {url}"
@@ -32,15 +33,6 @@ _APPROVAL_REASON_WITHOUT_URL = (
 RepairCaller = Callable[[dict[str, object]], object]
 RepairUrl = Callable[[Path], str | None]
 
-_auth_barrier: tuple[str, int] | None = None
-
-
-def reset_command_policy_repair_memory() -> None:
-    """Forget a previous approval barrier. Tests use this between cases."""
-
-    global _auth_barrier
-    _auth_barrier = None
-
 
 def apply_command_policy_repair(
     store: object,
@@ -50,21 +42,23 @@ def apply_command_policy_repair(
     recover: RepairCaller | None = None,
     repair_page_url: RepairUrl | None = None,
 ) -> dict[str, object]:
-    """Return the native result, with a repair reason when this block can be repaired."""
+    """Return the native denial, with a repair link when this block can be repaired."""
 
+    del recover
     try:
         result = dict(native_result)
-    except Exception:
+    except Exception as exc:
+        _LOGGER.warning("command policy repair could not read the native denial (%s)", type(exc).__name__)
         return {}
     try:
         return _apply_command_policy_repair(
             store,
             result,
             guard_home=guard_home,
-            recover=recover,
             repair_page_url=repair_page_url,
         )
-    except Exception:
+    except Exception as exc:
+        _LOGGER.warning("command policy repair could not prepare the local repair link (%s)", type(exc).__name__)
         return result
 
 
@@ -73,11 +67,8 @@ def _apply_command_policy_repair(
     result: dict[str, object],
     *,
     guard_home: Path,
-    recover: RepairCaller | None,
     repair_page_url: RepairUrl | None,
 ) -> dict[str, object]:
-    global _auth_barrier
-
     if str(result.get("reason_code") or "") != _AUTHORITY_BLOCK_REASON:
         return result
     if str(result.get("minimum_action") or "") == "allow" or result.get("decision") == "allow":
@@ -86,14 +77,8 @@ def _apply_command_policy_repair(
     if not callable(reader):
         return result
     view = reader(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
-    health = getattr(view, "health", None)
-    if health not in _REPAIRABLE_HEALTH:
+    if getattr(view, "health", None) not in _REPAIRABLE_HEALTH:
         return result
-    revision = getattr(view, "revision", None)
-    barrier_key = (health.value, int(revision)) if isinstance(revision, int) else None
-    if barrier_key is not None and barrier_key == _auth_barrier:
-        return _approval_required(result, guard_home, repair_page_url)
-    # Recovery needs a fresh human approval; never attempt it from an agent-triggered hook.
     return _approval_required(result, guard_home, repair_page_url)
 
 
@@ -116,7 +101,8 @@ def _approval_required(
 def _safe_repair_url(guard_home: Path, repair_page_url: RepairUrl | None) -> str | None:
     try:
         url = repair_page_url(guard_home) if repair_page_url is not None else command_policy_repair_page_url(guard_home)
-    except Exception:
+    except Exception as exc:
+        _LOGGER.warning("command policy repair link was not available (%s)", type(exc).__name__)
         return None
     if not isinstance(url, str) or not url:
         return None

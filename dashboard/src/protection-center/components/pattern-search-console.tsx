@@ -144,8 +144,8 @@ export function PatternSearchConsole(props: {
   return <section aria-labelledby="pattern-search-heading" className="mt-6">
     <h2 id="pattern-search-heading" className="sr-only">Search command patterns</h2>
     <div className="relative">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <label className="relative block min-w-0 flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <label className="relative block min-w-0 flex-1 sm:min-w-60">
       <span className="sr-only">Search command patterns</span>
       <HiMiniMagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-dark/55" aria-hidden="true" />
       <input

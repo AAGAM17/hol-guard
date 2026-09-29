@@ -6379,6 +6379,10 @@
       max-width: var(--container-sm);
     }
 
+    .sm\:min-w-60 {
+      min-width: calc(var(--spacing) * 60);
+    }
+
     .sm\:min-w-\[6\.5rem\] {
       min-width: 6.5rem;
     }

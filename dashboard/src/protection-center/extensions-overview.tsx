@@ -168,8 +168,18 @@ export function ExtensionsOverview(props: {
       if (filterToolbarRef.current?.contains(event.target as Node)) return;
       setFilterPanelOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setFilterPanelOpen(false);
+      filterTriggerRef.current?.focus();
+    };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [filterPanelOpen]);
   // "f" mirrors the existing "/" search shortcut for the filter popover.
   useEffect(() => {
@@ -185,12 +195,6 @@ export function ExtensionsOverview(props: {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [props.active]);
-  const handleFilterToolbarKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key !== "Escape" || !filterPanelOpen) return;
-    event.stopPropagation();
-    setFilterPanelOpen(false);
-    filterTriggerRef.current?.focus();
-  }, [filterPanelOpen]);
   // An active search replaces the catalogs below it: results, then the Tools
   // match group. Rendering the full list under the results would force the
   // operator to visually skip fifty-nine unchanged rows.
@@ -242,7 +246,6 @@ export function ExtensionsOverview(props: {
       <div
         ref={filterToolbarRef}
         data-testid="catalog-filters"
-        onKeyDown={handleFilterToolbarKeyDown}
       >
         <PatternSearchConsole
           catalog={visibleCatalog}

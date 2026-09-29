@@ -144,7 +144,8 @@ test("installed Protection Center keeps canonical routes and real-daemon inspect
   await expect(page.getByTestId("catalog-filter-count")).toHaveText(/^\d+ of \d+ tools$/);
   await expect(page.getByRole("button", { name: "Remove External trust filter" })).toBeVisible();
   // A pointer outside the popover dismisses it without clearing the selection.
-  await page.getByRole("heading", { name: "All tools" }).click({ position: { x: 5, y: 5 } });
+  // The popover overlays the catalog, so the outside target must be above it.
+  await page.getByRole("heading", { name: "Extensions", level: 1 }).click();
   await expect(page.getByRole("group", { name: "Trust" })).toBeHidden();
   await expect(filtersTrigger).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: "Remove External trust filter" })).toBeVisible();

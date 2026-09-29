@@ -6316,8 +6316,8 @@ function PatternSearchConsole(props) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-labelledby": "pattern-search-heading", className: "mt-6", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "pattern-search-heading", className: "sr-only", children: "Search command patterns" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2 sm:flex-row sm:items-center", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "relative block min-w-0 flex-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "relative block min-w-0 flex-1 sm:min-w-60", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sr-only", children: "Search command patterns" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniMagnifyingGlass, { className: "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-dark/55", "aria-hidden": "true" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -6806,13 +6806,25 @@ function ExtensionsOverview(props) {
       if (filterToolbarRef.current?.contains(event.target)) return;
       setFilterPanelOpen(false);
     };
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.stopPropagation();
+      setFilterPanelOpen(false);
+      filterTriggerRef.current?.focus();
+    };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [filterPanelOpen]);
   reactExports.useEffect(() => {
     if (!props.active) return;
     const onKeyDown = (event) => {
       if (event.key !== "f" || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const target = event.target;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       event.preventDefault();
@@ -6822,12 +6834,6 @@ function ExtensionsOverview(props) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [props.active]);
-  const handleFilterToolbarKeyDown = reactExports.useCallback((event) => {
-    if (event.key !== "Escape" || !filterPanelOpen) return;
-    event.stopPropagation();
-    setFilterPanelOpen(false);
-    filterTriggerRef.current?.focus();
-  }, [filterPanelOpen]);
   const searching = query.trim().length > 0;
   const filtering = catalogFiltersActive(filters);
   const visibleCatalog = reactExports.useMemo(
@@ -6863,58 +6869,50 @@ function ExtensionsOverview(props) {
     props.mutationError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: props.mutationError }) }) : null,
     props.localCliError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(InlineError, { message: props.localCliError }) }) : null,
     props.localCliNotice ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-4 rounded-xl border border-brand-blue/20 bg-brand-blue/5 p-3 text-sm text-brand-dark", children: props.localCliNotice }) : null,
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "div",
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: filterToolbarRef, "data-testid": "catalog-filters", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PatternSearchConsole,
       {
-        ref: filterToolbarRef,
-        "data-testid": "catalog-filters",
-        onKeyDown: handleFilterToolbarKeyDown,
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          PatternSearchConsole,
+        catalog: visibleCatalog,
+        effective: props.effective,
+        active: props.active,
+        query,
+        onQueryChange: setQuery,
+        onRefresh: props.onRefresh,
+        onOpenExtension: props.onOpenExtension,
+        actionSlot: searching ? /* @__PURE__ */ jsxRuntimeExports.jsx(AddCustomExtensionButton, { onClick: props.onAddCustom }) : null,
+        toolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            CatalogFilterTrigger,
+            {
+              open: filterPanelOpen,
+              activeCount: filters.trusts.length + filters.kinds.length + filters.areas.length,
+              panelId: filterPanelId,
+              buttonRef: filterTriggerRef,
+              onToggle: () => setFilterPanelOpen((open) => !open)
+            }
+          ),
+          props.active ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            ConnectorDiscoveryControl,
+            {
+              discovering,
+              error: discoveryError,
+              onRetry: () => setDiscoveryAttempt((attempt) => attempt + 1)
+            }
+          ) : null
+        ] }),
+        subtoolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          CatalogFilterBar,
           {
-            catalog: visibleCatalog,
-            effective: props.effective,
-            active: props.active,
-            query,
-            onQueryChange: setQuery,
-            onRefresh: props.onRefresh,
-            onOpenExtension: props.onOpenExtension,
-            actionSlot: searching ? /* @__PURE__ */ jsxRuntimeExports.jsx(AddCustomExtensionButton, { onClick: props.onAddCustom }) : null,
-            toolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                CatalogFilterTrigger,
-                {
-                  open: filterPanelOpen,
-                  activeCount: filters.trusts.length + filters.kinds.length + filters.areas.length,
-                  panelId: filterPanelId,
-                  buttonRef: filterTriggerRef,
-                  onToggle: () => setFilterPanelOpen((open) => !open)
-                }
-              ),
-              props.active ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                ConnectorDiscoveryControl,
-                {
-                  discovering,
-                  error: discoveryError,
-                  onRetry: () => setDiscoveryAttempt((attempt) => attempt + 1)
-                }
-              ) : null
-            ] }),
-            subtoolbarSlot: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              CatalogFilterBar,
-              {
-                catalog: props.catalogExtensions,
-                filters,
-                onChange: setFilters,
-                open: filterPanelOpen,
-                onOpenChange: setFilterPanelOpen,
-                panelId: filterPanelId
-              }
-            )
+            catalog: props.catalogExtensions,
+            filters,
+            onChange: setFilters,
+            open: filterPanelOpen,
+            onOpenChange: setFilterPanelOpen,
+            panelId: filterPanelId
           }
         )
       }
-    ),
+    ) }),
     searching ? null : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       addedCustomCount ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         CustomExtensionsSection,

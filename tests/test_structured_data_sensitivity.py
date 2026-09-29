@@ -74,6 +74,18 @@ def test_existing_credential_rules_are_reused_without_value_or_hash() -> None:
     assert result.rule_version == classifier_rule_version()
 
 
+def test_early_credential_match_reports_only_scanned_bytes_with_schema() -> None:
+    sample = "ghp_" + "A" * 24
+    payload = json.dumps({"token": sample, "note": "x" * 5000})
+    schema = DeclaredSchema((DeclaredField(("token",), "ordinary"), DeclaredField(("note",), "ordinary")))
+
+    result = classify_declared_content(payload, schema=schema)
+
+    assert result.status == "matched"
+    assert result.complete is False
+    assert 0 < result.bytes_scanned < len(payload.encode("utf-8"))
+
+
 @pytest.mark.parametrize(
     ("payload", "reason"),
     (
@@ -84,6 +96,7 @@ def test_existing_credential_rules_are_reused_without_value_or_hash() -> None:
         ('{"note":"\\u0061"}', "encoded_or_escaped_content"),
         ('{"note":["a"]}', "array_unsupported"),
         ('{"employee":{"id":true}}', "field_type_invalid"),
+        ('{"employee":{"email":{}}}', "field_type_invalid"),
         ('{"note":NaN}', "invalid_or_duplicate_json"),
     ),
 )
@@ -130,5 +143,7 @@ def test_schema_and_rule_version_reject_ambiguous_declarations() -> None:
         DeclaredField(("note",), "protected_personal", category="arbitrary_label")
     with pytest.raises(ValueError):
         DeclaredField(("dynamic-key",), "ordinary")
+    with pytest.raises(ValueError):
+        DeclaredField("email", "ordinary")  # type: ignore[arg-type]
 
     assert classifier_rule_version(_schema()) != classifier_rule_version(DeclaredSchema((field,)))

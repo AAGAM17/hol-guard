@@ -12,8 +12,10 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 
+from ..strict_json_pairs import unique_json_object
 from .hook_content_scanner import ContentScanner
 from .secret_sensitivity import secret_content_rule_version
 
@@ -43,7 +45,12 @@ class DeclaredField:
     category: PersonalCategory | None = None
 
     def __post_init__(self) -> None:
-        if not self.path or len(self.path) > MAX_DEPTH or any(not _PATH_SEGMENT.fullmatch(part) for part in self.path):
+        if (
+            not isinstance(self.path, tuple)
+            or not self.path
+            or len(self.path) > MAX_DEPTH
+            or any(not isinstance(part, str) or not _PATH_SEGMENT.fullmatch(part) for part in self.path)
+        ):
             raise ValueError("declared field path is invalid")
         if self.value_type not in ("string", "integer"):
             raise ValueError("declared field type is invalid")
@@ -100,15 +107,6 @@ def classifier_rule_version(schema: DeclaredSchema | None = None) -> str:
         ],
     }
     return hashlib.sha256(json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
-
-
-def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON field")
-        result[key] = value
-    return result
 
 
 def _reject_constant(_value: str) -> object:
@@ -203,7 +201,11 @@ def classify_declared_content(
         return finish(status, "credential_scan", complete=complete)
 
     try:
-        document = json.loads(text, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+        document = json.loads(
+            text,
+            object_pairs_hook=partial(unique_json_object, duplicate_error="duplicate JSON field"),
+            parse_constant=_reject_constant,
+        )
     except (ValueError, RecursionError, TypeError):
         return finish("unsupported", "invalid_or_duplicate_json")
     if not isinstance(document, dict):
@@ -220,6 +222,8 @@ def classify_declared_content(
         if nodes_scanned > MAX_NODES or len(path) > MAX_DEPTH:
             return finish("unsupported", "structure_limit_exceeded")
         if isinstance(value, dict):
+            if path in declared:
+                return finish("unsupported", "field_type_invalid")
             stack.extend(((*path, key), child) for key, child in value.items())
             continue
         if isinstance(value, list):
@@ -247,5 +251,4 @@ def classify_declared_content(
 
     complete = credential_result.reason_code in ("clean", "matches")
     status = "matched" if matches else "no_declared_match"
-    scanned = byte_count
     return finish(status, "declared_schema_scan", complete=complete)

@@ -28,6 +28,8 @@ def test_source_distribution_and_package_versions_match():
 
 
 def test_cli_version_matches_package_version(capsys: pytest.CaptureFixture[str]):
-    assert main(["--version"]) == 0
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--version"])
+    assert exc_info.value.code == 0
     output = capsys.readouterr().out.strip()
     assert output.endswith(package_version)

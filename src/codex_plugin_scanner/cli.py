@@ -402,9 +402,12 @@ def main(argv: list[str] | None = None) -> int:
         program_mode = "combined"
     if program_mode == "guard" and requested_argv[:1] == ["help"]:
         requested_argv = [*requested_argv[1:], "--help"]
-    if requested_argv[:1] == ["--version"]:
-        # Update candidates run under temporary executable names. Answering a
-        # version probe must not build the full command surface for any name.
+    if requested_argv[:1] == ["--version"] and (
+        program_mode in {"guard", "hol-guard"}
+        or (program_name.startswith("hol-guard-") and program_name.endswith(".partial"))
+    ):
+        # Update candidates run under temporary names; their version probe
+        # must not build the full command surface.
         print(f"{program_name} {__version__}")
         return 0
     if program_mode != "scanner":

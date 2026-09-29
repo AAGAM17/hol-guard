@@ -31,7 +31,8 @@ def _unavailable(failure: str) -> subprocess.CompletedProcess[str]:
         "nonzero-allow": '{"policy_action":"allow"}',
         "nonzero-review": '{"policy_action":"review"}',
     }[failure]
-    return subprocess.CompletedProcess([], 1 if failure.startswith("nonzero-") else 0, stdout, "")
+    code = 70 if failure == "nonzero-review" else 1 if failure == "nonzero-allow" else 0
+    return subprocess.CompletedProcess([], code, stdout, "")
 
 
 def _generated(context: HarnessContext) -> dict[str, Any]:
@@ -85,7 +86,21 @@ def test_generated_parsed_cursor_unavailable_denies(
 
 @pytest.mark.parametrize("event", _EVENTS)
 @pytest.mark.parametrize("local_watch", [False, True])
-@pytest.mark.parametrize("policy", ["allow", "warn", "review", "require-reapproval", "sandbox-required", "block"])
+@pytest.mark.parametrize(
+    ("policy", "code"),
+    [
+        ("allow", 0),
+        ("warn", 0),
+        ("review", 1),
+        ("review", 2),
+        ("require-reapproval", 1),
+        ("require-reapproval", 2),
+        ("sandbox-required", 1),
+        ("sandbox-required", 2),
+        ("block", 1),
+        ("block", 2),
+    ],
+)
 @pytest.mark.parametrize("reason_code", ["policy", "native_pre_tool_unavailable"])
 def test_generated_parsed_cursor_preserves_trusted_decision(
     tmp_path: Path,
@@ -94,6 +109,7 @@ def test_generated_parsed_cursor_preserves_trusted_decision(
     event: str,
     local_watch: bool,
     policy: str,
+    code: int,
     reason_code: str,
 ) -> None:
     context = HarnessContext(home_dir=tmp_path / "home", guard_home=tmp_path / "guard", workspace_dir=tmp_path)
@@ -103,7 +119,7 @@ def test_generated_parsed_cursor_preserves_trusted_decision(
     namespace["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
     namespace["_run_guard_fallback"] = lambda *_args, **_kwargs: subprocess.CompletedProcess(
         [],
-        2 if policy in {"review", "require-reapproval", "sandbox-required", "block"} else 0,
+        code,
         json.dumps(response),
         "",
     )

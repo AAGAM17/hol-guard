@@ -55,11 +55,11 @@ def test_invalid_qualification_cannot_write_evidence(
 
     def injected_run(_arguments, *, plugins):
         results = plugins[0]
-        results.passed = 256 if invalid == "skip" else 257
+        results.passed = 336 if invalid == "skip" else 337
         results.skipped = int(invalid == "skip")
-        results.groups = {"unavailable": 120, "decisions": 120, "observations": 12, "imports_unavailable": 5}
+        results.groups = {"unavailable": 120, "decisions": 200, "observations": 12, "imports_unavailable": 5}
         if invalid == "groups":
-            results.groups = {"unavailable": 257, "decisions": 0, "observations": 0, "imports_unavailable": 0}
+            results.groups = {"unavailable": 337, "decisions": 0, "observations": 0, "imports_unavailable": 0}
         if invalid == "checkout":
             module = ModuleType("codex_plugin_scanner.fixture_source_injection")
             module.__file__ = str(tmp_path / "src" / "fixture.py")

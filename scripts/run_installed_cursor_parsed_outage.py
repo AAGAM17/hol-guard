@@ -13,7 +13,7 @@ import pytest
 from scripts.installed_canary_proof import InstalledCanaryError, load_subject, verify_install
 from scripts.run_installed_canary import _parser
 
-_EXPECTED_GROUPS = {"unavailable": 120, "decisions": 120, "observations": 12, "imports_unavailable": 5}
+_EXPECTED_GROUPS = {"unavailable": 120, "decisions": 200, "observations": 12, "imports_unavailable": 5}
 
 
 class _Results:
@@ -60,9 +60,9 @@ def main() -> int:
                 ],
                 plugins=[results],
             )
-        if status != 0 or results.skipped or results.passed != 257 or results.groups != _EXPECTED_GROUPS:
+        if status != 0 or results.skipped or results.passed != 337 or results.groups != _EXPECTED_GROUPS:
             raise InstalledCanaryError(
-                f"Parsed Cursor qualification requires all 257 cases and groups; observed {results.groups}"
+                f"Parsed Cursor qualification requires all 337 cases and groups; observed {results.groups}"
             )
         for name, module in tuple(sys.modules.items()):
             if name == "codex_plugin_scanner" or name.startswith("codex_plugin_scanner."):

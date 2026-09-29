@@ -123,7 +123,8 @@ def test_cursor_write_denies_when_native_unavailable() -> None:
         hook_event_name="beforeWriteFile",
     )
     assert code == 2
-    assert deny == {"permission": "deny"}
+    assert deny["permission"] == "deny"
+    assert deny["agent_message"] == deny["user_message"]
 
 
 def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:

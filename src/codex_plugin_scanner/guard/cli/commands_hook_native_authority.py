@@ -126,7 +126,6 @@ def route_native_hook(
                 workspace=runtime_workspace,
                 home_dir=context.home_dir,
                 guard_home=context.guard_home,
-                recording_only=recording_only_from_acked_snapshot(store),
             ),
             getattr(args, "json", False),
         )

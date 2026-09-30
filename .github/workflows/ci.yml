@@ -225,13 +225,19 @@ jobs:
       - name: Download pytest duration reports
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: pytest-durations-${{ github.run_attempt }}-*
+          pattern: pytest-durations-*
           path: duration-reports
       - name: Build duration manifest candidate
         shell: bash
         run: |
-          shopt -s globstar nullglob
-          reports=(duration-reports/**/pytest-durations.json)
+          shopt -s nullglob
+          declare -A latest
+          for dir in duration-reports/pytest-durations-*-*/; do
+            base=${dir%/}; base=${base##*/pytest-durations-}
+            attempt=${base%%-*}; shard=${base#*-}
+            if [[ -z "${latest[$shard]:-}" || $attempt -gt ${latest[$shard]%%:*} ]]; then latest[$shard]="$attempt:${dir}pytest-durations.json"; fi
+          done
+          reports=(); for v in "${latest[@]}"; do [[ -f ${v#*:} ]] && reports+=("${v#*:}"); done
           test "${#reports[@]}" -eq 128
           python3 scripts/ci/build_pytest_duration_manifest.py \
             --output pytest-duration-manifest-candidate.json.gz \

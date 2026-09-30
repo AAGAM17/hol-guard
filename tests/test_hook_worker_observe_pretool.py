@@ -289,10 +289,6 @@ def test_hook_worker_watch_edit_without_snapshot_cannot_allow_native_off_pretool
         "codex_plugin_scanner.guard.daemon.hook_worker.native_mode",
         lambda: "off",
     )
-    monkeypatch.setattr(
-        "codex_plugin_scanner.guard.daemon.hook_worker_native.python_oracle_surface_enabled",
-        lambda _mode=None: False,
-    )
     worker = HookWorker(store=GuardStore(guard_home))
     result = worker.review_http_payload(
         payload={"hook_event_name": "PreToolUse", "tool_input": {"command": "pwd"}},

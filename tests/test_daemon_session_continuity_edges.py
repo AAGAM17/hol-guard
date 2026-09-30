@@ -61,10 +61,10 @@ def test_successful_post_tool_block_withholds_without_stopping() -> None:
     assert payload["hookSpecificOutput"]["additionalContext"] == "credential-looking output"
 
 
-def test_old_cursor_hooks_allow_empty_stdin_without_baked_event() -> None:
+def test_old_cursor_hooks_deny_empty_stdin_without_baked_event() -> None:
     allow, code = cursor_unparseable_input_permission("")
-    assert code == 0
-    assert allow == {"permission": "allow"}
+    assert code == 2
+    assert allow["permission"] == "deny"
     deny, deny_code = cursor_unparseable_input_permission("beforeShellExecution")
     assert deny_code == 2
     assert deny["permission"] == "deny"
@@ -115,15 +115,16 @@ def test_native_policy_not_ready_pretool_denies_without_interrupting_session(tmp
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
-def test_cursor_write_continues_when_native_unavailable() -> None:
+def test_cursor_write_denies_when_native_unavailable() -> None:
     from codex_plugin_scanner.guard.daemon.hook_availability_policy import cursor_fallback_permission
 
-    allow, code = cursor_fallback_permission(
+    deny, code = cursor_fallback_permission(
         {"hook_event_name": "beforeWriteFile", "file_path": "src/app.ts", "tool_name": "Write"},
         hook_event_name="beforeWriteFile",
     )
-    assert code == 0
-    assert allow == {"permission": "allow"}
+    assert code == 2
+    assert deny["permission"] == "deny"
+    assert deny["agent_message"] == deny["user_message"]
 
 
 def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:

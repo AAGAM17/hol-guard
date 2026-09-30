@@ -13,7 +13,6 @@ from codex_plugin_scanner.guard.cli import commands_hook_native_authority as cli
 from codex_plugin_scanner.guard.daemon import server as daemon
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
 from codex_plugin_scanner.guard.native_policy_snapshot import native_policy_snapshot_v3
-from codex_plugin_scanner.guard.native_policy_snapshot_acked import acked_snapshot_binding_for_store
 from codex_plugin_scanner.guard.store import GuardStore
 
 from .native_policy_snapshot_test_fixtures import _config
@@ -21,7 +20,7 @@ from .test_native_policy_snapshot_cache_binding import _write_resident_authority
 
 
 @pytest.mark.parametrize("state", ["observe", "enforce", "missing", "expired", "tampered"])
-@pytest.mark.parametrize("failure", ["worker_exception", "worker_none", "capacity", "legacy_fast_path"])
+@pytest.mark.parametrize("failure", ["worker_exception", "worker_none", "capacity", "disabled_legacy_path"])
 def test_outage_mode_requires_authenticated_unexpired_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str, failure: str
 ) -> None:
@@ -50,13 +49,9 @@ def test_outage_mode_requires_authenticated_unexpired_snapshot(
             snapshot["mode"] = "observe"
         _write_resident_authority(guard_home, snapshot, master)
     payload = {"hook_event_name": "PreToolUse", "tool_input": {"command": "printf fixture > output.txt"}}
-    if failure == "legacy_fast_path":
+    if failure == "disabled_legacy_path":
         worker = HookWorker(store=store, wait_for_native_policy=False, publish_native_policy=False)
-        monkeypatch.setattr(
-            worker, "_native_policy_snapshot", lambda _workspace: acked_snapshot_binding_for_store(store)
-        )
-        monkeypatch.setattr(worker, "_review_pre_tool_native", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(worker, "_native_runtime_status", lambda: Mock(mode="auto"))
+        monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker_native.native_mode", lambda: "off")
         try:
             response = worker._review_pre_tool_http(
                 payload,
@@ -84,7 +79,21 @@ def test_outage_mode_requires_authenticated_unexpired_snapshot(
         monkeypatch.setattr(cli, "_native_mode_requires_rust", lambda: True)
         responses = []
         monkeypatch.setattr(cli, "_emit", lambda _name, value, _json: responses.append(value))
-        status = cli.try_native_or_source_ref_hook(
+        if failure == "worker_exception":
+            response = cli.try_native_hook_authority(
+                payload=payload,
+                harness="codex",
+                home_dir=tmp_path / "home",
+                guard_home=guard_home,
+                workspace=None,
+                store=store,
+            )
+        monkeypatch.setattr(
+            cli,
+            "try_native_hook_authority",
+            lambda **_kwargs: response if failure == "worker_exception" else None,
+        )
+        status = cli.route_native_hook(
             Mock(harness="codex", json=True),
             config=None,
             context=HarnessContext(home_dir=tmp_path / "home", guard_home=guard_home, workspace_dir=None),
@@ -95,4 +104,6 @@ def test_outage_mode_requires_authenticated_unexpired_snapshot(
         assert status == 0
         assert len(responses) == 1
         response = responses[0]
-    assert response["hookSpecificOutput"]["permissionDecision"] == ("allow" if state == "observe" else "deny")
+    assert response["hookSpecificOutput"]["permissionDecision"] == (
+        "allow" if state == "observe" and failure != "disabled_legacy_path" else "deny"
+    )

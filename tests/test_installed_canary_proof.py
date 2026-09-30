@@ -73,6 +73,7 @@ def test_installed_corpus_reports_malformed_json_clearly(tmp_path: Path, monkeyp
         _run_corpus(tmp_path)
 
 
+@pytest.mark.usefixtures("native_hook_force")
 def test_fresh_harness_without_acknowledged_policy_records_prevention(monkeypatch: pytest.MonkeyPatch) -> None:
     # Exercise the installed native route in the child process; the unit-test
     # oracle callbacks do not cross the subprocess boundary with their env vars.

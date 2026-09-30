@@ -16,6 +16,7 @@ import platform
 import secrets
 import socket
 import sqlite3
+import sys
 import tempfile
 import threading
 import time
@@ -144,7 +145,6 @@ from ..models import (
     format_local_http_origin,
 )
 from ..native_mode import native_mode_requires_rust as _native_mode_requires_rust
-from ..native_mode import python_oracle_surface_enabled
 from ..package_firewall_action_rate_limit import PackageFirewallActionRateLimiter
 from ..package_firewall_entitlement import (
     package_firewall_action_states,
@@ -524,6 +524,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     shutdown_started: threading.Event
     package_firewall_connect_state: dict[str, object] | None
     package_firewall_connect_state_lock: threading.Lock
+    onefile_extraction_status: dict[str, object] | None
     guard_cloud_connect_state: dict[str, object] | None
     guard_cloud_connect_state_lock: threading.Lock
     guard_cloud_browser_session_lock: threading.Lock
@@ -639,6 +640,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         self.command_queue_lifecycle = None
         self.package_firewall_connect_state = None
         self.package_firewall_connect_state_lock = threading.Lock()
+        self.onefile_extraction_status = None
         self.guard_cloud_connect_state = None
         self.guard_cloud_connect_state_lock = threading.Lock()
         self.guard_cloud_browser_session_lock = threading.Lock()
@@ -5896,7 +5898,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                     deadline=time.monotonic() + _RUNTIME_HOOK_PROCESS_TIMEOUT_SECONDS,
                     claim_saved_approval=False,
                     claimed_saved_allow_hash=claimed_hash,
-                    claimed_trusted_request_override=claimed_hash is not None,
                     claimed_approval_request_id=claimed_request_id,
                 ).payload
             ),
@@ -5943,7 +5944,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_runtime_hook(self, payload: dict[str, object], query: str, *, default_harness: str) -> None:
-        from ..runtime.hook_payload_reference import (
+        from .hook_request_parsing import (
             HookPayloadReferenceError,
             hook_payload_reference_size,
         )
@@ -6267,7 +6268,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         payload_hydrated: bool = False,
         deadline: float | None = None,
     ) -> None:
-        if self._hook_fast_path_enabled() or _native_mode_requires_rust() or not python_oracle_surface_enabled():
+        if self._hook_fast_path_enabled() or _native_mode_requires_rust():
             result = self._handle_runtime_hook_fast(
                 payload,
                 params,
@@ -6330,8 +6331,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         deadline: float | None,
     ) -> dict[str, object] | None:
         """Try the resident hook worker; only explicit rollback may fall back."""
-        from .hook_worker import HookWorkerUnsupported
-
         daemon_server = self._daemon_server()
         effective_home_dir = Path(home_dir) if home_dir is not None else daemon_server.home_dir
         effective_guard_home = Path(guard_home) if guard_home is not None else daemon_server.store.guard_home
@@ -6346,27 +6345,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 guard_home=effective_guard_home,
                 workspace=Path(workspace) if workspace else None,
                 deadline=deadline,
-            )
-        except HookWorkerUnsupported:
-            if _native_mode_requires_rust():
-                return self._runtime_hook_fail_safe_response(
-                    payload,
-                    params,
-                    default_harness=default_harness,
-                    reason="HOL Guard could not complete the native hook decision safely.",
-                    reason_code="native_hook_worker_unsupported",
-                    native_authoritative=True,
-                )
-            if python_oracle_surface_enabled():
-                # The test-only oracle may exercise the compatibility seam.
-                return None
-            return self._runtime_hook_fail_safe_response(
-                payload,
-                params,
-                default_harness=default_harness,
-                reason="HOL Guard could not complete the native hook decision safely.",
-                reason_code="native_hook_compatibility_disabled",
-                native_authoritative=True,
             )
         except Exception as error:
             # Fail safe: deny/block. Do not fall back to compatibility CLI for
@@ -7593,6 +7571,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             "sqlite_profile": sqlite_profile,
             "sqlite_migration_gate": sqlite_migration_gate,
             "quarantined_store": quarantined_store_summary(store.guard_home),
+            "onefile_extraction": daemon_server.onefile_extraction_status,
             "uptime_seconds": uptime,
             "pid": os.getpid(),
             "tables": store.list_table_names(),
@@ -8319,6 +8298,7 @@ class GuardDaemonServer:
         self._command_queue_worker: CommandQueueWorker | None = None
         self._headless_cloud_sync_thread: threading.Thread | None = None
         self._command_activity_maintenance_thread: threading.Thread | None = None
+        self._onefile_extraction_reclaim_thread: threading.Thread | None = None
         self._extension_control_refresh_thread: threading.Thread | None = None
         self._extension_control_refresh_interval_seconds = extension_control_refresh_interval_seconds
         self._cloud_review_sync_worker: CloudReviewSyncWorker | None = None
@@ -8504,6 +8484,7 @@ class GuardDaemonServer:
                 self._cloud_review_sync_worker,
             )
             self._start_command_activity_maintenance()
+            self._start_onefile_extraction_reclaim()
             self._record_lifecycle("ready")
             self._owned_service_ready = True
             self._diagnostics.record("daemon_ready")
@@ -8666,6 +8647,58 @@ class GuardDaemonServer:
         while not self._shutdown_started.wait(3_600 if storage_complete else 5):
             self._maintain_command_activity_best_effort()
             storage_complete = self._maintain_storage_best_effort()
+
+    def _start_onefile_extraction_reclaim(self) -> None:
+        if not getattr(sys, "frozen", False):
+            return
+        if self._onefile_extraction_reclaim_thread is not None and self._onefile_extraction_reclaim_thread.is_alive():
+            return
+        self._onefile_extraction_reclaim_thread = threading.Thread(
+            target=self._onefile_extraction_reclaim_loop,
+            daemon=True,
+        )
+        self._onefile_extraction_reclaim_thread.start()
+
+    def _onefile_extraction_reclaim_loop(self) -> None:
+        while not self._shutdown_started.is_set():
+            self._reclaim_onefile_extraction_dirs_once()
+            if self._shutdown_started.wait(3_600):
+                return
+
+    def _reclaim_onefile_extraction_dirs_once(self) -> None:
+        try:
+            from ..onefile_extraction import reclaim_orphaned_extraction_dirs
+
+            result = reclaim_orphaned_extraction_dirs(
+                temp_root=Path(tempfile.gettempdir()),
+                current_meipass=getattr(sys, "_MEIPASS", None),
+                now=datetime.now(timezone.utc),
+                should_stop=self._shutdown_started.is_set,
+            )
+        except Exception:
+            self._diagnostics.record_exception("onefile_extraction_reclaim_failed")
+            self._server.onefile_extraction_status = {
+                "last_run_at": datetime.now(timezone.utc).isoformat(),
+                "error": "reclaim_failed",
+            }
+            return
+        self._server.onefile_extraction_status = {
+            "last_run_at": datetime.now(timezone.utc).isoformat(),
+            "reclaimed_count": result.reclaimed_count,
+            "reclaimed_bytes": result.reclaimed_bytes,
+            "killed_launches_last_run": result.killed_launches,
+            "unmarked_legacy_count": result.unmarked_count,
+            "unmarked_legacy_bytes_estimate": result.unmarked_bytes_estimate,
+            "error_count": len(result.errors),
+        }
+        self._diagnostics.record(
+            "onefile_extraction_reclaimed",
+            detail=(
+                f"reclaimed={result.reclaimed_count} bytes={result.reclaimed_bytes} "
+                f"killed={result.killed_launches} unmarked={result.unmarked_count} "
+                f"unmarked_bytes_estimate={result.unmarked_bytes_estimate} errors={len(result.errors)}"
+            ),
+        )
 
     def _persist_aibom_inventory_context(self) -> None:
         persist_aibom_inventory_context(
@@ -8854,6 +8887,10 @@ class GuardDaemonServer:
             getattr(self, "_command_activity_maintenance_thread", None),
             deadline=deadline,
         )
+        self._onefile_extraction_reclaim_thread = self._join_service_thread(
+            getattr(self, "_onefile_extraction_reclaim_thread", None),
+            deadline=deadline,
+        )
         return all(
             thread is None
             for thread in (
@@ -8863,6 +8900,7 @@ class GuardDaemonServer:
                 self._extension_control_refresh_thread,
                 self._headless_cloud_sync_thread,
                 self._command_activity_maintenance_thread,
+                self._onefile_extraction_reclaim_thread,
             )
         )
 

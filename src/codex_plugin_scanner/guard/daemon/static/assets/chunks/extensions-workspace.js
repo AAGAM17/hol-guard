@@ -5862,7 +5862,7 @@ function CustomExtensionsSection(props) {
           ". Search to narrow the list."
         ] })
       ] }) : null,
-      showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT && added.length <= visible.length ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
           type: "button",

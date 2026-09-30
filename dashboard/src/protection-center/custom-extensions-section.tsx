@@ -185,7 +185,7 @@ export function CustomExtensionsSection(props: {
               </p>
             </div>
           ) : null}
-          {showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT && added.length <= visible.length ? (
+          {showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? (
             <button type="button" onClick={() => setShowAll(false)}
               className="mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark">
               Show fewer

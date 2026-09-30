@@ -12,6 +12,13 @@ from codex_plugin_scanner.guard.runtime.command_rules import (
 )
 
 
+def test_parse_shell_command_rejects_empty_text() -> None:
+    with pytest.raises(ValueError, match="Command text cannot be empty"):
+        parse_shell_command("")
+    with pytest.raises(ValueError, match="Command text cannot be empty"):
+        parse_shell_command("   ")
+
+
 def test_windows_parse_keeps_backslash_path_separators(monkeypatch: pytest.MonkeyPatch) -> None:
     from codex_plugin_scanner.guard.runtime import command_tokens
 

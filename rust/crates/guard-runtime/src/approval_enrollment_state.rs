@@ -128,7 +128,9 @@ pub(crate) fn load_unlocked(state_base: &Path) -> Result<Option<SecureApprovalSt
     #[cfg(not(test))]
     {
         let account = account_for_state_base(state_base)?;
-        let Some(value) = super::read_platform_secret(&account)? else {
+        let Some(value) =
+            super::read_platform_secret_for_state(state_base, &account, MAX_SECRET_TEXT_BYTES)?
+        else {
             return Ok(None);
         };
         Ok(Some(decode_state(&value)?))

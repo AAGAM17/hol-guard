@@ -291,7 +291,7 @@ pub(crate) fn load(state_base: &Path) -> Result<Option<WorkspaceReviewSecureStat
             super::approval_enrollment::account_for_state_base(state_base)?,
             SECURE_STATE_ACCOUNT_SUFFIX
         );
-        read_platform_secret_for_workspace_review(&account, MAX_SECRET_TEXT_BYTES)
+        read_platform_secret_for_workspace_review(state_base, &account, MAX_SECRET_TEXT_BYTES)
             .map_err(map_platform_error)?
     };
     decode_secure_state(encoded)
@@ -349,8 +349,13 @@ pub(crate) fn store(state_base: &Path, state: &WorkspaceReviewSecureStateV1) -> 
         );
         let encoded = String::from_utf8(bytes)
             .map_err(|_| "native_workspace_review_secure_state_invalid".to_owned())?;
-        write_platform_secret_for_workspace_review(&account, &encoded, MAX_SECRET_TEXT_BYTES)
-            .map_err(map_platform_error)
+        write_platform_secret_for_workspace_review(
+            state_base,
+            &account,
+            &encoded,
+            MAX_SECRET_TEXT_BYTES,
+        )
+        .map_err(map_platform_error)
     }
 }
 

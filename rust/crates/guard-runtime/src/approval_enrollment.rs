@@ -12,9 +12,9 @@ use std::path::Path;
 mod platform;
 #[path = "approval_enrollment_state.rs"]
 mod state;
-use platform::{read_platform_secret, write_platform_secret};
 #[cfg(not(test))]
-use platform::{read_platform_secret_with_limit, write_platform_secret_with_limit};
+use platform::read_platform_secret_for_state;
+use platform::{read_platform_secret, write_platform_secret, write_platform_secret_for_state};
 use state::encode_state;
 pub(super) use state::load_unlocked;
 #[cfg(test)]
@@ -22,30 +22,41 @@ pub(super) use state::write_test_enrollment_bindings;
 pub(crate) use state::SecureApprovalState;
 
 #[cfg(not(test))]
-pub(super) fn read_platform_secret_for_v4(account: &str) -> Result<Option<String>, String> {
-    read_platform_secret(account)
-}
-
-#[cfg(not(test))]
-pub(super) fn write_platform_secret_for_v4(account: &str, value: &str) -> Result<(), String> {
-    write_platform_secret(account, value)
-}
-
-#[cfg(not(test))]
-pub(super) fn read_platform_secret_for_workspace_review(
+pub(super) fn read_platform_secret_for_v4_state(
+    state_base: &Path,
     account: &str,
     max_bytes: usize,
 ) -> Result<Option<String>, String> {
-    read_platform_secret_with_limit(account, max_bytes)
+    read_platform_secret_for_state(state_base, account, max_bytes)
 }
 
 #[cfg(not(test))]
-pub(super) fn write_platform_secret_for_workspace_review(
+pub(super) fn write_platform_secret_for_v4_state(
+    state_base: &Path,
     account: &str,
     value: &str,
     max_bytes: usize,
 ) -> Result<(), String> {
-    write_platform_secret_with_limit(account, value, max_bytes)
+    write_platform_secret_for_state(state_base, account, value, max_bytes)
+}
+
+#[cfg(not(test))]
+pub(super) fn read_platform_secret_for_workspace_review(
+    state_base: &Path,
+    account: &str,
+    max_bytes: usize,
+) -> Result<Option<String>, String> {
+    read_platform_secret_for_state(state_base, account, max_bytes)
+}
+
+#[cfg(not(test))]
+pub(super) fn write_platform_secret_for_workspace_review(
+    state_base: &Path,
+    account: &str,
+    value: &str,
+    max_bytes: usize,
+) -> Result<(), String> {
+    write_platform_secret_for_state(state_base, account, value, max_bytes)
 }
 
 const STATE_VERSION: u16 = 4;
@@ -322,7 +333,12 @@ pub(super) fn prepare_enrollment_unlocked(state_base: &Path) -> Result<(String, 
         pending_record_digest: String::new(),
     };
     let encoded = encode_state(&state)?;
-    write_platform_secret(&account_for_state_base(state_base)?, &encoded)?;
+    write_platform_secret_for_state(
+        state_base,
+        &account_for_state_base(state_base)?,
+        &encoded,
+        MAX_SECRET_TEXT_BYTES,
+    )?;
     Ok((device_binding, installation_binding))
 }
 
@@ -376,7 +392,12 @@ pub(super) fn begin_transition_unlocked(
     if encoded.len() > MAX_SECRET_TEXT_BYTES {
         return Err("native_approval_secure_state_invalid".to_owned());
     }
-    write_platform_secret(&account_for_state_base(state_base)?, &encoded)?;
+    write_platform_secret_for_state(
+        state_base,
+        &account_for_state_base(state_base)?,
+        &encoded,
+        MAX_SECRET_TEXT_BYTES,
+    )?;
     Ok(state)
 }
 
@@ -419,7 +440,12 @@ pub(super) fn complete_transition_unlocked(
         ..existing
     };
     let encoded = encode_state(&state)?;
-    write_platform_secret(&account_for_state_base(state_base)?, &encoded)?;
+    write_platform_secret_for_state(
+        state_base,
+        &account_for_state_base(state_base)?,
+        &encoded,
+        MAX_SECRET_TEXT_BYTES,
+    )?;
     Ok(state)
 }
 

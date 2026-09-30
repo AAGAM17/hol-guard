@@ -1,5 +1,21 @@
+#[cfg(target_os = "windows")]
+use super::MAX_SECRET_TEXT_BYTES;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use super::{MAX_SECRET_TEXT_BYTES, SERVICE_NAME};
+
+#[cfg(target_os = "windows")]
+#[path = "windows_approval_secure_storage.rs"]
+mod windows_secure_storage;
+
+#[path = "approval_enrollment_platform_dispatch.rs"]
+mod dispatch;
+#[cfg(not(test))]
+pub(super) use dispatch::read_platform_secret_for_state;
+pub(super) use dispatch::write_platform_secret_for_state;
+#[cfg(target_os = "windows")]
+pub(super) use dispatch::{read_platform_secret, write_platform_secret};
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+pub(super) use dispatch::{read_platform_secret, write_platform_secret};
 
 #[cfg(any(target_os = "linux", all(test, unix)))]
 mod bounded_transport {
@@ -441,12 +457,7 @@ pub(super) fn write_platform_secret_with_limit(
 #[path = "approval_enrollment_platform_tests.rs"]
 mod tests;
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub(super) fn read_platform_secret(_account: &str) -> Result<Option<String>, String> {
-    read_platform_secret_with_limit(_account, 0)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub(super) fn read_platform_secret_with_limit(
     _account: &str,
     _max_bytes: usize,
@@ -457,12 +468,7 @@ pub(super) fn read_platform_secret_with_limit(
     Ok(None)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub(super) fn write_platform_secret(_account: &str, value: &str) -> Result<(), String> {
-    write_platform_secret_with_limit(_account, value, 0)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub(super) fn write_platform_secret_with_limit(
     _account: &str,
     _value: &str,

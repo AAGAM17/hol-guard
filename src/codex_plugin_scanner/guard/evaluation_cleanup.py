@@ -13,8 +13,8 @@ from typing import cast
 from .evaluation_contracts import EvaluationContractError
 from .evaluation_scope import _safe_temp_parent
 
-_OWNED_ROOT_PREFIX = "hol-guard-eval-"
-_MARKER_NAME = ".hol-guard-evaluation-owned"
+OWNED_ROOT_PREFIX = "hol-guard-eval-"
+MARKER_NAME = ".hol-guard-evaluation-owned"
 _DESCRIPTOR_CLEANUP_DIR_FD_OPERATIONS = (os.open, os.stat, os.unlink, os.rmdir)
 _DESCRIPTOR_CLEANUP_SUPPORTED_DIR_FD = frozenset(getattr(os, "supports_dir_fd", ()))
 
@@ -31,7 +31,10 @@ def descriptor_cleanup_supported() -> bool:
     ):
         return False
     supported = cast(frozenset[object], _DESCRIPTOR_CLEANUP_SUPPORTED_DIR_FD)
-    return all(operation in supported for operation in _DESCRIPTOR_CLEANUP_DIR_FD_OPERATIONS)
+    return all(
+        operation in supported or getattr(operation, "__name__", None) in supported
+        for operation in _DESCRIPTOR_CLEANUP_DIR_FD_OPERATIONS
+    )
 
 
 def _directory_open_flags() -> int:
@@ -58,7 +61,7 @@ def _private_directory_details(
 
 def _validate_owned_marker(root_descriptor: int, marker_token: str) -> None:
     try:
-        marker_details = os.stat(_MARKER_NAME, dir_fd=root_descriptor, follow_symlinks=False)
+        marker_details = os.stat(MARKER_NAME, dir_fd=root_descriptor, follow_symlinks=False)
     except FileNotFoundError as exc:
         raise EvaluationContractError("evaluation setup ownership marker is missing") from exc
     if not stat.S_ISREG(marker_details.st_mode):
@@ -69,7 +72,7 @@ def _validate_owned_marker(root_descriptor: int, marker_token: str) -> None:
     marker_descriptor: int | None = None
     try:
         marker_descriptor = os.open(
-            _MARKER_NAME,
+            MARKER_NAME,
             os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0),
             dir_fd=root_descriptor,
         )
@@ -133,7 +136,7 @@ def remove_owned_root(
         raise EvaluationContractError("descriptor-bound evaluation cleanup is unavailable on this platform")
 
     try:
-        if root_path.name.startswith(_OWNED_ROOT_PREFIX) is False:
+        if not root_path.name.startswith(OWNED_ROOT_PREFIX):
             raise EvaluationContractError("evaluation setup path has an invalid ownership name")
         if not _safe_temp_parent(root_path.parent):
             raise EvaluationContractError("evaluation setup path is outside a temporary root")
@@ -157,11 +160,11 @@ def remove_owned_root(
                 root_identity = root_details.st_dev, root_details.st_ino
                 _validate_owned_marker(root_descriptor, marker_token)
                 with os.scandir(root_descriptor) as entries:
-                    entry_names = [entry.name for entry in entries if entry.name != _MARKER_NAME]
+                    entry_names = [entry.name for entry in entries if entry.name != MARKER_NAME]
                 for entry_name in entry_names:
                     _remove_descriptor_tree(root_descriptor, entry_name)
                 _validate_owned_marker(root_descriptor, marker_token)
-                os.unlink(_MARKER_NAME, dir_fd=root_descriptor)
+                os.unlink(MARKER_NAME, dir_fd=root_descriptor)
                 try:
                     current_details = os.stat(root_path.name, dir_fd=parent_descriptor, follow_symlinks=False)
                 except FileNotFoundError as exc:
@@ -180,4 +183,4 @@ def remove_owned_root(
         raise EvaluationContractError("unable to clean up evaluation setup") from exc
 
 
-__all__ = ["descriptor_cleanup_supported", "remove_owned_root"]
+__all__ = ["MARKER_NAME", "OWNED_ROOT_PREFIX", "descriptor_cleanup_supported", "remove_owned_root"]

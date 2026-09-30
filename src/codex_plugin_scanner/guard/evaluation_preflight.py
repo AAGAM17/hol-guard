@@ -480,9 +480,9 @@ def setup_evaluation(
     root_path: Path | None = None
     marker_token = secrets.token_hex(16)
     try:
-        root_path = Path(tempfile.mkdtemp(prefix=_cleanup._OWNED_ROOT_PREFIX, dir=base))
+        root_path = Path(tempfile.mkdtemp(prefix=_cleanup.OWNED_ROOT_PREFIX, dir=base))
         _ = root_path.chmod(0o700)
-        marker = root_path / _cleanup._MARKER_NAME
+        marker = root_path / _cleanup.MARKER_NAME
         _ = marker.write_text(marker_token, encoding="utf-8")
         _ = marker.chmod(0o600)
         guard_home = root_path / "guard-home"
@@ -546,7 +546,21 @@ def cleanup_interrupted_evaluation_setup(
     candidate_parent = os.path.normcase(os.path.realpath(candidate.parent))
     if candidate_parent != declared_path:
         raise EvaluationContractError("evaluation recovery path is outside the profile target scope")
-    return _cleanup.remove_owned_root(candidate, marker_token)
+    if candidate.is_symlink():
+        raise EvaluationContractError("evaluation setup path must not be a symlink")
+    try:
+        candidate_details = candidate.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise EvaluationContractError("unable to inspect evaluation setup path") from exc
+    if not stat.S_ISDIR(candidate_details.st_mode):
+        raise EvaluationContractError("evaluation setup path is not a directory")
+    return _cleanup.remove_owned_root(
+        candidate,
+        marker_token,
+        expected_root_identity=(candidate_details.st_dev, candidate_details.st_ino),
+    )
 
 
 __all__ = [

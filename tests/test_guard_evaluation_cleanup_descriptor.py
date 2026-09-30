@@ -201,6 +201,39 @@ def test_interrupted_cleanup_uses_the_same_root_descriptor_boundary(
     assert held.is_dir()
 
 
+def test_interrupted_cleanup_rejects_replacement_before_root_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile, setup = _setup(tmp_path)
+    assert setup.root_path is not None and setup.marker_token is not None
+    root = setup.root_path
+    token = setup.marker_token
+    held = root.with_name(f"{cleanup_module.OWNED_ROOT_PREFIX}held")
+    replacement, content = _foreign_directory(tmp_path)
+    marker = replacement / cleanup_module.MARKER_NAME
+    marker.write_text(token, encoding="utf-8")
+    marker.chmod(0o600)
+    original_open = cleanup_module.os.open
+    swapped = False
+
+    def swap_before_root_open(path: object, *args: object, **kwargs: object):
+        nonlocal swapped
+        if not swapped and path == root.name and kwargs.get("dir_fd") is not None:
+            root.rename(held)
+            replacement.rename(root)
+            swapped = True
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(cleanup_module.os, "open", swap_before_root_open)
+    with pytest.raises(ValueError, match="changed before cleanup"):
+        cleanup_interrupted_evaluation_setup(profile, owned_root=root, marker_token=token)
+
+    assert (root / "user-config.json").read_bytes() == content
+    assert held.is_dir()
+    monkeypatch.undo()
+    assert cleanup_module.remove_owned_root(held, token, expected_root_identity=setup.root_identity) is True
+
+
 def test_cleanup_rejects_marker_fifo_swap_without_blocking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _profile_data, setup = _setup(tmp_path)
     assert setup.root_path is not None

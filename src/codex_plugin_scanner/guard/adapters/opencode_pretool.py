@@ -35,6 +35,7 @@ _INHERIT_ENV_KEYS = (
 _PLUGIN_TEMPLATE = """// Managed by HOL Guard. Re-run `hol-guard install opencode` after moving Guard home.
 import { spawn as nodeSpawn } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 
 const GUARD_HOME = __GUARD_HOME__;
 const GUARD_PYTHON = __GUARD_PYTHON__;
@@ -369,7 +370,7 @@ async function runGuardHook(
   payload: Record<string, unknown>,
   deadlineMs: number,
 ) {
-  const workspace = directory?.trim() || process.cwd();
+  const workspace = directory || process.cwd();
   const guardArgv = [
     ...(GUARD_FROZEN ? [] : ["guard"]),
     "hook",
@@ -495,12 +496,17 @@ export const HolGuardPretoolPlugin = async ({
       if (command === null) {
         return;
       }
-      const workspace = directory?.trim() || process.cwd();
+      const workdir = output.args?.workdir;
+      if (workdir !== undefined && typeof workdir !== "string") {
+        throw new Error("HOL Guard could not review this command: workdir must be a string.");
+      }
+      const baseDirectory = directory || process.cwd();
+      const workspace = workdir === undefined ? baseDirectory : resolvePath(baseDirectory, workdir);
       const deadlineMs = Date.now() + GUARD_HOOK_TIMEOUT_MS;
       let result;
       try {
         result = await runGuardHook(
-          directory,
+          workspace,
           {
             hook_event_name: "PreToolUse",
             event: "PreToolUse",

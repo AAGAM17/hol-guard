@@ -234,7 +234,7 @@ def test_hook_worker_returns_fail_safe_when_native_off(
         workspace=tmp_path / "workspace",
     )
     assert result["reason_code"] == "native_hook_disabled"
-    assert result["hookSpecificOutput"]["permissionDecision"] == "allow"
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_hook_worker_fails_closed_when_forced_native_is_missing(

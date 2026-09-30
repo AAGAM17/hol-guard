@@ -754,8 +754,10 @@ def test_cursor_hook_script_uses_daemon_fast_path(tmp_path: Path, monkeypatch: p
     finally:
         daemon.stop()
 
-    assert proc.returncode == 0
-    assert json.loads(proc.stdout) == {"permission": "allow"}
+    assert proc.returncode == 2
+    response = json.loads(proc.stdout)
+    assert response["permission"] == "deny"
+    assert "explicitly disabled" in response["user_message"]
 
 
 @pytest.mark.parametrize(

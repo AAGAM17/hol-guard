@@ -30,6 +30,7 @@ from ... import version as package_version
 from ..adapters.base import HarnessContext
 from ..adapters.codex import CodexHarnessAdapter, codex_native_hook_state
 from ..adapters.cursor_hooks import cursor_native_hook_state
+from ..adapters.opencode_install_snapshot import refresh_opencode_proxy_launchers
 from ..adapters.opencode_pretool import (
     global_plugin_path,
     install_pretool_plugin,
@@ -2646,6 +2647,10 @@ def _refresh_opencode_pretool_plugin(
         repair_context, _ = _repair_context_from_managed_install(context, managed_install)
     except ValueError as error:
         return f"Could not inspect OpenCode pretool plugin during update: {error}"
+    try:
+        refreshed_proxies = refresh_opencode_proxy_launchers(repair_context)
+    except (OSError, RuntimeError, ValueError) as error:
+        return f"Could not refresh OpenCode MCP companion launchers during update: {error}"
     global_path = global_plugin_path(repair_context)
     managed_path = managed_plugin_path(repair_context)
     try:
@@ -2658,6 +2663,8 @@ def _refresh_opencode_pretool_plugin(
     except OSError as error:
         return f"Could not inspect OpenCode pretool plugin during update: {error}"
     if global_source == expected_source and managed_source == expected_source:
+        if refreshed_proxies:
+            return "Refreshed OpenCode MCP companion launchers. Restart OpenCode to load them."
         return None
     try:
         install_pretool_plugin(repair_context)

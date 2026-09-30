@@ -197,6 +197,48 @@ def test_pretool_plugin_self_repair_commands_bypass_missing_runtime(tmp_path: Pa
     assert completed.stdout.strip() == "ok"
 
 
+@pytest.mark.parametrize("exit_code", [0, 1, 2])
+def test_pretool_v2_registers_and_preserves_guard_decisions(tmp_path: Path, exit_code: int) -> None:
+    bun = _bun_executable()
+    if bun is None:
+        pytest.skip("bun not installed")
+    source = pretool_plugin_source(_ctx(tmp_path)).replace(
+        "result = await runGuardHook(", "result = await globalThis.guardTestHook("
+    )
+    (tmp_path / "plugin.ts").write_text(source, encoding="utf-8")
+    runner = tmp_path / "runner.ts"
+    runner.write_text(
+        "import plugin, { HolGuardPretoolPlugin } from './plugin';\n"
+        "let handler; let calls = 0; let registered = 0;\n"
+        "globalThis.guardTestHook = async (directory, payload) => {\n"
+        "  calls++;\n"
+        "  if (directory !== '/project' || payload.cwd !== '/project' ||\n"
+        "      payload.tool_name !== 'bash' || payload.tool_input.command !== 'pwd')\n"
+        "    throw new Error('incorrect Guard action');\n"
+        f"  return {{ exitCode: {exit_code}, stdout: '', stderr: 'test rejection' }};\n"
+        "};\n"
+        "if (plugin.id !== 'hol-guard-pretool' || plugin.server !== HolGuardPretoolPlugin)\n"
+        "  throw new Error('incorrect entrypoint');\n"
+        "await plugin.setup({ location: { directory: '/project' }, tool: {\n"
+        "  async hook(name, callback) {\n"
+        "    if (name !== 'execute.before') throw new Error('incorrect hook');\n"
+        "    registered++; handler = callback;\n"
+        "  }\n"
+        "} });\n"
+        "if (registered !== 1) throw new Error('duplicate registration');\n"
+        "let blocked = false;\n"
+        "try { await handler({ tool: 'bash', input: { command: ['pwd'] } }); }\n"
+        "catch (error) { blocked = true; }\n"
+        f"if (blocked !== {str(exit_code != 0).lower()}) throw new Error('decision lost');\n"
+        "await handler({ tool: 'unrelated', input: { command: 'pwd' } });\n"
+        "if (calls !== 1) throw new Error('incorrect interception count');\n"
+        "console.log('ok');\n",
+        encoding="utf-8",
+    )
+    completed = subprocess.run([bun, str(runner)], capture_output=True, text=True, timeout=15, check=False)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "ok"
+
 
 def test_pretool_plugin_guard_block_message_appends_primary_approval_url(tmp_path: Path) -> None:
     message = _run_generated_guard_block_message(
@@ -385,7 +427,7 @@ const guardPlatform = "win32";
 """,
     )
     source = source.replace("process.platform", "guardPlatform")
-    source = source.replace('pythonTarget = resolveGuardPythonTarget();', 'pythonTarget = "python";')
+    source = source.replace("pythonTarget = resolveGuardPythonTarget();", 'pythonTarget = "python";')
     source = source.replace("verifyGuardPythonIdentity();", "")
     plugin_path = tmp_path / "guard-cleanup-failure.ts"
     _ = plugin_path.write_text(source, encoding="utf-8")
@@ -465,7 +507,7 @@ const guardPlatform = "win32";
     )
     source = source.replace("process.platform", "guardPlatform")
     source = source.replace("const GUARD_TASKKILL_PATH = null;", 'const GUARD_TASKKILL_PATH = "taskkill.exe";')
-    source = source.replace('pythonTarget = resolveGuardPythonTarget();', 'pythonTarget = "python";')
+    source = source.replace("pythonTarget = resolveGuardPythonTarget();", 'pythonTarget = "python";')
     source = source.replace("verifyGuardPythonIdentity();", "")
     source += "\nexport const getSpawnCalls = () => spawnCalls;\n"
     plugin_path = tmp_path / "guard-exited-parent.ts"
@@ -759,6 +801,69 @@ def test_opencode_verification_ready_with_guard_companion_servers(tmp_path: Path
     assert verification["mcp_proxy_configured"] is True
     assert verification["ready"] is True
     assert not verification["warnings"]
+
+
+@pytest.mark.parametrize("mismatched_binding", [False, True])
+@pytest.mark.parametrize("frozen_runtime", [False, True])
+def test_refresh_companion_launcher_preserves_permissions_and_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatched_binding: bool,
+    frozen_runtime: bool,
+) -> None:
+    from codex_plugin_scanner.guard.adapters.opencode_install_snapshot import refresh_opencode_proxy_launchers
+
+    ctx = _ctx(tmp_path)
+    config = ctx.home_dir / ".config" / "opencode" / "opencode.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        json.dumps(
+            {
+                "mcp": {
+                    "test": {
+                        "type": "local",
+                        "command": ["python3", "server.py"],
+                        "enabled": True,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    OpenCodeHarnessAdapter().install(ctx)
+    payload = json.loads(config.read_text(encoding="utf-8"))
+    companion = payload["mcp"]["hol-guard::test"]
+    proxy_index = companion["command"].index("opencode-mcp-proxy")
+    companion["command"] = ["/removed/versions/3.12.0/hol-guard", *companion["command"][proxy_index:]]
+    companion["enabled"] = False
+    companion["environment"] = {"TEST_CONFIGURED_VALUE": "retained"}
+    payload["permission"] = {"bash": "deny", "hol-guard::*": "ask"}
+    if mismatched_binding:
+        payload["mcp"]["test"]["command"] = ["python3", "changed-server.py"]
+    config.write_text(json.dumps(payload), encoding="utf-8")
+    before = json.loads(config.read_text(encoding="utf-8"))
+
+    if frozen_runtime:
+        from codex_plugin_scanner.guard.adapters import hook_python
+
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(
+            hook_python, "resolve_guard_hook_python", lambda _context: Path("/durable/current-hol-guard")
+        )
+
+    assert refresh_opencode_proxy_launchers(ctx) == (0 if mismatched_binding else 1)
+    after = json.loads(config.read_text(encoding="utf-8"))
+    if not mismatched_binding:
+        refreshed = after["mcp"]["hol-guard::test"]["command"]
+        assert refreshed[0] != "/removed/versions/3.12.0/hol-guard"
+        if frozen_runtime:
+            assert refreshed[:2] == ["/durable/current-hol-guard", "opencode-mcp-proxy"]
+        else:
+            assert refreshed[1:4] == ["-m", "codex_plugin_scanner.cli", "guard"]
+        assert refreshed[refreshed.index("opencode-mcp-proxy") :] == before["mcp"]["hol-guard::test"]["command"][1:]
+        after["mcp"]["hol-guard::test"]["command"] = before["mcp"]["hol-guard::test"]["command"]
+    assert after == before
+    assert refresh_opencode_proxy_launchers(ctx) == 0
 
 
 def test_refresh_opencode_pretool_plugin_rewrites_stale_plugin(tmp_path: Path) -> None:

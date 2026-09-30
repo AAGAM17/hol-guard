@@ -334,6 +334,10 @@ def _reject_constant(_value: str) -> object:
 
 
 def _has_safe_numbers(value: object, *, deadline_monotonic: float | None = None) -> bool:
+    """Require safe integers within the object-only declared field schema.
+
+    Arrays are unsupported by that schema even when their elements are safe.
+    """
     if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
         return False
     if type(value) is int:
@@ -346,7 +350,12 @@ def _has_safe_numbers(value: object, *, deadline_monotonic: float | None = None)
 
 
 def canonical_structured_content_bytes(value: object, *, deadline_monotonic: float | None = None) -> bytes | None:
-    """Return exact canonical JSON bytes, or ``None`` when proof is impossible."""
+    """Validate the receiver's exact canonical JSON text without rewriting it.
+
+    Sorted object keys, compact separators, literal Unicode and the closed
+    field schema bind the checked bytes to the bytes forwarded by the receiver.
+    Semantically equivalent JSON with different formatting is unsupported.
+    """
 
     def deadline_exceeded() -> bool:
         return deadline_monotonic is not None and time.monotonic() >= deadline_monotonic

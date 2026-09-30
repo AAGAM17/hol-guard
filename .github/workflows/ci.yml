@@ -503,6 +503,8 @@ jobs:
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
       - run: uv sync --frozen --extra dev --python 3.12
+      - name: Prepare mutation artifact directories
+        run: mkdir -p mutants/docs/guard/contracts
       - name: Run command parser mutation baseline
         run: uv run --no-sync mutmut run --max-children 4
       - name: Validate mutation baseline

@@ -55,11 +55,11 @@ def _refresh_opencode_pretool_plugin(
     except OSError as error:
         return f"Could not inspect OpenCode pretool plugin during update: {error}"
     if global_source == expected_source and managed_source == expected_source:
-        if companion_warning:
-            return companion_warning
-        if refreshed_proxies:
-            return "Refreshed OpenCode MCP companion launchers. Restart OpenCode to load them."
-        return None
+        refresh_note = (
+            "Refreshed OpenCode MCP companion launchers. Restart OpenCode to load them." if refreshed_proxies else None
+        )
+        parts = [part for part in (companion_warning, refresh_note) if part]
+        return " ".join(parts) if parts else None
     try:
         install_pretool_plugin(repair_context)
     except (OSError, RuntimeError) as error:

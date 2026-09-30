@@ -27,6 +27,7 @@ EXPECTED = {
 }
 EXPECTED_NODE = "v22.19.0"
 EXPECTED_BUN = "1.3.14"
+EXPECTED_NPM = "11.6.2"
 EXPECTED_BRACE_VERSION = "5.0.11"
 EXPECTED_BRACE_INTEGRITY = (
     "sha512-awigjhi6cLTh90bdw6+QJ9CtmJmyYhEIi70iCbc8Rozn04Fw9FeQIBjv/E22FFGuCGx1bLJyUfB64x/szUSXUg=="
@@ -165,6 +166,9 @@ def verify_installed_sdk(prefix: Path) -> dict[str, str]:
     bun_version = command_version("bun", env)
     if bun_version != EXPECTED_BUN:
         fail(f"Bun version must be {EXPECTED_BUN}, got {bun_version}")
+    npm_version = command_version("npm", env)
+    if npm_version != EXPECTED_NPM:
+        fail(f"npm version must be {EXPECTED_NPM}, got {npm_version}")
     pi_cli = shutil.which("pi", path=env["PATH"])
     omp_cli = shutil.which("omp", path=env["PATH"])
     expected_pi_cli = (pi_root / "dist" / "bundle" / "cli.js").resolve()

@@ -13,12 +13,15 @@ import json
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from ..strict_json_pairs import unique_json_object
 from .structured_data_sensitivity import (
     DeclaredField,
     DeclaredSchema,
+    FieldRole,
+    FieldType,
+    PersonalCategory,
     SensitiveScanResult,
     classifier_rule_version,
     classify_declared_content,
@@ -159,9 +162,9 @@ def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
         fields.append(
             DeclaredField(
                 tuple(path_raw),
-                role,  # type: ignore[arg-type]
-                value_type=value_type,  # type: ignore[arg-type]
-                category=field.get("category"),  # type: ignore[arg-type]
+                cast(FieldRole, role),
+                value_type=cast(FieldType, value_type),
+                category=cast(PersonalCategory | None, field.get("category")),
             )
         )
     return StructuredOutputPolicy(harnesses=tuple(sorted(harnesses)), schema=DeclaredSchema(tuple(fields)))

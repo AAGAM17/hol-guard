@@ -143,6 +143,14 @@ class _HookWorkerNativeHost(Protocol):
     _record_native_decision_receipt: Callable[[object], Mapping[str, object] | None]
     _load_config: Callable[..., object]
 
+    def _structured_output_resolution(
+        self,
+        *,
+        guard_home: Path,
+        workspace: Path | None,
+        harness: str,
+    ) -> StructuredOutputResolution: ...
+
 
 def _record_native_pre_activity(
     host: _HookWorkerNativeHost,

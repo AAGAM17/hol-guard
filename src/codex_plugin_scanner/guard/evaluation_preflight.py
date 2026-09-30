@@ -561,10 +561,12 @@ def _remove_owned_root(
                     expected_identity=expected_root_identity,
                 )
                 root_identity = root_details.st_dev, root_details.st_ino
-                _validate_owned_marker(root_descriptor, marker_token)
                 with os.scandir(root_descriptor) as entries:
-                    for entry in entries:
-                        _remove_descriptor_tree(root_descriptor, entry.name)
+                    names = [entry.name for entry in entries if entry.name != _MARKER_NAME]
+                for name in names:
+                    _remove_descriptor_tree(root_descriptor, name)
+                _validate_owned_marker(root_descriptor, marker_token)
+                os.unlink(_MARKER_NAME, dir_fd=root_descriptor)
                 try:
                     current_details = os.stat(root_path.name, dir_fd=parent_descriptor, follow_symlinks=False)
                 except FileNotFoundError as exc:

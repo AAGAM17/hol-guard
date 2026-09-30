@@ -83,9 +83,10 @@ fn request_path(state_base: &Path, request_id: &str) -> Result<PathBuf, String> 
 }
 
 pub(crate) fn load(
-    state_base: &Path,
+    policy_store: &super::PolicySnapshotStore,
     request_id: &str,
 ) -> Result<TrustedWorkspaceReviewRequest, String> {
+    let state_base = policy_store.state_base();
     let path = request_path(state_base, request_id)?;
     let request_directory = path
         .parent()
@@ -115,6 +116,15 @@ pub(crate) fn load(
         || state.status != "pending"
     {
         return Err("native_workspace_review_request_invalid".to_owned());
+    }
+    if let Some(origin) = state
+        .action
+        .get("action_envelope")
+        .and_then(|envelope| envelope.get("native_origin_receipt"))
+    {
+        let receipt = serde_json::from_value(origin.clone())
+            .map_err(|_| "native_workspace_review_origin_invalid".to_owned())?;
+        super::native_review_origin::verify(policy_store, &receipt)?;
     }
     let action_binding = binding(NATIVE_WORKSPACE_REVIEW_ACTION_BINDING_DOMAIN, &state.action)?;
     let intent_binding = binding(NATIVE_WORKSPACE_REVIEW_INTENT_BINDING_DOMAIN, &state.intent)?;

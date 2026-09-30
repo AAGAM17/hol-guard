@@ -318,6 +318,7 @@ fn validate_pre_tool_result(result: &Value) -> Result<(), String> {
 fn evaluate_validated_envelope(
     envelope: GuardHookEnvelopeV2,
     policy_snapshot: Option<&AdmittedPolicySnapshot>,
+    origin_store: Option<&crate::policy_store::PolicySnapshotStore>,
 ) -> Result<Vec<u8>, String> {
     let harness = canonical_harness(&envelope.harness)?;
     let event_name = authoritative_event(&envelope)?;
@@ -326,7 +327,7 @@ fn evaluate_validated_envelope(
     if kind == GuardHookPayloadKindV2::EncryptedPayloadRef {
         return Err("native_hook_encrypted_payload_unsupported".to_owned());
     }
-    let (result, receipt) = match event_name.as_str() {
+    let (result, mut receipt) = match event_name.as_str() {
         "PreToolUse" => {
             let native = guard_command::pretool::evaluate_pre_tool_envelope_with_source(
                 &harness,
@@ -412,6 +413,9 @@ fn evaluate_validated_envelope(
         }
         _ => return Err("native_hook_event_unsupported".to_owned()),
     };
+    if let Some(store) = origin_store {
+        crate::policy_store::native_review_origin::authenticate(store, &mut receipt)?;
+    }
     crate::encode_response(&GuardHookEdgeResultV2 {
         schema: GUARD_HOOK_EDGE_RESULT_V2_SCHEMA.to_owned(),
         authority: "rust".to_owned(),
@@ -437,7 +441,7 @@ pub(crate) fn evaluate_envelope_with_store(
         envelope.policy_generation,
     )?;
     let _command_lease = policy_store.command_authority_lease(snapshot.snapshot())?;
-    evaluate_validated_envelope(envelope, Some(snapshot.as_ref()))
+    evaluate_validated_envelope(envelope, Some(snapshot.as_ref()), Some(policy_store))
 }
 
 /// Evaluate against a snapshot while the policy store's request fence is
@@ -448,7 +452,7 @@ pub(crate) fn evaluate_envelope_with_snapshot(
     snapshot: &AdmittedPolicySnapshot,
 ) -> Result<Vec<u8>, String> {
     validate_envelope_shape(&envelope)?;
-    evaluate_validated_envelope(envelope, Some(snapshot))
+    evaluate_validated_envelope(envelope, Some(snapshot), None)
 }
 
 #[cfg(test)]

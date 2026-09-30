@@ -170,6 +170,7 @@ pub const NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES: &[&str] = &[
     "native_workspace_review_clock_rollback",
     "native_workspace_review_enrollment_required",
     "native_workspace_review_request_invalid",
+    "native_workspace_review_origin_invalid",
     "native_workspace_review_request_missing",
     "native_workspace_review_request_noncanonical",
     "native_workspace_review_request_not_pending",

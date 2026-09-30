@@ -8,11 +8,15 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+from codex_plugin_scanner.guard.daemon.hook_native_review_approval import _native_review_action_envelope
 from codex_plugin_scanner.guard.daemon.runtime_hook_evidence_writer import (
     RuntimeHookEvidenceWriter,
     _NativeDecisionReceiptRecord,
 )
-from codex_plugin_scanner.guard.native_decision_receipt import validate_native_decision_receipt
+from codex_plugin_scanner.guard.native_decision_receipt import (
+    canonical_receipt_bytes,
+    validate_native_decision_receipt,
+)
 from codex_plugin_scanner.guard.native_response_decoder import response_from_payload
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -47,7 +51,11 @@ def _receipt(**overrides: object) -> dict[str, object]:
     identity = {
         "schema": "guard-native-hook-decision-identity.v1",
         "version": 1,
-        **{key: value[key] for key in value if key not in {"schema", "version", "authority", "decision_id"}},
+        **{
+            key: value[key]
+            for key in value
+            if key not in {"schema", "version", "authority", "decision_id", "origin_authentication"}
+        },
     }
     value["decision_id"] = hashlib.sha256(
         json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -67,6 +75,76 @@ def test_receipt_is_strictly_redacted_and_identity_bound() -> None:
     with_mutated_identity = dict(receipt)
     with_mutated_identity["reason_code"] = "native_other_reason"
     assert validate_native_decision_receipt(with_mutated_identity) is None
+
+
+def test_origin_authentication_is_optional_and_not_decision_identity() -> None:
+    legacy = _receipt()
+    sealed = _receipt(origin_authentication="e" * 64)
+    assert validate_native_decision_receipt(sealed) == sealed
+    assert sealed["decision_id"] == legacy["decision_id"]
+    assert canonical_receipt_bytes(sealed) == canonical_receipt_bytes(legacy)
+
+    malformed = dict(sealed)
+    malformed["origin_authentication"] = "E" * 64
+    assert validate_native_decision_receipt(malformed) is None
+    for field in _receipt():
+        missing_required = dict(sealed)
+        _ = missing_required.pop(field)
+        assert validate_native_decision_receipt(missing_required) is None
+    unknown = dict(sealed)
+    unknown["unexpected"] = True
+    assert validate_native_decision_receipt(unknown) is None
+
+
+def test_sealed_receipt_is_detached_without_raw_input_leakage(tmp_path: Path) -> None:
+    receipt = _receipt(origin_authentication="f" * 64)
+    envelope = _native_review_action_envelope(
+        request_id="local-request",
+        harness="cursor",
+        tool_name="Shell",
+        command="cat .env",
+        launch_target="cat .env",
+        workspace=tmp_path,
+        payload={
+            "tool_name": "Shell",
+            "tool_input": {"command": "cat .env", "token": "private-token-value"},
+        },
+        native_action={"action_type": "command"},
+        native_receipt=receipt,
+    )
+    detached = envelope.get("native_origin_receipt")
+    assert isinstance(detached, dict)
+    assert detached == receipt
+    receipt["origin_authentication"] = "a" * 64
+    assert detached["origin_authentication"] == "f" * 64
+    assert "private-token-value" not in json.dumps(envelope, sort_keys=True)
+
+    legacy = _native_review_action_envelope(
+        request_id="legacy-request",
+        harness="cursor",
+        tool_name="Shell",
+        command="cat .env",
+        launch_target="cat .env",
+        workspace=tmp_path,
+        payload={"tool_name": "Shell", "tool_input": {"command": "cat .env"}},
+        native_action={"action_type": "command"},
+        native_receipt=_receipt(),
+    )
+    assert "native_origin_receipt" not in legacy
+
+    malformed = _receipt(origin_authentication="b" * 63)
+    malformed_envelope = _native_review_action_envelope(
+        request_id="malformed-request",
+        harness="cursor",
+        tool_name="Shell",
+        command="cat .env",
+        launch_target="cat .env",
+        workspace=tmp_path,
+        payload={"tool_name": "Shell", "tool_input": {"command": "cat .env"}},
+        native_action={"action_type": "command"},
+        native_receipt=malformed,
+    )
+    assert "native_origin_receipt" not in malformed_envelope
 
 
 def test_receipt_handoff_never_waits_for_persistence(tmp_path: Path) -> None:
@@ -212,9 +290,7 @@ def test_store_initializes_receipt_schema_marker_and_recorded_at_index(tmp_path:
         assert table_row is not None and table_row[0] == 1
         migration_row = connection.execute("select 1 from schema_migrations where version = 26").fetchone()
         assert migration_row is not None and migration_row[0] == 1
-        indexes = {
-            str(row[1]) for row in connection.execute("pragma index_list(native_hook_decision_receipts)")
-        }
+        indexes = {str(row[1]) for row in connection.execute("pragma index_list(native_hook_decision_receipts)")}
     assert "idx_native_hook_decision_receipts_recorded_at" in indexes
 
 

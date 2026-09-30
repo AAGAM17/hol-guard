@@ -79,7 +79,7 @@ fn build_context_under_lock(
         &workspace_binding,
         &scope_binding,
     )?;
-    let request = super::workspace_review_request::load(state_base, request_id)?;
+    let request = super::workspace_review_request::load(policy_store, request_id)?;
     let (record, record_bytes) = installed_authority_record(state_base)?;
     if digest_bytes(&record_bytes) != authority.record_digest {
         return Err("native_workspace_review_authority_invalid".to_owned());

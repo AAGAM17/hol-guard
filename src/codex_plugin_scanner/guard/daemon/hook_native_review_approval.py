@@ -16,10 +16,12 @@ import shlex
 import sqlite3
 import uuid
 from collections.abc import Mapping
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import GuardApprovalRequest, format_local_http_origin
+from ..native_decision_receipt import validate_native_decision_receipt
 from ..runtime.native_review_presentation import normalize_native_review_payload
 from .hook_native_review_binding import native_review_policy_binding
 from .hook_request_parsing import pre_tool_command
@@ -198,6 +200,7 @@ def queue_native_pre_tool_review(
             workspace=workspace,
             payload=payload,
             native_action=native_result.get("action"),
+            native_receipt=native_receipt,
         )
     except (OSError, RuntimeError, TypeError, ValueError, KeyError) as error:
         # Never make an action approvable when its details could not be safely presented.
@@ -406,9 +409,10 @@ def _native_review_action_envelope(
     workspace: Path | None,
     payload: Mapping[str, object],
     native_action: object = None,
+    native_receipt: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     # Presentation only: approval identity and policy remain Rust-owned.
-    return normalize_native_review_payload(
+    envelope = normalize_native_review_payload(
         harness,
         payload,
         request_id=request_id,
@@ -418,6 +422,13 @@ def _native_review_action_envelope(
         workspace=workspace,
         native_action=native_action,
     )
+    validated = validate_native_decision_receipt(native_receipt)
+    if validated is None or "origin_authentication" not in validated:
+        return envelope
+    # Keep only the validated aggregate receipt. Never carry raw hook input
+    # through the presentation envelope, and do not alias nested mappings.
+    envelope["native_origin_receipt"] = deepcopy(validated)
+    return envelope
 
 
 def _native_review_approval_center_url(store: object) -> str:

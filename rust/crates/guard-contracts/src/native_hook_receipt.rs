@@ -42,6 +42,10 @@ pub struct NativeHookDecisionReceiptV1 {
     pub deadline_budget_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command_extensions: Option<super::NativeCommandReceiptBindingV1>,
+    /// Resident-authenticated origin evidence, not an approval or execution grant.
+    /// Omitted by legacy and isolated evaluation paths that have no trusted store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_authentication: Option<String>,
 }
 
 impl NativeHookDecisionReceiptV1 {

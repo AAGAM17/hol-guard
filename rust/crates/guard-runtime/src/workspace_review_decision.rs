@@ -433,7 +433,7 @@ pub(crate) fn verify_and_claim_request(
             &workspace_binding,
             &scope_binding,
         )?;
-        let request = super::workspace_review_request::load(state_base, request_id)?;
+        let request = super::workspace_review_request::load(policy_store, request_id)?;
         let context = WorkspaceReviewDecisionContext {
             workspace_binding: &workspace_binding,
             device_binding: &authority.device_binding,

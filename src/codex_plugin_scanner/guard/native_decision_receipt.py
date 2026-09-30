@@ -47,6 +47,7 @@ _REQUIRED_FIELDS = frozenset(
         "deadline_budget_ms",
     }
 )
+_OPTIONAL_FIELDS = frozenset({"command_extensions", "origin_authentication"})
 
 
 def _bounded_identifier(value: object, *, pattern: re.Pattern[str], maximum: int) -> str | None:
@@ -149,7 +150,13 @@ def _validate_receipt_policy(receipt: dict[str, object]) -> bool:
         pattern=_IDENTIFIER,
         maximum=NATIVE_HOOK_DECISION_RECEIPT_MAX_STRING_BYTES,
     )
-    return reason_code is not None
+    if reason_code is None:
+        return False
+    if "origin_authentication" in receipt:
+        origin_authentication = receipt["origin_authentication"]
+        if not isinstance(origin_authentication, str) or _HEX64.fullmatch(origin_authentication) is None:
+            return False
+    return True
 
 
 def _validate_receipt_limits(receipt: dict[str, object]) -> bool:
@@ -172,7 +179,8 @@ def validate_native_decision_receipt(value: object) -> dict[str, object] | None:
     if not isinstance(value, Mapping):
         return None
     receipt = dict(cast(Mapping[str, object], value))
-    if set(receipt) not in (_REQUIRED_FIELDS, _REQUIRED_FIELDS | {"command_extensions"}):
+    fields = set(receipt)
+    if not _REQUIRED_FIELDS.issubset(fields) or not fields - _REQUIRED_FIELDS <= _OPTIONAL_FIELDS:
         return None
     if "command_extensions" in receipt and not valid_native_command_receipt_binding(receipt["command_extensions"]):
         return None

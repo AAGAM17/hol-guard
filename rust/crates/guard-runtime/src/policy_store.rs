@@ -25,6 +25,8 @@ pub(crate) mod approval_v4_authority;
 pub(crate) mod approval_v4_enrollment;
 #[path = "approval_v4_secure_state.rs"]
 pub(crate) mod approval_v4_secure_state;
+#[path = "native_review_origin.rs"]
+pub(crate) mod native_review_origin;
 #[path = "policy_store_approval.rs"]
 mod policy_store_approval;
 #[path = "policy_store_authority.rs"]

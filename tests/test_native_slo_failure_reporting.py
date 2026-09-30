@@ -246,6 +246,79 @@ def test_capacity_timeout_is_incomplete_and_missing_requests_are_not_fail_safe(
         executor.shutdown(wait=True, cancel_futures=True)
 
 
+def test_capacity_timeout_defers_finished_observations_but_keeps_running_work_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    progress = _progress()
+    first_started = threading.Event()
+    second_started = threading.Event()
+    release = threading.Event()
+    call_lock = threading.Lock()
+    calls = 0
+
+    class Session:
+        def observe(self, *_args: object) -> Observation:
+            nonlocal calls
+            with call_lock:
+                call_number = calls
+                calls += 1
+            if call_number == 0:
+                first_started.set()
+                return Observation("codex", "PreToolUse", "1k", 1.0, "native_resident", True)
+            second_started.set()
+            release.wait(timeout=2)
+            return Observation("codex", "PreToolUse", "1k", 1.0, "native_resident", True)
+
+    def observer(harness: str, event: str, size_class: str, stage: str) -> Observation:
+        return benchmark._observe_with_progress(
+            progress,
+            cast(AdapterSession, session),
+            harness,
+            event,
+            size_class,
+            stage,
+            fatal=False,
+            record_submission=False,
+            complete=False,
+        )
+
+    deferred: list[Observation] = []
+
+    def record_deferred(observations: list[Observation]) -> None:
+        deferred.extend(observations)
+        progress.complete("capacity_prewarm", len(observations))
+
+    session = Session()
+    monkeypatch.setattr(capacity, "_CONCURRENT_WAVE_TIMEOUT_SECONDS", 0.05)
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        with pytest.raises(RuntimeError, match="concurrent capacity wave timed out"):
+            capacity._run_concurrent(
+                cast(AdapterSession, session),
+                (("codex", "PreToolUse"),),
+                3,
+                executor,
+                observer=observer,
+                stage="capacity_prewarm",
+                on_submitted=progress.submit,
+                on_cancelled=progress.cancel,
+                on_transport_observations=record_deferred,
+            )
+        assert first_started.is_set()
+        assert second_started.is_set()
+        assert len(deferred) == 1
+        stage = progress.stage_snapshot()["capacity_prewarm"]
+        assert stage["submitted"] == 3
+        assert stage["started"] == 2
+        assert stage["attempted"] == 2
+        assert stage["completed"] == 1
+        assert stage["cancelled"] == 1
+        assert stage["missing"] == 14
+    finally:
+        release.set()
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
 def test_capacity_transport_failure_is_not_collapsed_into_completed_error_count() -> None:
     progress = _progress()
 

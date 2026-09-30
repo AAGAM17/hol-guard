@@ -134,6 +134,17 @@ def _run_concurrent(
         cancelled = sum(future.cancel() for future in unfinished)
         if cancelled and on_cancelled is not None:
             on_cancelled(stage, cancelled)
+        if on_transport_observations is not None:
+            finished: list[Observation] = []
+            for future in futures:
+                if not future.done() or future.cancelled():
+                    continue
+                try:
+                    finished.append(future.result())
+                except Exception:
+                    continue
+            if finished:
+                on_transport_observations(finished)
         executor.shutdown(wait=False, cancel_futures=True)
         raise RuntimeError("native_installed_slo_failed: concurrent capacity wave timed out")
     for future in futures:

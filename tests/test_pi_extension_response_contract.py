@@ -40,11 +40,9 @@ def _generated_source(tmp_path: Path, *, harness: str = "omp") -> str:
 
 def _strip_generated_types(fragment: str) -> str:
     replacements = {
-        "const errorPayload = JSON.parse(errorBody) as { error?: unknown };":
-            "const errorPayload = JSON.parse(errorBody);",
+        "const errorPayload = JSON.parse(errorBody) as { error?: unknown };": "const errorPayload = JSON.parse(errorBody);",
         "function compactHookEventName(value: unknown): string {": "function compactHookEventName(value) {",
-        "function normalizeGuardResponse(value: unknown): GuardResponse | null {":
-            "function normalizeGuardResponse(value) {",
+        "function normalizeGuardResponse(value: unknown): GuardResponse | null {": "function normalizeGuardResponse(value) {",
         """function daemonResponseCanReturn(
   payload: Record<string, unknown>,
   response: GuardResponse,
@@ -465,40 +463,33 @@ def _generated_preprocessing_helper(source: str) -> str:
         "",
     )
     for old, new in {
-        "function createTraversalBudget(deadlineAt?: number): TraversalBudget {":
-            "function createTraversalBudget(deadlineAt) {",
-        "function traversalBudgetReady(budget: TraversalBudget): boolean {":
-            "function traversalBudgetReady(budget) {",
-        "function consumeTraversalNode(budget: TraversalBudget): boolean {":
-            "function consumeTraversalNode(budget) {",
+        "function createTraversalBudget(deadlineAt?: number): TraversalBudget {": "function createTraversalBudget(deadlineAt) {",
+        "function traversalBudgetReady(budget: TraversalBudget): boolean {": "function traversalBudgetReady(budget) {",
+        "function consumeTraversalNode(budget: TraversalBudget): boolean {": "function consumeTraversalNode(budget) {",
         "function digestOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): OutputDigest {":  # noqa: E501
-            "function digestOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
+        "function digestOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
         "function boundValue(\n  value: unknown,\n  depth = 0,\n  seen = new WeakSet<object>(),\n  budget = createTraversalBudget(),\n): BoundedValue {":  # noqa: E501
-            "function boundValue(value, depth = 0, seen = new WeakSet(), budget = createTraversalBudget()) {",
+        "function boundValue(value, depth = 0, seen = new WeakSet(), budget = createTraversalBudget()) {",
         "function boundedOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): BoundedValue {":  # noqa: E501
-            "function boundedOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
+        "function boundedOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
         "function boundedCodePointPrefix(\n  value: string,\n  limit: number,\n  budget: TraversalBudget,\n): BoundedCodePointPrefix {":  # noqa: E501
-            "function boundedCodePointPrefix(value, limit, budget) {",
+        "function boundedCodePointPrefix(value, limit, budget) {",
         "function appendSafeExcerpt(\n  accumulator: { text: string; truncated: boolean },\n  value: string,\n  budget: TraversalBudget,\n): void {":  # noqa: E501
-            "function appendSafeExcerpt(accumulator, value, budget) {",
+        "function appendSafeExcerpt(accumulator, value, budget) {",
         "function safeTruncateText(\n  value: string,\n  limit = GUARD_TEXT_LIMIT_CHARS,\n  budget: TraversalBudget = createTraversalBudget(),\n): string {":  # noqa: E501
-            "function safeTruncateText(value, limit = GUARD_TEXT_LIMIT_CHARS, budget = createTraversalBudget()) {",
+        "function safeTruncateText(value, limit = GUARD_TEXT_LIMIT_CHARS, budget = createTraversalBudget()) {",
         "function safeCollectOutputText(\n  value: unknown,\n  accumulator: { text: string; truncated: boolean; itemCount: number },\n  depth: number,\n  seen: WeakSet<object>,\n  budget: TraversalBudget,\n): void {":  # noqa: E501
-            "function safeCollectOutputText(value, accumulator, depth, seen, budget) {",
+        "function safeCollectOutputText(value, accumulator, depth, seen, budget) {",
         (
             "function boundedResponseText(\n  response: Response,\n"
             "  maxChars: number,\n  deadlineAt?: number,\n): Promise<string | null> {"
-        ):
-            "function boundedResponseText(response, maxChars, deadlineAt) {",
-        "function boundedJsonStringSize(value: string, budget: TraversalBudget): number | null {":
-            "function boundedJsonStringSize(value, budget) {",
+        ): "function boundedResponseText(response, maxChars, deadlineAt) {",
+        "function boundedJsonStringSize(value: string, budget: TraversalBudget): number | null {": "function boundedJsonStringSize(value, budget) {",
         (
             "function boundedJsonSize(\n  value: unknown,\n  budget: TraversalBudget,\n"
             "  depth: number,\n  seen: WeakSet<object>,\n  inArray: boolean,\n): number | null {"
-        ):
-            "function boundedJsonSize(value, budget, depth, seen, inArray) {",
-        "function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlineAt?: number): boolean {":
-            "function payloadWithinSerializedBudget(payload, deadlineAt) {",
+        ): "function boundedJsonSize(value, budget, depth, seen, inArray) {",
+        "function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlineAt?: number): boolean {": "function payloadWithinSerializedBudget(payload, deadlineAt) {",
         "function traverse(val: unknown, depth: number): void {": "function traverse(val, depth) {",
         "const refuse = (): void => {": "const refuse = () => {",
         "  function update(text: string): void {": "  function update(text) {",
@@ -523,21 +514,18 @@ def _generated_structured_helper(source: str) -> str:
     end = source.index("\n\nfunction sourcePathFromToolInput(", start)
     helper = source[start:end]
     for old, new in {
-        "function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number): string | null {":
-            "function structuredOutputJsonForPostToolUse(value, deadlineAt) {",
-        "  function hasUnpairedSurrogate(text: string): boolean {":
-            "  function hasUnpairedSurrogate(text) {",
-        "  function canonicalize(item: unknown, depth: number): unknown {":
-            "  function canonicalize(item, depth) {",
-        "  const deadlineExceeded = (): boolean => deadlineAt !== undefined && Date.now() >= deadlineAt;":
-            "  const deadlineExceeded = () => deadlineAt !== undefined && Date.now() >= deadlineAt;",
+        "function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number): string | null {": "function structuredOutputJsonForPostToolUse(value, deadlineAt) {",
+        "  function hasUnpairedSurrogate(text: string): boolean {": "  function hasUnpairedSurrogate(text) {",
+        "  function canonicalize(item: unknown, depth: number): unknown {": "  function canonicalize(item, depth) {",
+        "  function canonicalStringify(item: unknown): string {": "  function canonicalStringify(item) {",
+        "const entries: string[] = [];": "const entries = [];",
+        "  const deadlineExceeded = (): boolean => deadlineAt !== undefined && Date.now() >= deadlineAt;": "  const deadlineExceeded = () => deadlineAt !== undefined && Date.now() >= deadlineAt;",
         "  const checkDeadline = (): void => {": "  const checkDeadline = () => {",
         "const seen = new WeakSet<object>();": "const seen = new WeakSet();",
         "const record = item as Record<string, unknown>;": "const record = item;",
         "const blockRecord = block as Record<string, unknown>;": "const blockRecord = block;",
         "const parsed = JSON.parse(structuredText) as unknown;": "const parsed = JSON.parse(structuredText);",
-        "const normalized = Object.create(null) as Record<string, unknown>;":
-            "const normalized = Object.create(null);",
+        "const normalized = Object.create(null) as Record<string, unknown>;": "const normalized = Object.create(null);",
     }.items():
         helper = helper.replace(old, new)
     return helper

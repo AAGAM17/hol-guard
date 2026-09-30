@@ -34,7 +34,6 @@ _INHERIT_ENV_KEYS = (
 )
 
 
-
 def _trusted_pythonpath_entries(package_root: str) -> list[str]:
     trimmed = package_root.strip()
     return [trimmed] if trimmed else []

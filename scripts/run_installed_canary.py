@@ -18,7 +18,12 @@ from importlib.metadata import distribution
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from scripts.installed_canary_proof import InstalledCanaryError, load_subject, verify_install
+from scripts.installed_canary_proof import (
+    InstalledCanaryError,
+    add_installed_canary_arguments,
+    load_subject,
+    verify_install,
+)
 
 if TYPE_CHECKING:
     from tests.guard_command_corpus_oracle_types import OracleRecord
@@ -302,11 +307,7 @@ def _dashboard_smoke() -> dict[str, object]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    _ = parser.add_argument("--subject", type=Path, required=True)
-    _ = parser.add_argument("--version", required=True)
-    _ = parser.add_argument("--source-sha", required=True)
-    _ = parser.add_argument("--repo-root", type=Path, required=True)
-    _ = parser.add_argument("--output", type=Path, required=True)
+    add_installed_canary_arguments(parser)
     return parser
 
 

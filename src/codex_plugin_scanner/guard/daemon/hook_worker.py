@@ -276,7 +276,8 @@ class HookWorker(HookWorkerNativeMixin):
             # Send even unknown or malformed event labels to Rust. The edge
             # returns no semantic result for unsupported events, which this
             # method turns into a deterministic deny/fail-safe response.
-            return self._review_native_edge(
+            return HookWorkerNativeMixin._review_native_edge(
+                self,
                 payload=payload,
                 harness=harness,
                 event_name=event_name,
@@ -289,7 +290,8 @@ class HookWorker(HookWorkerNativeMixin):
                 claimed_saved_allow_hash=claimed_saved_allow_hash,
                 claimed_approval_request_id=claimed_approval_request_id,
             )
-        mode_response = self._mode_surface_response(
+        mode_response = HookWorkerNativeMixin._mode_surface_response(
+            self,
             harness,
             event_name,
             mode,

@@ -114,9 +114,7 @@ def _is_field_type(value: object) -> TypeGuard[FieldType]:
 
 
 def _is_personal_category(value: object) -> TypeGuard[PersonalCategory | None]:
-    return value is None or (
-        isinstance(value, str) and value in ("person_name", "email_address", "employee_id")
-    )
+    return value is None or (isinstance(value, str) and value in ("person_name", "email_address", "employee_id"))
 
 
 def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:

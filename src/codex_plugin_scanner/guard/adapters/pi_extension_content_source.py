@@ -494,6 +494,10 @@ type BoundedCodePointPrefix = { text: string; chars: number; complete: boolean }
 const GUARD_PREPROCESS_MAX_NODES = 256;
 // The native reference resolver caps ciphertext at 5 MiB; AES-GCM appends a 16-byte tag.
 const GUARD_MAX_REFERENCE_JSON_BYTES = 5 * 1024 * 1024 - 16;
+// Shape preflight has a separate finite cap from display traversal limits. It
+// remains large enough for ordinary reference payloads while bounding a
+// helper call that does not receive a deadline.
+const GUARD_MAX_REFERENCE_JSON_NODES = 100_000;
 
 function createTraversalBudget(deadlineAt?: number): TraversalBudget {
   return { deadlineAt, nodes: 0, exhausted: false };
@@ -1043,7 +1047,7 @@ function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlin
   const budget = createTraversalBudget(deadlineAt);
   // Shape traversal may exceed the ordinary excerpt budget, but never the
   // same native reference byte budget used by the final serialized payload.
-  budget.maxNodes = GUARD_MAX_REFERENCE_JSON_BYTES;
+  budget.maxNodes = GUARD_MAX_REFERENCE_JSON_NODES;
   try {
     const size = boundedJsonSize(payload, budget, 0, new WeakSet<object>(), false);
     return size !== null && size <= GUARD_MAX_REFERENCE_JSON_BYTES && traversalBudgetReady(budget);

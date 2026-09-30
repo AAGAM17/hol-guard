@@ -1344,6 +1344,22 @@ console.log(JSON.stringify({
     assert result == {"bounded": True, "belowReferenceLimit": True}
 
 
+def test_generated_payload_budget_has_independent_reference_node_cap(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const ordinary = { tool_response: Array.from({ length: 4096 }, () => '') };
+const exhausted = { tool_response: Array.from({ length: 100001 }, () => '') };
+console.log(JSON.stringify({
+  ordinary: payloadWithinSerializedBudget(ordinary),
+  exhausted: payloadWithinSerializedBudget(exhausted),
+}));
+""",
+    )
+    assert result == {"ordinary": True, "exhausted": False}
+
+
 def test_generated_payload_budget_rejects_array_serialization_hook_without_invoking_it(tmp_path: Path) -> None:
     source = _generated_source(tmp_path)
     result = _run_generated_preprocessing_fixture(

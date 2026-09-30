@@ -982,6 +982,24 @@ def legacy_managed_extension_source(
         raise RuntimeError("managed Pi extension legacy source contract drifted")
     source = source.replace(structured_constants, "", 1)
 
+    response_cap = (
+        "// Python JSON responses can escape one astral character as two Unicode escapes.\n"
+        "const GUARD_MAX_SERIALIZED_RESPONSE_CHARS =\n"
+        "  12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;\n"
+    )
+    if source.count(response_cap) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(response_cap, "", 1)
+
+    reference_structured = (
+        "    ...(typeof payload.structured_output_json === 'string'\n"
+        "      ? { structured_output_json: payload.structured_output_json }\n"
+        "      : {}),\n"
+    )
+    if source.count(reference_structured) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(reference_structured, "", 1)
+
     structured_type_start = source.find("  structured_content_mediation?: StructuredContentMediation;\n")
     structured_type_end = source.find("type GuardCliResult =", structured_type_start)
     if structured_type_start < 0 or structured_type_end < 0:

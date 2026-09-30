@@ -37,9 +37,9 @@ def _unavailable(failure: str) -> subprocess.CompletedProcess[str]:
 
 def _generated(context: HarnessContext) -> dict[str, Any]:
     source = cursor_hook_script_source(context, guard_cli=["unused-guard"], recovery_command=["unused-recovery"])
-    namespace = {"__name__": "cursor_parsed_outage_fixture"}
-    exec(compile(source, "generated-cursor-hook", "exec"), namespace)
-    return namespace
+    module_globals = {"__name__": "cursor_parsed_outage_fixture"}
+    exec(compile(source, "generated-cursor-hook", "exec"), module_globals)
+    return module_globals
 
 
 @pytest.mark.parametrize("event", _EVENTS)
@@ -56,7 +56,7 @@ def test_generated_parsed_cursor_unavailable_denies(
     policy_import_available: bool,
 ) -> None:
     context = HarnessContext(home_dir=tmp_path / "home", guard_home=tmp_path / "guard", workspace_dir=tmp_path)
-    namespace = _generated(context)
+    module_globals = _generated(context)
     context.guard_home.mkdir()
     config_path = context.guard_home / "config.toml"
     config_bytes = f'mode = "{"observe" if local_watch else "prompt"}"\n'.encode()
@@ -67,17 +67,17 @@ def test_generated_parsed_cursor_unavailable_denies(
             "codex_plugin_scanner.guard.daemon.hook_availability_policy",
             ModuleType("codex_plugin_scanner.guard.daemon.hook_availability_policy"),
         )
-    namespace["_recording_only_from_guard_home"] = lambda *_args: local_watch
-    namespace["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
+    module_globals["_recording_only_from_guard_home"] = lambda *_args: local_watch
+    module_globals["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
 
-    namespace["_run_guard_fallback"] = lambda *_args, **_kwargs: _unavailable(failure)
+    module_globals["_run_guard_fallback"] = lambda *_args, **_kwargs: _unavailable(failure)
     monkeypatch.setattr(
         sys,
         "stdin",
         io.StringIO(json.dumps({"hook_event_name": event, "command": "git push", "file_path": "private.txt"})),
     )
     monkeypatch.setattr(sys, "argv", ["cursor-hook"])
-    assert namespace["main"]() == 2
+    assert module_globals["main"]() == 2
     response = json.loads(capsys.readouterr().out)
     assert response["permission"] == "deny"
     assert "terminal" in response["user_message"]
@@ -113,11 +113,11 @@ def test_generated_parsed_cursor_preserves_trusted_decision(
     reason_code: str,
 ) -> None:
     context = HarnessContext(home_dir=tmp_path / "home", guard_home=tmp_path / "guard", workspace_dir=tmp_path)
-    namespace = _generated(context)
-    namespace["_recording_only_from_guard_home"] = lambda *_args: local_watch
+    module_globals = _generated(context)
+    module_globals["_recording_only_from_guard_home"] = lambda *_args: local_watch
     response = {"policy_action": policy, "reason_code": reason_code, "reason": "fixture decision"}
-    namespace["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
-    namespace["_run_guard_fallback"] = lambda *_args, **_kwargs: subprocess.CompletedProcess(
+    module_globals["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
+    module_globals["_run_guard_fallback"] = lambda *_args, **_kwargs: subprocess.CompletedProcess(
         [],
         code,
         json.dumps(response),
@@ -135,7 +135,7 @@ def test_generated_parsed_cursor_preserves_trusted_decision(
     }[policy]
     if event == "beforeReadFile" and permission == "ask":
         permission = "deny"
-    assert namespace["main"]() == (2 if permission == "deny" else 0)
+    assert module_globals["main"]() == (2 if permission == "deny" else 0)
     assert json.loads(capsys.readouterr().out)["permission"] == permission
 
 
@@ -145,12 +145,12 @@ def test_generated_parsed_cursor_observations_continue(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], event: str, failure: str
 ) -> None:
     context = HarnessContext(home_dir=tmp_path / "home", guard_home=tmp_path / "guard", workspace_dir=tmp_path)
-    namespace = _generated(context)
-    namespace["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
-    namespace["_run_guard_fallback"] = lambda *_args, **_kwargs: _unavailable(failure)
+    module_globals = _generated(context)
+    module_globals["_daemon_hook_result"] = lambda *_args, **_kwargs: (None, "overload")
+    module_globals["_run_guard_fallback"] = lambda *_args, **_kwargs: _unavailable(failure)
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": event})))
     monkeypatch.setattr(sys, "argv", ["cursor-hook"])
-    assert namespace["main"]() == 0
+    assert module_globals["main"]() == 0
     assert json.loads(capsys.readouterr().out) == {}
 
 

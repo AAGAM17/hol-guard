@@ -139,11 +139,15 @@ def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
     for index, raw_field in enumerate(fields_raw):
         field = _mapping(raw_field, f"structured output policy schema field {index}")
         role = field.get("role")
-        expected_keys = {"path", "role", "valueType", "category"} if role == "protected_personal" else {
-            "path",
-            "role",
-            "valueType",
-        }
+        expected_keys = (
+            {"path", "role", "valueType", "category"}
+            if role == "protected_personal"
+            else {
+                "path",
+                "role",
+                "valueType",
+            }
+        )
         if set(field) != expected_keys:
             raise ValueError(f"structured output policy schema field {index} has unknown or missing keys")
         path_raw = field["path"]
@@ -289,9 +293,7 @@ def resolve_managed_structured_output_resolution(config: object, *, harness: str
     if not isinstance(settings, Mapping):
         return StructuredOutputResolution(None, True, "structured_managed_policy_invalid")
     try:
-        structured_policy = parse_structured_output_policy(
-            _setting_at_path(settings, STRUCTURED_OUTPUT_SETTING_PATH)
-        )
+        structured_policy = parse_structured_output_policy(_setting_at_path(settings, STRUCTURED_OUTPUT_SETTING_PATH))
     except (TypeError, ValueError):
         return StructuredOutputResolution(None, True, "structured_managed_policy_invalid")
     if canonical_harness not in structured_policy.harnesses:
@@ -315,10 +317,7 @@ def _has_safe_numbers(value: object, *, deadline_monotonic: float | None = None)
     if isinstance(value, float):
         return False
     if isinstance(value, dict):
-        return all(
-            _has_safe_numbers(child, deadline_monotonic=deadline_monotonic)
-            for child in value.values()
-        )
+        return all(_has_safe_numbers(child, deadline_monotonic=deadline_monotonic) for child in value.values())
     return not isinstance(value, list)
 
 

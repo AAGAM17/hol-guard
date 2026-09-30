@@ -128,9 +128,7 @@ class TestPiDetect:
         assert result.installed is True
         assert result.command_available is True
 
-    def test_detect_finds_omp_in_user_local_bin_when_gui_path_omits_it(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_detect_finds_omp_in_user_local_bin_when_gui_path_omits_it(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)
         executable = ctx.home_dir / ".local" / "bin" / "omp"
         executable.parent.mkdir(parents=True, exist_ok=True)
@@ -299,8 +297,7 @@ class TestPiInstall:
         assert "    if (originalOutputProof) {\n" in text
         assert "before preserving the original result." in text
         assert (
-            "return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);"
-            in text
+            "return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);" in text
         )
         assert '    if (response.decision === "allow") return undefined;\n' in text
         assert "const GUARD_CLI_WRAPPER_COMMAND =" in text
@@ -397,8 +394,7 @@ class TestPiInstall:
         assert "guard_payload_ref" in text
         # Reviewed excerpt still returned when not proven safe
         assert (
-            "return reviewedToolResult(reviewedContent, event.details, "
-            "event.isError === true, hookDeadlineAt);" in text
+            "return reviewedToolResult(reviewedContent, event.details, event.isError === true, hookDeadlineAt);" in text
         )
 
     def test_install_writes_managed_extension_that_denies_on_hook_errors(self, tmp_path: Path, monkeypatch) -> None:
@@ -525,8 +521,7 @@ class TestPiInstall:
         # returned to Pi so omitted content never reaches the model.
         assert "function reviewedToolResult(" in text
         assert (
-            "return reviewedToolResult(reviewedContent, event.details, "
-            "event.isError === true, hookDeadlineAt);" in text
+            "return reviewedToolResult(reviewedContent, event.details, event.isError === true, hookDeadlineAt);" in text
         )
         assert "guardPayload.tool_response = event.content" in text
         assert "stdout: toolOutput" not in text
@@ -556,8 +551,7 @@ class TestPiInstall:
         assert "guard_payload_ref" in text
         # Reviewed excerpt still returned when not proven safe
         assert (
-            "return reviewedToolResult(reviewedContent, event.details, "
-            "event.isError === true, hookDeadlineAt);" in text
+            "return reviewedToolResult(reviewedContent, event.details, event.isError === true, hookDeadlineAt);" in text
         )
 
     def test_omp_install_writes_only_omp_extension(self, tmp_path: Path, monkeypatch) -> None:

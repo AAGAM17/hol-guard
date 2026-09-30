@@ -24,7 +24,8 @@ EXPECTED = {
         "sha512-EcgVLAo8V/p6xrvUFogAzHVaTDK/COBiWkD4VwZqg8QVcJX5PbwzsvV/ucA4M/dUJIP1MuO5z5YI9BRT3i25sw==",
     ),
 }
-EXPECTED_NODE = "v22.19.0"
+EXPECTED_NODE = "v22.22.2"
+EXPECTED_NPM = "12.0.0"
 EXPECTED_BUN = "1.3.14"
 MINIMUM_TESTCASES = 10
 REQUIRED_TESTS = {
@@ -159,6 +160,9 @@ def verify_installed_sdk(prefix: Path) -> dict[str, str]:
     node_version = command_version("node", env)
     if node_version != EXPECTED_NODE:
         fail(f"Node version must be {EXPECTED_NODE}, got {node_version}")
+    npm_version = command_version("npm", env)
+    if npm_version != EXPECTED_NPM:
+        fail(f"npm version must be {EXPECTED_NPM}, got {npm_version}")
     bun_version = command_version("bun", env)
     if bun_version != EXPECTED_BUN:
         fail(f"Bun version must be {EXPECTED_BUN}, got {bun_version}")

@@ -16,8 +16,7 @@ from functools import partial
 from typing import Literal
 
 from ..strict_json_pairs import unique_json_object
-from .hook_content_scanner import ContentScanner
-from .secret_sensitivity import secret_content_rule_version
+from .secret_sensitivity import classify_secret_content, secret_content_rule_version
 
 ScanStatus = Literal["matched", "no_declared_match", "unsupported"]
 FieldRole = Literal["protected_personal", "ordinary"]
@@ -173,14 +172,9 @@ def classify_declared_content(
     else:
         return finish("unsupported", "input_type_unsupported")
 
-    chunks = (text[index : index + 4096] for index in range(0, len(text), 4096))
-    credential_result = ContentScanner().scan_chunks(
-        chunks,
-        local_content=True,
-        source_context=False,
-        max_bytes=MAX_INPUT_BYTES,
-        deadline_monotonic=deadline,
-    )
+    credential_matches = classify_secret_content(text, documentation_sample_context=False)
+    if not credential_matches:
+        credential_matches = classify_secret_content(text, suppress_samples=False)
     matches.extend(
         SensitiveMatch(
             category=f"credential.{match.classifier}",
@@ -188,15 +182,15 @@ def classify_declared_content(
             field_path=(),
             reason="declared_credential_pattern_present",
         )
-        for match in credential_result.matches
+        for match in credential_matches
     )
-    scanned = credential_result.bytes_scanned
-    if credential_result.budget_exhausted or time.monotonic() >= deadline:
+    scanned = byte_count
+    if time.monotonic() >= deadline:
         return finish("unsupported", "scan_budget_exhausted")
     if "\\" in text:
         return finish("unsupported", "encoded_or_escaped_content")
     if schema is None:
-        complete = credential_result.reason_code in ("clean", "matches")
+        complete = True
         status: ScanStatus = "matched" if matches else "no_declared_match"
         return finish(status, "credential_scan", complete=complete)
 
@@ -252,6 +246,6 @@ def classify_declared_content(
             if len(matches) > MAX_MATCHES:
                 return finish("unsupported", "match_limit_exceeded")
 
-    complete = credential_result.reason_code in ("clean", "matches")
+    complete = True
     status = "matched" if matches else "no_declared_match"
     return finish(status, "declared_schema_scan", complete=complete)

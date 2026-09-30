@@ -418,6 +418,12 @@ jobs:
         run: |
           set -euo pipefail
           BASE="$RUNNER_TEMP/dist/hol-guard-core-${CORE_VERSION}-${RELEASE_TARGET}"
+          NAME="$(basename "$BASE")"
+          for asset in "$NAME" "$NAME.json" "$NAME.attested.json"; do
+            if grep -Fxq "$asset" "$RUNNER_TEMP/release-assets.txt"; then
+              gh release delete-asset "$CORE_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+            fi
+          done
           gh release upload "$CORE_TAG" "$BASE" "$BASE.json" "$BASE.attested.json" --repo "$GITHUB_REPOSITORY"
       - name: Verify final release assets and provenance
         if: steps.release.outputs.available == 'true'

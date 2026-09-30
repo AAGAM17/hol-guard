@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.cli import commands_hook_native_pipeline as pipeline
+from codex_plugin_scanner.guard.cli.commands_support_hook_payload import _apply_native_edge_envelope_fields
 from codex_plugin_scanner.guard.daemon.hook_worker_native import HookWorkerNativeMixin
 from codex_plugin_scanner.guard.runtime.structured_output_mediation import STRUCTURED_OUTPUT_SETTING_PATH
 
@@ -174,6 +176,107 @@ def test_cli_native_unavailable_keeps_optional_structured_destination_off(
         "policy_action": "allow",
         "reason_code": "native_post_tool_unavailable",
     }
+
+
+def _native_success_result() -> dict[str, object]:
+    return {
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "reason": "native edge allowed",
+        "reason_code": "native_allow",
+        "reviewed_output_sha256": "a" * 64,
+        "reviewed_excerpt": "native output",
+    }
+
+
+def _project_worker_result(
+    worker_result: dict[str, object],
+) -> dict[str, object]:
+    response: dict[str, object] = {
+        "decision": "allow",
+        "policy_action": "allow",
+        "existing_field": "preserved",
+    }
+    _apply_native_edge_envelope_fields(response, worker_result)
+    return response
+
+
+def test_cli_native_success_projects_worker_structured_mediation_without_mutating_native_fields(
+    tmp_path: Path,
+) -> None:
+    native_result = _native_success_result()
+    original_native_result = dict(native_result)
+    structured_output = '{"note":"clean"}'
+    worker_result = _OverlayWorker(_managed_config())._apply_structured_mediation(
+        native_result,
+        payload={"structured_output_json": structured_output},
+        native_harness="pi",
+        native_event="PostToolUse",
+        accepted_receipt={"decision": "allow", "decision_id": "b" * 64},
+        guard_home=tmp_path / "guard-home",
+        workspace=tmp_path / "workspace",
+        deadline=None,
+        recording_only=False,
+    )
+
+    response = _project_worker_result(worker_result)
+
+    assert response["structured_content_mediation"] == {
+        "schema": "guard-structured-content-mediation.v1",
+        "action": "forward",
+        "reason_code": "structured_clean_forward",
+        "native_decision_id": "b" * 64,
+        "content_sha256": hashlib.sha256(structured_output.encode()).hexdigest(),
+    }
+    assert response["structured_content_mediation"] is not worker_result["structured_content_mediation"]
+    assert native_result == original_native_result
+    assert response["native_edge_decision"] == "allow"
+    assert response["native_edge_reason"] == "native edge allowed"
+    assert response["native_edge_reason_code"] == "native_allow"
+    assert response["model_output_action"] == "allow_original"
+    assert response["reviewed_output_sha256"] == "a" * 64
+    assert response["reviewed_excerpt"] == "native output"
+    assert response["existing_field"] == "preserved"
+
+
+def test_cli_native_success_projects_managed_structured_withhold_and_keeps_optional_off(
+    tmp_path: Path,
+) -> None:
+    native_result = _native_success_result()
+    managed_worker_result = _OverlayWorker(_managed_config())._apply_structured_mediation(
+        native_result,
+        payload={"structured_output_json": '{"note": "not canonical"}'},
+        native_harness="pi",
+        native_event="PostToolUse",
+        accepted_receipt={"decision": "allow", "decision_id": "c" * 64},
+        guard_home=tmp_path / "managed-guard-home",
+        workspace=tmp_path / "managed-workspace",
+        deadline=None,
+        recording_only=False,
+    )
+    optional_worker_result = _OverlayWorker(_optional_config())._apply_structured_mediation(
+        native_result,
+        payload={"structured_output_json": '{"note":"clean"}'},
+        native_harness="pi",
+        native_event="PostToolUse",
+        accepted_receipt={"decision": "allow", "decision_id": "d" * 64},
+        guard_home=tmp_path / "optional-guard-home",
+        workspace=tmp_path / "optional-workspace",
+        deadline=None,
+        recording_only=False,
+    )
+
+    managed_response = _project_worker_result(managed_worker_result)
+    optional_response = _project_worker_result(optional_worker_result)
+
+    assert managed_response["structured_content_mediation"] == {
+        "schema": "guard-structured-content-mediation.v1",
+        "action": "withhold",
+        "reason_code": "structured_content_unproved",
+        "native_decision_id": "c" * 64,
+    }
+    assert "structured_content_mediation" not in optional_response
+    assert optional_worker_result == native_result
 
 
 @pytest.mark.parametrize(

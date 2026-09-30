@@ -47,7 +47,7 @@ def test_pyproject_keeps_cisco_mcp_scanner_optional() -> None:
     assert "litellm==1.93.2" in override_entries
     assert "magika==1.0.3" in override_entries
     assert "openai==2.41.1" in override_entries
-    assert "pyjwt==2.15.0" in override_entries
+    assert "pyjwt==2.14.0" in override_entries
     assert "python-dotenv==1.2.2" in override_entries
     assert "python-multipart==0.0.32" in override_entries
     assert "starlette==1.3.1" in override_entries

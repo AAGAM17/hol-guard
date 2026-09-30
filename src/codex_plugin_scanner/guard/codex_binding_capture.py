@@ -87,6 +87,14 @@ class _CaptureConfig:
     max_bytes: int
 
 
+def _valid_fingerprint(value: object) -> bool:
+    return isinstance(value, str) and _HEX64.fullmatch(value) is not None
+
+
+def _valid_run_id(value: object) -> bool:
+    return isinstance(value, str) and _RUN_ID.fullmatch(value) is not None
+
+
 def _json_object(raw: bytes) -> dict[str, object] | None:
     try:
         value = cast(object, json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicate_keys))
@@ -112,7 +120,8 @@ def _payload_fingerprint(payload: Mapping[str, object]) -> str | None:
     canonical = _canonical_json(dict(payload))
     if canonical is None or len(canonical) > MAX_CANONICAL_PAYLOAD_BYTES:
         return None
-    return hashlib.sha256(canonical).hexdigest()
+    fingerprint = hashlib.sha256(canonical).hexdigest()
+    return fingerprint if _valid_fingerprint(fingerprint) else None
 
 
 def _owner_uid() -> int | None:
@@ -251,7 +260,7 @@ def _load_capture_config(guard_home: Path) -> _CaptureConfig | None:
             not isinstance(run_id, str)
             or len(run_id) > MAX_RUN_ID_BYTES
             or len(run_id.encode("ascii", errors="ignore")) != len(run_id)
-            or _RUN_ID.fullmatch(run_id) is None
+            or not _valid_run_id(run_id)
             or type(expires_at) is not int
             or type(max_records) is not int
             or type(max_bytes) is not int

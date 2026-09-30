@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from typing import cast
@@ -21,13 +20,11 @@ from .codex_binding_capture import (
     _json_object,
     _receipt_projection,
     _tool_use_id,
+    _valid_fingerprint,
+    _valid_run_id,
 )
 from .codex_hook_manifest import MANAGED_CODEX_HOOK_EVENTS
 from .daemon.hook_request_parsing import runtime_hook_event_name
-
-
-def _valid_fingerprint(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def _validated_record(
@@ -42,7 +39,7 @@ def _validated_record(
     state = value.get("tool_use_id_state")
     if (
         not isinstance(row_run_id, str)
-        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}", row_run_id) is None
+        or not _valid_run_id(row_run_id)
         or (run_id is not None and row_run_id != run_id)
         or not isinstance(harness, str)
         or _bounded_text(harness, maximum=64) is None
@@ -87,7 +84,8 @@ def _validated_record(
     if state in {"missing", "unsupported"}:
         return None if "tool_use_id" in value else (None, state)
     identifier = value.get("tool_use_id")
-    if _tool_use_id({"tool_use_id": identifier}) is not identifier:
+    validated_identifier = _tool_use_id({"tool_use_id": identifier})
+    if not isinstance(validated_identifier, str) or validated_identifier != identifier:
         return None
     return (row_run_id, harness, canonical_event, cast(str, identifier)), route
 

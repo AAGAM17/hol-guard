@@ -198,6 +198,8 @@ def _prewarm_ready_hook_workers(
     executor: ThreadPoolExecutor,
     *,
     observer: ObserveCallback | None = None,
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
 ) -> tuple[list[Observation], int]:
     if observer is None:
         observations, errors = _run_concurrent(session, routes, concurrency, executor)
@@ -209,6 +211,7 @@ def _prewarm_ready_hook_workers(
             executor,
             observer=observer,
             stage="rss_baseline",
+            **_wave_progress_kwargs(on_submitted, on_cancelled),
         )
     _require_ready_hook_workers(session, concurrency)
     return observations, errors
@@ -535,6 +538,8 @@ def _measure_rss_and_c64(
                     ready_workers,
                     executor,
                     observer=observer,
+                    on_submitted=on_submitted,
+                    on_cancelled=on_cancelled,
                 )
         rss_baseline = _steady_state_rss_baseline(
             warmup,

@@ -111,6 +111,7 @@ SAFE_FAILURE_STAGE_NAMES: Final = frozenset(
     {
         "unknown",
         "proof_environment",
+        "runtime_input",
         "runtime_provenance",
         "route_contract",
         "installed_corpus",

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from http.client import HTTPException
 from threading import RLock
 
 from scripts.native_slo_adapter import Observation
@@ -114,16 +115,17 @@ def classify_benchmark_error(error: BaseException) -> str:
         return "response_invalid"
     if any("adapter response was not an object" in str(item) for item in chain):
         return "response_invalid"
-    if any(str(item) == "adapter request failed" for item in chain):
-        return "response_status"
     if any(
-        isinstance(item, OSError)
-        or item.__class__.__name__ in {"HTTPException", "TimeoutExpired"}
+        isinstance(item, (ConnectionError, HTTPException)) or item.__class__.__name__ == "TimeoutExpired"
         for item in chain
     ):
         if any(item.__class__.__name__ == "TimeoutExpired" for item in chain):
             return "transport_timeout"
         return "transport_error"
+    if any(str(item) == "adapter request failed" for item in chain):
+        return "response_status"
+    if any(isinstance(item, OSError) for item in chain):
+        return "environment_error"
     if any(isinstance(item, RuntimeError) and str(item).startswith("native_installed_slo_failed") for item in chain):
         return "benchmark_contract"
     return "benchmark_internal_failure"
@@ -167,6 +169,7 @@ class SloProgress:
             self.routes = routes
             self.route_count = known_route_count
             self._plan("proof_environment", 1)
+            self._plan("runtime_input", 1)
             self._plan("runtime_provenance", 1)
             self._plan("route_contract", 1)
             # The installed corpus helper is one bounded aggregate operation;

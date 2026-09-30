@@ -730,8 +730,18 @@ def main() -> int:
             readiness_samples=args.readiness_samples,
             include_capacity=not args.skip_capacity,
         )
-        runtime = args.runtime.expanduser().resolve(strict=True)
-        _require(runtime.is_file() and not args.runtime.is_symlink(), "runtime must be a regular non-symlink file")
+        progress.activate("runtime_input")
+        progress.submit("runtime_input")
+        progress.attempt("runtime_input")
+        try:
+            runtime = args.runtime.expanduser().resolve(strict=True)
+            _require(runtime.is_file() and not args.runtime.is_symlink(), "runtime must be a regular non-symlink file")
+        except Exception as error:
+            progress.fail_request("runtime_input")
+            progress.record_failure(error, stage="runtime_input")
+            raise
+        else:
+            progress.complete("runtime_input")
         result = run_slo(
             runtime,
             warm_iterations=args.warm_iterations,

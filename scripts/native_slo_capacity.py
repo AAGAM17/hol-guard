@@ -9,6 +9,7 @@ from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
+from http.client import HTTPException
 from typing import TypedDict
 
 from scripts.bench_guard_native_installed_slo_runtime import _require
@@ -76,10 +77,9 @@ def _is_transport_failure(error: BaseException) -> bool:
     seen: set[int] = set()
     while current is not None and id(current) not in seen and len(seen) < 8:
         seen.add(id(current))
-        if isinstance(current, (TimeoutError, OSError)) or current.__class__.__name__ in {
-            "HTTPException",
-            "TimeoutExpired",
-        }:
+        if isinstance(current, (TimeoutError, OSError, HTTPException)) or current.__class__.__name__ == (
+            "TimeoutExpired"
+        ):
             return True
         current = current.__cause__ or current.__context__
     return False
@@ -117,6 +117,7 @@ def _run_concurrent(
     observations: list[Observation] = []
     errors = 0
     transport_error: Exception | None = None
+    transport_errors = 0
     _require(0 < concurrency <= _MAX_CONCURRENCY, "concurrency exceeds bounded benchmark limit")
     def observe(harness: str, event: str) -> Observation:
         if observer is None:
@@ -153,12 +154,20 @@ def _run_concurrent(
         except Exception as error:
             if _is_transport_failure(error):
                 transport_error = transport_error or error
+                transport_errors += 1
                 continue
             errors += 1
-    if transport_error is not None:
+    should_abort_transport = (
+        transport_error is not None
+        and (observer is not None or on_transport_observations is not None)
+        and stage != "concurrent_64"
+    )
+    if should_abort_transport:
         if on_transport_observations is not None and observations:
             on_transport_observations(observations)
         raise transport_error
+    if transport_error is not None:
+        errors += transport_errors
     return observations, errors
 
 

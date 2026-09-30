@@ -4,6 +4,7 @@ import json
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from http.client import BadStatusLine
 from pathlib import Path
 from typing import cast
 
@@ -21,6 +22,7 @@ from scripts.native_slo_contract import (
 from scripts.native_slo_reporting import (
     SloMeasurements,
     SloProgress,
+    classify_benchmark_error,
     incomplete_slo_result,
     slo_gates,
     slo_result,
@@ -400,8 +402,9 @@ def test_capacity_timeout_is_incomplete_and_missing_requests_are_not_fail_safe(
         )
 
     session = Session()
-    monkeypatch.setattr(capacity, "_CONCURRENT_WAVE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(capacity, "_CONCURRENT_WAVE_TIMEOUT_SECONDS", 0.5)
     executor = ThreadPoolExecutor(max_workers=1)
+    executor.submit(lambda: None).result()
     try:
         with pytest.raises(RuntimeError, match="concurrent capacity wave timed out") as raised:
             capacity._run_concurrent(
@@ -474,8 +477,9 @@ def test_capacity_timeout_defers_finished_observations_but_keeps_running_work_un
         progress.complete("capacity_prewarm", len(observations))
 
     session = Session()
-    monkeypatch.setattr(capacity, "_CONCURRENT_WAVE_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(capacity, "_CONCURRENT_WAVE_TIMEOUT_SECONDS", 0.5)
     executor = ThreadPoolExecutor(max_workers=1)
+    executor.submit(lambda: None).result()
     try:
         with pytest.raises(RuntimeError, match="concurrent capacity wave timed out"):
             capacity._run_concurrent(
@@ -543,6 +547,71 @@ def test_capacity_transport_failure_is_not_collapsed_into_completed_error_count(
     assert stage["failed"] == 1
     assert stage["missing"] == 15
     assert progress.snapshot_failure()["category"] == "transport_timeout"
+
+
+def test_wrapped_http_subclass_keeps_capacity_wave_incomplete() -> None:
+    progress = _progress()
+
+    class Session:
+        def observe(self, *_args: object) -> Observation:
+            raise RuntimeError("adapter request failed") from BadStatusLine("malformed status")
+
+    session = Session()
+
+    def observer(harness: str, event: str, size_class: str, stage: str) -> Observation:
+        return benchmark._observe_with_progress(
+            progress,
+            cast(AdapterSession, session),
+            harness,
+            event,
+            size_class,
+            stage,
+            fatal=False,
+        )
+
+    with ThreadPoolExecutor(max_workers=1) as executor, pytest.raises(
+        RuntimeError, match="adapter request failed"
+    ) as raised:
+        capacity._run_concurrent(
+            cast(AdapterSession, session),
+            (("codex", "PreToolUse"),),
+            1,
+            executor,
+            observer=observer,
+            stage="concurrent_16",
+        )
+
+    progress.record_failure(raised.value, stage="concurrent_16", labels={"wave": "16"})
+    stage = progress.stage_snapshot()["concurrent_16"]
+    assert stage["attempted"] == 1
+    assert stage["completed"] == 0
+    assert stage["failed"] == 1
+    assert stage["missing"] == 15
+    assert progress.snapshot_failure()["category"] == "transport_error"
+    assert classify_benchmark_error(BadStatusLine("malformed status")) == "transport_error"
+    assert classify_benchmark_error(RuntimeError("adapter request failed")) == "response_status"
+    try:
+        raise RuntimeError("adapter request failed") from TimeoutError("transport")
+    except RuntimeError as wrapped_timeout:
+        assert classify_benchmark_error(wrapped_timeout) == "transport_timeout"
+
+
+def test_concurrent_64_transport_error_remains_an_error_count() -> None:
+    class Session:
+        def observe(self, *_args: object) -> Observation:
+            raise RuntimeError("adapter request failed") from ConnectionResetError("connection reset")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        observations, errors = capacity._run_concurrent(
+            cast(AdapterSession, Session()),
+            (("codex", "PreToolUse"),),
+            2,
+            executor,
+            stage="concurrent_64",
+        )
+
+    assert observations == []
+    assert errors == 2
 
 
 def test_capacity_prewarm_transport_preserves_returned_observation_counts(
@@ -713,6 +782,11 @@ def test_failure_labels_use_allowlisted_unknown_category() -> None:
     }
 
 
+def test_local_file_failures_use_environment_category() -> None:
+    assert classify_benchmark_error(FileNotFoundError("missing runtime")) == "environment_error"
+    assert classify_benchmark_error(PermissionError("runtime unreadable")) == "environment_error"
+
+
 def test_cli_writes_bounded_failure_artifact_and_returns_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -753,6 +827,27 @@ def test_cli_writes_bounded_failure_artifact_and_returns_nonzero(
     assert "fixture transport" not in encoded
     assert "fixture/request" not in encoded
     assert "Traceback" in capsys.readouterr().err
+
+
+def test_cli_missing_runtime_is_bounded_setup_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "slo.json"
+    missing_runtime = tmp_path / "missing-runtime"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["bench_guard_native_installed_slo.py", "--runtime", str(missing_runtime), "--json", str(output)],
+    )
+
+    assert benchmark.main() == 1
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["failure"] == {"stage": "runtime_input", "category": "environment_error"}
+    assert report["corpus"]["denominators"]["runtime_input"]["attempted"] == 1
+    assert report["corpus"]["denominators"]["runtime_input"]["failed"] == 1
+    assert all(value is False for value in report["gates"].values())
+    encoded = output.read_text(encoding="utf-8")
+    assert str(missing_runtime) not in encoded
 
 
 def test_successful_result_contract_retains_existing_scope_thresholds_and_gate_names() -> None:

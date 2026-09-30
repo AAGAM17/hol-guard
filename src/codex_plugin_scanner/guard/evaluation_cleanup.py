@@ -17,7 +17,7 @@ OWNED_ROOT_PREFIX = "hol-guard-eval-"
 MARKER_NAME = ".hol-guard-evaluation-owned"
 _DESCRIPTOR_CLEANUP_DIR_FD_OPERATIONS = (os.open, os.stat, os.unlink, os.rmdir)
 _DESCRIPTOR_CLEANUP_SUPPORTED_DIR_FD = frozenset(getattr(os, "supports_dir_fd", ()))
-_UNSAFE_PRIVATE_MODE_BITS = 0o077 | stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
+_UNSAFE_PERMISSION_BITS = 0o077 | stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
 
 
 def descriptor_cleanup_supported() -> bool:
@@ -60,7 +60,7 @@ def _private_directory_details(
     if details.st_uid != os.getuid():
         raise EvaluationContractError(f"{label} is not private to the current user")
     if reject_special_bits and mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
-        raise EvaluationContractError(f"{label} is not private to the current user")
+        raise EvaluationContractError(f"{label} has unsafe permission bits (setuid/setgid/sticky)")
     if require_private and mode & 0o077:
         raise EvaluationContractError(f"{label} is not private to the current user")
     return details
@@ -73,7 +73,7 @@ def _validate_owned_marker(root_descriptor: int, marker_token: str) -> None:
         raise EvaluationContractError("evaluation setup ownership marker is missing") from exc
     if not stat.S_ISREG(marker_details.st_mode):
         raise EvaluationContractError("evaluation setup ownership marker is missing")
-    if marker_details.st_uid != os.getuid() or stat.S_IMODE(marker_details.st_mode) & _UNSAFE_PRIVATE_MODE_BITS:
+    if marker_details.st_uid != os.getuid() or stat.S_IMODE(marker_details.st_mode) & _UNSAFE_PERMISSION_BITS:
         raise EvaluationContractError("evaluation setup ownership marker is unsafe")
 
     marker_descriptor: int | None = None

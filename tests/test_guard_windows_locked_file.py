@@ -83,12 +83,7 @@ def _configure_windows_api(
         final_path_length=final_path_length,
     )
     fake_msvcrt = types.SimpleNamespace(open_osfhandle=open_osfhandle)
-    real_os = windows_paths_module.os
-    monkeypatch.setattr(
-        windows_paths_module,
-        "os",
-        types.SimpleNamespace(name="nt", O_RDONLY=real_os.O_RDONLY, fspath=real_os.fspath),
-    )
+    monkeypatch.setattr(windows_paths_module.os, "name", "nt")
     monkeypatch.setattr(
         windows_paths_module.ctypes,
         "WinDLL",

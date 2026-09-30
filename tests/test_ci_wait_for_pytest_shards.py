@@ -397,7 +397,9 @@ def test_sonar_accepts_only_complete_coverage_from_successful_current_attempt() 
     assert waiter["env"] == {"GITHUB_TOKEN": "${{ github.token }}"}
     assert waiter["run"].endswith("--poll-seconds 1")
     assert jobs["sonar"]["permissions"] == {"contents": "read", "actions": "read"}
-    assert 'test "${#reports[@]}" -eq 128' in (root / "scripts/ci/prepare_sonar_analysis.sh").read_text()
+    sonar_setup = (root / "scripts/ci/prepare_sonar_analysis.sh").read_text()
+    assert 'expected_shards="${PYTEST_COVERAGE_SHARD_COUNT:-128}"' in sonar_setup
+    assert 'test "${#reports[@]}" -eq "$expected_shards"' in sonar_setup
 
 
 def test_sonar_installs_same_pinned_scanner_before_wait_without_analysis_credentials() -> None:

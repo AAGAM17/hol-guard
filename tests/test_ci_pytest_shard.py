@@ -90,7 +90,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
             assert setup["with"]["python-version"] == "${{ env." + env_name + " }}"
         plan = next(step for step in plan_job["steps"] if step.get("uses") == "./.github/actions/plan-pytest")
         assert plan["with"]["python-version"] == version
-        assert plan["with"]["shard-count"] == str(count)
+        assert plan["with"]["shard-count"] == "${{ env.PYTEST_COVERAGE_SHARD_COUNT }}"
         download = next(
             step for step in execution_job["steps"] if step.get("uses", "").startswith("actions/download-artifact@")
         )
@@ -135,11 +135,14 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     candidate = jobs["duration-manifest-candidate"]
     assert candidate["needs"] == "coverage"
     assert candidate["if"] == "needs.coverage.result == 'success'"
-    assert 'test "${#reports[@]}" -eq 128' in "\n".join(step.get("run", "") for step in candidate["steps"])
+    candidate_commands = "\n".join(step.get("run", "") for step in candidate["steps"])
+    assert "select_pytest_duration_reports.py" in candidate_commands
+    assert 'test "${#reports[@]}" -eq "$PYTEST_COVERAGE_SHARD_COUNT"' in candidate_commands
     sonar_job = _workflow_job(workflow, "sonar", "scheduling-sensitive")
     assert "bash scripts/ci/prepare_sonar_analysis.sh" in sonar_job
     sonar_setup = (ROOT / "scripts/ci/prepare_sonar_analysis.sh").read_text(encoding="utf-8")
-    assert 'test "${#reports[@]}" -eq 128' in sonar_setup
+    assert 'expected_shards="${PYTEST_COVERAGE_SHARD_COUNT:-128}"' in sonar_setup
+    assert 'test "${#reports[@]}" -eq "$expected_shards"' in sonar_setup
     assert "vars.SONAR_CI_ENABLED == 'true'" in sonar_job
     gate = jobs["ci-python-312"]
     assert gate["name"] == "ci (3.12)"

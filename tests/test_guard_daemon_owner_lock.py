@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shlex
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -124,11 +123,9 @@ def test_windows_venv_launcher_parent_matches_only_the_same_daemon_invocation(
     )
     launcher_command = daemon_command.replace("C:\\Python\\python.exe", "C:\\venv\\Scripts\\python.exe")
     commands = {10: daemon_command, 20: launcher_command, 30: "hol-guard.exe command test"}
-    monkeypatch.setattr(
-        manager,
-        "os",
-        SimpleNamespace(name="nt", getpid=lambda: 10, getppid=lambda: 20),
-    )
+    monkeypatch.setattr(manager.os, "name", "nt")
+    monkeypatch.setattr(manager.os, "getpid", lambda: 10)
+    monkeypatch.setattr(manager.os, "getppid", lambda: 20)
     monkeypatch.setattr(
         manager.windows_processes,
         "windows_process_command_line",

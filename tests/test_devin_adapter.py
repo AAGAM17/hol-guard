@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import io
 import json
-import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -309,10 +307,7 @@ class TestDevinWindowsPaths:
 
         ctx = _ctx(tmp_path)
         appdata = tmp_path / "AppData" / "Roaming"
-        monkeypatch.setattr(
-            "codex_plugin_scanner.guard.adapters.devin.os",
-            SimpleNamespace(name="nt", environ=os.environ),
-        )
+        monkeypatch.setattr("codex_plugin_scanner.guard.adapters.devin.os.name", "nt")
         monkeypatch.setenv("APPDATA", str(appdata))
         monkeypatch.setattr("codex_plugin_scanner.guard.adapters.devin.Path", PureWindowsPath)
         adapter = DevinHarnessAdapter()
@@ -321,10 +316,7 @@ class TestDevinWindowsPaths:
 
     def test_unix_config_dir_ignores_appdata(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)
-        monkeypatch.setattr(
-            "codex_plugin_scanner.guard.adapters.devin.os",
-            SimpleNamespace(name="posix", environ=os.environ),
-        )
+        monkeypatch.setattr("codex_plugin_scanner.guard.adapters.devin.os.name", "posix")
         monkeypatch.setenv("APPDATA", str(tmp_path / "unused"))
         adapter = DevinHarnessAdapter()
         assert adapter._user_config_path(ctx) == ctx.home_dir / ".config" / "devin" / "config.json"

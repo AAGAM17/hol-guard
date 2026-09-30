@@ -58,6 +58,8 @@ _REQUIRED_COUNTS: Final[tuple[str, ...]] = (
 )
 _UNACCEPTABLE_COUNTS: Final[tuple[str, ...]] = (
     "no_tests",
+    # Skipped mutants leave the reviewed target baseline incomplete. Keep this
+    # zero floor so a partial mutation run cannot appear to satisfy the gate.
     "skipped",
     "suspicious",
     "timeout",

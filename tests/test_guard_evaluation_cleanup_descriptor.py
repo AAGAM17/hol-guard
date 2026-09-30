@@ -9,6 +9,7 @@ import pytest
 
 from codex_plugin_scanner.guard import evaluation_cleanup as cleanup_module
 from codex_plugin_scanner.guard import evaluation_preflight as preflight_module
+from codex_plugin_scanner.guard.evaluation_contracts import EvaluationContractError
 from codex_plugin_scanner.guard.evaluation_preflight import (
     cleanup_interrupted_evaluation_setup,
     setup_evaluation,
@@ -127,7 +128,7 @@ def test_cleanup_rejects_special_mode_bits_on_owned_root(tmp_path: Path, special
     assert setup.root_path is not None
     setup.root_path.chmod(0o700 | special_mode)
 
-    with pytest.raises(ValueError, match="not private"):
+    with pytest.raises(EvaluationContractError, match="unsafe permission bits"):
         setup.cleanup()
 
     setup.root_path.chmod(0o700)
@@ -141,7 +142,7 @@ def test_cleanup_rejects_special_mode_bits_on_ownership_marker(tmp_path: Path, s
     marker = setup.root_path / cleanup_module.MARKER_NAME
     marker.chmod(0o600 | special_mode)
 
-    with pytest.raises(ValueError, match="ownership marker is unsafe"):
+    with pytest.raises(EvaluationContractError, match="ownership marker is unsafe"):
         setup.cleanup()
 
     marker.chmod(0o600)

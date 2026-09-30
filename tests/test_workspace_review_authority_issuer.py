@@ -248,6 +248,67 @@ def test_failure_reports_only_static_stage(
     assert not output_path.exists()
 
 
+@pytest.mark.parametrize(
+    ("failure_point", "expected_stage"),
+    [
+        ("_root_signing_key", "root signing"),
+        ("canonical_json_bytes", "root signing"),
+        ("_unsigned_signing_bytes", "root signing"),
+        ("signature_verification", "root signing"),
+    ],
+)
+def test_sensitive_signing_failures_report_only_static_stage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure_point: str,
+    expected_stage: str,
+) -> None:
+    from scripts.approval import issue_workspace_review_authority as issuer
+
+    request_path = tmp_path / "request.json"
+    output_path = tmp_path / "authority.json"
+    _write_request(request_path, _request(now_ms=int(time.time() * 1000)))
+    for name, value in _environment().items():
+        monkeypatch.setenv(name, value)
+
+    def sensitive_failure(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError(ROOT_SEED.hex())
+
+    if failure_point == "signature_verification":
+
+        class FailingVerifier:
+            def verify(self, *_args: object, **_kwargs: object) -> None:
+                raise RuntimeError(ROOT_SEED.hex())
+
+        class FailingPublicKey:
+            @staticmethod
+            def from_public_bytes(_value: bytes) -> FailingVerifier:
+                return FailingVerifier()
+
+        monkeypatch.setattr(issuer, "Ed25519PublicKey", FailingPublicKey)
+    else:
+        monkeypatch.setattr(issuer, failure_point, sensitive_failure)
+
+    assert (
+        main(
+            [
+                "--request",
+                str(request_path),
+                "--output",
+                str(output_path),
+                "--expected-request-sha256",
+                _request_digest(request_path),
+            ]
+        )
+        == 1
+    )
+    error = capsys.readouterr().err
+    assert error == f"workspace review authority operation rejected during {expected_stage}\n"
+    assert ROOT_SEED.hex() not in error
+    assert not output_path.exists()
+
+
 def test_same_size_request_substitution_fails_expected_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     for name, value in _environment().items():
         monkeypatch.setenv(name, value)

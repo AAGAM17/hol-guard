@@ -184,10 +184,10 @@ def validate_request(value: object, *, now_ms: int | None = None) -> dict[str, o
 
     public_key_hex = _require_lower_hex(request.get("public_key"), ED25519_PUBLIC_KEY_BYTES)
     key_id = _require_lower_hex(request.get("key_id"), SHA256_DIGEST_BYTES)
-    _ = _require_lower_hex(request.get("workspace_binding"), SHA256_DIGEST_BYTES)
+    workspace_binding = _require_lower_hex(request.get("workspace_binding"), SHA256_DIGEST_BYTES)
     device_binding = _require_lower_hex(request.get("device_binding"), SHA256_DIGEST_BYTES)
     installation_binding = _require_lower_hex(request.get("installation_binding"), SHA256_DIGEST_BYTES)
-    _ = _require_lower_hex(request.get("scope_binding"), SHA256_DIGEST_BYTES)
+    scope_binding = _require_lower_hex(request.get("scope_binding"), SHA256_DIGEST_BYTES)
     if device_binding == installation_binding:
         raise AuthorityIssuerError("invalid workspace review request")
 
@@ -217,6 +217,9 @@ def validate_request(value: object, *, now_ms: int | None = None) -> dict[str, o
     effective_now_ms = _now_ms() if now_ms is None else _require_safe_u64(now_ms)
     if issued_at_ms > effective_now_ms or effective_now_ms >= expires_at_ms:
         raise AuthorityIssuerError("invalid workspace review request")
+
+    request["workspace_binding"] = workspace_binding
+    request["scope_binding"] = scope_binding
 
     # Return a fresh object so signing cannot mutate a caller-owned mapping.
     return {key: request[key] for key in UNSIGNED_FIELDS}

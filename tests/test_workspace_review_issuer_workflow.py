@@ -5,13 +5,21 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import stat
 import subprocess
-import sys
 from pathlib import Path
 from typing import cast
 
 import pytest
 import yaml
+
+from scripts.approval.workspace_review_authority_workflow import (
+    WorkflowAuthorityError,
+    record_request,
+    verify_custodian_approval,
+    verify_reviewed_request,
+    write_request,
+)
 
 _PATH = Path(__file__).resolve().parents[1] / ".github/workflows/issue-workspace-review-authority.yml"
 _MAIN_GATE = (
@@ -135,6 +143,12 @@ def test_custodian_gate_rejects_missing_or_self_reviewable_protection(rules: lis
         ("rejected", False),
         ("team_only", False),
         ("self_review_allowed", False),
+        ("missing_environment_id", False),
+        ("null_environment_id", False),
+        ("missing_custodian_id", False),
+        ("null_custodian_id", False),
+        ("boolean_ids", False),
+        ("negative_ids", False),
     ),
 )
 def test_actual_digest_bound_custodian_approval_is_required(tmp_path: Path, change: str, accepted: bool) -> None:
@@ -150,28 +164,58 @@ def test_actual_digest_bound_custodian_approval_is_required(tmp_path: Path, chan
         "user": {"id": 3 if change == "unlisted_reviewer" else 2, "login": login},
         "environments": [{"id": 43 if change == "wrong_environment" else 42}],
     }
-    _ = (tmp_path / "authority-environment.json").write_text(
-        json.dumps({"id": 42, "protection_rules": [rule]}), encoding="utf-8"
-    )
+    environment: dict[str, object] = {"id": 42, "protection_rules": [rule]}
+    if change == "missing_environment_id":
+        del environment["id"]
+        review["environments"] = [{}]
+    elif change == "null_environment_id":
+        environment["id"] = None
+        review["environments"] = [{"id": None}]
+    elif change in {"missing_custodian_id", "null_custodian_id"}:
+        rule["reviewers"] = [{"type": "User", "reviewer": {} if change == "missing_custodian_id" else {"id": None}}]
+        review["user"] = {"id": None, "login": login}
+    elif change in {"boolean_ids", "negative_ids"}:
+        invalid_id = True if change == "boolean_ids" else -2
+        environment["id"] = invalid_id
+        rule["reviewers"] = [{"type": "User", "reviewer": {"id": invalid_id}}]
+        review["user"] = {"id": invalid_id, "login": login}
+        review["environments"] = [{"id": invalid_id}]
+    _ = (tmp_path / "authority-environment.json").write_text(json.dumps(environment), encoding="utf-8")
     _ = (tmp_path / "authority-reviews.json").write_text(
         json.dumps([] if change == "no_review" else [review]), encoding="utf-8"
     )
-    step = next(
-        step
-        for step in _steps(_jobs(_workflow())["sign"])
-        if step.get("name") == "Verify independent custodian reviewed these bytes"
-    )
-    code = str(step["run"]).split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=tmp_path,
-        env={
-            "GITHUB_ACTOR": "initiator",
-            "GITHUB_TRIGGERING_ACTOR": "rerunner",
-            "EXPECTED_REQUEST_DIGEST": "a" * 64,
-        },
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert (result.returncode == 0) is accepted
+    try:
+        verify_custodian_approval(
+            tmp_path / "authority-environment.json",
+            tmp_path / "authority-reviews.json",
+            expected_digest="a" * 64,
+            initiators={"initiator", "rerunner"},
+        )
+    except WorkflowAuthorityError:
+        assert not accepted
+    else:
+        assert accepted
+
+
+def test_workflow_helpers_preserve_request_bytes_and_review_digest(tmp_path: Path) -> None:
+    raw = '{"schema":"public"}\n'
+    request = tmp_path / "authority-request.json"
+    write_request(request, raw)
+    assert request.read_text(encoding="utf-8") == raw
+    assert stat.S_IMODE(request.stat().st_mode) == 0o600
+
+    output = tmp_path / "github-output"
+    summary = tmp_path / "github-summary"
+    digest = record_request(request, output=output, summary=summary)
+    assert output.read_text(encoding="utf-8") == f"digest={digest}\n"
+    assert f"authority-request-sha256:{digest}" in summary.read_text(encoding="utf-8")
+    verify_reviewed_request(request, expected_digest=digest)
+
+    _ = request.write_text('{"schema":"changed"}\n', encoding="utf-8")
+    with pytest.raises(WorkflowAuthorityError, match="Reviewed authority request changed"):
+        verify_reviewed_request(request, expected_digest=digest)
+
+
+def test_workflow_request_writer_rejects_oversized_input(tmp_path: Path) -> None:
+    with pytest.raises(WorkflowAuthorityError, match="size limit"):
+        write_request(tmp_path / "authority-request.json", "x" * (16 * 1024 + 1))

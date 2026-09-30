@@ -296,6 +296,52 @@ def test_clean_forward_requires_complete_recheck_and_exposes_only_ephemeral_dige
     assert changed.content_sha256 is None
 
 
+@pytest.mark.parametrize("error_type", [ValueError, OSError])
+def test_binding_recheck_failure_withholds_without_logging_callback_details(
+    error_type: type[Exception], caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fail_recheck() -> StructuredOutputBinding | None:
+        raise error_type("untrusted callback detail")
+
+    native_result = _native_result()
+    result = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=native_result,
+        validated_receipt=_receipt(),
+        structured_output_json='{"employee":{"email":"","id":7},"note":"x"}',
+        binding=_binding(),
+        recheck_binding=fail_recheck,
+    )
+    assert result is not None
+    assert result.action == "withhold"
+    assert result.content_sha256 is None
+    assert native_result == _native_result()
+    assert "untrusted callback detail" not in caplog.text
+    assert "untrusted callback detail" not in str(result.to_harness_json())
+    if error_type is OSError:
+        assert result.reason_code == "structured_binding_recheck_failed"
+        assert "OSError" in caplog.text
+    else:
+        assert result.reason_code == "structured_binding_changed"
+        assert not caplog.records
+
+
+@pytest.mark.parametrize("property_name", ["role", "valueType", "category"])
+def test_policy_rejects_untyped_field_values(property_name: str) -> None:
+    policy = _policy_value()
+    field: dict[str, object] = {
+        "path": ["note"],
+        "role": "protected_personal",
+        "valueType": "string",
+        "category": "person_name",
+    }
+    field[property_name] = ["unexpected"]
+    policy["schema"] = {"fields": [field]}
+    with pytest.raises(ValueError, match="is invalid"):
+        structured_output_mediation.parse_structured_output_policy(policy)
+
+
 def test_match_unsupported_deadline_missing_receipt_and_native_deny_withhold() -> None:
     binding = _binding("omp")
     cases = (

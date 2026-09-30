@@ -910,7 +910,13 @@ function boundedJsonStringSize(value: string, budget: TraversalBudget): number |
     } else if (code >= 0xdc00 && code <= 0xdfff) {
       size += 6;
     } else {
-      size += code < 0x80 ? 1 : code < 0x800 ? 2 : 3;
+      if (code < 0x80) {
+        size += 1;
+      } else if (code < 0x800) {
+        size += 2;
+      } else {
+        size += 3;
+      }
     }
     if (size > GUARD_MAX_REFERENCE_JSON_BYTES) return null;
   }
@@ -988,7 +994,8 @@ function boundedJsonSize(
         !lengthDescriptor
         || !Object.prototype.hasOwnProperty.call(lengthDescriptor, 'value')
         || !Number.isSafeInteger(lengthDescriptor.value)
-        || lengthDescriptor.value > GUARD_MAX_REFERENCE_JSON_BYTES
+        // Every dense element uses at least one byte, plus comma separators.
+        || lengthDescriptor.value > Math.floor((GUARD_MAX_REFERENCE_JSON_BYTES - 1) / 2)
       ) return null;
       const length = lengthDescriptor.value;
       let size = 2;

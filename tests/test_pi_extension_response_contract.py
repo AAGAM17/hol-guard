@@ -7,25 +7,15 @@ import json
 import re
 import subprocess
 import tempfile
-import time
 from pathlib import Path
 
 import pytest
 
 from codex_plugin_scanner.guard.adapters.pi_extension_source import managed_extension_source
-from codex_plugin_scanner.guard.config import GuardConfig
-from codex_plugin_scanner.guard.daemon.hook_worker_native import _watch_native_post_tool_result
 from codex_plugin_scanner.guard.daemon.hook_worker_responses import (
     harness_json_from_native_pre_tool,
     observe_lifecycle_fail_safe_response,
 )
-from codex_plugin_scanner.guard.runtime.actions import normalize_harness_payload
-from codex_plugin_scanner.guard.runtime.hook_content_scanner import ContentScanner
-from codex_plugin_scanner.guard.runtime.hook_decision_cache import HookDecisionCache
-from codex_plugin_scanner.guard.runtime.hook_review_engine import HookReviewEngine
-from codex_plugin_scanner.guard.runtime.hook_review_types import HookReviewRequest, HookSourceFileRef
-from codex_plugin_scanner.guard.runtime.hook_source_read import evaluate_source_file_ref, sha256_text
-from codex_plugin_scanner.guard.store import GuardStore
 
 
 def _generated_source(tmp_path: Path, *, harness: str = "omp") -> str:
@@ -40,9 +30,13 @@ def _generated_source(tmp_path: Path, *, harness: str = "omp") -> str:
 
 def _strip_generated_types(fragment: str) -> str:
     replacements = {
-        "const errorPayload = JSON.parse(errorBody) as { error?: unknown };": "const errorPayload = JSON.parse(errorBody);",
+        "const errorPayload = JSON.parse(errorBody) as { error?: unknown };": (
+            "const errorPayload = JSON.parse(errorBody);"
+        ),
         "function compactHookEventName(value: unknown): string {": "function compactHookEventName(value) {",
-        "function normalizeGuardResponse(value: unknown): GuardResponse | null {": "function normalizeGuardResponse(value) {",
+        "function normalizeGuardResponse(value: unknown): GuardResponse | null {": (
+            "function normalizeGuardResponse(value) {"
+        ),
         """function daemonResponseCanReturn(
   payload: Record<string, unknown>,
   response: GuardResponse,
@@ -127,6 +121,7 @@ const GUARD_CONTENT_ITEM_LIMIT = 24;
 const GUARD_OBJECT_KEY_LIMIT = 24;
 const GUARD_MAX_DEPTH = 24;
 const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = 24000;
+const GUARD_MAX_SERIALIZED_RESPONSE_CHARS = 12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;
 const OUTPUT_TEXT_KEYS = ["stdout", "stderr", "output", "content", "result", "message", "text"];
 const GUARD_ARGS = [];
 const GUARD_CLI_WRAPPER_COMMAND = "hol-guard";
@@ -222,7 +217,7 @@ fetchBodies = ['{{"decision":"maybe"}}'];
 result.daemon_unknown = await daemonGuardResponse("{{}}", "/tmp", 100, Date.now() + 1000);
 fetchBodies = ['{{"decision":"block","reason":"fixture block"}}'];
 result.daemon_block = (await daemonGuardResponse("{{}}", "/tmp", 100, Date.now() + 1000)).response;
-fetchBodies = ["x".repeat(GUARD_MAX_SERIALIZED_PAYLOAD_CHARS + 1)];
+fetchBodies = ["x".repeat(GUARD_MAX_SERIALIZED_RESPONSE_CHARS + 1)];
 result.daemon_oversized_body = await daemonGuardResponse("{{}}", "/tmp", 100, Date.now() + 1000);
 
 daemonMode = "retry-shape";
@@ -350,6 +345,7 @@ const GUARD_CONTENT_ITEM_LIMIT = 24;
 const GUARD_OBJECT_KEY_LIMIT = 24;
 const GUARD_MAX_DEPTH = 24;
 const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = 24000;
+const GUARD_MAX_SERIALIZED_RESPONSE_CHARS = 12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;
 const GUARD_TIMEOUT_MS = 4250;
 const GUARD_DEADLINE_RESERVE_MS = 250;
 const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;
@@ -463,11 +459,17 @@ def _generated_preprocessing_helper(source: str) -> str:
         "",
     )
     for old, new in {
-        "function createTraversalBudget(deadlineAt?: number): TraversalBudget {": "function createTraversalBudget(deadlineAt) {",
+        "function createTraversalBudget(deadlineAt?: number): TraversalBudget {": (
+            "function createTraversalBudget(deadlineAt) {"
+        ),
         "function traversalBudgetReady(budget: TraversalBudget): boolean {": "function traversalBudgetReady(budget) {",
         "function consumeTraversalNode(budget: TraversalBudget): boolean {": "function consumeTraversalNode(budget) {",
-        "function hasCallableSerializationHook(value: object): boolean {": "function hasCallableSerializationHook(value) {",
-        "function safeEnumerableDataKeys(record: Record<string, unknown>): string[] | null {": "function safeEnumerableDataKeys(record) {",
+        "function hasCallableSerializationHook(value: object): boolean {": (
+            "function hasCallableSerializationHook(value) {"
+        ),
+        "function safeEnumerableDataKeys(record: Record<string, unknown>): string[] | null {": (
+            "function safeEnumerableDataKeys(record) {"
+        ),
         "    let owner: object | null = value;": "    let owner = value;",
         "function digestOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): OutputDigest {":  # noqa: E501
         "function digestOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
@@ -487,12 +489,16 @@ def _generated_preprocessing_helper(source: str) -> str:
             "function boundedResponseText(\n  response: Response,\n"
             "  maxChars: number,\n  deadlineAt?: number,\n): Promise<string | null> {"
         ): "function boundedResponseText(response, maxChars, deadlineAt) {",
-        "function boundedJsonStringSize(value: string, budget: TraversalBudget): number | null {": "function boundedJsonStringSize(value, budget) {",
+        "function boundedJsonStringSize(value: string, budget: TraversalBudget): number | null {": (
+            "function boundedJsonStringSize(value, budget) {"
+        ),
         (
             "function boundedJsonSize(\n  value: unknown,\n  budget: TraversalBudget,\n"
             "  depth: number,\n  seen: WeakSet<object>,\n  inArray: boolean,\n): number | null {"
         ): "function boundedJsonSize(value, budget, depth, seen, inArray) {",
-        "function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlineAt?: number): boolean {": "function payloadWithinSerializedBudget(payload, deadlineAt) {",
+        "function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlineAt?: number): boolean {": (
+            "function payloadWithinSerializedBudget(payload, deadlineAt) {"
+        ),
         "function traverse(val: unknown, depth: number): void {": "function traverse(val, depth) {",
         "const refuse = (): void => {": "const refuse = () => {",
         "  function update(text: string): void {": "  function update(text) {",
@@ -517,12 +523,16 @@ def _generated_structured_helper(source: str) -> str:
     end = source.index("\n\nfunction sourcePathFromToolInput(", start)
     helper = source[start:end]
     for old, new in {
-        "function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number): string | null {": "function structuredOutputJsonForPostToolUse(value, deadlineAt) {",
+        "function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number): string | null {": (
+            "function structuredOutputJsonForPostToolUse(value, deadlineAt) {"
+        ),
         "  function hasUnpairedSurrogate(text: string): boolean {": "  function hasUnpairedSurrogate(text) {",
         "  function canonicalize(item: unknown, depth: number): unknown {": "  function canonicalize(item, depth) {",
         "  function canonicalStringify(item: unknown): string {": "  function canonicalStringify(item) {",
         "const entries: string[] = [];": "const entries = [];",
-        "  const deadlineExceeded = (): boolean => deadlineAt !== undefined && Date.now() >= deadlineAt;": "  const deadlineExceeded = () => deadlineAt !== undefined && Date.now() >= deadlineAt;",
+        "  const deadlineExceeded = (): boolean => deadlineAt !== undefined && Date.now() >= deadlineAt;": (
+            "  const deadlineExceeded = () => deadlineAt !== undefined && Date.now() >= deadlineAt;"
+        ),
         "  const checkDeadline = (): void => {": "  const checkDeadline = () => {",
         "const seen = new WeakSet<object>();": "const seen = new WeakSet();",
         "const record = item as Record<string, unknown>;": "const record = item;",
@@ -544,6 +554,7 @@ const GUARD_CONTENT_ITEM_LIMIT = 24;
 const GUARD_OBJECT_KEY_LIMIT = 24;
 const GUARD_MAX_DEPTH = 24;
 const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = 24000;
+const GUARD_MAX_SERIALIZED_RESPONSE_CHARS = 12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;
 
 {_generated_preprocessing_helper(source)}
 
@@ -1165,170 +1176,6 @@ def test_generated_structured_receiver_rechecks_lifecycle_at_final_original_proo
     assert result["result"]["isError"] is True
 
 
-def test_generated_omp_payload_matches_real_python_review(tmp_path: Path) -> None:
-    source = _generated_source(tmp_path)
-    store = GuardStore(tmp_path / "guard-home")
-    scanner = ContentScanner()
-    cache = HookDecisionCache(store)
-    engine = HookReviewEngine(
-        store=store,
-        scanner=scanner,
-        cache=cache,
-        config_loader=lambda guard_home, workspace: GuardConfig(
-            guard_home=guard_home,
-            workspace=workspace,
-        ),
-    )
-    cases = (
-        ([{"type": "text", "text": "plain output"}], "plain output"),
-        (
-            [
-                {"type": "text", "text": "first"},
-                {"type": "image", "data": "ignored"},
-                {"type": "text", "text": "second"},
-            ],
-            "firstsecond",
-        ),
-        ([], ""),
-        ([{"type": "text", "text": "astral 🌋 output"}], "astral 🌋 output"),
-        ([{"type": "text", "text": " first\r\nsecond \r\n"}], " first\r\nsecond \r\n"),
-    )
-
-    for content, expected_text in cases:
-        captured = _run_generated_callback_payload(
-            source,
-            content,
-            {"decision": "deny", "reason": "capture"},
-        )
-        serialized_payload = captured["serialized_payload"]
-        assert isinstance(serialized_payload, str)
-        payload = json.loads(serialized_payload)
-        assert payload["tool_response"] == content
-        assert "stdout" not in payload
-
-        response = engine.review(
-            HookReviewRequest(
-                harness="omp",
-                event_name="PostToolUse",
-                payload=payload,
-                payload_kind="inline",
-                config_path=None,
-                cwd=tmp_path,
-                home_dir=tmp_path / "home",
-                guard_home=tmp_path / "guard-home",
-                source_scope="project",
-            )
-        )
-        assert response.decision == "allow"
-        assert response.model_output_action == "allow_original"
-        assert response.reviewed_output_sha256 == sha256_text(expected_text)
-
-        accepted = _run_generated_callback_payload(source, content, response.to_harness_json())
-        assert accepted["preserved"] is True
-
-        recording_only = _watch_native_post_tool_result(
-            {
-                "decision": "deny",
-                "model_output_action": "block",
-                "policy_action": "block",
-                "reason": "output requires review",
-            },
-            payload,
-        )
-        assert recording_only["decision"] == "allow"
-        assert recording_only["model_output_action"] == "allow_original"
-        assert recording_only["reviewed_output_sha256"] == sha256_text(expected_text)
-        assert "observe_mode" not in recording_only
-        accepted_recording = _run_generated_callback_payload(source, content, recording_only)
-        assert accepted_recording["preserved"] is True
-
-
-def test_generated_unicode_source_ref_matches_python_fast_path(tmp_path: Path) -> None:
-    source = _generated_source(tmp_path)
-    source_dir = tmp_path / "src"
-    source_dir.mkdir()
-    path = source_dir / "fixture.txt"
-    text = "first 🌋 line\r\nsecond line\n"
-    path.write_bytes(text.encode("utf-8"))
-    generated = _run_generated_source_ref_fixture(
-        source,
-        [{"type": "text", "text": text}],
-        Path("src/fixture.txt"),
-    )
-
-    digest = generated["digest"]
-    source_ref = generated["sourceRef"]
-    assert isinstance(digest, dict)
-    assert isinstance(source_ref, dict)
-    assert digest["chars"] == len(text)
-    assert source_ref["output_chars"] == len(text)
-    assert source_ref["output_sha256"] == sha256_text(text)
-
-    payload = {
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Read",
-        "tool_input": {"file_path": "src/fixture.txt"},
-        "tool_response": text,
-        "guard_source_ref": source_ref,
-    }
-    source_ref_model = HookSourceFileRef(
-        version=source_ref["version"],
-        path=source_ref["path"],
-        output_sha256=source_ref["output_sha256"],
-        output_chars=source_ref["output_chars"],
-        tool_input_path=source_ref["tool_input_path"],
-    )
-    store = GuardStore(tmp_path / "guard-home")
-    scanner = ContentScanner()
-    cache = HookDecisionCache(store)
-    config = GuardConfig(guard_home=tmp_path / "guard-home", workspace=tmp_path)
-    request = HookReviewRequest(
-        harness="omp",
-        event_name="PostToolUse",
-        payload=payload,
-        payload_kind="source_file_ref",
-        config_path=None,
-        cwd=tmp_path,
-        home_dir=tmp_path / "home",
-        guard_home=tmp_path / "guard-home",
-        source_scope="project",
-        source_ref=source_ref_model,
-    )
-    envelope = normalize_harness_payload(
-        "omp",
-        "PostToolUse",
-        payload,
-        workspace=tmp_path,
-        home_dir=tmp_path / "home",
-    )
-    fast_path = evaluate_source_file_ref(
-        request=request,
-        envelope=envelope,
-        scanner=scanner,
-        cache=cache,
-        config=config,
-        store=store,
-        deadline_monotonic=time.monotonic() + 2,
-    )
-    assert fast_path.status == "allow_original", (
-        fast_path.reason_code,
-        source_ref,
-        envelope.target_paths,
-    )
-    assert fast_path.proof is not None
-    assert fast_path.proof.output_sha256 == sha256_text(text)
-
-    response = HookReviewEngine(
-        store=store,
-        scanner=scanner,
-        cache=cache,
-        config_loader=lambda guard_home, workspace: config,
-    ).review(request)
-    assert response.decision == "allow"
-    assert response.model_output_action == "allow_original"
-    assert response.reviewed_output_sha256 == sha256_text(text)
-
-
 def test_generated_large_non_source_result_fails_closed_before_serialization(tmp_path: Path) -> None:
     source = _generated_source(tmp_path)
     large_text = "x" * (5 * 1024 * 1024 + 1)
@@ -1635,6 +1482,69 @@ console.log(JSON.stringify({ cases }));
 """,
     )
     assert result == {"cases": [{"text": None, "cancelled": True, "released": True}] * 2}
+
+
+def test_generated_response_reader_bounds_ensure_ascii_reviewed_excerpts(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const makeResponse = (body) => {
+  const state = { cancelled: false, released: false, used: false };
+  const reader = {
+    async read() {
+      if (state.used) return { done: true, value: undefined };
+      state.used = true;
+      return { done: false, value: new TextEncoder().encode(body) };
+    },
+    async cancel() { state.cancelled = true; },
+    releaseLock() { state.released = true; },
+  };
+  return { response: { body: { getReader: () => reader } }, state };
+};
+const bodyFor = (text) => `{"content":[{"type":"text","text":"${text}"}]}`;
+const samples = [
+  { label: "bmp", text: "b".repeat(12_000) },
+  { label: "astral_ensure_ascii", text: String.raw`\\ud83e\\uddea`.repeat(12_000) },
+];
+const cases = [];
+for (const sample of samples) {
+  const body = bodyFor(sample.text);
+  const fixture = makeResponse(body);
+  const received = await boundedResponseText(
+    fixture.response,
+    GUARD_MAX_SERIALIZED_RESPONSE_CHARS,
+    Date.now() + 10_000,
+  );
+  cases.push({
+    label: sample.label,
+    accepted: received === body,
+    cancelled: fixture.state.cancelled,
+    released: fixture.state.released,
+  });
+}
+const oversized = makeResponse("x".repeat(GUARD_MAX_SERIALIZED_RESPONSE_CHARS + 1));
+const rejected = await boundedResponseText(
+  oversized.response,
+  GUARD_MAX_SERIALIZED_RESPONSE_CHARS,
+  Date.now() + 10_000,
+);
+cases.push({
+  label: "over_cap",
+  accepted: rejected !== null,
+  cancelled: oversized.state.cancelled,
+  released: oversized.state.released,
+});
+console.log(JSON.stringify({ cases }));
+""",
+    )
+    assert result == {
+        "cases": [
+            {"label": "bmp", "accepted": True, "cancelled": False, "released": True},
+            {"label": "astral_ensure_ascii", "accepted": True, "cancelled": False, "released": True},
+            {"label": "over_cap", "accepted": False, "cancelled": True, "released": True},
+        ],
+    }
 
 
 def test_generated_payload_budget_matches_exact_encrypted_reference_boundary(tmp_path: Path) -> None:

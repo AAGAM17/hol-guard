@@ -61,10 +61,10 @@ def test_successful_post_tool_block_withholds_without_stopping() -> None:
     assert payload["hookSpecificOutput"]["additionalContext"] == "credential-looking output"
 
 
-def test_old_cursor_hooks_allow_empty_stdin_without_baked_event() -> None:
+def test_old_cursor_hooks_deny_empty_stdin_without_baked_event() -> None:
     allow, code = cursor_unparseable_input_permission("")
-    assert code == 0
-    assert allow == {"permission": "allow"}
+    assert code == 2
+    assert allow["permission"] == "deny"
     deny, deny_code = cursor_unparseable_input_permission("beforeShellExecution")
     assert deny_code == 2
     assert deny["permission"] == "deny"

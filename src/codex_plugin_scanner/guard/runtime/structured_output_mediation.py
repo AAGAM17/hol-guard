@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypeGuard
 
 from ..strict_json_pairs import unique_json_object
 from .structured_data_sensitivity import (
@@ -31,6 +32,7 @@ STRUCTURED_OUTPUT_SETTING_PATH = "data_control.structured_output"
 STRUCTURED_OUTPUT_POLICY_VERSION = "hol-guard-structured-output-policy.v1"
 STRUCTURED_CONTENT_MEDIATION_SCHEMA = "guard-structured-content-mediation.v1"
 STRUCTURED_DESTINATION_ROLE = "model_visible_tool_result"
+_LOGGER = logging.getLogger(__name__)
 STRUCTURED_MEDIATION_MAX_BYTES = 64 * 1024
 STRUCTURED_MEDIATION_MAX_SAFE_INTEGER = 2**53 - 1
 _SUPPORTED_HARNESSES = frozenset({"pi", "omp"})
@@ -103,6 +105,20 @@ def _strict_string_list(value: object, name: str) -> tuple[str, ...]:
     return items
 
 
+def _is_field_role(value: object) -> TypeGuard[FieldRole]:
+    return isinstance(value, str) and value in ("protected_personal", "ordinary")
+
+
+def _is_field_type(value: object) -> TypeGuard[FieldType]:
+    return isinstance(value, str) and value in ("string", "integer")
+
+
+def _is_personal_category(value: object) -> TypeGuard[PersonalCategory | None]:
+    return value is None or (
+        isinstance(value, str) and value in ("person_name", "email_address", "employee_id")
+    )
+
+
 def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
     """Parse the reserved setting without accepting aliases or extensions."""
 
@@ -142,6 +158,8 @@ def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
     for index, raw_field in enumerate(fields_raw):
         field = _mapping(raw_field, f"structured output policy schema field {index}")
         role = field.get("role")
+        if not _is_field_role(role):
+            raise ValueError(f"structured output policy schema field {index} role is invalid")
         expected_keys = (
             {"path", "role", "valueType", "category"}
             if role == "protected_personal"
@@ -157,14 +175,17 @@ def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
         if not isinstance(path_raw, list) or not path_raw or not all(isinstance(part, str) for part in path_raw):
             raise ValueError(f"structured output policy schema field {index} path is invalid")
         value_type = field["valueType"]
-        if value_type not in {"string", "integer"}:
+        if not _is_field_type(value_type):
             raise ValueError(f"structured output policy schema field {index} value type is invalid")
+        category = field.get("category")
+        if not _is_personal_category(category):
+            raise ValueError(f"structured output policy schema field {index} category is invalid")
         fields.append(
             DeclaredField(
                 tuple(path_raw),
-                cast(FieldRole, role),
-                value_type=cast(FieldType, value_type),
-                category=cast(PersonalCategory | None, field.get("category")),
+                role,
+                value_type=value_type,
+                category=category,
             )
         )
     return StructuredOutputPolicy(harnesses=tuple(sorted(harnesses)), schema=DeclaredSchema(tuple(fields)))
@@ -470,8 +491,12 @@ def mediate_native_post_tool_content(
         return _withhold("structured_binding_recheck_missing", native_decision_id)
     try:
         refreshed = recheck_binding()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         refreshed = None
+    except Exception as exc:
+        # Error classes aid diagnosis without recording callback data or paths.
+        _LOGGER.warning("Structured output binding recheck failed (%s)", type(exc).__name__)
+        return _withhold("structured_binding_recheck_failed", native_decision_id)
     if refreshed is None or refreshed.identity != binding.identity:
         return _withhold("structured_binding_changed", native_decision_id)
     if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:

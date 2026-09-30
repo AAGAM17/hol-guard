@@ -183,6 +183,9 @@ def managed_extension_source(
         f"const GUARD_OBJECT_KEY_LIMIT = {GUARD_HOOK_OBJECT_KEY_LIMIT};\n"
         f"const GUARD_MAX_DEPTH = {GUARD_HOOK_MAX_DEPTH};\n"
         f"const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = {GUARD_HOOK_MAX_SERIALIZED_PAYLOAD_CHARS};\n"
+        "// Python JSON responses can escape one astral character as two Unicode escapes.\n"
+        "const GUARD_MAX_SERIALIZED_RESPONSE_CHARS =\n"
+        "  12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;\n"
         "const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;\n"
         "const GUARD_STRUCTURED_MAX_DEPTH = 8;\n"
         "const GUARD_STRUCTURED_MAX_NODES = 128;\n"
@@ -373,7 +376,7 @@ def managed_extension_source(
         "      };\n"
         "    }\n"
         "    const rawResponse = await boundedResponseText(\n"
-        "      response, GUARD_MAX_SERIALIZED_PAYLOAD_CHARS, deadlineAt,\n"
+        "      response, GUARD_MAX_SERIALIZED_RESPONSE_CHARS, deadlineAt,\n"
         "    );\n"
         '    if (rawResponse === null) return { response: null, recoveryKind: "transport-failure" };\n'
         "    const raw = rawResponse.trim();\n"
@@ -1162,7 +1165,7 @@ def legacy_managed_extension_source(
 
     bounded_success_body = (
         "    const rawResponse = await boundedResponseText(\n"
-        "      response, GUARD_MAX_SERIALIZED_PAYLOAD_CHARS, deadlineAt,\n"
+        "      response, GUARD_MAX_SERIALIZED_RESPONSE_CHARS, deadlineAt,\n"
         "    );\n"
         '    if (rawResponse === null) return { response: null, recoveryKind: "transport-failure" };\n'
         "    const raw = rawResponse.trim();\n"

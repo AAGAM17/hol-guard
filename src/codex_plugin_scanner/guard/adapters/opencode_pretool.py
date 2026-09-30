@@ -540,7 +540,7 @@ type OpenCodeV2ToolEvent = {
 };
 
 // Keep the V1 server entrypoint while registering the V2 hook explicitly.
-export default {
+const OpenCodePretoolPlugin = Object.assign(HolGuardPretoolPlugin, {
   id: "hol-guard-pretool",
   server: HolGuardPretoolPlugin,
   async setup(ctx: {
@@ -557,7 +557,8 @@ export default {
       await hooks["tool.execute.before"]({ tool: event.tool }, { args: event.input });
     });
   },
-};
+});
+export default OpenCodePretoolPlugin;
 """
 
 

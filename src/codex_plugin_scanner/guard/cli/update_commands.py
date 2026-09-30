@@ -2647,10 +2647,12 @@ def _refresh_opencode_pretool_plugin(
         repair_context, _ = _repair_context_from_managed_install(context, managed_install)
     except ValueError as error:
         return f"Could not inspect OpenCode pretool plugin during update: {error}"
+    companion_warning: str | None = None
+    refreshed_proxies = 0
     try:
         refreshed_proxies = refresh_opencode_proxy_launchers(repair_context)
     except (OSError, RuntimeError, ValueError) as error:
-        return f"Could not refresh OpenCode MCP companion launchers during update: {error}"
+        companion_warning = f"Could not refresh OpenCode MCP companion launchers during update: {error}"
     global_path = global_plugin_path(repair_context)
     managed_path = managed_plugin_path(repair_context)
     try:
@@ -2663,6 +2665,8 @@ def _refresh_opencode_pretool_plugin(
     except OSError as error:
         return f"Could not inspect OpenCode pretool plugin during update: {error}"
     if global_source == expected_source and managed_source == expected_source:
+        if companion_warning:
+            return companion_warning
         if refreshed_proxies:
             return "Refreshed OpenCode MCP companion launchers. Restart OpenCode to load them."
         return None
@@ -2670,7 +2674,7 @@ def _refresh_opencode_pretool_plugin(
         install_pretool_plugin(repair_context)
     except (OSError, RuntimeError) as error:
         return f"Could not refresh OpenCode pretool plugin during update: {error}"
-    return "Refreshed the OpenCode pretool plugin during update. Restart OpenCode to load it."
+    return companion_warning or "Refreshed the OpenCode pretool plugin during update. Restart OpenCode to load it."
 
 
 def _repair_codex_install(

@@ -277,8 +277,7 @@ class HookWorker(HookWorkerNativeMixin):
             # Send even unknown or malformed event labels to Rust. The edge
             # returns no semantic result for unsupported events, which this
             # method turns into a deterministic deny/fail-safe response.
-            return HookWorkerNativeMixin._review_native_edge(
-                self,
+            return self._review_native_edge(
                 payload=payload,
                 harness=harness,
                 event_name=event_name,

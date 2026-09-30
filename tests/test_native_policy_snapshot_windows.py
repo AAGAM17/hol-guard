@@ -348,7 +348,9 @@ def test_windows_private_descriptor_deduplicates_system_owner_ace(
 def test_windows_cache_read_rejects_ancestor_reparse_before_open(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(snapshot_module.os, "name", "nt")
+    windows_os = types.SimpleNamespace(name="nt")
+    monkeypatch.setattr(snapshot_module, "os", windows_os)
+    monkeypatch.setattr(storage_module, "os", windows_os)
     monkeypatch.setattr(snapshot_module, "_windows_path_has_reparse_component", lambda _path: True)
     monkeypatch.setattr(
         snapshot_module,

@@ -189,7 +189,7 @@ for (const width of [1280, 390]) {
           changes.push(body);
           present = changes.length === 1;
           await route.fulfill(present
-            ? { status: 409, json: { message: "Codex configuration changed. Review this connection in Codex." } }
+            ? { status: 401, json: { message: "Approval proof expired. Enter a fresh code." } }
             : { json: { host: "codex", kind: "remote", setup_name: saved.setup_name,
               setup_rolled_back: true, permissions_granted: false, host_change_applied: true } });
         } else {
@@ -232,7 +232,7 @@ for (const width of [1280, 390]) {
     }
     await review.getByLabel("Authenticator code").fill("123456");
     await review.getByRole("button", { name: "Remove from Codex", exact: true }).click();
-    await expect(registry.getByRole("alert")).toContainText("Codex configuration changed.");
+    await expect(registry.getByRole("alert")).toContainText("Approval proof expired.");
     await expect(review.getByLabel("Authenticator code")).toHaveValue("");
     await expect(review.getByRole("button", { name: "Remove from Codex", exact: true })).toBeDisabled();
     await review.getByLabel("Authenticator code").fill("654321");
@@ -246,6 +246,54 @@ for (const width of [1280, 390]) {
     expect(changes[1]).not.toHaveProperty("tool_permissions");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
+  });
+
+  test(`changed Codex configuration leaves Undo unavailable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const saved = { rollback_handle: "a".repeat(64), setup_name: "saved-server", kind: "remote",
+      registry_name: "io.github.sample/saved-server", version: "1.2.3", selection_digest: "b".repeat(64) };
+    let available = true;
+    let changes = 0;
+    await mount(page);
+    await page.route("**/v1/local-clis**", async (route) => {
+      const body = route.request().method() === "POST" ? route.request().postDataJSON() : {};
+      if (new URL(route.request().url()).pathname.endsWith("/registry-setup")) {
+        if (body.operation === "recent") {
+          await route.fulfill({ json: { setups: [{ ...saved, rollback_available: available }] } });
+        } else if (body.operation === "rollback-preview") {
+          await route.fulfill({ json: { ...saved, host: "codex", endpoint: "https://example.com/mcp",
+            permissions_granted: false, host_change_applied: false } });
+        } else if (body.operation === "rollback") {
+          changes += 1;
+          available = false;
+          await route.fulfill({ status: 409, json: { error: "codex_config_changed",
+            message: "Codex configuration changed. Guard kept it unchanged." } });
+        } else throw new Error(`Unexpected setup operation: ${body.operation}`);
+        return;
+      }
+      await route.fulfill({ json: { schema_version: "guard.daemon.local-clis.v1", revision: 0, items: [],
+        cloud: { sync_local_only: true, summary: "Synthetic fixture." } } });
+    });
+    await page.route("**/v1/settings", (route) => route.fulfill({ json: {
+      ...defaultSettingsPayload,
+      settings: { ...defaultSettingsPayload.settings, approval_gate: {
+        ...defaultSettingsPayload.settings.approval_gate, enabled: true, configured: true, totp_enabled: true,
+      } },
+    } }));
+    await initialize(page);
+    await page.getByTestId("custom-extensions-empty").getByRole("button", { name: "Add custom extension", exact: true }).click();
+    await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
+    const registry = page.getByRole("region", { name: "Public MCP registry search", exact: true });
+    const undo = registry.getByRole("button", { name: "Undo setup for saved-server", exact: true });
+    await undo.click();
+    const review = registry.getByRole("region", { name: "Review Codex MCP setup", exact: true });
+    await review.getByLabel("Authenticator code").fill("123456");
+    await review.getByRole("button", { name: "Remove from Codex", exact: true }).click();
+    await expect(registry.getByRole("alert")).toContainText("kept it unchanged");
+    await expect(review).toHaveCount(0);
+    await expect(undo).toBeDisabled();
+    await expect(registry.getByRole("region", { name: "Recent MCP setup", exact: true })).toContainText("Configuration changed. Review this connection in Codex.");
+    expect(changes).toBe(1);
   });
 
   test(`closing the registry dismisses delayed Undo previews at ${width}px`, async ({ page }) => {

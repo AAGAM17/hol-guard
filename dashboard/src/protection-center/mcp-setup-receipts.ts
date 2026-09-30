@@ -1,6 +1,7 @@
 export type RecentMcpSetup = {
   rollback_handle: string; setup_name: string; kind: "remote" | "package";
   registry_name: string; version: string; selection_digest: string;
+  rollback_available?: boolean;
 };
 
 export const isSetupDigest = (value: unknown): value is string =>
@@ -20,7 +21,11 @@ export function parseRecentMcpSetups(value: unknown): RecentMcpSetup[] {
       throw new Error("Could not verify recent setup history. Retry history.");
     }
     handles.add(entry.rollback_handle);
+    if (entry.rollback_available !== undefined && typeof entry.rollback_available !== "boolean") {
+      throw new Error("Could not verify recent setup history. Retry history.");
+    }
     return { rollback_handle: entry.rollback_handle, setup_name: entry.setup_name, kind: entry.kind,
-      registry_name: entry.registry_name, version: entry.version, selection_digest: entry.selection_digest };
+      registry_name: entry.registry_name, version: entry.version, selection_digest: entry.selection_digest,
+      ...(entry.rollback_available === undefined ? {} : { rollback_available: entry.rollback_available }) };
   });
 }

@@ -19,6 +19,7 @@ class CodexMcpSetupReceipt:
     file_path: str
     version: str
     entry_json: str
+    previous_version: str | None = None
 
 
 def _layers(payload: dict[str, object]) -> tuple[dict[str, object], list[dict[str, object]]]:
@@ -98,7 +99,7 @@ def _write(rpc: CodexConfigRpc, receipt: CodexMcpSetupReceipt, value: Mapping[st
     return version
 
 
-def _rollback(rpc: CodexConfigRpc, receipt: CodexMcpSetupReceipt) -> None:
+def _rollback(rpc: CodexConfigRpc, receipt: CodexMcpSetupReceipt) -> str:
     user, layers = _layers(rpc.request("config/read", {"includeLayers": True}))
     source = user["name"]
     assert isinstance(source, dict)
@@ -113,6 +114,7 @@ def _rollback(rpc: CodexConfigRpc, receipt: CodexMcpSetupReceipt) -> None:
     after, layers = _layers(rpc.request("config/read", {"includeLayers": True}))
     if after["version"] != version or any(_contains(layer, receipt.name) for layer in layers):
         raise ValueError("codex_setup_outcome_uncertain")
+    return version
 
 
 def install_reviewed_codex_mcp(
@@ -133,7 +135,7 @@ def install_reviewed_codex_mcp(
         assert isinstance(source, dict)
         before = CodexMcpSetupReceipt(name, str(source["file"]), str(user["version"]), encoded_entry)
         version = _write(rpc, before, entry)
-        installed = CodexMcpSetupReceipt(name, before.file_path, version, encoded_entry)
+        installed = CodexMcpSetupReceipt(name, before.file_path, version, encoded_entry, before.version)
         try:
             verified, layers = _layers(rpc.request("config/read", {"includeLayers": True}))
             if (
@@ -154,8 +156,8 @@ def install_reviewed_codex_mcp(
     return name
 
 
-def rollback_reviewed_codex_mcp(executable: str, receipt: CodexMcpSetupReceipt) -> None:
+def rollback_reviewed_codex_mcp(executable: str, receipt: CodexMcpSetupReceipt) -> str:
     if not _NAME.fullmatch(receipt.name):
         raise ValueError("invalid_codex_setup_selection")
     with CodexConfigRpc(executable) as rpc:
-        _rollback(rpc, receipt)
+        return _rollback(rpc, receipt)

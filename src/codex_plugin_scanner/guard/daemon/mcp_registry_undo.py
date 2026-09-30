@@ -8,7 +8,8 @@ import secrets
 import shutil
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ..approval_gate import (
@@ -39,6 +40,7 @@ class _OwnedSetup:
     receipt: CodexMcpSetupReceipt
     candidate_json: str
     expires_at: float
+    available: bool = True
 
 
 class RegistrySetupUndo:
@@ -51,7 +53,22 @@ class RegistrySetupUndo:
         now = time.monotonic()
         self._receipts = {handle: item for handle, item in self._receipts.items() if item.expires_at > now}
 
-    def remember(self, receipt: CodexMcpSetupReceipt, candidate: dict[str, object]) -> str:
+    def _advance(self, file_path: str, previous_version: str, version: str) -> None:
+        for handle, record in tuple(self._receipts.items()):
+            if record.receipt.file_path != file_path or not record.available:
+                continue
+            if record.receipt.version == previous_version:
+                self._receipts[handle] = replace(record, receipt=replace(record.receipt, version=version))
+            elif record.receipt.version != version:
+                self._receipts[handle] = replace(record, available=False)
+
+    def ensure_capacity(self) -> None:
+        with self._lock:
+            self._prune()
+            if len(self._receipts) >= _LIMIT:
+                raise ValueError("codex_setup_receipt_limit")
+
+    def remember(self, receipt: CodexMcpSetupReceipt, candidate: Mapping[str, object]) -> str:
         if receipt.name != candidate.get("setup_name"):
             raise ValueError("codex_setup_outcome_uncertain")
         entry = (
@@ -65,10 +82,12 @@ class RegistrySetupUndo:
             self._prune()
             if len(self._receipts) >= _LIMIT:
                 raise ValueError("codex_setup_receipt_limit")
+            if receipt.previous_version is not None:
+                self._advance(receipt.file_path, receipt.previous_version, receipt.version)
             handle = secrets.token_hex(32)
             self._receipts[handle] = _OwnedSetup(
                 receipt,
-                json.dumps(candidate, sort_keys=True, separators=(",", ":"), allow_nan=False),
+                json.dumps(dict(candidate), sort_keys=True, separators=(",", ":"), allow_nan=False),
                 time.monotonic() + _TTL,
             )
             return handle
@@ -84,6 +103,10 @@ class RegistrySetupUndo:
     def preview(self, payload: dict[str, object]) -> dict[str, object]:
         with self._lock:
             handle, record = self._lookup(payload.get("rollback_handle"))
+            if not record.available:
+                raise RegistryUndoError(
+                    409, "codex_config_changed", "Codex configuration changed. Review this connection in Codex."
+                )
             candidate = json.loads(record.candidate_json)
             return {
                 **candidate,
@@ -103,6 +126,7 @@ class RegistrySetupUndo:
                     {
                         "rollback_handle": handle,
                         "setup_name": record.receipt.name,
+                        "rollback_available": record.available,
                         **{key: candidate.get(key) for key in ("kind", "registry_name", "version", "selection_digest")},
                     }
                 )
@@ -111,6 +135,10 @@ class RegistrySetupUndo:
     def rollback(self, payload: dict[str, object]) -> dict[str, object]:
         with self._lock:
             handle, record = self._lookup(payload.get("rollback_handle"))
+            if not record.available:
+                raise RegistryUndoError(
+                    409, "codex_config_changed", "Codex configuration changed. Review this connection in Codex."
+                )
             candidate = json.loads(record.candidate_json)
             if (
                 payload.get("confirm_host_change") is not True
@@ -142,14 +170,21 @@ class RegistrySetupUndo:
             if executable is None:
                 raise RegistryUndoError(409, "codex_host_unavailable", "Open Codex and review this connection.")
             try:
-                rollback_reviewed_codex_mcp(executable, record.receipt)
+                version = rollback_reviewed_codex_mcp(executable, record.receipt)
             except (ValueError, OSError) as error:
+                if str(error) == "codex_config_changed":
+                    self._receipts[handle] = replace(record, available=False)
                 message = (
                     "Codex configuration changed after setup. Guard kept it unchanged. Review this connection in Codex."
                     if str(error) == "codex_config_changed"
                     else "Guard could not verify removal. Check this connection in Codex before retrying."
                 )
                 raise RegistryUndoError(409, str(error), message) from error
+            if not isinstance(version, str) or not 1 <= len(version) <= 256:
+                raise RegistryUndoError(
+                    409, "codex_setup_outcome_uncertain", "Check this connection in Codex before retrying removal."
+                )
+            self._advance(record.receipt.file_path, record.receipt.version, version)
             del self._receipts[handle]
             return {
                 "host": "codex",

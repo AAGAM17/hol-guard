@@ -3869,13 +3869,17 @@ function parseRecentMcpSetups(value) {
       throw new Error("Could not verify recent setup history. Retry history.");
     }
     handles.add(entry.rollback_handle);
+    if (entry.rollback_available !== void 0 && typeof entry.rollback_available !== "boolean") {
+      throw new Error("Could not verify recent setup history. Retry history.");
+    }
     return {
       rollback_handle: entry.rollback_handle,
       setup_name: entry.setup_name,
       kind: entry.kind,
       registry_name: entry.registry_name,
       version: entry.version,
-      selection_digest: entry.selection_digest
+      selection_digest: entry.selection_digest,
+      ...entry.rollback_available === void 0 ? {} : { rollback_available: entry.rollback_available }
     };
   });
 }
@@ -4111,7 +4115,10 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
         })
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Codex setup did not finish.");
+      if (!response.ok) {
+        if (candidate.rollback_handle && object(body) && (body.error === "codex_config_changed" || body.code === "codex_config_changed")) setCandidate(null);
+        throw new Error(object(body) && typeof body.message === "string" ? body.message : "Codex setup did not finish.");
+      }
       if (!object(body) || body.host !== "codex" || body.setup_name !== candidate.setup_name || body.kind !== (candidate.kind === "package" ? "package" : "remote") || body.host_change_applied !== true || body.permissions_granted !== false || (candidate.rollback_handle ? body.setup_rolled_back !== true : !isSetupDigest(body.rollback_handle))) {
         throw new Error("Codex setup outcome is uncertain. Check recent setup history and review this connection in Codex before retrying.");
       }
@@ -4326,18 +4333,19 @@ function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigured }) 
                   setup.registry_name,
                   " · ",
                   setup.version
-                ] })
+                ] }),
+                setup.rollback_available === false ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-brand-dark/75", children: "Configuration changed. Review this connection in Codex." }) : null
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
                   type: "button",
-                  disabled: busy,
+                  disabled: busy || setup.rollback_available === false,
                   onClick: (event) => {
                     void previewUndo(setup, event.currentTarget);
                   },
                   "aria-label": `Undo setup for ${setup.setup_name}`,
-                  className: "min-h-11 rounded-xl border border-slate-300 px-4 font-semibold",
+                  className: "min-h-11 rounded-xl border border-slate-300 px-4 font-semibold disabled:opacity-50",
                   children: "Undo setup"
                 }
               )

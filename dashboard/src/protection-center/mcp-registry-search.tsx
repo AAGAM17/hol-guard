@@ -223,7 +223,11 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
           session_nonce: crypto.randomUUID().replaceAll("-", ""), ...proof }),
       });
       const body: unknown = await response.json();
-      if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Codex setup did not finish.");
+      if (!response.ok) {
+        if (candidate.rollback_handle && object(body)
+          && (body.error === "codex_config_changed" || body.code === "codex_config_changed")) setCandidate(null);
+        throw new Error(object(body) && typeof body.message === "string" ? body.message : "Codex setup did not finish.");
+      }
       if (!object(body) || body.host !== "codex" || body.setup_name !== candidate.setup_name
         || body.kind !== (candidate.kind === "package" ? "package" : "remote")
         || body.host_change_applied !== true || body.permissions_granted !== false
@@ -322,9 +326,10 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
         {recent.length ? <ul className="mt-2 divide-y divide-slate-200">{recent.map((setup) => <li key={setup.rollback_handle}
           className="flex flex-wrap items-center justify-between gap-3 py-3">
           <div className="min-w-0 flex-1"><p className="break-all font-semibold">{setup.setup_name}</p>
-            <p className="break-all text-brand-dark/75">{setup.registry_name} · {setup.version}</p></div>
-          <button type="button" disabled={busy} onClick={(event) => { void previewUndo(setup, event.currentTarget); }}
-            aria-label={`Undo setup for ${setup.setup_name}`} className="min-h-11 rounded-xl border border-slate-300 px-4 font-semibold">Undo setup</button>
+            <p className="break-all text-brand-dark/75">{setup.registry_name} · {setup.version}</p>
+            {setup.rollback_available === false ? <p className="mt-1 text-brand-dark/75">Configuration changed. Review this connection in Codex.</p> : null}</div>
+          <button type="button" disabled={busy || setup.rollback_available === false} onClick={(event) => { void previewUndo(setup, event.currentTarget); }}
+            aria-label={`Undo setup for ${setup.setup_name}`} className="min-h-11 rounded-xl border border-slate-300 px-4 font-semibold disabled:opacity-50">Undo setup</button>
         </li>)}</ul> : null}
       </section>
       {entries?.length === 0 ? <p className="mt-3 text-sm text-brand-dark/75">No listing on this search page. Try another name.</p> : null}

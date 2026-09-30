@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -57,7 +58,7 @@ def test_undo_requires_fresh_proof_and_success_cannot_be_replayed(tmp_path, monk
     store, service, receipt, handle, payload = _setup(tmp_path)
     calls = []
     monkeypatch.setattr(mcp_registry_undo.shutil, "which", lambda _name: "/synthetic/codex")
-    monkeypatch.setattr(mcp_registry_undo, "rollback_reviewed_codex_mcp", lambda *args: calls.append(args))
+    monkeypatch.setattr(mcp_registry_undo, "rollback_reviewed_codex_mcp", lambda *args: calls.append(args) or "v2")
     with pytest.raises(LocalCliApiError) as missing:
         service.registry_setup(payload)
     assert missing.value.status == 423 and not calls
@@ -95,6 +96,7 @@ def test_receipts_are_daemon_owned_expire_and_never_expose_host_config(tmp_path,
         {
             "rollback_handle": handle,
             "setup_name": "example",
+            "rollback_available": True,
             "kind": "remote",
             "registry_name": "org.example/server",
             "version": "1.0.0",
@@ -130,6 +132,10 @@ def test_config_conflict_keeps_receipt_and_does_not_depend_on_registry(tmp_path,
     assert changed.value.status == 409
     assert "kept it unchanged" in str(changed.value)
     assert service.registry_setup({"operation": "recent"})["setups"][0]["rollback_handle"] == handle
+    assert service.registry_setup({"operation": "recent"})["setups"][0]["rollback_available"] is False
+    with pytest.raises(LocalCliApiError) as unavailable:
+        service.registry_setup({"operation": "rollback-preview", "rollback_handle": handle})
+    assert unavailable.value.code == "codex_config_changed"
 
 
 def test_receipt_capacity_is_bounded_and_rejects_mismatched_entries(tmp_path):
@@ -143,3 +149,63 @@ def test_receipt_capacity_is_bounded_and_rejects_mismatched_entries(tmp_path):
     with pytest.raises(ValueError, match="outcome_uncertain"):
         undo.remember(receipt, {**candidate, "endpoint": "https://other.test/mcp"})
     assert len(undo.recent()) == 32
+    with pytest.raises(ValueError, match="receipt_limit"):
+        undo.ensure_capacity()
+
+
+@pytest.mark.parametrize("order", [("example", "second"), ("second", "example")])
+def test_guard_owned_writes_keep_both_setups_undoable_in_either_order(tmp_path, monkeypatch, order):
+    store, service, receipt, handle, payload = _setup(tmp_path)
+    _protect(store)
+    undo = service._registry_setup_undo
+    candidate = {**undo.preview({"rollback_handle": handle}), "setup_name": "second"}
+    second = replace(receipt, name="second", version="v2", previous_version="v1")
+    second_handle = undo.remember(second, candidate)
+    assert undo._receipts[handle].receipt.version == "v2"
+    assert all(item["rollback_available"] for item in undo.recent())
+    monkeypatch.setattr(mcp_registry_undo.shutil, "which", lambda _name: "/synthetic/codex")
+    versions = iter(["v3", "v4"])
+    observed = []
+
+    def remove(_executable, current):
+        observed.append((current.name, current.version))
+        return next(versions)
+
+    monkeypatch.setattr(mcp_registry_undo, "rollback_reviewed_codex_mcp", remove)
+    handles = {"example": handle, "second": second_handle}
+    for index, name in enumerate(order):
+        result = service.registry_setup(
+            {
+                **payload,
+                "rollback_handle": handles[name],
+                "setup_name": name,
+                "session_nonce": f"fresh-{index}",
+                "approval_password": "synthetic-password",
+            }
+        )
+        assert result["setup_rolled_back"] is True and result["permissions_granted"] is False
+    assert observed == [(order[0], "v2"), (order[1], "v3")]
+    assert undo.recent() == []
+
+
+def test_guard_write_after_external_edit_marks_older_undo_unavailable(tmp_path):
+    _, service, receipt, handle, _ = _setup(tmp_path)
+    undo = service._registry_setup_undo
+    candidate = {**undo.preview({"rollback_handle": handle}), "setup_name": "second"}
+    undo.remember(replace(receipt, name="second", previous_version="user-edit", version="v3"), candidate)
+    older = next(item for item in undo.recent() if item["rollback_handle"] == handle)
+    assert older["rollback_available"] is False
+    with pytest.raises(mcp_registry_undo.RegistryUndoError, match="configuration changed"):
+        undo.preview({"rollback_handle": handle})
+
+
+def test_version_chain_does_not_touch_receipts_from_another_profile(tmp_path):
+    _, service, receipt, handle, _ = _setup(tmp_path)
+    undo = service._registry_setup_undo
+    candidate = {**undo.preview({"rollback_handle": handle}), "setup_name": "second"}
+    undo.remember(
+        replace(receipt, name="second", file_path="/synthetic/other/config.toml", previous_version="v1", version="v2"),
+        candidate,
+    )
+    assert undo._receipts[handle].receipt == receipt
+    assert undo._receipts[handle].available is True

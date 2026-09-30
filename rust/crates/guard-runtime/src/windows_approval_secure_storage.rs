@@ -206,7 +206,7 @@ fn blob_path(scope: &Path, digest: &str) -> PathBuf {
 }
 
 fn read_blob(path: &Path, maximum: usize, private_root: &Path) -> Result<Vec<u8>, String> {
-    let Some(mut file) = crate::resident_state::open_private_read(
+    let Some(file) = crate::resident_state::open_private_read(
         path,
         maximum as u64,
         "approval_secure_state",
@@ -244,7 +244,7 @@ fn validate_existing_blob(
     maximum: usize,
     private_root: &Path,
 ) -> Result<bool, String> {
-    let Some(mut file) = crate::resident_state::open_private_read(
+    let Some(file) = crate::resident_state::open_private_read(
         path,
         maximum as u64,
         "approval_secure_state",

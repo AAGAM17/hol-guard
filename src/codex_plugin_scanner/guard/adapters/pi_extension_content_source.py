@@ -164,6 +164,25 @@ function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number)
       seen.delete(record);
     }
   }
+  function canonicalStringify(item: unknown): string {
+    checkDeadline();
+    if (item === null || typeof item !== 'object') {
+      const serialized = JSON.stringify(item);
+      if (typeof serialized !== 'string') throw new Error('structured output value is unsupported');
+      return serialized;
+    }
+    if (Array.isArray(item)) {
+      return `[${item.map((entry) => canonicalStringify(entry)).join(',')}]`;
+    }
+    const record = item as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    const entries: string[] = [];
+    for (const key of keys) {
+      checkDeadline();
+      entries.push(`${JSON.stringify(key)}:${canonicalStringify(record[key])}`);
+    }
+    return `{${entries.join(',')}}`;
+  }
   try {
     // The host contract is ToolResultEvent.content: an array of content
     // blocks.  This adapter intentionally accepts one closed text envelope
@@ -205,7 +224,7 @@ function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number)
     checkDeadline();
     const normalized = canonicalize(parsed, 0);
     checkDeadline();
-    const serialized = JSON.stringify(normalized);
+    const serialized = canonicalStringify(normalized);
     checkDeadline();
     if (typeof serialized !== 'string' || serialized !== structuredText || serialized.includes('\\')) return null;
     if (Buffer.byteLength(serialized, 'utf8') > GUARD_STRUCTURED_MAX_BYTES) return null;

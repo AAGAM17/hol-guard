@@ -425,12 +425,12 @@ def mediate_native_post_tool_content(
     if event_name != "PostToolUse":
         return None
     native_decision_id = _decision_id(validated_receipt)
-    if (
-        native_result.get("decision") != "allow"
-        or native_result.get("model_output_action") != "allow_original"
-        or (native_result.get("observe_mode") is True and not allow_observe_mode)
-    ):
+    if native_result.get("decision") != "allow":
         return None
+    if native_result.get("observe_mode") is True and not allow_observe_mode:
+        return None
+    if native_result.get("model_output_action") != "allow_original":
+        return _withhold("structured_content_unproved", native_decision_id)
     if validated_receipt is None or validated_receipt.get("decision") != "allow" or native_decision_id is None:
         return _withhold("structured_receipt_missing", native_decision_id)
     if binding is None:

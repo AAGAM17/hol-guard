@@ -8,6 +8,40 @@ pub(super) fn consume_or_replay_claim(
     verified: &VerifiedWorkspaceReviewDecision,
     semantic_digest: &str,
 ) -> Result<bool, String> {
+    if let Some(index) = state.claim_index.as_ref() {
+        if let Some(claim) = super::super::workspace_review_claim_index::find_claim(
+            state_base,
+            index,
+            &verified.claim_id,
+        )? {
+            if claim.semantic_decision_digest.as_deref() == Some(semantic_digest)
+                && (!claim.legacy_semantic_recovered
+                    || claim.envelope_digest == verified.envelope_digest)
+            {
+                if super::super::workspace_review_claim_index::find_semantic(
+                    state_base,
+                    index,
+                    semantic_digest,
+                )?
+                .as_ref()
+                    != Some(&claim)
+                {
+                    return Err("native_workspace_review_claim_index_invalid".to_owned());
+                }
+                return Ok(true);
+            }
+            return Err("native_workspace_review_decision_replay".to_owned());
+        }
+        if super::super::workspace_review_claim_index::find_semantic(
+            state_base,
+            index,
+            semantic_digest,
+        )?
+        .is_some()
+        {
+            return Err("native_workspace_review_decision_replay".to_owned());
+        }
+    }
     let claim_index = state
         .consumed_claims
         .iter()

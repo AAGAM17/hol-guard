@@ -257,8 +257,9 @@ fn renewed_signature_after_transport_expiry_replays_same_claim() {
         super::super::workspace_review_secure_state::load(&root)
             .unwrap()
             .unwrap()
-            .consumed_claims
-            .len(),
+            .claim_index
+            .unwrap()
+            .claim_count,
         1
     );
     fs::remove_dir_all(root).unwrap();
@@ -379,7 +380,19 @@ fn authority_rotation_preserves_semantic_tombstone_but_revocation_rejects() {
         Some(authority.key_id.clone()),
         "active",
     );
+    let indexed_state = super::super::workspace_review_secure_state::load(&root)
+        .unwrap()
+        .unwrap();
+    assert!(indexed_state.consumed_claims.is_empty());
+    assert_eq!(indexed_state.claim_index.as_ref().unwrap().claim_count, 1);
     let rotated = install_record(&root, &rotated_record, "authority-v2.json");
+    assert_eq!(
+        super::super::workspace_review_secure_state::load(&root)
+            .unwrap()
+            .unwrap()
+            .claim_index,
+        indexed_state.claim_index
+    );
     let renewed = signed_envelope(
         &rotated,
         &context,
@@ -404,6 +417,13 @@ fn authority_rotation_preserves_semantic_tombstone_but_revocation_rejects() {
         NOW_MS + 200,
     )
     .unwrap();
+    assert_eq!(
+        super::super::workspace_review_secure_state::load(&root)
+            .unwrap()
+            .unwrap()
+            .claim_index,
+        indexed_state.claim_index
+    );
     assert_eq!(
         verify_and_claim_at(&root, &renewed, &context, NOW_MS + 200).unwrap_err(),
         "native_workspace_review_authority_revoked"
@@ -445,54 +465,10 @@ fn expired_renewal_and_clock_rollback_do_not_mutate_claim_state() {
     let state = super::super::workspace_review_secure_state::load(&root)
         .unwrap()
         .unwrap();
-    assert_eq!(state.consumed_claims.len(), 1);
+    assert!(state.consumed_claims.is_empty());
+    assert_eq!(state.claim_index.unwrap().claim_count, 1);
     fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
-fn permanent_claims_fail_closed_at_replay_capacity() {
-    use guard_contracts::NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES;
-
-    let (root, authority, values, retry_scope) = setup();
-    let context = context(&values, &retry_scope);
-    let mut state = super::super::workspace_review_secure_state::load(&root)
-        .unwrap()
-        .unwrap();
-    state.consumed_claims = (0..NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES)
-        .map(
-            |index| super::super::workspace_review_secure_state::WorkspaceReviewClaimV1 {
-                claim_id: format!("{index:064x}"),
-                envelope_digest: format!("{:064x}", index + 1),
-                semantic_decision_digest: Some(format!("{:064x}", index + 2)),
-                legacy_semantic_recovered: false,
-                expires_at_ms: Some(NOW_MS - 1),
-            },
-        )
-        .collect();
-    super::super::workspace_review_secure_state::store(&root, &state).unwrap();
-    let envelope = signed_envelope(
-        &authority,
-        &context,
-        1,
-        NOW_MS,
-        61_000,
-        "allow",
-        &REVIEW_SEED,
-    );
-    assert_eq!(
-        verify_and_claim_at(&root, &envelope, &context, NOW_MS).unwrap_err(),
-        "native_workspace_review_decision_replay_full"
-    );
-    let updated = super::super::workspace_review_secure_state::load(&root)
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        updated.consumed_claims.len(),
-        NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES
-    );
-    assert!(updated
-        .consumed_claims
-        .iter()
-        .all(|claim| claim.expires_at_ms == Some(NOW_MS - 1)));
-    fs::remove_dir_all(root).unwrap();
-}
+#[path = "workspace_review_claim_capacity_tests.rs"]
+mod capacity_tests;

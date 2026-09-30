@@ -55,6 +55,15 @@ pub(crate) fn build_context(
     policy_store: &PolicySnapshotStore,
     request_id: &str,
 ) -> Result<Value, String> {
+    super::approval_enrollment::with_transition_lock(policy_store.state_base(), || {
+        build_context_under_lock(policy_store, request_id)
+    })
+}
+
+fn build_context_under_lock(
+    policy_store: &PolicySnapshotStore,
+    request_id: &str,
+) -> Result<Value, String> {
     let state_base = policy_store.state_base();
     let snapshot = policy_store.current_snapshot()?;
     let (workspace_binding, scope_binding) =
@@ -108,3 +117,7 @@ pub(crate) fn build_context(
         "retry_scope_binding": request.retry_scope_binding,
     }))
 }
+
+#[cfg(test)]
+#[path = "resident_workspace_review_context_tests.rs"]
+mod tests;

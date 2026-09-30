@@ -222,7 +222,8 @@ fn accepts_exact_retry_decision_and_claims_it_once_durably() {
     let state = super::super::workspace_review_secure_state::load(&root)
         .unwrap()
         .unwrap();
-    assert_eq!(state.consumed_claims.len(), 1);
+    assert!(state.consumed_claims.is_empty());
+    assert_eq!(state.claim_index.unwrap().claim_count, 1);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -314,7 +315,8 @@ fn expired_claim_is_not_recovered_after_post_claim_crash_window() {
     let state = super::super::workspace_review_secure_state::load(&root)
         .unwrap()
         .unwrap();
-    assert_eq!(state.consumed_claims.len(), 1);
+    assert!(state.consumed_claims.is_empty());
+    assert_eq!(state.claim_index.unwrap().claim_count, 1);
     assert_eq!(state.last_observed_time_ms, NOW_MS + 500);
     fs::remove_dir_all(root).unwrap();
 }

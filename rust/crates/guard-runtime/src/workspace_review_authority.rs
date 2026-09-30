@@ -146,6 +146,7 @@ fn state_for_authority(
         );
     if let Some(previous) = previous {
         state.consumed_claims = previous.consumed_claims.clone();
+        state.claim_index = previous.claim_index.clone();
         state.last_observed_time_ms = previous.last_observed_time_ms;
     }
     if let Some(pending_bytes) = pending_bytes {

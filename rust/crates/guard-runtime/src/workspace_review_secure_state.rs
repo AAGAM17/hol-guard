@@ -12,6 +12,7 @@ use guard_contracts::{
 use guard_policy_snapshot::{canonical_json_bytes, digest_bytes};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::path::Path;
 
 use super::workspace_review_authority::VerifiedWorkspaceReviewAuthority;
@@ -67,6 +68,10 @@ pub(crate) struct WorkspaceReviewSecureStateV1 {
     pub(crate) scope_binding: String,
     pub(crate) status: String,
     pub(crate) consumed_claims: Vec<WorkspaceReviewClaimV1>,
+    /// New claims live in an immutable index. The bounded inline vector is
+    /// retained only while pre-index installation history migrates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) claim_index: Option<super::workspace_review_claim_index::ClaimIndexAnchor>,
     /// Highest wall-clock value observed by the resident. A rollback fails
     /// closed so expired claims cannot become replayable again.
     #[serde(default)]
@@ -92,6 +97,7 @@ impl WorkspaceReviewSecureStateV1 {
             scope_binding: authority.scope_binding.clone(),
             status: authority.status.clone(),
             consumed_claims: Vec::new(),
+            claim_index: None,
             last_observed_time_ms: 0,
             pending_authority_record: None,
         }
@@ -163,6 +169,10 @@ impl WorkspaceReviewSecureStateV1 {
             || self.scope_contract_version.len() > NATIVE_WORKSPACE_REVIEW_MAX_SCOPE_VERSION_BYTES
             || !is_lower_hex(&self.scope_binding, 64)
             || self.consumed_claims.len() > NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES
+            || self
+                .claim_index
+                .as_ref()
+                .is_some_and(|index| !index.validate())
         {
             return Err("native_workspace_review_secure_state_invalid".to_owned());
         }
@@ -182,7 +192,9 @@ impl WorkspaceReviewSecureStateV1 {
                 return Err("native_workspace_review_secure_state_invalid".to_owned());
             }
         }
-        for (index, claim) in self.consumed_claims.iter().enumerate() {
+        let mut claim_ids = HashSet::with_capacity(self.consumed_claims.len());
+        let mut semantics = HashSet::with_capacity(self.consumed_claims.len());
+        for claim in &self.consumed_claims {
             if !is_lower_hex(&claim.claim_id, 64)
                 || !is_lower_hex(&claim.envelope_digest, 64)
                 || claim
@@ -190,17 +202,53 @@ impl WorkspaceReviewSecureStateV1 {
                     .as_ref()
                     .is_some_and(|digest| !is_lower_hex(digest, 64))
                 || claim.expires_at_ms == Some(0)
-                || self.consumed_claims.iter().take(index).any(|previous| {
-                    previous.claim_id == claim.claim_id
-                        || claim.semantic_decision_digest.is_some()
-                            && previous.semantic_decision_digest == claim.semantic_decision_digest
-                })
+                || !claim_ids.insert(&claim.claim_id)
+                || claim
+                    .semantic_decision_digest
+                    .as_ref()
+                    .is_some_and(|digest| !semantics.insert(digest))
             {
                 return Err("native_workspace_review_secure_state_invalid".to_owned());
             }
         }
         Ok(())
     }
+}
+
+pub(crate) fn record_claim(
+    state_base: &Path,
+    state: &mut WorkspaceReviewSecureStateV1,
+    claim: WorkspaceReviewClaimV1,
+) -> Result<(), String> {
+    let mut root = state.claim_index.as_ref().map(|index| index.root.clone());
+    let mut count = state
+        .claim_index
+        .as_ref()
+        .map_or(0, |index| index.claim_count);
+    let mut candidate = state.clone();
+    // Move one legacy record per decision, not the entire history while the
+    // resident lock is held. Both representations commit in one secure record.
+    let migrated = candidate.consumed_claims.pop();
+    for previous in migrated.iter().chain(std::iter::once(&claim)) {
+        root = Some(super::workspace_review_claim_index::insert_claim(
+            state_base,
+            root.as_deref(),
+            previous,
+        )?);
+        count = count
+            .checked_add(1)
+            .ok_or_else(|| "native_workspace_review_claim_index_invalid".to_owned())?;
+    }
+    super::workspace_review_claim_index::sync_directories_before_commit(state_base)?;
+    // Files precede the secure commit. Orphans cannot grant authority; an
+    // uncertain platform-write outcome is reconciled by reloading the anchor.
+    candidate.claim_index = Some(super::workspace_review_claim_index::ClaimIndexAnchor {
+        root: root.ok_or_else(|| "native_workspace_review_claim_index_invalid".to_owned())?,
+        claim_count: count,
+    });
+    store(state_base, &candidate)?;
+    *state = candidate;
+    Ok(())
 }
 
 fn is_lower_hex(value: &str, encoded_bytes: usize) -> bool {

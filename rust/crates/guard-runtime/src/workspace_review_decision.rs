@@ -9,9 +9,8 @@ use guard_contracts::{
     WorkspaceReviewDecisionEnvelopeV1, NATIVE_WORKSPACE_REVIEW_AUTHORITY_PURPOSE,
     NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_RETRY_ONLY, NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN,
     NATIVE_WORKSPACE_REVIEW_DECISION_V1_SCHEMA, NATIVE_WORKSPACE_REVIEW_DECISION_V1_VERSION,
-    NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES, NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES,
-    NATIVE_WORKSPACE_REVIEW_MAX_TTL_MS, NATIVE_WORKSPACE_REVIEW_RETRY_SCOPE_DOMAIN,
-    NATIVE_WORKSPACE_REVIEW_SEMANTIC_DECISION_DOMAIN,
+    NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES, NATIVE_WORKSPACE_REVIEW_MAX_TTL_MS,
+    NATIVE_WORKSPACE_REVIEW_RETRY_SCOPE_DOMAIN, NATIVE_WORKSPACE_REVIEW_SEMANTIC_DECISION_DOMAIN,
 };
 use guard_policy_snapshot::{canonical_json_bytes, digest_bytes};
 use ring::signature;
@@ -364,18 +363,17 @@ fn verify_and_claim_at(
         resumed.replayed = true;
         return Ok(resumed);
     }
-    if state.consumed_claims.len() >= NATIVE_WORKSPACE_REVIEW_MAX_REPLAY_ENTRIES {
-        return Err("native_workspace_review_decision_replay_full".to_owned());
-    }
-    state.consumed_claims.push(WorkspaceReviewClaimV1 {
-        claim_id: verified.claim_id.clone(),
-        envelope_digest: verified.envelope_digest.clone(),
-        semantic_decision_digest: Some(semantic_digest),
-        legacy_semantic_recovered: false,
-        expires_at_ms: Some(envelope.expires_at_ms),
-    });
-    state.validate()?;
-    super::workspace_review_secure_state::store(state_base, &state)?;
+    super::workspace_review_secure_state::record_claim(
+        state_base,
+        &mut state,
+        WorkspaceReviewClaimV1 {
+            claim_id: verified.claim_id.clone(),
+            envelope_digest: verified.envelope_digest.clone(),
+            semantic_decision_digest: Some(semantic_digest),
+            legacy_semantic_recovered: false,
+            expires_at_ms: Some(envelope.expires_at_ms),
+        },
+    )?;
     Ok(verified)
 }
 

@@ -38,11 +38,16 @@ class CapacityMeasurements:
 
 ObserveCallback = Callable[[str, str, str, str], Observation]
 ProgressCountCallback = Callable[[str, int], None]
+TransportObservationCallback = Callable[[list[Observation]], None]
 
 
 class _WaveProgressKwargs(TypedDict, total=False):
     on_submitted: ProgressCountCallback
     on_cancelled: ProgressCountCallback
+
+
+class _TransportObservationKwargs(TypedDict, total=False):
+    on_transport_observations: TransportObservationCallback
 
 
 def _wave_progress_kwargs(
@@ -106,10 +111,12 @@ def _run_concurrent(
     stage: str = "concurrent",
     on_submitted: ProgressCountCallback | None = None,
     on_cancelled: ProgressCountCallback | None = None,
+    on_transport_observations: TransportObservationCallback | None = None,
 ) -> tuple[list[Observation], int]:
     selected = tuple(routes[index % len(routes)] for index in range(concurrency))
     observations: list[Observation] = []
     errors = 0
+    transport_error: Exception | None = None
     _require(0 < concurrency <= _MAX_CONCURRENCY, "concurrency exceeds bounded benchmark limit")
     def observe(harness: str, event: str) -> Observation:
         if observer is None:
@@ -134,8 +141,13 @@ def _run_concurrent(
             observations.append(future.result())
         except Exception as error:
             if _is_transport_failure(error):
-                raise
+                transport_error = transport_error or error
+                continue
             errors += 1
+    if transport_error is not None:
+        if on_transport_observations is not None and observations:
+            on_transport_observations(observations)
+        raise transport_error
     return observations, errors
 
 
@@ -409,6 +421,21 @@ def _prewarm_capacity_workers(
     # the isolated Python hook workers. Warm the measured native concurrency;
     # the Python worker target can remain two even when sixteen clients run.
     executor = ThreadPoolExecutor(max_workers=_STEADY_STATE_CONCURRENCY)
+
+    def record_deferred_observations(observations: list[Observation]) -> None:
+        bad = sum(
+            not (item.allowed and item.route == "native_resident" and not item.overloaded)
+            for item in observations
+        )
+        if on_deferred_failure is not None and bad:
+            on_deferred_failure("capacity_prewarm", bad)
+        if on_deferred_complete is not None and len(observations) - bad:
+            on_deferred_complete("capacity_prewarm", len(observations) - bad)
+
+    transport_observation_kwargs = _TransportObservationKwargs()
+    if on_deferred_complete is not None or on_deferred_failure is not None:
+        transport_observation_kwargs["on_transport_observations"] = record_deferred_observations
+
     try:
         _prime_load_executor(executor, _STEADY_STATE_CONCURRENCY)
         if observer is None:
@@ -417,6 +444,7 @@ def _prewarm_capacity_workers(
                 routes,
                 _STEADY_STATE_CONCURRENCY,
                 executor,
+                **transport_observation_kwargs,
                 **_wave_progress_kwargs(on_submitted, on_cancelled),
             )
         else:
@@ -427,6 +455,7 @@ def _prewarm_capacity_workers(
                 executor,
                 observer=observer,
                 stage="capacity_prewarm",
+                **transport_observation_kwargs,
                 **_wave_progress_kwargs(on_submitted, on_cancelled),
             )
         try:
@@ -439,11 +468,8 @@ def _prewarm_capacity_workers(
                 "native client capacity prewarm did not complete native review",
             )
         except BaseException:
-            bad = sum(not (item.allowed and item.route == "native_resident" and not item.overloaded) for item in observations)
-            if on_deferred_failure is not None and bad:
-                on_deferred_failure("capacity_prewarm", bad)
-            if on_deferred_complete is not None and len(observations) - bad:
-                on_deferred_complete("capacity_prewarm", len(observations) - bad)
+            if on_deferred_complete is not None or on_deferred_failure is not None:
+                record_deferred_observations(observations)
             raise
         if on_deferred_complete is not None and observations:
             on_deferred_complete("capacity_prewarm", len(observations))

@@ -287,6 +287,68 @@ def test_capacity_transport_failure_is_not_collapsed_into_completed_error_count(
     assert progress.snapshot_failure()["category"] == "transport_timeout"
 
 
+def test_capacity_prewarm_transport_preserves_returned_observation_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    progress = _progress()
+    monkeypatch.setattr(capacity, "_STEADY_STATE_CONCURRENCY", 3)
+    monkeypatch.setattr(capacity, "_prime_load_executor", lambda *_args: 3)
+
+    class Session:
+        def observe(self, harness: str, *_args: object) -> Observation:
+            if harness == "transport":
+                raise TimeoutError("adapter transport timed out")
+            if harness == "semantic":
+                return Observation("semantic", "PreToolUse", "1k", 1.0, "native_fail_safe", False)
+            return Observation("resident", "PreToolUse", "1k", 1.0, "native_resident", True)
+
+    session = Session()
+
+    def observer(harness: str, event: str, size_class: str, stage: str) -> Observation:
+        return benchmark._observe_with_progress(
+            progress,
+            cast(AdapterSession, session),
+            harness,
+            event,
+            size_class,
+            stage,
+            fatal=False,
+            record_submission=False,
+            complete=False,
+        )
+
+    deferred_complete: list[tuple[str, int]] = []
+    deferred_failure: list[tuple[str, int]] = []
+
+    def complete(stage: str, count: int) -> None:
+        deferred_complete.append((stage, count))
+        progress.complete(stage, count)
+
+    def fail(stage: str, count: int) -> None:
+        deferred_failure.append((stage, count))
+        progress.fail_request(stage, count)
+
+    with pytest.raises(TimeoutError, match="adapter transport timed out"):
+        capacity._prewarm_capacity_workers(
+            cast(AdapterSession, session),
+            (("resident", "PreToolUse"), ("transport", "PreToolUse"), ("semantic", "PreToolUse")),
+            ready_workers=2,
+            observer=observer,
+            on_submitted=progress.submit,
+            on_deferred_complete=complete,
+            on_deferred_failure=fail,
+        )
+
+    stage = progress.stage_snapshot()["capacity_prewarm"]
+    assert deferred_complete == [("capacity_prewarm", 1)]
+    assert deferred_failure == [("capacity_prewarm", 1)]
+    assert stage["submitted"] == 3
+    assert stage["attempted"] == 3
+    assert stage["completed"] == 1
+    assert stage["failed"] == 2
+    assert stage["missing"] == 13
+
+
 def test_recovery_semantic_failure_is_failed_not_completed() -> None:
     progress = _progress()
     calls = 0

@@ -565,11 +565,13 @@ class HookWorkerNativeMixin:
                 structured_output_json=payload.get("structured_output_json"),
                 binding=structured_resolution.binding,
                 required_reason_code=structured_resolution.reason_code,
-                recheck_binding=lambda: self._structured_output_resolution(
-                    guard_home=guard_home,
-                    workspace=workspace,
-                    harness=native_harness,
-                ).binding,
+                recheck_binding=lambda: (
+                    self._structured_output_resolution(
+                        guard_home=guard_home,
+                        workspace=workspace,
+                        harness=native_harness,
+                    ).binding
+                ),
                 deadline_monotonic=deadline,
                 allow_observe_mode=recording_only,
             )

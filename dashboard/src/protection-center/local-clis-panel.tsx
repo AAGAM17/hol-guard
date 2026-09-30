@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HiMiniArrowLeft, HiMiniMagnifyingGlass, HiMiniPlus, HiMiniXMark } from "react-icons/hi2";
+import { HiMiniArrowLeft, HiMiniPlus } from "react-icons/hi2";
 
 import {
-  connectorWorkspaceItems,
   applyBulkCommandState,
   applyLocalCliMutation,
   bulkCommandState,
-  customExtensionNeedsReview,
   enrollablePackageScriptCommands,
   LocalCliApiError,
   previewLocalCliMutation,
@@ -21,12 +19,12 @@ import { BulkPolicyPicker } from "./add-custom-extension-catalog";
 import { CustomExtensionCommandList, commandStatesPayload, withCommandState } from "./custom-extension-commands";
 import { McpDeclaredSkills } from "./mcp-declared-skills";
 import { useResolvedApprovalGate } from "../use-resolved-approval-gate";
-import { InlineError, ProtectionModuleRow } from "./components/protection-primitives";
+import { InlineError } from "./components/protection-primitives";
 import { customExtensionContinuityView } from "../managed-controls/custom-extension-continuity";
 import { commandPermissionChanges, mcpCatalogCopy, mcpToolCanReceiveDirectAllow, rebaseCommandDraft } from "./mcp-catalog-state";
 import { McpProviderActions, type ProviderActionDraft } from "./mcp-provider-actions";
 import { ProviderWorkflows } from "./provider-workflows";
-import { bulkPolicyCopy, continuityCopy, customExtensionRowDescription, customExtensionStateLabel, detailCatalogHeading, detailCatalogHelper, detailPolicyCopy, mcpPermissionStatusLabel, nativePublicationMessage, randomToken } from "./local-cli-panel-copy";
+import { bulkPolicyCopy, detailCatalogHeading, detailCatalogHelper, detailPolicyCopy, mcpPermissionStatusLabel, nativePublicationMessage, randomToken } from "./local-cli-panel-copy";
 import { CustomExtensionReviewModal } from "./local-cli-review-modal";
 
 export { customExtensionStateLabel } from "./local-cli-panel-copy";
@@ -34,163 +32,12 @@ export { customExtensionStateLabel } from "./local-cli-panel-copy";
 export { AddCustomExtensionWorkspace } from "./add-custom-extension-dialog";
 export { useLocalCliCatalog } from "./use-local-cli-catalog";
 
-const CUSTOM_EXTENSION_PREVIEW_COUNT = 8;
-
-/**
- * The custom extensions list. Always rendered on the catalog page so the
- * add-your-own entry point never disappears: with nothing to show it renders
- * an empty state instead of unmounting. Rows group into "needs review" and
- * "enabled" using the same attention signal that orders them, long lists
- * preview their first rows behind a show-all control instead of paginating,
- * and the search only appears once there is enough to search.
- */
-export function CustomExtensionsSection(props: {
-  items: LocalCliItem[];
-  onOpen: (cliId: string) => void;
-  onAdd: () => void;
-  discovering?: boolean;
-  filteredOut?: boolean;
-  onClearFilters?: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [showAll, setShowAll] = useState(false);
-  const added = connectorWorkspaceItems(props.items, search);
-  const searchable = connectorWorkspaceItems(props.items).length > CUSTOM_EXTENSION_PREVIEW_COUNT || search !== "";
-  const filteredOut = props.filteredOut && search === "";
-  const needsReview = added.filter(customExtensionNeedsReview);
-  const enabled = added.filter((item) => !customExtensionNeedsReview(item));
-  const grouped = needsReview.length > 0 && enabled.length > 0;
-  const visible = showAll || added.length <= CUSTOM_EXTENSION_PREVIEW_COUNT
-    ? added
-    : added.slice(0, CUSTOM_EXTENSION_PREVIEW_COUNT);
-  const visibleNeedsReview = grouped ? visible.filter(customExtensionNeedsReview) : visible;
-  const visibleEnabled = grouped ? visible.filter((item) => !customExtensionNeedsReview(item)) : [];
-  const unit = added.length === 1 ? "extension" : "extensions";
-  return (
-    <section className="mt-10" aria-labelledby="custom-extensions-heading" data-testid="custom-extensions-section">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 id="custom-extensions-heading" className="text-xl font-semibold tracking-tight text-brand-dark">Custom extensions</h2>
-          <p className="mt-1 text-sm text-slate-500">Connectors Guard detected in your apps, plus tools you add yourself. Open one to choose its permissions.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {searchable ? (
-            <div className="relative min-w-0 flex-1 sm:flex-none">
-              <label className="relative block">
-                <span className="sr-only">Search custom extensions</span>
-                <HiMiniMagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-dark/55" aria-hidden="true" />
-                <input type="search" value={search}
-                  onChange={(event) => { setSearch(event.target.value); setShowAll(false); }}
-                  placeholder="Search connectors"
-                  className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal text-brand-dark sm:w-64" />
-              </label>
-            </div>
-          ) : null}
-          <button type="button" onClick={props.onAdd} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-brand-blue">
-            <HiMiniPlus className="size-4" aria-hidden="true" />
-            Add custom extension
-          </button>
-        </div>
-      </div>
-      {added.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-[rgba(63,65,116,0.12)] bg-white px-4 py-6" data-testid={filteredOut ? "custom-extensions-filter-empty" : "custom-extensions-empty"}>
-          <p className="text-sm font-semibold text-brand-dark">
-            {filteredOut ? "No custom extensions match these filters." : "No custom extensions yet."}
-          </p>
-          <p className="mt-1 max-w-xl text-sm leading-6 text-brand-dark/70">
-            {filteredOut
-              ? "Remove a filter or start over to see all custom extensions again."
-              : search
-                ? "No connectors or custom tools match this search."
-                : "Add a tool you run yourself, or connect an MCP server. Guard also detects connectors from your host apps automatically."}
-          </p>
-          {filteredOut ? (
-            props.onClearFilters ? (
-              <button type="button" onClick={props.onClearFilters} className="guard-extensions-chip mt-3">
-                <HiMiniXMark className="size-4" aria-hidden="true" />
-                Clear filters
-              </button>
-            ) : null
-          ) : search ? (
-            <button type="button" onClick={() => setSearch("")} className="guard-extensions-chip mt-3">
-              <HiMiniXMark className="size-4" aria-hidden="true" />
-              Clear search
-            </button>
-          ) : (
-            <>
-              <button type="button" onClick={props.onAdd} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark">
-                <HiMiniPlus className="size-4" aria-hidden="true" />
-                Add custom extension
-              </button>
-              {props.discovering ? (
-                <p role="status" className="mt-3 text-sm text-brand-dark/75">Checking host configuration for connectors…</p>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="mt-4">
-          {grouped ? (
-            <p className="text-xs font-semibold text-brand-dark/55">
-              Needs review · {needsReview.length}
-            </p>
-          ) : null}
-          {visibleNeedsReview.map((item) => (
-            <CustomExtensionRow key={item.cli_id} item={item} onOpen={props.onOpen} />
-          ))}
-          {grouped ? (
-            <p className="mt-6 text-xs font-semibold text-brand-dark/55">
-              Reviewed · {enabled.length}
-            </p>
-          ) : null}
-          {visibleEnabled.map((item) => (
-            <CustomExtensionRow key={item.cli_id} item={item} onOpen={props.onOpen} />
-          ))}
-          {!showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? (
-            <button type="button" onClick={() => setShowAll(true)}
-              className="mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark">
-              Show all {added.length} {unit}
-            </button>
-          ) : null}
-          {showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? (
-            <button type="button" onClick={() => setShowAll(false)}
-              className="mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark">
-              Show fewer
-            </button>
-          ) : null}
-        </div>
-      )}
-    </section>
-  );
-}
-
 export function AddCustomExtensionButton(props: { onClick: () => void }) {
   return (
     <button type="button" onClick={props.onClick} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-brand-dark">
       <HiMiniPlus className="size-4" aria-hidden="true" />
       Add custom extension
     </button>
-  );
-}
-
-function CustomExtensionRow(props: { item: LocalCliItem; onOpen: (cliId: string) => void }) {
-  const cliId = props.item.cli_id;
-  const onOpen = props.onOpen;
-  const handleOpen = useCallback(() => {
-    onOpen(cliId);
-  }, [cliId, onOpen]);
-  const continuity = continuityCopy(props.item);
-  const catalog = mcpCatalogCopy(props.item);
-  return (
-    <ProtectionModuleRow
-      extensionId={props.item.cli_id}
-      name={props.item.name}
-      description={customExtensionRowDescription(props.item, catalog?.title ?? null)}
-      behavior={continuity ? `${continuity.title}. ${continuity.description}` : customExtensionStateLabel(props.item)}
-      custom
-      executables={[props.item.name]}
-      onOpen={handleOpen}
-    />
   );
 }
 

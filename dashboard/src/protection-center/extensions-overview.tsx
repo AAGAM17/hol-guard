@@ -9,10 +9,8 @@ import type { EffectiveExtensionControls, ExtensionCatalogItem } from "../extens
 import { connectorWorkspaceItems, refreshMcpInventory, type LocalCliItem } from "../local-cli-api";
 import { WorkspacePageHeader } from "../workspace-page-header";
 import { LocalSkillsWorkspace } from "./local-skills-workspace";
-import {
-  AddCustomExtensionButton,
-  CustomExtensionsSection,
-} from "./local-clis-panel";
+import { AddCustomExtensionButton } from "./local-clis-panel";
+import { CustomExtensionsSection } from "./custom-extensions-section";
 import { CatalogFilterBar, CatalogFilterTrigger } from "./components/catalog-filter-bar";
 import { PatternSearchConsole } from "./components/pattern-search-console";
 import {

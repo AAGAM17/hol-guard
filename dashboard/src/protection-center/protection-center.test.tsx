@@ -20,7 +20,7 @@ import {
 import { EMPTY_CATALOG_FILTERS } from "./model/catalog-filters";
 import { groupProtectionModules, protectionCategoryIdForExtension } from "./model/protection-categories";
 import { deriveProtectionStatus } from "./model/protection-presentation";
-import { CustomExtensionsSection } from "./local-clis-panel";
+import { CustomExtensionsSection } from "./custom-extensions-section";
 import type { LocalCliItem } from "../local-cli-api";
 
 assert.equal(PROTECTION_TERMS.navigation, "Extensions");
@@ -275,7 +275,16 @@ const customMixed = renderToStaticMarkup(createElement(CustomExtensionsSection, 
   onOpen: () => undefined, onAdd: () => undefined,
 }));
 assert.match(customMixed, /Needs review · 1/);
-assert.match(customMixed, /Enabled · 1/);
+assert.match(customMixed, /Reviewed · 1/);
 assert.doesNotMatch(customMixed, /custom-extensions-empty/);
+
+const customFiltered = renderToStaticMarkup(createElement(CustomExtensionsSection, {
+  items: [], onOpen: () => undefined, onAdd: () => undefined, filteredOut: true,
+  onClearFilters: () => undefined,
+}));
+assert.match(customFiltered, /data-testid="custom-extensions-filter-empty"/);
+assert.match(customFiltered, /No custom extensions match these filters\./);
+assert.match(customFiltered, /Clear filters/);
+assert.doesNotMatch(customFiltered, /No custom extensions yet\./);
 
 console.log("protection-center.test.tsx: all assertions passed");

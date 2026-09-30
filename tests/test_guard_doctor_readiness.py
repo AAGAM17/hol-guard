@@ -101,6 +101,8 @@ def test_global_doctor_reports_readiness_for_every_registered_harness(tmp_path, 
     assert rc == 0
     assert {item["harness"] for item in payload["adapters"]} == {item.harness for item in list_adapters()}
     assert all(item["runtime_readiness"]["state"] == "unknown" for item in payload["adapters"])
+    assert payload["native_runtime"]["availability"]["reason_code"] == "native_status_probe_skipped"
+    assert payload["native_runtime"]["availability"]["available"] is None
 
 
 @pytest.mark.parametrize("probe", [None, {"ok": True, "return_code": 0}])

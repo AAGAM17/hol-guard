@@ -6,8 +6,23 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard import native_runtime
+from codex_plugin_scanner.guard.adapters.diagnostic_probes import without_command_probes
 from codex_plugin_scanner.guard.cli.doctor_native_runtime import doctor_native_availability
 from codex_plugin_scanner.guard.native_runtime import NativeRuntimeIdentity, NativeRuntimeStatus
+
+
+def test_passive_scope_does_not_probe_or_repair_native_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_probe() -> NativeRuntimeStatus:
+        pytest.fail("Passive diagnostics must not probe or change the native binary")
+
+    monkeypatch.setattr(native_runtime, "native_runtime_status", unexpected_probe)
+    with without_command_probes():
+        assert doctor_native_availability() == {
+            "available": None,
+            "compatible": None,
+            "reason_code": "native_status_probe_skipped",
+            "evaluation_verified": False,
+        }
 
 
 @pytest.mark.parametrize(

@@ -5789,7 +5789,7 @@ function CustomExtensionsSection(props) {
   const all = connectorWorkspaceItems(props.items);
   const added = search ? connectorWorkspaceItems(props.items, search) : all;
   const searchable = all.length > CUSTOM_EXTENSION_PREVIEW_COUNT || search !== "";
-  const filteredOut = props.filteredOut && search === "";
+  const filteredOut = props.filteredOut === true && search === "";
   const needsReview = added.filter(customExtensionNeedsReview);
   const reviewed = added.filter((item) => !customExtensionNeedsReview(item));
   const grouped = needsReview.length > 0 && reviewed.length > 0;

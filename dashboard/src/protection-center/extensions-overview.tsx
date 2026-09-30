@@ -213,7 +213,6 @@ export function ExtensionsOverview(props: {
   const addedCustomItems = connectorWorkspaceItems(props.localCliItems).filter((item) =>
     customItemMatchesFilters(item, filters),
   );
-  const addedCustomCount = addedCustomItems.length;
   return (
     <div hidden={!props.active} inert={!props.active || undefined}>
       <WorkspacePageHeader
@@ -293,13 +292,12 @@ export function ExtensionsOverview(props: {
 
       {searching ? null : (
         <>
-          {addedCustomCount ? (
-            <CustomExtensionsSection
-              items={addedCustomItems}
-              onOpen={props.onOpenLocalCli}
-              onAdd={props.onAddCustom}
-            />
-          ) : null}
+          <CustomExtensionsSection
+            items={addedCustomItems}
+            onOpen={props.onOpenLocalCli}
+            onAdd={props.onAddCustom}
+            discovering={discovering}
+          />
 
           <LocalSkillsWorkspace />
           <section className="mt-10" aria-labelledby="all-tools-heading">
@@ -313,7 +311,6 @@ export function ExtensionsOverview(props: {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                {addedCustomCount ? null : <AddCustomExtensionButton onClick={props.onAddCustom} />}
                 <span className="text-sm text-brand-dark/70" data-testid="catalog-tool-count" aria-live="polite">
                   {catalogFilterCountCopy(visibleCatalog.length, props.catalogExtensions.length, filtering)}
                 </span>

@@ -1,4 +1,4 @@
-import { aT as fetchLocalCliApi, r as reactExports, j as jsxRuntimeExports, B as HiMiniSparkles, s as HiMiniCheckCircle, aU as HiMiniNoSymbol, al as HiMiniLockClosed, P as HiMiniExclamationTriangle, aV as useResolvedApprovalGate, ar as HiMiniArrowPath, w as HiMiniShieldCheck, aW as HiMiniInformationCircle, at as isApprovalProofSubmitDisabled, C as HiMiniXMark, as as ApprovalProofFieldInputs, au as buildApprovalProofCredentials, aX as GenIcon, Q as HiMiniBolt, aY as HiMiniGlobeAlt, aZ as HiMiniCube, K as HiMiniCloud, a_ as HiMiniServerStack, b as HiMiniCommandLine, a$ as HiMiniFolder, b0 as FaWindows, b1 as FaAws, c as HiMiniChevronRight, I as HiMiniChevronDown, b2 as approvalProofRecentlySatisfied, b3 as isBulkApproveGateReady, b4 as HiMiniArrowLeft, b5 as HiMiniPlus, ae as HiMiniClipboardDocumentCheck, af as HiMiniClipboard, b6 as guardAwareHref, an as HiMiniAdjustmentsHorizontal, b7 as HiMiniCheck, aN as HiMiniMagnifyingGlass, b8 as startGuardCloudConnect, b9 as HiMiniArrowTopRightOnSquare, aM as WorkspacePageHeader, ba as fetchExtensionControlApi } from "../guard-dashboard.js";
+import { aT as fetchLocalCliApi, r as reactExports, j as jsxRuntimeExports, B as HiMiniSparkles, s as HiMiniCheckCircle, aU as HiMiniNoSymbol, al as HiMiniLockClosed, P as HiMiniExclamationTriangle, aV as useResolvedApprovalGate, ar as HiMiniArrowPath, w as HiMiniShieldCheck, aW as HiMiniInformationCircle, at as isApprovalProofSubmitDisabled, C as HiMiniXMark, as as ApprovalProofFieldInputs, au as buildApprovalProofCredentials, aX as GenIcon, Q as HiMiniBolt, aY as HiMiniGlobeAlt, aZ as HiMiniCube, K as HiMiniCloud, a_ as HiMiniServerStack, b as HiMiniCommandLine, a$ as HiMiniFolder, b0 as FaWindows, b1 as FaAws, c as HiMiniChevronRight, I as HiMiniChevronDown, b2 as approvalProofRecentlySatisfied, b3 as isBulkApproveGateReady, b4 as HiMiniArrowLeft, b5 as HiMiniPlus, aN as HiMiniMagnifyingGlass, ae as HiMiniClipboardDocumentCheck, af as HiMiniClipboard, b6 as guardAwareHref, an as HiMiniAdjustmentsHorizontal, b7 as HiMiniCheck, b8 as startGuardCloudConnect, b9 as HiMiniArrowTopRightOnSquare, aM as WorkspacePageHeader, ba as fetchExtensionControlApi } from "../guard-dashboard.js";
 import { E as ExtensionControlApiError, p as previewExtensionMutation, a as applyExtensionMutation, f as fetchExtensionCatalog, b as fetchEffectiveExtensionControls, c as fetchExtensionControlHistory, d as acknowledgeDegradedExtensionControlAuthority, r as recoverExtensionControlAuthority } from "./extension-controls-api.js";
 import { A as ApprovalProofModal } from "./approval-proof-modal.js";
 import { u as useConfirmDialog } from "./confirm-dialog.js";
@@ -487,15 +487,17 @@ class LocalCliApiError extends Error {
     this.code = code;
   }
 }
+function customExtensionNeedsReview(item) {
+  return item.stale || item.state === "unset" || item.mcp_catalog?.stale || item.mcp_catalog?.complete === false || Boolean(item.mcp_catalog?.changes?.added.length) || Boolean(item.mcp_catalog?.changes?.changed.length);
+}
 function connectorWorkspaceItems(items, query = "") {
   const needle = query.trim().toLowerCase();
-  const attention = (item) => item.stale || item.state === "unset" || item.mcp_catalog?.stale || item.mcp_catalog?.complete === false || Boolean(item.mcp_catalog?.changes?.added.length) || Boolean(item.mcp_catalog?.changes?.changed.length);
   return items.filter((item) => item.state !== "unset" || item.surface === "mcp" && item.suggestable).filter((item) => !needle || [
     item.name,
     item.source_label,
     item.surface,
     ...item.commands.flatMap((command) => [command.name, command.usage, command.description])
-  ].some((value) => value?.toLowerCase().includes(needle))).sort((a, b) => Number(attention(b)) - Number(attention(a)) || (Date.parse(b.last_seen_at ?? "") || 0) - (Date.parse(a.last_seen_at ?? "") || 0) || a.name.localeCompare(b.name) || a.cli_id.localeCompare(b.cli_id));
+  ].some((value) => value?.toLowerCase().includes(needle))).sort((a, b) => Number(customExtensionNeedsReview(b)) - Number(customExtensionNeedsReview(a)) || (Date.parse(b.last_seen_at ?? "") || 0) - (Date.parse(a.last_seen_at ?? "") || 0) || a.name.localeCompare(b.name) || a.cli_id.localeCompare(b.cli_id));
 }
 function suggestedCustomExtensions(items) {
   return items.filter((item) => item.state === "unset" && item.suggestable);
@@ -4728,68 +4730,96 @@ function useLocalCliCatalog() {
   }, [data, discovering, load]);
   return { data, error, discoveryNotice, load, discover, discovering, catalogReady };
 }
+const CUSTOM_EXTENSION_PREVIEW_COUNT = 8;
 function CustomExtensionsSection(props) {
   const [search, setSearch] = reactExports.useState("");
-  const [page, setPage] = reactExports.useState(0);
+  const [showAll, setShowAll] = reactExports.useState(false);
   const added = connectorWorkspaceItems(props.items, search);
-  const currentPage = Math.min(page, Math.max(0, Math.ceil(added.length / 25) - 1));
-  const visible = added.slice(currentPage * 25, (currentPage + 1) * 25);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mt-10", "aria-labelledby": "custom-extensions-heading", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between", children: [
+  const needsReview = added.filter(customExtensionNeedsReview);
+  const enabled = added.filter((item) => !customExtensionNeedsReview(item));
+  const grouped = needsReview.length > 0 && enabled.length > 0;
+  const visible = showAll || added.length <= CUSTOM_EXTENSION_PREVIEW_COUNT ? added : added.slice(0, CUSTOM_EXTENSION_PREVIEW_COUNT);
+  const visibleNeedsReview = grouped ? visible.filter(customExtensionNeedsReview) : visible;
+  const visibleEnabled = grouped ? visible.filter((item) => !customExtensionNeedsReview(item)) : [];
+  const unit = added.length === 1 ? "extension" : "extensions";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mt-10", "aria-labelledby": "custom-extensions-heading", "data-testid": "custom-extensions-section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "custom-extensions-heading", className: "text-xl font-semibold tracking-tight text-brand-dark", children: "Custom extensions" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-slate-500", children: "Detected connectors and your own tools. Inspect a connection to choose its permissions." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-slate-500", children: "Connectors Guard detected in your apps, plus tools you add yourself. Open one to choose its permissions." })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: props.onAdd, className: "inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-brand-blue", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniPlus, { className: "size-4", "aria-hidden": "true" }),
-        "Add custom extension"
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-3", children: [
+        added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative min-w-0 flex-1 sm:flex-none", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "relative block", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sr-only", children: "Search custom extensions" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniMagnifyingGlass, { className: "pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-dark/55", "aria-hidden": "true" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "search",
+              value: search,
+              onChange: (event) => {
+                setSearch(event.target.value);
+                setShowAll(false);
+              },
+              placeholder: "Search connectors",
+              className: "min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal text-brand-dark sm:w-64"
+            }
+          )
+        ] }) }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: props.onAdd, className: "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-brand-blue", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniPlus, { className: "size-4", "aria-hidden": "true" }),
+          "Add custom extension"
+        ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mt-4 block max-w-xl text-sm font-semibold text-brand-dark", children: [
-      "Find a connector or custom tool",
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "input",
-        {
-          type: "search",
-          value: search,
-          onChange: (event) => {
-            setSearch(event.target.value);
-            setPage(0);
-          },
-          placeholder: "Name, host, or tool identifier",
-          className: "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-normal"
-        }
-      )
-    ] }),
-    added.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm leading-6 text-brand-dark/75", children: search ? "No connections match this search." : "No connectors found yet. Add a connection or refresh its inventory in your host app." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: visible.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx(CustomExtensionRow, { item, onOpen: props.onOpen }, item.cli_id)) }),
-    added.length > 25 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { "aria-label": "Custom extension pages", className: "mt-4 flex flex-wrap items-center gap-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
+    added.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 rounded-2xl border border-[rgba(63,65,116,0.12)] bg-white px-4 py-6", "data-testid": "custom-extensions-empty", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-brand-dark", children: "No custom extensions yet." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 max-w-xl text-sm leading-6 text-brand-dark/70", children: search ? "No connectors or custom tools match this search." : "Add a tool you run yourself, or connect an MCP server. Guard also detects connectors from your host apps automatically." }),
+      search ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => setSearch(""), className: "guard-extensions-chip mt-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniXMark, { className: "size-4", "aria-hidden": "true" }),
+        "Clear search"
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: props.onAdd, className: "mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniPlus, { className: "size-4", "aria-hidden": "true" }),
+          "Add custom extension"
+        ] }),
+        props.discovering ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mt-3 text-sm text-brand-dark/75", children: "Checking host configuration for connectors…" }) : null
+      ] })
+    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4", children: [
+      grouped ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs font-semibold text-brand-dark/55", children: [
+        "Needs review · ",
+        needsReview.length
+      ] }) : null,
+      visibleNeedsReview.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx(CustomExtensionRow, { item, onOpen: props.onOpen }, item.cli_id)),
+      grouped ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-6 text-xs font-semibold text-brand-dark/55", children: [
+        "Enabled · ",
+        enabled.length
+      ] }) : null,
+      visibleEnabled.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx(CustomExtensionRow, { item, onOpen: props.onOpen }, item.cli_id)),
+      !showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
           type: "button",
-          disabled: currentPage === 0,
-          onClick: () => setPage(currentPage - 1),
-          className: "min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold disabled:opacity-50",
-          children: "Previous"
+          onClick: () => setShowAll(true),
+          className: "mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
+          children: [
+            "Show all ",
+            added.length,
+            " ",
+            unit
+          ]
         }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm text-brand-dark/75", children: [
-        "Page ",
-        currentPage + 1,
-        " of ",
-        Math.ceil(added.length / 25)
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ) : null,
+      showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
           type: "button",
-          disabled: (currentPage + 1) * 25 >= added.length,
-          onClick: () => setPage(currentPage + 1),
-          className: "min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold disabled:opacity-50",
-          children: "Next"
+          onClick: () => setShowAll(false),
+          className: "mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
+          children: "Show fewer"
         }
-      )
-    ] }) : null
+      ) : null
+    ] })
   ] });
 }
 function AddCustomExtensionButton(props) {
@@ -6846,7 +6876,6 @@ function ExtensionsOverview(props) {
   const addedCustomItems = connectorWorkspaceItems(props.localCliItems).filter(
     (item) => customItemMatchesFilters(item, filters)
   );
-  const addedCustomCount = addedCustomItems.length;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { hidden: !props.active, inert: !props.active || void 0, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       WorkspacePageHeader,
@@ -6922,14 +6951,15 @@ function ExtensionsOverview(props) {
       }
     ),
     searching ? null : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-      addedCustomCount ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
         CustomExtensionsSection,
         {
           items: addedCustomItems,
           onOpen: props.onOpenLocalCli,
-          onAdd: props.onAddCustom
+          onAdd: props.onAddCustom,
+          discovering
         }
-      ) : null,
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsx(LocalSkillsWorkspace, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mt-10", "aria-labelledby": "all-tools-heading", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between", children: [
@@ -6937,10 +6967,7 @@ function ExtensionsOverview(props) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "all-tools-heading", className: "text-xl font-semibold tracking-tight text-brand-dark", children: "All tools" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-slate-500", children: filtering ? "Built-in tools that match the selected trust, kind, and area filters." : "Every built-in tool Guard can watch on this device. Open one to adjust its command patterns." })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-3", children: [
-            addedCustomCount ? null : /* @__PURE__ */ jsxRuntimeExports.jsx(AddCustomExtensionButton, { onClick: props.onAddCustom }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-brand-dark/70", "data-testid": "catalog-tool-count", "aria-live": "polite", children: catalogFilterCountCopy(visibleCatalog.length, props.catalogExtensions.length, filtering) })
-          ] })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap items-center gap-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-brand-dark/70", "data-testid": "catalog-tool-count", "aria-live": "polite", children: catalogFilterCountCopy(visibleCatalog.length, props.catalogExtensions.length, filtering) }) })
         ] }),
         visibleCatalog.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4", children: visibleCatalog.map((extension) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           CatalogExtensionRow,

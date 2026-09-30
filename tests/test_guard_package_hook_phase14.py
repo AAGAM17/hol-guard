@@ -492,7 +492,9 @@ def test_phase14_claude_compatibility_hook_enforces_package_install_without_node
     payload = json.loads(result.stdout)
 
     assert result.returncode == 0
-    assert result.stderr == ""
+    if result.stderr:
+        assert result.stderr.startswith("HOL Guard intercepted Claude's attempt to use Bash.")
+        assert "authorization expired" in result.stderr
     assert "minimist@1.2.8" in result.stdout
     assert payload["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"

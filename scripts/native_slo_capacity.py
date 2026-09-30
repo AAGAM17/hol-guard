@@ -439,13 +439,11 @@ def _prewarm_capacity_workers(
                 "native client capacity prewarm did not complete native review",
             )
         except BaseException:
-            # Successful deferred responses are still observed if another
-            # request failed at transport.  Only semantically invalid
-            # responses become stage failures.
-            if on_deferred_failure is not None and errors == 0 and observations:
-                on_deferred_failure("capacity_prewarm", len(observations))
-            elif on_deferred_complete is not None and observations:
-                on_deferred_complete("capacity_prewarm", len(observations))
+            bad = sum(not (item.allowed and item.route == "native_resident" and not item.overloaded) for item in observations)
+            if on_deferred_failure is not None and bad:
+                on_deferred_failure("capacity_prewarm", bad)
+            if on_deferred_complete is not None and len(observations) - bad:
+                on_deferred_complete("capacity_prewarm", len(observations) - bad)
             raise
         if on_deferred_complete is not None and observations:
             on_deferred_complete("capacity_prewarm", len(observations))

@@ -340,6 +340,21 @@ def _run_recovery(
                 )
                 deferred_observation = True
             elapsed_ms = (time.perf_counter() - started) * 1_000.0
+            print(
+                json.dumps(
+                    {
+                        "schema": "hol-guard.native-recovery-sample.v1",
+                        "sample": index,
+                        "adapter_ms": round(observation.latency_ms, 3),
+                        "elapsed_ms": round(elapsed_ms, 3),
+                        "route": observation.route,
+                        "allowed": observation.allowed,
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
             _require(observation.allowed and observation.route == "native_resident", f"recovery sample {index} failed")
             if progress is not None:
                 progress.complete("recovery")
@@ -352,21 +367,6 @@ def _run_recovery(
                     progress.fail_request("recovery")
                 progress.record_failure(error, stage=progress.active_stage or "recovery", labels=labels)
             raise
-        print(
-            json.dumps(
-                {
-                    "schema": "hol-guard.native-recovery-sample.v1",
-                    "sample": index,
-                    "adapter_ms": round(observation.latency_ms, 3),
-                    "elapsed_ms": round(elapsed_ms, 3),
-                    "route": observation.route,
-                    "allowed": observation.allowed,
-                },
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-            flush=True,
-        )
     return values
 
 

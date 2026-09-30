@@ -243,11 +243,16 @@ def test_live_coverage_matrix_opens_every_generated_response_file(tmp_path: Path
     import yaml
 
     root = Path(__file__).resolve().parents[1]
-    jobs = yaml.safe_load((root / ".github/workflows/ci.yml").read_text(encoding="utf-8"))["jobs"]
+    workflow = yaml.safe_load((root / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
     planner = next(
         step for step in jobs["coverage-plan"]["steps"] if step.get("uses") == "./.github/actions/plan-pytest"
     )
-    count = int(planner["with"]["shard-count"])
+    shard_count = planner["with"]["shard-count"]
+    if isinstance(shard_count, str) and shard_count.startswith("${{ env.") and shard_count.endswith(" }}"):
+        env_name = shard_count.removeprefix("${{ env.").removesuffix(" }}")
+        shard_count = workflow["env"][env_name]
+    count = int(shard_count)
     indices = jobs["coverage"]["strategy"]["matrix"]["shard-index"]
     assert indices == list(range(count))
     command = next(

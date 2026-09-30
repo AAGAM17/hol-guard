@@ -222,6 +222,16 @@ also_copy = [
   "contracts/guard-cloud-review",
   "docs/guard/contracts/guard-cloud-review.md",
   "contracts/extensions/trust-class-map.v1.json",
+  "rust/crates/guard-command/src/command_ascii_comparison.rs",
+  "rust/crates/guard-command/src/command_compatibility.rs",
+  "rust/crates/guard-command/src/command_compatibility/domains.rs",
+  "rust/crates/guard-command/src/command_compatibility/git.rs",
+  "rust/crates/guard-command/src/command_compatibility/github.rs",
+  "rust/crates/guard-command/src/command_compatibility/github_api.rs",
+  "rust/crates/guard-command/src/command_compatibility/interpreter.rs",
+  "rust/crates/guard-command/src/command_option_parsing.rs",
+  "rust/crates/guard-command/src/lib.rs",
+  "rust/crates/guard-command/src/parser_wrappers.rs",
 ]
 pytest_add_cli_args_test_selection = [
   "tests/test_guard_command_model.py",

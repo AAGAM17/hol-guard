@@ -516,7 +516,7 @@ jobs:
           echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" >> "$GITHUB_ENV"
           echo "HOL_GUARD_NATIVE_REGRESSION=1" >> "$GITHUB_ENV"
       - name: Prepare mutation artifact directories
-        run: mkdir -p mutants/contracts/extensions mutants/docs/guard/contracts
+        run: mkdir -p mutants/contracts/extensions mutants/docs/guard/contracts mutants/rust/crates/guard-command/src/command_compatibility
       - name: Run command parser mutation baseline
         run: uv run --no-sync mutmut run --max-children 4
       - name: Validate mutation baseline

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from codex_plugin_scanner.guard.adapters.opencode_pretool import pretool_plugin_source
+from codex_plugin_scanner.guard.cli.commands_support_workspace import _workspace_from_hook_payload
+from codex_plugin_scanner.guard.models import PolicyDecision
+from codex_plugin_scanner.guard.store import GuardStore
 from tests.test_opencode_pretool import _bun_executable, _ctx
 
 
@@ -30,6 +34,7 @@ from tests.test_opencode_pretool import _bun_executable, _ctx
         ("/project", "/cygdrive/d/workspace", "/cygdrive/d/workspace"),
         ("/project", "/c:/workspace", "/c:/workspace"),
         ("/project", "/c/workspace", "/c/workspace"),
+        ("/project", "None", "/project/None"),
     ],
 )
 @pytest.mark.parametrize("exit_code", [0, 1, 2])
@@ -75,16 +80,31 @@ def test_v2_shell_reviews_its_effective_workdir(
         "    '/c/workspace': 'C:/workspace' };\n"
         "  expectedPath = aliases[expectedPath] ?? expectedPath;\n"
         "}\n"
-        f"const expected = expectedPath === null ? null : {str(workdir is None and bool(directory)).lower()}\n"
-        "  ? expectedPath : resolve(expectedPath);\n"
-        "if (expected !== null && (reviewed.directory !== expected ||\n"
-        "    reviewed.payload.cwd !== expected || reviewed.payload.tool_input.command !== 'pwd'))\n"
+        "let expected = expectedPath;\n"
+        f"if (expected !== null && {str(workdir is not None or not directory).lower()})\n"
+        "  expected = resolve(expected);\n"
+        f"const project = {json.dumps(directory)} || process.cwd();\n"
+        "if (expected !== null && (reviewed.directory !== project ||\n"
+        "    reviewed.payload.workspace_root !== project || reviewed.payload.cwd !== expected ||\n"
+        "    reviewed.payload.tool_input.workdir !== expected || reviewed.payload.tool_input.command !== 'pwd'))\n"
         "  throw new Error('wrong effective working directory: ' + JSON.stringify(reviewed));\n"
         "if (expected === null && (!errorMessage.includes('workdir must be a string') ||\n"
         "    errorMessage.includes('install opencode'))) throw new Error('misleading validation error');\n"
-        "console.log('ok');\n",
+        "console.log(JSON.stringify({ reviewed }));\n",
         encoding="utf-8",
     )
     completed = subprocess.run([bun, str(script)], capture_output=True, text=True, timeout=15, check=False)
     assert completed.returncode == 0, completed.stderr
-    assert completed.stdout.strip() == "ok"
+    result = json.loads(completed.stdout)
+    if expected is not None:
+        reviewed = result["reviewed"]
+        policy_workspace = _workspace_from_hook_payload(reviewed["payload"], Path(reviewed["directory"]))
+        assert policy_workspace == Path(reviewed["payload"]["workspace_root"])
+        store = GuardStore(tmp_path / "policy-guard")
+        store.upsert_policy(
+            PolicyDecision(harness="opencode", scope="workspace", action="block", workspace=str(policy_workspace)),
+            datetime.now(timezone.utc).isoformat(),
+        )
+        decision = store.resolve_policy_decision("opencode", None, workspace=str(policy_workspace))
+        assert decision is not None
+        assert decision["action"] == "block"

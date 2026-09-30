@@ -54,6 +54,7 @@ from .discovery import (
 from .file_locking import lock_daemon_file as _lock_daemon_start_file
 from .file_locking import try_lock_daemon_file as _try_lock_daemon_file
 from .lifecycle_journal import record_daemon_lifecycle_event
+from .pipx_import_paths import pipx_shared_import_paths
 from .start_classification import (
     GuardDaemonStillStartingError,
     SpawnedDaemonSignals,
@@ -268,21 +269,7 @@ def _trusted_daemon_import_paths() -> tuple[Path, ...]:
         if isinstance(value, str) and value.strip():
             candidates.append(Path(value).expanduser())
 
-    # pipx satisfies dependencies such as packaging from its shared venv.
-    # -S deliberately skips the pipx .pth file along with all startup hooks,
-    # so add only the known sibling shared library path, never ambient sys.path.
-    prefix = _trusted_daemon_prefix(sys.prefix)
-    if prefix.parent.name == "venvs":
-        for key in ("purelib", "platlib"):
-            value = configured_paths.get(key)
-            if not isinstance(value, str) or not value.strip():
-                continue
-            try:
-                library_path = Path(value).expanduser().resolve().relative_to(prefix)
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if library_path.parts and library_path.parts[0] in {"lib", "Lib"} and library_path.name == "site-packages":
-                candidates.append(prefix.parent.parent / "shared" / library_path)
+    candidates.extend(pipx_shared_import_paths(_trusted_daemon_prefix(sys.prefix), configured_paths))
 
     trusted_paths: list[Path] = []
     seen: set[Path] = set()

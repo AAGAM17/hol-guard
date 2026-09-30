@@ -163,27 +163,8 @@ class _HookWorkerNativeHost(Protocol):
         resolution: StructuredOutputResolution | None = None,
     ) -> dict[str, object]: ...
 
-    def _mode_surface_response(
-        self,
-        harness: str,
-        event_name: str,
-        mode: str,
-        *,
-        payload: dict[str, object],
-        workspace: Path | None,
-        home_dir: Path,
-        guard_home: Path,
-    ) -> dict[str, object] | None: ...
-
-    def _review_pre_tool_http(
-        self,
-        payload: dict[str, object],
-        *,
-        harness: str,
-        home_dir: Path,
-        guard_home: Path,
-        workspace: Path | None,
-    ) -> dict[str, object]: ...
+    _mode_surface_response: Callable[..., dict[str, object] | None]
+    _review_pre_tool_http: Callable[..., dict[str, object]]
 
     def _review_native_edge(
         self,

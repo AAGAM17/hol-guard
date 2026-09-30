@@ -221,6 +221,7 @@ also_copy = [
   "src/codex_plugin_scanner",
   "contracts/extensions",
   "contracts/guard-cloud-review",
+  "contracts/extensions",
   "docs/guard/contracts/guard-cloud-review.md",
 ]
 pytest_add_cli_args_test_selection = [

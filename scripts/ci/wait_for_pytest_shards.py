@@ -84,8 +84,6 @@ def github_json(path: str, timeout_seconds: float) -> object:
         raise _TransientApiError("GitHub jobs API request failed") from None
     except OSError:
         raise _TransientApiError("GitHub jobs API request failed") from None
-    except OSError:
-        raise _TransientApiError("GitHub jobs API request failed") from None
     except (UnicodeError, json.JSONDecodeError):
         raise ShardWaitError("GitHub jobs API returned invalid JSON") from None
 

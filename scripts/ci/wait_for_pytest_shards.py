@@ -76,11 +76,13 @@ def github_json(path: str, timeout_seconds: float) -> object:
         if error.code in {408, 429, 500, 502, 503, 504}:
             raise _TransientApiError(f"GitHub jobs API returned HTTP {error.code}") from None
         raise ShardWaitError(f"GitHub jobs API returned HTTP {error.code}") from None
-    except ssl.SSLError:
+    except ssl.SSLCertVerificationError:
         raise ShardWaitError("GitHub jobs API TLS verification failed") from None
     except urllib.error.URLError as error:
-        if isinstance(error.reason, ssl.SSLError):
+        if isinstance(error.reason, ssl.SSLCertVerificationError):
             raise ShardWaitError("GitHub jobs API TLS verification failed") from None
+        raise _TransientApiError("GitHub jobs API request failed") from None
+    except OSError:
         raise _TransientApiError("GitHub jobs API request failed") from None
     except OSError:
         raise _TransientApiError("GitHub jobs API request failed") from None

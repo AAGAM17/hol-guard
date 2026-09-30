@@ -412,7 +412,9 @@ def _main_inner() -> int:
         return exit_code
     policy_action = raw_policy_action
     _restrictive = {"review", "require-reapproval", "sandbox-required", "block"}
-    # The --json CLI path exits 1 for intentional restrictions; native paths may exit 2.
+    # Accepted exits: 0 for any valid policy; 1 for a restriction with a reason;
+    # 2 for a restriction. All other policy/exit pairs mean unavailable evaluation.
+    # The --json CLI path uses 1 for restrictions; native paths may use 2.
     reason_code = guard_payload.get("reason_code")
     has_decision_reason = isinstance(reason_code, str) and bool(reason_code.strip())
     if proc.returncode != 0 and not (

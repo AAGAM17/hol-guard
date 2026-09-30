@@ -13,6 +13,9 @@ import pytest
 from scripts.installed_canary_proof import InstalledCanaryError, load_subject, verify_install
 from scripts.run_installed_canary import _parser
 
+# Unavailable: 5 events * 2 modes * 6 faults * 2 import states.
+# Decisions: 5 events * 2 modes * 10 policy/exit pairs * 2 reason codes.
+# Observations: 2 events * 6 faults; imports unavailable: 5 protected events.
 _EXPECTED_GROUPS = {"unavailable": 120, "decisions": 200, "observations": 12, "imports_unavailable": 5}
 
 

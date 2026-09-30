@@ -278,8 +278,8 @@ def _trusted_daemon_import_paths() -> tuple[Path, ...]:
             if not isinstance(value, str) or not value.strip():
                 continue
             try:
-                library_path = Path(value).expanduser().relative_to(prefix)
-            except ValueError:
+                library_path = Path(value).expanduser().resolve().relative_to(prefix)
+            except (OSError, RuntimeError, ValueError):
                 continue
             if library_path.parts and library_path.parts[0] in {"lib", "Lib"} and library_path.name == "site-packages":
                 candidates.append(prefix.parent.parent / "shared" / library_path)

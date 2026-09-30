@@ -121,6 +121,33 @@ def test_cleanup_allows_owned_root_permission_change(tmp_path: Path) -> None:
     assert setup.cleanup() is True
 
 
+@pytest.mark.parametrize("special_mode", (stat.S_ISUID, stat.S_ISGID, stat.S_ISVTX))
+def test_cleanup_rejects_special_mode_bits_on_owned_root(tmp_path: Path, special_mode: int) -> None:
+    _profile_data, setup = _setup(tmp_path)
+    assert setup.root_path is not None
+    setup.root_path.chmod(0o700 | special_mode)
+
+    with pytest.raises(ValueError, match="not private"):
+        setup.cleanup()
+
+    setup.root_path.chmod(0o700)
+    assert setup.cleanup() is True
+
+
+@pytest.mark.parametrize("special_mode", (stat.S_ISUID, stat.S_ISGID, stat.S_ISVTX))
+def test_cleanup_rejects_special_mode_bits_on_ownership_marker(tmp_path: Path, special_mode: int) -> None:
+    _profile_data, setup = _setup(tmp_path)
+    assert setup.root_path is not None
+    marker = setup.root_path / cleanup_module.MARKER_NAME
+    marker.chmod(0o600 | special_mode)
+
+    with pytest.raises(ValueError, match="ownership marker is unsafe"):
+        setup.cleanup()
+
+    marker.chmod(0o600)
+    assert setup.cleanup() is True
+
+
 def test_cleanup_keeps_marker_until_owned_entries_are_removed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _profile_data, setup = _setup(tmp_path)
     assert setup.root_path is not None and setup.marker_token is not None

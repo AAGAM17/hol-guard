@@ -244,6 +244,7 @@ jobs:
           path: pytest-duration-manifest-candidate.json.gz
           if-no-files-found: error
           retention-days: 90
+          overwrite: true
 
   sonar:
     if: vars.SONAR_CI_ENABLED == 'true'

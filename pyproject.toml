@@ -232,6 +232,7 @@ also_copy = [
   "rust/crates/guard-command/src/command_option_parsing.rs",
   "rust/crates/guard-command/src/lib.rs",
   "rust/crates/guard-command/src/parser_wrappers.rs",
+  "rust/crates/guard-command/src",
 ]
 pytest_add_cli_args_test_selection = [
   "tests/test_guard_command_model.py",

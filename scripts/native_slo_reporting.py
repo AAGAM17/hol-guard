@@ -105,10 +105,10 @@ def classify_benchmark_error(error: BaseException) -> str:
         chain.append(current)
         current = current.__cause__ or current.__context__
 
-    if any(isinstance(item, TimeoutError) for item in chain):
-        return "transport_timeout"
     if any("concurrent capacity wave timed out" in str(item) for item in chain):
         return "capacity_wave_timeout"
+    if any(isinstance(item, TimeoutError) for item in chain):
+        return "transport_timeout"
     if any("adapter response exceeded bound" in str(item) for item in chain):
         return "response_oversize"
     if any("adapter response was not JSON" in str(item) for item in chain):

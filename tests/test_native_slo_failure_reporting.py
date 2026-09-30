@@ -429,6 +429,12 @@ def test_capacity_timeout_is_incomplete_and_missing_requests_are_not_fail_safe(
         assert stage["missing"] == 1
         assert progress.snapshot_failure()["category"] == "capacity_wave_timeout"
         assert progress.snapshot_failure()["stage"] == "concurrent_16"
+        try:
+            raise RuntimeError("native_installed_slo_failed: concurrent capacity wave timed out") from TimeoutError(
+                "worker transport"
+            )
+        except RuntimeError as wrapped_timeout:
+            assert classify_benchmark_error(wrapped_timeout) == "capacity_wave_timeout"
     finally:
         release.set()
         executor.shutdown(wait=True, cancel_futures=True)
@@ -804,6 +810,7 @@ def test_cli_writes_bounded_failure_artifact_and_returns_nonzero(
             readiness_samples=1,
             include_capacity=False,
         )
+        progress.activate("warm", harness="codex", event="PreToolUse", size_class="1k")
         raise RuntimeError("adapter request failed /fixture/request") from TimeoutError("fixture transport")
 
     monkeypatch.setattr(benchmark, "run_slo", fail)
@@ -821,6 +828,11 @@ def test_cli_writes_bounded_failure_artifact_and_returns_nonzero(
     assert report["passed"] is False
     assert all(value is False for value in report["gates"].values())
     assert report["failure"]["category"] == "transport_timeout"
+    assert report["failure"]["stage"] == "unknown"
+    assert report["failure"]["harness"] == "unknown"
+    assert report["failure"]["event"] == "unknown"
+    assert report["failure"]["size_class"] == "unknown"
+    assert report["failure"]["wave"] == "unknown"
     encoded = output.read_text(encoding="utf-8")
     assert str(runtime) not in encoded
     assert "adapter request failed" not in encoded

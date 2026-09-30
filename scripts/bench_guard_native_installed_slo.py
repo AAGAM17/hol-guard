@@ -753,7 +753,14 @@ def main() -> int:
         )
     except Exception as error:
         execution_failed = True
-        progress.record_failure(error)
+        # Any failure that escapes a stage-specific handler has no trustworthy
+        # phase or request labels. Keep the fallback explicitly unknown rather
+        # than reusing a stale active stage from an earlier phase.
+        progress.record_failure(
+            error,
+            stage="unknown",
+            labels={"harness": "unknown", "event": "unknown", "size_class": "unknown", "wave": "unknown"},
+        )
         result = incomplete_slo_result(progress, include_capacity=not args.skip_capacity)
         # Preserve the existing detailed operator traceback on stderr while
         # keeping the persisted aggregate free of exception text and paths.

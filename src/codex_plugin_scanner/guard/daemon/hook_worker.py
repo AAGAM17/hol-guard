@@ -55,6 +55,7 @@ from .hook_worker_responses import (
 )
 
 if TYPE_CHECKING:
+    from ..config import GuardConfig
     from ..store import GuardStore
 
 
@@ -138,7 +139,7 @@ class HookWorker(HookWorkerNativeMixin):
 
         return self._last_native_decision_receipt
 
-    def _load_config(self, guard_home: Path, workspace: Path | None):
+    def _load_config(self, guard_home: Path, workspace: Path | None) -> GuardConfig:
         return load_guard_config(guard_home, workspace=workspace)
 
     def _review_raw_hook_native(

@@ -598,7 +598,6 @@ function digestOutputText(
   const excerpt = { text: '', truncated: false };
   const refuse = (): void => {
     traversalTruncated = true;
-    budget.exhausted = true;
   };
   function update(text: string): void {
     if (traversalTruncated || !traversalBudgetReady(budget)) {

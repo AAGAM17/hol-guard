@@ -18,6 +18,7 @@ def test_passive_scope_does_not_probe_or_repair_native_binary(monkeypatch: pytes
     monkeypatch.setattr(native_runtime, "native_runtime_status", unexpected_probe)
     with without_command_probes():
         assert doctor_native_availability() == {
+            "mode": "unknown",
             "available": None,
             "compatible": None,
             "reason_code": "native_status_probe_skipped",
@@ -67,6 +68,7 @@ def test_failed_probe_does_not_disclose_exception(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(native_runtime, "native_runtime_status", failed_probe)
     result = doctor_native_availability()
     assert result["reason_code"] == "native_status_probe_failed"
+    assert result["mode"] == "unknown"
     assert result["available"] is False
     assert result["evaluation_verified"] is False
     assert "private" not in json.dumps(result)

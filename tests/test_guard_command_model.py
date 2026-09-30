@@ -65,6 +65,11 @@ def test_parse_shell_command_tracks_sudo_and_nested_environment_wrapper() -> Non
     assert parsed.path_overridden is True
 
 
+def test_parse_shell_command_rejects_empty_text_with_stable_message() -> None:
+    with pytest.raises(ValueError, match=r"^Command text cannot be empty$"):
+        parse_shell_command(" \t")
+
+
 @pytest.mark.parametrize(
     "command",
     [

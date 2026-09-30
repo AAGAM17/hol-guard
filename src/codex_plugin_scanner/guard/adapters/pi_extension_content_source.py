@@ -462,6 +462,9 @@ function referencedPayload(payload: Record<string, unknown>, serializedPayload: 
     config_path: payload.config_path,
     tool_name: payload.tool_name,
     is_error: payload.is_error,
+    ...(typeof payload.structured_output_json === 'string'
+      ? { structured_output_json: payload.structured_output_json }
+      : {}),
     guard_payload_ref: {
       version: 1,
       path,

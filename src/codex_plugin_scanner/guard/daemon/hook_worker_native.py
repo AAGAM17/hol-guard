@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from ..cli.commands_support_command_activity import hook_post_succeeded
+from ..codex_binding_capture import record_native_worker
 from ..native_mode import python_oracle_surface_enabled
 from ..native_policy_snapshot_constants import NativePolicySnapshotError
 from ..native_route_receipt import record_python_semantic_hook_route
@@ -456,6 +457,15 @@ class HookWorkerNativeMixin:
             )
         raw_receipt = edge.get("receipt")
         accepted_receipt = self._record_native_decision_receipt(raw_receipt)
+        if accepted_receipt is not None:
+            with suppress(Exception):
+                record_native_worker(
+                    guard_home=guard_home,
+                    payload=payload,
+                    harness=native_harness,
+                    event_name=native_event,
+                    receipt=accepted_receipt,
+                )
         if native_event == "PreToolUse":
             if recording_only:
                 action = str(native_result.get("minimum_action") or "")

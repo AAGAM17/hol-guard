@@ -10,6 +10,7 @@ from contextlib import suppress
 from pathlib import Path
 
 if __package__:
+    from ..codex_binding_capture import record_bridge_ingress
     from ..codex_hook_bridge_runtime import BridgeConfig
     from ..codex_hook_bridge_runtime import bounded_hook_input as _hook_input
     from ..codex_hook_bridge_runtime import bridge_config_from_argv as _parse_bridge_config
@@ -33,6 +34,7 @@ else:  # pragma: no cover - exercised by subprocess integration tests
     from codex_plugin_scanner.guard.adapters.codex_daemon_hook_resume import (
         apply_browser_approval_wait,
     )
+    from codex_plugin_scanner.guard.codex_binding_capture import record_bridge_ingress
     from codex_plugin_scanner.guard.codex_hook_bridge_runtime import (
         BridgeConfig,
     )
@@ -192,12 +194,23 @@ def _codex_hook_response(response: Mapping[str, object], *, event_name: str) -> 
     return filtered
 
 
-def _bound_hook_input(hook_timeouts: Mapping[str, int]) -> tuple[str, str, float] | None:
+def _bound_hook_input(
+    hook_timeouts: Mapping[str, int],
+    *,
+    capture_guard_home: Path | None = None,
+) -> tuple[str, str, float] | None:
     raw_data = _hook_input(_MAX_HOOK_INPUT_BYTES)
     if raw_data is None:
         return None
     event_name = _event_name(raw_data)
     timeout_seconds = _request_timeout(event_name, hook_timeouts)
+    if capture_guard_home is not None:
+        with suppress(Exception):
+            record_bridge_ingress(
+                guard_home=capture_guard_home,
+                raw_payload=raw_data,
+                event_name=event_name,
+            )
     data = (
         _with_browser_wait_process(raw_data, wait_timeout_seconds=max(1.0, timeout_seconds - 1.0))
         if event_name == "PreToolUse"
@@ -218,12 +231,15 @@ def main(
 ) -> int:
     """Review one Codex hook through the resident daemon or a fail-safe fallback."""
 
-    hook_input = _bound_hook_input(hook_timeouts)
+    state = Path(state_path)
+    capture_guard_home = state.parent if state.is_absolute() and state.name == "daemon-state.json" else None
+    hook_started_at = time.monotonic()
+    hook_input = _bound_hook_input(hook_timeouts, capture_guard_home=capture_guard_home)
     if hook_input is None:
         sys.stdout.write(json.dumps(_fail_closed("PreToolUse"), separators=(",", ":")))
     else:
         event_name, data, timeout_seconds = hook_input
-        deadline = time.monotonic() + timeout_seconds
+        deadline = hook_started_at + timeout_seconds
         failure_causes = []
         response, daemon_overloaded, launch_integrity_failed = bridge_review_response(
             state_path=state_path,

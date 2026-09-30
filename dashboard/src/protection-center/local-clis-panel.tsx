@@ -49,10 +49,14 @@ export function CustomExtensionsSection(props: {
   onOpen: (cliId: string) => void;
   onAdd: () => void;
   discovering?: boolean;
+  filteredOut?: boolean;
+  onClearFilters?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const added = connectorWorkspaceItems(props.items, search);
+  const searchable = connectorWorkspaceItems(props.items).length > CUSTOM_EXTENSION_PREVIEW_COUNT || search !== "";
+  const filteredOut = props.filteredOut && search === "";
   const needsReview = added.filter(customExtensionNeedsReview);
   const enabled = added.filter((item) => !customExtensionNeedsReview(item));
   const grouped = needsReview.length > 0 && enabled.length > 0;
@@ -70,7 +74,7 @@ export function CustomExtensionsSection(props: {
           <p className="mt-1 text-sm text-slate-500">Connectors Guard detected in your apps, plus tools you add yourself. Open one to choose its permissions.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? (
+          {searchable ? (
             <div className="relative min-w-0 flex-1 sm:flex-none">
               <label className="relative block">
                 <span className="sr-only">Search custom extensions</span>
@@ -89,14 +93,25 @@ export function CustomExtensionsSection(props: {
         </div>
       </div>
       {added.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-[rgba(63,65,116,0.12)] bg-white px-4 py-6" data-testid="custom-extensions-empty">
-          <p className="text-sm font-semibold text-brand-dark">No custom extensions yet.</p>
-          <p className="mt-1 max-w-xl text-sm leading-6 text-brand-dark/70">
-            {search
-              ? "No connectors or custom tools match this search."
-              : "Add a tool you run yourself, or connect an MCP server. Guard also detects connectors from your host apps automatically."}
+        <div className="mt-4 rounded-2xl border border-[rgba(63,65,116,0.12)] bg-white px-4 py-6" data-testid={filteredOut ? "custom-extensions-filter-empty" : "custom-extensions-empty"}>
+          <p className="text-sm font-semibold text-brand-dark">
+            {filteredOut ? "No custom extensions match these filters." : "No custom extensions yet."}
           </p>
-          {search ? (
+          <p className="mt-1 max-w-xl text-sm leading-6 text-brand-dark/70">
+            {filteredOut
+              ? "Remove a filter or start over to see all custom extensions again."
+              : search
+                ? "No connectors or custom tools match this search."
+                : "Add a tool you run yourself, or connect an MCP server. Guard also detects connectors from your host apps automatically."}
+          </p>
+          {filteredOut ? (
+            props.onClearFilters ? (
+              <button type="button" onClick={props.onClearFilters} className="guard-extensions-chip mt-3">
+                <HiMiniXMark className="size-4" aria-hidden="true" />
+                Clear filters
+              </button>
+            ) : null
+          ) : search ? (
             <button type="button" onClick={() => setSearch("")} className="guard-extensions-chip mt-3">
               <HiMiniXMark className="size-4" aria-hidden="true" />
               Clear search
@@ -125,7 +140,7 @@ export function CustomExtensionsSection(props: {
           ))}
           {grouped ? (
             <p className="mt-6 text-xs font-semibold text-brand-dark/55">
-              Enabled · {enabled.length}
+              Reviewed · {enabled.length}
             </p>
           ) : null}
           {visibleEnabled.map((item) => (

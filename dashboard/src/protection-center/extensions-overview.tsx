@@ -210,9 +210,11 @@ export function ExtensionsOverview(props: {
   const handleClearFilters = useCallback(() => {
     setFilters(EMPTY_CATALOG_FILTERS);
   }, []);
-  const addedCustomItems = connectorWorkspaceItems(props.localCliItems).filter((item) =>
+  const allCustomItems = connectorWorkspaceItems(props.localCliItems);
+  const addedCustomItems = allCustomItems.filter((item) =>
     customItemMatchesFilters(item, filters),
   );
+  const customItemsFilteredOut = filtering && allCustomItems.length > 0 && addedCustomItems.length === 0;
   return (
     <div hidden={!props.active} inert={!props.active || undefined}>
       <WorkspacePageHeader
@@ -297,6 +299,8 @@ export function ExtensionsOverview(props: {
             onOpen={props.onOpenLocalCli}
             onAdd={props.onAddCustom}
             discovering={discovering}
+            filteredOut={customItemsFilteredOut}
+            onClearFilters={handleClearFilters}
           />
 
           <LocalSkillsWorkspace />

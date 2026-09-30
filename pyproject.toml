@@ -221,6 +221,7 @@ also_copy = [
   "src/codex_plugin_scanner",
   "contracts/guard-cloud-review",
   "docs/guard/contracts/guard-cloud-review.md",
+  "contracts/extensions/trust-class-map.v1.json",
 ]
 pytest_add_cli_args_test_selection = [
   "tests/test_guard_command_model.py",

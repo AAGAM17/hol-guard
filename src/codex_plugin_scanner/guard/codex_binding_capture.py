@@ -17,7 +17,10 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, cast
+from typing import TYPE_CHECKING, Final, cast
+
+if TYPE_CHECKING:
+    from .codex_binding_capture_join import join_binding_records
 
 try:  # pragma: no cover - Windows diagnostic capture fails closed.
     import fcntl

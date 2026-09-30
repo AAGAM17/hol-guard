@@ -187,7 +187,7 @@ def remove_owned_root(
             os.close(parent_descriptor)
     except EvaluationContractError:
         raise
-    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+    except (OSError, RecursionError, TypeError, UnicodeError, ValueError) as exc:
         raise EvaluationContractError("unable to clean up evaluation setup") from exc
 
 

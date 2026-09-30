@@ -139,13 +139,9 @@ def join_binding_records(records: Iterable[object]) -> dict[str, object]:
             continue
         key, route = normalized
         if key is None:
-            canonical_event = runtime_hook_event_name(
-                {"hook_event_name": record.get("event_name")}
-            )
+            canonical_event = runtime_hook_event_name({"hook_event_name": record.get("event_name")})
             if canonical_event not in BINDABLE_CODEX_HOOK_EVENTS:
-                issues.append(
-                    {"status": "not_applicable", "reason": "native_receipt_unsupported_event"}
-                )
+                issues.append({"status": "not_applicable", "reason": "native_receipt_unsupported_event"})
             else:
                 reason = "missing_tool_use_id" if route == "missing" else "unsupported_tool_use_id"
                 issues.append({"status": "unbound", "reason": reason})

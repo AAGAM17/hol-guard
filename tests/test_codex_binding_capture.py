@@ -219,9 +219,7 @@ def test_event_alias_is_canonicalized_and_prompt_rows_are_not_applicable(tmp_pat
         '{"hook_event_name":"UserPromptSubmit","tool_use_id":"/private/secret"}',
     ],
 )
-def test_non_bindable_missing_or_unsupported_id_is_not_applicable(
-    tmp_path: Path, raw: str
-) -> None:
+def test_non_bindable_missing_or_unsupported_id_is_not_applicable(tmp_path: Path, raw: str) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
 
@@ -234,9 +232,7 @@ def test_non_bindable_missing_or_unsupported_id_is_not_applicable(
     result = join_binding_records(_rows(directory))
     assert result["status"] == "not_applicable"
     assert result["joins"] == []
-    assert result["issues"] == [
-        {"status": "not_applicable", "reason": "native_receipt_unsupported_event"}
-    ]
+    assert result["issues"] == [{"status": "not_applicable", "reason": "native_receipt_unsupported_event"}]
 
 
 def test_bridge_capture_happens_before_forwarded_transport_mutation(

@@ -20,7 +20,9 @@ from .test_native_policy_snapshot_cache_binding import _write_resident_authority
 
 
 @pytest.mark.parametrize("state", ["observe", "enforce", "missing", "expired", "tampered"])
-@pytest.mark.parametrize("failure", ["worker_exception", "worker_none", "capacity", "disabled_legacy_path"])
+@pytest.mark.parametrize(
+    "failure", ["worker_exception", "worker_none", "capacity", "disabled_legacy_path", "cli_disabled"]
+)
 def test_outage_mode_requires_authenticated_unexpired_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str, failure: str
 ) -> None:
@@ -76,7 +78,7 @@ def test_outage_mode_requires_authenticated_unexpired_snapshot(
         else:
             worker.review_http_payload.return_value = None
         monkeypatch.setattr(cli, "HookWorker", lambda **_kwargs: worker)
-        monkeypatch.setattr(cli, "_native_mode_requires_rust", lambda: True)
+        monkeypatch.setattr(cli, "_native_mode_requires_rust", lambda: failure != "cli_disabled")
         responses = []
         monkeypatch.setattr(cli, "_emit", lambda _name, value, _json: responses.append(value))
         if failure == "worker_exception":
@@ -105,5 +107,5 @@ def test_outage_mode_requires_authenticated_unexpired_snapshot(
         assert len(responses) == 1
         response = responses[0]
     assert response["hookSpecificOutput"]["permissionDecision"] == (
-        "allow" if state == "observe" and failure != "disabled_legacy_path" else "deny"
+        "allow" if state == "observe" and failure not in {"disabled_legacy_path", "cli_disabled"} else "deny"
     )

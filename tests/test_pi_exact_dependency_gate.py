@@ -18,17 +18,22 @@ def test_lock_rejects_stale_brace_dependency(tmp_path: Path, field: str, value: 
         verifier.verify_lock(path)
 
 
-@pytest.mark.parametrize("version", ["5.0.9", "5.0.11"])
-def test_installed_gate_rejects_stale_version_or_wrong_integrity(tmp_path: Path, version: str) -> None:
-    for name, (version, _) in verifier.EXPECTED.items():
+@pytest.mark.parametrize(
+    "version,expected",
+    [("5.0.9", "installed brace-expansion version drifted"), ("5.0.11", "installed brace-expansion integrity drifted")],
+)
+def test_installed_gate_rejects_stale_version_or_wrong_integrity(
+    tmp_path: Path, version: str, expected: str
+) -> None:
+    for name, (sdk_version, _) in verifier.EXPECTED.items():
         root = tmp_path / "node_modules" / name
         root.mkdir(parents=True)
-        (root / "package.json").write_text(json.dumps({"name": name, "version": version}))
+        (root / "package.json").write_text(json.dumps({"name": name, "version": sdk_version}))
     brace = tmp_path / "node_modules" / verifier.PI_PACKAGE / "node_modules" / "brace-expansion"
     brace.mkdir(parents=True)
     (brace / "package.json").write_text(json.dumps({"version": version}))
     (brace.parent / ".package-lock.json").write_text(
         json.dumps({"packages": {"node_modules/brace-expansion": {"integrity": "sha512-invalid"}}})
     )
-    with pytest.raises(SystemExit, match=r"installed brace-expansion (version|integrity) drifted"):
+    with pytest.raises(SystemExit, match=expected):
         verifier.verify_installed_sdk(tmp_path)

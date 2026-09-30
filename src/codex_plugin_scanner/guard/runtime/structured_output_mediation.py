@@ -13,12 +13,15 @@ import json
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from ..strict_json_pairs import unique_json_object
 from .structured_data_sensitivity import (
     DeclaredField,
     DeclaredSchema,
+    FieldRole,
+    FieldType,
+    PersonalCategory,
     SensitiveScanResult,
     classifier_rule_version,
     classify_declared_content,
@@ -139,11 +142,15 @@ def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
     for index, raw_field in enumerate(fields_raw):
         field = _mapping(raw_field, f"structured output policy schema field {index}")
         role = field.get("role")
-        expected_keys = {"path", "role", "valueType", "category"} if role == "protected_personal" else {
-            "path",
-            "role",
-            "valueType",
-        }
+        expected_keys = (
+            {"path", "role", "valueType", "category"}
+            if role == "protected_personal"
+            else {
+                "path",
+                "role",
+                "valueType",
+            }
+        )
         if set(field) != expected_keys:
             raise ValueError(f"structured output policy schema field {index} has unknown or missing keys")
         path_raw = field["path"]
@@ -155,9 +162,9 @@ def parse_structured_output_policy(value: object) -> StructuredOutputPolicy:
         fields.append(
             DeclaredField(
                 tuple(path_raw),
-                role,  # type: ignore[arg-type]
-                value_type=value_type,  # type: ignore[arg-type]
-                category=field.get("category"),  # type: ignore[arg-type]
+                cast(FieldRole, role),
+                value_type=cast(FieldType, value_type),
+                category=cast(PersonalCategory | None, field.get("category")),
             )
         )
     return StructuredOutputPolicy(harnesses=tuple(sorted(harnesses)), schema=DeclaredSchema(tuple(fields)))
@@ -289,9 +296,7 @@ def resolve_managed_structured_output_resolution(config: object, *, harness: str
     if not isinstance(settings, Mapping):
         return StructuredOutputResolution(None, True, "structured_managed_policy_invalid")
     try:
-        structured_policy = parse_structured_output_policy(
-            _setting_at_path(settings, STRUCTURED_OUTPUT_SETTING_PATH)
-        )
+        structured_policy = parse_structured_output_policy(_setting_at_path(settings, STRUCTURED_OUTPUT_SETTING_PATH))
     except (TypeError, ValueError):
         return StructuredOutputResolution(None, True, "structured_managed_policy_invalid")
     if canonical_harness not in structured_policy.harnesses:
@@ -315,10 +320,7 @@ def _has_safe_numbers(value: object, *, deadline_monotonic: float | None = None)
     if isinstance(value, float):
         return False
     if isinstance(value, dict):
-        return all(
-            _has_safe_numbers(child, deadline_monotonic=deadline_monotonic)
-            for child in value.values()
-        )
+        return all(_has_safe_numbers(child, deadline_monotonic=deadline_monotonic) for child in value.values())
     return not isinstance(value, list)
 
 

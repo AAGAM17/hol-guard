@@ -234,21 +234,21 @@ def managed_extension_source(
         '  if (parsed.schema !== "guard-structured-content-mediation.v1") return null;\n'
         '  if (parsed.action !== "forward" && parsed.action !== "withhold") return null;\n'
         '  if (typeof parsed.reason_code !== "string" || '
-        '!/^structured_[a-z0-9_]+$/.test(parsed.reason_code)) return null;\n'
-        '  if (parsed.native_decision_id !== undefined && '
+        "!/^structured_[a-z0-9_]+$/.test(parsed.reason_code)) return null;\n"
+        "  if (parsed.native_decision_id !== undefined && "
         '(typeof parsed.native_decision_id !== "string" || '
-        '!/^[A-Za-z0-9_.:-]{1,256}$/.test(parsed.native_decision_id))) return null;\n'
+        "!/^[A-Za-z0-9_.:-]{1,256}$/.test(parsed.native_decision_id))) return null;\n"
         '  if (parsed.action === "forward") {\n'
         '    if (typeof parsed.native_decision_id !== "string" || '
         'typeof parsed.content_sha256 !== "string") return null;\n'
-        '    if (!/^[0-9a-f]{64}$/.test(parsed.content_sha256)) return null;\n'
+        "    if (!/^[0-9a-f]{64}$/.test(parsed.content_sha256)) return null;\n"
         '    if (Object.keys(parsed).some((key) => !["schema", "action", '
         '"reason_code", "native_decision_id", "content_sha256"].includes(key))) return null;\n'
-        '  } else {\n'
-        '    if (parsed.content_sha256 !== undefined) return null;\n'
+        "  } else {\n"
+        "    if (parsed.content_sha256 !== undefined) return null;\n"
         '    if (Object.keys(parsed).some((key) => !["schema", "action", '
         '"reason_code", "native_decision_id"].includes(key))) return null;\n'
-        '  }\n'
+        "  }\n"
         "  return parsed as StructuredContentMediation;\n"
         "}\n"
         "\n"
@@ -421,12 +421,12 @@ def managed_extension_source(
         "    options?.enforceSizeCap === true &&\n"
         "    !payloadWithinSerializedBudget(payload, deadlineAt)\n"
         "  ) {\n"
-        '    return {\n'
+        "    return {\n"
         '      decision: "deny",\n'
         '      reason: "HOL Guard withheld this hook payload before review '
         'because its size or shape could not be bounded safely.",\n'
         '      reason_code: "hook_payload_unbounded",\n'
-        '    };\n'
+        "    };\n"
         "  }\n"
         "  try {\n"
         "    serializedPayload = JSON.stringify(payloadToSend);\n"
@@ -983,11 +983,7 @@ def legacy_managed_extension_source(
     structured_type_end = source.find("type GuardCliResult =", structured_type_start)
     if structured_type_start < 0 or structured_type_end < 0:
         raise RuntimeError("managed Pi extension legacy source contract drifted")
-    source = (
-        source[:structured_type_start]
-        + "};\n\n"
-        + source[structured_type_end:]
-    )
+    source = source[:structured_type_start] + "};\n\n" + source[structured_type_end:]
 
     valid_structured_start = source.find("function validStructuredContentMediation(")
     normalize_start = source.find("function normalizeGuardResponse(", valid_structured_start)
@@ -1014,7 +1010,7 @@ def legacy_managed_extension_source(
     if bounded_preprocessing_start < 0 or bounded_preprocessing_end < 0:
         raise RuntimeError("managed Pi extension legacy source contract drifted")
     bounded_preprocessing_end += len("/* HOL Guard bounded preprocessing ends */\n")
-    if source[bounded_preprocessing_end:bounded_preprocessing_end + 1] == "\n":
+    if source[bounded_preprocessing_end : bounded_preprocessing_end + 1] == "\n":
         bounded_preprocessing_end += 1
     source = source[:bounded_preprocessing_start] + source[bounded_preprocessing_end:]
     for current_name, legacy_name in (
@@ -1129,12 +1125,12 @@ def legacy_managed_extension_source(
         "    options?.enforceSizeCap === true &&\n"
         "    !payloadWithinSerializedBudget(payload, deadlineAt)\n"
         "  ) {\n"
-        '    return {\n'
+        "    return {\n"
         '      decision: "deny",\n'
         '      reason: "HOL Guard withheld this hook payload before review '
         'because its size or shape could not be bounded safely.",\n'
         '      reason_code: "hook_payload_unbounded",\n'
-        '    };\n'
+        "    };\n"
         "  }\n"
     )
     if source.count(payload_preflight) != 1:

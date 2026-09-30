@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,14 @@ def test_lock_excludes_other_processes_and_releases_after_error(tmp_path: Path) 
         [
             sys.executable,
             "-c",
-            "from pathlib import Path; import sys; "
-            "from codex_plugin_scanner.guard.adapters.opencode_config_lock import opencode_config_lock; "
-            "\nwith opencode_config_lock(Path(sys.argv[1])):\n"
-            " print('locked', flush=True)\n sys.stdin.readline()\n",
+            textwrap.dedent("""
+                from pathlib import Path
+                import sys
+                from codex_plugin_scanner.guard.adapters.opencode_config_lock import opencode_config_lock
+                with opencode_config_lock(Path(sys.argv[1])):
+                    print('locked', flush=True)
+                    sys.stdin.readline()
+            """),
             str(tmp_path),
         ],
         stdin=subprocess.PIPE,
@@ -75,3 +80,19 @@ def test_install_cleanup_and_refresh_read_under_same_lock(tmp_path: Path, monkey
     for operation in (adapter.install, adapter.uninstall, opencode_proxy_refresh.refresh_opencode_proxy_launchers):
         with pytest.raises(ReachedReadError):
             operation(context)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink fixture exercises the no-O_NOFOLLOW fallback")
+def test_lock_rejects_symlink_swapped_during_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "untouched"
+    target.write_text("unchanged", encoding="utf-8")
+    original_open = os.open
+
+    def swapped_open(path: Path, flags: int, mode: int) -> int:
+        path.symlink_to(target)
+        return original_open(path, flags & ~getattr(os, "O_NOFOLLOW", 0), mode)
+
+    monkeypatch.setattr(os, "open", swapped_open)
+    with pytest.raises(ValueError, match="lock path changed"), opencode_config_lock(tmp_path):
+        pytest.fail("entered substituted lock")
+    assert target.read_text(encoding="utf-8") == "unchanged"

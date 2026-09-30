@@ -12,7 +12,6 @@ from pathlib import Path
 from ...ecosystems.opencode import _load_json_or_jsonc
 from ..models import GuardArtifact, HarnessDetection
 from .base import HarnessContext
-from .hook_python import guard_cli_command
 from .mcp_servers import (
     GUARD_MCP_COMPANION_PREFIX,
     ManagedMcpServer,
@@ -160,51 +159,6 @@ def write_json_transaction(writes: tuple[tuple[Path, dict[str, object]], ...]) -
                 "OpenCode install failed and its config transaction could not be rolled back."
             ) from rollback_error
         raise
-
-
-def refresh_opencode_proxy_launchers(context: HarnessContext) -> int:
-    """Refresh verified companion CLI prefixes without changing MCP authority."""
-
-    writes: list[tuple[Path, dict[str, object]]] = []
-    refreshed = 0
-    for config_path in config_paths(context):
-        if not config_path.exists():
-            continue
-        payload, parse_error, _ = _load_json_or_jsonc(config_path)
-        if parse_error:
-            raise OpenCodeInstallSnapshotError("Cannot refresh companions in an invalid OpenCode config.")
-        mcp = payload.get("mcp")
-        if not isinstance(mcp, dict):
-            continue
-        changed = False
-        for name, entry in mcp.items():
-            if not isinstance(name, str) or not isinstance(entry, dict):
-                continue
-            binding = _verified_proxy_binding(
-                name,
-                entry,
-                context=context,
-                scope=_scope_for(context, config_path),
-                expected_config_path=config_path,
-            )
-            if binding is None:
-                continue
-            native = mcp.get(binding.native_name)
-            if isinstance(native, dict) and not _binding_matches_native(binding, native):
-                continue
-            _, args = _command_parts(entry)
-            proxy_args = list(args[args.index("opencode-mcp-proxy") :])
-            command = guard_cli_command(context, ["-m", "codex_plugin_scanner.cli", "guard", *proxy_args])
-            if entry.get("command") == command:
-                continue
-            entry["command"] = command
-            refreshed += 1
-            changed = True
-        if changed:
-            writes.append((config_path, payload))
-    if writes:
-        write_json_transaction(tuple(writes))
-    return refreshed
 
 
 def _normalized_config_payload(

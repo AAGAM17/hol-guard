@@ -13,6 +13,7 @@ from .hook_python import (
     HookPythonExecutableIdentity,
     HookPythonFileMetadata,
 )
+from .opencode_v2_entrypoint import OPENCODE_V2_ENTRYPOINT
 
 PLUGIN_FILENAME = "hol-guard-pretool.ts"
 _INTERCEPT_TOOLS = ("bash", "ctx_shell", "shell", "sh", "zsh", "terminal", "oc_bash")
@@ -534,31 +535,6 @@ export const HolGuardPretoolPlugin = async ({
   };
 };
 
-type OpenCodeV2ToolEvent = {
-  tool: string;
-  input: Record<string, unknown>;
-};
-
-// Keep the V1 server entrypoint while registering the V2 hook explicitly.
-const OpenCodePretoolPlugin = Object.assign(HolGuardPretoolPlugin, {
-  id: "hol-guard-pretool",
-  server: HolGuardPretoolPlugin,
-  async setup(ctx: {
-    location: { directory: string };
-    tool: {
-      hook: (
-        name: "execute.before",
-        handler: (event: OpenCodeV2ToolEvent) => Promise<void>,
-      ) => Promise<unknown>;
-    };
-  }) {
-    const hooks = await HolGuardPretoolPlugin({ directory: ctx.location.directory });
-    await ctx.tool.hook("execute.before", async (event) => {
-      await hooks["tool.execute.before"]({ tool: event.tool }, { args: event.input });
-    });
-  },
-});
-export default OpenCodePretoolPlugin;
 """
 
 
@@ -647,7 +623,7 @@ def pretool_plugin_source(context: HarnessContext) -> str:
         taskkill_path = windows_system_executable_path("taskkill.exe") if os.name == "nt" else None
     except (OSError, ValueError):
         taskkill_path = None
-    template = _PLUGIN_TEMPLATE.replace("__HOOK_ARGV_ENV__", _HOOK_ARGV_ENV)
+    template = (_PLUGIN_TEMPLATE + OPENCODE_V2_ENTRYPOINT).replace("__HOOK_ARGV_ENV__", _HOOK_ARGV_ENV)
     return (
         template.replace("__GUARD_HOME__", json.dumps(str(context.guard_home.resolve())))
         .replace("__GUARD_PYTHON__", json.dumps(_python_identity_payload(identity)))

@@ -478,9 +478,12 @@ def setup_evaluation(
         return EvaluationSetup(report=report)
 
     root_path: Path | None = None
+    root_identity: tuple[int, int] | None = None
     marker_token = secrets.token_hex(16)
     try:
         root_path = Path(tempfile.mkdtemp(prefix=_cleanup.OWNED_ROOT_PREFIX, dir=base))
+        root_info = root_path.stat(follow_symlinks=False)
+        root_identity = (root_info.st_dev, root_info.st_ino)
         _ = root_path.chmod(0o700)
         marker = root_path / _cleanup.MARKER_NAME
         _ = marker.write_text(marker_token, encoding="utf-8")
@@ -489,7 +492,6 @@ def setup_evaluation(
         workspace = root_path / "workspace"
         guard_home.mkdir(mode=0o700)
         workspace.mkdir(mode=0o700)
-        root_info = root_path.stat(follow_symlinks=False)
         workspace_info = workspace.stat(follow_symlinks=False)
         report = replace(
             preflight,
@@ -509,7 +511,11 @@ def setup_evaluation(
     except (OSError, RuntimeError) as exc:
         if root_path is not None and root_path.exists():
             with contextlib.suppress(EvaluationContractError):
-                _ = _cleanup.remove_owned_root(root_path, marker_token)
+                _ = _cleanup.remove_owned_root(
+                    root_path,
+                    marker_token,
+                    expected_root_identity=root_identity,
+                )
         report = replace(
             preflight,
             phase="setup",

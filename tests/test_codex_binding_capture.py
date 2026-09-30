@@ -104,7 +104,7 @@ def test_no_marker_is_inert_and_does_not_create_capture_directory(tmp_path: Path
 
     assert not record_bridge_ingress(
         guard_home=guard_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-1"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-1"}',
         event_name="PreToolUse",
     )
     assert not (guard_home / "diagnostics").exists()
@@ -115,7 +115,7 @@ def test_capture_keeps_raw_and_forwarded_fingerprints_separate_without_raw_conte
     directory = _enable_capture(guard_home)
     raw = {
         "hook_event_name": "PreToolUse",
-        "tool_call_id": "call-1",
+        "tool_use_id": "call-1",
         "tool_input": {"command": "echo SECRET_COMMAND"},
     }
     forwarded = {**raw, "guard_remaining_ms": 250}
@@ -124,6 +124,7 @@ def test_capture_keeps_raw_and_forwarded_fingerprints_separate_without_raw_conte
     assert record_bridge_ingress(
         guard_home=guard_home,
         raw_payload=json.dumps(raw),
+        forwarded_payload=json.dumps(forwarded),
         event_name="PreToolUse",
     )
     assert record_native_worker(
@@ -137,11 +138,78 @@ def test_capture_keeps_raw_and_forwarded_fingerprints_separate_without_raw_conte
     output = _output_path(directory).read_text(encoding="utf-8")
     assert "SECRET_COMMAND" not in output
     rows = _rows(directory)
-    assert rows[0]["raw_payload_sha256"] != rows[1]["forwarded_payload_sha256"]
+    assert rows[0]["raw_payload_sha256"] != rows[0]["forwarded_payload_sha256"]
+    assert rows[0]["forwarded_payload_sha256"] == rows[1]["forwarded_payload_sha256"]
     assert rows[1]["decision_scope"] == "native_edge"
     assert cast(dict[str, object], rows[1]["receipt"])["request_digest"] == "a" * 64
     assert "request_digest" not in rows[1]
     assert join_binding_records(rows)["status"] == "bound"
+
+
+def test_payload_fingerprint_mismatch_is_not_bound(tmp_path: Path) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+    raw = {"hook_event_name": "PreToolUse", "tool_use_id": "call-mismatch", "tool_input": {"command": "one"}}
+    changed = {**raw, "tool_input": {"command": "two"}}
+    assert record_bridge_ingress(
+        guard_home=guard_home,
+        raw_payload=json.dumps(raw),
+        event_name="PreToolUse",
+    )
+    assert record_native_worker(
+        guard_home=guard_home,
+        payload=changed,
+        harness="codex",
+        event_name="PreToolUse",
+        receipt=_valid_native_receipt(),
+    )
+    result = join_binding_records(_rows(directory))
+    assert result["status"] == "invalid"
+    assert result["joins"] == [
+        {
+            "status": "invalid",
+            "reason": "payload_fingerprint_mismatch",
+            "identity": ("run-1", "codex", "PreToolUse", "call-mismatch"),
+        }
+    ]
+
+
+def test_documented_tool_use_id_is_captured(tmp_path: Path) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+    raw = json.dumps({"hook_event_name": "PreToolUse", "tool_use_id": "call-use"})
+    assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
+    row = _rows(directory)[0]
+    assert row["tool_use_id_state"] == "present"
+    assert row["tool_use_id"] == "call-use"
+
+
+def test_legacy_tool_call_id_is_unbound_without_alias_fallback(tmp_path: Path) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+    raw = json.dumps({"hook_event_name": "PreToolUse", "tool_call_id": "legacy-call"})
+    assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
+    row = _rows(directory)[0]
+    assert row["tool_use_id_state"] == "missing"
+    assert "tool_use_id" not in row
+    assert join_binding_records([row])["issues"] == [{"status": "unbound", "reason": "missing_tool_use_id"}]
+
+
+def test_event_alias_is_canonicalized_and_prompt_rows_are_not_applicable(tmp_path: Path) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+    raw = '{"hook_event_name":"pre_tool_use","tool_use_id":"call-alias-event"}'
+    assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="pre_tool_use")
+    assert _rows(directory)[0]["event_name"] == "PreToolUse"
+
+    prompt_home = tmp_path / "prompt"
+    prompt_directory = _enable_capture(prompt_home)
+    assert record_bridge_ingress(
+        guard_home=prompt_home,
+        raw_payload='{"hook_event_name":"UserPromptSubmit","tool_use_id":"prompt-1"}',
+        event_name="UserPromptSubmit",
+    )
+    assert join_binding_records(_rows(prompt_directory))["status"] == "not_applicable"
 
 
 def test_bridge_capture_happens_before_forwarded_transport_mutation(
@@ -152,7 +220,7 @@ def test_bridge_capture_happens_before_forwarded_transport_mutation(
 
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
-    raw = '{"hook_event_name":"PreToolUse","tool_call_id":"call-early"}'
+    raw = '{"hook_event_name":"PreToolUse","tool_use_id":"call-early"}'
     monkeypatch.setattr(bridge, "_hook_input", lambda _limit: raw)
     monkeypatch.setattr(
         bridge,
@@ -165,14 +233,19 @@ def test_bridge_capture_happens_before_forwarded_transport_mutation(
         capture_guard_home=guard_home,
     )
     assert bound is not None
-    event_name, forwarded, _timeout = bound
+    event_name, forwarded, _timeout, _input_ready_at = bound
 
     assert event_name == "PreToolUse"
     assert json.loads(forwarded)["transport_added"] is True
     row = _rows(directory)[0]
-    assert row["raw_payload_sha256"] == hashlib.sha256(
-        b'{"hook_event_name":"PreToolUse","tool_call_id":"call-early"}'
-    ).hexdigest()
+    assert (
+        row["raw_payload_sha256"]
+        == hashlib.sha256(b'{"hook_event_name":"PreToolUse","tool_use_id":"call-early"}').hexdigest()
+    )
+    assert (
+        row["forwarded_payload_sha256"]
+        == hashlib.sha256(json.dumps(json.loads(forwarded), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    )
 
 
 def test_expired_or_unsafe_marker_is_inert(tmp_path: Path) -> None:
@@ -180,7 +253,7 @@ def test_expired_or_unsafe_marker_is_inert(tmp_path: Path) -> None:
     expired_directory = _enable_capture(expired_home, expires_at=int(time.time()) - 1)
     assert not record_bridge_ingress(
         guard_home=expired_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-expired"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-expired"}',
         event_name="PreToolUse",
     )
     assert not _output_path(expired_directory).exists()
@@ -190,7 +263,7 @@ def test_expired_or_unsafe_marker_is_inert(tmp_path: Path) -> None:
     (unsafe_directory / CAPTURE_MARKER_NAME).chmod(0o644)
     assert not record_bridge_ingress(
         guard_home=unsafe_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-unsafe"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-unsafe"}',
         event_name="PreToolUse",
     )
     assert not _output_path(unsafe_directory).exists()
@@ -203,11 +276,11 @@ def test_missing_id_is_unbound_and_duplicate_rows_are_ambiguous(tmp_path: Path) 
     assert record_bridge_ingress(guard_home=guard_home, raw_payload=missing, event_name="PreToolUse")
     missing_result = join_binding_records(_rows(directory))
     assert missing_result["status"] == "unbound"
-    assert missing_result["issues"] == [{"status": "unbound", "reason": "missing_tool_call_id"}]
+    assert missing_result["issues"] == [{"status": "unbound", "reason": "missing_tool_use_id"}]
 
     guard_home = tmp_path / "duplicates"
     directory = _enable_capture(guard_home)
-    raw = '{"hook_event_name":"PreToolUse","tool_call_id":"call-duplicate"}'
+    raw = '{"hook_event_name":"PreToolUse","tool_use_id":"call-duplicate"}'
     assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
     assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
     assert join_binding_records(_rows(directory))["status"] == "ambiguous"
@@ -220,7 +293,7 @@ def test_unsupported_id_is_explicitly_unbound_without_echoing_path_content(tmp_p
     raw = json.dumps(
         {
             "hook_event_name": "PreToolUse",
-            "tool_call_id": secret_path,
+            "tool_use_id": secret_path,
             "tool_input": {"command": "echo hidden"},
         }
     )
@@ -229,17 +302,15 @@ def test_unsupported_id_is_explicitly_unbound_without_echoing_path_content(tmp_p
     output = _output_path(directory).read_text(encoding="utf-8")
     assert secret_path not in output
     rows = _rows(directory)
-    assert rows[0]["tool_call_id_state"] == "unsupported"
-    assert join_binding_records(rows)["issues"] == [
-        {"status": "unbound", "reason": "unsupported_tool_call_id"}
-    ]
+    assert rows[0]["tool_use_id_state"] == "unsupported"
+    assert join_binding_records(rows)["issues"] == [{"status": "unbound", "reason": "unsupported_tool_use_id"}]
 
 
 def test_unmanaged_event_label_is_never_persisted_or_joined(tmp_path: Path) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
     secret_label = "/private/secret/config"
-    raw = '{"hook_event_name":"PreToolUse","tool_call_id":"call-event"}'
+    raw = '{"hook_event_name":"PreToolUse","tool_use_id":"call-event"}'
 
     assert not record_bridge_ingress(
         guard_home=guard_home,
@@ -254,8 +325,8 @@ def test_unmanaged_event_label_is_never_persisted_or_joined(tmp_path: Path) -> N
         "route": "bridge_ingress",
         "harness": "codex",
         "event_name": secret_label,
-        "tool_call_id_state": "present",
-        "tool_call_id": "call-event",
+        "tool_use_id_state": "present",
+        "tool_use_id": "call-event",
         "raw_payload_sha256": "a" * 64,
     }
     result = join_binding_records([externally_supplied])
@@ -269,8 +340,8 @@ def test_unmanaged_event_label_is_never_persisted_or_joined(tmp_path: Path) -> N
     [
         ("route", []),
         ("route", {}),
-        ("tool_call_id_state", []),
-        ("tool_call_id_state", {}),
+        ("tool_use_id_state", []),
+        ("tool_use_id_state", {}),
         ("harness", "claude-code"),
     ],
 )
@@ -285,8 +356,8 @@ def test_malformed_external_rows_are_invalid_without_normalizer_or_output_parser
         "route": "bridge_ingress",
         "harness": "codex",
         "event_name": "PreToolUse",
-        "tool_call_id_state": "present",
-        "tool_call_id": "call-malformed",
+        "tool_use_id_state": "present",
+        "tool_use_id": "call-malformed",
         "raw_payload_sha256": "a" * 64,
     }
     row[field] = value
@@ -302,7 +373,7 @@ def test_malformed_external_rows_are_invalid_without_normalizer_or_output_parser
     output.chmod(0o600)
     assert not record_bridge_ingress(
         guard_home=guard_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-next"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-next"}',
         event_name="PreToolUse",
     )
 
@@ -310,7 +381,7 @@ def test_malformed_external_rows_are_invalid_without_normalizer_or_output_parser
 def test_record_and_byte_bounds_reject_without_decision_side_effect(tmp_path: Path) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home, max_records=1)
-    raw = '{"hook_event_name":"PreToolUse","tool_call_id":"call-once"}'
+    raw = '{"hook_event_name":"PreToolUse","tool_use_id":"call-once"}'
     assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
     assert not record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
     assert len(_rows(directory)) == 1
@@ -318,7 +389,7 @@ def test_record_and_byte_bounds_reject_without_decision_side_effect(tmp_path: Pa
     oversized_home = tmp_path / "oversized"
     oversized_directory = _enable_capture(oversized_home)
     oversized = json.dumps(
-        {"hook_event_name": "PreToolUse", "tool_call_id": "call-large", "tool_input": {"command": "x" * 70_000}}
+        {"hook_event_name": "PreToolUse", "tool_use_id": "call-large", "tool_input": {"command": "x" * 70_000}}
     )
     assert not record_bridge_ingress(guard_home=oversized_home, raw_payload=oversized, event_name="PreToolUse")
     assert not _output_path(oversized_directory).exists()
@@ -328,7 +399,7 @@ def test_record_and_byte_bounds_reject_without_decision_side_effect(tmp_path: Pa
 def test_output_hardlink_is_rejected(tmp_path: Path) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
-    raw = '{"hook_event_name":"PreToolUse","tool_call_id":"call-hardlink"}'
+    raw = '{"hook_event_name":"PreToolUse","tool_use_id":"call-hardlink"}'
     assert record_bridge_ingress(guard_home=guard_home, raw_payload=raw, event_name="PreToolUse")
     output = _output_path(directory)
     alias = directory / "alias"
@@ -348,7 +419,7 @@ def test_marker_symlink_is_rejected(tmp_path: Path) -> None:
     marker.symlink_to(target)
     assert not record_bridge_ingress(
         guard_home=guard_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-symlink"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-symlink"}',
         event_name="PreToolUse",
     )
     assert not _output_path(directory).exists()
@@ -365,7 +436,7 @@ def test_guard_home_ancestor_symlink_is_rejected(tmp_path: Path) -> None:
 
     assert not record_bridge_ingress(
         guard_home=alias,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-alias"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-alias"}',
         event_name="PreToolUse",
     )
     assert not _output_path(directory).exists()
@@ -383,7 +454,7 @@ def test_marker_and_output_fifos_are_nonblocking_and_inert(tmp_path: Path) -> No
     started = time.monotonic()
     assert not record_bridge_ingress(
         guard_home=guard_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-marker-fifo"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-marker-fifo"}',
         event_name="PreToolUse",
     )
     assert time.monotonic() - started < 1.0
@@ -395,7 +466,7 @@ def test_marker_and_output_fifos_are_nonblocking_and_inert(tmp_path: Path) -> No
     started = time.monotonic()
     assert not record_bridge_ingress(
         guard_home=guard_home,
-        raw_payload='{"hook_event_name":"PreToolUse","tool_call_id":"call-output-fifo"}',
+        raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"call-output-fifo"}',
         event_name="PreToolUse",
     )
     assert time.monotonic() - started < 1.0
@@ -404,7 +475,7 @@ def test_marker_and_output_fifos_are_nonblocking_and_inert(tmp_path: Path) -> No
 def test_native_receipt_validation_rejects_forged_or_mismatched_receipt(tmp_path: Path) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
-    payload = {"hook_event_name": "PreToolUse", "tool_call_id": "call-receipt"}
+    payload = {"hook_event_name": "PreToolUse", "tool_use_id": "call-receipt"}
     forged = _valid_native_receipt()
     forged["decision_id"] = "f" * 64
     assert not record_native_worker(
@@ -432,7 +503,7 @@ def test_native_worker_capture_is_codex_only(tmp_path: Path, harness: str) -> No
     directory = _enable_capture(guard_home)
     assert not record_native_worker(
         guard_home=guard_home,
-        payload={"hook_event_name": "PreToolUse", "tool_call_id": "call-foreign"},
+        payload={"hook_event_name": "PreToolUse", "tool_use_id": "call-foreign"},
         harness=harness,
         event_name="PreToolUse",
         receipt=_valid_native_receipt(),
@@ -475,7 +546,7 @@ def test_shared_native_worker_boundary_captures_after_receipt_acceptance(tmp_pat
     )
     response, native_used = review_native_edge(
         host,
-        payload={"hook_event_name": "PreToolUse", "tool_call_id": "call-worker"},
+        payload={"hook_event_name": "PreToolUse", "tool_use_id": "call-worker"},
         harness="codex",
         event_name="PreToolUse",
         default_harness="codex",
@@ -504,7 +575,7 @@ def test_capture_latency_does_not_extend_bridge_deadline(
 
     clock = [100.0]
     captured: dict[str, object] = {}
-    raw = '{"hook_event_name":"PreToolUse","tool_call_id":"call-deadline"}'
+    raw = '{"hook_event_name":"PreToolUse","tool_use_id":"call-deadline"}'
     monkeypatch.setattr(bridge.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(bridge, "_hook_input", lambda _limit: raw)
     monkeypatch.setattr(bridge, "_with_browser_wait_process", lambda data, *, wait_timeout_seconds: data)

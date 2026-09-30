@@ -13,8 +13,7 @@ import os
 import re
 import stat
 import time
-from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +25,8 @@ except ImportError:  # pragma: no cover - Windows has no flock.
     fcntl = None  # type: ignore[assignment]
 
 from .codex_hook_manifest import MANAGED_CODEX_HOOK_EVENTS
+from .daemon.hook_request_parsing import runtime_hook_event_name
+from .evaluation_json import reject_duplicate_keys
 from .native_decision_receipt import validate_native_decision_receipt
 
 CAPTURE_SCHEMA: Final = "guard-codex-binding-capture.v1"
@@ -38,7 +39,8 @@ MAX_CAPTURE_RECORDS: Final = 128
 MAX_CAPTURE_BYTES: Final = 64 * 1024
 MAX_MARKER_BYTES: Final = 4 * 1024
 MAX_RUN_ID_BYTES: Final = 64
-MAX_TOOL_CALL_ID_BYTES: Final = 256
+MAX_TOOL_USE_ID_BYTES: Final = 256
+BINDABLE_CODEX_HOOK_EVENTS: Final = frozenset({"PreToolUse", "PostToolUse"})
 _MARKER_SCHEMA: Final = CAPTURE_SCHEMA
 _PRIVATE_DIRECTORY_MODE: Final = 0o700
 _PRIVATE_FILE_MODE: Final = 0o600
@@ -82,18 +84,9 @@ class _CaptureConfig:
     max_bytes: int
 
 
-def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON object key")
-        result[key] = value
-    return result
-
-
 def _json_object(raw: bytes) -> dict[str, object] | None:
     try:
-        value = cast(object, json.loads(raw.decode("utf-8"), object_pairs_hook=_strict_object_pairs))
+        value = cast(object, json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicate_keys))
     except (UnicodeError, ValueError, json.JSONDecodeError):
         return None
     return cast(dict[str, object], value) if isinstance(value, dict) else None
@@ -293,13 +286,13 @@ def _bounded_text(value: object, *, maximum: int) -> str | None:
     return value
 
 
-def _tool_call_id(payload: Mapping[str, object]) -> str | object:
-    if "tool_call_id" not in payload or payload.get("tool_call_id") is None:
+def _tool_use_id(payload: Mapping[str, object]) -> str | object:
+    value = payload.get("tool_use_id", _MISSING)
+    if value is _MISSING:
         return _MISSING
-    value = payload.get("tool_call_id")
     if (
         not isinstance(value, str)
-        or len(value) > MAX_TOOL_CALL_ID_BYTES
+        or len(value) > MAX_TOOL_USE_ID_BYTES
         or len(value.encode("ascii", errors="ignore")) != len(value)
         or _ASCII_OPAQUE.fullmatch(value) is None
     ):
@@ -311,10 +304,13 @@ def _base_row(
     *, config: _CaptureConfig, route: str, harness: str, event_name: str, payload: Mapping[str, object]
 ) -> dict[str, object] | None:
     bounded_harness = _bounded_text(harness, maximum=64)
-    bounded_event = _bounded_text(event_name, maximum=64)
-    if bounded_harness is None or bounded_event not in MANAGED_CODEX_HOOK_EVENTS:
+    raw_event = _bounded_text(event_name, maximum=64)
+    if bounded_harness is None or raw_event is None:
         return None
-    identifier = _tool_call_id(payload)
+    bounded_event = runtime_hook_event_name({"hook_event_name": raw_event})
+    if bounded_event not in MANAGED_CODEX_HOOK_EVENTS:
+        return None
+    identifier = _tool_use_id(payload)
     identifier_state = "missing" if identifier is _MISSING else "unsupported" if identifier is _INVALID else "present"
     row: dict[str, object] = {
         "schema": CAPTURE_SCHEMA,
@@ -322,10 +318,10 @@ def _base_row(
         "route": route,
         "harness": bounded_harness,
         "event_name": bounded_event,
-        "tool_call_id_state": identifier_state,
+        "tool_use_id_state": identifier_state,
     }
     if identifier not in {_MISSING, _INVALID}:
-        row["tool_call_id"] = cast(str, identifier)
+        row["tool_use_id"] = cast(str, identifier)
     return row
 
 
@@ -342,50 +338,6 @@ def _receipt_projection(receipt: object) -> dict[str, object] | None:
 
 def _output_name(run_id: str) -> str:
     return f"{CAPTURE_OUTPUT_PREFIX}{run_id}{CAPTURE_OUTPUT_SUFFIX}"
-
-
-def _valid_existing_records(raw: bytes, *, run_id: str) -> int | None:
-    if not raw:
-        return 0
-    if not raw.endswith(b"\n"):
-        return None
-    lines = raw.splitlines()
-    if not lines or len(lines) > MAX_CAPTURE_RECORDS:
-        return None
-    for line in lines:
-        row = _json_object(line)
-        if row is None or row.get("schema") != CAPTURE_SCHEMA or row.get("run_id") != run_id:
-            return None
-        harness = row.get("harness")
-        event_name = row.get("event_name")
-        route = row.get("route")
-        state = row.get("tool_call_id_state")
-        if (
-            not isinstance(harness, str)
-            or harness != "codex"
-            or not isinstance(event_name, str)
-            or event_name not in MANAGED_CODEX_HOOK_EVENTS
-            or not isinstance(route, str)
-            or not isinstance(state, str)
-            or state not in {
-                "missing",
-                "unsupported",
-                "present",
-            }
-        ):
-            return None
-        expected = {"schema", "run_id", "route", "harness", "event_name", "tool_call_id_state"}
-        if state == "present":
-            expected.add("tool_call_id")
-        if route == "bridge_ingress":
-            expected.add("raw_payload_sha256")
-        elif route == "native_worker":
-            expected.update({"forwarded_payload_sha256", "decision_scope", "receipt"})
-        else:
-            return None
-        if set(row) != expected:
-            return None
-    return len(lines)
 
 
 def _append_row(config: _CaptureConfig, *, guard_home: Path, row: Mapping[str, object]) -> bool:
@@ -428,7 +380,7 @@ def _append_row(config: _CaptureConfig, *, guard_home: Path, row: Mapping[str, o
         existing = _read_descriptor(output, maximum=config.max_bytes)
         if existing is None:
             return False
-        existing_count = _valid_existing_records(existing, run_id=config.run_id)
+        existing_count = valid_existing_records(existing, run_id=config.run_id)
         if existing_count is None or existing_count >= config.max_records:
             return False
         if len(existing) + len(serialized) > config.max_bytes:
@@ -455,8 +407,15 @@ def _record_row(*, guard_home: Path, config: _CaptureConfig, row: dict[str, obje
     return _append_row(config, guard_home=guard_home, row=row)
 
 
-def record_bridge_ingress(*, guard_home: Path, raw_payload: str, event_name: str, harness: str = "codex") -> bool:
-    """Record raw ingress identity and fingerprint when a marker enables it."""
+def record_bridge_ingress(
+    *,
+    guard_home: Path,
+    raw_payload: str,
+    event_name: str,
+    forwarded_payload: str | None = None,
+    harness: str = "codex",
+) -> bool:
+    """Record raw and forwarded ingress fingerprints when a marker enables it."""
 
     if harness != "codex":
         return False
@@ -464,19 +423,23 @@ def record_bridge_ingress(*, guard_home: Path, raw_payload: str, event_name: str
     if config is None:
         return False
     try:
-        encoded = raw_payload.encode("utf-8")
+        raw_encoded = raw_payload.encode("utf-8")
+        forwarded_encoded = (raw_payload if forwarded_payload is None else forwarded_payload).encode("utf-8")
     except UnicodeError:
         return False
-    payload = _json_object(encoded)
-    if payload is None:
+    payload = _json_object(raw_encoded)
+    forwarded = _json_object(forwarded_encoded)
+    if payload is None or forwarded is None:
         return False
-    fingerprint = _payload_fingerprint(payload)
-    if fingerprint is None:
+    raw_fingerprint = _payload_fingerprint(payload)
+    forwarded_fingerprint = _payload_fingerprint(forwarded)
+    if raw_fingerprint is None or forwarded_fingerprint is None:
         return False
     row = _base_row(config=config, route="bridge_ingress", harness=harness, event_name=event_name, payload=payload)
     if row is None:
         return False
-    row["raw_payload_sha256"] = fingerprint
+    row["raw_payload_sha256"] = raw_fingerprint
+    row["forwarded_payload_sha256"] = forwarded_fingerprint
     return _record_row(guard_home=guard_home, config=config, row=row)
 
 
@@ -506,7 +469,7 @@ def record_native_worker(
     row = _base_row(config=config, route="native_worker", harness=harness, event_name=event_name, payload=payload)
     if row is None:
         return False
-    if projection["event_name"] != event_name or projection["harness"] != harness:
+    if projection["event_name"] != row["event_name"] or projection["harness"] != harness:
         return False
     row["forwarded_payload_sha256"] = fingerprint
     row["decision_scope"] = "native_edge"
@@ -514,136 +477,10 @@ def record_native_worker(
     return _record_row(guard_home=guard_home, config=config, row=row)
 
 
-def _valid_fingerprint(value: object) -> bool:
-    return isinstance(value, str) and _HEX64.fullmatch(value) is not None
-
-
-def _normalize_record(value: Mapping[str, object]) -> tuple[tuple[str, str, str, str], str] | None:
-    if value.get("schema") != CAPTURE_SCHEMA:
-        return None
-    run_id = value.get("run_id")
-    harness = value.get("harness")
-    event_name = value.get("event_name")
-    route = value.get("route")
-    state = value.get("tool_call_id_state")
-    if (
-        not isinstance(run_id, str)
-        or _RUN_ID.fullmatch(run_id) is None
-        or not isinstance(harness, str)
-        or _bounded_text(harness, maximum=64) is None
-        or harness != "codex"
-        or not isinstance(event_name, str)
-        or _bounded_text(event_name, maximum=64) is None
-        or event_name not in MANAGED_CODEX_HOOK_EVENTS
-        or not isinstance(route, str)
-        or route not in {"bridge_ingress", "native_worker"}
-        or not isinstance(state, str)
-        or state not in {"missing", "unsupported", "present"}
-    ):
-        return None
-    expected = {"schema", "run_id", "route", "harness", "event_name", "tool_call_id_state"}
-    if state == "present":
-        expected.add("tool_call_id")
-    if route == "bridge_ingress":
-        expected.add("raw_payload_sha256")
-    else:
-        expected.update({"forwarded_payload_sha256", "decision_scope", "receipt"})
-    if set(value) != expected:
-        return None
-    if route == "bridge_ingress":
-        if not _valid_fingerprint(value.get("raw_payload_sha256")):
-            return None
-    else:
-        receipt = value.get("receipt")
-        typed_receipt = cast(Mapping[str, object], receipt) if isinstance(receipt, Mapping) else None
-        if (
-            not _valid_fingerprint(value.get("forwarded_payload_sha256"))
-            or value.get("decision_scope") != "native_edge"
-            or typed_receipt is None
-            or _receipt_projection(typed_receipt) != dict(typed_receipt)
-        ):
-            return None
-        if typed_receipt.get("harness") != harness or typed_receipt.get("event_name") != event_name:
-            return None
-    if state in {"missing", "unsupported"}:
-        if "tool_call_id" in value:
-            return None
-        return None
-    identifier = value.get("tool_call_id")
-    if _tool_call_id({"tool_call_id": identifier}) is not identifier:
-        return None
-    return (run_id, harness, event_name, cast(str, identifier)), route
-
-
-def join_binding_records(records: Iterable[object]) -> dict[str, object]:
-    """Join ingress/native rows using only exact structural identity.
-
-    A successful result proves native-edge binding only; callers still need
-    final host response and side-effect evidence for an end-to-end claim.
-    """
-
-    groups: dict[tuple[str, str, str, str], dict[str, list[Mapping[str, object]]]] = defaultdict(
-        lambda: {"bridge_ingress": [], "native_worker": []}
-    )
-    issues: list[dict[str, object]] = []
-    count = 0
-    for record in records:
-        count += 1
-        if count > MAX_CAPTURE_RECORDS:
-            issues.append({"status": "ambiguous", "reason": "record_limit_exceeded"})
-            break
-        if not isinstance(record, Mapping):
-            issues.append({"status": "invalid", "reason": "record_not_object"})
-            continue
-        record = cast(Mapping[str, object], record)
-        encoded = _canonical_json(dict(record))
-        if encoded is None or len(encoded) > MAX_CAPTURE_BYTES:
-            issues.append({"status": "invalid", "reason": "record_size"})
-            continue
-        normalized = _normalize_record(record)
-        if normalized is None:
-            record_state = record.get("tool_call_id_state")
-            if isinstance(record_state, str) and record_state in {"missing", "unsupported"}:
-                reason = (
-                    "missing_tool_call_id"
-                    if record_state == "missing"
-                    else "unsupported_tool_call_id"
-                )
-                issues.append({"status": "unbound", "reason": reason})
-            else:
-                issues.append({"status": "invalid", "reason": "record_shape"})
-            continue
-        key, route = normalized
-        groups[key][route].append(record)
-    joins: list[dict[str, object]] = []
-    for key, grouped in groups.items():
-        bridge_rows = grouped["bridge_ingress"]
-        native_rows = grouped["native_worker"]
-        if len(bridge_rows) > 1 or len(native_rows) > 1:
-            joins.append({"status": "ambiguous", "reason": "duplicate_join_rows", "identity": key})
-        elif not bridge_rows or not native_rows:
-            joins.append({"status": "unbound", "reason": "missing_join_side", "identity": key})
-        else:
-            joins.append({"status": "bound", "scope": "native_edge_binding", "identity": key})
-    statuses = [str(item["status"]) for item in joins] + [str(item["status"]) for item in issues]
-    if "invalid" in statuses:
-        status = "invalid"
-    elif "ambiguous" in statuses:
-        status = "ambiguous"
-    elif not statuses or "unbound" in statuses:
-        status = "unbound"
-    else:
-        status = "bound"
-    return {
-        "schema": CAPTURE_SCHEMA,
-        "scope": "native_edge_binding",
-        "status": status,
-        "joins": joins,
-        "issues": issues,
-    }
-
+from .codex_binding_capture_join import join_binding_records, valid_existing_records  # noqa: E402
 
 __all__ = [
+    "BINDABLE_CODEX_HOOK_EVENTS",
     "CAPTURE_MARKER_NAME",
     "CAPTURE_OUTPUT_PREFIX",
     "CAPTURE_OUTPUT_SUFFIX",

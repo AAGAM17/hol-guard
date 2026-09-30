@@ -547,7 +547,11 @@ jobs:
         with:
           bun-version: "1.3.14"
       - name: Install reviewed npm toolchain
-        run: npm install --global npm@12.0.0 --ignore-scripts --no-audit --no-fund
+        shell: bash
+        run: |
+          npm_root="$RUNNER_TEMP/pi-npm-toolchain"
+          npm install --prefix "$npm_root" npm@12.0.0 --ignore-scripts --no-audit --no-fund
+          echo "$npm_root/node_modules/.bin" >> "$GITHUB_PATH"
       - uses: ./.github/actions/setup-ci-python
         with:
           python-version: ${{ env.CI_PYTHON_VERSION }}

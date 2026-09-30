@@ -197,6 +197,7 @@ class StoreConnectionSchemaMixin:
     _startup_prefetched_policy_integrity_repair_failed = False
     _storage_recovery_local: ClassVar[threading.local] = threading.local()
     _storage_gate_local: ClassVar[threading.local] = threading.local()
+    _connection_scope_local: ClassVar[threading.local] = threading.local()
     _last_sqlite_recovery = "skipped"
     _last_sqlite_recovery_details: dict[str, bool] | None = None
 
@@ -477,7 +478,59 @@ class StoreConnectionSchemaMixin:
         return self._sqlite_profiler().migration_gate_report(end_to_end_p95_ms=end_to_end_p95_ms)
 
     @contextmanager
+    def connection_scope(self) -> Iterator[None]:
+        """Reuse one connection within an operation, with separate transactions.
+
+        The storage gate remains held until the connection closes. Nothing is
+        retained between operations, across threads, or after store replacement.
+        Each nested store method still commits before returning, including
+        one-shot approval claims whose consumption must survive later errors.
+        """
+        local = self._connection_scope_local
+        if getattr(local, "owner", None) == id(self):
+            yield
+            return
+        previous_owner = getattr(local, "owner", None)
+        previous_connection = getattr(local, "connection", None)
+        previous_failure = getattr(local, "failure", None)
+        previous_depth = getattr(local, "transaction_depth", 0)
+        with self._connect() as connection:
+            local.owner = id(self)
+            local.connection = connection
+            local.failure = None
+            local.transaction_depth = 0
+            try:
+                yield
+            finally:
+                failure = local.failure
+                local.owner = previous_owner
+                local.connection = previous_connection
+                local.failure = previous_failure
+                local.transaction_depth = previous_depth
+                if failure is not None:
+                    # A domain method may catch a failed read. A broken scoped
+                    # connection must still fail closed and reach store recovery.
+                    raise failure
+
+    @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        local = self._connection_scope_local
+        if getattr(local, "owner", None) == id(self):
+            if local.failure is not None:
+                raise local.failure
+            depth = local.transaction_depth
+            local.transaction_depth += 1
+            try:
+                transaction = self._connection_transaction(local.connection) if depth == 0 else self._connect_once()
+                with transaction as connection:
+                    yield connection
+            except sqlite3.DatabaseError as error:
+                if self._is_fatal_sqlite_error(error):
+                    local.failure = error
+                raise
+            finally:
+                local.transaction_depth -= 1
+            return
         if self._current_thread_owns_storage_recovery():
             with self._connect_once() as connection:
                 yield connection
@@ -570,6 +623,34 @@ class StoreConnectionSchemaMixin:
                     "Guard store slow transaction (%.0fms); consider indexing hot query paths.",
                     elapsed_ms,
                 )
+        store_review_event_outbox_schema.notify_review_event_wake(self.path, outbox_generation)
+        if notification is not None:
+            self._publish_policy_integrity_state_notification(notification)
+
+    @contextmanager
+    def _connection_transaction(self, connection: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+        profiler = self._sqlite_profiler()
+        started = time.monotonic()
+        initial_changes = connection.total_changes
+        notification: dict[str, object] | None = None
+        try:
+            yield connection
+            store_review_event_outbox_schema.finalize_review_event_payload_hashes(connection)
+            outbox_generation = store_review_event_outbox_schema.commit_review_event_transaction(
+                connection, initial_changes, profiler.record_commit
+            )
+            notification = self._take_policy_integrity_state_notification(connection)
+        except BaseException as error:
+            if isinstance(error, sqlite3.OperationalError) and sqlite_error_is_busy_locked(error):
+                profiler.record_busy_locked()
+            # A failed method must not leave writes or a read snapshot for the
+            # next method sharing this connection. Earlier commits stay durable.
+            with suppress(sqlite3.DatabaseError):
+                connection.rollback()
+            self._take_policy_integrity_state_notification(connection)
+            raise
+        finally:
+            profiler.record_transaction((time.monotonic() - started) * 1000)
         store_review_event_outbox_schema.notify_review_event_wake(self.path, outbox_generation)
         if notification is not None:
             self._publish_policy_integrity_state_notification(notification)

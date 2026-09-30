@@ -469,6 +469,28 @@ def evaluate_tool_call(
     claim_saved_approval: bool = True,
     fresh_authority_provider: (Callable[[], tuple[GuardConfig, GuardArtifact, str, object] | None] | None) = None,
 ) -> ToolCallDecision:
+    with store.connection_scope():
+        return _evaluate_tool_call(
+            store=store,
+            config=config,
+            artifact=artifact,
+            artifact_hash=artifact_hash,
+            arguments=arguments,
+            claim_saved_approval=claim_saved_approval,
+            fresh_authority_provider=fresh_authority_provider,
+        )
+
+
+def _evaluate_tool_call(
+    *,
+    store: GuardStore,
+    config: GuardConfig,
+    artifact: GuardArtifact,
+    artifact_hash: str,
+    arguments: object,
+    claim_saved_approval: bool = True,
+    fresh_authority_provider: (Callable[[], tuple[GuardConfig, GuardArtifact, str, object] | None] | None) = None,
+) -> ToolCallDecision:
     current = _evaluate_current_tool_call(
         config=config,
         artifact=artifact,

@@ -118,9 +118,11 @@ def verify_installed_lock(prefix: Path, lock_path: Path) -> None:
         if path.is_absolute() or ".." in path.parts or path.parts[0] != "node_modules":
             fail(f"invalid installed package path: {name}")
         root = prefix / path
-        # Platform-specific optional packages can legitimately be absent.
         if not (root / "package.json").is_file():
-            continue
+            # Platform-specific optional packages can legitimately be absent.
+            if entry.get("optional") or entry.get("devOptional"):
+                continue
+            fail(f"locked dependency is not installed: {name}")
         if package_json(root).get("version") != entry.get("version"):
             fail(f"installed dependency differs from package lock: {name}")
 

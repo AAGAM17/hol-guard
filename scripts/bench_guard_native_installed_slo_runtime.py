@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,11 +32,24 @@ def _clear_proof_overrides() -> None:
     _require(not proof_environment_violations(), "native/test override remained in proof environment")
 
 
-def _readiness_samples(runtime: Path, count: int) -> list[float]:
+def _readiness_samples(
+    runtime: Path,
+    count: int,
+    *,
+    progress_submit: Callable[[str], None] | None = None,
+    progress_attempt: Callable[[str], None] | None = None,
+    progress_complete: Callable[[str], None] | None = None,
+) -> list[float]:
     values: list[float] = []
     for _ in range(count):
+        if progress_submit is not None:
+            progress_submit("readiness")
+        if progress_attempt is not None:
+            progress_attempt("readiness")
         with AdapterSession(runtime) as session:
             values.append(session.readiness_ms)
+        if progress_complete is not None:
+            progress_complete("readiness")
     return values
 
 

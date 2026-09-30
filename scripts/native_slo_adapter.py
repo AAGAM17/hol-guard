@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codex_plugin_scanner.guard.daemon.hook_process_capacity import process_tree_rss_bytes
-from scripts.native_slo_contract import SAFE_ROUTE_NAMES
+from scripts.native_slo_contract import (
+    SAFE_EVENT_NAMES,
+    SAFE_HARNESS_NAMES,
+    SAFE_INSTALLED_ROUTE_LABELS,
+    SAFE_ROUTE_NAMES,
+)
 
 _MAX_CASES = 2_048
 _SIZE_BYTES = {"1k": 1 * 1024, "250k": 250 * 1024, "1m": 1 * 1024 * 1024, "5m": 5 * 1024 * 1024}
@@ -149,12 +154,24 @@ def route_matrix() -> tuple[tuple[str, str], ...]:
     if not isinstance(routes, dict):
         raise RuntimeError("native_installed_slo_failed: harness route contract missing")
     selected: list[tuple[str, str]] = []
-    for harness, route in sorted(routes.items()):
+    for harness in sorted(routes, key=lambda value: str(value)):
+        route = routes[harness]
         if not isinstance(harness, str) or not isinstance(route, dict):
+            continue
+        installed_values = {
+            value for value in route.values() if isinstance(value, str) and value.startswith("installed_")
+        }
+        if harness not in SAFE_HARNESS_NAMES:
+            if installed_values:
+                raise RuntimeError("native_installed_slo_failed: harness route contract used an unknown harness")
             continue
         for event, key in (("PreToolUse", "pre_tool_use"), ("PostToolUse", "post_tool_use")):
             route_name = route.get(key)
             if isinstance(route_name, str) and route_name.startswith("installed_"):
+                if route_name not in SAFE_INSTALLED_ROUTE_LABELS:
+                    raise RuntimeError("native_installed_slo_failed: harness route contract used an unknown route")
+                if event not in SAFE_EVENT_NAMES:
+                    raise RuntimeError("native_installed_slo_failed: harness route contract used an unknown event")
                 selected.append((harness, event))
     if not selected:
         raise RuntimeError("native_installed_slo_failed: installed route corpus is empty")

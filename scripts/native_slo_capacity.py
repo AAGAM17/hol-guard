@@ -6,8 +6,10 @@ import json
 import sys
 import threading
 from collections import Counter
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
+from typing import TypedDict
 
 from scripts.bench_guard_native_installed_slo_runtime import _require
 from scripts.native_slo_adapter import Observation, process_rss_bytes, route_counts
@@ -34,9 +36,48 @@ class CapacityMeasurements:
     rss_peak: int
 
 
+ObserveCallback = Callable[[str, str, str, str], Observation]
+ProgressCountCallback = Callable[[str, int], None]
+
+
+class _WaveProgressKwargs(TypedDict, total=False):
+    on_submitted: ProgressCountCallback
+    on_cancelled: ProgressCountCallback
+
+
+def _wave_progress_kwargs(
+    on_submitted: ProgressCountCallback | None,
+    on_cancelled: ProgressCountCallback | None,
+) -> _WaveProgressKwargs:
+    """Keep the private wave helper API compatible when progress is unused."""
+
+    result = _WaveProgressKwargs()
+    if on_submitted is not None:
+        result["on_submitted"] = on_submitted
+    if on_cancelled is not None:
+        result["on_cancelled"] = on_cancelled
+    return result
+
+
 def _load_executor_worker(barrier: threading.Barrier) -> int:
     barrier.wait()
     return threading.get_ident()
+
+
+def _is_transport_failure(error: BaseException) -> bool:
+    """Keep transport failures on the incomplete-run path."""
+
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(seen) < 8:
+        seen.add(id(current))
+        if isinstance(current, (TimeoutError, OSError)) or current.__class__.__name__ in {
+            "HTTPException",
+            "TimeoutExpired",
+        }:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _prime_load_executor(executor: ThreadPoolExecutor, concurrency: int) -> int:
@@ -60,25 +101,40 @@ def _run_concurrent(
     routes: tuple[tuple[str, str], ...],
     concurrency: int,
     executor: ThreadPoolExecutor,
+    *,
+    observer: ObserveCallback | None = None,
+    stage: str = "concurrent",
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
 ) -> tuple[list[Observation], int]:
     selected = tuple(routes[index % len(routes)] for index in range(concurrency))
     observations: list[Observation] = []
     errors = 0
     _require(0 < concurrency <= _MAX_CONCURRENCY, "concurrency exceeds bounded benchmark limit")
-    futures = [executor.submit(session.observe, harness, event, "1k") for harness, event in selected]
+    def observe(harness: str, event: str) -> Observation:
+        if observer is None:
+            return session.observe(harness, event, "1k")
+        return observer(harness, event, "1k", stage)
+
+    futures = [executor.submit(observe, harness, event) for harness, event in selected]
+    if on_submitted is not None:
+        on_submitted(stage, len(futures))
     _, unfinished = wait(futures, timeout=_CONCURRENT_WAVE_TIMEOUT_SECONDS)
     if unfinished:
         # Every worker is prestarted and AdapterSession transport calls have a
         # five-second I/O bound. Fail closed without blocking executor teardown
         # if a request ever escapes that transport contract.
-        for future in unfinished:
-            future.cancel()
+        cancelled = sum(future.cancel() for future in unfinished)
+        if cancelled and on_cancelled is not None:
+            on_cancelled(stage, cancelled)
         executor.shutdown(wait=False, cancel_futures=True)
         raise RuntimeError("native_installed_slo_failed: concurrent capacity wave timed out")
     for future in futures:
         try:
             observations.append(future.result())
-        except Exception:
+        except Exception as error:
+            if _is_transport_failure(error):
+                raise
             errors += 1
     return observations, errors
 
@@ -117,8 +173,20 @@ def _prewarm_ready_hook_workers(
     routes: tuple[tuple[str, str], ...],
     concurrency: int,
     executor: ThreadPoolExecutor,
+    *,
+    observer: ObserveCallback | None = None,
 ) -> tuple[list[Observation], int]:
-    observations, errors = _run_concurrent(session, routes, concurrency, executor)
+    if observer is None:
+        observations, errors = _run_concurrent(session, routes, concurrency, executor)
+    else:
+        observations, errors = _run_concurrent(
+            session,
+            routes,
+            concurrency,
+            executor,
+            observer=observer,
+            stage="rss_baseline",
+        )
     _require_ready_hook_workers(session, concurrency)
     return observations, errors
 
@@ -217,11 +285,33 @@ def _measure_classified_wave(
     routes: tuple[tuple[str, str], ...],
     concurrency: int,
     executor: ThreadPoolExecutor,
+    *,
+    observer: ObserveCallback | None = None,
+    stage: str = "concurrent",
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
 ) -> tuple[list[Observation], int]:
     metrics = session.daemon._server.hook_worker.metrics
     before = route_counts(metrics.snapshot())
     overloads_before = session.native_overload_count()
-    observations, errors = _run_concurrent(session, routes, concurrency, executor)
+    if observer is None:
+        observations, errors = _run_concurrent(
+            session,
+            routes,
+            concurrency,
+            executor,
+            **_wave_progress_kwargs(on_submitted, on_cancelled),
+        )
+    else:
+        observations, errors = _run_concurrent(
+            session,
+            routes,
+            concurrency,
+            executor,
+            observer=observer,
+            stage=stage,
+            **_wave_progress_kwargs(on_submitted, on_cancelled),
+        )
     overloads_after = session.native_overload_count()
     after = route_counts(metrics.snapshot())
     original_routes = Counter(item.route for item in observations)
@@ -265,13 +355,35 @@ def _measure_c16(
     routes: tuple[tuple[str, str], ...],
     *,
     include_capacity: bool,
+    observer: ObserveCallback | None = None,
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
 ) -> tuple[list[Observation], int]:
     if not include_capacity:
         return [], 0
     executor = ThreadPoolExecutor(max_workers=_STEADY_STATE_CONCURRENCY)
     try:
         _prime_load_executor(executor, _STEADY_STATE_CONCURRENCY)
-        observations, errors = _measure_classified_wave(session, routes, _STEADY_STATE_CONCURRENCY, executor)
+        if observer is None:
+            observations, errors = _measure_classified_wave(
+                session,
+                routes,
+                _STEADY_STATE_CONCURRENCY,
+                executor,
+                on_submitted=on_submitted,
+                on_cancelled=on_cancelled,
+            )
+        else:
+            observations, errors = _measure_classified_wave(
+                session,
+                routes,
+                _STEADY_STATE_CONCURRENCY,
+                executor,
+                observer=observer,
+                stage="concurrent_16",
+                on_submitted=on_submitted,
+                on_cancelled=on_cancelled,
+            )
     except BaseException:
         executor.shutdown(wait=False, cancel_futures=True)
         raise
@@ -284,6 +396,12 @@ def _prewarm_capacity_workers(
     session: AdapterSession,
     routes: tuple[tuple[str, str], ...],
     ready_workers: int,
+    *,
+    observer: ObserveCallback | None = None,
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
+    on_deferred_complete: ProgressCountCallback | None = None,
+    on_deferred_failure: ProgressCountCallback | None = None,
 ) -> None:
     """Initialize the measured native client concurrency before capacity timing."""
 
@@ -293,15 +411,44 @@ def _prewarm_capacity_workers(
     executor = ThreadPoolExecutor(max_workers=_STEADY_STATE_CONCURRENCY)
     try:
         _prime_load_executor(executor, _STEADY_STATE_CONCURRENCY)
-        observations, errors = _run_concurrent(session, routes, _STEADY_STATE_CONCURRENCY, executor)
-        _require(
-            errors == 0 and len(observations) == _STEADY_STATE_CONCURRENCY,
-            "native client capacity prewarm did not complete every request",
-        )
-        _require(
-            all(item.allowed and item.route == "native_resident" and not item.overloaded for item in observations),
-            "native client capacity prewarm did not complete native review",
-        )
+        if observer is None:
+            observations, errors = _run_concurrent(
+                session,
+                routes,
+                _STEADY_STATE_CONCURRENCY,
+                executor,
+                **_wave_progress_kwargs(on_submitted, on_cancelled),
+            )
+        else:
+            observations, errors = _run_concurrent(
+                session,
+                routes,
+                _STEADY_STATE_CONCURRENCY,
+                executor,
+                observer=observer,
+                stage="capacity_prewarm",
+                **_wave_progress_kwargs(on_submitted, on_cancelled),
+            )
+        try:
+            _require(
+                errors == 0 and len(observations) == _STEADY_STATE_CONCURRENCY,
+                "native client capacity prewarm did not complete every request",
+            )
+            _require(
+                all(item.allowed and item.route == "native_resident" and not item.overloaded for item in observations),
+                "native client capacity prewarm did not complete native review",
+            )
+        except BaseException:
+            # Successful deferred responses are still observed if another
+            # request failed at transport.  Only semantically invalid
+            # responses become stage failures.
+            if on_deferred_failure is not None and errors == 0 and observations:
+                on_deferred_failure("capacity_prewarm", len(observations))
+            elif on_deferred_complete is not None and observations:
+                on_deferred_complete("capacity_prewarm", len(observations))
+            raise
+        if on_deferred_complete is not None and observations:
+            on_deferred_complete("capacity_prewarm", len(observations))
         _require_ready_hook_workers(session, ready_workers)
         print(
             json.dumps(
@@ -332,6 +479,9 @@ def _measure_rss_and_c64(
     ready_workers: int,
     *,
     include_capacity: bool,
+    observer: ObserveCallback | None = None,
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
 ) -> tuple[int, int, list[Observation], int]:
     load_concurrency = _MAX_CONCURRENCY if include_capacity else ready_workers
     observations: list[Observation] = []
@@ -339,14 +489,45 @@ def _measure_rss_and_c64(
     executor = ThreadPoolExecutor(max_workers=load_concurrency)
     try:
         _prime_load_executor(executor, load_concurrency)
+        if observer is None:
+            def warmup() -> tuple[list[Observation], int]:
+                return _prewarm_ready_hook_workers(session, routes, ready_workers, executor)
+        else:
+            def warmup() -> tuple[list[Observation], int]:
+                return _prewarm_ready_hook_workers(
+                    session,
+                    routes,
+                    ready_workers,
+                    executor,
+                    observer=observer,
+                )
         rss_baseline = _steady_state_rss_baseline(
-            lambda: _prewarm_ready_hook_workers(session, routes, ready_workers, executor),
+            warmup,
             sample_capacity=session.daemon._server.hook_process_runner.stats,
             expected_warmup_count=ready_workers,
         )
         rss_peak = rss_baseline
         if include_capacity:
-            observations, errors = _measure_classified_wave(session, routes, _MAX_CONCURRENCY, executor)
+            if observer is None:
+                observations, errors = _measure_classified_wave(
+                    session,
+                    routes,
+                    _MAX_CONCURRENCY,
+                    executor,
+                    on_submitted=on_submitted,
+                    on_cancelled=on_cancelled,
+                )
+            else:
+                observations, errors = _measure_classified_wave(
+                    session,
+                    routes,
+                    _MAX_CONCURRENCY,
+                    executor,
+                    observer=observer,
+                    stage="concurrent_64",
+                    on_submitted=on_submitted,
+                    on_cancelled=on_cancelled,
+                )
         rss_peak = max(rss_peak, process_rss_bytes())
     except BaseException:
         executor.shutdown(wait=False, cancel_futures=True)
@@ -361,6 +542,11 @@ def measure_capacity(
     routes: tuple[tuple[str, str], ...],
     *,
     include_capacity: bool,
+    observer: ObserveCallback | None = None,
+    on_submitted: ProgressCountCallback | None = None,
+    on_cancelled: ProgressCountCallback | None = None,
+    on_deferred_complete: ProgressCountCallback | None = None,
+    on_deferred_failure: ProgressCountCallback | None = None,
 ) -> CapacityMeasurements:
     ready_workers = _stabilize_ready_hook_workers(session)
     if include_capacity:
@@ -368,14 +554,61 @@ def measure_capacity(
         # so initialize them before measuring steady-state capacity.
         # Cold and recovery latency remain separate measurements; the 16-client sample still precedes
         # the larger 64-client overload wave.
-        _prewarm_capacity_workers(session, routes, ready_workers)
-    concurrent_16, errors_16 = _measure_c16(session, routes, include_capacity=include_capacity)
-    rss_baseline, rss_peak, concurrent_64, errors_64 = _measure_rss_and_c64(
-        session,
-        routes,
-        ready_workers,
-        include_capacity=include_capacity,
-    )
+        if observer is None:
+            _prewarm_capacity_workers(
+                session,
+                routes,
+                ready_workers,
+                on_submitted=on_submitted,
+                on_cancelled=on_cancelled,
+            )
+        else:
+            _prewarm_capacity_workers(
+                session,
+                routes,
+                ready_workers,
+                observer=observer,
+                on_submitted=on_submitted,
+                on_cancelled=on_cancelled,
+                on_deferred_complete=on_deferred_complete,
+                on_deferred_failure=on_deferred_failure,
+            )
+    if observer is None:
+        concurrent_16, errors_16 = _measure_c16(
+            session,
+            routes,
+            include_capacity=include_capacity,
+            on_submitted=on_submitted,
+            on_cancelled=on_cancelled,
+        )
+    else:
+        concurrent_16, errors_16 = _measure_c16(
+            session,
+            routes,
+            include_capacity=include_capacity,
+            observer=observer,
+            on_submitted=on_submitted,
+            on_cancelled=on_cancelled,
+        )
+    if observer is None:
+        rss_baseline, rss_peak, concurrent_64, errors_64 = _measure_rss_and_c64(
+            session,
+            routes,
+            ready_workers,
+            include_capacity=include_capacity,
+            on_submitted=on_submitted,
+            on_cancelled=on_cancelled,
+        )
+    else:
+        rss_baseline, rss_peak, concurrent_64, errors_64 = _measure_rss_and_c64(
+            session,
+            routes,
+            ready_workers,
+            include_capacity=include_capacity,
+            observer=observer,
+            on_submitted=on_submitted,
+            on_cancelled=on_cancelled,
+        )
     return CapacityMeasurements(
         concurrent_16=concurrent_16,
         concurrent_64=concurrent_64,

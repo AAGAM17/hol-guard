@@ -5727,9 +5727,11 @@ function SkillPreflightPreview({ plan }) {
 const CUSTOM_EXTENSION_PREVIEW_COUNT = 8;
 const CUSTOM_EXTENSION_RENDER_LIMIT = 100;
 function CustomExtensionRow(props) {
+  const cliId = props.item.cli_id;
+  const onOpen = props.onOpen;
   const handleOpen = reactExports.useCallback(() => {
-    props.onOpen(props.item.cli_id);
-  }, [props]);
+    onOpen(cliId);
+  }, [cliId, onOpen]);
   const continuity = continuityCopy$1(props.item);
   const catalog = mcpCatalogCopy(props.item);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -5746,8 +5748,16 @@ function CustomExtensionRow(props) {
   );
 }
 function CustomExtensionEmptyState(props) {
-  const title = props.filteredOut ? "No custom extensions match these filters." : props.search ? "No custom extensions match this search." : "No custom extensions yet.";
-  const detail = props.filteredOut ? "Remove a filter or start over to see all custom extensions again." : props.search ? "No connectors or custom tools match this search." : "Add a tool you run yourself, or connect an MCP server. Guard also detects connectors from your host apps automatically.";
+  let title = "No custom extensions yet.";
+  let detail = "Add a tool you run yourself, or connect an MCP server. Guard also detects connectors from your host apps automatically.";
+  if (props.search) {
+    title = "No custom extensions match this search.";
+    detail = "No connectors or custom tools match this search.";
+  }
+  if (props.filteredOut) {
+    title = "No custom extensions match these filters.";
+    detail = "Remove a filter or start over to see all custom extensions again.";
+  }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
@@ -5840,18 +5850,13 @@ function CustomExtensionsSection(props) {
       ] }) : null,
       visibleReviewed.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx(CustomExtensionRow, { item, onOpen: props.onOpen }, item.cli_id)),
       added.length > visible.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center gap-3", children: [
-        showAll ? null : /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        showAll ? null : /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             type: "button",
             onClick: () => setShowAll(true),
             className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
-            children: [
-              "Show all ",
-              added.length,
-              " ",
-              unit
-            ]
+            children: added.length > CUSTOM_EXTENSION_RENDER_LIMIT ? `Show first ${CUSTOM_EXTENSION_RENDER_LIMIT}` : `Show all ${added.length} ${unit}`
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-brand-dark/70", children: [

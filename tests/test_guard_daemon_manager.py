@@ -1597,7 +1597,7 @@ def test_pipx_daemon_imports_shared_dependencies_without_running_startup_hooks(t
     monkeypatch.setattr(
         daemon_manager_module.sysconfig,
         "get_paths",
-        lambda: {"purelib": str(local_library), "platlib": str(local_library)},
+        lambda *_args, **_kwargs: {"purelib": str(local_library), "platlib": str(local_library)},
     )
     monkeypatch.syspath_prepend(str(ambient_library))
     import_paths = daemon_manager_module._trusted_daemon_import_paths()

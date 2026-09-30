@@ -484,6 +484,7 @@ type TraversalBudget = {
   deadlineAt?: number;
   nodes: number;
   exhausted: boolean;
+  maxNodes?: number;
 };
 type BoundedCodePointPrefix = { text: string; chars: number; complete: boolean };
 
@@ -507,7 +508,7 @@ function traversalBudgetReady(budget: TraversalBudget): boolean {
 function consumeTraversalNode(budget: TraversalBudget): boolean {
   if (!traversalBudgetReady(budget)) return false;
   budget.nodes += 1;
-  if (budget.nodes > GUARD_PREPROCESS_MAX_NODES) {
+  if (budget.nodes > (budget.maxNodes ?? GUARD_PREPROCESS_MAX_NODES)) {
     budget.exhausted = true;
     return false;
   }
@@ -890,8 +891,14 @@ function boundedJsonStringSize(value: string, budget: TraversalBudget): number |
   for (let index = 0; index < value.length; index += 1) {
     if ((index & 0x3ff) === 0 && !traversalBudgetReady(budget)) return null;
     const code = value.charCodeAt(index);
-    if (code === 0x22 || code === 0x5c || code < 0x20) {
-      size += code < 0x20 && ![8, 9, 10, 12, 13].includes(code) ? 6 : 2;
+    if (code === 0x22 || code === 0x5c) {
+      size += 2;
+    } else if (code < 0x20) {
+      if ([8, 9, 10, 12, 13].includes(code)) {
+        size += 2;
+      } else {
+        size += 6;
+      }
     } else if (code >= 0xd800 && code <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
       if (next >= 0xdc00 && next <= 0xdfff) {
@@ -908,6 +915,42 @@ function boundedJsonStringSize(value: string, budget: TraversalBudget): number |
     if (size > GUARD_MAX_REFERENCE_JSON_BYTES) return null;
   }
   return size;
+}
+
+function hasCallableSerializationHook(value: object): boolean {
+  try {
+    let owner: object | null = value;
+    while (owner !== null) {
+      const descriptor = Object.getOwnPropertyDescriptor(owner, 'toJSON');
+      if (descriptor) {
+        if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) return true;
+        if (typeof descriptor.value === 'function') return true;
+      }
+      owner = Object.getPrototypeOf(owner);
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+// The preflight proves only ordinary JSON-like data. Reflection of arbitrary
+// objects can execute proxy traps, so this does not claim universal detection
+// or boundedness for custom JavaScript objects.
+function safeEnumerableDataKeys(record: Record<string, unknown>): string[] | null {
+  try {
+    const prototype = Object.getPrototypeOf(record);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    if (hasCallableSerializationHook(record)) return null;
+    const keys = Object.keys(record);
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(record, key);
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return null;
+    }
+    return keys;
+  } catch {
+    return null;
+  }
 }
 
 function boundedJsonSize(
@@ -939,10 +982,21 @@ function boundedJsonSize(
   seen.add(objectValue);
   try {
     if (Array.isArray(value)) {
-      if (value.length > GUARD_MAX_REFERENCE_JSON_BYTES) return null;
+      if (Object.getPrototypeOf(value) !== Array.prototype || hasCallableSerializationHook(value)) return null;
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+      if (
+        !lengthDescriptor
+        || !Object.prototype.hasOwnProperty.call(lengthDescriptor, 'value')
+        || !Number.isSafeInteger(lengthDescriptor.value)
+        || lengthDescriptor.value > GUARD_MAX_REFERENCE_JSON_BYTES
+      ) return null;
+      const length = lengthDescriptor.value;
       let size = 2;
-      for (let index = 0; index < value.length; index += 1) {
-        const child = boundedJsonSize(value[index], budget, depth + 1, seen, true);
+      for (let index = 0; index < length; index += 1) {
+        if (!traversalBudgetReady(budget)) return null;
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return null;
+        const child = boundedJsonSize(descriptor.value, budget, depth + 1, seen, true);
         if (child === null) return null;
         if (index > 0) size += 1;
         size += child;
@@ -951,18 +1005,12 @@ function boundedJsonSize(
       return size;
     }
     const record = value as Record<string, unknown>;
-    try {
-      if (typeof record.toJSON === 'function') return null;
-    } catch {
-      return null;
-    }
+    const keys = safeEnumerableDataKeys(record);
+    if (keys === null) return null;
     let size = 2;
-    let keyCount = 0;
     let included = 0;
-    for (const key in record) {
-      if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
-      if (keyCount >= GUARD_OBJECT_KEY_LIMIT || !traversalBudgetReady(budget)) return null;
-      keyCount += 1;
+    for (const key of keys) {
+      if (!traversalBudgetReady(budget)) return null;
       const child = boundedJsonSize(record[key], budget, depth + 1, seen, false);
       if (child === null) return null;
       if (child === 0) continue;
@@ -983,6 +1031,9 @@ function boundedJsonSize(
 
 function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlineAt?: number): boolean {
   const budget = createTraversalBudget(deadlineAt);
+  // Shape traversal may exceed the ordinary excerpt budget, but never the
+  // same native reference byte budget used by the final serialized payload.
+  budget.maxNodes = GUARD_MAX_REFERENCE_JSON_BYTES;
   try {
     const size = boundedJsonSize(payload, budget, 0, new WeakSet<object>(), false);
     return size !== null && size <= GUARD_MAX_REFERENCE_JSON_BYTES && traversalBudgetReady(budget);

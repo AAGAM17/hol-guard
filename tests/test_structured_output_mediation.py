@@ -11,6 +11,7 @@ from codex_plugin_scanner.guard.config import load_guard_config
 from codex_plugin_scanner.guard.daemon.hook_worker_native import HookWorkerNativeMixin
 from codex_plugin_scanner.guard.mdm.contracts import MDM_POLICY_SCHEMA_VERSION, ManagedPolicyState
 from codex_plugin_scanner.guard.mdm.policy import parse_managed_policy
+from codex_plugin_scanner.guard.runtime import structured_output_mediation
 from codex_plugin_scanner.guard.runtime.structured_output_mediation import (
     STRUCTURED_OUTPUT_SETTING_PATH,
     StructuredOutputBinding,
@@ -249,6 +250,14 @@ def test_canonical_structured_bytes_honors_absolute_deadline() -> None:
     )
 
 
+def test_canonical_structured_bytes_withholds_recursion_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_recursion(*_args: object, **_kwargs: object) -> bool:
+        raise RecursionError("fixture recursion")
+
+    monkeypatch.setattr(structured_output_mediation, "_has_safe_numbers", raise_recursion)
+    assert canonical_structured_content_bytes('{"value":1}') is None
+
+
 def test_clean_forward_requires_complete_recheck_and_exposes_only_ephemeral_digest() -> None:
     candidate = '{"employee":{"email":"","id":7},"note":"π"}'
     binding = _binding()
@@ -371,6 +380,12 @@ class _LoadErrorNativeRouteFixture(_NativeRouteFixture):
 
 
 @dataclass
+class _UnavailableNativeRouteFixture(_NativeRouteFixture):
+    def _review_raw_hook_native(self, **_kwargs: object) -> None:
+        return None
+
+
+@dataclass
 class _ObserveNativeRouteFixture(_NativeRouteFixture):
     def _review_raw_hook_native(self, **_kwargs: object) -> dict[str, object]:
         result = _native_result(observe_mode=True)
@@ -409,6 +424,42 @@ def test_native_route_attaches_adapter_field_after_receipt_without_mutating_nati
     assert mediation["action"] == "forward"
     assert response["decision"] == "allow"
     assert response["policy_action"] == "allow"
+
+
+@pytest.mark.parametrize("harness", ["pi", "omp"])
+def test_native_unavailable_required_structured_route_withholds_model_output(
+    tmp_path: Path,
+    harness: str,
+) -> None:
+    class _Metrics:
+        def record_route(self, _route: str) -> None:
+            return None
+
+    fixture = _UnavailableNativeRouteFixture(_config())
+    fixture.metrics = _Metrics()
+    fixture.activity_writer = None
+    response, native_used = fixture._review_native_edge_with_snapshot(
+        payload={"hook_event_name": "PostToolUse"},
+        harness=harness,
+        event_name="PostToolUse",
+        default_harness=harness,
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard",
+        workspace=tmp_path,
+        deadline=None,
+        policy_snapshot={"mode": "enforce"},
+        recording_only=False,
+    )
+
+    assert native_used is False
+    assert response["decision"] == "allow"
+    mediation = response["structured_content_mediation"]
+    assert isinstance(mediation, dict)
+    assert mediation == {
+        "schema": "guard-structured-content-mediation.v1",
+        "action": "withhold",
+        "reason_code": "structured_native_edge_unavailable",
+    }
 
 
 def test_native_route_load_error_attaches_fail_closed_mediation(tmp_path: Path) -> None:

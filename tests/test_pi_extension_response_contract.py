@@ -471,6 +471,12 @@ def _generated_preprocessing_helper(source: str) -> str:
             "function traversalBudgetReady(budget) {",
         "function consumeTraversalNode(budget: TraversalBudget): boolean {":
             "function consumeTraversalNode(budget) {",
+        "function hasCallableSerializationHook(value: object): boolean {":
+            "function hasCallableSerializationHook(value) {",
+        "function safeEnumerableDataKeys(record: Record<string, unknown>): string[] | null {":
+            "function safeEnumerableDataKeys(record) {",
+        "    let owner: object | null = value;":
+            "    let owner = value;",
         "function digestOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): OutputDigest {":  # noqa: E501
             "function digestOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
         "function boundValue(\n  value: unknown,\n  depth = 0,\n  seen = new WeakSet<object>(),\n  budget = createTraversalBudget(),\n): BoundedValue {":  # noqa: E501
@@ -529,6 +535,10 @@ def _generated_structured_helper(source: str) -> str:
             "  function hasUnpairedSurrogate(text) {",
         "  function canonicalize(item: unknown, depth: number): unknown {":
             "  function canonicalize(item, depth) {",
+            "  function canonicalStringify(item: unknown): string {":
+                "  function canonicalStringify(item) {",
+            "    const entries: string[] = [];":
+                "    const entries = [];",
         "  const deadlineExceeded = (): boolean => deadlineAt !== undefined && Date.now() >= deadlineAt;":
             "  const deadlineExceeded = () => deadlineAt !== undefined && Date.now() >= deadlineAt;",
         "  const checkDeadline = (): void => {": "  const checkDeadline = () => {",
@@ -1483,6 +1493,114 @@ console.log(JSON.stringify({ cases }));
 """,
     )
     assert result == {"cases": [{"exactBytes": True, "usesReference": True, "bounded": True}] * 3}
+
+
+def test_generated_payload_budget_accepts_ordinary_shape_below_reference_limit(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const toolInput = Object.fromEntries(Array.from({ length: 25 }, (_, index) => [`field_${index}`, index]));
+const payload = {
+  hook_event_name: "PostToolUse",
+  tool_input: toolInput,
+  tool_response: Array.from({ length: 85 }, () => ({ type: "text", text: "small" })),
+};
+const serialized = JSON.stringify(payload);
+console.log(JSON.stringify({
+  bounded: payloadWithinSerializedBudget(payload, Date.now() + 10_000),
+  belowReferenceLimit: Buffer.byteLength(serialized, "utf8") < GUARD_MAX_REFERENCE_JSON_BYTES,
+}));
+""",
+    )
+    assert result == {"bounded": True, "belowReferenceLimit": True}
+
+
+def test_generated_payload_budget_rejects_array_serialization_hook_without_invoking_it(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const content = [];
+let hookCalls = 0;
+content.toJSON = () => {
+  hookCalls += 1;
+  return "x".repeat(GUARD_MAX_REFERENCE_JSON_BYTES + 1);
+};
+const bounded = payloadWithinSerializedBudget({ tool_response: content }, Date.now() + 10_000);
+console.log(JSON.stringify({ bounded, hookCalls }));
+""",
+    )
+    assert result == {"bounded": False, "hookCalls": 0}
+
+
+def test_generated_payload_budget_rejects_inherited_array_serialization_hook(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const original = Object.getOwnPropertyDescriptor(Array.prototype, "toJSON");
+let hookCalls = 0;
+Object.defineProperty(Array.prototype, "toJSON", {
+  configurable: true,
+  value: () => {
+    hookCalls += 1;
+    return "x".repeat(GUARD_MAX_REFERENCE_JSON_BYTES + 1);
+  },
+});
+let bounded;
+try {
+  bounded = payloadWithinSerializedBudget({ tool_response: ["small"] }, Date.now() + 10_000);
+} finally {
+  if (original) Object.defineProperty(Array.prototype, "toJSON", original);
+  else delete Array.prototype.toJSON;
+}
+console.log(JSON.stringify({ bounded, hookCalls }));
+""",
+    )
+    assert result == {"bounded": False, "hookCalls": 0}
+
+
+def test_generated_payload_budget_rejects_sparse_array_inherited_accessor(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const original = Object.getOwnPropertyDescriptor(Array.prototype, "0");
+let getterCalls = 0;
+Object.defineProperty(Array.prototype, "0", {
+  configurable: true,
+  get: () => {
+    getterCalls += 1;
+    return "unexpected";
+  },
+});
+let bounded;
+try {
+  bounded = payloadWithinSerializedBudget({ tool_response: new Array(1) }, Date.now() + 10_000);
+} finally {
+  if (original) Object.defineProperty(Array.prototype, "0", original);
+  else delete Array.prototype["0"];
+}
+console.log(JSON.stringify({ bounded, getterCalls }));
+""",
+    )
+    assert result == {"bounded": False, "getterCalls": 0}
+
+
+def test_generated_payload_budget_rejects_custom_prototype_data(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const custom = Object.create({ inherited: true });
+custom.value = "small";
+console.log(JSON.stringify({
+  bounded: payloadWithinSerializedBudget({ tool_response: custom }, Date.now() + 10_000),
+}));
+""",
+    )
+    assert result == {"bounded": False}
 
 
 def test_generated_payload_budget_rejects_reference_overflow_before_stringify(tmp_path: Path) -> None:

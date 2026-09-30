@@ -350,7 +350,11 @@ def canonical_structured_content_bytes(value: object, *, deadline_monotonic: flo
         return None
     if deadline_exceeded():
         return None
-    if not isinstance(parsed, dict) or not _has_safe_numbers(parsed, deadline_monotonic=deadline_monotonic):
+    try:
+        safe_numbers = _has_safe_numbers(parsed, deadline_monotonic=deadline_monotonic)
+    except RecursionError:
+        return None
+    if not isinstance(parsed, dict) or not safe_numbers:
         return None
     try:
         canonical = json.dumps(parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -441,8 +445,6 @@ def mediate_native_post_tool_content(
         return None
     if cancelled:
         return _withhold("structured_review_cancelled", native_decision_id)
-    if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
-        return _withhold("structured_review_deadline_exceeded", native_decision_id)
     if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
         return _withhold("structured_review_deadline_exceeded", native_decision_id)
     candidate = canonical_structured_content_bytes(

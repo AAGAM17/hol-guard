@@ -16,6 +16,7 @@ from ..native_runtime import NativeRuntimeStatus, native_output_sha256
 from ..runtime.hook_output_text import extract_payload_output
 from ..runtime.hook_review_types import HookReviewRequest, HookReviewResponse
 from ..runtime.structured_output_mediation import (
+    StructuredContentMediation,
     StructuredOutputBinding,
     StructuredOutputResolution,
     canonical_harness_name,
@@ -254,6 +255,41 @@ class HookWorkerNativeMixin:
             # is enrolled.  Keep the model-visible destination fail-closed.
             return StructuredOutputResolution(None, True, "structured_managed_authority_unavailable")
 
+    def _apply_structured_unavailable_overlay(
+        self: _HookWorkerNativeHost,
+        response: dict[str, object],
+        *,
+        harness: str,
+        event_name: str,
+        guard_home: Path,
+        workspace: Path | None,
+        resolution: StructuredOutputResolution | None = None,
+    ) -> dict[str, object]:
+        """Withhold a managed structured destination when native proof is absent.
+
+        This is an adapter-only overlay. It does not change the native result,
+        receipt, or native availability floor. An intentionally unconfigured
+        structured destination keeps the existing availability response.
+        """
+
+        if event_name != "PostToolUse" or canonical_harness_name(harness) not in {"pi", "omp"}:
+            return response
+        resolved = resolution or self._structured_output_resolution(
+            guard_home=guard_home,
+            workspace=workspace,
+            harness=harness,
+        )
+        if not resolved.required:
+            return response
+        return {
+            **response,
+            "structured_content_mediation": StructuredContentMediation(
+                action="withhold",
+                reason_code="structured_native_edge_unavailable",
+                native_decision_id=None,
+            ).to_harness_json(),
+        }
+
     def _mode_surface_response(
         self: _HookWorkerNativeHost,
         harness: str,
@@ -409,30 +445,42 @@ class HookWorkerNativeMixin:
                 self.metrics.record_route("native_resident")
             return response
         except TimeoutError:
-            return _record_unavailable_native(
-                self,
-                payload,
+            return self._apply_structured_unavailable_overlay(
+                _record_unavailable_native(
+                    self,
+                    payload,
+                    harness=harness,
+                    event_name=event_name,
+                    reason_code="native_review_deadline_exceeded",
+                    workspace=workspace,
+                    home_dir=home_dir,
+                    guard_home=guard_home,
+                    recording_only=recording_only,
+                ),
                 harness=harness,
                 event_name=event_name,
-                reason_code="native_review_deadline_exceeded",
-                workspace=workspace,
-                home_dir=home_dir,
                 guard_home=guard_home,
-                recording_only=recording_only,
+                workspace=workspace,
             )
         except (OSError, NativePolicySnapshotError):
             if fenced is False:
                 raise
-            return _record_unavailable_native(
-                self,
-                payload,
+            return self._apply_structured_unavailable_overlay(
+                _record_unavailable_native(
+                    self,
+                    payload,
+                    harness=harness,
+                    event_name=event_name,
+                    reason_code="native_command_control_fence_unavailable",
+                    workspace=workspace,
+                    home_dir=home_dir,
+                    guard_home=guard_home,
+                    recording_only=recording_only,
+                ),
                 harness=harness,
                 event_name=event_name,
-                reason_code="native_command_control_fence_unavailable",
-                workspace=workspace,
-                home_dir=home_dir,
                 guard_home=guard_home,
-                recording_only=recording_only,
+                workspace=workspace,
             )
 
     def _review_native_edge_with_snapshot(
@@ -480,16 +528,23 @@ class HookWorkerNativeMixin:
                 "PreToolUse": "native_pre_tool_unavailable",
             }.get(event_name, "native_hook_event_unavailable")
             return (
-                _record_unavailable_native(
-                    self,
-                    payload,
+                self._apply_structured_unavailable_overlay(
+                    _record_unavailable_native(
+                        self,
+                        payload,
+                        harness=harness,
+                        event_name=event_name,
+                        reason_code=reason_code,
+                        workspace=workspace,
+                        home_dir=home_dir,
+                        guard_home=guard_home,
+                        recording_only=recording_only,
+                    ),
                     harness=harness,
                     event_name=event_name,
-                    reason_code=reason_code,
-                    workspace=workspace,
-                    home_dir=home_dir,
                     guard_home=guard_home,
-                    recording_only=recording_only,
+                    workspace=workspace,
+                    resolution=structured_resolution,
                 ),
                 False,
             )
@@ -498,16 +553,23 @@ class HookWorkerNativeMixin:
         native_result = edge["result"]
         if not isinstance(native_result, Mapping):
             return (
-                _record_unavailable_native(
-                    self,
-                    payload,
+                self._apply_structured_unavailable_overlay(
+                    _record_unavailable_native(
+                        self,
+                        payload,
+                        harness=harness,
+                        event_name=event_name,
+                        reason_code="native_hook_edge_invalid_response",
+                        workspace=workspace,
+                        home_dir=home_dir,
+                        guard_home=guard_home,
+                        recording_only=recording_only,
+                    ),
                     harness=harness,
                     event_name=event_name,
-                    reason_code="native_hook_edge_invalid_response",
-                    workspace=workspace,
-                    home_dir=home_dir,
                     guard_home=guard_home,
-                    recording_only=recording_only,
+                    workspace=workspace,
+                    resolution=structured_resolution,
                 ),
                 False,
             )

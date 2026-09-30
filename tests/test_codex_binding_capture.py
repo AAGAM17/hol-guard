@@ -378,6 +378,23 @@ def test_malformed_external_rows_are_invalid_without_normalizer_or_output_parser
     )
 
 
+def test_malformed_missing_id_row_is_invalid_after_full_shape_validation() -> None:
+    row = {
+        "schema": CAPTURE_SCHEMA,
+        "run_id": "run-1",
+        "route": "bridge_ingress",
+        "harness": "codex",
+        "event_name": "PreToolUse",
+        "tool_use_id_state": "missing",
+        "raw_payload_sha256": "z" * 64,
+        "forwarded_payload_sha256": "a" * 64,
+    }
+
+    result = join_binding_records([row])
+    assert result["status"] == "invalid"
+    assert result["issues"] == [{"status": "invalid", "reason": "record_shape"}]
+
+
 def test_record_and_byte_bounds_reject_without_decision_side_effect(tmp_path: Path) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home, max_records=1)

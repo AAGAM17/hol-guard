@@ -123,6 +123,7 @@ _PERSISTENCE_PATH_PREFIXES: Final = (
     "src/codex_plugin_scanner/guard/private_file_io.py",
     "src/codex_plugin_scanner/guard/local_dashboard_session.py",
     "src/codex_plugin_scanner/guard/guard_home_state.py",
+    "src/codex_plugin_scanner/guard/codex_binding_capture.py",
 )
 
 

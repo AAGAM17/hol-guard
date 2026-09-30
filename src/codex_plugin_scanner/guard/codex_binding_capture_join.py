@@ -85,7 +85,7 @@ def _validated_record(
         ):
             return None
     if state in {"missing", "unsupported"}:
-        return None if "tool_use_id" in value else (None, route)
+        return None if "tool_use_id" in value else (None, state)
     identifier = value.get("tool_use_id")
     if _tool_use_id({"tool_use_id": identifier}) is not identifier:
         return None
@@ -107,14 +107,11 @@ def valid_existing_records(raw: bytes, *, run_id: str) -> int | None:
     return len(lines)
 
 
-def _normalize_record(value: Mapping[str, object]) -> tuple[tuple[str, str, str, str], str] | None:
+def _normalize_record(value: Mapping[str, object]) -> tuple[tuple[str, str, str, str] | None, str] | None:
     normalized = _validated_record(value)
     if normalized is None:
         return None
-    key, route = normalized
-    if key is None:
-        return None
-    return key, route
+    return normalized
 
 
 def join_binding_records(records: Iterable[object]) -> dict[str, object]:
@@ -140,14 +137,13 @@ def join_binding_records(records: Iterable[object]) -> dict[str, object]:
             continue
         normalized = _normalize_record(record)
         if normalized is None:
-            record_state = record.get("tool_use_id_state")
-            if isinstance(record_state, str) and record_state in {"missing", "unsupported"}:
-                reason = "missing_tool_use_id" if record_state == "missing" else "unsupported_tool_use_id"
-                issues.append({"status": "unbound", "reason": reason})
-            else:
-                issues.append({"status": "invalid", "reason": "record_shape"})
+            issues.append({"status": "invalid", "reason": "record_shape"})
             continue
         key, route = normalized
+        if key is None:
+            reason = "missing_tool_use_id" if route == "missing" else "unsupported_tool_use_id"
+            issues.append({"status": "unbound", "reason": reason})
+            continue
         groups[key][route].append(record)
 
     joins: list[dict[str, object]] = []

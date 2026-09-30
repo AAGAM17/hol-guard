@@ -314,7 +314,12 @@ def _base_row(
     if bounded_event not in MANAGED_CODEX_HOOK_EVENTS:
         return None
     identifier = _tool_use_id(payload)
-    identifier_state = "missing" if identifier is _MISSING else "unsupported" if identifier is _INVALID else "present"
+    if identifier is _MISSING:
+        identifier_state = "missing"
+    elif identifier is _INVALID:
+        identifier_state = "unsupported"
+    else:
+        identifier_state = "present"
     row: dict[str, object] = {
         "schema": CAPTURE_SCHEMA,
         "run_id": config.run_id,

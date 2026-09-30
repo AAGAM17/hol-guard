@@ -17,6 +17,7 @@ from ..native_mode import native_mode_is_fail_safe_disabled
 from ..native_mode import (
     native_mode_requires_rust as _native_mode_requires_rust,
 )
+from ..native_policy_snapshot_acked import recording_only_from_acked_snapshot
 from ..store import GuardStore
 from .commands_support_interaction import _emit
 
@@ -73,6 +74,7 @@ def try_native_hook_authority(
             workspace=workspace,
             home_dir=home_dir,
             guard_home=guard_home,
+            recording_only=recording_only_from_acked_snapshot(store),
         )
     finally:
         if worker is not None:
@@ -168,6 +170,7 @@ def route_native_hook(
                 workspace=runtime_workspace,
                 home_dir=context.home_dir,
                 guard_home=context.guard_home,
+                recording_only=recording_only_from_acked_snapshot(store),
             )
         _emit("hook", native_result, getattr(args, "json", False))
         return 0
@@ -183,6 +186,7 @@ def route_native_hook(
                 workspace=runtime_workspace,
                 home_dir=context.home_dir,
                 guard_home=context.guard_home,
+                recording_only=recording_only_from_acked_snapshot(store),
             ),
             getattr(args, "json", False),
         )

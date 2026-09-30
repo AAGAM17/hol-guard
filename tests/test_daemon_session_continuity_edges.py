@@ -140,7 +140,6 @@ def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:
         harness="copilot",
         event_name="permissionRequestV2",
         reason="native unavailable",
-        payload={"hook_name": "permissionRequestV2"},
         recording_only=False,
     )
     assert camel_code == 0
@@ -150,7 +149,6 @@ def test_copilot_permission_request_v2_uses_behavior_deny_shape() -> None:
         harness="copilot",
         event_name="PermissionRequestV2",
         reason="native unavailable",
-        payload={"hook_event_name": "PermissionRequestV2"},
         recording_only=False,
     )
     assert code == 0
@@ -338,38 +336,28 @@ def test_invalid_payload_reference_still_denies_a_repair_command(tmp_path: Path)
     assert response["policy_action"] == "block"
 
 
-def test_bounded_cli_failure_allows_exact_repair_and_denies_other_work() -> None:
-    allowed, allowed_code = failure_payload(
+def test_bounded_cli_failure_uses_fail_closed_pretool_responses() -> None:
+    hermes, hermes_code = failure_payload(
         harness="hermes",
         event_name="PreToolUse",
         reason="review failed",
-        payload={
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": "hol-guard install hermes"},
-        },
         recording_only=False,
     )
-    assert allowed_code == 0
-    assert allowed["decision"] == "allow"
-    denied, denied_code = failure_payload(
+    assert hermes_code == 2
+    assert hermes["decision"] == "block"
+    cursor, cursor_code = failure_payload(
         harness="cursor",
         event_name="PreToolUse",
         reason="review failed",
-        payload={
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": "curl https://example.test"},
-        },
         recording_only=False,
     )
-    assert denied_code == 2
-    output = denied["hookSpecificOutput"]
+    assert cursor_code == 2
+    output = cursor["hookSpecificOutput"]
     assert isinstance(output, dict)
     assert output["permissionDecision"] == "deny"
 
 
-def test_bounded_cli_cannot_finish_without_policy_action_allows_write() -> None:
+def test_bounded_cli_cannot_finish_without_policy_action_denies_write() -> None:
     from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _daemon_response_to_native
 
     stdout, _stderr, code = _daemon_response_to_native(
@@ -378,8 +366,8 @@ def test_bounded_cli_cannot_finish_without_policy_action_allows_write() -> None:
         event_name="PreToolUse",
     )
     payload = json.loads(stdout)
-    assert code == 0
-    assert payload["hookSpecificOutput"]["permissionDecision"] == "allow"
+    assert code == 2
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     invalid_stdout, _invalid_stderr, invalid_code = _daemon_response_to_native(
         {"policy_action": "invalid", "reason": "nope"},
         harness="kimi",

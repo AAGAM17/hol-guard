@@ -115,6 +115,7 @@ class _HookWorkerMetrics(Protocol):
 
 
 if TYPE_CHECKING:
+    from ..config import GuardConfig
     from ..store import GuardStore
 
 
@@ -136,7 +137,7 @@ class _HookWorkerNativeHost(Protocol):
     _record_post_tool_activity: Callable[..., None]
     _record_native_decision_receipt: Callable[[object], Mapping[str, object] | None]
 
-    def _load_config(self, guard_home: Path, workspace: Path | None) -> object: ...
+    def _load_config(self, guard_home: Path, workspace: Path | None) -> GuardConfig: ...
 
     def _apply_structured_mediation(
         self,
@@ -161,25 +162,6 @@ class _HookWorkerNativeHost(Protocol):
         guard_home: Path,
         workspace: Path | None,
         resolution: StructuredOutputResolution | None = None,
-    ) -> dict[str, object]: ...
-
-    _mode_surface_response: Callable[..., dict[str, object] | None]
-    _review_pre_tool_http: Callable[..., dict[str, object]]
-
-    def _review_native_edge(
-        self,
-        *,
-        payload: dict[str, object],
-        harness: str,
-        event_name: str,
-        default_harness: str,
-        home_dir: Path,
-        guard_home: Path,
-        workspace: Path | None,
-        deadline: float | None,
-        claim_saved_approval: bool = True,
-        claimed_saved_allow_hash: str | None = None,
-        claimed_approval_request_id: str | None = None,
     ) -> dict[str, object]: ...
 
     def _structured_output_resolution(

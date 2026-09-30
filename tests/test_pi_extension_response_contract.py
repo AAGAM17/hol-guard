@@ -928,6 +928,25 @@ def test_generated_omp_tool_result_preserves_daemon_allow_without_hash(tmp_path:
     assert result["observe_mode"] is True
 
 
+def test_generated_tool_result_keeps_checked_excerpt_after_local_content_cap(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    content = [{"type": "text", "text": f"block-{index}"} for index in range(25)]
+    result = _run_generated_callback_payload(
+        source,
+        content,
+        {"decision": "allow", "notice": "excerpt"},
+    )
+
+    returned = result["result"]
+    assert isinstance(returned, dict)
+    assert returned.get("isError") is not True
+    returned_text = returned["content"][0]["text"]
+    assert isinstance(returned_text, str)
+    assert returned_text.startswith("block-0\n")
+    assert "block-23" in returned_text
+    assert "block-24" not in returned_text
+
+
 @pytest.mark.parametrize("harness", ["pi", "omp"])
 def test_generated_structured_receiver_requires_exact_clean_forward_bytes(
     tmp_path: Path,

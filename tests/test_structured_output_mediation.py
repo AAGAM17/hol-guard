@@ -298,7 +298,8 @@ def test_clean_forward_requires_complete_recheck_and_exposes_only_ephemeral_dige
 
 @pytest.mark.parametrize("error_type", [ValueError, OSError])
 def test_binding_recheck_failure_withholds_without_logging_callback_details(
-    error_type: type[Exception], caplog: pytest.LogCaptureFixture,
+    error_type: type[Exception],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     def fail_recheck() -> StructuredOutputBinding | None:
         raise error_type("untrusted callback detail")
@@ -626,3 +627,204 @@ def test_recording_only_unconfigured_route_keeps_existing_watch_behavior(tmp_pat
     assert native_used is True
     assert response["observe_mode"] is True
     assert "structured_content_mediation" not in response
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected_message"),
+    [
+        ("root_not_object", "must be an object"),
+        ("unknown_top_level", "unknown or missing keys"),
+        ("wrong_version", "version is unsupported"),
+        ("disabled", "must be enabled"),
+        ("empty_harnesses", "non-empty array"),
+        ("duplicate_harnesses", "must not contain duplicates"),
+        ("unsupported_harness", "harness is unsupported"),
+        ("wrong_event", "event is unsupported"),
+        ("wrong_destination", "destination role is unsupported"),
+        ("permissive_disposition", "must withhold"),
+        ("schema_extra", "schema has unknown or missing keys"),
+        ("empty_fields", "fields must be non-empty"),
+        ("field_extra", "field 0 has unknown or missing keys"),
+        ("field_bad_path", "field 0 path is invalid"),
+    ],
+)
+def test_managed_policy_parser_rejects_untrusted_authority_shapes(
+    variant: str,
+    expected_message: str,
+) -> None:
+    policy = _policy_value()
+    candidate: object = policy
+    if variant == "root_not_object":
+        candidate = []
+    elif variant == "unknown_top_level":
+        policy["unexpected"] = True
+    elif variant == "wrong_version":
+        policy["version"] = "other-policy.v1"
+    elif variant == "disabled":
+        policy["enabled"] = False
+    elif variant == "empty_harnesses":
+        policy["harnesses"] = []
+    elif variant == "duplicate_harnesses":
+        policy["harnesses"] = ["pi", "pi"]
+    elif variant == "unsupported_harness":
+        policy["harnesses"] = ["codex"]
+    elif variant == "wrong_event":
+        policy["event"] = "PreToolUse"
+    elif variant == "wrong_destination":
+        policy["destinationRole"] = "terminal_output"
+    elif variant == "permissive_disposition":
+        policy["onMatch"] = "allow"
+    elif variant == "schema_extra":
+        policy["schema"] = {"fields": policy["schema"]["fields"], "extra": True}
+    elif variant == "empty_fields":
+        policy["schema"] = {"fields": []}
+    elif variant == "field_extra":
+        field = dict(policy["schema"]["fields"][0])
+        field["extra"] = True
+        policy["schema"] = {"fields": [field]}
+    elif variant == "field_bad_path":
+        field = dict(policy["schema"]["fields"][0])
+        field["path"] = []
+        policy["schema"] = {"fields": [field]}
+    else:
+        raise AssertionError(variant)
+
+    with pytest.raises(ValueError, match=expected_message):
+        structured_output_mediation.parse_structured_output_policy(candidate)
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected_required", "expected_reason"),
+    [
+        ("unsupported_harness", False, None),
+        ("unknown_status", True, "structured_managed_authority_unavailable"),
+        ("absent_stale_hash", True, "structured_managed_authority_revoked"),
+        ("active_unlocked_without_setting", False, None),
+        ("invalid_policy_hash", True, "structured_managed_policy_invalid"),
+        ("non_mapping_settings", True, "structured_managed_policy_invalid"),
+        ("harness_not_enrolled", False, None),
+    ],
+)
+def test_managed_resolution_keeps_malformed_authority_fail_closed(
+    variant: str,
+    expected_required: bool,
+    expected_reason: str | None,
+) -> None:
+    config = _config()
+    harness = "pi"
+    if variant == "unsupported_harness":
+        harness = "codex"
+    elif variant == "unknown_status":
+        config.managed_policy_status = "future-status"
+    elif variant == "absent_stale_hash":
+        config = _config(status="absent", locked=())
+        config.managed_policy_hash = "a" * 64
+    elif variant == "active_unlocked_without_setting":
+        config = _config(locked=())
+        config.managed_policy.settings = {}
+    elif variant == "invalid_policy_hash":
+        config.managed_policy_hash = "not-a-policy-hash"
+    elif variant == "non_mapping_settings":
+        config.managed_policy.settings = []
+    elif variant == "harness_not_enrolled":
+        config.managed_policy.settings["data_control"]["structured_output"]["harnesses"] = ["pi"]
+        harness = "omp"
+    else:  # pragma: no cover - the parameter table is exhaustive
+        raise AssertionError(variant)
+
+    resolution = resolve_managed_structured_output_resolution(config, harness=harness)
+    assert resolution.binding is None
+    assert resolution.required is expected_required
+    assert resolution.reason_code == expected_reason
+
+
+def test_managed_resolution_rejects_binding_validation_disagreement(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        structured_output_mediation,
+        "resolve_managed_structured_output_binding",
+        lambda *_args, **_kwargs: None,
+    )
+    resolution = resolve_managed_structured_output_resolution(_config(), harness="pi")
+    assert resolution.binding is None
+    assert resolution.required is True
+    assert resolution.reason_code == "structured_managed_policy_invalid"
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        '{"value":1.5}',
+        '{"value":NaN}',
+        '{"value":[1]}',
+        '{"value":"' + chr(0xD800) + '"}',
+        '{"value":"' + ("x" * (64 * 1024)) + '"}',
+        '{"value":1,"value":2}',
+    ],
+)
+def test_canonical_structured_bytes_withholds_malformed_or_oversized_payload(candidate: str) -> None:
+    assert canonical_structured_content_bytes(candidate) is None
+
+
+@pytest.mark.parametrize(
+    ("harness", "event_name", "native_overrides", "binding", "required_reason"),
+    [
+        ("codex", "PostToolUse", {}, _binding("pi"), None),
+        ("pi", "PreToolUse", {}, _binding("pi"), None),
+        ("pi", "PostToolUse", {"observe_mode": True}, _binding("pi"), None),
+        ("pi", "PostToolUse", {}, None, None),
+        ("omp", "PostToolUse", {}, _binding("pi"), None),
+    ],
+)
+def test_mediation_early_exits_preserve_native_authority(
+    harness: str,
+    event_name: str,
+    native_overrides: dict[str, object],
+    binding: StructuredOutputBinding | None,
+    required_reason: str | None,
+) -> None:
+    native_result = _native_result(**native_overrides)
+    original_result = dict(native_result)
+    result = mediate_native_post_tool_content(
+        harness=harness,
+        event_name=event_name,
+        native_result=native_result,
+        validated_receipt=_receipt(),
+        structured_output_json='{"employee":{"email":"","id":7},"note":"x"}',
+        binding=binding,
+        required_reason_code=required_reason,
+    )
+    assert result is None
+    assert native_result == original_result
+
+
+@pytest.mark.parametrize(
+    ("native_overrides", "expected_reason", "cancelled", "recheck"),
+    [
+        ({"model_output_action": "review"}, "structured_content_unproved", False, "present"),
+        ({}, "structured_review_cancelled", True, "present"),
+        ({}, "structured_binding_recheck_missing", False, "missing"),
+    ],
+)
+def test_mediation_withholds_unproved_or_cancelled_content_without_native_rewrite(
+    native_overrides: dict[str, object],
+    expected_reason: str,
+    cancelled: bool,
+    recheck: str,
+) -> None:
+    native_result = _native_result(**native_overrides)
+    original_result = dict(native_result)
+    result = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=native_result,
+        validated_receipt=_receipt(),
+        structured_output_json='{"employee":{"email":"","id":7},"note":"x"}',
+        binding=_binding(),
+        cancelled=cancelled,
+        recheck_binding=(lambda: _binding()) if recheck == "present" else None,
+    )
+    assert result is not None
+    assert result.action == "withhold"
+    assert result.reason_code == expected_reason
+    assert result.content_sha256 is None
+    assert native_result == original_result

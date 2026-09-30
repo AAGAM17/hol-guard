@@ -50,6 +50,8 @@ pub struct NativeHookDecisionReceiptV1 {
     /// Omitted by legacy and isolated evaluation paths that have no trusted store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin_authentication: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prompt_risk_classes: Vec<super::NativePromptRiskClassV1>,
 }
 
 impl NativeHookDecisionReceiptV1 {

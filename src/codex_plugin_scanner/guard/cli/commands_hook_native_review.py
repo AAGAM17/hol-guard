@@ -1,14 +1,12 @@
 """Guard CLI runtime artifact hook review and queue flow."""
 
-# ruff: noqa: E402, F403, F405
+# ruff: noqa: F403, F405
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .commands_hook_compat_bootstrap import bootstrap_compatibility_module
-
-bootstrap_compatibility_module(globals())
+from .commands_support import *
 
 if TYPE_CHECKING:
     from ._commands_shared import _hook_command_text, _now
@@ -60,10 +58,10 @@ from ..daemon.client import GuardSurfaceDaemonClient, load_guard_surface_daemon_
 from ..models import GuardAction
 from ..retry_lineage import capture_retry_lineage
 from ._commands_shared import *
-from .commands_hook_runtime_state import (
-    RuntimeArtifactHookState,
-    record_runtime_artifact_hook_receipt,
-    set_runtime_artifact_hook_final_action,
+from .commands_hook_native_state import (
+    NativeArtifactHookState,
+    record_native_artifact_hook_receipt,
+    set_native_artifact_hook_final_action,
 )
 from .commands_parser_helpers import *
 from .commands_support_observe_queue import queue_observe_mode_request
@@ -79,7 +77,7 @@ _OBSERVE_EXECUTION_SOURCE_FIELDS = (
 )
 
 
-def _observe_mode_executable_action(state: RuntimeArtifactHookState) -> GuardAction:
+def _observe_mode_executable_action(state: NativeArtifactHookState) -> GuardAction:
     """Recompose sources that remain executable after observe-only gates are removed."""
 
     candidates: list[GuardAction] = ["allow"]
@@ -102,6 +100,7 @@ def _browser_wait_binding(
     policy_action: str,
     config: GuardConfig,
     payload: Mapping[str, object],
+    json_daemon_bridge: bool = False,
 ) -> tuple[dict[str, object], bool | None]:
     metadata = _codex_browser_wait_metadata(
         args=args,
@@ -109,6 +108,7 @@ def _browser_wait_binding(
         policy_action=policy_action,
         config=config,
         payload=payload,
+        json_daemon_bridge=json_daemon_bridge,
     )
     if metadata.get("codex_hook_waits_for_browser_approval") is not True:
         return metadata, False
@@ -118,7 +118,7 @@ def _browser_wait_binding(
 
 
 def _bind_review_state(
-    state: RuntimeArtifactHookState,
+    state: NativeArtifactHookState,
     *,
     action_envelope: GuardActionEnvelope | None,
     browser_approval_daemon_client: GuardSurfaceDaemonClient | None,
@@ -163,8 +163,8 @@ def _attach_cursor_approval_request_ids(
         )
 
 
-def _review_runtime_artifact_hook(
-    state: RuntimeArtifactHookState,
+def review_native_artifact_hook(
+    state: NativeArtifactHookState,
     args: argparse.Namespace,
     *,
     config: GuardConfig,
@@ -234,7 +234,7 @@ def _review_runtime_artifact_hook(
                 scanner_evidence=scanner_evidence_payload,
                 store=store,
             )
-            set_runtime_artifact_hook_final_action(
+            set_native_artifact_hook_final_action(
                 state,
                 _observe_mode_executable_action(state),
                 observed_policy_action=observed_policy_action,
@@ -265,7 +265,7 @@ def _review_runtime_artifact_hook(
                 artifact_hash=runtime_artifact_hash,
             )
         if _should_emit_copilot_hook_response(args):
-            record_runtime_artifact_hook_receipt(state, store)
+            record_native_artifact_hook_receipt(state, store)
             _record_harness_usage_for_hook(
                 store=store,
                 action_envelope=action_envelope,
@@ -282,7 +282,7 @@ def _review_runtime_artifact_hook(
                 output_stream=output_stream,
             )
             return 0
-        if _should_emit_prequeue_native_hook_response(args, output_stream=output_stream):
+        if _should_emit_prequeue_native_hook_response(args, output_stream=output_stream, event_name=event_name):
             if _should_emit_claude_native_pretooluse_notice(
                 args,
                 event_name=event_name,
@@ -308,7 +308,7 @@ def _review_runtime_artifact_hook(
                 additional_context=additional_context,
                 output_stream=output_stream,
             )
-            record_runtime_artifact_hook_receipt(state, store)
+            record_native_artifact_hook_receipt(state, store)
             _record_harness_usage_for_hook(
                 store=store,
                 action_envelope=action_envelope,
@@ -349,12 +349,17 @@ def _review_runtime_artifact_hook(
                     }
                 ]
             }
+            try:
+                daemon_client: GuardSurfaceDaemonClient | None = load_guard_surface_daemon_client(guard_home)
+            except RuntimeError:
+                daemon_client = None
             browser_wait_metadata, browser_approval_wait_bound = _browser_wait_binding(
                 args=args,
                 event_name=event_name,
                 policy_action=policy_action,
                 config=config,
                 payload=payload_map,
+                json_daemon_bridge=daemon_client is not None,
             )
             hook_metadata: dict[str, object] = {
                 "tool_name": str(payload.get("tool_name", "")),
@@ -378,7 +383,8 @@ def _review_runtime_artifact_hook(
             if retry_lineage is not None:
                 hook_metadata["retry_lineage"] = retry_lineage
             try:
-                daemon_client = load_guard_surface_daemon_client(guard_home)
+                if daemon_client is None:
+                    raise RuntimeError("guard surface daemon client unavailable")
                 session = daemon_client.start_session(
                     harness=args.harness,
                     surface="harness-adapter",
@@ -472,5 +478,5 @@ def _review_runtime_artifact_hook(
 
 
 __all__ = [
-    "_review_runtime_artifact_hook",
+    "review_native_artifact_hook",
 ]

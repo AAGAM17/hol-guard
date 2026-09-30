@@ -358,8 +358,8 @@ fn evaluate_validated_envelope(
         return Err("native_hook_encrypted_payload_unsupported".to_owned());
     }
     let (result, mut receipt) = match event_name.as_str() {
-        "PreToolUse" => {
-            let native = guard_command::pretool::evaluate_pre_tool_envelope_with_source(
+        "PreToolUse" | "UserPromptSubmit" => {
+            let native = guard_command::pretool::evaluate_pre_tool_envelope_with_context(
                 &harness,
                 &event_name,
                 &envelope.raw_payload,

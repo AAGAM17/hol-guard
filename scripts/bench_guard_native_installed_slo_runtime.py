@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.metadata
+import platform
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,15 +34,52 @@ def _clear_proof_overrides() -> None:
     _require(not proof_environment_violations(), "native/test override remained in proof environment")
 
 
-def _readiness_samples(runtime: Path, count: int) -> list[float]:
+def runtime_environment_summary() -> dict[str, object]:
+    try:
+        package_version = importlib.metadata.version("hol-guard")
+    except importlib.metadata.PackageNotFoundError:
+        package_version = "unknown"
+    return {
+        "mode": None,
+        "target": None,
+        "runtime_version": None,
+        "protocol_version": None,
+        "platform_tag": None,
+        "runtime_sha256": None,
+        "runtime_size_bytes": None,
+        "build_sha": None,
+        "rule_digest": None,
+        "package_version": package_version,
+        "host_os": platform.system(),
+        "host_machine": platform.machine(),
+        "python_implementation": sys.implementation.name,
+        "python_version": platform.python_version(),
+    }
+
+
+def _readiness_samples(
+    runtime: Path,
+    count: int,
+    *,
+    progress_submit: Callable[[str], None] | None = None,
+    progress_attempt: Callable[[str], None] | None = None,
+    progress_complete: Callable[[str], None] | None = None,
+) -> list[float]:
     values: list[float] = []
     for _ in range(count):
+        if progress_submit is not None:
+            progress_submit("readiness")
+        if progress_attempt is not None:
+            progress_attempt("readiness")
         with AdapterSession(runtime) as session:
             values.append(session.readiness_ms)
+        if progress_complete is not None:
+            progress_complete("readiness")
     return values
 
 
 def _runtime_summary(runtime: Path) -> dict[str, object]:
+    environment = runtime_environment_summary()
     status = native_runtime_status()
     _require(native_mode() == "auto", "native runtime is not using the default auto mode")
     _require(status.available and status.compatible, "native runtime unavailable")
@@ -51,15 +91,23 @@ def _runtime_summary(runtime: Path) -> dict[str, object]:
     capabilities = status.capabilities
     if capabilities is None:
         raise RuntimeError("native_installed_slo_failed: native capabilities unavailable")
+    platform_tag = getattr(status, "platform_tag", None)
+    _require(isinstance(platform_tag, str) and bool(platform_tag.strip()), "native runtime platform tag unavailable")
     package_path = Path(codex_plugin_scanner.__file__).resolve()
     source_package = (_REPO_ROOT / "src" / "codex_plugin_scanner").resolve()
     package_origin = "source_tree" if package_path.is_relative_to(source_package) else "installed"
     _require(package_origin == "installed", "benchmark imported the source tree")
     _require(hook_fast_path_enabled(), "native hook fast path is disabled")
     return {
+        **environment,
         "mode": status.mode,
         "target": capabilities.target,
         "runtime_version": capabilities.runtime_version,
         "protocol_version": capabilities.protocol_version,
         "package_origin": package_origin,
+        "platform_tag": platform_tag,
+        "runtime_sha256": identity.sha256,
+        "runtime_size_bytes": identity.size,
+        "build_sha": capabilities.build_sha,
+        "rule_digest": capabilities.rule_digest,
     }

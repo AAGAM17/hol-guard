@@ -71,6 +71,70 @@ _SENSITIVE_VALUE_RE: Final = re.compile(
     re.IGNORECASE,
 )
 SAFE_ROUTE_NAMES: Final = frozenset({"native_resident", "native_oneshot", "native_fail_safe", "python_semantic"})
+# These labels are part of the bounded diagnostic contract.  They are kept
+# explicit so a malformed or future caller supplied value cannot become a
+# persisted report identifier merely because it fits the length limit.
+SAFE_HARNESS_NAMES: Final = frozenset(
+    {
+        "antigravity",
+        "claude-code",
+        "cline",
+        "codex",
+        "copilot",
+        "cursor",
+        "devin",
+        "gemini",
+        "grok",
+        "hermes",
+        "kimi",
+        "omp",
+        "openclaw",
+        "opencode",
+        "paseo",
+        "pi",
+        "zcode",
+    }
+)
+SAFE_EVENT_NAMES: Final = frozenset({"PreToolUse", "PostToolUse"})
+SAFE_SIZE_CLASS_NAMES: Final = frozenset(SIZE_CLASSES)
+SAFE_INSTALLED_ROUTE_LABELS: Final = frozenset(
+    {
+        "installed_canonical",
+        "installed_observation_only",
+        "installed_alias_requires_native_normalization",
+        "installed_cli_bridge",
+        "installed_canonical_source_ref",
+        "installed_normalizer_only_not_installed",
+    }
+)
+SAFE_FAILURE_STAGE_NAMES: Final = frozenset(
+    {
+        "unknown",
+        "proof_environment",
+        "runtime_provenance",
+        "route_contract",
+        "installed_corpus",
+        "installed_corpus_routes",
+        "cold_start",
+        "cold",
+        "warm_precondition",
+        "warm",
+        "size_250k",
+        "size_1m",
+        "size_5m",
+        "recovery_precondition",
+        "recovery",
+        "serialized_warmup",
+        "capacity_stabilization",
+        "capacity_prewarm",
+        "concurrent_16",
+        "rss_baseline",
+        "concurrent_64",
+        "readiness_start",
+        "readiness",
+    }
+)
+SAFE_FAILURE_WAVE_NAMES: Final = frozenset(str(index) for index in range(65))
 
 # Keep the no-override proof independent from whichever test runner invoked it.
 # Prefixes cover newly introduced diagnostic/test spellings while the explicit
@@ -311,7 +375,13 @@ __all__ = [
     "MIN_RESIDENT_SHARE",
     "PROOF_ENV_KEYS",
     "PROOF_ENV_PREFIXES",
+    "SAFE_EVENT_NAMES",
+    "SAFE_FAILURE_STAGE_NAMES",
+    "SAFE_FAILURE_WAVE_NAMES",
+    "SAFE_HARNESS_NAMES",
+    "SAFE_INSTALLED_ROUTE_LABELS",
     "SAFE_ROUTE_NAMES",
+    "SAFE_SIZE_CLASS_NAMES",
     "SIZE_CLASSES",
     "SLO_SCHEMA",
     "all_gates_pass",

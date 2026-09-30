@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from threading import RLock
 
 from scripts.native_slo_adapter import Observation
 from scripts.native_slo_contract import (
@@ -12,7 +13,12 @@ from scripts.native_slo_contract import (
     MAX_INSTALLED_ADAPTER_P95_MS,
     MAX_INSTALLED_ADAPTER_P99_MS,
     MAX_READINESS_P95_MS,
+    SAFE_EVENT_NAMES,
+    SAFE_FAILURE_STAGE_NAMES,
+    SAFE_FAILURE_WAVE_NAMES,
+    SAFE_HARNESS_NAMES,
     SAFE_ROUTE_NAMES,
+    SAFE_SIZE_CLASS_NAMES,
     SIZE_CLASSES,
     SLO_SCHEMA,
     all_gates_pass,
@@ -35,6 +41,282 @@ class SloMeasurements:
     readiness: list[float]
     rss_baseline: int
     rss_peak: int
+
+
+@dataclass
+class SloProgressStage:
+    """Bounded counters for one benchmark stage.
+
+    ``planned`` is ``None`` for stages such as RSS plateau sampling whose
+    reviewed contract is time-bounded rather than a fixed request count.
+    Missing work is derived from completed and failed requests so a timed-out
+    concurrent wave cannot be mistaken for a complete wave.
+    """
+
+    planned: int | None = None
+    submitted: int = 0
+    started: int = 0
+    attempted: int = 0
+    completed: int = 0
+    failed: int = 0
+    cancelled: int = 0
+    skipped: bool = False
+
+    def snapshot(self) -> dict[str, object]:
+        missing = (
+            None
+            if self.planned is None
+            else max(0, self.planned - self.completed - self.failed - self.cancelled)
+        )
+        return {
+            "planned": self.planned,
+            "submitted": self.submitted,
+            "started": self.started,
+            "attempted": self.attempted,
+            "completed": self.completed,
+            "failed": self.failed,
+            "cancelled": self.cancelled,
+            "missing": missing,
+            "skipped": self.skipped,
+        }
+
+
+_OBSERVATION_PROGRESS_STAGES = frozenset(
+    {
+        "warm",
+        "size_250k",
+        "size_1m",
+        "size_5m",
+        "concurrent_16",
+        "concurrent_64",
+    }
+)
+
+
+def classify_benchmark_error(error: BaseException) -> str:
+    """Map an internal failure to a bounded, privacy-safe diagnostic code."""
+
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(chain) < 8:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+
+    if any(isinstance(item, TimeoutError) for item in chain):
+        return "transport_timeout"
+    if any("concurrent capacity wave timed out" in str(item) for item in chain):
+        return "capacity_wave_timeout"
+    if any("adapter response exceeded bound" in str(item) for item in chain):
+        return "response_oversize"
+    if any("adapter response was not JSON" in str(item) for item in chain):
+        return "response_invalid"
+    if any("adapter response was not an object" in str(item) for item in chain):
+        return "response_invalid"
+    if any(str(item) == "adapter request failed" for item in chain):
+        return "response_status"
+    if any(
+        isinstance(item, OSError)
+        or item.__class__.__name__ in {"HTTPException", "TimeoutExpired"}
+        for item in chain
+    ):
+        if any(item.__class__.__name__ == "TimeoutExpired" for item in chain):
+            return "transport_timeout"
+        return "transport_error"
+    if any(isinstance(item, RuntimeError) and str(item).startswith("native_installed_slo_failed") for item in chain):
+        return "benchmark_contract"
+    return "benchmark_internal_failure"
+
+
+@dataclass
+class SloProgress:
+    """Thread-safe, aggregate-only progress for a potentially failed run."""
+
+    stages: dict[str, SloProgressStage] = field(default_factory=dict)
+    routes: tuple[tuple[str, str], ...] = ()
+    route_count: int | None = None
+    runtime_summary: dict[str, object] | None = None
+    installed_corpus: dict[str, int] | None = None
+    active_stage: str | None = None
+    active_labels: dict[str, str] = field(default_factory=dict)
+    failure: dict[str, object] | None = None
+    _lock: RLock = field(default_factory=RLock, repr=False)
+
+    def configure(
+        self,
+        routes: tuple[tuple[str, str], ...],
+        *,
+        warm_iterations: int,
+        cold_iterations: int,
+        recovery_iterations: int,
+        readiness_samples: int,
+        include_capacity: bool,
+        route_count: int | None = None,
+    ) -> None:
+        """Install the fixed stage denominators before any work begins."""
+
+        known_route_count = len(routes) if routes else route_count
+        post_routes = sum(event == "PostToolUse" for _, event in routes) if known_route_count is not None else 0
+        selected_size_routes = (
+            None
+            if known_route_count is None
+            else post_routes or (1 if known_route_count else 0)
+        )
+        with self._lock:
+            self.routes = routes
+            self.route_count = known_route_count
+            self._plan("proof_environment", 1)
+            self._plan("runtime_provenance", 1)
+            self._plan("route_contract", 1)
+            # The installed corpus helper is one bounded aggregate operation;
+            # its route denominator is kept separately so a pre-request
+            # failure cannot claim every route was attempted.
+            self._plan("installed_corpus", 1)
+            self._plan("installed_corpus_routes", known_route_count)
+            self._plan("cold_start", 1)
+            self._plan("cold", cold_iterations)
+            self._plan("warm_precondition", known_route_count)
+            self._plan(
+                "warm",
+                known_route_count * warm_iterations if known_route_count is not None else None,
+            )
+            for size_class in SIZE_CLASSES[1:]:
+                self._plan(f"size_{size_class}", selected_size_routes)
+            self._plan("recovery_precondition", recovery_iterations)
+            self._plan("recovery", recovery_iterations)
+            self._plan("serialized_warmup", 1)
+            self._plan("capacity_stabilization", 0)
+            self._plan("capacity_prewarm", 16 if include_capacity else 0, skipped=not include_capacity)
+            self._plan("concurrent_16", 16 if include_capacity else 0, skipped=not include_capacity)
+            # The RSS baseline still runs in skip-capacity mode because the
+            # existing runner measures it independently of c16/c64.
+            self._plan("rss_baseline", None)
+            self._plan("concurrent_64", 64 if include_capacity else 0, skipped=not include_capacity)
+            self._plan("readiness_start", 1)
+            self._plan("readiness", readiness_samples)
+
+    def _plan(self, name: str, planned: int | None, *, skipped: bool = False) -> None:
+        current = self.stages.get(name)
+        if current is None:
+            self.stages[name] = SloProgressStage(planned=planned, skipped=skipped)
+            return
+        current.planned = planned
+        current.skipped = skipped
+
+    def activate(self, stage: str, **labels: str) -> None:
+        with self._lock:
+            self.active_stage = stage
+            self.active_labels = {key: value for key, value in labels.items() if isinstance(value, str)}
+
+    def attempt(self, stage: str, count: int = 1) -> None:
+        with self._lock:
+            current = self.stages.setdefault(stage, SloProgressStage())
+            current.started += count
+            current.attempted += count
+
+    def submit(self, stage: str, count: int = 1) -> None:
+        with self._lock:
+            self.stages.setdefault(stage, SloProgressStage()).submitted += count
+
+    def complete(self, stage: str, count: int = 1) -> None:
+        with self._lock:
+            self.stages.setdefault(stage, SloProgressStage()).completed += count
+
+    def fail_request(self, stage: str, count: int = 1) -> None:
+        with self._lock:
+            self.stages.setdefault(stage, SloProgressStage()).failed += count
+
+    def cancel(self, stage: str, count: int = 1) -> None:
+        with self._lock:
+            self.stages.setdefault(stage, SloProgressStage()).cancelled += count
+
+    def record_failure(
+        self,
+        error: BaseException,
+        *,
+        stage: str | None = None,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
+        """Record only the first fatal failure using bounded labels."""
+
+        with self._lock:
+            if self.failure is not None:
+                return
+            selected_stage = stage or self.active_stage or "unknown"
+            selected_labels = dict(labels or self.active_labels)
+            failure: dict[str, object] = {
+                "stage": selected_stage if selected_stage in SAFE_FAILURE_STAGE_NAMES else "unknown",
+                "category": classify_benchmark_error(error),
+            }
+            allowlists = {
+                "harness": SAFE_HARNESS_NAMES,
+                "event": SAFE_EVENT_NAMES,
+                "size_class": SAFE_SIZE_CLASS_NAMES,
+                "wave": SAFE_FAILURE_WAVE_NAMES,
+            }
+            for key, allowed in allowlists.items():
+                value = selected_labels.get(key)
+                if isinstance(value, str):
+                    failure[key] = value if value in allowed else "unknown"
+            self.failure = failure
+
+    def stage_snapshot(self) -> dict[str, dict[str, object]]:
+        with self._lock:
+            return {name: stage.snapshot() for name, stage in sorted(self.stages.items())}
+
+    def completed_observations(self) -> int:
+        with self._lock:
+            return sum(self.stages.get(name, SloProgressStage()).completed for name in _OBSERVATION_PROGRESS_STAGES)
+
+    def observation_snapshot(self) -> dict[str, int | None]:
+        """Return the aggregate counters for the report's observation corpus."""
+
+        with self._lock:
+            stages = [self.stages.get(name, SloProgressStage()) for name in _OBSERVATION_PROGRESS_STAGES]
+            planned = (
+                None
+                if any(stage.planned is None for stage in stages)
+                else sum(stage.planned or 0 for stage in stages)
+            )
+            submitted = sum(stage.submitted for stage in stages)
+            started = sum(stage.started for stage in stages)
+            attempted = sum(stage.attempted for stage in stages)
+            completed = sum(stage.completed for stage in stages)
+            failed = sum(stage.failed for stage in stages)
+            cancelled = sum(stage.cancelled for stage in stages)
+            return {
+                "planned": planned,
+                "submitted": submitted,
+                "started": started,
+                "attempted": attempted,
+                "completed": completed,
+                "failed": failed,
+                "cancelled": cancelled,
+                "missing": (
+                    None
+                    if planned is None
+                    else max(0, planned - completed - failed - cancelled)
+                ),
+            }
+
+    def completed_error_count(self, stage: str) -> int | None:
+        with self._lock:
+            current = self.stages.get(stage)
+            if current is None or current.planned in (None, 0):
+                return None
+            if current.cancelled or current.completed + current.failed < current.planned:
+                return None
+            return current.failed
+
+    def snapshot_failure(self) -> dict[str, object]:
+        with self._lock:
+            if self.failure is not None:
+                return dict(self.failure)
+            return {
+                "stage": self.active_stage if self.active_stage in SAFE_FAILURE_STAGE_NAMES else "unknown",
+                "category": "benchmark_internal_failure",
+            }
 
 
 @dataclass(frozen=True)
@@ -222,6 +504,17 @@ def slo_gates(
     return gates
 
 
+def _thresholds() -> dict[str, float]:
+    """Return the reviewed thresholds shared by complete and failed reports."""
+
+    return {
+        "installed_adapter_p95_ms": MAX_INSTALLED_ADAPTER_P95_MS,
+        "installed_adapter_concurrent_p99_ms": MAX_INSTALLED_ADAPTER_P99_MS,
+        "direct_cold_p95_ms": MAX_COLD_P95_MS,
+        "readiness_p95_ms": MAX_READINESS_P95_MS,
+    }
+
+
 def slo_result(
     runtime_summary: dict[str, object],
     routes: tuple[tuple[str, str], ...],
@@ -274,12 +567,7 @@ def slo_result(
             "resident_recovery": summarize(measurements.recovery),
             "readiness": summarize(measurements.readiness),
         },
-        "thresholds": {
-            "installed_adapter_p95_ms": MAX_INSTALLED_ADAPTER_P95_MS,
-            "installed_adapter_concurrent_p99_ms": MAX_INSTALLED_ADAPTER_P99_MS,
-            "direct_cold_p95_ms": MAX_COLD_P95_MS,
-            "readiness_p95_ms": MAX_READINESS_P95_MS,
-        },
+        "thresholds": _thresholds(),
         "concurrency": {
             "sixteen": {
                 "latency": summarize(summary.concurrent_values),
@@ -302,9 +590,122 @@ def slo_result(
     return assert_privacy_safe(result)
 
 
+def incomplete_slo_result(
+    progress: SloProgress,
+    *,
+    include_capacity: bool,
+) -> dict[str, object]:
+    """Render a bounded failed run without manufacturing missing measurements."""
+
+    gates = gate_results(
+        resident_share=0.0,
+        safe_fail_rate=1.0,
+        warm_p95_ms=float("inf"),
+        size_p95_ms={},
+        cold_p95_ms=float("inf"),
+        readiness_p95_ms=float("inf"),
+        concurrent_p99_ms=float("inf"),
+        rss_growth=1.0,
+        rss_baseline_bytes=0,
+        errors=1,
+        errors_64=1,
+        python_fallback_decisions=1,
+        installed_python_fallback_decisions=1,
+    )
+    gates["recovery_latency"] = False
+    gates["concurrency_64_bounded"] = False
+    gates["installed_corpus"] = False
+    stages = progress.stage_snapshot()
+    observations = progress.observation_snapshot()
+    installed = progress.installed_corpus
+    errors_16 = progress.completed_error_count("concurrent_16")
+    errors_64 = progress.completed_error_count("concurrent_64")
+    routes = progress.routes
+    route_count = progress.route_count
+    concurrency: dict[str, object] = {
+        "sixteen": {
+            "latency": None,
+            "errors": errors_16,
+            "overloaded": None,
+            "deadline_ms": MAX_INSTALLED_ADAPTER_P99_MS,
+            "denominators": stages.get("concurrent_16"),
+        },
+        "sixty_four": {
+            "latency": None,
+            "errors": errors_64,
+            "overloaded": None,
+            "fail_safe": None,
+            "latency_ceiling_ms": None,
+            "bounded": False,
+            "denominators": stages.get("concurrent_64"),
+        },
+    }
+    if not include_capacity:
+        # Keep skipped capacity distinguishable from an unobserved wave while
+        # retaining the current false capacity gates.
+        concurrency["skipped"] = True
+    result: dict[str, object] = {
+        "schema": SLO_SCHEMA,
+        "scope": "installed_adapter_to_decision",
+        "status": "failed",
+        "complete": False,
+        "evaluation": "incomplete",
+        "runtime": progress.runtime_summary or {},
+        "corpus": {
+            "harnesses": None if route_count is None else len({harness for harness, _ in routes}),
+            "routes": route_count,
+            "observations": observations["completed"],
+            "planned": observations["planned"],
+            "submitted": observations["submitted"],
+            "started": observations["started"],
+            "attempted": observations["attempted"],
+            "completed": observations["completed"],
+            "failed": observations["failed"],
+            "cancelled": observations["cancelled"],
+            "missing": observations["missing"],
+            "corpus_origin": "installed_wheel_ownership_contract",
+            "route_corpus": "installed_routes",
+            "safe_failures": None,
+            "security_denials": None,
+            "safe_failure_rate": None,
+            "fail_safe_decisions": None,
+            "fail_safe_rate": None,
+            "resident_share": None,
+            "python_fallback_decisions": None,
+            "python_semantic_decisions": None,
+            "oneshot_decisions": None,
+            "rss_baseline_bytes": None,
+            "rss_peak_bytes": None,
+            "rss_growth": None,
+            "installed": installed,
+            "denominators": stages,
+        },
+        "failure": progress.snapshot_failure(),
+        "errors_16": errors_16,
+        "errors_64": errors_64,
+        "latency": {
+            "warm_all_harnesses": None,
+            "warm_by_event": {},
+            "size_classes": {},
+            "cold_native_oneshot": None,
+            "resident_recovery": None,
+            "readiness": None,
+        },
+        "thresholds": _thresholds(),
+        "concurrency": concurrency,
+        "gates": gates,
+        "passed": False,
+    }
+    return assert_privacy_safe(result)
+
+
 __all__ = [
     "SloMeasurements",
+    "SloProgress",
+    "SloProgressStage",
     "SloSummary",
+    "classify_benchmark_error",
+    "incomplete_slo_result",
     "safe_failure_rate",
     "slo_gates",
     "slo_result",

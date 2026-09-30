@@ -99,6 +99,7 @@ class NativeRuntimeStatus:
     reason: str
     identity: NativeRuntimeIdentity | None = None
     capabilities: NativeRuntimeCapabilities | None = None
+    platform_tag: str | None = None
 
 
 def native_mode() -> NativeMode:
@@ -508,6 +509,7 @@ def native_runtime_status() -> NativeRuntimeStatus:
             reason="native_ready" if compatible else "native_version_mismatch",
             identity=identity,
             capabilities=capabilities,
+            platform_tag=manifest.platform_tag if manifest is not None else None,
         )
     return NativeRuntimeStatus(
         mode=mode,

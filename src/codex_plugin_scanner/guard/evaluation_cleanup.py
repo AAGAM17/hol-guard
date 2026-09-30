@@ -48,6 +48,7 @@ def _private_directory_details(
     label: str,
     expected_identity: tuple[int, int] | None = None,
     require_private: bool = True,
+    reject_special_bits: bool = False,
 ) -> os.stat_result:
     details = os.fstat(descriptor)
     if not stat.S_ISDIR(details.st_mode):
@@ -56,7 +57,9 @@ def _private_directory_details(
     if expected_identity is not None and identity != expected_identity:
         raise EvaluationContractError(f"{label} changed before cleanup")
     mode = stat.S_IMODE(details.st_mode)
-    if details.st_uid != os.getuid() or mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
+    if details.st_uid != os.getuid():
+        raise EvaluationContractError(f"{label} is not private to the current user")
+    if reject_special_bits and mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
         raise EvaluationContractError(f"{label} is not private to the current user")
     if require_private and mode & 0o077:
         raise EvaluationContractError(f"{label} is not private to the current user")
@@ -160,6 +163,7 @@ def remove_owned_root(
                     label="evaluation setup",
                     expected_identity=expected_root_identity,
                     require_private=False,
+                    reject_special_bits=True,
                 )
                 root_identity = root_details.st_dev, root_details.st_ino
                 _validate_owned_marker(root_descriptor, marker_token)

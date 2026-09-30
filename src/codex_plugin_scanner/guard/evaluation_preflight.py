@@ -22,11 +22,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
 
-from .evaluation_contracts import (
-    EvaluationContractError,
-    EvaluationProfile,
-    validate_evaluation_profile,
-)
+from . import evaluation_cleanup as _cleanup
+from .evaluation_contracts import EvaluationContractError, EvaluationProfile, validate_evaluation_profile
 from .evaluation_host_probe import check_host_version
 from .evaluation_scope import _safe_temp_parent
 
@@ -35,11 +32,7 @@ EvaluationPhase = Literal["preflight", "setup"]
 EvaluationExecutionMode = Literal["installed", "synthetic_adapter"]
 EVALUATION_SETUP_SCHEMA_VERSION = "guard.evaluation-setup.v1"
 
-_OWNED_ROOT_PREFIX = "hol-guard-eval-"
-_MARKER_NAME = ".hol-guard-evaluation-owned"
 _DESCRIPTOR_CLEANUP_UNAVAILABLE_REASON = "descriptor_cleanup_unavailable"
-_DESCRIPTOR_CLEANUP_DIR_FD_OPERATIONS = (os.open, os.stat, os.unlink, os.rmdir)
-_DESCRIPTOR_CLEANUP_SUPPORTED_DIR_FD = frozenset(getattr(os, "supports_dir_fd", ()))
 
 
 def _check(
@@ -124,7 +117,7 @@ class EvaluationSetup:
 
         if self.root_path is None or self.marker_token is None:
             return False
-        return _remove_owned_root(
+        return _cleanup.remove_owned_root(
             self.root_path,
             self.marker_token,
             expected_root_identity=self.root_identity,
@@ -422,167 +415,6 @@ def preflight_evaluation(
     return _report("passed", "preflight", profile_id, checks)
 
 
-def _descriptor_cleanup_supported() -> bool:
-    """Return whether this interpreter can perform anchored POSIX cleanup."""
-
-    if (
-        os.name != "posix"
-        or not hasattr(os, "getuid")
-        or not hasattr(os, "O_DIRECTORY")
-        or not hasattr(os, "O_NOFOLLOW")
-        or not hasattr(os, "scandir")
-    ):
-        return False
-    return all(operation in _DESCRIPTOR_CLEANUP_SUPPORTED_DIR_FD for operation in _DESCRIPTOR_CLEANUP_DIR_FD_OPERATIONS)
-
-
-def _directory_open_flags() -> int:
-    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
-
-
-def _private_directory_details(
-    descriptor: int,
-    *,
-    label: str,
-    expected_identity: tuple[int, int] | None = None,
-) -> os.stat_result:
-    details = os.fstat(descriptor)
-    if not stat.S_ISDIR(details.st_mode):
-        raise EvaluationContractError(f"{label} is not a directory")
-    identity = details.st_dev, details.st_ino
-    if expected_identity is not None and identity != expected_identity:
-        raise EvaluationContractError(f"{label} changed before cleanup")
-    if details.st_uid != os.getuid() or stat.S_IMODE(details.st_mode) & 0o077:
-        raise EvaluationContractError(f"{label} is not private to the current user")
-    return details
-
-
-def _validate_owned_marker(root_descriptor: int, marker_token: str) -> None:
-    try:
-        marker_details = os.stat(_MARKER_NAME, dir_fd=root_descriptor, follow_symlinks=False)
-    except FileNotFoundError as exc:
-        raise EvaluationContractError("evaluation setup ownership marker is missing") from exc
-    if not stat.S_ISREG(marker_details.st_mode):
-        raise EvaluationContractError("evaluation setup ownership marker is missing")
-    if marker_details.st_uid != os.getuid() or stat.S_IMODE(marker_details.st_mode) & 0o077:
-        raise EvaluationContractError("evaluation setup ownership marker is unsafe")
-
-    marker_descriptor: int | None = None
-    try:
-        marker_descriptor = os.open(
-            _MARKER_NAME,
-            os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0),
-            dir_fd=root_descriptor,
-        )
-        opened_details = os.fstat(marker_descriptor)
-        if not stat.S_ISREG(opened_details.st_mode) or (opened_details.st_dev, opened_details.st_ino) != (
-            marker_details.st_dev,
-            marker_details.st_ino,
-        ):
-            raise EvaluationContractError("evaluation setup ownership marker changed during cleanup")
-        token_bytes = marker_token.encode("utf-8")
-        if os.read(marker_descriptor, len(token_bytes) + 1) != token_bytes:
-            raise EvaluationContractError("evaluation setup ownership marker does not match")
-    except FileNotFoundError as exc:
-        raise EvaluationContractError("evaluation setup ownership marker is missing") from exc
-    finally:
-        if marker_descriptor is not None:
-            with contextlib.suppress(OSError):
-                os.close(marker_descriptor)
-
-
-def _remove_descriptor_tree(directory_descriptor: int, entry_name: str) -> None:
-    """Remove one directory entry relative to an already validated directory."""
-
-    try:
-        details = os.stat(entry_name, dir_fd=directory_descriptor, follow_symlinks=False)
-    except FileNotFoundError:
-        return
-    identity = details.st_dev, details.st_ino
-    if not stat.S_ISDIR(details.st_mode):
-        os.unlink(entry_name, dir_fd=directory_descriptor)
-        return
-
-    child_descriptor = os.open(entry_name, _directory_open_flags(), dir_fd=directory_descriptor)
-    try:
-        opened_details = os.fstat(child_descriptor)
-        if not stat.S_ISDIR(opened_details.st_mode) or (opened_details.st_dev, opened_details.st_ino) != identity:
-            raise EvaluationContractError("evaluation setup entry changed during cleanup")
-        with os.scandir(child_descriptor) as entries:
-            for child in entries:
-                _remove_descriptor_tree(child_descriptor, child.name)
-        try:
-            current_details = os.stat(entry_name, dir_fd=directory_descriptor, follow_symlinks=False)
-        except FileNotFoundError as exc:
-            raise EvaluationContractError("evaluation setup entry changed during cleanup") from exc
-        if (current_details.st_dev, current_details.st_ino) != identity:
-            raise EvaluationContractError("evaluation setup entry changed during cleanup")
-    finally:
-        os.close(child_descriptor)
-    os.rmdir(entry_name, dir_fd=directory_descriptor)
-
-
-def _remove_owned_root(
-    root_path: Path,
-    marker_token: str,
-    *,
-    expected_root_identity: tuple[int, int] | None = None,
-) -> bool:
-    """Remove an owned root through descriptors bound to its allocated inode.
-
-    The final ``stat`` and ``rmdir`` are separate public POSIX operations, so
-    a hostile same-user process can still replace the name in that narrow
-    interval.  A non-empty replacement cannot be removed by ``rmdir`` and
-    remains intact; this does not claim an overall hostile same-user guarantee.
-    """
-
-    if not _descriptor_cleanup_supported():
-        raise EvaluationContractError("descriptor-bound evaluation cleanup is unavailable on this platform")
-
-    try:
-        if root_path.name.startswith(_OWNED_ROOT_PREFIX) is False:
-            raise EvaluationContractError("evaluation setup path has an invalid ownership name")
-        if not _safe_temp_parent(root_path.parent):
-            raise EvaluationContractError("evaluation setup path is outside a temporary root")
-        if root_path.is_symlink():
-            raise EvaluationContractError("evaluation setup path must not be a symlink")
-
-        parent_descriptor = os.open(os.fspath(root_path.parent), _directory_open_flags())
-        try:
-            _private_directory_details(parent_descriptor, label="evaluation setup parent")
-            try:
-                root_descriptor = os.open(root_path.name, _directory_open_flags(), dir_fd=parent_descriptor)
-            except FileNotFoundError:
-                return False
-            try:
-                root_details = _private_directory_details(
-                    root_descriptor,
-                    label="evaluation setup",
-                    expected_identity=expected_root_identity,
-                )
-                root_identity = root_details.st_dev, root_details.st_ino
-                _validate_owned_marker(root_descriptor, marker_token)
-                with os.scandir(root_descriptor) as entries:
-                    for entry in entries:
-                        _remove_descriptor_tree(root_descriptor, entry.name)
-                try:
-                    current_details = os.stat(root_path.name, dir_fd=parent_descriptor, follow_symlinks=False)
-                except FileNotFoundError as exc:
-                    raise EvaluationContractError("evaluation setup changed during cleanup") from exc
-                if (current_details.st_dev, current_details.st_ino) != root_identity:
-                    raise EvaluationContractError("evaluation setup changed during cleanup")
-                os.rmdir(root_path.name, dir_fd=parent_descriptor)
-                return True
-            finally:
-                os.close(root_descriptor)
-        finally:
-            os.close(parent_descriptor)
-    except EvaluationContractError:
-        raise
-    except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        raise EvaluationContractError("unable to clean up evaluation setup") from exc
-
-
 def setup_evaluation(
     profile: EvaluationProfile | Mapping[str, object],
     *,
@@ -603,7 +435,7 @@ def setup_evaluation(
     )
     if preflight.status != "passed":
         return EvaluationSetup(report=replace(preflight, phase="setup"))
-    if not _descriptor_cleanup_supported():
+    if not _cleanup.descriptor_cleanup_supported():
         report = replace(
             preflight,
             phase="setup",
@@ -648,9 +480,9 @@ def setup_evaluation(
     root_path: Path | None = None
     marker_token = secrets.token_hex(16)
     try:
-        root_path = Path(tempfile.mkdtemp(prefix=_OWNED_ROOT_PREFIX, dir=base))
+        root_path = Path(tempfile.mkdtemp(prefix=_cleanup._OWNED_ROOT_PREFIX, dir=base))
         _ = root_path.chmod(0o700)
-        marker = root_path / _MARKER_NAME
+        marker = root_path / _cleanup._MARKER_NAME
         _ = marker.write_text(marker_token, encoding="utf-8")
         _ = marker.chmod(0o600)
         guard_home = root_path / "guard-home"
@@ -677,7 +509,7 @@ def setup_evaluation(
     except (OSError, RuntimeError) as exc:
         if root_path is not None and root_path.exists():
             with contextlib.suppress(EvaluationContractError):
-                _ = _remove_owned_root(root_path, marker_token)
+                _ = _cleanup.remove_owned_root(root_path, marker_token)
         report = replace(
             preflight,
             phase="setup",
@@ -714,7 +546,7 @@ def cleanup_interrupted_evaluation_setup(
     candidate_parent = os.path.normcase(os.path.realpath(candidate.parent))
     if candidate_parent != declared_path:
         raise EvaluationContractError("evaluation recovery path is outside the profile target scope")
-    return _remove_owned_root(candidate, marker_token)
+    return _cleanup.remove_owned_root(candidate, marker_token)
 
 
 __all__ = [

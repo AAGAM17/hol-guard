@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard import evaluation_cleanup as cleanup_module
 from codex_plugin_scanner.guard import evaluation_preflight as preflight_module
 from codex_plugin_scanner.guard.evaluation_preflight import (
     cleanup_interrupted_evaluation_setup,
@@ -110,6 +111,34 @@ def test_normal_cleanup_is_descriptor_bound_and_idempotent(tmp_path: Path) -> No
     assert unrelated.read_bytes() == unrelated_bytes
     assert (foreign_directory / "user-config.json").read_bytes() == foreign_content
     assert setup.cleanup() is False
+
+
+def test_cleanup_allows_owned_root_permission_change(tmp_path: Path) -> None:
+    _profile_data, setup = _setup(tmp_path)
+    assert setup.root_path is not None
+    setup.root_path.chmod(0o755)
+
+    assert setup.cleanup() is True
+
+
+def test_cleanup_keeps_marker_until_owned_entries_are_removed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _profile_data, setup = _setup(tmp_path)
+    assert setup.root_path is not None and setup.marker_token is not None
+    marker = setup.root_path / ".hol-guard-evaluation-owned"
+    original_remove = cleanup_module._remove_descriptor_tree
+
+    def fail_before_owned_entry_removal(directory_descriptor: int, entry_name: str) -> None:
+        if entry_name == "guard-home":
+            raise ValueError("synthetic cleanup failure")
+        original_remove(directory_descriptor, entry_name)
+
+    monkeypatch.setattr(cleanup_module, "_remove_descriptor_tree", fail_before_owned_entry_removal)
+    with pytest.raises(ValueError, match="unable to clean up evaluation setup"):
+        setup.cleanup()
+
+    assert marker.read_text(encoding="utf-8") == setup.marker_token
+    monkeypatch.undo()
+    assert setup.cleanup() is True
 
 
 def test_live_cleanup_rejects_root_replacement_before_marker_validation(tmp_path: Path) -> None:
@@ -273,7 +302,7 @@ def test_setup_blocks_before_allocation_when_descriptor_support_is_unavailable(
     executable = _fake_host(tmp_path)
     artifact = _artifact(tmp_path)
     profile = _profile(tmp_path, executable)
-    monkeypatch.setattr(preflight_module, "_descriptor_cleanup_supported", lambda: False)
+    monkeypatch.setattr(cleanup_module, "descriptor_cleanup_supported", lambda: False)
 
     setup = setup_evaluation(
         profile,

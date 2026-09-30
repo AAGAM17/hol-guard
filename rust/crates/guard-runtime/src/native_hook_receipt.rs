@@ -30,6 +30,7 @@ fn optional_snapshot_string(
 struct DecisionReceiptInputs<'a> {
     request_id: &'a str,
     request_digest: &'a str,
+    execution_intent_digest: Option<&'a str>,
     harness: &'a str,
     event_name: &'a str,
     payload_kind: &'a GuardHookPayloadKindV2,
@@ -41,6 +42,12 @@ struct DecisionReceiptInputs<'a> {
     reviewed_output_sha256: Option<&'a str>,
     observe_mode: bool,
     command_extensions: Option<&'a guard_contracts::NativeCommandReceiptBindingV1>,
+}
+
+pub(crate) struct NativeReceiptIdentity<'a> {
+    pub(crate) request_id: &'a str,
+    pub(crate) request_digest: &'a str,
+    pub(crate) execution_intent_digest: Option<&'a str>,
 }
 
 fn build_decision_receipt(
@@ -92,6 +99,7 @@ fn build_decision_receipt(
         decision_id,
         request_id: inputs.request_id.to_owned(),
         request_digest: inputs.request_digest.to_owned(),
+        execution_intent_digest: inputs.execution_intent_digest.map(ToOwned::to_owned),
         harness: inputs.harness.to_owned(),
         event_name: inputs.event_name.to_owned(),
         payload_kind: inputs.payload_kind.clone(),
@@ -123,8 +131,7 @@ fn build_decision_receipt(
 pub(crate) fn receipt_from_pre_tool(
     envelope: &GuardHookEnvelopeV2,
     snapshot: Option<&PolicySnapshotV3>,
-    request_id: &str,
-    request_digest: &str,
+    identity: &NativeReceiptIdentity<'_>,
     harness: &str,
     payload_kind: &GuardHookPayloadKindV2,
     result: &PreToolResultV1,
@@ -133,8 +140,9 @@ pub(crate) fn receipt_from_pre_tool(
         envelope,
         snapshot,
         DecisionReceiptInputs {
-            request_id,
-            request_digest,
+            request_id: identity.request_id,
+            request_digest: identity.request_digest,
+            execution_intent_digest: identity.execution_intent_digest,
             harness,
             event_name: "PreToolUse",
             payload_kind,
@@ -156,8 +164,7 @@ pub(crate) fn receipt_from_pre_tool(
 pub(crate) fn receipt_from_post_tool(
     envelope: &GuardHookEnvelopeV2,
     snapshot: Option<&PolicySnapshotV3>,
-    request_id: &str,
-    request_digest: &str,
+    identity: &NativeReceiptIdentity<'_>,
     harness: &str,
     payload_kind: &GuardHookPayloadKindV2,
     result: &HookReviewResponseV1,
@@ -166,8 +173,9 @@ pub(crate) fn receipt_from_post_tool(
         envelope,
         snapshot,
         DecisionReceiptInputs {
-            request_id,
-            request_digest,
+            request_id: identity.request_id,
+            request_digest: identity.request_digest,
+            execution_intent_digest: identity.execution_intent_digest,
             harness,
             event_name: "PostToolUse",
             payload_kind,
@@ -181,4 +189,70 @@ pub(crate) fn receipt_from_post_tool(
             command_extensions: None,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use guard_contracts::GuardHookSourceMetadataV2;
+
+    fn envelope() -> GuardHookEnvelopeV2 {
+        GuardHookEnvelopeV2 {
+            schema: guard_contracts::GUARD_HOOK_ENVELOPE_V2_SCHEMA.to_owned(),
+            request_id: Some("receipt-test".to_owned()),
+            harness: "codex".to_owned(),
+            event: "PreToolUse".to_owned(),
+            raw_payload: serde_json::json!({"tool_input": {"command": "pwd"}}),
+            deadline_budget_ms: Some(100),
+            policy_generation: 1,
+            policy_snapshot: serde_json::json!({}),
+            source: GuardHookSourceMetadataV2 {
+                cwd: Some("/workspace".to_owned()),
+                home_dir: "/home/test".to_owned(),
+                guard_home: "/guard".to_owned(),
+                source_ref_external_allowed: false,
+            },
+        }
+    }
+
+    fn receipt(identity: &NativeReceiptIdentity<'_>) -> NativeHookDecisionReceiptV1 {
+        build_decision_receipt(
+            &envelope(),
+            None,
+            DecisionReceiptInputs {
+                request_id: identity.request_id,
+                request_digest: identity.request_digest,
+                execution_intent_digest: identity.execution_intent_digest,
+                harness: "codex",
+                event_name: "PreToolUse",
+                payload_kind: &GuardHookPayloadKindV2::Inline,
+                decision: "allow",
+                model_output_action: "not_applicable",
+                policy_action: Some("allow"),
+                observed_policy_action: None,
+                reason_code: "test",
+                reviewed_output_sha256: None,
+                observe_mode: false,
+                command_extensions: None,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn execution_intent_evidence_is_not_decision_identity() {
+        let legacy = receipt(&NativeReceiptIdentity {
+            request_id: "request",
+            request_digest: &"a".repeat(64),
+            execution_intent_digest: None,
+        });
+        let evidenced = receipt(&NativeReceiptIdentity {
+            request_id: "request",
+            request_digest: &"a".repeat(64),
+            execution_intent_digest: Some(&"b".repeat(64)),
+        });
+        assert_eq!(legacy.decision_id, evidenced.decision_id);
+        assert_eq!(legacy.execution_intent_digest, None);
+        assert_eq!(evidenced.execution_intent_digest, Some("b".repeat(64)));
+    }
 }

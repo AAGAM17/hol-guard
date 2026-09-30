@@ -54,7 +54,15 @@ def _receipt(**overrides: object) -> dict[str, object]:
         **{
             key: value[key]
             for key in value
-            if key not in {"schema", "version", "authority", "decision_id", "origin_authentication"}
+            if key
+            not in {
+                "schema",
+                "version",
+                "authority",
+                "decision_id",
+                "origin_authentication",
+                "execution_intent_digest",
+            }
         },
     }
     value["decision_id"] = hashlib.sha256(
@@ -94,6 +102,18 @@ def test_origin_authentication_is_optional_and_not_decision_identity() -> None:
     unknown = dict(sealed)
     unknown["unexpected"] = True
     assert validate_native_decision_receipt(unknown) is None
+
+
+def test_execution_intent_evidence_is_optional_and_not_decision_identity() -> None:
+    legacy = _receipt()
+    evidence = _receipt(execution_intent_digest="f" * 64)
+    assert validate_native_decision_receipt(evidence) == evidence
+    assert evidence["decision_id"] == legacy["decision_id"]
+    assert canonical_receipt_bytes(evidence) == canonical_receipt_bytes(legacy)
+    for invalid in (None, 1, "", "f" * 63, "F" * 64, "f" * 65):
+        malformed = dict(evidence)
+        malformed["execution_intent_digest"] = invalid
+        assert validate_native_decision_receipt(malformed) is None
 
 
 def test_sealed_receipt_is_detached_without_raw_input_leakage(tmp_path: Path) -> None:

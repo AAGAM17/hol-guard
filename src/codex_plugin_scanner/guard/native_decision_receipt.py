@@ -47,7 +47,7 @@ _REQUIRED_FIELDS = frozenset(
         "deadline_budget_ms",
     }
 )
-_OPTIONAL_FIELDS = frozenset({"command_extensions", "origin_authentication"})
+_OPTIONAL_FIELDS = frozenset({"command_extensions", "origin_authentication", "execution_intent_digest"})
 
 
 def _bounded_identifier(value: object, *, pattern: re.Pattern[str], maximum: int) -> str | None:
@@ -152,10 +152,11 @@ def _validate_receipt_policy(receipt: dict[str, object]) -> bool:
     )
     if reason_code is None:
         return False
-    if "origin_authentication" in receipt:
-        origin_authentication = receipt["origin_authentication"]
-        if not isinstance(origin_authentication, str) or _HEX64.fullmatch(origin_authentication) is None:
-            return False
+    for field in ("origin_authentication", "execution_intent_digest"):
+        if field in receipt:
+            digest = receipt[field]
+            if not isinstance(digest, str) or _HEX64.fullmatch(digest) is None:
+                return False
     return True
 
 

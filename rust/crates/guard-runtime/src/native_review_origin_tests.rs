@@ -44,6 +44,23 @@ fn origin_authentication_survives_serialization_without_changing_receipt_identit
 }
 
 #[test]
+fn execution_intent_evidence_is_authenticated_without_changing_decision_id() {
+    let key = [0x5a; 32];
+    let mut original = receipt();
+    original.execution_intent_digest = Some("f".repeat(64));
+    let legacy_decision_id = original.decision_id.clone();
+    authenticate_with_key(&mut original, &key).unwrap();
+    assert_eq!(original.decision_id, legacy_decision_id);
+    verify_with_key(&original, &key).unwrap();
+
+    original.execution_intent_digest = Some("e".repeat(64));
+    assert_eq!(
+        verify_with_key(&original, &key).unwrap_err(),
+        INVALID_ORIGIN
+    );
+}
+
+#[test]
 fn every_receipt_field_is_authenticated() {
     let key = [0x5a; 32];
     let mut original = receipt();

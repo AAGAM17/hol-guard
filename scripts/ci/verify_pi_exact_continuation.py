@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 from xml.etree import ElementTree
 
 PI_PACKAGE = "@earendil-works/pi-coding-agent"
@@ -26,6 +27,10 @@ EXPECTED = {
 }
 EXPECTED_NODE = "v22.19.0"
 EXPECTED_BUN = "1.3.14"
+EXPECTED_BRACE_VERSION = "5.0.11"
+EXPECTED_BRACE_INTEGRITY = (
+    "sha512-awigjhi6cLTh90bdw6+QJ9CtmJmyYhEIi70iCbc8Rozn04Fw9FeQIBjv/E22FFGuCGx1bLJyUfB64x/szUSXUg=="
+)
 MINIMUM_TESTCASES = 10
 REQUIRED_TESTS = {
     "test_installed_pi_runner_cancels_generated_pending_tool_call",
@@ -35,7 +40,7 @@ REQUIRED_TESTS = {
 }
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
     raise SystemExit(f"pi exact continuation verification failed: {message}")
 
 
@@ -95,6 +100,11 @@ def verify_lock(lock_path: Path) -> None:
             fail(f"exact package is missing from lock: {package_name}")
         if package.get("version") != version or package.get("integrity") != integrity:
             fail(f"lock entry drifted: {package_name}")
+    brace = packages.get(f"node_modules/{PI_PACKAGE}/node_modules/brace-expansion")
+    if not isinstance(brace, dict) or (
+        brace.get("version") != EXPECTED_BRACE_VERSION or brace.get("integrity") != EXPECTED_BRACE_INTEGRITY
+    ):
+        fail("brace-expansion lock entry drifted")
 
 
 def package_json(package_root: Path) -> dict[str, object]:
@@ -117,6 +127,16 @@ def verify_installed_sdk(prefix: Path) -> dict[str, str]:
         fail("installed Pi version drifted")
     if omp_metadata.get("version") != EXPECTED[OMP_PACKAGE][0]:
         fail("installed OMP version drifted")
+    brace_metadata = package_json(pi_root / "node_modules" / "brace-expansion")
+    if brace_metadata.get("version") != EXPECTED_BRACE_VERSION:
+        fail("installed brace-expansion version drifted")
+    try:
+        installed_lock = json.loads((pi_root / "node_modules" / ".package-lock.json").read_text())
+        installed_brace = installed_lock["packages"]["node_modules/brace-expansion"]
+    except (OSError, ValueError, KeyError, TypeError):
+        fail("installed brace-expansion has no npm integrity receipt")
+    if not isinstance(installed_brace, dict) or installed_brace.get("integrity") != EXPECTED_BRACE_INTEGRITY:
+        fail("installed brace-expansion integrity drifted")
 
     required_paths = (
         pi_root / "dist" / "index.js",

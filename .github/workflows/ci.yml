@@ -562,6 +562,10 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund \
             --prefix "$PI_EXACT_SDK_ROOT"
+          # Pi's published shrinkwrap overrides the outer transitive lock.
+          npm install --ignore-scripts --no-save --no-audit --no-fund \
+            --prefix "$PI_EXACT_SDK_ROOT/node_modules/@earendil-works/pi-coding-agent" \
+            brace-expansion@5.0.11
       - name: Run actual SDK continuation module with zero-skip enforcement
         shell: bash
         run: |

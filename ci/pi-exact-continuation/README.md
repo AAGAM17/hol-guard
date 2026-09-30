@@ -10,6 +10,10 @@ To update an SDK, change `package.json` and regenerate `package-lock.json` using
 the pinned Node/npm environment. Review the lockfile diff; do not remove it.
 
 Run the CI verifier with the updated exact runtimes and locked dependencies.
+Pi's published shrinkwrap pins brace-expansion 5.0.9, which bypasses the outer
+lock during `npm ci`. The fixture updates that dependency to 5.0.11 before
+qualification. The verifier checks both the reviewed lock hash and the actual
+installed version; the Pi and OMP SDK versions remain unchanged.
 All tests in `tests/test_pi_exact_continuation.py` must execute without skips,
 including unchanged-input replay, cancellation, malformed interactive contexts,
 and failed revalidation. Merge only after the actual-SDK CI job passes.

@@ -212,6 +212,33 @@ def test_event_alias_is_canonicalized_and_prompt_rows_are_not_applicable(tmp_pat
     assert join_binding_records(_rows(prompt_directory))["status"] == "not_applicable"
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"hook_event_name":"UserPromptSubmit","prompt":"hello"}',
+        '{"hook_event_name":"UserPromptSubmit","tool_use_id":"/private/secret"}',
+    ],
+)
+def test_non_bindable_missing_or_unsupported_id_is_not_applicable(
+    tmp_path: Path, raw: str
+) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+
+    assert record_bridge_ingress(
+        guard_home=guard_home,
+        raw_payload=raw,
+        event_name="UserPromptSubmit",
+    )
+
+    result = join_binding_records(_rows(directory))
+    assert result["status"] == "not_applicable"
+    assert result["joins"] == []
+    assert result["issues"] == [
+        {"status": "not_applicable", "reason": "native_receipt_unsupported_event"}
+    ]
+
+
 def test_bridge_capture_happens_before_forwarded_transport_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

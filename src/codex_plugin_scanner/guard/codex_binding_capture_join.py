@@ -139,8 +139,16 @@ def join_binding_records(records: Iterable[object]) -> dict[str, object]:
             continue
         key, route = normalized
         if key is None:
-            reason = "missing_tool_use_id" if route == "missing" else "unsupported_tool_use_id"
-            issues.append({"status": "unbound", "reason": reason})
+            canonical_event = runtime_hook_event_name(
+                {"hook_event_name": record.get("event_name")}
+            )
+            if canonical_event not in BINDABLE_CODEX_HOOK_EVENTS:
+                issues.append(
+                    {"status": "not_applicable", "reason": "native_receipt_unsupported_event"}
+                )
+            else:
+                reason = "missing_tool_use_id" if route == "missing" else "unsupported_tool_use_id"
+                issues.append({"status": "unbound", "reason": reason})
             continue
         groups[key][route].append(record)
 
@@ -161,14 +169,14 @@ def join_binding_records(records: Iterable[object]) -> dict[str, object]:
             joins.append({"status": "bound", "scope": "native_edge_binding", "identity": key})
 
     statuses = [str(item["status"]) for item in joins if item["status"] != "not_applicable"] + [
-        str(item["status"]) for item in issues
+        str(item["status"]) for item in issues if item["status"] != "not_applicable"
     ]
     if "invalid" in statuses:
         status = "invalid"
     elif "ambiguous" in statuses:
         status = "ambiguous"
     elif not statuses:
-        status = "not_applicable" if joins else "unbound"
+        status = "not_applicable" if joins or issues else "unbound"
     elif "unbound" in statuses:
         status = "unbound"
     else:

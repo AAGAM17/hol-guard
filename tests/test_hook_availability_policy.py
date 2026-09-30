@@ -511,10 +511,10 @@ def test_availability_continues_prompt_lifecycle_and_still_pauses_tools(tmp_path
     assert alias["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
-def test_cursor_unparseable_input_allows_read_and_pauses_shell() -> None:
+def test_cursor_unparseable_input_denies_actions_and_preserves_known_observation() -> None:
     allow, allow_code = cursor_unparseable_input_permission("beforeReadFile")
-    assert allow_code == 0
-    assert allow == {"permission": "allow"}
+    assert allow_code == 2
+    assert allow["permission"] == "deny"
     deny, deny_code = cursor_unparseable_input_permission("beforeShellExecution")
     assert deny_code == 2
     assert deny["permission"] == "deny"
@@ -528,5 +528,5 @@ def test_cursor_unparseable_input_allows_read_and_pauses_shell() -> None:
     assert watch_code == 0
     assert watch == {"permission": "allow"}
     empty, empty_code = cursor_unparseable_input_permission("")
-    assert empty_code == 0
-    assert empty == {"permission": "allow"}
+    assert empty_code == 2
+    assert empty["permission"] == "deny"

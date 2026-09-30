@@ -35,7 +35,8 @@ _INHERIT_ENV_KEYS = (
 _PLUGIN_TEMPLATE = """// Managed by HOL Guard. Re-run `hol-guard install opencode` after moving Guard home.
 import { spawn as nodeSpawn } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
+import { homedir } from "node:os";
+import { join as joinPath, resolve as resolvePath } from "node:path";
 
 const GUARD_HOME = __GUARD_HOME__;
 const GUARD_PYTHON = __GUARD_PYTHON__;
@@ -118,6 +119,27 @@ function normalizeCommand(command: unknown): string | null {
     return command.join(" ");
   }
   return null;
+}
+
+function effectiveWorkingDirectory(directory: string, workdir: unknown): string {
+  // Directory names can contain spaces. Review the same path the tool uses.
+  const baseDirectory = directory || process.cwd();
+  if (workdir === undefined) return baseDirectory;
+  if (typeof workdir !== "string") {
+    throw new Error("HOL Guard could not review this command: workdir must be a string.");
+  }
+  let target = workdir;
+  if (process.platform === "win32") {
+    const drive = target.match(/^\\/(?:(?:cygdrive|mnt)\\/)?([a-zA-Z])(?:\\/|$)/)
+      ?? target.match(/^\\/([a-zA-Z]):(?:[\\\\/]|$)/);
+    if (drive) target = `${drive[1].toUpperCase()}:/${target.slice(drive[0].length)}`;
+  }
+  if (target === "~") {
+    target = homedir();
+  } else if (target.startsWith("~/") || (process.platform === "win32" && target.startsWith("~\\\\"))) {
+    target = joinPath(homedir(), target.slice(2));
+  }
+  return resolvePath(baseDirectory, target);
 }
 
 function waitForGuardProcessExit(
@@ -495,13 +517,7 @@ export const HolGuardPretoolPlugin = async ({
       if (command === null) {
         return;
       }
-      const workdir = output.args?.workdir;
-      if (workdir !== undefined && typeof workdir !== "string") {
-        throw new Error("HOL Guard could not review this command: workdir must be a string.");
-      }
-      // Directory names can contain spaces. Review the same path the tool uses.
-      const baseDirectory = directory || process.cwd();
-      const workspace = workdir === undefined ? baseDirectory : resolvePath(baseDirectory, workdir);
+      const workspace = effectiveWorkingDirectory(directory, output.args?.workdir);
       const deadlineMs = Date.now() + GUARD_HOOK_TIMEOUT_MS;
       let result;
       try {

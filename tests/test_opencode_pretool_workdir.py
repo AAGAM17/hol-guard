@@ -22,6 +22,14 @@ from tests.test_opencode_pretool import _bun_executable, _ctx
         ("/project trailing ", None, "/project trailing "),
         ("/project trailing ", "child", "/project trailing /child"),
         ("", None, "."),
+        ("/project", "~", "@home"),
+        ("/project", "~/child", "@home/child"),
+        ("/project", "~//child", "@home/child"),
+        ("/project", "~other", "/project/~other"),
+        ("/project", "/mnt/c/workspace", "/mnt/c/workspace"),
+        ("/project", "/cygdrive/d/workspace", "/cygdrive/d/workspace"),
+        ("/project", "/c:/workspace", "/c:/workspace"),
+        ("/project", "/c/workspace", "/c/workspace"),
     ],
 )
 @pytest.mark.parametrize("exit_code", [0, 1, 2])
@@ -42,6 +50,7 @@ def test_v2_shell_reviews_its_effective_workdir(
     script.write_text(
         "import plugin from './plugin';\n"
         "import { resolve } from 'node:path';\n"
+        "import { homedir } from 'node:os';\n"
         "let handler; let calls = 0; let reviewed;\n"
         "globalThis.guardTestSpawn = async (options) => {\n"
         "  const argv = JSON.parse(options.env.HOL_GUARD_HOOK_ARGV);\n"
@@ -58,7 +67,14 @@ def test_v2_shell_reviews_its_effective_workdir(
         f"if (blocked !== {str(expected is None or exit_code != 0).lower()})\n"
         "  throw new Error('Guard decision changed');\n"
         f"if (calls !== {int(expected is not None)}) throw new Error('wrong review count');\n"
-        f"const expectedPath = {json.dumps(expected)};\n"
+        f"let expectedPath = {json.dumps(expected)};\n"
+        "if (expectedPath?.startsWith('@home')) expectedPath = homedir() + expectedPath.slice(5);\n"
+        "if (process.platform === 'win32' && expectedPath !== null) {\n"
+        "  const aliases = { '/mnt/c/workspace': 'C:/workspace',\n"
+        "    '/cygdrive/d/workspace': 'D:/workspace', '/c:/workspace': 'C:/workspace',\n"
+        "    '/c/workspace': 'C:/workspace' };\n"
+        "  expectedPath = aliases[expectedPath] ?? expectedPath;\n"
+        "}\n"
         f"const expected = expectedPath === null ? null : {str(workdir is None and bool(directory)).lower()}\n"
         "  ? expectedPath : resolve(expectedPath);\n"
         "if (expected !== null && (reviewed.directory !== expected ||\n"

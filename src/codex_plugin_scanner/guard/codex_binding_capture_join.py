@@ -6,13 +6,12 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from typing import cast
 
 from .codex_binding_capture import (
-    _HEX64,
-    _RUN_ID,
     BINDABLE_CODEX_HOOK_EVENTS,
     CAPTURE_SCHEMA,
     MAX_CAPTURE_BYTES,
@@ -28,7 +27,7 @@ from .daemon.hook_request_parsing import runtime_hook_event_name
 
 
 def _valid_fingerprint(value: object) -> bool:
-    return isinstance(value, str) and _HEX64.fullmatch(value) is not None
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def _validated_record(
@@ -43,7 +42,7 @@ def _validated_record(
     state = value.get("tool_use_id_state")
     if (
         not isinstance(row_run_id, str)
-        or _RUN_ID.fullmatch(row_run_id) is None
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}", row_run_id) is None
         or (run_id is not None and row_run_id != run_id)
         or not isinstance(harness, str)
         or _bounded_text(harness, maximum=64) is None

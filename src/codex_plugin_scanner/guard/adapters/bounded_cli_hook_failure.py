@@ -14,7 +14,13 @@ def _is_permission_event(event_name: str) -> bool:
     return hook_event_is_permission_request(event_name)
 
 
+def _is_prompt_event(event_name: str) -> bool:
+    return event_name.strip().lower().replace("_", "").replace("-", "") in {"userpromptsubmit", "userpromptsubmitted"}
+
+
 def watch_continue_payload(harness: str, event_name: str) -> dict[str, object]:
+    if harness == "grok" and _is_prompt_event(event_name):
+        return {}
     if harness == "copilot":
         return {"permissionDecision": "allow"}
     if harness in _DECISION_HOOK_HARNESSES:
@@ -40,6 +46,18 @@ def _observe_payload(harness: str, event_name: str, reason: str) -> dict[str, ob
 
 
 def _pause_payload(harness: str, event_name: str, reason: str) -> tuple[dict[str, object], int]:
+    if _is_prompt_event(event_name):
+        from ..daemon.hook_worker_responses import harness_json_from_native_prompt
+
+        return harness_json_from_native_prompt(
+            harness,
+            {
+                "decision": "deny",
+                "minimum_action": "block",
+                "reason_code": "native_prompt_unavailable",
+                "reason": "HOL Guard could not complete native prompt review safely.",
+            },
+        ), 0
     if harness == "copilot":
         if _is_permission_event(event_name):
             return {
@@ -85,6 +103,9 @@ def failure_payload(
     """
     if recording_only:
         return watch_continue_payload(harness, event_name), 0
+    prompt_event = _is_prompt_event(event_name)
+    if prompt_event and harness == "grok":
+        return {}, 0
     pauses = hook_event_pauses_when_unavailable(event_name)
     if not pauses:
         # Observations continue processing completed activity without authorizing a tool action.

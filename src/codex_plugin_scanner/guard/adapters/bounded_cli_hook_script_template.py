@@ -29,6 +29,7 @@ _EVENT_ALIASES = {
     "pretooluse": "PreToolUse",
     "pretoolcall": "PreToolUse",
     "userpromptsubmit": "UserPromptSubmit",
+    "userpromptsubmitted": "UserPromptSubmit",
     "posttooluse": "PostToolUse",
 }
 _EVENT_NAME_KEYS = ("hook_event_name", "hookEventName", "event", "eventName", "hook_name", "hookName")
@@ -292,6 +293,8 @@ def _is_permission_event(event_name: str) -> bool:
 
 def _pauses_when_unavailable(event_name: str) -> bool:
     compact = _compact(event_name)
+    if compact in {"userpromptsubmit", "userpromptsubmitted"}:
+        return HARNESS != "grok"
     if compact in _LIFECYCLE_EVENTS or compact.startswith("after"):
         return False
     return compact not in {"posttooluse", "posttool"}
@@ -390,6 +393,24 @@ def _to_native(daemon_response: dict[str, object], event_name: str) -> tuple[str
 
 def _failure_payload(event_name: str, reason: str) -> tuple[dict[str, object], int]:
     # Local configuration cannot authenticate the mode of an unavailable evaluator.
+    prompt_event = _compact(event_name) in {"userpromptsubmit", "userpromptsubmitted"}
+    if prompt_event:
+        if HARNESS == "grok":
+            return {}, 0
+        prompt_reason = "HOL Guard could not complete native prompt review safely."
+        if HARNESS == "copilot":
+            return {"behavior": "deny", "message": prompt_reason, "interrupt": False}, 0
+        payload = {
+            "decision": "block",
+            "reason": prompt_reason,
+            "systemMessage": prompt_reason,
+            "hookSpecificOutput": {"hookEventName": "UserPromptSubmit"},
+        }
+        if HARNESS == "codex":
+            payload["continue"] = False
+            payload["stopReason"] = prompt_reason
+            payload["hookSpecificOutput"]["additionalContext"] = prompt_reason
+        return payload, 0
     if not _pauses_when_unavailable(event_name):
         # Observations continue processing completed activity without authorizing a tool action.
         if HARNESS == "copilot":

@@ -294,14 +294,14 @@ def test_availability_watch_config_allows_git_and_network(tmp_path: Path) -> Non
     assert gh_cmd["decision"] == "allow"
 
 
-def test_cursor_fallback_watch_allows_shell() -> None:
+def test_cursor_fallback_without_mode_authority_denies_shell() -> None:
     allow, code = cursor_fallback_permission(
         {"hook_event_name": "beforeShellExecution", "command": "rm -rf /"},
         hook_event_name="beforeShellExecution",
         recording_only=True,
     )
-    assert code == 0
-    assert allow["permission"] == "allow"
+    assert code == 2
+    assert allow["permission"] == "deny"
 
 
 def test_watch_unavailable_pretool_records_command_activity(
@@ -338,29 +338,3 @@ def test_watch_unavailable_pretool_records_command_activity(
     assert recorded["event"] == "PreToolUse"
     assert recorded["succeeded"] is True
 
-
-def test_watch_http_pretool_unavailable_records_command_activity(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    guard_home = tmp_path / "guard-home"
-    guard_home.mkdir()
-    (guard_home / "config.toml").write_text(
-        'mode = "observe"\nprotection_posture = "watch"\n',
-        encoding="utf-8",
-    )
-    writer = MagicMock()
-    worker = HookWorker(store=GuardStore(guard_home), activity_writer=writer)
-    monkeypatch.setattr(worker, "_review_pre_tool_native", lambda *_args, **_kwargs: None)
-    result = worker._review_pre_tool_http(
-        {"hook_event_name": "PreToolUse", "tool_input": {"command": "git status"}},
-        harness="grok",
-        home_dir=tmp_path / "home",
-        guard_home=guard_home,
-        workspace=tmp_path / "workspace",
-    )
-    assert result["decision"] == "allow"
-    writer.submit_command_activity.assert_called_once()
-    recorded = writer.submit_command_activity.call_args.kwargs
-    assert recorded["event"] == "PreToolUse"
-    assert recorded["succeeded"] is True

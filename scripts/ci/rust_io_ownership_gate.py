@@ -123,7 +123,11 @@ _PERSISTENCE_PATH_PREFIXES: Final = (
     "src/codex_plugin_scanner/guard/private_file_io.py",
     "src/codex_plugin_scanner/guard/local_dashboard_session.py",
     "src/codex_plugin_scanner/guard/guard_home_state.py",
-    "src/codex_plugin_scanner/guard/codex_binding_capture.py",
+)
+_PERSISTENCE_ONLY_PATHS: Final = frozenset(
+    {
+        "src/codex_plugin_scanner/guard/codex_binding_capture.py",
+    }
 )
 
 
@@ -262,6 +266,8 @@ def _calls(record: FunctionRecord) -> tuple[str, ...]:
 def _category(path: str, kind: str) -> str:
     if path in _COMPATIBILITY_PATHS:
         return "compatibility_only"
+    if path in _PERSISTENCE_ONLY_PATHS:
+        return "persistence_only"
     if path in _TRANSPORT_IDENTITY_PATHS:
         return "transport_identity"
     if path in _TRANSPORT_DECODE_PATHS and kind == "decode":

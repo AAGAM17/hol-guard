@@ -31,6 +31,7 @@ def _unavailable(failure: str) -> subprocess.CompletedProcess[str]:
         "nonzero-allow": '{"policy_action":"allow"}',
         "nonzero-review": '{"policy_action":"review"}',
     }[failure]
+    # EX_SOFTWARE is an unexpected CLI failure, unlike supported restriction exits 1/2.
     code = 70 if failure == "nonzero-review" else 1 if failure == "nonzero-allow" else 0
     return subprocess.CompletedProcess([], code, stdout, "")
 

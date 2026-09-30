@@ -253,6 +253,8 @@ def _cursor_availability_response(
             recording_only=False,
         )
     except Exception:
+        # This generated hook is the final denial boundary, including for faulty
+        # evaluators. An unexpected exception must never escape as a permission.
         compact = hook_event_name.strip().lower().replace("_", "").replace("-", "")
         if compact in {"aftershellexecution", "aftermcpexecution"}:
             return {}, 0

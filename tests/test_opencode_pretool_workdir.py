@@ -98,8 +98,9 @@ def test_v2_shell_reviews_its_effective_workdir(
     result = json.loads(completed.stdout)
     if expected is not None:
         reviewed = result["reviewed"]
-        policy_workspace = _workspace_from_hook_payload(reviewed["payload"], Path(reviewed["directory"]))
-        assert policy_workspace == Path(reviewed["payload"]["workspace_root"])
+        policy_workspace = _workspace_from_hook_payload(reviewed["payload"])
+        assert policy_workspace == Path(reviewed["payload"]["workspace_root"]).resolve()
+        assert policy_workspace != Path(reviewed["payload"]["cwd"]).resolve() or reviewed["payload"]["cwd"] == reviewed["payload"]["workspace_root"]
         store = GuardStore(tmp_path / "policy-guard")
         store.upsert_policy(
             PolicyDecision(harness="opencode", scope="workspace", action="block", workspace=str(policy_workspace)),

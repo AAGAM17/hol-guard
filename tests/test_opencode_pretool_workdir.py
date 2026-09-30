@@ -11,19 +11,22 @@ from tests.test_opencode_pretool import _bun_executable, _ctx
 
 
 @pytest.mark.parametrize(
-    ("workdir", "expected"),
+    ("directory", "workdir", "expected"),
     [
-        (None, "/project"),
-        ("/project/subfolder", "/project/subfolder"),
-        ("../other", "/other"),
-        (" spaced folder ", "/project/ spaced folder "),
-        ("", "/project"),
-        (13, None),
+        ("/project", None, "/project"),
+        ("/project", "/project/subfolder", "/project/subfolder"),
+        ("/project", "../other", "/other"),
+        ("/project", " spaced folder ", "/project/ spaced folder "),
+        ("/project", "", "/project"),
+        ("/project", 13, None),
+        ("/project trailing ", None, "/project trailing "),
+        ("/project trailing ", "child", "/project trailing /child"),
+        ("", None, "."),
     ],
 )
 @pytest.mark.parametrize("exit_code", [0, 1, 2])
 def test_v2_shell_reviews_its_effective_workdir(
-    tmp_path: Path, workdir: object, expected: str | None, exit_code: int
+    tmp_path: Path, directory: str, workdir: object, expected: str | None, exit_code: int
 ) -> None:
     bun = _bun_executable()
     if bun is None:
@@ -46,21 +49,23 @@ def test_v2_shell_reviews_its_effective_workdir(
         "  calls++; reviewed = { directory, payload: JSON.parse(options.stdin) };\n"
         f"  return {{ exitCode: {exit_code}, stdout: '', stderr: 'rejected' }};\n"
         "};\n"
-        "await plugin.setup({ location: { directory: '/project' }, tool: {\n"
+        f"await plugin.setup({{ location: {{ directory: {json.dumps(directory)} }}, tool: {{\n"
         "  async hook(name, callback) { handler = callback; }\n"
         "} });\n"
-        "let blocked = false;\n"
+        "let blocked = false; let errorMessage = '';\n"
         f"try {{ await handler({{ tool: 'shell', input: {json.dumps(args)} }}); }}\n"
-        "catch { blocked = true; }\n"
+        "catch (error) { blocked = true; errorMessage = error.message; }\n"
         f"if (blocked !== {str(expected is None or exit_code != 0).lower()})\n"
         "  throw new Error('Guard decision changed');\n"
         f"if (calls !== {int(expected is not None)}) throw new Error('wrong review count');\n"
         f"const expectedPath = {json.dumps(expected)};\n"
-        f"const expected = expectedPath === null ? null : {str(workdir is None).lower()}\n"
+        f"const expected = expectedPath === null ? null : {str(workdir is None and bool(directory)).lower()}\n"
         "  ? expectedPath : resolve(expectedPath);\n"
         "if (expected !== null && (reviewed.directory !== expected ||\n"
         "    reviewed.payload.cwd !== expected || reviewed.payload.tool_input.command !== 'pwd'))\n"
         "  throw new Error('wrong effective working directory: ' + JSON.stringify(reviewed));\n"
+        "if (expected === null && (!errorMessage.includes('workdir must be a string') ||\n"
+        "    errorMessage.includes('install opencode'))) throw new Error('misleading validation error');\n"
         "console.log('ok');\n",
         encoding="utf-8",
     )

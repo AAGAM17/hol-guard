@@ -366,11 +366,10 @@ export async function spawnGuardProcess(options: {
 }
 
 async function runGuardHook(
-  directory: string,
+  workspace: string,
   payload: Record<string, unknown>,
   deadlineMs: number,
 ) {
-  const workspace = directory || process.cwd();
   const guardArgv = [
     ...(GUARD_FROZEN ? [] : ["guard"]),
     "hook",
@@ -500,6 +499,7 @@ export const HolGuardPretoolPlugin = async ({
       if (workdir !== undefined && typeof workdir !== "string") {
         throw new Error("HOL Guard could not review this command: workdir must be a string.");
       }
+      // Directory names can contain spaces. Review the same path the tool uses.
       const baseDirectory = directory || process.cwd();
       const workspace = workdir === undefined ? baseDirectory : resolvePath(baseDirectory, workdir);
       const deadlineMs = Date.now() + GUARD_HOOK_TIMEOUT_MS;

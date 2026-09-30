@@ -364,8 +364,10 @@ def _run_guard_doctor_command(
     if getattr(args, "repair", False):
         command_queue_payload["repair"] = repair_command_queue_state(store)
     payload["command_queue"] = command_queue_payload
+    with nullcontext() if args.harness else without_command_probes():
+        availability = doctor_native_availability()
     payload["native_runtime"] = {
-        "availability": doctor_native_availability(),
+        "availability": availability,
         "admission": native_resident_admission_snapshot(),
         "daemon_http": daemon_admission_snapshot(),
     }

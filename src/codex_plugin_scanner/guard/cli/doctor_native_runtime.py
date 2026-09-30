@@ -4,8 +4,18 @@ from __future__ import annotations
 
 import re
 
+from ..adapters.diagnostic_probes import skipped_command_probe
+
 
 def doctor_native_availability() -> dict[str, object]:
+    if skipped_command_probe(["hol-guard-runtime", "capabilities", "--json"]) is not None:
+        return {
+            "available": None,
+            "compatible": None,
+            "reason_code": "native_status_probe_skipped",
+            "evaluation_verified": False,
+        }
+
     from ..native_runtime import native_runtime_status
 
     try:

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import ssl
 import urllib.error
-from http.client import HTTPMessage
+from contextlib import nullcontext
+from http.client import HTTPMessage, IncompleteRead
 from types import SimpleNamespace
 from typing import Any
 
@@ -65,6 +66,18 @@ def test_transport_retry_does_not_extend_the_original_deadline() -> None:
     assert sleeps == [2]
 
 
+def test_pending_snapshots_do_not_reset_the_transport_retry_budget() -> None:
+    jobs = _jobs()
+    jobs[0].update(status="queued", conclusion=None)
+    pages = [{"total_count": len(jobs), "jobs": jobs[:100]}, {"total_count": len(jobs), "jobs": jobs[100:]}]
+    events = [event for _ in range(3) for event in [barrier._TransientApiError("offline"), *pages]]
+    options, calls, sleeps, _logs = _fixture([*events, barrier._TransientApiError("offline")])
+    with pytest.raises(barrier.ShardWaitError, match="three bounded retries"):
+        barrier.wait_for_shards("owner/repo", _RUN_ID, 2, **options)
+    assert len(calls) == 10
+    assert sleeps == [5, 5, 10, 5, 20, 5]
+
+
 def test_recovery_does_not_accept_inherited_coverage() -> None:
     jobs = _jobs()
     jobs[0]["started_at"] = "2026-09-20T16:55:00Z"
@@ -107,7 +120,7 @@ def test_tls_failures_are_not_retried(monkeypatch: pytest.MonkeyPatch, wrapped: 
 
 
 @pytest.mark.parametrize("wrapped", [False, True])
-@pytest.mark.parametrize("error_type", [TimeoutError, ssl.SSLEOFError])
+@pytest.mark.parametrize("error_type", [TimeoutError, ssl.SSLEOFError, ssl.SSLZeroReturnError, ssl.SSLSyscallError])
 def test_transport_timeouts_reach_the_bounded_retry_path(
     monkeypatch: pytest.MonkeyPatch, wrapped: bool, error_type: type[OSError]
 ) -> None:
@@ -120,3 +133,18 @@ def test_transport_timeouts_reach_the_bounded_retry_path(
     with pytest.raises(barrier._TransientApiError) as caught:
         barrier.github_json("/repos/owner/repo/actions/runs/1/attempts/1/jobs", 1)
     assert str(caught.value) == "GitHub jobs API request failed"
+
+
+def test_interrupted_response_read_reaches_the_bounded_retry_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    def read(_limit: int) -> bytes:
+        raise IncompleteRead(b"private-partial-response", 100)
+
+    response = SimpleNamespace(status=200, read=read)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-read-token")
+    monkeypatch.setattr(
+        barrier.urllib.request,
+        "build_opener",
+        lambda *_args: SimpleNamespace(open=lambda *_a, **_k: nullcontext(response)),
+    )
+    with pytest.raises(barrier._TransientApiError, match=r"^GitHub jobs API request failed$"):
+        barrier.github_json("/repos/owner/repo/actions/runs/1/attempts/1/jobs", 1)

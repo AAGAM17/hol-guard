@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import math
 import os
@@ -82,7 +83,7 @@ def github_json(path: str, timeout_seconds: float) -> object:
         if isinstance(error.reason, ssl.SSLCertVerificationError):
             raise ShardWaitError("GitHub jobs API TLS verification failed") from None
         raise _TransientApiError("GitHub jobs API request failed") from None
-    except OSError:
+    except (OSError, http.client.IncompleteRead):
         raise _TransientApiError("GitHub jobs API request failed") from None
     except (UnicodeError, json.JSONDecodeError):
         raise ShardWaitError("GitHub jobs API returned invalid JSON") from None
@@ -250,7 +251,6 @@ def wait_for_shards(
             log(f"GitHub jobs API transport unavailable; retry {api_failures}/3 in {delay:g}s")
             sleep(delay)
             continue
-        api_failures = 0
         if clock() >= deadline:
             raise ShardWaitError("Timed out waiting for Python coverage shard jobs")
         if states != previous:

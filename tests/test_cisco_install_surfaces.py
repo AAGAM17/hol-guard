@@ -52,7 +52,7 @@ def test_pyproject_keeps_cisco_mcp_scanner_optional() -> None:
     assert "python-multipart==0.0.32" in override_entries
     assert "starlette==1.3.1" in override_entries
     assert "tokenizers==0.23.1" in override_entries
-    assert "urllib3==2.7.0" in override_entries
+    assert "urllib3==2.8.0" in override_entries
     assert "cisco-ai-a2a-scanner" not in dependencies
     assert "cisco-ai-a2a-scanner" not in cisco_extra
     assert "rich>=14.0,<15" in dependency_entries

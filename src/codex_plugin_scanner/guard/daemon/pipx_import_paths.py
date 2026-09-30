@@ -25,12 +25,15 @@ def pipx_shared_import_paths(prefix: Path, configured_paths: dict[str, str]) -> 
                 if metadata.is_symlink():
                     continue
                 with metadata.open("rb") as stream:
-                    content = stream.read(4097).decode("utf-8")
+                    raw = stream.read(4097)
+                if len(raw) > 4096:
+                    continue
+                content = raw.decode("utf-8")
             except FileNotFoundError:
                 candidate = shared_root / suffix
             else:
                 lines = content.splitlines()
-                if len(content) > 4096 or len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
+                if len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
                     continue
                 candidate = Path(lines[0])
                 if not candidate.is_absolute():

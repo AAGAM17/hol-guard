@@ -87,7 +87,9 @@ def test_daemon_does_not_add_shared_libraries_for_an_ordinary_venv(tmp_path, mon
     assert shared_library not in daemon_manager_module._trusted_daemon_import_paths()
 
 
-@pytest.mark.parametrize("metadata", ["import poison", "relative/path", "{outside}", "{shared}\nimport poison"])
+@pytest.mark.parametrize(
+    "metadata", ["import poison", "relative/path", "{outside}", "{shared}\nimport poison", "x" * 4097]
+)
 def test_invalid_pipx_metadata_does_not_add_untrusted_import_paths(tmp_path, metadata):
     from codex_plugin_scanner.guard.daemon.pipx_import_paths import pipx_shared_import_paths
 

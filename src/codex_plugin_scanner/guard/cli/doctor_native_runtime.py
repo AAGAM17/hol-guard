@@ -9,7 +9,7 @@ from ..adapters.diagnostic_probes import skipped_command_probe
 
 
 class NativeAvailabilityResult(TypedDict):
-    mode: str
+    mode: Literal["off", "shadow", "auto", "force", "unknown"]
     available: bool | None
     compatible: bool | None
     reason_code: str

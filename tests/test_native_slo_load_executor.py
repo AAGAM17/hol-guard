@@ -166,10 +166,11 @@ def test_native_capacity_warmup_initializes_sixteen_streams_with_two_python_work
 def test_capacity_prewarm_rejects_incomplete_worker_initialization(
     monkeypatch: pytest.MonkeyPatch, completed: int, errors: int
 ) -> None:
+    success = Observation("codex", "PreToolUse", "1k", 0.0, "native_resident", True)
     monkeypatch.setattr(
         capacity,
         "_run_concurrent",
-        lambda *_args: ([object() for _ in range(completed)], errors),
+        lambda *_args: ([success for _ in range(completed)], errors),
     )
     with pytest.raises(RuntimeError, match="capacity prewarm did not complete every request"):
         capacity._prewarm_capacity_workers(cast(AdapterSession, object()), (("codex", "PreToolUse"),), 2)

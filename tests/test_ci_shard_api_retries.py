@@ -107,9 +107,12 @@ def test_tls_failures_are_not_retried(monkeypatch: pytest.MonkeyPatch, wrapped: 
 
 
 @pytest.mark.parametrize("wrapped", [False, True])
-def test_transport_timeouts_reach_the_bounded_retry_path(monkeypatch: pytest.MonkeyPatch, wrapped: bool) -> None:
+@pytest.mark.parametrize("error_type", [TimeoutError, ssl.SSLEOFError])
+def test_transport_timeouts_reach_the_bounded_retry_path(
+    monkeypatch: pytest.MonkeyPatch, wrapped: bool, error_type: type[OSError]
+) -> None:
     def fail(*_args: object, **_kwargs: object) -> object:
-        error = TimeoutError("private-network-error")
+        error = error_type("private-network-error")
         raise urllib.error.URLError(error) if wrapped else error
 
     monkeypatch.setenv("GITHUB_TOKEN", "test-read-token")

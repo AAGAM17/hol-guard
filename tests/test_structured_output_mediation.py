@@ -298,7 +298,8 @@ def test_clean_forward_requires_complete_recheck_and_exposes_only_ephemeral_dige
 
 @pytest.mark.parametrize("error_type", [ValueError, OSError])
 def test_binding_recheck_failure_withholds_without_logging_callback_details(
-    error_type: type[Exception], caplog: pytest.LogCaptureFixture,
+    error_type: type[Exception],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     def fail_recheck() -> StructuredOutputBinding | None:
         raise error_type("untrusted callback detail")

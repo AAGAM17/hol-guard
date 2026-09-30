@@ -12,6 +12,7 @@ from ..runtime.jsonc import normalize_jsonc
 from .base import HarnessContext
 from .hook_python import guard_cli_command
 from .opencode_artifacts import _command_parts, config_paths
+from .opencode_config_lock import opencode_config_lock
 
 
 def _member_span(text: str, offset: int, key: str) -> tuple[int, int]:
@@ -95,6 +96,11 @@ def _write_existing(path: Path, before: bytes, after: bytes, mode: int) -> None:
 
 def refresh_opencode_proxy_launchers(context: HarnessContext, *, warnings: list[str] | None = None) -> int:
     """Refresh verified CLI prefixes without changing server or tool authority."""
+    with opencode_config_lock(context.home_dir):
+        return _refresh_locked(context, warnings=warnings)
+
+
+def _refresh_locked(context: HarnessContext, *, warnings: list[str] | None = None) -> int:
     from .opencode_install_snapshot import (
         OpenCodeInstallSnapshotError,
         _binding_matches_native,

@@ -380,6 +380,8 @@ def _append_row(config: _CaptureConfig, *, guard_home: Path, row: Mapping[str, o
         existing = _read_descriptor(output, maximum=config.max_bytes)
         if existing is None:
             return False
+        from .codex_binding_capture_join import valid_existing_records
+
         existing_count = valid_existing_records(existing, run_id=config.run_id)
         if existing_count is None or existing_count >= config.max_records:
             return False
@@ -477,7 +479,13 @@ def record_native_worker(
     return _record_row(guard_home=guard_home, config=config, row=row)
 
 
-from .codex_binding_capture_join import join_binding_records, valid_existing_records  # noqa: E402
+def __getattr__(name: str) -> object:
+    if name == "join_binding_records":
+        from .codex_binding_capture_join import join_binding_records
+
+        return join_binding_records
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BINDABLE_CODEX_HOOK_EVENTS",

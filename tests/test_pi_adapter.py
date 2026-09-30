@@ -296,8 +296,12 @@ class TestPiInstall:
         assert 'pi.on("tool_result"' in text
         assert 'pi.on("input"' in text
         assert 'hook_event_name: "PostToolUse"' in text
-        assert "    if (originalOutputProof) return undefined;\n" in text
-        assert "return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);" in text
+        assert "    if (originalOutputProof) {\n" in text
+        assert "before preserving the original result." in text
+        assert (
+            "return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);"
+            in text
+        )
         assert '    if (response.decision === "allow") return undefined;\n' in text
         assert "const GUARD_CLI_WRAPPER_COMMAND =" in text
         assert "const GUARD_CLI_WRAPPER_ARGS =" in text
@@ -381,10 +385,9 @@ class TestPiInstall:
         assert "daemonResponseCanReturn(payload, daemonAttempt.response)" in text
         assert 'if (response.decision === "allow" || response.decision === "deny") return true;' in text
         assert "observe_mode?: boolean;" in text
-        assert "if (response.observe_mode === true) return undefined;" in text
-        assert text.index("if (response.observe_mode === true) return undefined;") < text.index(
-            "if (outputTruncated) {"
-        )
+        assert "if (response.observe_mode === true && structuredMediation === undefined) return undefined;" in text
+        watch_shortcut = "if (response.observe_mode === true && structuredMediation === undefined) return undefined;"
+        assert text.index(watch_shortcut) < text.index("if (outputTruncated) {")
         # digestOutputText must only hash text-bearing fields, not metadata
         # like {type: "text"} - otherwise structured source reads never match
         assert "record.type === 'text'" in text
@@ -393,7 +396,10 @@ class TestPiInstall:
         # guard_payload_ref fallback still present
         assert "guard_payload_ref" in text
         # Reviewed excerpt still returned when not proven safe
-        assert "return reviewedToolResult(reviewedContent, event.details, event.isError === true);" in text
+        assert (
+            "return reviewedToolResult(reviewedContent, event.details, "
+            "event.isError === true, hookDeadlineAt);" in text
+        )
 
     def test_install_writes_managed_extension_that_denies_on_hook_errors(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)
@@ -483,8 +489,10 @@ class TestPiInstall:
         assert "value.toString()" in text
         assert "new WeakSet<object>()" in text
         assert "[deep object omitted by HOL Guard]" in text
-        assert "const boundedContent = boundValue(event.content);" in text
-        assert "const boundedStdout = boundedOutputText(event.content);" in text
+        assert "const preprocessBudget = createTraversalBudget(hookDeadlineAt);" in text
+        assert "const digest = digestOutputText(event.content, hookDeadlineAt, preprocessBudget);" in text
+        assert "const boundedContent = boundValue(event.content, 0, new WeakSet(), preprocessBudget);" in text
+        assert "const boundedStdout = boundedOutputText(event.content, hookDeadlineAt, preprocessBudget);" in text
         assert (
             "const reviewedContent = outputTruncated ? [{ type: 'text', text: toolOutput }] : boundedContent.value;"
             in text
@@ -516,7 +524,10 @@ class TestPiInstall:
         # When truncated, the reviewed excerpt (not the full unreviewed output) is
         # returned to Pi so omitted content never reaches the model.
         assert "function reviewedToolResult(" in text
-        assert "return reviewedToolResult(reviewedContent, event.details, event.isError === true);" in text
+        assert (
+            "return reviewedToolResult(reviewedContent, event.details, "
+            "event.isError === true, hookDeadlineAt);" in text
+        )
         assert "guardPayload.tool_response = event.content" in text
         assert "stdout: toolOutput" not in text
         assert "tool_response: toolOutput" in text
@@ -544,7 +555,10 @@ class TestPiInstall:
         # guard_payload_ref fallback still present
         assert "guard_payload_ref" in text
         # Reviewed excerpt still returned when not proven safe
-        assert "return reviewedToolResult(reviewedContent, event.details, event.isError === true);" in text
+        assert (
+            "return reviewedToolResult(reviewedContent, event.details, "
+            "event.isError === true, hookDeadlineAt);" in text
+        )
 
     def test_omp_install_writes_only_omp_extension(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)

@@ -183,6 +183,10 @@ def managed_extension_source(
         f"const GUARD_OBJECT_KEY_LIMIT = {GUARD_HOOK_OBJECT_KEY_LIMIT};\n"
         f"const GUARD_MAX_DEPTH = {GUARD_HOOK_MAX_DEPTH};\n"
         f"const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = {GUARD_HOOK_MAX_SERIALIZED_PAYLOAD_CHARS};\n"
+        "const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;\n"
+        "const GUARD_STRUCTURED_MAX_DEPTH = 8;\n"
+        "const GUARD_STRUCTURED_MAX_NODES = 128;\n"
+        "const GUARD_STRUCTURED_MAX_FIELDS = 64;\n"
         "const GUARD_APPROVAL_RESUME_POLL_INTERVAL_MS = 2_000;\n"
         "const GUARD_APPROVAL_RESUME_FETCH_TIMEOUT_MS = 1_500;\n"
         "const GUARD_APPROVAL_RESUME_MAX_WAIT_MS = 10 * 60 * 1_000;\n"
@@ -207,6 +211,14 @@ def managed_extension_source(
         "  policy_action?: string;\n"
         '  notice?: "none" | "excerpt" | "warning";\n'
         "  reason_code?: string;\n"
+        "  structured_content_mediation?: StructuredContentMediation;\n"
+        "};\n"
+        "type StructuredContentMediation = {\n"
+        '  schema: "guard-structured-content-mediation.v1";\n'
+        '  action: "forward" | "withhold";\n'
+        "  reason_code: string;\n"
+        "  native_decision_id?: string;\n"
+        "  content_sha256?: string;\n"
         "};\n"
         + CLI_RUNTIME_HELPERS_SOURCE
         + CONTENT_REVIEW_HELPERS_SOURCE
@@ -216,11 +228,37 @@ def managed_extension_source(
         "  recoveryKind: GuardDaemonRecoveryKind | null;\n"
         "};\n"
         "\n"
+        "function validStructuredContentMediation(value: unknown): StructuredContentMediation | null {\n"
+        '  if (!value || typeof value !== "object" || Array.isArray(value)) return null;\n'
+        "  const parsed = value as Record<string, unknown>;\n"
+        '  if (parsed.schema !== "guard-structured-content-mediation.v1") return null;\n'
+        '  if (parsed.action !== "forward" && parsed.action !== "withhold") return null;\n'
+        '  if (typeof parsed.reason_code !== "string" || '
+        '!/^structured_[a-z0-9_]+$/.test(parsed.reason_code)) return null;\n'
+        '  if (parsed.native_decision_id !== undefined && '
+        '(typeof parsed.native_decision_id !== "string" || '
+        '!/^[A-Za-z0-9_.:-]{1,256}$/.test(parsed.native_decision_id))) return null;\n'
+        '  if (parsed.action === "forward") {\n'
+        '    if (typeof parsed.native_decision_id !== "string" || '
+        'typeof parsed.content_sha256 !== "string") return null;\n'
+        '    if (!/^[0-9a-f]{64}$/.test(parsed.content_sha256)) return null;\n'
+        '    if (Object.keys(parsed).some((key) => !["schema", "action", '
+        '"reason_code", "native_decision_id", "content_sha256"].includes(key))) return null;\n'
+        '  } else {\n'
+        '    if (parsed.content_sha256 !== undefined) return null;\n'
+        '    if (Object.keys(parsed).some((key) => !["schema", "action", '
+        '"reason_code", "native_decision_id"].includes(key))) return null;\n'
+        '  }\n'
+        "  return parsed as StructuredContentMediation;\n"
+        "}\n"
+        "\n"
         "function normalizeGuardResponse(value: unknown): GuardResponse | null {\n"
         '  if (!value || typeof value !== "object" || Array.isArray(value)) return null;\n'
         "  const parsed = value as Record<string, unknown>;\n"
         "  if (parsed.reason !== undefined && parsed.reason !== null && "
         'typeof parsed.reason !== "string") return null;\n'
+        "  if (parsed.structured_content_mediation !== undefined && "
+        "validStructuredContentMediation(parsed.structured_content_mediation) === null) return null;\n"
         '  if (parsed.decision === "allow" || parsed.decision === "deny") {\n'
         "    return parsed as GuardResponse;\n"
         "  }\n"
@@ -309,11 +347,14 @@ def managed_extension_source(
         "    if (!response.ok) {\n"
         "      let reasonCode = `daemon_http_${response.status}`;\n"
         "      try {\n"
-        "        const errorPayload = JSON.parse((await response.text()).slice(0, GUARD_TEXT_LIMIT_CHARS)) as {\n"
-        "          error?: unknown;\n"
-        "        };\n"
-        "        if (typeof errorPayload.error === 'string' && errorPayload.error) {\n"
-        "          reasonCode = errorPayload.error;\n"
+        "        const errorBody = await boundedResponseText(response, GUARD_TEXT_LIMIT_CHARS, deadlineAt);\n"
+        "        if (errorBody === null) {\n"
+        '          reasonCode = "daemon_response_body_unbounded";\n'
+        "        } else {\n"
+        "          const errorPayload = JSON.parse(errorBody) as { error?: unknown };\n"
+        "          if (typeof errorPayload.error === 'string' && errorPayload.error) {\n"
+        "            reasonCode = errorPayload.error;\n"
+        "          }\n"
         "        }\n"
         "      } catch {}\n"
         "      if (response.status === 401 || response.status === 403) {\n"
@@ -331,7 +372,11 @@ def managed_extension_source(
         "        recoveryKind: null,\n"
         "      };\n"
         "    }\n"
-        "    const raw = (await response.text()).trim();\n"
+        "    const rawResponse = await boundedResponseText(\n"
+        "      response, GUARD_MAX_SERIALIZED_PAYLOAD_CHARS, deadlineAt,\n"
+        "    );\n"
+        '    if (rawResponse === null) return { response: null, recoveryKind: "transport-failure" };\n'
+        "    const raw = rawResponse.trim();\n"
         '    if (!raw) return { response: null, recoveryKind: "transport-failure" };\n'
         "    try {\n"
         "      const parsed = JSON.parse(raw) as unknown;\n"
@@ -363,15 +408,26 @@ def managed_extension_source(
         "async function runGuard(\n"
         "  payload: Record<string, unknown>,\n"
         "  cwd?: string,\n"
-        "  options?: { enforceSizeCap?: boolean },\n"
+        "  options?: { enforceSizeCap?: boolean; deadlineAt?: number },\n"
         "): Promise<GuardResponse> {\n"
-        "  const deadlineAt = Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n"
+        "  const deadlineAt = options?.deadlineAt ?? Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n"
         "  const args = [...GUARD_ARGS];\n"
         '  const workspace = typeof cwd === "string" && cwd ? cwd : process.cwd();\n'
         '  if (workspace) args.push("--workspace", workspace);\n'
         "  let payloadToSend = payload;\n"
         "  let serializedPayload = '';\n"
         "  let cleanupPayloadReference = () => {};\n"
+        "  if (\n"
+        "    options?.enforceSizeCap === true &&\n"
+        "    !payloadWithinSerializedBudget(payload, deadlineAt)\n"
+        "  ) {\n"
+        '    return {\n'
+        '      decision: "deny",\n'
+        '      reason: "HOL Guard withheld this hook payload before review '
+        'because its size or shape could not be bounded safely.",\n'
+        '      reason_code: "hook_payload_unbounded",\n'
+        '    };\n'
+        "  }\n"
         "  try {\n"
         "    serializedPayload = JSON.stringify(payloadToSend);\n"
         "  } catch (error) {\n"
@@ -551,10 +607,10 @@ def managed_extension_source(
         "  };\n"
         "}\n"
         "\n"
-        "function reviewedToolResult(content: unknown, details: unknown, isError?: boolean) {\n"
+        "function reviewedToolResult(content: unknown, details: unknown, isError?: boolean, deadlineAt?: number) {\n"
         "  let body = '';\n"
         "  if (Array.isArray(content)) {\n"
-        "    body = boundedOutputText(content).value as string;\n"
+        "    body = boundedOutputText(content, deadlineAt).value as string;\n"
         "  } else if (typeof content === 'string') {\n"
         "    body = content;\n"
         "  } else if (content !== undefined && content !== null) {\n"
@@ -728,14 +784,17 @@ def managed_extension_source(
         "    };\n"
         "  });\n"
         '  pi.on("tool_result", async (event, ctx) => {\n'
+        "    const hookDeadlineAt = Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n"
+        "    const signal = handlerAbortSignal(ctx);\n"
         "    const toolInput =\n"
         "      (event as { input?: Record<string, unknown> }).input ??\n"
         "      (event as { toolInput?: Record<string, unknown> }).toolInput ??\n"
         "      (event as { arguments?: Record<string, unknown> }).arguments ??\n"
         "      {};\n"
-        "    const digest = digestOutputText(event.content);\n"
-        "    const boundedContent = boundValue(event.content);\n"
-        "    const boundedStdout = boundedOutputText(event.content);\n"
+        "    const preprocessBudget = createTraversalBudget(hookDeadlineAt);\n"
+        "    const digest = digestOutputText(event.content, hookDeadlineAt, preprocessBudget);\n"
+        "    const boundedContent = boundValue(event.content, 0, new WeakSet(), preprocessBudget);\n"
+        "    const boundedStdout = boundedOutputText(event.content, hookDeadlineAt, preprocessBudget);\n"
         "    const outputTruncated = boundedContent.truncated || boundedStdout.truncated"
         " || digest.excerptTruncated || digest.traversalTruncated;\n"
         "    const toolOutput = digest.textForExcerpt || (boundedStdout.value as string);\n"
@@ -750,6 +809,13 @@ def managed_extension_source(
         "        tool_response: toolOutput,\n"
         "        is_error: event.isError === true,\n"
         "    };\n"
+        "    // OMP's current ExtensionContext has no lifecycle signal. A managed\n"
+        "    // structured destination therefore stays fail-closed there unless the\n"
+        "    // host supplies the feature-detected signal used by the tool-call path.\n"
+        "    const structuredOutputJson = signal === undefined\n"
+        "      ? null\n"
+        "      : structuredOutputJsonForPostToolUse(event.content, hookDeadlineAt);\n"
+        "    if (structuredOutputJson !== null) guardPayload.structured_output_json = structuredOutputJson;\n"
         "    if (sourceRef) {\n"
         "      guardPayload.guard_source_ref = sourceRef;\n"
         "      guardPayload.tool_response_summary = {\n"
@@ -766,8 +832,15 @@ def managed_extension_source(
         "    const response = await runGuard(\n"
         "      guardPayload,\n"
         "      ctx.cwd,\n"
-        "      { enforceSizeCap: true },\n"
+        "      { enforceSizeCap: true, deadlineAt: hookDeadlineAt },\n"
         "    );\n"
+        "    if (signal?.aborted || Date.now() >= hookDeadlineAt) {\n"
+        '      const reason = "HOL Guard withheld this tool output because its review lifecycle "\n'
+        '        + "was cancelled or exceeded its deadline.";\n'
+        '      ctx.ui.notify(reason, "warning");\n'
+        "      return blockedToolResult(\n"
+        "        modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "    }\n"
         '    if (response.decision === "deny") {\n'
         '      const reason = response.reason ?? "Blocked by HOL Guard.";\n'
         "      const modelReason = modelVisibleBlockedReason(reason, response.reason_code);\n"
@@ -776,13 +849,62 @@ def managed_extension_source(
         '      ctx.ui.notify(reason, "warning");\n'
         "      return blockedToolResult(modelReason, event.details);\n"
         "    }\n"
-        "    if (response.observe_mode === true) return undefined;\n"
+        "    const structuredMediation = response.structured_content_mediation;\n"
+        "    if (response.observe_mode === true && structuredMediation === undefined) return undefined;\n"
+        "    if (structuredMediation !== undefined) {\n"
+        "      if (structuredMediation.action === 'forward' && signal === undefined) {\n"
+        '        const reason = "HOL Guard withheld this structured tool output because the host exposes "\n'
+        '          + "no cancellation signal.";\n'
+        '        ctx.ui.notify(reason, "warning");\n'
+        "        return blockedToolResult(\n"
+        "          modelVisibleBlockedReason(reason, 'structured_cancellation_unsupported'), event.details);\n"
+        "      }\n"
+        "      if (signal?.aborted || Date.now() >= hookDeadlineAt) {\n"
+        '        const reason = "HOL Guard withheld this structured tool output because its lifecycle ended "\n'
+        '          + "before forwarding.";\n'
+        '        ctx.ui.notify(reason, "warning");\n'
+        "        return blockedToolResult(\n"
+        "          modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "      }\n"
+        "      const structuredCandidate = structuredOutputJsonForPostToolUse(event.content, hookDeadlineAt);\n"
+        "      if (signal?.aborted || Date.now() >= hookDeadlineAt) {\n"
+        '        const reason = "HOL Guard withheld this structured tool output because its lifecycle ended "\n'
+        '          + "during forwarding proof.";\n'
+        '        ctx.ui.notify(reason, "warning");\n'
+        "        return blockedToolResult(\n"
+        "          modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "      }\n"
+        "      const structuredDigest = structuredCandidate === null\n"
+        "        ? null\n"
+        "        : createHash('sha256').update(structuredCandidate, 'utf8').digest('hex');\n"
+        "      const structuredForwardProof =\n"
+        '        response.decision === "allow" &&\n'
+        '        response.model_output_action === "allow_original" &&\n'
+        '        structuredMediation.action === "forward" &&\n'
+        "        structuredMediation.native_decision_id !== undefined &&\n"
+        "        structuredMediation.content_sha256 === structuredDigest;\n"
+        "      if (!structuredForwardProof) {\n"
+        '        const reason = "HOL Guard withheld this structured tool output because its full content "\n'
+        '          + "could not be proven safe.";\n'
+        '        ctx.ui.notify(reason, "warning");\n'
+        "        return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);\n"
+        "      }\n"
+        "    }\n"
         "    const originalOutputProof =\n"
         '      response.decision === "allow" &&\n'
         '      response.model_output_action === "allow_original" &&\n'
         "      typeof response.reviewed_output_sha256 === 'string' &&\n"
         "      response.reviewed_output_sha256 === digest.sha256;\n"
-        "    if (originalOutputProof) return undefined;\n"
+        "    if (originalOutputProof) {\n"
+        "      if (signal?.aborted || Date.now() >= hookDeadlineAt) {\n"
+        '        const reason = "HOL Guard withheld this tool output because its review lifecycle ended "\n'
+        '          + "before preserving the original result.";\n'
+        '        ctx.ui.notify(reason, "warning");\n'
+        "        return blockedToolResult(\n"
+        "          modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "      }\n"
+        "      return undefined;\n"
+        "    }\n"
         '    if (response.model_output_action === "allow_original") {\n'
         "      const reason = response.reason ||\n"
         '        "HOL Guard could not prove this tool output safe to preserve.";\n'
@@ -803,7 +925,7 @@ def managed_extension_source(
         ' within local limits.";\n'
         '      ctx.ui.notify(notice, "info");\n'
         "      return reviewedToolResult([{ type: 'text', text: excerptText }], "
-        "event.details, event.isError === true);\n"
+        "event.details, event.isError === true, hookDeadlineAt);\n"
         "    }\n"
         "    if (outputTruncated) {\n"
         "      const notice = response.reason ||\n"
@@ -813,7 +935,7 @@ def managed_extension_source(
         ' || response.model_output_action === "replace_with_reviewed_excerpt") {\n'
         '        ctx.ui.notify(notice, "info");\n'
         "      }\n"
-        "      return reviewedToolResult(reviewedContent, event.details, event.isError === true);\n"
+        "      return reviewedToolResult(reviewedContent, event.details, event.isError === true, hookDeadlineAt);\n"
         "    }\n"
         '    if (response.decision === "allow") return undefined;\n'
         "    const reason = response.reason ||\n"
@@ -843,6 +965,217 @@ def legacy_managed_extension_source(
         harness=harness,
         display_name=display_name,
     )
+
+    # The legacy source is a frozen migration artifact.  Remove additions from
+    # the current managed source before applying the historical compatibility
+    # substitutions below so the old byte contract remains exact.
+    structured_constants = (
+        "const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;\n"
+        "const GUARD_STRUCTURED_MAX_DEPTH = 8;\n"
+        "const GUARD_STRUCTURED_MAX_NODES = 128;\n"
+        "const GUARD_STRUCTURED_MAX_FIELDS = 64;\n"
+    )
+    if source.count(structured_constants) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(structured_constants, "", 1)
+
+    structured_type_start = source.find("  structured_content_mediation?: StructuredContentMediation;\n")
+    structured_type_end = source.find("type GuardCliResult =", structured_type_start)
+    if structured_type_start < 0 or structured_type_end < 0:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = (
+        source[:structured_type_start]
+        + "};\n\n"
+        + source[structured_type_end:]
+    )
+
+    valid_structured_start = source.find("function validStructuredContentMediation(")
+    normalize_start = source.find("function normalizeGuardResponse(", valid_structured_start)
+    if valid_structured_start < 0 or normalize_start < 0:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source[:valid_structured_start] + source[normalize_start:]
+
+    normalize_structured_line = (
+        "  if (parsed.structured_content_mediation !== undefined && "
+        "validStructuredContentMediation(parsed.structured_content_mediation) === null) return null;\n"
+    )
+    if source.count(normalize_structured_line) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(normalize_structured_line, "", 1)
+
+    structured_helper_start = source.find("function structuredOutputJsonForPostToolUse(")
+    source_path_start = source.find("function sourcePathFromToolInput(", structured_helper_start)
+    if structured_helper_start < 0 or source_path_start < 0:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source[:structured_helper_start] + source[source_path_start:]
+
+    bounded_preprocessing_start = source.find("/* HOL Guard bounded preprocessing begins */\n")
+    bounded_preprocessing_end = source.find("/* HOL Guard bounded preprocessing ends */\n", bounded_preprocessing_start)
+    if bounded_preprocessing_start < 0 or bounded_preprocessing_end < 0:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    bounded_preprocessing_end += len("/* HOL Guard bounded preprocessing ends */\n")
+    if source[bounded_preprocessing_end:bounded_preprocessing_end + 1] == "\n":
+        bounded_preprocessing_end += 1
+    source = source[:bounded_preprocessing_start] + source[bounded_preprocessing_end:]
+    for current_name, legacy_name in (
+        ("function legacyDigestOutputText(", "function digestOutputText("),
+        ("function legacyBoundValue(", "function boundValue("),
+        ("function legacyBoundedOutputText(", "function boundedOutputText("),
+    ):
+        if source.count(current_name) != 1:
+            raise RuntimeError("managed Pi extension legacy source contract drifted")
+        source = source.replace(current_name, legacy_name, 1)
+    if source.count("legacyBoundValue(") != 2:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace("legacyBoundValue(", "boundValue(")
+
+    tool_result_prelude = (
+        "    const hookDeadlineAt = Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n"
+        "    const signal = handlerAbortSignal(ctx);\n"
+    )
+    if source.count(tool_result_prelude) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(tool_result_prelude, "", 1)
+
+    reviewed_tool_result_current = (
+        "function reviewedToolResult(content: unknown, details: unknown, isError?: boolean, deadlineAt?: number) {\n"
+        "  let body = '';\n"
+        "  if (Array.isArray(content)) {\n"
+        "    body = boundedOutputText(content, deadlineAt).value as string;\n"
+    )
+    reviewed_tool_result_legacy = (
+        "function reviewedToolResult(content: unknown, details: unknown, isError?: boolean) {\n"
+        "  let body = '';\n"
+        "  if (Array.isArray(content)) {\n"
+        "    body = boundedOutputText(content).value as string;\n"
+    )
+    if source.count(reviewed_tool_result_current) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(reviewed_tool_result_current, reviewed_tool_result_legacy, 1)
+
+    bounded_preprocessing_calls = (
+        "    const preprocessBudget = createTraversalBudget(hookDeadlineAt);\n"
+        "    const digest = digestOutputText(event.content, hookDeadlineAt, preprocessBudget);\n"
+        "    const boundedContent = boundValue(event.content, 0, new WeakSet(), preprocessBudget);\n"
+        "    const boundedStdout = boundedOutputText(event.content, hookDeadlineAt, preprocessBudget);\n"
+    )
+    legacy_preprocessing_calls = (
+        "    const digest = digestOutputText(event.content);\n"
+        "    const boundedContent = boundValue(event.content);\n"
+        "    const boundedStdout = boundedOutputText(event.content);\n"
+    )
+    if source.count(bounded_preprocessing_calls) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(bounded_preprocessing_calls, legacy_preprocessing_calls, 1)
+
+    structured_payload_lines = (
+        "    // OMP's current ExtensionContext has no lifecycle signal. A managed\n"
+        "    // structured destination therefore stays fail-closed there unless the\n"
+        "    // host supplies the feature-detected signal used by the tool-call path.\n"
+        "    const structuredOutputJson = signal === undefined\n"
+        "      ? null\n"
+        "      : structuredOutputJsonForPostToolUse(event.content, hookDeadlineAt);\n"
+        "    if (structuredOutputJson !== null) guardPayload.structured_output_json = structuredOutputJson;\n"
+    )
+    if source.count(structured_payload_lines) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(structured_payload_lines, "", 1)
+
+    run_guard_deadline_options = "      { enforceSizeCap: true, deadlineAt: hookDeadlineAt },\n"
+    if source.count(run_guard_deadline_options) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(run_guard_deadline_options, "      { enforceSizeCap: true },\n", 1)
+
+    post_tool_cancellation = (
+        "    if (signal?.aborted || Date.now() >= hookDeadlineAt) {\n"
+        '      const reason = "HOL Guard withheld this tool output because its review lifecycle "\n'
+        '        + "was cancelled or exceeded its deadline.";\n'
+        '      ctx.ui.notify(reason, "warning");\n'
+        "      return blockedToolResult(\n"
+        "        modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "    }\n"
+    )
+    if source.count(post_tool_cancellation) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(post_tool_cancellation, "", 1)
+
+    structured_mediation_start = source.find("    const structuredMediation = response.structured_content_mediation;\n")
+    original_output_start = source.find("    const originalOutputProof =", structured_mediation_start)
+    if structured_mediation_start < 0 or original_output_start < 0:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = (
+        source[:structured_mediation_start]
+        + "    if (response.observe_mode === true) return undefined;\n"
+        + source[original_output_start:]
+    )
+
+    run_guard_options_line = "  options?: { enforceSizeCap?: boolean; deadlineAt?: number },\n"
+    if source.count(run_guard_options_line) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(run_guard_options_line, "  options?: { enforceSizeCap?: boolean },\n", 1)
+    run_guard_deadline_line = (
+        "  const deadlineAt = options?.deadlineAt ?? Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n"
+    )
+    if source.count(run_guard_deadline_line) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(
+        run_guard_deadline_line,
+        "  const deadlineAt = Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n",
+        1,
+    )
+
+    payload_preflight = (
+        "  if (\n"
+        "    options?.enforceSizeCap === true &&\n"
+        "    !payloadWithinSerializedBudget(payload, deadlineAt)\n"
+        "  ) {\n"
+        '    return {\n'
+        '      decision: "deny",\n'
+        '      reason: "HOL Guard withheld this hook payload before review '
+        'because its size or shape could not be bounded safely.",\n'
+        '      reason_code: "hook_payload_unbounded",\n'
+        '    };\n'
+        "  }\n"
+    )
+    if source.count(payload_preflight) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(payload_preflight, "", 1)
+
+    bounded_error_body = (
+        "        const errorBody = await boundedResponseText(response, GUARD_TEXT_LIMIT_CHARS, deadlineAt);\n"
+        "        if (errorBody === null) {\n"
+        '          reasonCode = "daemon_response_body_unbounded";\n'
+        "        } else {\n"
+        "          const errorPayload = JSON.parse(errorBody) as { error?: unknown };\n"
+        "          if (typeof errorPayload.error === 'string' && errorPayload.error) {\n"
+        "            reasonCode = errorPayload.error;\n"
+        "          }\n"
+        "        }\n"
+    )
+    legacy_error_body = (
+        "        const errorPayload = JSON.parse((await response.text()).slice(0, GUARD_TEXT_LIMIT_CHARS)) as {\n"
+        "          error?: unknown;\n"
+        "        };\n"
+        "        if (typeof errorPayload.error === 'string' && errorPayload.error) {\n"
+        "          reasonCode = errorPayload.error;\n"
+        "        }\n"
+    )
+    if source.count(bounded_error_body) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(bounded_error_body, legacy_error_body, 1)
+
+    bounded_success_body = (
+        "    const rawResponse = await boundedResponseText(\n"
+        "      response, GUARD_MAX_SERIALIZED_PAYLOAD_CHARS, deadlineAt,\n"
+        "    );\n"
+        '    if (rawResponse === null) return { response: null, recoveryKind: "transport-failure" };\n'
+        "    const raw = rawResponse.trim();\n"
+    )
+    legacy_success_body = "    const raw = (await response.text()).trim();\n"
+    if source.count(bounded_success_body) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(bounded_success_body, legacy_success_body, 1)
+
     replacements = (
         ('  decision: "allow" | "deny";\n', "  decision?: string;\n"),
         ("  observed_review_failure?: boolean;\n", ""),
@@ -871,10 +1204,6 @@ def legacy_managed_extension_source(
             "  return `${prefix}${approvalHint} Do not retry the same tool call automatically; wait for the user to "
             "approve or change the task.`;\n"
             "}\n",
-        ),
-        (
-            "    chars += Array.from(text).length;\n",
-            "    chars += text.length;\n",
         ),
         (
             "function normalizeGuardResponse(value: unknown): GuardResponse | null {\n"
@@ -1025,7 +1354,16 @@ def legacy_managed_extension_source(
             '      response.model_output_action === "allow_original" &&\n'
             "      typeof response.reviewed_output_sha256 === 'string' &&\n"
             "      response.reviewed_output_sha256 === digest.sha256;\n"
-            "    if (originalOutputProof) return undefined;\n"
+            "    if (originalOutputProof) {\n"
+            "      if (signal?.aborted || Date.now() >= hookDeadlineAt) {\n"
+            '        const reason = "HOL Guard withheld this tool output because its review lifecycle ended "\n'
+            '          + "before preserving the original result.";\n'
+            '        ctx.ui.notify(reason, "warning");\n'
+            "        return blockedToolResult(\n"
+            "          modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+            "      }\n"
+            "      return undefined;\n"
+            "    }\n"
             '    if (response.model_output_action === "allow_original") {\n'
             "      const reason = response.reason ||\n"
             '        "HOL Guard could not prove this tool output safe to preserve.";\n'
@@ -1047,7 +1385,7 @@ def legacy_managed_extension_source(
             ' within local limits.";\n'
             '      ctx.ui.notify(notice, "info");\n'
             "      return reviewedToolResult([{ type: 'text', text: excerptText }], "
-            "event.details, event.isError === true);\n"
+            "event.details, event.isError === true, hookDeadlineAt);\n"
             "    }\n"
             "    if (outputTruncated) {\n"
             "      const notice = response.reason ||\n"
@@ -1057,7 +1395,7 @@ def legacy_managed_extension_source(
             ' || response.model_output_action === "replace_with_reviewed_excerpt") {\n'
             '        ctx.ui.notify(notice, "info");\n'
             "      }\n"
-            "      return reviewedToolResult(reviewedContent, event.details, event.isError === true);\n"
+            "      return reviewedToolResult(reviewedContent, event.details, event.isError === true, hookDeadlineAt);\n"
             "    }\n"
             '    if (response.decision === "allow") return undefined;\n'
             "    const reason = response.reason ||\n"

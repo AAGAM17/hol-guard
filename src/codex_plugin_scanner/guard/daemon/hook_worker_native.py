@@ -15,6 +15,13 @@ from ..native_route_receipt import record_python_semantic_hook_route
 from ..native_runtime import NativeRuntimeStatus, native_output_sha256
 from ..runtime.hook_output_text import extract_payload_output
 from ..runtime.hook_review_types import HookReviewRequest, HookReviewResponse
+from ..runtime.structured_output_mediation import (
+    StructuredOutputBinding,
+    StructuredOutputResolution,
+    canonical_harness_name,
+    mediate_native_post_tool_content,
+    resolve_managed_structured_output_resolution,
+)
 from .hook_availability_policy import (
     availability_harness_response,
     hook_review_is_recording_only,
@@ -134,6 +141,7 @@ class _HookWorkerNativeHost(Protocol):
     _review_native_edge_with_snapshot: Callable[..., tuple[dict[str, object], bool]]
     _record_post_tool_activity: Callable[..., None]
     _record_native_decision_receipt: Callable[[object], Mapping[str, object] | None]
+    _load_config: Callable[..., object]
 
 
 def _record_native_pre_activity(
@@ -203,6 +211,48 @@ class HookWorkerNativeMixin:
     """Native edge and explicit-oracle paths kept out of the worker facade."""
 
     _last_native_decision_receipt: dict[str, object] | None = None
+
+    def _structured_output_binding(
+        self: _HookWorkerNativeHost,
+        *,
+        guard_home: Path,
+        workspace: Path | None,
+        harness: str,
+    ) -> StructuredOutputBinding | None:
+        """Read the active machine binding without creating a local authority.
+
+        This compatibility wrapper intentionally drops the required-state
+        detail; the native PostToolUse path uses ``_structured_output_resolution``
+        when it must distinguish optional-off from fail-closed authority.
+        """
+
+        return self._structured_output_resolution(
+            guard_home=guard_home,
+            workspace=workspace,
+            harness=harness,
+        ).binding
+
+    def _structured_output_resolution(
+        self: _HookWorkerNativeHost,
+        *,
+        guard_home: Path,
+        workspace: Path | None,
+        harness: str,
+    ) -> StructuredOutputResolution:
+        """Resolve optional enrollment while retaining invalid-authority state."""
+
+        loader = getattr(self, "_load_config", None)
+        if not callable(loader):
+            return StructuredOutputResolution(None, True, "structured_managed_authority_unavailable")
+        try:
+            config = loader(guard_home, workspace)
+            if config is None:
+                return StructuredOutputResolution(None, True, "structured_managed_authority_unavailable")
+            return resolve_managed_structured_output_resolution(config, harness=harness)
+        except Exception:
+            # A config read failure cannot establish whether the managed route
+            # is enrolled.  Keep the model-visible destination fail-closed.
+            return StructuredOutputResolution(None, True, "structured_managed_authority_unavailable")
 
     def _mode_surface_response(
         self: _HookWorkerNativeHost,
@@ -399,6 +449,13 @@ class HookWorkerNativeMixin:
         policy_snapshot: Mapping[str, object] | None,
         recording_only: bool,
     ) -> tuple[dict[str, object], bool]:
+        structured_resolution = StructuredOutputResolution(None, False)
+        if event_name == "PostToolUse" and canonical_harness_name(harness) in {"pi", "omp"}:
+            structured_resolution = self._structured_output_resolution(
+                guard_home=guard_home,
+                workspace=workspace,
+                harness=harness,
+            )
         edge = self._review_raw_hook_native(
             payload=payload,
             harness=harness,
@@ -499,6 +556,28 @@ class HookWorkerNativeMixin:
             )
         if recording_only:
             native_result = _watch_native_post_tool_result(native_result, payload)
+        if structured_resolution.required:
+            mediation = mediate_native_post_tool_content(
+                harness=native_harness,
+                event_name=native_event,
+                native_result=native_result,
+                validated_receipt=accepted_receipt,
+                structured_output_json=payload.get("structured_output_json"),
+                binding=structured_resolution.binding,
+                required_reason_code=structured_resolution.reason_code,
+                recheck_binding=lambda: self._structured_output_resolution(
+                    guard_home=guard_home,
+                    workspace=workspace,
+                    harness=native_harness,
+                ).binding,
+                deadline_monotonic=deadline,
+                allow_observe_mode=recording_only,
+            )
+            if mediation is not None:
+                native_result = {
+                    **native_result,
+                    "structured_content_mediation": mediation.to_harness_json(),
+                }
         self._record_post_tool_activity(
             harness=native_harness,
             payload=payload,

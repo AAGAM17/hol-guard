@@ -91,6 +91,27 @@ def test_hook_payload_reference_reports_bounded_bytes_before_hydration() -> None
         assert hook_payload_reference_size(referenced) == MAX_HOOK_PAYLOAD_REFERENCE_BYTES
 
 
+@pytest.mark.parametrize("overflow", [0, 1])
+def test_encrypted_hook_reference_exact_size_boundary(
+    overflow: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overhead = len(json.dumps({"text": ""}).encode("utf-8"))
+    payload = {"text": "x" * (MAX_HOOK_PAYLOAD_REFERENCE_BYTES - 16 - overhead + overflow)}
+    with tempfile.TemporaryDirectory(prefix="hol-guard-hook-payload-") as reference_dir:
+        referenced = _referenced_input(payload, Path(reference_dir))
+        assert (Path(reference_dir) / "payload.json").stat().st_size == MAX_HOOK_PAYLOAD_REFERENCE_BYTES + overflow
+        if overflow:
+            def unexpected_decryption(*_args: object) -> bytes:
+                pytest.fail("oversized ciphertext must be rejected before decryption")
+
+            monkeypatch.setattr(hook_payload_reference_module, "_decrypt_payload_reference", unexpected_decryption)
+            with pytest.raises(HookPayloadReferenceError, match="exceeds the safe local size limit"):
+                _load_hook_payload(None, input_text=referenced, harness="pi")
+        else:
+            assert _load_hook_payload(None, input_text=referenced, harness="pi") == payload
+
+
 @pytest.mark.skipif(sys.platform != "darwin", reason="Darwin user temp root contract")
 def test_hook_payload_reference_survives_sanitized_daemon_temp_environment(
     monkeypatch: pytest.MonkeyPatch,

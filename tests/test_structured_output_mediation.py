@@ -1,0 +1,531 @@
+from __future__ import annotations
+
+import hashlib
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import pytest
+
+from codex_plugin_scanner.guard.config import load_guard_config
+from codex_plugin_scanner.guard.daemon.hook_worker_native import HookWorkerNativeMixin
+from codex_plugin_scanner.guard.mdm.contracts import MDM_POLICY_SCHEMA_VERSION, ManagedPolicyState
+from codex_plugin_scanner.guard.mdm.policy import parse_managed_policy
+from codex_plugin_scanner.guard.runtime.structured_output_mediation import (
+    STRUCTURED_OUTPUT_SETTING_PATH,
+    StructuredOutputBinding,
+    canonical_structured_content_bytes,
+    mediate_native_post_tool_content,
+    resolve_managed_structured_output_binding,
+    resolve_managed_structured_output_resolution,
+)
+
+
+def _policy_value() -> dict[str, object]:
+    return {
+        "version": "hol-guard-structured-output-policy.v1",
+        "enabled": True,
+        "harnesses": ["pi", "omp"],
+        "event": "PostToolUse",
+        "destinationRole": "model_visible_tool_result",
+        "schema": {
+            "fields": [
+                {
+                    "path": ["employee", "email"],
+                    "role": "protected_personal",
+                    "valueType": "string",
+                    "category": "email_address",
+                },
+                {"path": ["employee", "id"], "role": "ordinary", "valueType": "integer"},
+                {"path": ["note"], "role": "ordinary", "valueType": "string"},
+            ]
+        },
+        "onMatch": "withhold",
+        "onUnsupported": "withhold",
+    }
+
+
+@dataclass
+class _PolicyFixture:
+    settings: dict[str, object]
+    content_hash: str
+
+
+@dataclass
+class _ConfigFixture:
+    managed_policy_status: str
+    managed_policy_hash: str | None
+    managed_locked_settings: tuple[str, ...]
+    managed_policy: _PolicyFixture | None
+
+
+def _config(*, status: str = "active", locked: tuple[str, ...] = (STRUCTURED_OUTPUT_SETTING_PATH,)) -> object:
+    managed_policy = (
+        _PolicyFixture(
+            settings={"data_control": {"structured_output": _policy_value()}},
+            content_hash="a" * 64,
+        )
+        if status != "absent"
+        else None
+    )
+    return _ConfigFixture(
+        managed_policy_status=status,
+        managed_policy_hash=None if status == "absent" else "a" * 64,
+        managed_locked_settings=locked,
+        managed_policy=managed_policy,
+    )
+
+
+def _real_observe_managed_config(tmp_path: Path) -> object:
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    (guard_home / "config.toml").write_text('mode = "observe"\ndefault_action = "allow"\n', encoding="utf-8")
+    managed_payload = {
+        "schemaVersion": MDM_POLICY_SCHEMA_VERSION,
+        "settings": {"data_control": {"structured_output": _policy_value()}},
+        "lockedSettings": [STRUCTURED_OUTPUT_SETTING_PATH],
+        "update": {"owner": "mdm"},
+    }
+    managed_policy = parse_managed_policy(managed_payload)
+    config = load_guard_config(
+        guard_home,
+        managed_policy_state=ManagedPolicyState("active", "machine-policy-fixture", policy=managed_policy),
+    )
+    assert config.mode == "observe"
+    assert config.managed_policy_status == "active"
+    assert config.managed_locked_settings == (STRUCTURED_OUTPUT_SETTING_PATH,)
+    assert config.install_owner == "mdm"
+    return config
+
+
+def _binding(harness: str = "pi") -> StructuredOutputBinding:
+    binding = resolve_managed_structured_output_binding(_config(), harness=harness)
+    assert binding is not None
+    return binding
+
+
+def _native_result(**overrides: object) -> dict[str, object]:
+    result: dict[str, object] = {
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "policy_action": "allow",
+        "observe_mode": False,
+    }
+    result.update(overrides)
+    return result
+
+
+def _receipt(**overrides: object) -> dict[str, object]:
+    receipt: dict[str, object] = {"decision_id": "b" * 64, "decision": "allow"}
+    receipt.update(overrides)
+    return receipt
+
+
+def test_managed_policy_requires_active_locked_reserved_setting() -> None:
+    assert resolve_managed_structured_output_binding(_config(status="absent"), harness="pi") is None
+    assert resolve_managed_structured_output_binding(_config(locked=()), harness="pi") is None
+    assert resolve_managed_structured_output_binding(_config(), harness="codex") is None
+
+    invalid = _config()
+    invalid.managed_policy.settings["data_control"]["structured_output"]["onMatch"] = "allow"
+    assert resolve_managed_structured_output_binding(invalid, harness="pi") is None
+
+
+@pytest.mark.parametrize("status", ["invalid", "inaccessible", "tampered", "revoked"])
+def test_configured_authority_failure_is_required_and_fail_closed(status: str) -> None:
+    resolution = resolve_managed_structured_output_resolution(_config(status=status), harness="pi")
+    assert resolution.binding is None
+    assert resolution.required is True
+    assert resolution.reason_code in {
+        "structured_managed_authority_unavailable",
+        "structured_managed_authority_revoked",
+    }
+
+
+def test_active_locked_malformed_or_missing_setting_is_required() -> None:
+    malformed = _config()
+    malformed.managed_policy.settings["data_control"]["structured_output"]["onMatch"] = "allow"
+    malformed_resolution = resolve_managed_structured_output_resolution(malformed, harness="pi")
+    assert malformed_resolution.binding is None
+    assert malformed_resolution.required is True
+    assert malformed_resolution.reason_code == "structured_managed_policy_invalid"
+
+    missing = _config()
+    missing.managed_policy.settings = {"mode": "enforce"}
+    missing_resolution = resolve_managed_structured_output_resolution(missing, harness="pi")
+    assert missing_resolution.binding is None
+    assert missing_resolution.required is True
+    assert missing_resolution.reason_code == "structured_managed_policy_invalid"
+
+    missing_authority = _config()
+    missing_authority.managed_policy = None
+    missing_authority_resolution = resolve_managed_structured_output_resolution(missing_authority, harness="pi")
+    assert missing_authority_resolution.binding is None
+    assert missing_authority_resolution.required is True
+    assert missing_authority_resolution.reason_code == "structured_managed_policy_missing"
+
+    unlocked = _config(locked=())
+    unlocked_resolution = resolve_managed_structured_output_resolution(unlocked, harness="pi")
+    assert unlocked_resolution.binding is None
+    assert unlocked_resolution.required is True
+    assert unlocked_resolution.reason_code == "structured_managed_policy_invalid"
+
+    explicitly_empty = _config(locked=())
+    explicitly_empty.managed_policy.settings["data_control"]["structured_output"] = None
+    explicitly_empty_resolution = resolve_managed_structured_output_resolution(explicitly_empty, harness="pi")
+    assert explicitly_empty_resolution.required is True
+    assert explicitly_empty_resolution.reason_code == "structured_managed_policy_invalid"
+
+    changed_hash = _config()
+    changed_hash.managed_policy.content_hash = "b" * 64
+    changed_hash_resolution = resolve_managed_structured_output_resolution(changed_hash, harness="pi")
+    assert changed_hash_resolution.required is True
+    assert changed_hash_resolution.reason_code == "structured_managed_policy_invalid"
+
+
+def test_absent_unconfigured_authority_stays_off() -> None:
+    resolution = resolve_managed_structured_output_resolution(_config(status="absent", locked=()), harness="pi")
+    assert resolution == type(resolution)(None, False)
+
+
+def test_required_authority_failure_withholds_after_native_receipt() -> None:
+    result = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=_native_result(),
+        validated_receipt=_receipt(),
+        structured_output_json=None,
+        binding=None,
+        required_reason_code="structured_managed_authority_unavailable",
+    )
+    assert result is not None
+    assert result.action == "withhold"
+    assert result.reason_code == "structured_managed_authority_unavailable"
+
+
+@pytest.mark.parametrize("status", ["invalid", "inaccessible", "tampered"])
+def test_load_config_fail_closed_floor_keeps_structured_authority_required(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    config = load_guard_config(
+        tmp_path / "guard-home",
+        managed_policy_state=ManagedPolicyState(status, "machine-policy-fixture"),
+    )
+    assert config.managed_policy_status == status
+    assert config.mode == "enforce"
+    assert config.default_action == "block"
+    assert config.managed_policy is not None
+    resolution = resolve_managed_structured_output_resolution(config, harness="pi")
+    assert resolution.required is True
+    assert resolution.reason_code == "structured_managed_authority_unavailable"
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    (
+        '{"employee":{"email":"","id":7},"note":"x"}',
+        '{"note":"x","employee": {"email":"","id":7}}',
+        '{"note":"x","employee":{"email":"\\u0061","id":7}}',
+        '{"note":"x","employee":{"email":[],"id":7}}',
+        '{"note":"x","employee":{"email":"","id":9007199254740992}}',
+    ),
+)
+def test_canonical_structured_bytes_require_fixed_object_encoding(candidate: str) -> None:
+    canonical = canonical_structured_content_bytes(candidate)
+    if candidate == '{"employee":{"email":"","id":7},"note":"x"}':
+        assert canonical == candidate.encode()
+    else:
+        assert canonical is None
+
+
+def test_canonical_structured_bytes_honors_absolute_deadline() -> None:
+    assert (
+        canonical_structured_content_bytes(
+            '{"employee":{"email":"","id":7},"note":"x"}',
+            deadline_monotonic=time.monotonic() - 1,
+        )
+        is None
+    )
+
+
+def test_clean_forward_requires_complete_recheck_and_exposes_only_ephemeral_digest() -> None:
+    candidate = '{"employee":{"email":"","id":7},"note":"π"}'
+    binding = _binding()
+    refreshed: list[StructuredOutputBinding | None] = [binding]
+    result = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=_native_result(),
+        validated_receipt=_receipt(),
+        structured_output_json=candidate,
+        binding=binding,
+        recheck_binding=lambda: refreshed[0],
+    )
+
+    assert result is not None
+    assert result.action == "forward"
+    assert result.reason_code == "structured_clean_forward"
+    assert result.native_decision_id == "b" * 64
+    assert result.content_sha256 == hashlib.sha256(candidate.encode()).hexdigest()
+    assert "email" not in str(result.to_harness_json())
+    assert "π" not in str(result.to_harness_json())
+
+    refreshed[0] = None
+    changed = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=_native_result(),
+        validated_receipt=_receipt(),
+        structured_output_json=candidate,
+        binding=binding,
+        recheck_binding=lambda: refreshed[0],
+    )
+    assert changed is not None
+    assert changed.action == "withhold"
+    assert changed.reason_code == "structured_binding_changed"
+    assert changed.content_sha256 is None
+
+
+def test_match_unsupported_deadline_missing_receipt_and_native_deny_withhold() -> None:
+    binding = _binding("omp")
+    cases = (
+        ("{'employee': {'email': 'person@example.test', 'id': 7}, 'note': 'x'}", "structured_content_unproved"),
+        ('{"employee":{"email":"person@example.test","id":7},"note":"x"}', "structured_declared_schema_scan"),
+        ('{"employee":{"email":"","id":7},"note":"x"}', "structured_receipt_missing"),
+    )
+    for candidate, expected_reason in cases:
+        result = mediate_native_post_tool_content(
+            harness="omp",
+            event_name="PostToolUse",
+            native_result=_native_result(),
+            validated_receipt=None if expected_reason == "structured_receipt_missing" else _receipt(),
+            structured_output_json=candidate,
+            binding=binding,
+            recheck_binding=lambda: binding,
+        )
+        assert result is not None
+        assert result.action == "withhold"
+        assert result.reason_code == expected_reason
+        assert result.content_sha256 is None
+
+    denied = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=_native_result(decision="deny", model_output_action="block"),
+        validated_receipt=_receipt(decision="deny"),
+        structured_output_json='{"employee":{"email":"","id":7},"note":"x"}',
+        binding=binding,
+        recheck_binding=lambda: binding,
+    )
+    assert denied is None
+
+    expired = mediate_native_post_tool_content(
+        harness="pi",
+        event_name="PostToolUse",
+        native_result=_native_result(),
+        validated_receipt=_receipt(),
+        structured_output_json='{"employee":{"email":"","id":7},"note":"x"}',
+        binding=_binding("pi"),
+        recheck_binding=lambda: _binding("pi"),
+        deadline_monotonic=-1,
+    )
+    assert expired is not None
+    assert expired.reason_code == "structured_review_deadline_exceeded"
+
+
+@dataclass
+class _NativeRouteFixture(HookWorkerNativeMixin):
+    config: object
+    raw_result: object | None = None
+    raw_receipt: object | None = None
+    recorded_receipt: object | None = None
+
+    def _load_config(self, _guard_home: Path, _workspace: Path | None) -> object:
+        return self.config
+
+    def _review_raw_hook_native(self, **_kwargs: object) -> dict[str, object]:
+        result = _native_result()
+        receipt = _receipt()
+        self.raw_result = result
+        self.raw_receipt = receipt
+        return {
+            "event_name": "PostToolUse",
+            "harness": "pi",
+            "result": result,
+            "receipt": receipt,
+        }
+
+    def _record_native_decision_receipt(self, receipt: object) -> object:
+        self.recorded_receipt = receipt
+        return receipt
+
+    def _record_post_tool_activity(self, **_kwargs: object) -> None:
+        return None
+
+
+@dataclass
+class _LoadErrorNativeRouteFixture(_NativeRouteFixture):
+    def _load_config(self, _guard_home: Path, _workspace: Path | None) -> object:
+        raise OSError("machine policy unavailable")
+
+
+@dataclass
+class _ObserveNativeRouteFixture(_NativeRouteFixture):
+    def _review_raw_hook_native(self, **_kwargs: object) -> dict[str, object]:
+        result = _native_result(observe_mode=True)
+        receipt = _receipt()
+        self.raw_result = result
+        self.raw_receipt = receipt
+        return {
+            "event_name": "PostToolUse",
+            "harness": "pi",
+            "result": result,
+            "receipt": receipt,
+        }
+
+
+def test_native_route_attaches_adapter_field_after_receipt_without_mutating_native_result(tmp_path: Path) -> None:
+    fixture = _NativeRouteFixture(_config())
+    native = fixture._review_native_edge_with_snapshot(
+        payload={
+            "hook_event_name": "PostToolUse",
+            "structured_output_json": '{"employee":{"email":"","id":7},"note":"x"}',
+        },
+        harness="pi",
+        event_name="PostToolUse",
+        default_harness="pi",
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard",
+        workspace=tmp_path,
+        deadline=None,
+        policy_snapshot={"mode": "enforce"},
+        recording_only=False,
+    )
+    response, native_used = native
+    assert native_used is True
+    mediation = response["structured_content_mediation"]
+    assert isinstance(mediation, dict)
+    assert mediation["action"] == "forward"
+    assert response["decision"] == "allow"
+    assert response["policy_action"] == "allow"
+
+
+def test_native_route_load_error_attaches_fail_closed_mediation(tmp_path: Path) -> None:
+    fixture = _LoadErrorNativeRouteFixture(_config())
+    response, native_used = fixture._review_native_edge_with_snapshot(
+        payload={
+            "hook_event_name": "PostToolUse",
+            "structured_output_json": '{"employee":{"email":"","id":7},"note":"x"}',
+        },
+        harness="pi",
+        event_name="PostToolUse",
+        default_harness="pi",
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard",
+        workspace=tmp_path,
+        deadline=None,
+        policy_snapshot={"mode": "enforce"},
+        recording_only=False,
+    )
+    assert native_used is True
+    mediation = response["structured_content_mediation"]
+    assert isinstance(mediation, dict)
+    assert mediation["action"] == "withhold"
+    assert mediation["reason_code"] == "structured_managed_authority_unavailable"
+
+
+@pytest.mark.parametrize("variant", ["malformed", "missing", "revoked"])
+def test_native_route_does_not_skip_configured_authority_failures(tmp_path: Path, variant: str) -> None:
+    config = _config(status="revoked" if variant == "revoked" else "active")
+    if variant == "malformed":
+        config.managed_policy.settings["data_control"]["structured_output"]["onMatch"] = "allow"
+    elif variant == "missing":
+        config.managed_policy = None
+    fixture = _NativeRouteFixture(config)
+    response, native_used = fixture._review_native_edge_with_snapshot(
+        payload={
+            "hook_event_name": "PostToolUse",
+            "structured_output_json": '{"employee":{"email":"","id":7},"note":"x"}',
+        },
+        harness="pi",
+        event_name="PostToolUse",
+        default_harness="pi",
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard",
+        workspace=tmp_path,
+        deadline=None,
+        policy_snapshot={"mode": "enforce"},
+        recording_only=False,
+    )
+    assert native_used is True
+    mediation = response["structured_content_mediation"]
+    assert isinstance(mediation, dict)
+    assert mediation["action"] == "withhold"
+    assert mediation["reason_code"] in {
+        "structured_managed_policy_invalid",
+        "structured_managed_policy_missing",
+        "structured_managed_authority_revoked",
+    }
+
+
+@pytest.mark.parametrize(
+    ("candidate", "expected_action"),
+    (
+        ('{"employee":{"email":"","id":7},"note":"x"}', "forward"),
+        ('{"employee":{"email":"person@example.test","id":7},"note":"x"}', "withhold"),
+    ),
+)
+def test_recording_only_cannot_bypass_real_managed_structured_policy(
+    tmp_path: Path,
+    candidate: str,
+    expected_action: str,
+) -> None:
+    config = _real_observe_managed_config(tmp_path)
+    fixture = _ObserveNativeRouteFixture(config)
+    response, native_used = fixture._review_native_edge_with_snapshot(
+        payload={
+            "hook_event_name": "PostToolUse",
+            "structured_output_json": candidate,
+        },
+        harness="pi",
+        event_name="PostToolUse",
+        default_harness="pi",
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard-home",
+        workspace=tmp_path,
+        deadline=None,
+        policy_snapshot={"mode": "observe"},
+        recording_only=True,
+    )
+    assert native_used is True
+    assert response["observe_mode"] is True
+    assert fixture.raw_result == _native_result(observe_mode=True)
+    assert fixture.raw_receipt == _receipt()
+    assert fixture.recorded_receipt == _receipt()
+    assert response["decision"] == fixture.raw_result["decision"]
+    mediation = response["structured_content_mediation"]
+    assert isinstance(mediation, dict)
+    assert mediation["action"] == expected_action
+
+
+def test_recording_only_unconfigured_route_keeps_existing_watch_behavior(tmp_path: Path) -> None:
+    fixture = _ObserveNativeRouteFixture(_config(status="absent", locked=()))
+    response, native_used = fixture._review_native_edge_with_snapshot(
+        payload={
+            "hook_event_name": "PostToolUse",
+            "structured_output_json": '{"employee":{"email":"person@example.test","id":7},"note":"x"}',
+        },
+        harness="pi",
+        event_name="PostToolUse",
+        default_harness="pi",
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard",
+        workspace=tmp_path,
+        deadline=None,
+        policy_snapshot={"mode": "observe"},
+        recording_only=True,
+    )
+    assert native_used is True
+    assert response["observe_mode"] is True
+    assert "structured_content_mediation" not in response

@@ -34,8 +34,13 @@ def _refresh_opencode_pretool_plugin(
         return f"Could not inspect OpenCode pretool plugin during update: {error}"
     companion_warning: str | None = None
     refreshed_proxies = 0
+    config_warnings: list[str] = []
     try:
-        refreshed_proxies = refresh_opencode_proxy_launchers(repair_context)
+        refreshed_proxies = refresh_opencode_proxy_launchers(repair_context, warnings=config_warnings)
+        if config_warnings:
+            companion_warning = "Could not refresh OpenCode MCP companion launchers in every config: " + " ".join(
+                dict.fromkeys(config_warnings)
+            )
     except (OSError, RuntimeError, ValueError) as error:
         companion_warning = f"Could not refresh OpenCode MCP companion launchers during update: {error}"
     global_path = global_plugin_path(repair_context)

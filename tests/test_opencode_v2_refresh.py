@@ -65,6 +65,21 @@ def test_refresh_preserves_jsonc_comments_and_existing_mode(tmp_path: Path) -> N
     assert actual == payload
 
 
+def test_invalid_workspace_config_does_not_block_valid_global_refresh(tmp_path: Path) -> None:
+    from codex_plugin_scanner.guard.adapters.opencode_artifacts import config_paths
+    from codex_plugin_scanner.guard.adapters.opencode_proxy_refresh import refresh_opencode_proxy_launchers
+
+    ctx, config, _ = _stale_companion(tmp_path)
+    other = next(path for path in config_paths(ctx) if path != config)
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text("{invalid", encoding="utf-8")
+    warnings: list[str] = []
+    assert refresh_opencode_proxy_launchers(ctx, warnings=warnings) == 1
+    assert len(warnings) == 1
+    assert other.read_text(encoding="utf-8") == "{invalid"
+    assert "/removed/versions/" not in config.read_text(encoding="utf-8")
+
+
 def test_refresh_skips_changed_transport(tmp_path: Path) -> None:
     from codex_plugin_scanner.guard.adapters.opencode_proxy_refresh import refresh_opencode_proxy_launchers
 

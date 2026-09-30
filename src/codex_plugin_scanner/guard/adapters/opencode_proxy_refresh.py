@@ -93,7 +93,7 @@ def _write_existing(path: Path, before: bytes, after: bytes, mode: int) -> None:
         staged.unlink(missing_ok=True)
 
 
-def refresh_opencode_proxy_launchers(context: HarnessContext) -> int:
+def refresh_opencode_proxy_launchers(context: HarnessContext, *, warnings: list[str] | None = None) -> int:
     """Refresh verified CLI prefixes without changing server or tool authority."""
     from .opencode_install_snapshot import (
         OpenCodeInstallSnapshotError,
@@ -113,8 +113,13 @@ def refresh_opencode_proxy_launchers(context: HarnessContext) -> int:
         if os.name != "nt" and info.st_uid != os.geteuid():
             raise OpenCodeInstallSnapshotError("OpenCode config is owned by another user")
         before = path.read_bytes()
-        text = before.decode("utf-8")
-        payload: object = json.loads(normalize_jsonc(text))
+        try:
+            text = before.decode("utf-8")
+            payload: object = json.loads(normalize_jsonc(text))
+        except (UnicodeError, ValueError):
+            if warnings is not None:
+                warnings.append("An invalid OpenCode config was left unchanged; other configs were checked.")
+            continue
         if not isinstance(payload, dict):
             raise OpenCodeInstallSnapshotError("OpenCode config must be an object")
         mcp = payload.get("mcp")

@@ -73,8 +73,10 @@ from ..runtime.skill_workflow_preflight import preflight_skill_dependencies
 from .local_cli_continuity_api import decorate_local_cli_continuity
 from .local_cli_mcp_store import bound_mcp_observation, stored_mcp_recognition
 from .mcp_discovery_jobs import DiscoveryJobError, DiscoveryStageError, McpDiscoveryJobs
+from .mcp_registry_undo import RegistrySetupUndo, RegistryUndoError
 
 if TYPE_CHECKING:
+    from ..runtime.codex_mcp_setup import CodexMcpSetupReceipt
     from ..store import GuardStore
 
 _LOCAL_CLI_API_SCHEMA = "guard.daemon.local-clis.v1"
@@ -107,6 +109,7 @@ class LocalCliApiService:
         self._discovery_cache: tuple[float, tuple[DiscoveredHarnessMcpServer, ...]] | None = None
         self._discovery_jobs = McpDiscoveryJobs()
         self._registry_setup_lock = threading.Lock()
+        self._registry_setup_undo = RegistrySetupUndo(store)
         self._skill_index_lock = threading.Lock()
         self._skill_records: dict[str, LocalSkillRecord] = {}
         self._skill_issues: list[dict[str, str]] = []
@@ -447,6 +450,18 @@ class LocalCliApiService:
         )
 
         operation = payload.get("operation")
+        if operation == "recent":
+            return {"schema_version": _LOCAL_CLI_API_SCHEMA, "setups": self._registry_setup_undo.recent()}
+        if operation in {"rollback-preview", "rollback"}:
+            try:
+                response = (
+                    self._registry_setup_undo.preview(payload)
+                    if operation == "rollback-preview"
+                    else self._registry_setup_undo.rollback(payload)
+                )
+            except RegistryUndoError as error:
+                raise LocalCliApiError(error.status, error.code, str(error)) from error
+            return {"schema_version": _LOCAL_CLI_API_SCHEMA, **response}
         if operation not in {"preview", "apply"}:
             raise LocalCliApiError(400, "invalid_registry_setup_operation")
         kind = payload.get("kind", "remote")
@@ -495,15 +510,29 @@ class LocalCliApiService:
         except ApprovalGateError as error:
             raise LocalCliApiError(error.status, error.code, str(error)) from error
         try:
+            rollback_handle: str | None = None
+
+            def remember(receipt: CodexMcpSetupReceipt) -> None:
+                nonlocal rollback_handle
+                rollback_handle = self._registry_setup_undo.remember(receipt, candidate)
+
             with self._registry_setup_lock:
                 configured = (
-                    install_codex_package_mcp(candidate) if package_setup else install_codex_remote_mcp(candidate)
+                    install_codex_package_mcp(candidate, on_installed=remember)
+                    if package_setup
+                    else install_codex_remote_mcp(candidate, on_installed=remember)
                 )
+                if rollback_handle is None or configured != candidate["setup_name"]:
+                    raise ValueError("codex_setup_outcome_uncertain")
         except ValueError as error:
             message = (
                 "Codex may have changed its connection. Check the host configuration before retrying."
                 if str(error) == "codex_setup_outcome_uncertain"
-                else "Codex could not add this connection. Review its host configuration and retry."
+                else "Setup did not verify and its new connection was removed. Review setup and retry."
+                if str(error) == "codex_setup_rolled_back"
+                else "Codex configuration changed. Review it before retrying setup."
+                if str(error) == "codex_config_changed"
+                else "Codex could not add this connection. Update or review its host configuration and retry."
             )
             raise LocalCliApiError(409, str(error), message) from error
         return {
@@ -511,6 +540,8 @@ class LocalCliApiService:
             "host": "codex",
             "kind": "package" if package_setup else "remote",
             "setup_name": configured,
+            "rollback_handle": rollback_handle,
+            "rollback_available_seconds": 3600,
             "host_change_applied": True,
             "permissions_granted": False,
             "next_action": (

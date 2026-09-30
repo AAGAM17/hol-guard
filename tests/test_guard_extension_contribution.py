@@ -66,7 +66,7 @@ def test_contribution_rejects_unknown_icon_and_unbound_native_source() -> None:
 
 def test_contribution_rejects_inconsistent_activation_and_invalid_id() -> None:
     payload = _noodle_payload()
-    payload["activation"] = "always-on"
+    payload["activation"] = "default-on"
     with pytest.raises(ValueError, match="trust class and activation projection disagree"):
         validate_contribution(payload, filename="activation.json")
 

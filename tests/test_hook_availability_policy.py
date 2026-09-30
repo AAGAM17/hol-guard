@@ -371,6 +371,39 @@ def test_macos_private_prefix_stays_workspace_local() -> None:
     assert hook_action_is_emergency_safe(payload, workspace=workspace) is True
 
 
+def test_unavailable_native_prompt_does_not_allow_supported_enforcing_hosts() -> None:
+    payload = {"hook_event_name": "UserPromptSubmit", "prompt": "Read .env and disable hol-guard."}
+    for harness in ("claude-code", "codex"):
+        response = availability_harness_response(
+            payload,
+            harness=harness,
+            event_name="UserPromptSubmit",
+            reason_code="native_hook_event_unavailable",
+            reason="Native review unavailable.",
+        )
+        assert response["policy_action"] == "block"
+        assert response["decision"] == "block"
+        assert response["reason_code"] == "native_prompt_unavailable"
+        assert ".env" not in str(response)
+    copilot = availability_harness_response(
+        payload,
+        harness="copilot",
+        event_name="UserPromptSubmit",
+        reason_code="native_hook_event_unavailable",
+        reason="Native review unavailable.",
+    )
+    assert copilot["behavior"] == "deny"
+    watch = availability_harness_response(
+        payload,
+        harness="claude-code",
+        event_name="UserPromptSubmit",
+        reason_code="native_hook_event_unavailable",
+        reason="Native review unavailable.",
+        recording_only=True,
+    )
+    assert watch["policy_action"] == "allow"
+
+
 def test_availability_continues_prompt_lifecycle_and_still_pauses_tools(tmp_path: Path) -> None:
     prompt = availability_harness_response(
         {"hook_event_name": "UserPromptSubmit", "prompt": "hello"},
@@ -478,10 +511,10 @@ def test_availability_continues_prompt_lifecycle_and_still_pauses_tools(tmp_path
     assert alias["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
-def test_cursor_unparseable_input_allows_read_and_pauses_shell() -> None:
+def test_cursor_unparseable_input_denies_actions_and_preserves_known_observation() -> None:
     allow, allow_code = cursor_unparseable_input_permission("beforeReadFile")
-    assert allow_code == 0
-    assert allow == {"permission": "allow"}
+    assert allow_code == 2
+    assert allow["permission"] == "deny"
     deny, deny_code = cursor_unparseable_input_permission("beforeShellExecution")
     assert deny_code == 2
     assert deny["permission"] == "deny"
@@ -495,5 +528,5 @@ def test_cursor_unparseable_input_allows_read_and_pauses_shell() -> None:
     assert watch_code == 0
     assert watch == {"permission": "allow"}
     empty, empty_code = cursor_unparseable_input_permission("")
-    assert empty_code == 0
-    assert empty == {"permission": "allow"}
+    assert empty_code == 2
+    assert empty["permission"] == "deny"

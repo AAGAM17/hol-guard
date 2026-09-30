@@ -1572,7 +1572,8 @@ def test_ensure_guard_daemon_spawns_with_current_package_import_path(tmp_path, m
     )
 
 
-def test_pipx_daemon_imports_shared_dependencies_without_running_startup_hooks(tmp_path, monkeypatch):
+@pytest.mark.parametrize("symlinked_home", [False, True])
+def test_pipx_daemon_imports_shared_dependencies_without_running_startup_hooks(tmp_path, monkeypatch, symlinked_home):
     pipx_home = tmp_path / "pipx"
     prefix = pipx_home / "venvs" / "hol-guard"
     relative_library = Path("lib") / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
@@ -1580,6 +1581,13 @@ def test_pipx_daemon_imports_shared_dependencies_without_running_startup_hooks(t
     shared_library = pipx_home / "shared" / relative_library
     local_library.mkdir(parents=True)
     shared_library.mkdir(parents=True)
+    configured_prefix = prefix
+    configured_library = local_library
+    if symlinked_home:
+        linked_home = tmp_path / "linked-pipx"
+        linked_home.symlink_to(pipx_home, target_is_directory=True)
+        configured_prefix = linked_home / "venvs" / "hol-guard"
+        configured_library = configured_prefix / relative_library
     ambient_library = tmp_path / "ambient"
     ambient_library.mkdir()
     pth_marker = tmp_path / "pth-marker"
@@ -1593,11 +1601,11 @@ def test_pipx_daemon_imports_shared_dependencies_without_running_startup_hooks(t
         f"from pathlib import Path\nPath({str(customize_marker)!r}).touch()\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(daemon_manager_module.sys, "prefix", str(prefix))
+    monkeypatch.setattr(daemon_manager_module.sys, "prefix", str(configured_prefix))
     monkeypatch.setattr(
         daemon_manager_module.sysconfig,
         "get_paths",
-        lambda *_args, **_kwargs: {"purelib": str(local_library), "platlib": str(local_library)},
+        lambda *_args, **_kwargs: {"purelib": str(configured_library), "platlib": str(configured_library)},
     )
     monkeypatch.syspath_prepend(str(ambient_library))
     import_paths = daemon_manager_module._trusted_daemon_import_paths()

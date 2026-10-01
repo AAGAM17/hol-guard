@@ -260,14 +260,14 @@ fn client_request_with_deadline(
     match request_result {
         Ok(response) => Ok(response),
         Err(error) => {
-            containment::abort_spawned_managed(
+            let _ = containment::abort_spawned_managed(
                 &mut spawned,
                 &scope,
                 &digest,
                 generation,
                 &token,
-                overall_deadline,
-            )?;
+                overall_deadline.max(Instant::now() + MANAGED_STOP_TIMEOUT),
+            );
             Err(error)
         }
     }

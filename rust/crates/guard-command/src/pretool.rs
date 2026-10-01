@@ -273,6 +273,10 @@ fn exact_safe_command(model: &CanonicalCommandV1, allow_git_helper_context: bool
             return false;
         }
         match basename {
+            "cd" => {
+                model.segments.len() == 1
+                    && matches!(segment.arguments.as_slice(), [target] if crate::is_plain_cd_target(target))
+            }
             "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "stat" => true,
             "date" => safe_reads::safe_date_arguments(&segment.arguments),
             "ls" => safe_reads::safe_listing_arguments(&segment.arguments),

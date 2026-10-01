@@ -335,11 +335,18 @@ def _append_row(config: CaptureSession, *, guard_home: Path, row: Mapping[str, o
             return False
         if not _private_regular(output):
             return False
-        try:
-            fcntl.flock(output, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            locked = True
-        except (BlockingIOError, OSError):
-            return False
+        deadline = time.monotonic() + 0.02
+        while True:
+            try:
+                fcntl.flock(output, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    return False
+                time.sleep(0.001)
+            except OSError:
+                return False
         metadata = os.fstat(output)
         if metadata.st_size > config.max_bytes:
             return False

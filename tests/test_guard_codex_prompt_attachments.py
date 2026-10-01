@@ -300,4 +300,4 @@ def test_attachment_traversal_uses_directory_descriptors(tmp_path: Path) -> None
         )
 
     assert artifact is None
-    assert directory_relative_opens == 2
+    assert directory_relative_opens == 3

@@ -67,9 +67,14 @@ def pending_decision_diff_regen() -> bool:
 
 
 requires_fresh_projections = pytest.mark.skipif(
-    pending_decision_diff_regen(),
+    pending_contribution_regen(),
     reason=(
-        "checked-in projections do not cover a pending regeneration; "
+        "checked-in projections do not cover a pending contribution source; "
         "freshness is enforced after maintainer regeneration"
     ),
+)
+
+requires_fresh_decision_diff = pytest.mark.skipif(
+    pending_decision_diff_regen(),
+    reason="decision-diff report is regen-owned; enforced after maintainer regeneration",
 )

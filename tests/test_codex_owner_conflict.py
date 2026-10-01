@@ -230,6 +230,10 @@ def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
         "import runpy; modules=[runpy]; modules[-1].run_module(mod_name='codex_plugin_scanner.cli')",
         "import runpy\nif flag: modules=[runpy]\nelse: modules=[None,None]\n"
         "modules[-1].run_module(mod_name='codex_plugin_scanner.cli')",
+        "import runpy; [launch := runpy for _ in [0]]; launch.run_module('codex_plugin_scanner.cli')",
+        "import runpy\ndef run():\n [launch := runpy for _ in [0]]\n"
+        " launch.run_module('codex_plugin_scanner.cli')\nrun()",
+        "import runpy; [[launch := runpy for _ in [0]] for _ in [0]]; launch.run_module('codex_plugin_scanner.cli')",
     ),
 )
 def test_unrelated_local_bindings_do_not_hide_module_imports(script):

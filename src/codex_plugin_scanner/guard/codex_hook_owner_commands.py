@@ -55,6 +55,7 @@ class _GuardImportCalls(ast.NodeVisitor):
         self.bindings: dict[str, frozenset[str]] = {"__import__": frozenset({"builtins.__import__"})}
         self.found: bool = False
         self.class_globals: dict[str, frozenset[str]] | None = None
+        self.walrus_scopes: list[dict[str, frozenset[str]] | None] = []
         self.module_bindings: dict[str, frozenset[str]] = {}
         self.global_names: set[str] = set()
         self.global_updates: dict[str, frozenset[str]] = {}
@@ -263,6 +264,10 @@ class _GuardImportCalls(ast.NodeVisitor):
         identity = self._identity(node.value)
         self.visit(node.target)
         self._bind(node.target.id, identity)
+        if self.walrus_scopes and (owner := self.walrus_scopes[-1]) is not None:
+            current, self.bindings = self.bindings, owner
+            self._bind(node.target.id, identity)
+            self.bindings = current
 
     def _parameters(self, arguments: ast.arguments) -> dict[str, frozenset[str]]:
         positional = [*arguments.posonlyargs, *arguments.args]
@@ -318,6 +323,8 @@ class _GuardImportCalls(ast.NodeVisitor):
     def _comprehension(self, generators: Sequence[ast.comprehension], values: Sequence[ast.expr]) -> None:
         outer = self.bindings
         enclosing_class = self.class_globals
+        owner = self.walrus_scopes[-1] if self.walrus_scopes else (outer if enclosing_class is None else None)
+        self.walrus_scopes.append(owner)
         if generators:
             self.visit(generators[0].iter)
         self.bindings = (enclosing_class if enclosing_class is not None else outer).copy()
@@ -332,6 +339,7 @@ class _GuardImportCalls(ast.NodeVisitor):
             self.visit(value)
         self.bindings = outer
         self.class_globals = enclosing_class
+        _ = self.walrus_scopes.pop()
 
     @override
     def visit_ListComp(self, node: ast.ListComp) -> None:

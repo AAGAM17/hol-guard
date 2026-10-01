@@ -250,7 +250,7 @@ fn safe_gh_arguments(arguments: &[String]) -> bool {
 
 fn safe_directory_target(target: &str) -> bool {
     crate::is_plain_cd_target(target)
-        && !target.contains(['*', '?', '[', ']'])
+        && !target.contains(['*', '?', '[', ']', '\\'])
         && !sensitive_command(target)
         && !normalized_haystack(target)
             .split('/')

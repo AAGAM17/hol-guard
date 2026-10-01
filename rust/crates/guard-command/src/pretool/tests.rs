@@ -11,6 +11,7 @@ fn request(command: &str) -> CommandModelRequestV1 {
 
 #[test]
 fn permits_only_standalone_plain_directory_changes() {
+    assert!(!safe_directory_target(r"~/.ss\h"));
     for command in [
         "cd ~/CascadeProjects/project",
         "cd ./project",

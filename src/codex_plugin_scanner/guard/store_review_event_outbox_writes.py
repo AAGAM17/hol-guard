@@ -56,7 +56,7 @@ def recover_review_snapshot_sequences(
         ):
             return {}
         normalized[old_sequence] = event_id
-    if len(set(normalized.values())) != len(normalized) or acknowledged_through < max(normalized):
+    if len(set(normalized.values())) != len(normalized):
         return {}
 
     connection.execute("begin immediate")

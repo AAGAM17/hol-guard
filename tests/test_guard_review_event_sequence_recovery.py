@@ -87,7 +87,7 @@ def _all_events(store: GuardStore) -> list[sqlite3.Row]:
         return connection.execute("select * from guard_review_outbox_events order by stream_sequence").fetchall()
 
 
-def _seed_snapshot_sequence_collisions(tmp_path):
+def _seed_snapshot_sequence_collisions(tmp_path, *, acknowledged_through: int = 529):
     store = GuardStore(tmp_path / "guard")
     binding = _connect(store)
     target_ids = [f"target-{index:02d}" for index in range(23)]
@@ -110,7 +110,7 @@ def _seed_snapshot_sequence_collisions(tmp_path):
               machine_installation_id, acknowledged_stream_sequence, updated_at
             ) values (?, ?, ?, ?, ?, ?, ?)
             """,
-            ("default", *binding.values(), 529, _LATER),
+            ("default", *binding.values(), acknowledged_through, _LATER),
         )
         connection.execute(
             """
@@ -244,6 +244,18 @@ def test_recover_review_snapshot_sequences_preserves_envelopes_and_future_alloca
     store.add_approval_request(_request("future-request"), _LATER)
     future = [row for row in _all_events(store) if row["local_request_id"] == "future-request"]
     assert len(future) == 1 and future[0]["stream_sequence"] == 553
+
+
+def test_recover_review_snapshot_sequences_allows_collisions_above_cloud_high_water(tmp_path) -> None:
+    store, binding, before_rows = _seed_snapshot_sequence_collisions(tmp_path, acknowledged_through=0)
+
+    replacements = store.recover_review_snapshot_sequences(
+        collisions=_snapshot_collision_ids(before_rows),
+        acknowledged_through=33,
+        binding=_plain_binding(binding),
+    )
+
+    assert replacements == dict(zip(range(34, 57), range(57, 80), strict=True))
 
 
 def test_recover_review_snapshot_sequences_rejects_mismatch_binding_and_acknowledged_rows(tmp_path) -> None:

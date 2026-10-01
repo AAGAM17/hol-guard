@@ -70,7 +70,7 @@ def test_old_cursor_hooks_deny_empty_stdin_without_baked_event() -> None:
     assert deny["permission"] == "deny"
 
 
-def test_native_off_pretool_continues_without_watch(tmp_path: Path) -> None:
+def test_native_off_pretool_denies_without_watch(tmp_path: Path) -> None:
     payload = availability_harness_response(
         {"hook_event_name": "PreToolUse", "tool_input": {"command": "curl https://example.test"}},
         harness="grok",
@@ -80,7 +80,7 @@ def test_native_off_pretool_continues_without_watch(tmp_path: Path) -> None:
         workspace=tmp_path,
         home_dir=tmp_path / "home",
     )
-    assert payload["decision"] == "allow"
+    assert payload["decision"] == "deny"
     permission = availability_harness_response(
         {"hook_event_name": "PermissionRequest"},
         harness="claude-code",
@@ -98,10 +98,10 @@ def test_native_off_pretool_continues_without_watch(tmp_path: Path) -> None:
         workspace=tmp_path,
         home_dir=tmp_path / "home",
     )
-    assert daemon_miss["decision"] == "allow"
+    assert daemon_miss["decision"] == "deny"
 
 
-def test_native_policy_not_ready_pretool_continues(tmp_path: Path) -> None:
+def test_native_policy_not_ready_pretool_denies_without_interrupting_session(tmp_path: Path) -> None:
     payload = availability_harness_response(
         {"hook_event_name": "PreToolUse", "tool_input": {"command": "curl https://example.test"}},
         harness="claude-code",
@@ -111,8 +111,8 @@ def test_native_policy_not_ready_pretool_continues(tmp_path: Path) -> None:
         workspace=tmp_path,
         home_dir=tmp_path / "home",
     )
-    assert payload["continue"] is True
-    assert payload["hookSpecificOutput"]["permissionDecision"] == "allow"
+    assert payload.get("continue") is not False
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_cursor_write_denies_when_native_unavailable() -> None:
@@ -214,8 +214,8 @@ def test_missing_native_fail_safe_codes_continue_mutating_pretool(tmp_path: Path
             )
             output = response["hookSpecificOutput"]
             assert isinstance(output, dict)
-            assert output["permissionDecision"] == "allow"
-            assert response["policy_action"] == "warn"
+            assert output["permissionDecision"] == "deny"
+            assert response["policy_action"] == "block"
 
 
 def test_cursor_maps_cannot_finish_block_to_allow() -> None:
@@ -295,7 +295,7 @@ def test_retained_byte_limit_stays_fail_closed(tmp_path: Path) -> None:
     assert response["policy_action"] == "block"
 
 
-def test_queue_byte_limit_keeps_exact_repair_available(tmp_path: Path) -> None:
+def test_queue_byte_limit_denies_unverified_repair(tmp_path: Path) -> None:
     response = availability_harness_response(
         {
             "hook_event_name": "PreToolUse",
@@ -309,10 +309,10 @@ def test_queue_byte_limit_keeps_exact_repair_available(tmp_path: Path) -> None:
         workspace=tmp_path,
         home_dir=tmp_path / "home",
     )
-    assert response.get("policy_action") != "block"
+    assert response.get("policy_action") == "block"
     output = response["hookSpecificOutput"]
     assert isinstance(output, dict)
-    assert output.get("permissionDecision") != "deny"
+    assert output.get("permissionDecision") == "deny"
 
 
 def test_invalid_payload_reference_still_denies_a_repair_command(tmp_path: Path) -> None:

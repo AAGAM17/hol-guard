@@ -24,7 +24,7 @@ _CURSOR_UNAVAILABLE_DENY: dict[str, object] = {
 # Native review covers tool events and supported prompt callbacks. Other
 # lifecycle events remain inventory-only: failing them closed freezes a turn
 # without adding enforcement. Unreviewable prompts pause protected hosts;
-# Watch and monitor-only prompt callbacks still continue without enforcement.
+# acknowledged Watch and monitor-only prompt callbacks continue without enforcement.
 LIFECYCLE_OBSERVE_EVENTS = frozenset(
     {
         "SessionStart",
@@ -190,7 +190,6 @@ def availability_harness_response(
 ) -> dict[str, object]:
     """Render a schema-valid harness result when native review is unavailable."""
 
-    from .hook_launcher_recovery import hook_action_is_launcher_recovery_safe
     from .hook_worker_responses import harness_json_from_native_prompt, observe_lifecycle_fail_safe_response
 
     del guard_home
@@ -222,25 +221,19 @@ def availability_harness_response(
         )
     compact = _compact_hook_event_name(event_name)
     pre_tool_event = compact in {"pretooluse", "pretool"} or compact.startswith("before")
-    if pre_tool_event and reason_code.strip() in _INTEGRITY_FAIL_CLOSED_REASON_CODES:
-        from .hook_worker_responses import integrity_fail_closed_pre_tool_response
-
-        if hook_action_is_launcher_recovery_safe(payload, workspace=workspace, home_dir=home_dir):
+    if pre_tool_event:
+        if recording_only and reason_code.strip() not in _INTEGRITY_FAIL_CLOSED_REASON_CODES:
             return recording_only_pre_tool_response(
                 harness,
                 reason_code=reason_code,
                 reason=reason,
             )
+        from .hook_worker_responses import integrity_fail_closed_pre_tool_response
+
         return integrity_fail_closed_pre_tool_response(
             harness,
             reason=reason,
             reason_code=reason_code,
-        )
-    if pre_tool_event:
-        return recording_only_pre_tool_response(
-            harness,
-            reason_code=reason_code,
-            reason=reason,
         )
     return observe_lifecycle_fail_safe_response(
         harness,

@@ -3,7 +3,8 @@
 Prints ``{"pending": ..., "pending_ids": [...]}`` (or a bare ``true``/``false``
 with ``--flag``) when any canonical contribution under ``contributions/``
 declares an extension id that the checked-in ``command-catalog.v1.json`` does
-not contain, or when native implementation inputs changed from ``--changed-from``.
+not contain, or when native implementation or decision-report inputs changed
+from ``--changed-from``.
 That state means the source-only ref is awaiting maintainer-owned projection
 regeneration, so generated-artifact freshness gates should stand down for that
 ref. Stdlib only; no repository imports.
@@ -31,6 +32,64 @@ class ChangedRegenInputs:
 
     contribution_paths: tuple[str, ...]
     implementation_paths: tuple[str, ...]
+    report_paths: tuple[str, ...] = ()
+
+
+_DECISION_REPORT_FIXED_INPUTS = frozenset(
+    {
+        "contracts/extensions/command-catalog.v1.json",
+        "contracts/extensions/native-command-program.v1.json",
+        "docs/guard/native-command-corpus-contract.md",
+        "docs/guard/declarative-authoring-adr.md",
+        "rust/crates/guard-command/src/native_command_source_evaluation_batch.rs",
+        "rust/crates/guard-command/src/native_command_source.rs",
+        "rust/crates/guard-command/src/bin/guard-command-source.rs",
+        "src/codex_plugin_scanner/guard/action_lattice.py",
+        "src/codex_plugin_scanner/guard/models.py",
+        "src/codex_plugin_scanner/guard/cli/commands_parser.py",
+        "src/codex_plugin_scanner/guard/cli/commands_parser_local.py",
+        "src/codex_plugin_scanner/guard/cli/commands_router.py",
+        "src/codex_plugin_scanner/guard/cli/commands_support.py",
+        "src/codex_plugin_scanner/guard/cli/commands_verified_read.py",
+        "src/codex_plugin_scanner/guard/cli/commands_contained_write.py",
+        "src/codex_plugin_scanner/guard/contained_package_script_execution.py",
+        "src/codex_plugin_scanner/guard/contained_workspace_write_execution.py",
+        "src/codex_plugin_scanner/guard/durable_harness_launcher.py",
+        "src/codex_plugin_scanner/guard/package_shim_gate.py",
+        "src/codex_plugin_scanner/guard/package_shim_frozen.py",
+        "src/codex_plugin_scanner/guard/shims.py",
+        "tests/test_guard_command_corpus.py",
+        "tests/guard_test_invariants.py",
+        "tests/test_guard_command_corpus_native_contract.py",
+        "tests/test_guard_command_decision_diff.py",
+        "tests/native_command_test_support.py",
+        "tests/test_native_command_test_support_batch.py",
+        "tests/test_guard_native_classification_baseline.py",
+        "tests/test_guard_contained_package_script_execution.py",
+        "tests/test_guard_contained_workspace_write_cli.py",
+        "tests/test_guard_contained_workspace_write_contract.py",
+        "tests/test_guard_contained_workspace_write_execution.py",
+        "tests/test_guard_containment_external_executable.py",
+        "tests/test_guard_package_shims.py",
+        "tests/test_guard_verified_reads.py",
+    }
+)
+
+
+def is_decision_report_input(path: str) -> bool:
+    """Return whether ``path`` is hashed into the decision-diff report."""
+
+    normalized = path.replace("\\", "/")
+    if normalized in _DECISION_REPORT_FIXED_INPUTS:
+        return True
+    runtime_prefix = "src/codex_plugin_scanner/guard/runtime/"
+    if normalized.startswith(runtime_prefix):
+        return "/" not in normalized[len(runtime_prefix) :] and normalized.endswith(".py")
+    if normalized.startswith("tests/"):
+        filename = normalized.removeprefix("tests/")
+        if "/" not in filename and filename.endswith(".py"):
+            return filename.startswith(("guard_command_corpus", "guard_command_decision_diff"))
+    return False
 
 
 def contribution_ids() -> set[str]:
@@ -99,12 +158,13 @@ def is_native_implementation_input(path: str) -> bool:
 
 
 def changed_regen_inputs(base_sha: str) -> ChangedRegenInputs:
-    """Classify exact contribution and native implementation inputs changed since ``base_sha``."""
+    """Classify exact source inputs changed since ``base_sha``."""
 
     paths = _git_changed_paths(base_sha)
     return ChangedRegenInputs(
         contribution_paths=tuple(sorted(path for path in paths if path.startswith("contributions/"))),
         implementation_paths=tuple(sorted(path for path in paths if is_native_implementation_input(path))),
+        report_paths=tuple(sorted(path for path in paths if is_decision_report_input(path))),
     )
 
 
@@ -112,6 +172,7 @@ def main() -> int:
     pending_ids = sorted(contribution_ids() - catalog_ids())
     changed: list[str] = []
     changed_implementation: list[str] = []
+    changed_report: list[str] = []
     if "--changed-from" in sys.argv:
         index = sys.argv.index("--changed-from")
         if index + 1 >= len(sys.argv) or sys.argv[index + 1].startswith("-"):
@@ -124,7 +185,8 @@ def main() -> int:
             return 2
         changed = list(inputs.contribution_paths)
         changed_implementation = list(inputs.implementation_paths)
-    pending = bool(pending_ids) or bool(changed) or bool(changed_implementation)
+        changed_report = list(inputs.report_paths)
+    pending = bool(pending_ids) or bool(changed) or bool(changed_implementation) or bool(changed_report)
     if "--flag" in sys.argv:
         print("true" if pending else "false")
     else:
@@ -135,6 +197,7 @@ def main() -> int:
                     "pending_ids": pending_ids,
                     "changed_sources": changed,
                     "changed_implementation_inputs": changed_implementation,
+                    "changed_decision_report_inputs": changed_report,
                 },
                 sort_keys=True,
             )

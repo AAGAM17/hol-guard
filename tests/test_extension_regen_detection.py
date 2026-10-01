@@ -25,6 +25,8 @@ def test_changed_regen_inputs_classifies_native_bound_and_unrelated_paths(monkey
                 "rust/crates/guard-command/build.rs\0"
                 "rust/crates/guard-command/src/native_command_source.rs\0"
                 "rust/crates/guard-command/tests/fixture.json\0"
+                "src/codex_plugin_scanner/guard/runtime/command_model.py\0"
+                "tests/guard_command_decision_diff.py\0"
                 "README.md\0"
                 "contributions/command-sources/command.example.json\0"
             ),
@@ -40,8 +42,17 @@ def test_changed_regen_inputs_classifies_native_bound_and_unrelated_paths(monkey
         "rust/crates/guard-command/build.rs",
         "rust/crates/guard-command/src/native_command_source.rs",
     )
+    assert changed.report_paths == (
+        "rust/crates/guard-command/src/native_command_source.rs",
+        "src/codex_plugin_scanner/guard/runtime/command_model.py",
+        "tests/guard_command_decision_diff.py",
+    )
     assert not detector.is_native_implementation_input("rust/crates/guard-command/tests/fixture.json")
     assert not detector.is_native_implementation_input("README.md")
+    assert detector.is_decision_report_input("src/codex_plugin_scanner/guard/runtime/deleted.py")
+    assert detector.is_decision_report_input("tests/guard_command_corpus_deleted.py")
+    assert not detector.is_decision_report_input("src/codex_plugin_scanner/guard/runtime/nested/deleted.py")
+    assert not detector.is_decision_report_input("tests/support/extension_freshness.py")
 
 
 def test_changed_regen_inputs_requires_a_base_revision() -> None:
@@ -84,6 +95,28 @@ def test_verifier_generates_and_restores_for_implementation_only_changes(
         "--compiler",
         "compiler",
     ]
+    assert calls[1][0:3] == ["git", "checkout", "--"]
+    assert calls[2][0:3] == ["git", "clean", "-fdq"]
+
+
+def test_verifier_generates_for_decision_report_only_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setitem(sys.modules, "detect_pending_extension_regen", detector)
+    monkeypatch.setattr(detector, "contribution_ids", lambda: set())
+    monkeypatch.setattr(detector, "catalog_ids", lambda: set())
+    monkeypatch.setattr(
+        detector,
+        "changed_regen_inputs",
+        lambda _: detector.ChangedRegenInputs((), (), ("tests/guard_command_decision_diff.py",)),
+    )
+    monkeypatch.setattr(verifier, "_run", calls.append)
+    monkeypatch.setattr(sys, "argv", ["verify", "--compiler", "compiler", "--changed-from", "base-sha"])
+
+    assert verifier.main() == 0
+
+    assert calls[0][-1] != "--check"
     assert calls[1][0:3] == ["git", "checkout", "--"]
     assert calls[2][0:3] == ["git", "clean", "-fdq"]
 

@@ -5,9 +5,10 @@ edits canonical sources legitimately leaves the checked-in program stale, so a
 plain ``--check`` would reject an otherwise-valid contribution. This wrapper:
 
 - fresh tree: runs ``build_native_command_program.py --check`` as before
-- source-only tree (new/edited contribution source or native implementation
-  input): runs the generator without ``--check`` to validate the source, then
-  restores generated paths so later steps see the checked-in state
+- source-only tree (new/edited contribution source, native implementation,
+  or decision-report input): runs the generator without ``--check`` to
+  validate the source, then restores generated paths so later steps see the
+  checked-in state
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ def main() -> int:
     pending = sorted(contribution_ids() - catalog_ids())
     changed = []
     changed_implementation = []
+    changed_report = []
     if args.changed_from is not None:
         try:
             inputs = changed_regen_inputs(args.changed_from)
@@ -51,16 +53,17 @@ def main() -> int:
             raise SystemExit(str(error)) from error
         changed = list(inputs.contribution_paths)
         changed_implementation = list(inputs.implementation_paths)
+        changed_report = list(inputs.report_paths)
     command = [
         sys.executable,
         "scripts/build_native_command_program.py",
         "--compiler",
         args.compiler,
     ]
-    if args.changed_from is not None and (pending or changed or changed_implementation):
+    if args.changed_from is not None and (pending or changed or changed_implementation or changed_report):
         print(
             f"source-only projection regeneration (ids={pending}, changed={changed}, "
-            f"implementation={changed_implementation}); "
+            f"implementation={changed_implementation}, report={changed_report}); "
             "validating sources by generating instead of checking freshness",
             file=sys.stderr,
         )

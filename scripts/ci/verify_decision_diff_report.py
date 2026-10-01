@@ -1,0 +1,66 @@
+"""Verify deterministic decision evidence with source-only projection qualification."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+REPORT_PATHS = (
+    "tests/fixtures/guard-command-corpus/decision-diff-report.json",
+    "tests/fixtures/guard-command-corpus/decision-diff-report.framed-sha256",
+)
+
+
+def _run(command: list[str]) -> None:
+    completed = subprocess.run(command, cwd=ROOT, check=False)
+    if completed.returncode:
+        raise SystemExit(completed.returncode)
+
+
+def _source_only_inputs(base_sha: str) -> bool:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from detect_pending_extension_regen import GitDiffError, changed_regen_inputs
+
+    try:
+        changed = changed_regen_inputs(base_sha)
+    except GitDiffError as error:
+        raise SystemExit(str(error)) from error
+    return bool(changed.contribution_paths or changed.implementation_paths or changed.report_paths)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--compiler", required=True)
+    parser.add_argument("--changed-from")
+    args = parser.parse_args()
+
+    report_command = [sys.executable, "tests/guard_command_decision_diff.py"]
+    if args.changed_from is None or not _source_only_inputs(args.changed_from):
+        _run([*report_command, "--check"])
+        return 0
+
+    from verify_native_command_program import GENERATED_PATHS
+
+    generated_paths = (*GENERATED_PATHS, *REPORT_PATHS)
+    try:
+        _run(
+            [
+                sys.executable,
+                "scripts/build_native_command_program.py",
+                "--compiler",
+                args.compiler,
+            ]
+        )
+        _run([*report_command, "--write"])
+        _run([*report_command, "--check"])
+    finally:
+        _run(["git", "checkout", "--", *generated_paths])
+        _run(["git", "clean", "-fdq", "--", *GENERATED_PATHS])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

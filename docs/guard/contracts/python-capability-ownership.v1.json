@@ -74,13 +74,10 @@
  "package_excluded_candidates": [],
  "deletion_candidates": [
   "src/codex_plugin_scanner/guard/evaluation_codex_event_trace.py",
-  "src/codex_plugin_scanner/guard/extension_builder/listing_cli.py",
-  "src/codex_plugin_scanner/guard/outcome_receipt.py",
   "src/codex_plugin_scanner/guard/policy_recipe.py",
   "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
   "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
-  "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
-  "src/codex_plugin_scanner/guard/strands_intervention.py"
+  "src/codex_plugin_scanner/guard/runtime/resource_budget.py"
  ],
  "dependency_delta": {
   "removed_project_dependencies": [],
@@ -489,11 +486,9 @@
   "tests/test_guard_durable_exact_shell_approval_expiry.py",
   "tests/test_guard_network_public_suffix.py",
   "tests/test_guard_offline_archive_inspection.py",
-  "tests/test_guard_outcome_receipt.py",
   "tests/test_guard_policy_recipe.py",
   "tests/test_guard_remote_approval_execution.py",
   "tests/test_guard_resource_budget.py",
-  "tests/test_guard_strands_intervention.py",
   "tests/test_hook_content_scanner.py",
   "tests/test_hook_decision_cache.py",
   "tests/test_hook_review_engine.py",

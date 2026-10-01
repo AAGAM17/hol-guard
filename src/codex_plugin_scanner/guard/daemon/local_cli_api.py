@@ -46,6 +46,7 @@ from ..runtime.local_cli_identity import (
     recognize_operator_cli,
 )
 from ..runtime.local_mcp_probe import (
+    McpProbeError,
     is_strict_package_mcp_launcher,
     looks_like_mcp_launch,
     mcp_launch_tokens,
@@ -347,7 +348,7 @@ class LocalCliApiService:
             def refresh(cancel: threading.Event) -> None:
                 response = self.recognize({"cli_id": cli_id, "refresh": True}, cancel=cancel)
                 if not cancel.is_set() and response.get("help_status") == "failed":
-                    raise LocalCliApiError(503, "discovery_failed")
+                    raise DiscoveryStageError(str(response.get("discovery_error", "discovery_failed")))
 
             return self._discovery_jobs.start(
                 cli_id,
@@ -638,6 +639,7 @@ class LocalCliApiService:
         catalog_before = snapshot_before.get("mcp_catalog")
         prior_revision = catalog_before.get("revision", 0) if isinstance(catalog_before, dict) else 0
         expected_catalog_revision = prior_revision if type(prior_revision) is int and prior_revision >= 0 else 0
+        failure_code = "discovery_failed"
         try:
             probed = (
                 probe_stdio_mcp_server(
@@ -647,6 +649,7 @@ class LocalCliApiService:
                     extra_env=extra_env,
                     cancel=cancel,
                     connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
+                    **({"report_failure": True} if selected_server is not None else {}),
                 )
                 if cancel is not None
                 else probe_stdio_mcp_server(
@@ -655,8 +658,12 @@ class LocalCliApiService:
                     home_dir=home_dir,
                     extra_env=extra_env,
                     connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
+                    **({"report_failure": True} if selected_server is not None else {}),
                 )
             )
+        except McpProbeError as error:
+            failure_code = error.code
+            probed = None
         except (OSError, RuntimeError, TimeoutError, ValueError):
             probed = None
         if cancel is not None and cancel.is_set():
@@ -683,13 +690,15 @@ class LocalCliApiService:
                             identity_hash=identity_hash,
                             seen_at=utc_now(),
                         )
-                        return self._recognize_payload(
+                        response = self._recognize_payload(
                             stored_id,
                             item,
                             "failed",
                             "Guard could not refresh this connector. "
                             "Known tools and choices were kept. Try listing again.",
                         )
+                        response["discovery_error"] = failure_code
+                        return response
                 return stored
             if is_strict_package_mcp_launcher(tokens):
                 launcher = Path(tokens[0]).name

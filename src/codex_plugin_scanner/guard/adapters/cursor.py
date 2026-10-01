@@ -80,13 +80,13 @@ class CursorHarnessAdapter(HarnessAdapter):
                 continue
             found_paths.append(str(config_path))
             scope = self._scope_for(context, config_path)
-            managed_origin = self._managed_mcp_origin(context, config_path, scope)
             mcp_servers = payload.get("mcpServers")
             if not isinstance(mcp_servers, dict):
                 continue
             for name, server_config in mcp_servers.items():
                 if not isinstance(name, str) or not isinstance(server_config, dict):
                     continue
+                managed_origin = self._managed_mcp_origin(context, config_path, scope, name)
                 args = tuple(str(value) for value in server_config.get("args", []) if isinstance(value, str))
                 command = server_config.get("command")
                 env_payload = server_config.get("env")
@@ -253,17 +253,20 @@ class CursorHarnessAdapter(HarnessAdapter):
         _ensure_path_within_root(context.guard_home, state_path, label="Cursor state")
         state_path.parent.mkdir(parents=True, exist_ok=True)
         workspace_dir = str(context.workspace_dir.resolve()) if context.workspace_dir is not None else None
+        previous = _json_payload(state_path)
+        origins = dict(previous.get("managed_origins") or {})
+        for server in managed_servers:
+            if server.source_scope == "project":
+                origins[server.name] = [server.source_scope, server.config_path]
+        state = {
+            "managed_config_path": str(target_path),
+            "backup_path": str(backup_path),
+            "surface": "editor",
+            "workspace_dir": workspace_dir,
+            "managed_origins": origins,
+        }
         state_path.write_text(
-            json.dumps(
-                {
-                    "managed_config_path": str(target_path),
-                    "backup_path": str(backup_path),
-                    "surface": "editor",
-                    "workspace_dir": workspace_dir,
-                },
-                indent=2,
-            )
-            + "\n",
+            json.dumps(state, indent=2) + "\n",
             encoding="utf-8",
         )
         payload = self._strict_json_object(target_path, label="Cursor editor config", recover_missing=True)
@@ -492,20 +495,28 @@ class CursorHarnessAdapter(HarnessAdapter):
         digest = sha256(target.encode("utf-8")).hexdigest()[:12]
         return context.guard_home / "managed" / "cursor" / f"{digest}.state.json"
 
-    def _managed_mcp_origin(self, context: HarnessContext, config_path: Path, scope: str) -> dict[str, object]:
+    def _managed_mcp_origin(
+        self,
+        context: HarnessContext,
+        config_path: Path,
+        scope: str,
+        server_name: str,
+    ) -> dict[str, object]:
         if scope != "global" or config_path != self._target_editor_config_path(context):
             return {}
         state = _json_payload(self._state_path(config_path, context))
-        workspace = state.get("workspace_dir")
+        managed_origins = state.get("managed_origins")
+        origin = managed_origins.get(server_name) if isinstance(managed_origins, dict) else None
         if (
             state.get("managed_config_path") != str(config_path)
             or state.get("surface") != "editor"
-            or not isinstance(workspace, str)
-            or not Path(workspace).is_absolute()
+            or not isinstance(origin, list)
+            or len(origin) != 2
+            or not all(isinstance(value, str) for value in origin)
         ):
             return {}
         return {
-            "managed_mcp_origin": ("project", str(Path(workspace) / ".cursor" / "mcp.json")),
+            "managed_mcp_origin": tuple(origin),
             "managed_guard_home": str(context.guard_home),
         }
 

@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
 import codex_plugin_scanner
+from ci.native_runtime.hook_failure_detail import hook_failure_detail
 from codex_plugin_scanner.guard.config import hook_fast_path_enabled
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
 from codex_plugin_scanner.guard.native_policy_test_support import native_policy_snapshot
@@ -228,12 +229,7 @@ def _exercise_installed_routes(
                 raise RuntimeError(f"empty response for {harness} {event}")
             _require(
                 is_allowed(event, response_payload),
-                {
-                    "harness": harness,
-                    "event": event,
-                    "decision": response_payload.get("decision"),
-                    "permission_decision": _permission_decision(response_payload),
-                },
+                hook_failure_detail(harness, event, response_payload),
             )
             reason = response_payload.get("reason_code")
             if isinstance(reason, str):

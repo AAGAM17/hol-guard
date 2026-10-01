@@ -58,6 +58,48 @@ def test_failure_after_rss_readiness_keeps_its_stage(monkeypatch: pytest.MonkeyP
     assert baseline["failed"] == 0
 
 
+def test_baseline_requests_do_not_keep_the_enclosing_failure_stage(monkeypatch: pytest.MonkeyPatch) -> None:
+    progress = SloProgress()
+
+    def observe(harness: str, event: str, size_class: str, stage: str) -> Observation:
+        progress.activate(stage, harness=harness, event=event, size_class=size_class)
+        return Observation(harness, event, size_class, 1.0, "native_resident", True)
+
+    def baseline(run_wave, **_kwargs: object) -> int:
+        observations, errors = run_wave()
+        assert errors == 0 and len(observations) == 1
+        return 10
+
+    def run_concurrent(*_args: object, observer=None, stage: str = "concurrent", **_kwargs: object):
+        assert observer is not None
+        return [observer("codex", "PreToolUse", "1k", stage)], 0
+
+    monkeypatch.setattr(capacity, "_prime_load_executor", lambda *_args: None)
+    monkeypatch.setattr(capacity, "_steady_state_rss_baseline", baseline)
+    monkeypatch.setattr(capacity, "_run_concurrent", run_concurrent)
+    monkeypatch.setattr(capacity, "_require_ready_hook_workers", lambda *_args: None)
+    monkeypatch.setattr(capacity, "process_rss_bytes", lambda: 10)
+    session = SimpleNamespace(
+        daemon=SimpleNamespace(_server=SimpleNamespace(hook_process_runner=SimpleNamespace(stats=lambda: {})))
+    )
+    capacity._measure_rss_and_c64(
+        session,
+        (("codex", "PreToolUse"),),
+        1,
+        include_capacity=False,
+        observer=observe,
+        progress=progress,
+    )
+    assert progress.active_stage == "rss_baseline"
+    assert progress.active_labels == {}
+    progress.record_failure(RuntimeError("fixture readiness sample failed"), stage="readiness")
+    failure = progress.snapshot_failure()
+    assert failure["stage"] == "readiness"
+    assert "harness" not in failure
+    assert "event" not in failure
+    assert "size_class" not in failure
+
+
 def test_capacity_stderr_normalizes_actual_observation_routes(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

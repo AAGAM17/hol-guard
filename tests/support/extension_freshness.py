@@ -40,14 +40,25 @@ def pending_decision_diff_regen() -> bool:
 
     if pending_contribution_regen():
         return True
-    report = "tests/fixtures/guard-command-corpus/decision-diff-report.json"
-    inputs = (
+    prefixes = (
         "contributions/",
         "contracts/extensions/",
         "rust/crates/guard-command/",
         "src/codex_plugin_scanner/guard/",
         "tests/fixtures/guard-command-corpus/",
     )
+    try:
+        from tests.guard_command_decision_diff import (
+            _EVIDENCE_SOURCE_PATHS,
+            REPO_ROOT,
+            REPORT_PATH,
+        )
+
+        bound = {str(path.relative_to(REPO_ROOT)) for path in _EVIDENCE_SOURCE_PATHS}
+        report = str(REPORT_PATH.relative_to(REPO_ROOT))
+    except (ImportError, ValueError):
+        bound = set()
+        report = prefixes[-1] + "decision-diff-report.json"
     try:
         head_parents = subprocess.run(
             ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
@@ -63,7 +74,7 @@ def pending_decision_diff_regen() -> bool:
         return False
     if report in diff:
         return False
-    return any(path.startswith(inputs) for path in diff)
+    return any(path in bound or path.startswith(prefixes) for path in diff)
 
 
 requires_fresh_projections = pytest.mark.skipif(

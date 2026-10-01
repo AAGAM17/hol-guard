@@ -6119,7 +6119,7 @@ function CodexHostConnectors({ inventory }) {
     setReported(true);
     setNow(Date.now());
     const remaining = Math.max(0, Math.min(3e4, inventory.expires_at_ms - Date.now()));
-    const timer = window.setTimeout(() => setNow(Date.now()), remaining);
+    const timer = window.setTimeout(() => setNow(inventory.expires_at_ms), remaining);
     return () => window.clearTimeout(timer);
   }, [inventory?.expires_at_ms]);
   if (!inventory && !reported) return null;

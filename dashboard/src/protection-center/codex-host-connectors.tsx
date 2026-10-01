@@ -84,7 +84,7 @@ export function CodexHostConnectors({ inventory }: { inventory?: CodexHostInvent
     setReported(true);
     setNow(Date.now());
     const remaining = Math.max(0, Math.min(30_000, inventory.expires_at_ms - Date.now()));
-    const timer = window.setTimeout(() => setNow(Date.now()), remaining);
+    const timer = window.setTimeout(() => setNow(inventory.expires_at_ms), remaining);
     return () => window.clearTimeout(timer);
   }, [inventory?.expires_at_ms]);
   if (!inventory && !reported) return null;

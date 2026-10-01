@@ -16,15 +16,15 @@ source_compiler="$target_dir/release/guard-command-source"
 # The ARM image includes Rosetta for this build-time sanity check.
 # Installed Intel performance is measured on macos-15-intel below.
 "$runtime" self-test --json
-# Match Linux: validate pending contribution sources on PRs, but keep strict
-# freshness checks for pushes, scheduled builds and manual runs.
+# Match Linux: validate source-bound projections against the comparison base
+# for PRs and main pushes. Release pushes, schedules and manual runs remain strict.
 verification_arguments=(--compiler "$source_compiler")
-if [[ -n "${NATIVE_PR_BASE_SHA:-}" ]]; then
-  if [[ ! "$NATIVE_PR_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-    echo "NATIVE_PR_BASE_SHA must be a full Git commit SHA" >&2
+if [[ -n "${NATIVE_CHANGED_FROM_SHA:-}" ]]; then
+  if [[ ! "$NATIVE_CHANGED_FROM_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    echo "NATIVE_CHANGED_FROM_SHA must be a full Git commit SHA" >&2
     exit 1
   fi
-  verification_arguments+=(--changed-from "$NATIVE_PR_BASE_SHA")
+  verification_arguments+=(--changed-from "$NATIVE_CHANGED_FROM_SHA")
 fi
 python scripts/ci/verify_native_command_program.py "${verification_arguments[@]}"
 uv build --wheel --out-dir pure-dist

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager
 from functools import wraps
 from pathlib import Path
@@ -25,7 +25,7 @@ def _lock_identity(path: Path) -> tuple[int, int] | None:
 
 
 @contextmanager
-def _target_lock(root: Path) -> Iterator[None]:
+def _target_lock(root: Path) -> Generator[None]:
     directory = root / ".codex"
     _ensure_path_within_root(root, directory, label="Codex lifecycle lock")
     directory.mkdir(parents=True, exist_ok=True)
@@ -55,7 +55,7 @@ def _target_lock(root: Path) -> Iterator[None]:
 
 
 @contextmanager
-def codex_lifecycle_locks(context: HarnessContext) -> Iterator[None]:
+def codex_lifecycle_locks(context: HarnessContext) -> Generator[None]:
     # Store locks beside shared configurations, not in an owner's Guard home.
     # A different owner must contend on the same file before reading inventory.
     roots = [context.home_dir]

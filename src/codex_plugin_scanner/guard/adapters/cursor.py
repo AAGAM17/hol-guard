@@ -80,6 +80,7 @@ class CursorHarnessAdapter(HarnessAdapter):
                 continue
             found_paths.append(str(config_path))
             scope = self._scope_for(context, config_path)
+            managed_origin = self._managed_mcp_origin(context, config_path, scope)
             mcp_servers = payload.get("mcpServers")
             if not isinstance(mcp_servers, dict):
                 continue
@@ -142,6 +143,7 @@ class CursorHarnessAdapter(HarnessAdapter):
                             url=url if isinstance(url, str) else None,
                             transport="http" if isinstance(url, str) else "stdio",
                             metadata=metadata,
+                            runtime_private_metadata=dict(managed_origin),
                         )
                     )
                 )
@@ -489,5 +491,22 @@ class CursorHarnessAdapter(HarnessAdapter):
         target = str(target_path.resolve())
         digest = sha256(target.encode("utf-8")).hexdigest()[:12]
         return context.guard_home / "managed" / "cursor" / f"{digest}.state.json"
+
+    def _managed_mcp_origin(self, context: HarnessContext, config_path: Path, scope: str) -> dict[str, object]:
+        if scope != "global" or config_path != self._target_editor_config_path(context):
+            return {}
+        state = _json_payload(self._state_path(config_path, context))
+        workspace = state.get("workspace_dir")
+        if (
+            state.get("managed_config_path") != str(config_path)
+            or state.get("surface") != "editor"
+            or not isinstance(workspace, str)
+            or not Path(workspace).is_absolute()
+        ):
+            return {}
+        return {
+            "managed_mcp_origin": ("project", str(Path(workspace) / ".cursor" / "mcp.json")),
+            "managed_guard_home": str(context.guard_home),
+        }
 
     _backup_payload = staticmethod(load_backup_payload)

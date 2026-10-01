@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
+from codex_plugin_scanner.guard.adapters.cline_mcp import detect_cline_mcp, install_cline_mcp_proxies
 from codex_plugin_scanner.guard.adapters.cursor import CursorHarnessAdapter
 from codex_plugin_scanner.guard.adapters.harness_mcp_discovery import discover_harness_mcp_servers
 from codex_plugin_scanner.guard.adapters.mcp_servers import (
@@ -16,6 +17,7 @@ from codex_plugin_scanner.guard.adapters.mcp_servers import (
     managed_stdio_servers,
     proxy_cli_args,
 )
+from codex_plugin_scanner.guard.adapters.opencode_artifacts import append_config_artifacts
 from codex_plugin_scanner.guard.models import GuardArtifact, HarnessDetection
 
 
@@ -256,3 +258,176 @@ def test_cursor_reinstall_refreshes_launcher_without_adding_proxy_layers(
         detections=(CursorHarnessAdapter().detect(context),),
     )
     assert len(servers) == 1 and servers[0].launch_command == "python fixture_server.py --stdio"
+
+
+@pytest.mark.parametrize(
+    "blocked", ["PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONBREAKPOINT", "__PYVENV_LAUNCHER__"]
+)
+def test_cursor_install_inventory_keeps_only_effective_server_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    blocked: str,
+) -> None:
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard")
+    config = context.home_dir / ".cursor/mcp.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "fixture": {
+                        "command": "python",
+                        "args": ["fixture_server.py", "--stdio"],
+                        "env": {blocked: "untrusted", "FIXTURE_ACCOUNT": "one"},
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr("codex_plugin_scanner.guard.adapters.cursor.install_cursor_hooks", lambda context: {})
+    CursorHarnessAdapter().install(context)
+    installed = json.loads(config.read_text())["mcpServers"]["fixture"]
+    assert f"--server-env-key={blocked}" not in installed["args"]
+    servers = discover_harness_mcp_servers(
+        home_dir=context.home_dir,
+        guard_home=context.guard_home,
+        detections=(CursorHarnessAdapter().detect(context),),
+    )
+    assert len(servers) == 1 and dict(servers[0].env) == {"FIXTURE_ACCOUNT": "one"}
+    # Earlier installations advertised blocked keys even though their values
+    # were deliberately omitted. Recover that effective launch too.
+    installed["args"].append(f"--server-env-key={blocked}")
+    config.write_text(json.dumps({"mcpServers": {"fixture": installed}}))
+    legacy = discover_harness_mcp_servers(
+        home_dir=context.home_dir,
+        guard_home=context.guard_home,
+        detections=(CursorHarnessAdapter().detect(context),),
+    )
+    assert len(legacy) == 1 and legacy[0].identity.identity_hash == servers[0].identity.identity_hash
+
+
+def test_cursor_global_copy_recovers_saved_workspace_origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    context = HarnessContext(
+        home_dir=tmp_path / "home", workspace_dir=tmp_path / "workspace", guard_home=tmp_path / "guard"
+    )
+    assert context.workspace_dir is not None
+    project_config = context.workspace_dir / ".cursor/mcp.json"
+    project_config.parent.mkdir(parents=True)
+    project_config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "fixture": {
+                        "command": "python",
+                        "args": ["fixture_server.py", "--stdio"],
+                        "env": {"FIXTURE_ACCOUNT": "one"},
+                    }
+                }
+            }
+        )
+    )
+    before = discover_harness_mcp_servers(
+        home_dir=context.home_dir,
+        workspace_dir=context.workspace_dir,
+        guard_home=context.guard_home,
+        detections=(CursorHarnessAdapter().detect(context),),
+    )
+    assert len(before) == 1
+    monkeypatch.setattr("codex_plugin_scanner.guard.adapters.cursor.install_cursor_hooks", lambda context: {})
+    CursorHarnessAdapter().install(context)
+    global_context = replace(context, workspace_dir=None)
+    after = discover_harness_mcp_servers(
+        home_dir=context.home_dir,
+        guard_home=context.guard_home,
+        detections=(CursorHarnessAdapter().detect(global_context),),
+    )
+    assert len(after) == 1
+    assert after[0].identity.identity_hash == before[0].identity.identity_hash
+    # A copied proxy cannot claim a different workspace origin.
+    assert (
+        discover_harness_mcp_servers(
+            home_dir=context.home_dir,
+            guard_home=tmp_path / "other-guard",
+            detections=(CursorHarnessAdapter().detect(replace(global_context, guard_home=tmp_path / "other-guard")),),
+        )
+        == ()
+    )
+    global_config = context.home_dir / ".cursor/mcp.json"
+    payload = json.loads(global_config.read_text())
+    args = payload["mcpServers"]["fixture"]["args"]
+    args[args.index("--config-path") + 1] = str(tmp_path / "other/.cursor/mcp.json")
+    global_config.write_text(json.dumps(payload))
+    assert (
+        discover_harness_mcp_servers(
+            home_dir=context.home_dir,
+            guard_home=context.guard_home,
+            detections=(CursorHarnessAdapter().detect(global_context),),
+        )
+        == ()
+    )
+
+
+def test_cline_installed_inventory_uses_private_launch_values(tmp_path: Path) -> None:
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard")
+    config = context.home_dir / ".cline/data/settings/cline_mcp_settings.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "fixture": {
+                        "command": "python",
+                        "args": ["fixture_server.py", "--token=secret-token-value"],
+                        "env": {"TOKEN": "secret-env-value"},
+                    }
+                }
+            }
+        )
+    )
+    before = discover_harness_mcp_servers(
+        home_dir=context.home_dir,
+        guard_home=context.guard_home,
+        detections=(detect_cline_mcp(context),),
+    )
+    install_cline_mcp_proxies(context)
+    detection = detect_cline_mcp(context)
+    serialized = json.dumps([artifact.to_dict() for artifact in detection.artifacts])
+    for secret in ("secret-token-value", "secret-env-value"):
+        assert secret not in serialized and secret not in repr(detection)
+    after = discover_harness_mcp_servers(
+        home_dir=context.home_dir,
+        guard_home=context.guard_home,
+        detections=(detection,),
+    )
+    assert len(before) == len(after) == 1
+    assert after[0].identity.identity_hash == before[0].identity.identity_hash
+    assert dict(after[0].env) == {"TOKEN": "secret-env-value"}
+
+
+def test_opencode_installed_inventory_normalizes_padded_env_keys(tmp_path: Path) -> None:
+    server = ManagedMcpServer(
+        harness="opencode",
+        name="fixture",
+        source_scope="global",
+        config_path=str(tmp_path / "opencode.json"),
+        command="python",
+        args=("fixture_server.py",),
+        transport="local",
+        env={" TOKEN ": "secret-env-value"},
+        enabled=True,
+    )
+    args = proxy_cli_args(proxy_command="opencode-mcp-proxy", guard_home=str(tmp_path / "guard"), server=server)
+    artifacts: list[GuardArtifact] = []
+    append_config_artifacts(
+        artifacts=artifacts,
+        seen_artifact_ids=set(),
+        scope="global",
+        config_path=Path(server.config_path),
+        payload={"mcp": {"fixture": {"type": "local", "command": ["hol-guard", *args], "environment": server.env}}},
+    )
+    servers = discover_harness_mcp_servers(
+        home_dir=tmp_path,
+        guard_home=tmp_path / "guard",
+        detections=(_detection(artifacts[0]),),
+    )
+    assert len(servers) == 1 and dict(servers[0].env) == {"TOKEN": "secret-env-value"}

@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path, PurePath
+from typing import cast
 
 from ..launcher import merge_guard_launcher_env
 from ..models import GuardArtifact, HarnessDetection
@@ -153,7 +154,7 @@ def proxy_cli_args(
         args.extend(["--workspace", workspace])
     for value in server.args:
         args.append(f"--arg={value}")
-    for key in sorted(server.env):
+    for key in sorted(proxy_process_env(server.env)):
         if key.strip():
             args.append(f"--server-env-key={key.strip()}")
     return args
@@ -219,6 +220,12 @@ def _managed_stdio_server(
 ) -> ManagedMcpServer | None:
     if artifact.artifact_type != "mcp_server":
         return None
+    private_args = artifact.runtime_private_metadata.get("mcp_args")
+    if isinstance(private_args, tuple):
+        candidate_args = cast(tuple[object, ...], private_args)
+        if not all(isinstance(value, str) for value in candidate_args):
+            return None
+        artifact = replace(artifact, args=cast(tuple[str, ...], candidate_args))
     if is_verified_guard_mcp_companion(artifact.name, artifact.command, artifact.args):
         return None
     if not include_guard_managed_proxy and _bool_metadata(artifact.metadata.get("guard_managed_proxy"), default=False):
@@ -237,6 +244,13 @@ def _managed_stdio_server(
             artifact,
             command=upstream.command,
             args=upstream.args,
+            source_scope=upstream.source_scope,
+            config_path=upstream.config_path,
+            runtime_private_metadata={
+                key: value
+                for key, value in artifact.runtime_private_metadata.items()
+                if key not in {"mcp_args", "mcp_env"}
+            },
             metadata={**artifact.metadata, "env": upstream.env, "guard_managed_proxy": True},
         )
         # Construct only descriptive identity here. A recovered connection
@@ -260,7 +274,7 @@ def _managed_stdio_server(
     transport = artifact.transport or "stdio"
     if transport not in {"stdio", "local"}:
         return None
-    env = _string_env(artifact.metadata.get("env"))
+    env = _string_env(artifact.runtime_private_metadata.get("mcp_env", artifact.metadata.get("env")))
     enabled = _bool_metadata(artifact.metadata.get("enabled"), default=True)
     return ManagedMcpServer(
         harness=artifact.harness,

@@ -36,6 +36,8 @@ class ManagedMcpUpstream:
     args: tuple[str, ...]
     env: dict[str, str]
     server_id: str
+    source_scope: str
+    config_path: str
 
 
 def proxy_argument_tail(args: tuple[str, ...], commands: frozenset[str]) -> tuple[str, tuple[str, ...]] | None:
@@ -96,23 +98,35 @@ def read_managed_mcp_upstream(artifact: GuardArtifact, commands: frozenset[str])
         index += 1
     if not _REQUIRED_OPTIONS.issubset(options):
         return None
-    expected = {
-        "--server-name": artifact.name,
-        "--source-scope": artifact.source_scope,
-        "--config-path": artifact.config_path,
-        "--transport": artifact.transport or "stdio",
-    }
+    expected = {"--server-name": artifact.name, "--transport": artifact.transport or "stdio"}
     if any(options[key] != value for key, value in expected.items()):
         return None
-    configured_env = artifact.metadata.get("env", {})
+    origin = (options["--source-scope"], options["--config-path"])
+    if origin != (artifact.source_scope, artifact.config_path):
+        # Cursor's installer copies workspace proxies into its global file.
+        # The adapter binds this exception to Guard's saved install state;
+        # arbitrary origin claims in a server's argv are never sufficient.
+        saved_origin = artifact.runtime_private_metadata.get("managed_mcp_origin")
+        if (
+            artifact.harness != "cursor"
+            or origin != saved_origin
+            or options["--guard-home"] != artifact.runtime_private_metadata.get("managed_guard_home")
+        ):
+            return None
+    configured_env = artifact.runtime_private_metadata.get("mcp_env", artifact.metadata.get("env", {}))
     if not isinstance(configured_env, dict):
         return None
+    normalized_env = {
+        key.strip(): value
+        for key, value in cast(dict[object, object], configured_env).items()
+        if isinstance(key, str) and key.strip() and isinstance(value, str)
+    }
     env: dict[str, str] = {}
     for key in sorted(env_keys):
         if key.upper() in _LAUNCHER_ENV_KEYS:
             continue
-        value = cast(dict[str, object], configured_env).get(key)
+        value = normalized_env.get(key)
         if not isinstance(value, str):
             return None
         env[key] = value
-    return ManagedMcpUpstream(options["--command"], tuple(args), env, options["--server-id"])
+    return ManagedMcpUpstream(options["--command"], tuple(args), env, options["--server-id"], *origin)

@@ -453,6 +453,8 @@ export async function waitForMcpDiscoveryJob(cliId: string, initialJob: unknown,
             message = "The MCP server did not complete initialization. Check that it starts in the host app and uses stdio MCP. Known tools and choices were kept."; break;
           case "mcp_protocol_unsupported":
             message = "This server uses an MCP protocol version Guard does not support. Check the server and Guard versions. Known tools and choices were kept."; break;
+          case "mcp_capability_rejected":
+            message = "The MCP server rejected Guard's discovery capabilities. Check the server's client requirements and Guard version. Known tools and choices were kept."; break;
           case "catalog_revision_conflict":
             message = "A newer discovery finished first. Reload the inventory."; break;
           case "configured_host_scan_failed":

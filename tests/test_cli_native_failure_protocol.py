@@ -88,3 +88,5 @@ def test_pipeline_unavailable_preserves_codex_wire_response(
         assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
     else:
         assert response["continue"] is True
+        assert "permissionDecision" not in response["hookSpecificOutput"]
+        assert "decision" not in response["hookSpecificOutput"]

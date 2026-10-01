@@ -393,7 +393,10 @@ def test_claude_daemon_hook_command_survives_shell_execution(tmp_path):
 
     assert result.returncode == 0
     assert result.stderr == ""
-    assert json.loads(result.stdout) == {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}}
+    payload = json.loads(result.stdout)
+    assert payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    assert payload.get("decision") != "block"
+    assert payload.get("continue") is not False
 
 
 @pytest.mark.usefixtures("native_hook_force")

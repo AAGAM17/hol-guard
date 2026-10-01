@@ -67,9 +67,7 @@ jobs:
       group: desktop-core-stable-feed
       cancel-in-progress: false
       queue: max
-    if: >-
-      github.event_name != 'pull_request' &&
-      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    if: github.event_name != 'pull_request'
     needs: validate
     runs-on: macos-15
     timeout-minutes: 90

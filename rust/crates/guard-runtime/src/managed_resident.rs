@@ -136,8 +136,7 @@ fn try_home_states(
     let runtime_digest = runtime_digest()?;
     for (_scope, _digest, state) in discover_home_states_prefer(state_base, Some(preferred_digest))?
     {
-        let timeout = deadline.saturating_duration_since(Instant::now());
-        if timeout.is_zero() {
+        if deadline.saturating_duration_since(Instant::now()).is_zero() {
             return Ok(None);
         }
         let same_runtime = runtime_digest == state.runtime_sha256;
@@ -160,6 +159,10 @@ fn try_home_states(
             start_marker: &state.process_start_marker,
             digest: (!same_runtime).then_some(&state.runtime_sha256),
         };
+        let timeout = deadline.saturating_duration_since(Instant::now());
+        if timeout.is_zero() {
+            return Ok(None);
+        }
         match crate::resident_client::send_request_for_digest_detailed(
             &state.transport,
             &state.endpoint,
@@ -182,8 +185,9 @@ pub(crate) fn client_request(
     payload: &[u8],
     timeout: Duration,
 ) -> Result<Vec<u8>, String> {
-    let client_lease = lease::acquire(state_base)?;
-    client_request_with_lease(state_base, payload, timeout, &client_lease)
+    let overall_deadline = deadline_for_timeout(timeout)?;
+    let client_lease = lease::acquire_until(state_base, overall_deadline)?;
+    client_request_with_deadline(state_base, payload, overall_deadline, &client_lease)
 }
 
 fn client_request_with_lease(
@@ -192,13 +196,31 @@ fn client_request_with_lease(
     timeout: Duration,
     _client_lease: &lease::ClientLease,
 ) -> Result<Vec<u8>, String> {
+    let overall_deadline = deadline_for_timeout(timeout)?;
+    client_request_with_deadline(state_base, payload, overall_deadline, _client_lease)
+}
+
+fn deadline_for_timeout(timeout: Duration) -> Result<Instant, String> {
     if timeout.is_zero() {
         return Err("native_client_deadline_exceeded".to_owned());
     }
+    Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| "native_client_deadline_exceeded".to_owned())
+}
+
+fn client_request_with_deadline(
+    state_base: &Path,
+    payload: &[u8],
+    overall_deadline: Instant,
+    _client_lease: &lease::ClientLease,
+) -> Result<Vec<u8>, String> {
     // Keep the caller's budget intact. Windows spawn already has
     // CLIENT_START_TIMEOUT; shrinking every live request by 300ms makes the
     // 250ms command-model SLO miss the ready serve entirely.
-    let overall_deadline = Instant::now() + timeout;
+    if Instant::now() >= overall_deadline {
+        return Err("native_client_deadline_exceeded".to_owned());
+    }
     let digest = runtime_digest()?;
     let scope = state_scope(state_base, &digest)?;
     if let Some(response) = try_home_states(state_base, payload, overall_deadline, &digest)? {

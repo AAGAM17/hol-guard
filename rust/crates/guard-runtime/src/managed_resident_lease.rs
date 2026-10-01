@@ -125,10 +125,29 @@ fn acquire_directory_lock_with_retry(
     retry_budget: Duration,
 ) -> Result<LeaseDirectoryLock, String> {
     let deadline = Instant::now() + retry_budget;
+    acquire_directory_lock_until(directory, private_root, deadline)
+}
+
+fn acquire_directory_lock_until(
+    directory: &Path,
+    private_root: &Path,
+    deadline: Instant,
+) -> Result<LeaseDirectoryLock, String> {
     let mut delay = LEASE_ACQUIRE_RETRY_INITIAL_DELAY;
     loop {
+        if Instant::now() >= deadline {
+            #[cfg(test)]
+            notify_lock_retry_deadline_for_test();
+            return Err("native_resident_lease_busy".to_owned());
+        }
         if let Some(lock) = acquire_directory_lock(directory, private_root)? {
-            return Ok(lock);
+            if Instant::now() < deadline {
+                return Ok(lock);
+            }
+            drop(lock);
+            #[cfg(test)]
+            notify_lock_retry_deadline_for_test();
+            return Err("native_resident_lease_busy".to_owned());
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -142,6 +161,21 @@ fn acquire_directory_lock_with_retry(
 }
 
 pub(super) fn acquire(state_base: &Path) -> Result<ClientLease, String> {
+    acquire_with_lock(state_base, |directory, private_root| {
+        acquire_directory_lock_with_retry(directory, private_root, LEASE_ACQUIRE_RETRY_BUDGET)
+    })
+}
+
+pub(super) fn acquire_until(state_base: &Path, deadline: Instant) -> Result<ClientLease, String> {
+    acquire_with_lock(state_base, |directory, private_root| {
+        acquire_directory_lock_until(directory, private_root, deadline)
+    })
+}
+
+fn acquire_with_lock<F>(state_base: &Path, acquire_lock: F) -> Result<ClientLease, String>
+where
+    F: FnOnce(&Path, &Path) -> Result<LeaseDirectoryLock, String>,
+{
     let private_root = private_root_for_state_base(state_base)?;
     let directory = lease_directory(state_base)?;
     let process_id = std::process::id();
@@ -152,8 +186,7 @@ pub(super) fn acquire(state_base: &Path) -> Result<ClientLease, String> {
     let nonce = crate::resident_state_encoding::hex_bytes(&nonce);
     let path = directory.join(format!("{LEASE_PREFIX}{process_id}-{nonce}{LEASE_SUFFIX}"));
     let contents = format!("{process_id}\n{start_marker}\n{digest}\n");
-    let directory_lock =
-        acquire_directory_lock_with_retry(&directory, &private_root, LEASE_ACQUIRE_RETRY_BUDGET)?;
+    let directory_lock = acquire_lock(&directory, &private_root)?;
     let mut file = crate::resident_state::private_file(&path, true, &private_root)?;
     let identity = match LeaseIdentity::from_file(&file) {
         Ok(identity) => identity,

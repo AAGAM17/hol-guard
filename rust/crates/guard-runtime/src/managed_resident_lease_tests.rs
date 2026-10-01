@@ -1,7 +1,7 @@
 use super::*;
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 fn fixture_file(path: &Path, bytes: &[u8]) {
     #[cfg(windows)]
@@ -164,6 +164,86 @@ fn initial_lease_lock_returns_busy_at_the_retry_deadline() {
     ));
     releaser.join().expect("lock releaser should exit cleanly");
     fs::remove_dir_all(directory).expect("test directory should be removable");
+}
+
+#[test]
+fn absolute_lease_deadline_can_wait_beyond_stream_retry_budget() {
+    let root = test_directory("absolute-eventual");
+    let directory = lease_directory(&root).expect("lease directory should be available");
+    let held = acquire_directory_lock(&directory, &root)
+        .expect("initial lock open should succeed")
+        .expect("test should hold the lease lock");
+    crate::resident_state::runtime_digest()
+        .expect("runtime digest should be available before timing the lock wait");
+    let (busy_sender, busy_receiver) = std::sync::mpsc::channel();
+    let (started_sender, started_receiver) = std::sync::mpsc::channel();
+    let worker_root = root.clone();
+    let worker = thread::spawn(move || {
+        LOCK_BUSY_NOTIFICATION.with(|notification| *notification.borrow_mut() = Some(busy_sender));
+        started_sender
+            .send(())
+            .expect("absolute retry worker should start");
+        let started = Instant::now();
+        let acquired = acquire_until(&worker_root, started + Duration::from_millis(750));
+        let elapsed = started.elapsed();
+        let succeeded = acquired.is_ok();
+        drop(acquired);
+        (succeeded, elapsed)
+    });
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("absolute retry worker should be scheduled");
+    busy_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("absolute retry path should observe the held lock");
+    thread::sleep(Duration::from_millis(250));
+    drop(held);
+    let (succeeded, elapsed) = worker.join().expect("absolute retry worker should exit");
+    assert!(succeeded);
+    assert!(elapsed >= Duration::from_millis(200));
+    fs::remove_dir_all(root).expect("test directory should be removable");
+}
+
+#[test]
+fn absolute_lease_deadline_returns_busy_without_stream_budget_extension() {
+    let root = test_directory("absolute-bounded");
+    let directory = lease_directory(&root).expect("lease directory should be available");
+    let held = acquire_directory_lock(&directory, &root)
+        .expect("initial lock open should succeed")
+        .expect("test should hold the lease lock");
+    crate::resident_state::runtime_digest()
+        .expect("runtime digest should be available before timing the lock wait");
+    let (busy_sender, busy_receiver) = std::sync::mpsc::channel();
+    let (deadline_sender, deadline_receiver) = std::sync::mpsc::channel();
+    let (started_sender, started_receiver) = std::sync::mpsc::channel();
+    let worker_root = root.clone();
+    let worker = thread::spawn(move || {
+        LOCK_BUSY_NOTIFICATION.with(|notification| *notification.borrow_mut() = Some(busy_sender));
+        LOCK_RETRY_DEADLINE_NOTIFICATION
+            .with(|notification| *notification.borrow_mut() = Some(deadline_sender));
+        started_sender
+            .send(())
+            .expect("absolute bounded worker should start");
+        let started = Instant::now();
+        let result = acquire_until(&worker_root, started + Duration::from_millis(30));
+        let elapsed = started.elapsed();
+        let error = result.err().unwrap_or_else(|| "acquired".to_owned());
+        (error, elapsed)
+    });
+    started_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("absolute bounded worker should be scheduled");
+    busy_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("absolute retry path should observe the held lock");
+    deadline_receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("absolute retry path should reach its deadline");
+    drop(held);
+    let (error, elapsed) = worker.join().expect("absolute bounded worker should exit");
+    assert_eq!(error, "native_resident_lease_busy");
+    assert!(elapsed < Duration::from_millis(200));
+    fs::remove_dir_all(root).expect("test directory should be removable");
 }
 
 #[test]

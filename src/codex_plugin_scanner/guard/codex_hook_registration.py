@@ -210,6 +210,32 @@ def _is_live_guard_codex_hook_command(command: str) -> bool:
     return False
 
 
+def _python_hook_payload(tokens: Sequence[str]) -> list[str]:
+    payload = list(tokens)
+    while payload and payload[0].startswith("-") and payload[0] not in {"-", "--"}:
+        option = payload[0]
+        if option.startswith("--"):
+            payload = payload[2 if option == "--check-hash-based-pycs" else 1 :]
+            continue
+        for index, flag in enumerate(option[1:], start=1):
+            if flag in {"c", "m"}:
+                attached = option[index + 1 :]
+                return ["-" + flag, *([attached] if attached else []), *payload[1:]]
+            if flag in {"W", "X"}:
+                payload = payload[1 if index + 1 < len(option) else 2 :]
+                break
+        else:
+            payload = payload[1:]
+    return payload
+
+
+def _codex_hook_arguments(arguments: Sequence[str]) -> bool:
+    payload = list(arguments)
+    if payload[:1] == ["guard"]:
+        payload = payload[1:]
+    return payload[:1] == ["hook"] and _has_codex_harness(shlex.join(payload))
+
+
 def _inline_python_codex_hook(script: str) -> bool:
     if "codex_plugin_scanner.cli" not in script:
         return False
@@ -223,7 +249,7 @@ def _inline_python_codex_hook(script: str) -> bool:
         arguments = [item.value for item in node.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)]
         if len(arguments) != len(node.elts):
             continue
-        if "guard" in arguments and "hook" in arguments and _has_codex_harness(shlex.join(arguments)):
+        if _codex_hook_arguments(arguments):
             return True
     return False
 
@@ -238,18 +264,8 @@ def require_codex_hook_owner(command: str, *, ownership: str) -> None:
     tokens = _command_tokens(command)
     python_hook = False
     if tokens and Path(tokens[0]).name.lower().startswith("python"):
-        payload = tokens[1:]
-        while payload and payload[0].startswith("-") and payload[0] not in {"-c", "-m"}:
-            if payload[0] == "--":
-                break
-            operand_count = 2 if payload[0] in {"-W", "-X", "--check-hash-based-pycs"} else 1
-            payload = payload[operand_count:]
-        python_hook = (
-            payload[:2] == ["-m", "codex_plugin_scanner.cli"]
-            and "guard" in payload[2:]
-            and "hook" in payload[2:]
-            and _has_codex_harness(" ".join(payload))
-        )
+        payload = _python_hook_payload(tokens[1:])
+        python_hook = payload[:2] == ["-m", "codex_plugin_scanner.cli"] and _codex_hook_arguments(payload[2:])
         python_hook = python_hook or bool(payload and Path(payload[0]).name == "codex_daemon_hook_bridge.py")
         if payload[:1] == ["-c"] and len(payload) > 1:
             python_hook = python_hook or _inline_python_codex_hook(payload[1])

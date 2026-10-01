@@ -45,7 +45,16 @@ def test_other_harness_module_hook_is_not_a_codex_conflict(argument, python_opti
 @pytest.mark.parametrize("argument", ("--harness codex", "--harness=codex"))
 @pytest.mark.parametrize(
     "python_options",
-    ("", "-W ignore", "-X dev", "--check-hash-based-pycs always", "-I -W ignore -X dev", "-Wignore", "-Xdev"),
+    (
+        "",
+        "-W ignore",
+        "-X dev",
+        "--check-hash-based-pycs always",
+        "-I -W ignore -X dev",
+        "-Wignore",
+        "-Xdev",
+        "-IW ignore",
+    ),
 )
 def test_exact_codex_module_hook_requires_ownership(argument, python_options):
     with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
@@ -71,16 +80,27 @@ def test_python_option_terminator_does_not_execute_module():
     )
 
 
-@pytest.mark.parametrize("python_options", ("", "-W ignore", "-X dev"))
+@pytest.mark.parametrize("python_options", ("", "-W ignore", "-X dev", "-I"))
 @pytest.mark.parametrize("harness", ("codex", "claude"))
-def test_inline_python_hook_checks_exact_harness(python_options, harness):
+@pytest.mark.parametrize("attached", (True, False))
+def test_inline_python_hook_checks_exact_harness(python_options, harness, attached):
     script = "from codex_plugin_scanner.cli import main; main(['guard','hook','--harness','" + harness + "'])"
-    command = "python " + python_options + " -c " + shlex.quote(script)
+    command = "python " + python_options + " -c" + ("" if attached else " ") + shlex.quote(script)
     if harness == "codex":
         with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
             require_codex_hook_owner(command, ownership="unmanaged")
     else:
         require_codex_hook_owner(command, ownership="unmanaged")
+
+
+@pytest.mark.parametrize("launcher", ("-mcodex_plugin_scanner.cli", "-Im codex_plugin_scanner.cli"))
+@pytest.mark.parametrize("command_prefix", ("guard hook", "hook"))
+def test_python_attached_module_and_short_hook_commands_require_ownership(launcher, command_prefix):
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner(
+            "python " + launcher + " " + command_prefix + " --harness codex",
+            ownership="unmanaged",
+        )
 
 
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))

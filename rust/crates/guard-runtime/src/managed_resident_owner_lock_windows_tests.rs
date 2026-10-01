@@ -1,6 +1,8 @@
 #[cfg(windows)]
 #[test]
 fn managed_owner_lock_allows_overlapping_private_directory_binds() {
+    use crate::managed_resident::acquire_managed_owner_lock;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let home = std::env::temp_dir().join(format!(

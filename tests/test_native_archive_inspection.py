@@ -26,7 +26,9 @@ from codex_plugin_scanner.guard.native_archive_inspection import inspect_archive
 from codex_plugin_scanner.guard.store_base import _acquire_advisory_file_lock
 
 
-def _worker_request(archive_path: Path, digest: str, state_dir: Path) -> bytes:
+def _worker_request(
+    archive_path: Path, digest: str, state_dir: Path, timeout_ms: int = 2000
+) -> bytes:
     state_dir.mkdir(parents=True, exist_ok=True)
     return json.dumps(
         {
@@ -35,7 +37,7 @@ def _worker_request(archive_path: Path, digest: str, state_dir: Path) -> bytes:
             "archive_path": str(archive_path.resolve()),
             "state_dir": str(state_dir.resolve()),
             "expected_sha256": digest,
-            "timeout_ms": 2000,
+            "timeout_ms": timeout_ms,
             "caps": {
                 "max_archive_bytes": 6 * 1024 * 1024,
                 "max_files": 500,
@@ -918,7 +920,10 @@ def test_archive_worker_bounds_sixty_four_concurrent_processes(
         [(f"package/member-{index}.txt", b"safe") for index in range(64)],
     )
     state_dir.mkdir(parents=True, exist_ok=True)
-    request = _worker_request(archive_path, digest, state_dir)
+    # The granted budget covers the worker's whole run — including the
+    # runtime self-hash and lease contention — so 64-way races need real
+    # headroom on slow debug builds.
+    request = _worker_request(archive_path, digest, state_dir, timeout_ms=15000)
 
     processes = [
         subprocess.Popen(

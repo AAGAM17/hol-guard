@@ -98,19 +98,26 @@ pub(crate) fn acquire_archive_lease(
 
 /// Probe that writes are actually denied: opening the already-held lease
 /// file for writing must fail under seccomp (openat flagged) and seatbelt
-/// (file-write*). A successful open means no sandbox is active.
+/// (file-write*). A successful open means no sandbox is active. Only a
+/// permission denial is proof — an unrelated failure (fd exhaustion, the
+/// lease disappearing) cannot distinguish sandbox from environment, so the
+/// probe fails closed and the caller reports containment unavailable.
 #[cfg(unix)]
 pub(crate) fn write_capability_denied(lease_path: &Path) -> bool {
-    OpenOptions::new().write(true).open(lease_path).is_err()
+    matches!(
+        OpenOptions::new().write(true).open(lease_path),
+        Err(ref error) if error.kind() == std::io::ErrorKind::PermissionDenied
+    )
 }
 
 /// Probe that child creation is actually denied: under seccomp `clone`
 /// fails, under seatbelt `process-exec`/`process-fork` deny `posix_spawn`.
 /// The probe binary must exist — a `NotFound` would masquerade as a sandbox
 /// denial — and stock macOS ships only `/usr/bin/true`, so both candidates
-/// are tried. When no probe target exists the denial cannot be proven, so
-/// the worker fails closed; a spawned child means containment is absent and
-/// is reaped immediately.
+/// are tried. Only a permission error proves denial; `EMFILE`/`EAGAIN`-class
+/// spawn failures say nothing about the sandbox, so they fail closed like a
+/// missing probe target. A spawned child means containment is absent and is
+/// reaped immediately.
 #[cfg(unix)]
 pub(crate) fn spawn_capability_denied() -> bool {
     for probe in ["/usr/bin/true", "/bin/true"] {
@@ -123,7 +130,7 @@ pub(crate) fn spawn_capability_denied() -> bool {
             .stderr(std::process::Stdio::null())
             .spawn()
         {
-            Err(_) => true,
+            Err(ref error) => error.kind() == std::io::ErrorKind::PermissionDenied,
             Ok(mut child) => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -150,7 +157,11 @@ pub(crate) fn network_capability_denied() -> bool {
         None,
     ) {
         Ok(descriptor) => descriptor,
-        Err(_) => return true,
+        // Only EPERM/EACCES prove the sandbox cut the call. Resource errors
+        // like EMFILE would fake denial without any sandbox, so they fail
+        // closed as "not denied".
+        Err(nix::errno::Errno::EPERM) | Err(nix::errno::Errno::EACCES) => return true,
+        Err(_) => return false,
     };
     let loopback = SockaddrIn::new(127, 0, 0, 1, 9);
     matches!(

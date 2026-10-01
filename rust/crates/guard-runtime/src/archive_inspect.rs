@@ -69,7 +69,7 @@ pub(crate) fn evaluate_archive_inspection_bytes(bytes: &[u8]) -> Result<Vec<u8>,
     // a contender that loses the lease should not wait on it either.
     let runtime_sha256 = crate::resident_state::runtime_digest()?;
     let outcome = match validated_caps(&request) {
-        Some(caps) => run_inspection(&request, caps, original_parent),
+        Some(caps) => run_inspection(&request, caps, original_parent, started),
         None => ArchiveOutcome::incomplete(
             "external_archive_inspection_policy_invalid",
             "External archive inspection policy is invalid.",
@@ -156,6 +156,7 @@ fn run_inspection(
     _request: &ArchiveInspectionRequestV1,
     _caps: ArchiveCaps,
     _original_parent: i32,
+    _started: Instant,
 ) -> ArchiveOutcome {
     sandbox_unavailable()
 }
@@ -165,6 +166,7 @@ fn run_inspection(
     request: &ArchiveInspectionRequestV1,
     caps: ArchiveCaps,
     original_parent: i32,
+    started: Instant,
 ) -> ArchiveOutcome {
     // Warm the allocator before measuring address space: Darwin's malloc
     // creates size-class zones lazily and each zone reserves hundreds of MB
@@ -231,7 +233,11 @@ fn run_inspection(
             None,
         );
     }
-    let deadline = Instant::now() + Duration::from_millis(request.timeout_ms);
+    // The granted timeout covers this worker's whole in-process run —
+    // request parsing, the runtime self-hash, lease acquisition, and
+    // containment all happened since `started`, so the deadline anchors
+    // there rather than restarting the budget at the inspection loop.
+    let deadline = started + Duration::from_millis(request.timeout_ms);
     // If the spawning parent disappears the inspection is orphaned: stop
     // rather than burn the budget unattributed.
     let halt = move || {

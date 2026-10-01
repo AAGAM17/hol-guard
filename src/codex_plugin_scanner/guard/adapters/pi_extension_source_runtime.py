@@ -55,6 +55,81 @@ class ExtensionSourceRenderConfigV1:
     build_approval: ApprovalBuilder
 
 
+@dataclass(frozen=True)
+class ExtensionSourceVariantV1:
+    """Pinned variant inputs for the shared v1 renderer.
+
+    Active and previous callers each construct a separate instance. Keeping
+    these values outside the renderer prevents a future active change from
+    silently changing the frozen previous contract.
+    """
+
+    hook_timeout_ms: int
+    deadline_reserve_ms: int
+    daemon_hook_timeout_ms: int
+    daemon_recovery_timeout_ms: int
+    daemon_retry_timeout_ms: int
+    cli_hook_timeout_ms: int
+    text_limit_chars: int
+    content_item_limit: int
+    object_key_limit: int
+    max_depth: int
+    max_serialized_payload_chars: int
+    build_header: SourceHeaderBuilder
+    build_body: SourceBodyBuilder
+    build_tail: SourceTailBuilder
+    build_lifecycle: LifecycleBuilder
+    build_approval: ApprovalBuilder
+
+
+def render_extension_source_variant_v1(
+    *,
+    guard_home: Path,
+    home_dir: Path,
+    settings_path: Path,
+    harness: str,
+    display_name: str,
+    package_source: Path,
+    compatibility_version: int,
+    runtime_resolver: RuntimeResolver,
+    windows_executable_path: WindowsExecutablePath,
+    platform_name: str,
+    variant: ExtensionSourceVariantV1,
+) -> str:
+    """Render one explicitly pinned active or frozen source variant."""
+
+    return render_extension_source_v1(
+        ExtensionSourceRenderConfigV1(
+            guard_home=guard_home,
+            home_dir=home_dir,
+            settings_path=settings_path,
+            harness=harness,
+            display_name=display_name,
+            package_source=package_source,
+            compatibility_version=compatibility_version,
+            hook_timeout_ms=variant.hook_timeout_ms,
+            deadline_reserve_ms=variant.deadline_reserve_ms,
+            daemon_hook_timeout_ms=variant.daemon_hook_timeout_ms,
+            daemon_recovery_timeout_ms=variant.daemon_recovery_timeout_ms,
+            daemon_retry_timeout_ms=variant.daemon_retry_timeout_ms,
+            cli_hook_timeout_ms=variant.cli_hook_timeout_ms,
+            text_limit_chars=variant.text_limit_chars,
+            content_item_limit=variant.content_item_limit,
+            object_key_limit=variant.object_key_limit,
+            max_depth=variant.max_depth,
+            max_serialized_payload_chars=variant.max_serialized_payload_chars,
+            runtime_resolver=runtime_resolver,
+            windows_executable_path=windows_executable_path,
+            platform_name=platform_name,
+            build_header=variant.build_header,
+            build_body=variant.build_body,
+            build_tail=variant.build_tail,
+            build_lifecycle=variant.build_lifecycle,
+            build_approval=variant.build_approval,
+        )
+    )
+
+
 def build_lifecycle_abort_event_source_v1(harness: str) -> str:
     return '  pi.on("session_stop", () => { invalidateApprovalContinuations(); });\n' if harness == "omp" else ""
 

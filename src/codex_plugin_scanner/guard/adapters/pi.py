@@ -632,6 +632,35 @@ class OmpHarnessAdapter(_PiFamilyHarnessAdapter):
     fallback_hint = "Oh My Pi keeps the blocked request in Guard and shows the reason inline before you retry."
 
 
+def _legacy_omp_managed_extension_sources(
+    context: HarnessContext,
+    settings_path: Path,
+) -> tuple[str, ...]:
+    return (
+        managed_extension_source(
+            guard_home=context.guard_home,
+            home_dir=context.home_dir,
+            settings_path=settings_path,
+            harness="pi",
+            display_name="Pi",
+        ),
+        previous_managed_extension_source(
+            guard_home=context.guard_home,
+            home_dir=context.home_dir,
+            settings_path=settings_path,
+            harness="pi",
+            display_name="Pi",
+        ),
+        legacy_managed_extension_source(
+            guard_home=context.guard_home,
+            home_dir=context.home_dir,
+            settings_path=settings_path,
+            harness="pi",
+            display_name="Pi",
+        ),
+    )
+
+
 def legacy_omp_managed_extension_is_verified(
     context: HarnessContext,
     pi_managed_install: dict[str, object],
@@ -656,29 +685,7 @@ def legacy_omp_managed_extension_is_verified(
         source = omp_extension_path.read_text(encoding="utf-8")
     except OSError:
         return False
-    expected_sources = (
-        managed_extension_source(
-            guard_home=context.guard_home,
-            home_dir=context.home_dir,
-            settings_path=omp_settings_path,
-            harness="pi",
-            display_name="Pi",
-        ),
-        previous_managed_extension_source(
-            guard_home=context.guard_home,
-            home_dir=context.home_dir,
-            settings_path=omp_settings_path,
-            harness="pi",
-            display_name="Pi",
-        ),
-        legacy_managed_extension_source(
-            guard_home=context.guard_home,
-            home_dir=context.home_dir,
-            settings_path=omp_settings_path,
-            harness="pi",
-            display_name="Pi",
-        ),
-    )
+    expected_sources = _legacy_omp_managed_extension_sources(context, omp_settings_path)
     return source in expected_sources
 
 
@@ -691,29 +698,7 @@ def remove_legacy_omp_managed_extension(context: HarnessContext) -> bool:
         source = omp_extension_path.read_text(encoding="utf-8")
     except OSError:
         return False
-    expected_sources = (
-        managed_extension_source(
-            guard_home=context.guard_home,
-            home_dir=context.home_dir,
-            settings_path=omp_settings_path,
-            harness="pi",
-            display_name="Pi",
-        ),
-        previous_managed_extension_source(
-            guard_home=context.guard_home,
-            home_dir=context.home_dir,
-            settings_path=omp_settings_path,
-            harness="pi",
-            display_name="Pi",
-        ),
-        legacy_managed_extension_source(
-            guard_home=context.guard_home,
-            home_dir=context.home_dir,
-            settings_path=omp_settings_path,
-            harness="pi",
-            display_name="Pi",
-        ),
-    )
+    expected_sources = _legacy_omp_managed_extension_sources(context, omp_settings_path)
     if source not in expected_sources:
         return False
     disable_managed_extension(settings_path=omp_settings_path, extension_path=omp_extension_path)

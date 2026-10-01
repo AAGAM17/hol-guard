@@ -11,10 +11,10 @@ from .pi_extension_runtime_ownership import resolve_pi_extension_runtime_ownersh
 from .pi_extension_source_body import build_extension_source_body
 from .pi_extension_source_header import build_extension_source_header
 from .pi_extension_source_runtime import (
-    ExtensionSourceRenderConfigV1,
+    ExtensionSourceVariantV1,
     build_lifecycle_abort_event_source_v1,
     build_tool_approval_continuation_source_v1,
-    render_extension_source_v1,
+    render_extension_source_variant_v1,
 )
 from .pi_extension_source_tail import build_extension_source_tail
 
@@ -32,6 +32,25 @@ GUARD_HOOK_OBJECT_KEY_LIMIT = 24
 GUARD_HOOK_MAX_DEPTH = 24
 GUARD_HOOK_MAX_SERIALIZED_PAYLOAD_CHARS = 24_000
 
+_ACTIVE_SOURCE_VARIANT_V1 = ExtensionSourceVariantV1(
+    hook_timeout_ms=GUARD_HOOK_TIMEOUT_MS,
+    deadline_reserve_ms=GUARD_HOOK_DEADLINE_RESERVE_MS,
+    daemon_hook_timeout_ms=GUARD_DAEMON_HOOK_TIMEOUT_MS,
+    daemon_recovery_timeout_ms=GUARD_DAEMON_RECOVERY_TIMEOUT_MS,
+    daemon_retry_timeout_ms=GUARD_DAEMON_RETRY_TIMEOUT_MS,
+    cli_hook_timeout_ms=GUARD_CLI_HOOK_TIMEOUT_MS,
+    text_limit_chars=GUARD_HOOK_TEXT_LIMIT_CHARS,
+    content_item_limit=GUARD_HOOK_CONTENT_ITEM_LIMIT,
+    object_key_limit=GUARD_HOOK_OBJECT_KEY_LIMIT,
+    max_depth=GUARD_HOOK_MAX_DEPTH,
+    max_serialized_payload_chars=GUARD_HOOK_MAX_SERIALIZED_PAYLOAD_CHARS,
+    build_header=build_extension_source_header,
+    build_body=build_extension_source_body,
+    build_tail=build_extension_source_tail,
+    build_lifecycle=build_lifecycle_abort_event_source_v1,
+    build_approval=build_tool_approval_continuation_source_v1,
+)
+
 
 def managed_extension_source(
     *,
@@ -41,35 +60,18 @@ def managed_extension_source(
     harness: str = "pi",
     display_name: str = "Pi",
 ) -> str:
-    return render_extension_source_v1(
-        ExtensionSourceRenderConfigV1(
-            guard_home=guard_home,
-            home_dir=home_dir,
-            settings_path=settings_path,
-            harness=harness,
-            display_name=display_name,
-            package_source=Path(__file__),
-            compatibility_version=GUARD_DAEMON_COMPATIBILITY_VERSION,
-            hook_timeout_ms=GUARD_HOOK_TIMEOUT_MS,
-            deadline_reserve_ms=GUARD_HOOK_DEADLINE_RESERVE_MS,
-            daemon_hook_timeout_ms=GUARD_DAEMON_HOOK_TIMEOUT_MS,
-            daemon_recovery_timeout_ms=GUARD_DAEMON_RECOVERY_TIMEOUT_MS,
-            daemon_retry_timeout_ms=GUARD_DAEMON_RETRY_TIMEOUT_MS,
-            cli_hook_timeout_ms=GUARD_CLI_HOOK_TIMEOUT_MS,
-            text_limit_chars=GUARD_HOOK_TEXT_LIMIT_CHARS,
-            content_item_limit=GUARD_HOOK_CONTENT_ITEM_LIMIT,
-            object_key_limit=GUARD_HOOK_OBJECT_KEY_LIMIT,
-            max_depth=GUARD_HOOK_MAX_DEPTH,
-            max_serialized_payload_chars=GUARD_HOOK_MAX_SERIALIZED_PAYLOAD_CHARS,
-            runtime_resolver=resolve_pi_extension_runtime_ownership,
-            windows_executable_path=windows_system_executable_path,
-            platform_name=os.name,
-            build_header=build_extension_source_header,
-            build_body=build_extension_source_body,
-            build_tail=build_extension_source_tail,
-            build_lifecycle=build_lifecycle_abort_event_source_v1,
-            build_approval=build_tool_approval_continuation_source_v1,
-        )
+    return render_extension_source_variant_v1(
+        guard_home=guard_home,
+        home_dir=home_dir,
+        settings_path=settings_path,
+        harness=harness,
+        display_name=display_name,
+        package_source=Path(__file__),
+        compatibility_version=GUARD_DAEMON_COMPATIBILITY_VERSION,
+        runtime_resolver=resolve_pi_extension_runtime_ownership,
+        windows_executable_path=windows_system_executable_path,
+        platform_name=os.name,
+        variant=_ACTIVE_SOURCE_VARIANT_V1,
     )
 
 

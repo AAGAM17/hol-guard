@@ -6,6 +6,8 @@ import ast
 from collections.abc import Sequence
 from pathlib import Path
 
+from typing_extensions import override
+
 
 def has_codex_harness_tokens(tokens: Sequence[str | None]) -> bool:
     return any(
@@ -43,32 +45,276 @@ def _codex_hook_arguments(arguments: Sequence[str | None]) -> bool:
     return payload[:1] == ["hook"] and has_codex_harness_tokens(payload)
 
 
-def _import_api_keywords(tree: ast.AST) -> dict[str, str]:
-    """Identify standard import APIs from their actual imports, including aliases."""
-    apis = {"runpy.run_module": "mod_name", "importlib.import_module": "name", "builtins.__import__": "name"}
-    calls = {"__import__": "name"}
-    shadowed: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            shadowed.add(node.id)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler)) and node.name:
-            shadowed.add(node.name)
-        if isinstance(node, ast.Import):
-            for imported in node.names:
-                for api, keyword in apis.items():
-                    module, method = api.rsplit(".", 1)
-                    if imported.name == module:
-                        calls[f"{imported.asname or module}.{method}"] = keyword
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            for imported in node.names:
-                keyword = apis.get(f"{node.module}.{imported.name}")
-                if keyword is not None:
-                    calls[imported.asname or imported.name] = keyword
-    return {name: keyword for name, keyword in calls.items() if name.split(".")[0] not in shadowed}
+_IMPORT_APIS = {"runpy.run_module": "mod_name", "importlib.import_module": "name", "builtins.__import__": "name"}
+
+
+class _GuardImportCalls(ast.NodeVisitor):
+    """Track static import bindings without executing Python or claiming ownership."""
+
+    def __init__(self) -> None:
+        self.bindings: dict[str, frozenset[str]] = {"__import__": frozenset({"builtins.__import__"})}
+        self.found: bool = False
+        self.class_globals: dict[str, frozenset[str]] | None = None
+
+    def _identity(self, node: ast.AST) -> frozenset[str]:
+        if isinstance(node, ast.Name):
+            default: frozenset[str] = frozenset({"builtins.__import__"}) if node.id == "__import__" else frozenset()
+            return self.bindings.get(node.id, default)
+        if isinstance(node, ast.Attribute):
+            return frozenset(f"{base}.{node.attr}" for base in self._identity(node.value))
+        if isinstance(node, ast.Call):
+            for identity in self._identity(node.func):
+                keyword = _IMPORT_APIS.get(identity)
+                if identity not in {"builtins.__import__", "importlib.import_module"}:
+                    continue
+                module = (
+                    node.args[0]
+                    if node.args and not isinstance(node.args[0], ast.Starred)
+                    else next((item.value for item in node.keywords if item.arg == keyword), None)
+                )
+                level = (
+                    node.args[4]
+                    if len(node.args) > 4
+                    else next((item.value for item in node.keywords if item.arg == "level"), ast.Constant(value=0))
+                )
+                if identity == "builtins.__import__" and not (isinstance(level, ast.Constant) and level.value == 0):
+                    continue
+                if isinstance(module, ast.Constant) and module.value in {"runpy", "importlib", "builtins"}:
+                    return frozenset({str(module.value)})
+        return frozenset()
+
+    def _body(self, nodes: Sequence[ast.stmt]) -> None:
+        for node in nodes:
+            self.visit(node)
+
+    @override
+    def visit_Import(self, node: ast.Import) -> None:
+        for imported in node.names:
+            root = imported.name.split(".")[0]
+            self.bindings[imported.asname or root] = frozenset({imported.name if imported.asname else root})
+
+    @override
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for imported in node.names:
+            identity = f"{node.module}.{imported.name}" if node.module and node.level == 0 else ""
+            self.bindings[imported.asname or imported.name] = frozenset({identity})
+
+    @override
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Del):
+            _ = self.bindings.pop(node.id, None)
+        elif isinstance(node.ctx, ast.Store):
+            self.bindings[node.id] = frozenset()
+
+    @override
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.visit(node.value)
+        identity = self._identity(node.value)
+        for target in node.targets:
+            self.visit(target)
+            if isinstance(target, ast.Name):
+                self.bindings[target.id] = identity
+
+    @override
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self.visit(node.annotation)
+        if node.value is not None:
+            self.visit(node.value)
+            identity = self._identity(node.value)
+            self.visit(node.target)
+            if isinstance(node.target, ast.Name):
+                self.bindings[node.target.id] = identity
+
+    @override
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.visit(node.value)
+        self.visit(node.target)
+
+    @override
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.visit(node.value)
+        identity = self._identity(node.value)
+        self.visit(node.target)
+        self.bindings[node.target.id] = identity
+
+    def _parameters(self, arguments: ast.arguments) -> dict[str, frozenset[str]]:
+        positional = [*arguments.posonlyargs, *arguments.args]
+        parameters = [*positional, *arguments.kwonlyargs]
+        parameters.extend(parameter for parameter in (arguments.vararg, arguments.kwarg) if parameter is not None)
+        result: dict[str, frozenset[str]] = {parameter.arg: frozenset() for parameter in parameters}
+        if arguments.defaults:
+            for parameter, default in zip(positional[-len(arguments.defaults) :], arguments.defaults, strict=True):
+                result[parameter.arg] = self._identity(default)
+        for parameter, default in zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True):
+            if default is not None:
+                result[parameter.arg] = self._identity(default)
+        return result
+
+    @override
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
+            if expression is not None:
+                self.visit(expression)
+        self.bindings[node.name] = frozenset()
+        outer = self.bindings
+        parameters = self._parameters(node.args)
+        enclosing_class = self.class_globals
+        self.bindings = (enclosing_class if enclosing_class is not None else outer).copy()
+        self.class_globals = None
+        self.bindings.update(parameters)
+        self._body(node.body)
+        self.bindings = outer
+        self.class_globals = enclosing_class
+
+    @override
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.visit_FunctionDef(node)
+
+    @override
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        outer = self.bindings
+        parameters = self._parameters(node.args)
+        enclosing_class = self.class_globals
+        self.bindings = (enclosing_class if enclosing_class is not None else outer).copy()
+        self.class_globals = None
+        self.bindings.update(parameters)
+        self.visit(node.body)
+        self.bindings = outer
+        self.class_globals = enclosing_class
+
+    @override
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        for expression in (*node.decorator_list, *node.bases):
+            self.visit(expression)
+        self.bindings[node.name] = frozenset()
+        outer = self.bindings
+        enclosing_class = self.class_globals
+        self.class_globals = outer
+        self.bindings = outer.copy()
+        self._body(node.body)
+        self.bindings = outer
+        self.class_globals = enclosing_class
+
+    def _comprehension(self, generators: Sequence[ast.comprehension], values: Sequence[ast.expr]) -> None:
+        outer = self.bindings
+        enclosing_class = self.class_globals
+        if generators:
+            self.visit(generators[0].iter)
+        self.bindings = (enclosing_class if enclosing_class is not None else outer).copy()
+        self.class_globals = None
+        for index, generator in enumerate(generators):
+            if index:
+                self.visit(generator.iter)
+            self.visit(generator.target)
+            for condition in generator.ifs:
+                self.visit(condition)
+        for value in values:
+            self.visit(value)
+        self.bindings = outer
+        self.class_globals = enclosing_class
+
+    @override
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._comprehension(node.generators, [node.elt])
+
+    @override
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._comprehension(node.generators, [node.elt])
+
+    @override
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._comprehension(node.generators, [node.elt])
+
+    @override
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._comprehension(node.generators, [node.key, node.value])
+
+    @override
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.type is not None:
+            self.visit(node.type)
+        if node.name:
+            self.bindings[node.name] = frozenset()
+        self._body(node.body)
+        if node.name:
+            # Python deletes an exception alias at the end of the handler.
+            _ = self.bindings.pop(node.name, None)
+
+    def _merge(self, other: dict[str, frozenset[str]]) -> None:
+        for name in other.keys() | self.bindings.keys():
+            default: frozenset[str] = frozenset({"builtins.__import__"}) if name == "__import__" else frozenset()
+            self.bindings[name] = self.bindings.get(name, default) | other.get(name, default)
+
+    @override
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        before = self.bindings.copy()
+        self._body(node.body)
+        positive = self.bindings
+        self.bindings = before
+        self._body(node.orelse)
+        self._merge(positive)
+
+    @override
+    def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
+        self.visit(node.iter)
+        before = self.bindings.copy()
+        self.visit(node.target)
+        self._body(node.body)
+        self._body(node.orelse)
+        self._merge(before)
+
+    @override
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self.visit_For(node)
+
+    @override
+    def visit_While(self, node: ast.While) -> None:
+        self.visit(node.test)
+        before = self.bindings.copy()
+        self._body(node.body)
+        self._body(node.orelse)
+        self._merge(before)
+
+    @override
+    def visit_Try(self, node: ast.Try) -> None:
+        before = self.bindings.copy()
+        self._body(node.body)
+        after_body = self.bindings.copy()
+        self._body(node.orelse)
+        alternatives = self.bindings.copy()
+        for handler in node.handlers:
+            self.bindings = before.copy()
+            self._merge(after_body)
+            self.visit(handler)
+            self._merge(alternatives)
+            alternatives = self.bindings.copy()
+        self.bindings = alternatives
+        self._body(node.finalbody)
+
+    @override
+    def visit_Call(self, node: ast.Call) -> None:
+        for identity in self._identity(node.func):
+            keyword = _IMPORT_APIS.get(identity)
+            if keyword is None:
+                continue
+            module = (
+                node.args[0]
+                if node.args and not isinstance(node.args[0], ast.Starred)
+                else next((item.value for item in node.keywords if item.arg == keyword), None)
+            )
+            if isinstance(module, ast.Constant) and module.value in {
+                "codex_plugin_scanner.cli",
+                "codex_plugin_scanner",
+            }:
+                self.found = True
+        self.generic_visit(node)
 
 
 def _imports_guard_cli(tree: ast.AST) -> bool:
-    calls = _import_api_keywords(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import) and any(name.name == "codex_plugin_scanner.cli" for name in node.names):
             return True
@@ -77,22 +323,9 @@ def _imports_guard_cli(tree: ast.AST) -> bool:
             or (node.module == "codex_plugin_scanner" and any(name.name == "cli" for name in node.names))
         ):
             return True
-        # Dynamic imports may name the module positionally or by keyword.
-        if isinstance(node, ast.Call):
-            name = ast.unparse(node.func) if isinstance(node.func, (ast.Name, ast.Attribute)) else ""
-            keyword = calls.get(name)
-            module = (
-                node.args[0]
-                if node.args and not isinstance(node.args[0], ast.Starred)
-                else next((item.value for item in node.keywords if item.arg == keyword), None)
-            )
-            if (
-                keyword is not None
-                and isinstance(module, ast.Constant)
-                and module.value in {"codex_plugin_scanner.cli", "codex_plugin_scanner"}
-            ):
-                return True
-    return False
+    calls = _GuardImportCalls()
+    calls.visit(tree)
+    return calls.found
 
 
 def _inline_python_codex_hook(script: str, trailing_arguments: Sequence[str]) -> bool:

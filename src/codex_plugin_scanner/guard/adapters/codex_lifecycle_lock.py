@@ -16,9 +16,16 @@ from ..mdm.file_lock import release_file_lock
 from .base import HarnessContext
 
 
-def _lifecycle_lock_path(directory: Path) -> Path:
+def _lock_base() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime and Path(runtime).is_dir():
+        return Path(runtime) / "hol-guard-codex-lifecycle"
     user = str(os.getuid()) if hasattr(os, "getuid") else sha256(os.fsencode(Path.home())).hexdigest()
-    base = Path(tempfile.gettempdir()) / f"hol-guard-codex-lifecycle-{user}"
+    return Path(tempfile.gettempdir()) / f"hol-guard-codex-lifecycle-{user}"
+
+
+def _lifecycle_lock_path(directory: Path) -> Path:
+    base = _lock_base()
     target = os.path.normcase(str(directory.resolve()))
     return base / f"{sha256(os.fsencode(target)).hexdigest()}.lock"
 

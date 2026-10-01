@@ -18,13 +18,19 @@ BASE_SHA = "a" * 40
 TARGETS = ("x86_64-apple-darwin", "aarch64-apple-darwin")
 
 
-def test_macos_verification_receives_only_the_pull_request_base_sha() -> None:
-    """Keep the comparison identity scoped to the pull-request build step."""
-    jobs = yaml.safe_load((ROOT / ".github/workflows/native-wheel-ci.yml").read_text())["jobs"]
-    build = next(step for step in jobs["macos-build"]["steps"] if step.get("name", "").startswith("Build and assemble"))
-    assert build["env"]["NATIVE_PR_BASE_SHA"] == (
-        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}"
+def test_native_wheel_verification_selects_pr_base_or_main_push_before_sha() -> None:
+    """Use a comparison SHA only for PR validation and post-merge main validation."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/native-wheel-ci.yml").read_text())
+    assert workflow["env"]["NATIVE_CHANGED_FROM_SHA"] == (
+        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || "
+        "(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before) || '' }}"
     )
+    build = next(
+        step
+        for step in workflow["jobs"]["macos-build"]["steps"]
+        if step.get("name", "").startswith("Build and assemble")
+    )
+    assert "NATIVE_CHANGED_FROM_SHA" not in build.get("env", {})
     assert build["env"]["HOL_GUARD_BUILD_SHA"] == "${{ github.sha }}"
     assert not build.get("continue-on-error", False)
 
@@ -83,9 +89,9 @@ def _build(
         "HOL_GUARD_BUILD_SHA": "b" * 40,
         "VERIFIER_STATUS": str(verifier_status),
     }
-    env.pop("NATIVE_PR_BASE_SHA", None)
+    env.pop("NATIVE_CHANGED_FROM_SHA", None)
     if base_sha is not None:
-        env["NATIVE_PR_BASE_SHA"] = base_sha
+        env["NATIVE_CHANGED_FROM_SHA"] = base_sha
     result = subprocess.run(
         [bash, str(BUILD_SCRIPT)], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=15, check=False
     )

@@ -47,17 +47,16 @@ class CodexHostInventoryCache:
         self._snapshot: tuple[float, Path, tuple[Path, tuple[int, int, int, int]], int, dict[str, object]] | None = None
 
     def refresh(self, *, codex_home: Path, cancel: threading.Event) -> None:
-        # A failed refresh must not leave an older host/account appearing current.
-        with self._lock:
-            self._snapshot = None
         socket_path = codex_home / "app-server-control" / "app-server-control.sock"
         try:
             snapshot = read_codex_host_inventory(codex_home=codex_home, cancel=cancel)
             source = _socket_target(socket_path)
             pid = _managed_pid(socket_path)
             if snapshot.connection_id != _source_id(codex_home, os.geteuid(), pid, source[1]):
-                return
+                raise ValueError("codex_host_changed")
         except (OSError, ValueError):
+            with self._lock:
+                self._snapshot = None
             return
         if cancel.is_set():
             return

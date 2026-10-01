@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-def build_source_body_shared_v1(*, display_name: str) -> str:
+def build_source_body_shared_v1(*, display_name: str, blocked_reason_prelude: str = "") -> str:
     return (
         "  try {\n"
         "    serializedPayload = JSON.stringify(payloadToSend);\n"
@@ -161,7 +161,8 @@ def build_source_body_shared_v1(*, display_name: str) -> str:
         "}\n"
         "\n"
         "function modelVisibleBlockedReason(reason: string, reasonCode?: string): string {\n"
-        "  if (\n"
+        + blocked_reason_prelude
+        + "  if (\n"
         '    reasonCode === "guard_cli_recovery_timeout" ||\n'
         '    reasonCode === "daemon_hook_deadline_exhausted" ||\n'
         '    reasonCode === "daemon_hook_process_deadline_exhausted"\n'

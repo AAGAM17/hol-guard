@@ -23,6 +23,7 @@ def _run_generated_callback_payload(
     abort_during_structured_proof: bool = False,
     expire_during_structured_proof: bool = False,
     guard_timeout_ms: int = 4250,
+    use_generated_blocked_reason: bool = False,
 ) -> dict[str, object]:
     handler_start = source.index('  pi.on("tool_result"')
     handler_end = source.index("\n  });\n}", handler_start) + len("\n  });")
@@ -47,6 +48,13 @@ def _run_generated_callback_payload(
         }
     )
     response_json = json.dumps(guard_response)
+    blocked_reason = "function modelVisibleBlockedReason(reason) { return `blocked: ${reason}`; }"
+    if use_generated_blocked_reason:
+        reason_start = source.index("function modelVisibleBlockedReason(")
+        reason_end = source.index("\n\nfunction blockedToolResult(", reason_start)
+        blocked_reason = source[reason_start:reason_end].replace(
+            "(reason: string, reasonCode?: string): string", "(reason, reasonCode)"
+        )
     javascript = f"""\
 import {{ createHash }} from "node:crypto";
 
@@ -78,7 +86,7 @@ Date.now = () => forceExpiredDeadline ? realDateNow() + 60_000 : realDateNow();
 
 function sourceFileRefForPostToolUse() {{ return null; }}
 function toolCallIdKey(value) {{ return typeof value === "string" && value.trim() ? value.trim() : null; }}
-function modelVisibleBlockedReason(reason) {{ return `blocked: ${{reason}}`; }}
+{blocked_reason}
 function blockedToolResult(reason, details) {{
   return {{ content: [{{ type: "text", text: reason }}], details, isError: true }};
 }}

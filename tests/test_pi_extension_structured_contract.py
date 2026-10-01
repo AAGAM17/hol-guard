@@ -11,6 +11,43 @@ from tests.pi_extension_response_source_support import _generated_source
 
 
 @pytest.mark.parametrize("harness", ["pi", "omp"])
+@pytest.mark.parametrize(
+    ("reason_code", "message"),
+    [
+        ("structured_review_deadline_exceeded", "review deadline expired"),
+        ("structured_review_cancelled", "review was cancelled"),
+        ("structured_content_unproved", "could not be validated for this destination"),
+    ],
+)
+def test_structured_withholding_does_not_claim_pending_approval(
+    tmp_path: Path, harness: str, reason_code: str, message: str
+) -> None:
+    source = _generated_source(tmp_path, harness=harness)
+    candidate = '{"note":"fixture"}'
+    response = {
+        "decision": "allow",
+        "reason": "private fixture https://example.test/review",
+        "model_output_action": "allow_original",
+        "reviewed_output_sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+        "structured_content_mediation": {
+            "schema": "guard-structured-content-mediation.v1",
+            "action": "withhold",
+            "reason_code": reason_code,
+        },
+    }
+    result = _run_generated_callback_payload(
+        source, [{"type": "text", "text": candidate}], response, use_generated_blocked_reason=True
+    )
+    text = result["result"]["content"][0]["text"]
+    assert result["result"]["isError"] is True
+    assert message in text
+    assert "approval is pending" not in text
+    assert "wait for the user to approve" not in text
+    assert "private fixture" not in text
+    assert "example.test" not in text
+
+
+@pytest.mark.parametrize("harness", ["pi", "omp"])
 def test_generated_structured_receiver_requires_exact_clean_forward_bytes(
     tmp_path: Path,
     harness: str,

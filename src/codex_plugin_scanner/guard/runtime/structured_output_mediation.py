@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeGuard
 
+from ..stable_json import stable_json_serialize
 from ..strict_json_pairs import unique_json_object
 from .structured_data_sensitivity import (
     DeclaredField,
@@ -387,9 +388,11 @@ def canonical_structured_content_bytes(value: object, *, deadline_monotonic: flo
     if not isinstance(parsed, dict) or not safe_numbers:
         return None
     try:
-        canonical = json.dumps(parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        # The closed value validation above excludes floats and non-finite
+        # numbers before using the shared canonical serializer.
+        canonical = stable_json_serialize(parsed)
         canonical_bytes = canonical.encode("utf-8", errors="strict")
-    except (TypeError, ValueError, UnicodeEncodeError):
+    except (TypeError, ValueError, UnicodeEncodeError, RecursionError):
         return None
     if deadline_exceeded():
         return None

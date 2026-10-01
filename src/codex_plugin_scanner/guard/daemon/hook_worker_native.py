@@ -312,6 +312,8 @@ class HookWorkerNativeMixin:
             structured_output_json=payload.get("structured_output_json"),
             binding=resolution.binding,
             required_reason_code=resolution.reason_code,
+            # This second read is a revocation/binding check after scanning;
+            # reusing the initial resolution would permit a stale forward.
             recheck_binding=lambda: (
                 self._structured_output_resolution(
                     guard_home=guard_home,
@@ -348,6 +350,8 @@ class HookWorkerNativeMixin:
 
         if event_name != "PostToolUse" or canonical_harness_name(harness) not in {"pi", "omp"}:
             return response
+        # Unavailable-edge callers supply their one resolution. The successful
+        # edge uses a separate initial read and a post-scan revocation check.
         resolved = resolution or self._structured_output_resolution(
             guard_home=guard_home,
             workspace=workspace,

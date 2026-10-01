@@ -5,6 +5,21 @@ from __future__ import annotations
 from .pi_extension_approval_source import APPROVAL_RESUME_HELPERS_SOURCE
 from .pi_extension_source_body_shared_v1 import build_source_body_shared_v1
 
+_STRUCTURED_BLOCKED_REASON_PRELUDE = (
+    '  if (reasonCode === "structured_review_deadline_exceeded") {\n'
+    '    return "HOL Guard withheld this structured tool output because its review deadline expired. '
+    'Retry the action.";\n'
+    "  }\n"
+    '  if (reasonCode === "structured_review_cancelled") {\n'
+    '    return "HOL Guard withheld this structured tool output because its review was cancelled. '
+    'Ask the user to resume or change the task.";\n'
+    "  }\n"
+    '  if (reasonCode?.startsWith("structured_")) {\n'
+    '    return "HOL Guard withheld this structured tool output because it could not be validated '
+    'for this destination. Ask the user to review the output or change the task.";\n'
+    "  }\n"
+)
+
 
 def build_extension_source_body(*, harness: str, display_name: str) -> str:
     return (
@@ -213,7 +228,9 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         '      reason_code: "hook_payload_unbounded",\n'
         "    };\n"
         "  }\n"
-        + build_source_body_shared_v1(display_name=display_name)
+        + build_source_body_shared_v1(
+            display_name=display_name, blocked_reason_prelude=_STRUCTURED_BLOCKED_REASON_PRELUDE
+        )
         + "function reviewedToolResult(content: unknown, details: unknown, isError?: boolean, deadlineAt?: number) {\n"
         "  let body = '';\n"
         "  if (Array.isArray(content)) {\n"

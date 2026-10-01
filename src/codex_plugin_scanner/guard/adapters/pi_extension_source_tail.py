@@ -121,7 +121,8 @@ def build_extension_source_tail(
         '        const reason = "HOL Guard withheld this structured tool output because its full content "\n'
         '          + "could not be proven safe.";\n'
         '        ctx.ui.notify(reason, "warning");\n'
-        "        return blockedToolResult(modelVisibleBlockedReason(reason, response.reason_code), event.details);\n"
+        "        return blockedToolResult(\n"
+        "          modelVisibleBlockedReason(reason, structuredMediation.reason_code), event.details);\n"
         "      }\n"
         "    }\n"
         "    const originalOutputProof =\n"

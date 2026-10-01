@@ -6,7 +6,8 @@ declares an extension id that the checked-in ``command-catalog.v1.json`` does
 not contain.
 That state means the source-only contribution is awaiting maintainer-owned
 projection regeneration, so generated-artifact freshness gates should stand
-down for that ref.
+down for that ref. Rust changes also require regeneration: the native compiler
+binds its program identity to implementation sources, manifests and Cargo.lock.
 Stdlib only; no repository imports.
 """
 
@@ -42,8 +43,10 @@ def _contributions_changed(base_sha: str) -> list[str]:
     import subprocess
 
     def _diff() -> subprocess.CompletedProcess[str]:
+        # Ordinary PRs cannot commit regenerated projections, including Rust
+        # identity updates; generated-artifacts-guard enforces that ownership.
         return subprocess.run(
-            ["git", "diff", "--name-only", base_sha, "HEAD", "--", "contributions/"],
+            ["git", "diff", "--name-only", base_sha, "HEAD", "--", "contributions/", "rust/"],
             cwd=ROOT,
             capture_output=True,
             text=True,

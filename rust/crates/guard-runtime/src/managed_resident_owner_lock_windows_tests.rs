@@ -1,5 +1,3 @@
-use super::*;
-
 #[cfg(windows)]
 #[test]
 fn managed_owner_lock_allows_overlapping_private_directory_binds() {

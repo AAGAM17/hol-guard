@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 from .runtime.approval_reuse import ApprovalReuseValidationFailure
@@ -13,6 +13,12 @@ if TYPE_CHECKING:
     from .mcp_tool_calls import ApprovalReuseClaimDisposition, ToolCallDecision
     from .models import GuardArtifact
     from .store import GuardStore
+
+
+@dataclass(frozen=True)
+class _ClaimedToolApproval:
+    decision: Mapping[str, object]
+    disposition: ApprovalReuseClaimDisposition | None
 
 
 def evaluate_tool_call(
@@ -26,15 +32,30 @@ def evaluate_tool_call(
     fresh_authority_provider: (Callable[[], tuple[GuardConfig, GuardArtifact, str, object] | None] | None) = None,
 ) -> ToolCallDecision:
     with store.connection_scope():
-        return _evaluate_tool_call(
+        result = _evaluate_tool_call(
             store=store,
             config=config,
             artifact=artifact,
             artifact_hash=artifact_hash,
             arguments=arguments,
             claim_saved_approval=claim_saved_approval,
-            fresh_authority_provider=fresh_authority_provider,
         )
+    if not isinstance(result, _ClaimedToolApproval):
+        return result
+    from . import mcp_tool_calls as calls
+
+    # The claim is already committed. Refresh authority without a storage lease,
+    # then re-read policy in a new scope before deciding whether it still allows.
+    return calls._revalidate_claimed_tool_call_approval(
+        store=store,
+        initial_artifact=artifact,
+        initial_artifact_hash=artifact_hash,
+        initial_arguments=arguments,
+        initial_config=config,
+        claimed_decision=result.decision,
+        claim_disposition=result.disposition,
+        fresh_authority_provider=fresh_authority_provider,
+    )
 
 
 def _evaluate_tool_call(
@@ -45,8 +66,7 @@ def _evaluate_tool_call(
     artifact_hash: str,
     arguments: object,
     claim_saved_approval: bool = True,
-    fresh_authority_provider: (Callable[[], tuple[GuardConfig, GuardArtifact, str, object] | None] | None) = None,
-) -> ToolCallDecision:
+) -> ToolCallDecision | _ClaimedToolApproval:
     from . import mcp_tool_calls as calls
 
     current = calls._evaluate_current_tool_call(
@@ -156,16 +176,7 @@ def _evaluate_tool_call(
                     validation_reason=calls.APPROVAL_REUSE_CLAIM_FAILED,
                 )
             else:
-                return calls._revalidate_claimed_tool_call_approval(
-                    store=store,
-                    initial_artifact=artifact,
-                    initial_artifact_hash=artifact_hash,
-                    initial_arguments=arguments,
-                    initial_config=config,
-                    claimed_decision=saved_decision,
-                    claim_disposition=claim_disposition,
-                    fresh_authority_provider=fresh_authority_provider,
-                )
+                return _ClaimedToolApproval(saved_decision, claim_disposition)
         else:
             pending_decision = saved_decision
     return calls._tool_call_decision_with_reuse(

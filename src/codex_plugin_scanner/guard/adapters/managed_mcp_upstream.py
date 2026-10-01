@@ -21,6 +21,7 @@ _VALUE_OPTIONS = frozenset(
     }
 )
 _REQUIRED_OPTIONS = _VALUE_OPTIONS - {"--home", "--workspace"}
+_LAUNCHER_ENV_KEYS = frozenset({"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONBREAKPOINT", "__PYVENV_LAUNCHER__"})
 _PROXY_HARNESSES = {
     "codex-mcp-proxy": "codex",
     "opencode-mcp-proxy": "opencode",
@@ -108,6 +109,8 @@ def read_managed_mcp_upstream(artifact: GuardArtifact, commands: frozenset[str])
         return None
     env: dict[str, str] = {}
     for key in sorted(env_keys):
+        if key.upper() in _LAUNCHER_ENV_KEYS:
+            continue
         value = cast(dict[str, object], configured_env).get(key)
         if not isinstance(value, str):
             return None

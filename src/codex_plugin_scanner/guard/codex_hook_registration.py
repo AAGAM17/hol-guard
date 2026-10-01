@@ -220,9 +220,9 @@ def _inline_python_codex_hook(script: str) -> bool:
     for node in ast.walk(tree):
         if not isinstance(node, (ast.List, ast.Tuple)):
             continue
-        if not all(isinstance(item, ast.Constant) and isinstance(item.value, str) for item in node.elts):
+        arguments = [item.value for item in node.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)]
+        if len(arguments) != len(node.elts):
             continue
-        arguments = [item.value for item in node.elts]
         if "guard" in arguments and "hook" in arguments and _has_codex_harness(shlex.join(arguments)):
             return True
     return False

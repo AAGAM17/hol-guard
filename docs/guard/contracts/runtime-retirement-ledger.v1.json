@@ -2017,60 +2017,6 @@
    "rationale": "Remote-approval resume helpers never gained a caller; remote approval semantics are owned by the native approval flow."
   },
   {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_verified_install_receipt_requires_verified_handoff",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_first_local_proof_receipt_contains_digest_not_evidence",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_install_receipt_rejects_unlinked_local_claim",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_first_proof_requires_proof_kind",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_direct_dataclass_construction_enforces_privacy_boundary",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_allowed_identifier_fields_reject_sensitive_markers",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_receipt_rejects_unbounded_or_unstructured_metadata",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_privacy_guard_rejects_extra_sensitive_fields",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
-   "old_node": "tests/test_guard_outcome_receipt.py::test_privacy_guard_validates_required_fields_and_values",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The privacy-safe outcome receipt implementation never gained a caller; shipped receipts are produced on the native path."
-  },
-  {
    "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_parses_and_safe_fixtures_pass",
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
@@ -2233,30 +2179,6 @@
    "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
   },
   {
-   "old_node": "tests/test_guard_strands_intervention.py::test_strands_intervention_allows_only_explicit_benign",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The Strands intervention handler never gained a caller; harness interventions route through adapter dispatch."
-  },
-  {
-   "old_node": "tests/test_guard_strands_intervention.py::test_strands_intervention_denies_non_benign_results",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The Strands intervention handler never gained a caller; harness interventions route through adapter dispatch."
-  },
-  {
-   "old_node": "tests/test_guard_strands_intervention.py::test_strands_intervention_denies_cli_failure_and_invalid_output",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The Strands intervention handler never gained a caller; harness interventions route through adapter dispatch."
-  },
-  {
-   "old_node": "tests/test_guard_strands_intervention.py::test_strands_intervention_leaves_unmapped_tools_unchanged",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The Strands intervention handler never gained a caller; harness interventions route through adapter dispatch."
-  },
-  {
    "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_defaults_valid",
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
@@ -2345,18 +2267,6 @@
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
    "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
-  },
-  {
-   "old_node": "tests/test_guard_extension_builder_listing.py::test_listing_command_is_explicit_and_never_modifies_a_kit",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The listing_cli entry point was never wired into a shipped command surface; the dead CLI shim is deleted and kit listing stays covered by the builder tests around it."
-  },
-  {
-   "old_node": "tests/test_guard_extension_builder_listing.py::test_listing_command_rejects_an_invalid_kit_without_output",
-   "replacement_nodes": [],
-   "status": "obsolete_implementation_assertion",
-   "rationale": "The listing_cli entry point was never wired into a shipped command surface; the dead CLI shim is deleted and kit listing stays covered by the builder tests around it."
   }
  ],
  "preserved_tests": [

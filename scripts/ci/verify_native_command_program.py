@@ -1,13 +1,13 @@
-"""Verify the generated native command program, tolerating pending contributions.
+"""Verify the generated native command program, tolerating source-only refs.
 
 Generated projections are maintainer-owned. A contribution PR that adds or
 edits canonical sources legitimately leaves the checked-in program stale, so a
 plain ``--check`` would reject an otherwise-valid contribution. This wrapper:
 
 - fresh tree: runs ``build_native_command_program.py --check`` as before
-- pending tree (new/edited contribution source): runs the generator without
-  ``--check`` to validate that the sources compile, then restores generated
-  paths so later steps see the checked-in state
+- source-only tree (new/edited contribution source or native implementation
+  input): runs the generator without ``--check`` to validate the source, then
+  restores generated paths so later steps see the checked-in state
 """
 
 from __future__ import annotations
@@ -39,23 +39,28 @@ def main() -> int:
     args = parser.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from detect_pending_extension_regen import (
-        _contributions_changed,
-        catalog_ids,
-        contribution_ids,
-    )
+    from detect_pending_extension_regen import GitDiffError, catalog_ids, changed_regen_inputs, contribution_ids
 
     pending = sorted(contribution_ids() - catalog_ids())
-    changed = _contributions_changed(args.changed_from) if args.changed_from else []
+    changed = []
+    changed_implementation = []
+    if args.changed_from is not None:
+        try:
+            inputs = changed_regen_inputs(args.changed_from)
+        except GitDiffError as error:
+            raise SystemExit(str(error)) from error
+        changed = list(inputs.contribution_paths)
+        changed_implementation = list(inputs.implementation_paths)
     command = [
         sys.executable,
         "scripts/build_native_command_program.py",
         "--compiler",
         args.compiler,
     ]
-    if args.changed_from and (pending or changed):
+    if args.changed_from is not None and (pending or changed or changed_implementation):
         print(
-            f"pending contribution regeneration (ids={pending}, changed={changed}); "
+            f"source-only projection regeneration (ids={pending}, changed={changed}, "
+            f"implementation={changed_implementation}); "
             "validating sources by generating instead of checking freshness",
             file=sys.stderr,
         )

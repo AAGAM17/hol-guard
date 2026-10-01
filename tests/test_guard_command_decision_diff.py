@@ -300,6 +300,7 @@ def test_report_contains_only_privacy_safe_deterministic_evidence() -> None:
     [("1", "UTC", "C"), ("8731", "US/Pacific", "C.UTF-8")],
     ids=["utc", "pacific"],
 )
+@requires_fresh_decision_diff
 def test_fresh_process_report_is_environment_independent_and_bounded(
     hash_seed: str, timezone: str, locale: str
 ) -> None:

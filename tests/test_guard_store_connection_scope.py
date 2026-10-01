@@ -126,7 +126,9 @@ def test_nested_different_stores_restore_the_original_scope(tmp_path: Path) -> N
 
 @pytest.mark.parametrize("failure", ["database disk image is malformed", "disk I/O error"])
 def test_caught_fatal_error_still_fails_the_scope_and_reaches_recovery(
-    tmp_path: Path, monkeypatch, failure: str,
+    tmp_path: Path,
+    monkeypatch,
+    failure: str,
 ) -> None:
     store = fixture_store(tmp_path)
     failures = []
@@ -167,3 +169,34 @@ def test_scope_counts_only_method_transactions_and_commits(tmp_path: Path) -> No
         assert inner["transactions"] == before["transactions"] + 2
         assert inner["commits"] == before["commits"] + 2
     assert store.sqlite_profile() == inner
+
+
+def test_extended_io_error_code_poisoning_does_not_depend_on_error_text(tmp_path: Path, monkeypatch) -> None:
+    store = fixture_store(tmp_path)
+    recovered = []
+    error = sqlite3.DatabaseError("opaque native failure")
+    error.sqlite_errorcode = sqlite3.SQLITE_IOERR_WRITE
+    monkeypatch.setattr(store, "_recover_fatal_sqlite_store", lambda failure, **kwargs: recovered.append(failure))
+    with pytest.raises(sqlite3.DatabaseError, match="opaque native failure"), store.connection_scope():
+        try:
+            with store._connect():
+                raise error
+        except sqlite3.DatabaseError:
+            pass
+        with pytest.raises(sqlite3.DatabaseError, match="opaque native failure"), store._connect():
+            pytest.fail("An I/O-failed connection must not be reused")
+    assert recovered == [error]
+
+
+def test_poisoned_scope_preserves_the_later_exception_context(tmp_path: Path, monkeypatch) -> None:
+    store = fixture_store(tmp_path)
+    later = RuntimeError("later operation failed")
+    monkeypatch.setattr(store, "_recover_fatal_sqlite_store", lambda *args, **kwargs: None)
+    with pytest.raises(sqlite3.DatabaseError, match="malformed") as raised, store.connection_scope():
+        try:
+            with store._connect():
+                raise sqlite3.DatabaseError("database disk image is malformed")
+        except sqlite3.DatabaseError:
+            pass
+        raise later
+    assert raised.value.__context__ is later

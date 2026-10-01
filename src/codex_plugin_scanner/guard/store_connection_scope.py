@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .store import GuardStore
 
 _local = threading.local()
+_SQLITE_IOERR_PRIMARY_CODE = 10  # Extended result codes keep the primary code in the low byte.
 
 
 def owns_scope(store: GuardStore) -> bool:
@@ -30,8 +31,10 @@ def connection_scope(store: GuardStore) -> Iterator[None]:
     if owns_scope(store):
         yield
         return
-    previous = tuple(getattr(_local, name, default) for name, default in
-        (("owner", None), ("connection", None), ("failure", None), ("transaction_depth", 0)))
+    previous = tuple(
+        getattr(_local, name, default)
+        for name, default in (("owner", None), ("connection", None), ("failure", None), ("transaction_depth", 0))
+    )
     with store._connect(connection_only=True) as connection:
         _local.owner = id(store)
         _local.connection = connection
@@ -49,16 +52,22 @@ def connection_scope(store: GuardStore) -> Iterator[None]:
 
 @contextmanager
 def scoped_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
+    """Nested methods use separate connections to isolate pending writes."""
     if _local.failure is not None:
         raise _local.failure
     depth = _local.transaction_depth
     _local.transaction_depth += 1
     try:
-        method_transaction = store._connection_transaction(_local.connection) if depth == 0 else store._connect_once()
-        with method_transaction as connection:
-            yield connection
+        with store._hold_storage_gate(exclusive=False):
+            method_transaction = (
+                store._connection_transaction(_local.connection) if depth == 0 else store._connect_once()
+            )
+            with method_transaction as connection:
+                yield connection
     except sqlite3.DatabaseError as error:
-        if store._is_fatal_sqlite_error(error) or SQLITE_IO_ERROR_MARKER in str(error).lower():
+        code = getattr(error, "sqlite_errorcode", None)
+        io_error = isinstance(code, int) and code & 0xFF == _SQLITE_IOERR_PRIMARY_CODE
+        if store._is_fatal_sqlite_error(error) or io_error or SQLITE_IO_ERROR_MARKER in str(error).lower():
             _local.failure = error
         raise
     finally:
@@ -68,6 +77,12 @@ def scoped_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
 @contextmanager
 def open_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
     """Record connection cost; individual methods own transaction metrics."""
+    with store._hold_storage_gate(exclusive=False), _open_connection(store) as connection:
+        yield connection
+
+
+@contextmanager
+def _open_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
     timeout = sqlite_connect_timeout_seconds()
     profiler = store._sqlite_profiler()
     started = time.monotonic()

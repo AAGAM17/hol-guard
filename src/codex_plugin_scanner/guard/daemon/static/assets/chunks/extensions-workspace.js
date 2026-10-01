@@ -6009,6 +6009,29 @@ function CustomExtensionsSection(props) {
   const grouped = needsReview.length > 0 && reviewed.length > 0;
   const pageCount = Math.max(1, Math.ceil(added.length / CUSTOM_EXTENSION_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
+  const handleSearchChange = reactExports.useCallback((event) => {
+    setSearch(event.target.value);
+    setShowAll(false);
+    setPage(0);
+  }, []);
+  const handleClearSearch = reactExports.useCallback(() => {
+    setSearch("");
+    setPage(0);
+  }, []);
+  const handleExpand = reactExports.useCallback(() => {
+    setShowAll(true);
+    setPage(0);
+  }, []);
+  const handleCollapse = reactExports.useCallback(() => {
+    setShowAll(false);
+    setPage(0);
+  }, []);
+  const handlePrevious = reactExports.useCallback(() => {
+    if (currentPage > 0) setPage(currentPage - 1);
+  }, [currentPage]);
+  const handleNext = reactExports.useCallback(() => {
+    if (currentPage < pageCount - 1) setPage(currentPage + 1);
+  }, [currentPage, pageCount]);
   const start = showAll ? currentPage * CUSTOM_EXTENSION_PAGE_SIZE : 0;
   const visible = added.slice(start, start + (showAll ? CUSTOM_EXTENSION_PAGE_SIZE : CUSTOM_EXTENSION_PREVIEW_COUNT));
   const visibleNeedsReview = grouped ? visible.filter(customExtensionNeedsReview) : visible;
@@ -6029,11 +6052,7 @@ function CustomExtensionsSection(props) {
             {
               type: "search",
               value: search,
-              onChange: (event) => {
-                setSearch(event.target.value);
-                setShowAll(false);
-                setPage(0);
-              },
+              onChange: handleSearchChange,
               placeholder: "Search connectors",
               className: "min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal text-brand-dark sm:w-64"
             }
@@ -6053,10 +6072,7 @@ function CustomExtensionsSection(props) {
         discovering: props.discovering,
         onAdd: props.onAdd,
         onClearFilters: props.onClearFilters,
-        onClearSearch: () => {
-          setSearch("");
-          setPage(0);
-        }
+        onClearSearch: handleClearSearch
       }
     ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4", id: rowsId, children: [
       grouped && visibleNeedsReview.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs font-semibold text-brand-dark/55", children: [
@@ -6074,10 +6090,7 @@ function CustomExtensionsSection(props) {
           "button",
           {
             type: "button",
-            onClick: () => {
-              setShowAll(true);
-              setPage(0);
-            },
+            onClick: handleExpand,
             "aria-controls": rowsId,
             className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
             children: added.length > CUSTOM_EXTENSION_PAGE_SIZE ? `Browse all ${added.length} ${unit}` : `Show all ${added.length} ${unit}`
@@ -6099,9 +6112,7 @@ function CustomExtensionsSection(props) {
               type: "button",
               "aria-disabled": currentPage === 0,
               "aria-controls": rowsId,
-              onClick: () => {
-                if (currentPage > 0) setPage(currentPage - 1);
-              },
+              onClick: handlePrevious,
               className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50",
               children: "Previous page"
             }
@@ -6124,9 +6135,7 @@ function CustomExtensionsSection(props) {
               type: "button",
               "aria-disabled": currentPage === pageCount - 1,
               "aria-controls": rowsId,
-              onClick: () => {
-                if (currentPage < pageCount - 1) setPage(currentPage + 1);
-              },
+              onClick: handleNext,
               className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50",
               children: "Next page"
             }
@@ -6136,10 +6145,7 @@ function CustomExtensionsSection(props) {
           "button",
           {
             type: "button",
-            onClick: () => {
-              setShowAll(false);
-              setPage(0);
-            },
+            onClick: handleCollapse,
             "aria-controls": rowsId,
             className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
             children: "Show fewer"

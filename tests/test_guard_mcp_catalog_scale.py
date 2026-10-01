@@ -35,35 +35,55 @@ def test_ten_thousand_tools_keep_per_connection_choices(tmp_path: Path) -> None:
         *(LocalCliCommand(name, name, name, "Fixture tool") for name in names),
         LocalCliCommand("other", "Other tools", "fixture …", "Unknown tools need review"),
     )
-    submitted_states = LocalCliApiService(store=store)._command_states_from_payload({
-        "commands": [{"command_id": command.command_id, "state": "block"} for command in commands],
-    })
+    submitted_states = LocalCliApiService(store=store)._command_states_from_payload(
+        {
+            "commands": [{"command_id": command.command_id, "state": "block"} for command in commands],
+        }
+    )
     assert len(submitted_states) == 101 and submitted_states["other"] == "block"
     catalog = McpCatalogResult(
         tuple({"name": name, "inputSchema": {"type": "object"}} for name in names),
-        complete=True, pages=1, protocol_version="2026-07-28",
+        complete=True,
+        pages=1,
+        protocol_version="2026-07-28",
     )
     identities = []
     seen_at = utc_now()
     for index in range(100):
         server = build_mcp_server_identity(
-            config_path="", command="npx", args=("-y", f"@fixture/server-{index:03}"), transport="stdio",
+            config_path="",
+            command="npx",
+            args=("-y", f"@fixture/server-{index:03}"),
+            transport="stdio",
         )
         identity = UnlistedCliIdentity(
-            cli_id=f"local-cli.scale-{index:03}", name=f"Fixture connector {index:03}",
-            kind="executable", identity_hash=server.identity_hash, example_label=f"fixture-{index:03}",
+            cli_id=f"local-cli.scale-{index:03}",
+            name=f"Fixture connector {index:03}",
+            kind="executable",
+            identity_hash=server.identity_hash,
+            example_label=f"fixture-{index:03}",
         )
         identities.append(server)
         store.record_local_cli_observation(
-            identity, seen_at=seen_at, surface="mcp", server_identity_hash=server.identity_hash,
-            server_command=server.command, server_args_hash=server.args_hash, help_status="ok",
+            identity,
+            seen_at=seen_at,
+            surface="mcp",
+            server_identity_hash=server.identity_hash,
+            server_command=server.command,
+            server_args_hash=server.args_hash,
+            help_status="ok",
         )
         store.replace_local_cli_commands(
-            identity.cli_id, commands, mcp_catalog=catalog,
-            identity_hash=identity.identity_hash, seen_at=seen_at,
+            identity.cli_id,
+            commands,
+            mcp_catalog=catalog,
+            identity_hash=identity.identity_hash,
+            seen_at=seen_at,
         )
         store.upsert_local_cli_grant(
-            identity=identity, state="allowed", expected_revision=store.read_local_cli_revision(),
+            identity=identity,
+            state="allowed",
+            expected_revision=store.read_local_cli_revision(),
             updated_at=seen_at,
             command_states={name: "allow" if tool_index % 2 == 0 else "block" for tool_index, name in enumerate(names)},
         )
@@ -93,15 +113,23 @@ def test_ten_thousand_tools_keep_per_connection_choices(tmp_path: Path) -> None:
         server = identities[index]
         for name, expected in (("tool_000", "allow"), ("tool_099", "block")):
             artifact = build_tool_call_artifact(
-                harness="codex", server_name=f"server-{index:03}", tool_name=name,
-                source_scope="project", config_path=".mcp.json", transport="stdio", server_identity=server,
+                harness="codex",
+                server_name=f"server-{index:03}",
+                tool_name=name,
+                source_scope="project",
+                config_path=".mcp.json",
+                transport="stdio",
+                server_identity=server,
                 tool_definition={"name": name, "inputSchema": {"type": "object"}},
             )
             arguments: dict[str, object] = {}
             decision = evaluate_tool_call(
-                store=store, config=config, artifact=artifact,
+                store=store,
+                config=config,
+                artifact=artifact,
                 artifact_hash=build_tool_call_hash(artifact, arguments, workspace=tmp_path, config=config),
-                arguments=arguments, claim_saved_approval=False,
+                arguments=arguments,
+                claim_saved_approval=False,
             )
             assert decision.action == expected
             assert decision.source == "local-mcp-extension"
@@ -113,27 +141,48 @@ def test_large_observed_catalog_publishes_choices_and_reports_capacity_without_l
     seen_at = utc_now()
     connections = []
     for index in range(100):
-        observed = [observed_mcp_tool("codex", f"mcp__fixture_{index:03}__tool_{tool_index:03}")
-            for tool_index in range(100)]
+        observed = [
+            observed_mcp_tool("codex", f"mcp__fixture_{index:03}__tool_{tool_index:03}") for tool_index in range(100)
+        ]
         assert all(tool is not None for tool in observed)
         tools = [tool for tool in observed if tool is not None]
         server, identity = tools[0].server_identity, tools[0].identity
         connections.append((identity, server, tools))
-        store.record_local_cli_observation(identity, seen_at=seen_at, surface="mcp",
-            server_identity_hash=server.identity_hash, server_command=server.command,
-            server_args_hash=server.args_hash, help_status="ok")
-        store.replace_local_cli_commands(identity.cli_id,
+        store.record_local_cli_observation(
+            identity,
+            seen_at=seen_at,
+            surface="mcp",
+            server_identity_hash=server.identity_hash,
+            server_command=server.command,
+            server_args_hash=server.args_hash,
+            help_status="ok",
+        )
+        store.replace_local_cli_commands(
+            identity.cli_id,
             tuple(LocalCliCommand(tool.command_id, tool.name, tool.qualified_name, "Fixture tool") for tool in tools),
-            mcp_catalog=McpCatalogResult(tuple({"name": tool.qualified_name,
-                "inputSchema": {"type": "object"}} for tool in tools), complete=True, pages=1,
-                protocol_version="2026-07-28"), identity_hash=identity.identity_hash, seen_at=seen_at)
-        store.upsert_local_cli_grant(identity=identity, state="allowed", updated_at=seen_at,
-            expected_revision=store.read_local_cli_revision(), command_states={
+            mcp_catalog=McpCatalogResult(
+                tuple({"name": tool.qualified_name, "inputSchema": {"type": "object"}} for tool in tools),
+                complete=True,
+                pages=1,
+                protocol_version="2026-07-28",
+            ),
+            identity_hash=identity.identity_hash,
+            seen_at=seen_at,
+        )
+        store.upsert_local_cli_grant(
+            identity=identity,
+            state="allowed",
+            updated_at=seen_at,
+            expected_revision=store.read_local_cli_revision(),
+            command_states={
                 tool.command_id: "allow" if tool_index % 2 == 0 else "block"
-                for tool_index, tool in enumerate(tools[:10])})
+                for tool_index, tool in enumerate(tools[:10])
+            },
+        )
 
-    publisher = NativePolicySnapshotPublisher(store=store, status_provider=_status,
-        client_request=lambda **kwargs: _ack(kwargs["payload"]))
+    publisher = NativePolicySnapshotPublisher(
+        store=store, status_provider=_status, client_request=lambda **kwargs: _ack(kwargs["payload"])
+    )
     try:
         publisher._publish_once()
         assert publisher.is_ready(), publisher.last_error
@@ -147,9 +196,13 @@ def test_large_observed_catalog_publishes_choices_and_reports_capacity_without_l
 
         # Exceed the restriction bound, which must never discard a Deny.
         for identity, _server, tools in connections[:6]:
-            store.upsert_local_cli_grant(identity=identity, state="allowed", updated_at=seen_at,
+            store.upsert_local_cli_grant(
+                identity=identity,
+                state="allowed",
+                updated_at=seen_at,
                 expected_revision=store.read_local_cli_revision(),
-                command_states={tool.command_id: "block" for tool in tools})
+                command_states={tool.command_id: "block" for tool in tools},
+            )
         publisher.request_publish()
         publisher._publish_once()
         assert not publisher.is_ready()

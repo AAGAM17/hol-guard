@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState } from "react";
+import { type ChangeEvent, useCallback, useId, useMemo, useState } from "react";
 import { HiMiniMagnifyingGlass, HiMiniPlus, HiMiniXMark } from "react-icons/hi2";
 
 import {
@@ -99,14 +99,16 @@ function CustomExtensionEmptyState(props: {
  * and the search appears once the list is long enough to search — and stays
  * while a query is active so it can always be edited or cleared.
  */
-export function CustomExtensionsSection(props: {
+interface CustomExtensionsSectionProps {
   items: LocalCliItem[];
   onOpen: (cliId: string) => void;
   onAdd: () => void;
   discovering?: boolean;
   filteredOut?: boolean;
   onClearFilters?: () => void;
-}) {
+}
+
+export function CustomExtensionsSection(props: CustomExtensionsSectionProps) {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [page, setPage] = useState(0);
@@ -121,6 +123,18 @@ export function CustomExtensionsSection(props: {
   const grouped = needsReview.length > 0 && reviewed.length > 0;
   const pageCount = Math.max(1, Math.ceil(added.length / CUSTOM_EXTENSION_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
+  const handleSearchChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setSearch(event.target.value);
+    setShowAll(false);
+    setPage(0);
+  }, []);
+  const handleClearSearch = useCallback(() => { setSearch(""); setPage(0); }, []);
+  const handleExpand = useCallback(() => { setShowAll(true); setPage(0); }, []);
+  const handleCollapse = useCallback(() => { setShowAll(false); setPage(0); }, []);
+  const handlePrevious = useCallback(() => { if (currentPage > 0) setPage(currentPage - 1); }, [currentPage]);
+  const handleNext = useCallback(() => {
+    if (currentPage < pageCount - 1) setPage(currentPage + 1);
+  }, [currentPage, pageCount]);
   const start = showAll ? currentPage * CUSTOM_EXTENSION_PAGE_SIZE : 0;
   const visible = added.slice(start, start + (showAll ? CUSTOM_EXTENSION_PAGE_SIZE : CUSTOM_EXTENSION_PREVIEW_COUNT));
   const visibleNeedsReview = grouped ? visible.filter(customExtensionNeedsReview) : visible;
@@ -140,7 +154,7 @@ export function CustomExtensionsSection(props: {
                 <span className="sr-only">Search custom extensions</span>
                 <HiMiniMagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-dark/55" aria-hidden="true" />
                 <input type="search" value={search}
-                  onChange={(event) => { setSearch(event.target.value); setShowAll(false); setPage(0); }}
+                  onChange={handleSearchChange}
                   placeholder="Search connectors"
                   className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal text-brand-dark sm:w-64" />
               </label>
@@ -159,7 +173,7 @@ export function CustomExtensionsSection(props: {
           discovering={props.discovering}
           onAdd={props.onAdd}
           onClearFilters={props.onClearFilters}
-          onClearSearch={() => { setSearch(""); setPage(0); }}
+          onClearSearch={handleClearSearch}
         />
       ) : (
         <div className="mt-4" id={rowsId}>
@@ -181,7 +195,7 @@ export function CustomExtensionsSection(props: {
           ))}
           {!showAll && added.length > visible.length ? (
             <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button type="button" onClick={() => { setShowAll(true); setPage(0); }} aria-controls={rowsId}
+                <button type="button" onClick={handleExpand} aria-controls={rowsId}
                   className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark">
                   {added.length > CUSTOM_EXTENSION_PAGE_SIZE
                     ? `Browse all ${added.length} ${unit}`
@@ -197,7 +211,7 @@ export function CustomExtensionsSection(props: {
               {pageCount > 1 ? (
                 <nav aria-label="Custom extension pages" className="flex flex-wrap items-center gap-3">
                   <button type="button" aria-disabled={currentPage === 0} aria-controls={rowsId}
-                    onClick={() => { if (currentPage > 0) setPage(currentPage - 1); }}
+                    onClick={handlePrevious}
                     className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50">
                     Previous page
                   </button>
@@ -205,13 +219,13 @@ export function CustomExtensionsSection(props: {
                     Page {currentPage + 1} of {pageCount} · Showing {start + 1}–{start + visible.length} of {added.length}
                   </p>
                   <button type="button" aria-disabled={currentPage === pageCount - 1} aria-controls={rowsId}
-                    onClick={() => { if (currentPage < pageCount - 1) setPage(currentPage + 1); }}
+                    onClick={handleNext}
                     className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50">
                     Next page
                   </button>
                 </nav>
               ) : null}
-              <button type="button" onClick={() => { setShowAll(false); setPage(0); }} aria-controls={rowsId}
+              <button type="button" onClick={handleCollapse} aria-controls={rowsId}
                 className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark">
                 Show fewer
               </button>

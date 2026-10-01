@@ -74,8 +74,10 @@ options = parser.parse_args()
 assert 1 <= options.connections <= 100
 assert 1 <= options.permissions_per_connection <= 100
 if options.connections * options.permissions_per_connection > POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS:
-    parser.error(f"Selected permissions exceed the native publication limit ({POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS}); "
-        "reduce --permissions-per-connection. Each rich catalog still contains 100 tools.")
+    parser.error(
+        f"Selected permissions exceed the native publication limit ({POLICY_SNAPSHOT_MAX_MCP_TOOL_ACTIONS}); "
+        "reduce --permissions-per-connection. Each rich catalog still contains 100 tools."
+    )
 if options.native and not all(
     os.environ.get(name) for name in ("HOL_GUARD_NATIVE_BINARY", "HOL_GUARD_NATIVE_SOURCE_COMPILER")
 ):
@@ -102,7 +104,9 @@ with tempfile.TemporaryDirectory(prefix="guard-mcp-scale-") as scratch, isolated
         )
         catalog = McpCatalogResult(
             tuple({"name": tool.qualified_name, "inputSchema": {"type": "object"}} for tool in tools),
-            complete=True, pages=1, protocol_version="2026-07-28",
+            complete=True,
+            pages=1,
+            protocol_version="2026-07-28",
         )
         servers.append(server)
         store.record_local_cli_observation(
@@ -126,8 +130,10 @@ with tempfile.TemporaryDirectory(prefix="guard-mcp-scale-") as scratch, isolated
             state="allowed",
             expected_revision=store.read_local_cli_revision(),
             updated_at=seen_at,
-            command_states={tool.command_id: "allow" if tool_index % 2 == 0 else "block"
-                for tool_index, tool in enumerate(tools[:options.permissions_per_connection])},
+            command_states={
+                tool.command_id: "allow" if tool_index % 2 == 0 else "block"
+                for tool_index, tool in enumerate(tools[: options.permissions_per_connection])
+            },
         )
     setup_seconds = time.perf_counter() - setup_start
 

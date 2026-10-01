@@ -322,11 +322,22 @@ def _append_row(config: CaptureSession, *, guard_home: Path, row: Mapping[str, o
             return False
         _ = os.lseek(output, 0, os.SEEK_END)
         offset = 0
-        while offset < len(serialized):
-            written = os.write(output, serialized[offset:])
-            if written <= 0:
-                return False
-            offset += written
+        try:
+            while offset < len(serialized):
+                try:
+                    written = os.write(output, serialized[offset:])
+                except OSError as error:
+                    if error.errno != errno.EINTR or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.001)
+                    continue
+                if written <= 0:
+                    raise OSError(errno.EIO, "capture write made no progress")
+                offset += written
+        except OSError:
+            with suppress(OSError):
+                os.ftruncate(output, len(existing))
+            return False
         return True
     except (OSError, TypeError, ValueError):
         return False

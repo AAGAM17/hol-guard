@@ -117,6 +117,70 @@ def test_capture_output_nonpositive_write_stops_without_retry(tmp_path: Path, mo
     assert _output_path(directory).read_bytes() == b""
 
 
+@pytest.mark.parametrize("failure", [OSError(errno.EIO, "failed write"), None])
+def test_partial_capture_write_restores_existing_rows(tmp_path: Path, monkeypatch, failure: OSError | None) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+    kwargs = {
+        "guard_home": guard_home,
+        "raw_payload": '{"hook_event_name":"PreToolUse","tool_use_id":"partial-write"}',
+        "event_name": "PreToolUse",
+    }
+    assert record_bridge_ingress(**kwargs)
+    before = _output_path(directory).read_bytes()
+    real_write = os.write
+    calls = []
+
+    def partial_write(fd: int, data: bytes) -> int:
+        calls.append(fd)
+        if len(calls) == 1:
+            return real_write(fd, data[:20])
+        if failure is not None:
+            raise failure
+        return 0
+
+    monkeypatch.setattr(os, "write", partial_write)
+    assert not record_bridge_ingress(**kwargs)
+    assert len(calls) == 2
+    assert _output_path(directory).read_bytes() == before
+    monkeypatch.setattr(os, "write", real_write)
+    assert record_bridge_ingress(**kwargs)
+    assert len(_rows(directory)) == 2
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_interrupted_capture_write_uses_original_retry_deadline(tmp_path: Path, monkeypatch, persistent: bool) -> None:
+    guard_home = tmp_path / "guard-home"
+    directory = _enable_capture(guard_home)
+    real_write = os.write
+    clock = [0.0]
+    calls = []
+
+    def interrupted_write(fd: int, data: bytes) -> int:
+        calls.append(fd)
+        if persistent or len(calls) == 1:
+            clock[0] += 0.01
+            raise OSError(errno.EINTR, "interrupted")
+        return real_write(fd, data)
+
+    monkeypatch.setattr(os, "write", interrupted_write)
+    monkeypatch.setattr(capture.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(capture.time, "sleep", lambda _: None)
+    assert (
+        record_bridge_ingress(
+            guard_home=guard_home,
+            raw_payload='{"hook_event_name":"PreToolUse","tool_use_id":"interrupted-write"}',
+            event_name="PreToolUse",
+        )
+        is not persistent
+    )
+    assert len(calls) == 2
+    if persistent:
+        assert _output_path(directory).read_bytes() == b""
+    else:
+        assert len(_rows(directory)) == 1
+
+
 def test_aggregate_capture_limits_include_newlines_and_session_cap(tmp_path: Path) -> None:
     many_rows = [{"padding": "x" * 1_000} for _ in range(70)]
     result = join_binding_records(many_rows)

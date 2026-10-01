@@ -219,7 +219,7 @@ def test_lock_links_are_rejected_without_changing_the_target(tmp_path, link_kind
     home = tmp_path / "home"
     lock = _lifecycle_lock_path(home / ".codex")
     lock.parent.mkdir(mode=0o700, exist_ok=True)
-    target = tmp_path / "user-file"
+    target = lock.parent / "user-file"
     target.write_bytes(b"preserved user content")
     if link_kind == "symbolic":
         lock.symlink_to(target)

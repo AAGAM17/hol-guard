@@ -28,7 +28,8 @@
 /contracts/extensions/native-command-program.v1.json linguist-generated
 /contracts/extensions/command-catalog.v1.json linguist-generated
 /contracts/extensions/trust-class-map.v1.json linguist-generated
-/contracts/managed-controls/** linguist-generated
+/contracts/managed-controls/v1/extension-projection-digest-vector.json linguist-generated
+/contracts/managed-controls/v1/policy-bundle-v2-extension-signature-vector.json linguist-generated
 /docs/guard/extensions/README.md linguist-generated
 /docs/guard/extensions/catalog.v1.json linguist-generated
 /docs/guard/extensions/catalog.v2.json linguist-generated

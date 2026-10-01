@@ -8,12 +8,13 @@ permissions:
 jobs:
   regen-owned-paths:
     runs-on: ubuntu-24.04
-    # Only the regen workflow's own artifact PRs may touch generated paths;
-    # every other PR must leave them to post-merge regen. A fork cannot claim
-    # the exemption since it requires a same-repo regen/artifacts-* branch.
+    # The post-merge regen bot may update every generated projection. Regular
+    # PRs may update the native program/catalog projections when strict native
+    # verification requires them, but contribution PRs must leave those
+    # projections to extension-artifact-regen.
     if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'regen/artifacts-') && github.event.pull_request.user.login == vars.GUARD_AUTOMATION_LOGIN) }}
     steps:
-      - name: Reject changes to regen-owned generated paths
+      - name: Enforce generated artifact ownership
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -21,19 +22,45 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.label }}
         run: |
           set -euo pipefail
-          owned='^contracts/extensions/(native-command-program|command-catalog)\.v1\.json$'
-          owned+='|^contracts/managed-controls/v1/(extension-projection-digest-vector|policy-bundle-v2-extension-signature-vector)\.json$'
-          owned+='|^docs/guard/extensions/(README\.md|catalog\.v[12]\.json)$'
-          owned+='|^src/codex_plugin_scanner/guard/contracts/data/extensions/'
-          owned+='|^src/codex_plugin_scanner/guard/contracts/data/mcp_servers/'
-          owned+='|^tests/fixtures/extension-controls/catalog-baseline\.v1\.json$'
-          owned+='|^tests/fixtures/guard-command-corpus/decision-diff-report\.(json|framed-sha256)$'
-          owned+='|^tests/test_guard_extension_trust\.py$'
-          owned+='|^tests/test_policy_bundle_delivery_runtime\.py$'
+
+          # These projections are validated in ordinary PRs by
+          # scripts/ci/verify_native_command_program.py --check. Runtime/compiler
+          # changes can legitimately require them in the same PR. Pending
+          # contribution PRs use the verifier's additive mode and must leave
+          # these files for post-merge regeneration.
+          native='^contracts/extensions/(native-command-program|command-catalog)\.v1\.json$'
+          native+='|^src/codex_plugin_scanner/guard/contracts/data/extensions/'
+
+          # These are secondary projections owned exclusively by the post-merge
+          # regeneration workflow.
+          post_merge='^contracts/managed-controls/v1/(extension-projection-digest-vector|policy-bundle-v2-extension-signature-vector)\.json$'
+          post_merge+='|^docs/guard/extensions/(README\.md|catalog\.v[12]\.json)$'
+          post_merge+='|^src/codex_plugin_scanner/guard/contracts/data/mcp_servers/'
+          post_merge+='|^tests/fixtures/extension-controls/catalog-baseline\.v1\.json$'
+          post_merge+='|^tests/fixtures/guard-command-corpus/decision-diff-report\.(json|framed-sha256)$'
+          post_merge+='|^tests/test_guard_extension_trust\.py$'
+          post_merge+='|^tests/test_policy_bundle_delivery_runtime\.py$'
+
           files=$(gh api --paginate "repos/${GH_REPO}/compare/${BASE}...${HEAD}" \
             --jq '.files[].filename')
-          changed=$(printf '%s\n' "${files}" | grep -E "${owned}" || [ $? -eq 1 ])
-          if [ -n "${changed}" ]; then
-            printf '%s\n' "::error::This PR modifies paths owned by the extension-artifact-regen workflow. Generated artifacts are regenerated on main after merge — drop them from this diff:" "${changed}"
+
+          contributions=$(printf '%s\n' "${files}" | grep -E '^contributions/' || [ $? -eq 1 ])
+          native_changed=$(printf '%s\n' "${files}" | grep -E "${native}" || [ $? -eq 1 ])
+          blocked=$(printf '%s\n' "${files}" | grep -E "${post_merge}" || [ $? -eq 1 ])
+
+          if [ -n "${contributions}" ] && [ -n "${native_changed}" ]; then
+            if [ -n "${blocked}" ]; then
+              blocked=$(printf '%s\n%s\n' "${blocked}" "${native_changed}")
+            else
+              blocked="${native_changed}"
+            fi
+          fi
+
+          if [ -n "${blocked}" ]; then
+            printf '%s\n'               "::error::This PR modifies post-merge generated artifacts. Contribution PRs must also leave native projections to extension-artifact-regen. Drop these paths from the diff:"               "${blocked}"
             exit 1
+          fi
+
+          if [ -n "${native_changed}" ]; then
+            echo "::notice::Native generated projections are allowed in this non-contribution PR; strict native generator CI is responsible for validating freshness."
           fi

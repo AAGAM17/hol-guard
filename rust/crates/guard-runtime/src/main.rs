@@ -194,6 +194,9 @@ fn run() -> Result<(), String> {
                 && flag == "--stdin" =>
         {
             let bytes = read_stdin_bounded()?;
+            if let Err(error) = strict_json_value(&bytes) {
+                return write_bytes_response(&resident_protocol::safe_error_response(&error, false));
+            }
             let timeout = managed_resident::client_timeout(&bytes);
             let response = managed_resident::client_request(
                 std::path::Path::new(state_dir),

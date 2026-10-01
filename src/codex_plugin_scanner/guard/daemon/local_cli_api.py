@@ -70,28 +70,19 @@ from ..runtime.package_json_script_memory import (
 )
 from ..runtime.package_json_scripts import looks_like_package_script_paste
 from ..runtime.skill_workflow_preflight import preflight_skill_dependencies
+from .local_cli_api_contract import LOCAL_CLI_API_SCHEMA as _LOCAL_CLI_API_SCHEMA
+from .local_cli_api_contract import LocalCliApiError
 from .local_cli_continuity_api import decorate_local_cli_continuity
 from .local_cli_mcp_store import bound_mcp_observation, stored_mcp_recognition
+from .local_cli_registry_setup import registry_setup as reviewed_registry_setup
 from .mcp_discovery_jobs import DiscoveryJobError, DiscoveryStageError, McpDiscoveryJobs
-from .mcp_registry_undo import RegistrySetupUndo, RegistryUndoError
+from .mcp_registry_undo import RegistrySetupUndo
 
 if TYPE_CHECKING:
-    from ..runtime.codex_mcp_setup import CodexMcpSetupReceipt
     from ..store import GuardStore
 
-_LOCAL_CLI_API_SCHEMA = "guard.daemon.local-clis.v1"
 _VALID_STATES = frozenset({"allowed", "blocked", "unset"})
 _DISCOVERY_TTL_SECONDS = 30.0
-
-
-class LocalCliApiError(Exception):
-    def __init__(self, status: int, code: str, message: str | None = None) -> None:
-        self.status = status
-        self.code = code
-        super().__init__(message or code)
-
-    def to_payload(self) -> dict[str, object]:
-        return {"error": self.code, "message": str(self)}
 
 
 def _client_discovery_job_id(payload: dict[str, object]) -> str | None:
@@ -442,127 +433,7 @@ class LocalCliApiService:
         return {"schema_version": _LOCAL_CLI_API_SCHEMA, **result}
 
     def registry_setup(self, payload: dict[str, object]) -> dict[str, object]:
-        from ..runtime.mcp_registry_setup import (
-            install_codex_package_mcp,
-            install_codex_remote_mcp,
-            reviewed_codex_package_candidate,
-            reviewed_codex_setup_candidate,
-        )
-
-        operation = payload.get("operation")
-        if operation == "recent":
-            return {"schema_version": _LOCAL_CLI_API_SCHEMA, "setups": self._registry_setup_undo.recent()}
-        if operation in {"rollback-preview", "rollback"}:
-            try:
-                if operation == "rollback-preview":
-                    response = self._registry_setup_undo.preview(payload)
-                else:
-                    with self._registry_setup_lock:
-                        response = self._registry_setup_undo.rollback(payload)
-            except RegistryUndoError as error:
-                raise LocalCliApiError(error.status, error.code, str(error)) from error
-            return {"schema_version": _LOCAL_CLI_API_SCHEMA, **response}
-        if operation not in {"preview", "apply"}:
-            raise LocalCliApiError(400, "invalid_registry_setup_operation")
-        kind = payload.get("kind", "remote")
-        if kind not in ("remote", "package"):
-            raise LocalCliApiError(400, "invalid_registry_setup_kind")
-        package_setup = kind == "package"
-        try:
-            candidate = (
-                reviewed_codex_package_candidate(payload) if package_setup else reviewed_codex_setup_candidate(payload)
-            )
-        except ValueError as error:
-            raise LocalCliApiError(
-                409, str(error), "Registry listing changed or cannot be used for Codex setup."
-            ) from error
-        if operation == "preview":
-            return {
-                "schema_version": _LOCAL_CLI_API_SCHEMA,
-                **candidate,
-                "permissions_granted": False,
-                "host_change_applied": False,
-                "next_action": "Review the exact Codex launch recipe and confirm setup.",
-            }
-        if (
-            payload.get("selection_digest") != candidate["selection_digest"]
-            or payload.get("confirm_host_change") is not True
-        ):
-            raise LocalCliApiError(409, "registry_setup_review_changed", "Review this connection again before setup.")
-        session_nonce = self._required_string(payload, "session_nonce")
-        action = "codex-mcp-package-setup" if package_setup else "codex-mcp-remote-setup"
-        subject = action + ":" + str(candidate["selection_digest"])
-        try:
-            grant = require_local_cli_trust(
-                self._store.guard_home,
-                approval_gate_input=input_from_mapping(payload),
-                action=action,
-                subject=subject,
-                session_nonce=session_nonce,
-            )
-            consume_local_cli_trust_grant(
-                self._store.guard_home,
-                grant,
-                action=action,
-                subject=subject,
-                session_nonce=session_nonce,
-            )
-        except ApprovalGateError as error:
-            raise LocalCliApiError(error.status, error.code, str(error)) from error
-        try:
-            rollback_handle: str | None = None
-
-            def remember(receipt: CodexMcpSetupReceipt) -> None:
-                nonlocal rollback_handle
-                rollback_handle = self._registry_setup_undo.remember(receipt, candidate)
-
-            with self._registry_setup_lock:
-                self._registry_setup_undo.ensure_capacity()
-                configured = (
-                    install_codex_package_mcp(
-                        candidate,
-                        on_installed=remember,
-                        on_version_chain=self._registry_setup_undo.advance_version_chain,
-                    )
-                    if package_setup
-                    else install_codex_remote_mcp(
-                        candidate,
-                        on_installed=remember,
-                        on_version_chain=self._registry_setup_undo.advance_version_chain,
-                    )
-                )
-                if rollback_handle is None or configured != candidate["setup_name"]:
-                    raise ValueError("codex_setup_outcome_uncertain")
-        except ValueError as error:
-            if str(error) == "codex_setup_outcome_uncertain":
-                message = "Codex may have changed its connection. Check the host configuration before retrying."
-            elif str(error) == "codex_setup_rolled_back":
-                message = "Setup did not verify and its new connection was removed. Review setup and retry."
-            elif str(error) == "codex_config_changed":
-                message = "Codex configuration changed. Review it before retrying setup."
-            elif str(error) == "codex_setup_receipt_limit":
-                message = (
-                    "Recent setup history is full. Wait for an older setup to expire before adding another connection."
-                )
-            else:
-                message = "Codex could not add this connection. Update or review its host configuration and retry."
-            raise LocalCliApiError(409, str(error), message) from error
-        return {
-            "schema_version": _LOCAL_CLI_API_SCHEMA,
-            "host": "codex",
-            "kind": "package" if package_setup else "remote",
-            "setup_name": configured,
-            "rollback_handle": rollback_handle,
-            "rollback_available_seconds": 3600,
-            "host_change_applied": True,
-            "permissions_granted": False,
-            "next_action": (
-                "Restart Codex. On first use, Codex may download and run the pinned package. "
-                "Complete provider-owned sign-in if prompted, then check host connections in Guard."
-                if package_setup
-                else "Restart Codex, complete provider-owned sign-in if prompted, then check host connections in Guard."
-            ),
-        }
+        return reviewed_registry_setup(self._store, self._registry_setup_undo, self._registry_setup_lock, payload)
 
     def mcp_skills(self, payload: dict[str, object]) -> dict[str, object]:
         cli_id = self._required_string(payload, "cli_id")

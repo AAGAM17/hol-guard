@@ -45,8 +45,8 @@ const ARCHIVE_SEATBELT_PROFILE: &str = "(version 1) (allow default) (deny networ
 /// Arm parent-death termination and capture the spawning process identity.
 /// On Linux the kernel delivers SIGKILL when the parent thread dies — even
 /// for a parent that exits while this worker is mid-parse. There is no
-/// Darwin equivalent, so the halt closure below also polls `getppid` for a
-/// change in the spawning process identity.
+/// Darwin equivalent, so the halt closure below also polls `getppid`; an
+/// already-reparented worker (`ppid == 1` at capture) aborts up front.
 #[cfg(unix)]
 fn arm_parent_death_guard() -> i32 {
     #[cfg(target_os = "linux")]
@@ -281,10 +281,22 @@ fn run_inspection(
     {
         return sandbox_unavailable();
     }
+    // A worker already reparented to init at capture time was orphaned before
+    // inspection began; there is no caller left to answer.
+    if original_parent <= 1 {
+        return ArchiveOutcome::incomplete(
+            "external_archive_inspection_orphaned",
+            "External archive inspection lost its supervising process.",
+            None,
+        );
+    }
     let deadline = Instant::now() + Duration::from_millis(request.timeout_ms);
     // If the spawning parent disappears the inspection is orphaned: stop
     // rather than burn the budget unattributed.
-    let halt = move || nix::unistd::getppid().as_raw() != original_parent;
+    let halt = move || {
+        let parent = nix::unistd::getppid().as_raw();
+        parent != original_parent || parent <= 1
+    };
     guard_archive::inspect_path(
         Path::new(&request.archive_path),
         &request.expected_sha256,

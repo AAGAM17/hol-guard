@@ -10,6 +10,8 @@ contribution exists; every other invariant still runs.
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from scripts.ci.detect_pending_extension_regen import contribution_ids
@@ -35,8 +37,6 @@ def pending_decision_diff_regen() -> bool:
     regen-owned report, so enforcing byte-equality here would deadlock any
     change that intentionally alters a corpus decision.
     """
-
-    import subprocess
 
     if pending_contribution_regen():
         return True

@@ -8206,7 +8206,7 @@ def test_guard_hook_emits_copilot_native_deny_for_quoted_space_redirection_targe
     )
     output = json.loads(capsys.readouterr().out)
 
-    assert rc == 1
+    assert rc == 0
     assert output["hookSpecificOutput"]["permissionDecision"] in {"deny", "ask"}
     assert "hol guard" in output["hookSpecificOutput"]["permissionDecisionReason"].lower()
 

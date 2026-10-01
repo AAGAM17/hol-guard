@@ -31,6 +31,11 @@ class EventPayload(TypedDict, total=False):
     ref: str
 
 
+class DispatchPayload(TypedDict, total=False):
+    ref: str
+    inputs: dict[str, str]
+
+
 class ReleaseAssetPayload(TypedDict):
     name: str
 
@@ -44,7 +49,7 @@ class ReleasePayload(TypedDict):
 
 def dispatch_payload(
     event_name: str, event: EventPayload, publication_version: str | None = None
-) -> dict[str, object] | None:
+) -> DispatchPayload | None:
     if event_name == "workflow_run":
         run = event.get("workflow_run", {})
         if run.get("conclusion") != "success" or run.get("event") not in {"push", "workflow_dispatch"}:

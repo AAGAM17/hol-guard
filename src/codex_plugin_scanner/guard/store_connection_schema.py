@@ -525,7 +525,7 @@ class StoreConnectionSchemaMixin:
                 with transaction as connection:
                     yield connection
             except sqlite3.DatabaseError as error:
-                if self._is_fatal_sqlite_error(error):
+                if self._is_fatal_sqlite_error(error) or SQLITE_IO_ERROR_MARKER in str(error).lower():
                     local.failure = error
                 raise
             finally:

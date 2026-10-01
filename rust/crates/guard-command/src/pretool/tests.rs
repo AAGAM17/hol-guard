@@ -25,6 +25,12 @@ fn permits_only_standalone_plain_directory_changes() {
         "cd ~/project && python script.py",
         "cd /opt/project | cat file.txt",
         "cd ~/.ssh",
+        "cd /opt/user/.ssh",
+        "cd ~/.ss\\h",
+        "cd ~/.s*",
+        "cd .ssh*",
+        "cd ./project?",
+        "cd ./[project]",
         "cd -",
     ] {
         let result = evaluate_pre_tool(&request(command));

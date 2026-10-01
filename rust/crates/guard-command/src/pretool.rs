@@ -248,6 +248,15 @@ fn safe_gh_arguments(arguments: &[String]) -> bool {
     }
 }
 
+fn safe_directory_target(target: &str) -> bool {
+    crate::is_plain_cd_target(target)
+        && !target.contains(['*', '?', '[', ']'])
+        && !sensitive_command(target)
+        && !normalized_haystack(target).split('/').any(|component| {
+            matches!(component, ".ssh" | ".aws" | ".kube" | ".gnupg" | ".docker")
+        })
+}
+
 fn exact_safe_command(model: &CanonicalCommandV1, allow_git_helper_context: bool) -> bool {
     if model.confidence != "exact"
         || model.path_overridden
@@ -275,7 +284,7 @@ fn exact_safe_command(model: &CanonicalCommandV1, allow_git_helper_context: bool
         match basename {
             "cd" => {
                 model.segments.len() == 1
-                    && matches!(segment.arguments.as_slice(), [target] if crate::is_plain_cd_target(target))
+                    && matches!(segment.arguments.as_slice(), [target] if safe_directory_target(target))
             }
             "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "stat" => true,
             "date" => safe_reads::safe_date_arguments(&segment.arguments),

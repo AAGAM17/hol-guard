@@ -1152,6 +1152,8 @@ def test_generated_structured_receiver_rejects_late_cancellation_and_expired_dea
     )
     assert cancelled["preserved"] is False
     assert cancelled["result"]["isError"] is True
+    assert "Resume the task to review the output again." in cancelled["result"]["content"][0]["text"]
+    assert "approve" not in cancelled["result"]["content"][0]["text"]
 
     expired = _run_generated_callback_payload(
         source,

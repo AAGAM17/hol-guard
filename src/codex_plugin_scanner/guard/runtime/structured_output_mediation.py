@@ -447,6 +447,10 @@ def mediate_native_post_tool_content(
 ) -> StructuredContentMediation | None:
     """Create one ephemeral adapter disposition after native receipt validation.
 
+    ``cancelled`` is reserved for callers that expose cancellation directly.
+    The daemon caller currently supplies its deadline; generated receivers
+    check their lifecycle signal before returning model-visible content.
+
     ``allow_observe_mode`` is reserved for an enrolled managed structured
     policy.  It lets this stricter destination check run while the broader
     native command posture is recording-only; it never changes the Rust

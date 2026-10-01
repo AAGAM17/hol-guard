@@ -842,7 +842,7 @@ def managed_extension_source(
         '        + "was cancelled or exceeded its deadline.";\n'
         '      ctx.ui.notify(reason, "warning");\n'
         "      return blockedToolResult(\n"
-        "        modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "        `${reason} Resume the task to review the output again.`, event.details);\n"
         "    }\n"
         '    if (response.decision === "deny") {\n'
         '      const reason = response.reason ?? "Blocked by HOL Guard.";\n'
@@ -1109,7 +1109,7 @@ def legacy_managed_extension_source(
         '        + "was cancelled or exceeded its deadline.";\n'
         '      ctx.ui.notify(reason, "warning");\n'
         "      return blockedToolResult(\n"
-        "        modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
+        "        `${reason} Resume the task to review the output again.`, event.details);\n"
         "    }\n"
     )
     if source.count(post_tool_cancellation) != 1:

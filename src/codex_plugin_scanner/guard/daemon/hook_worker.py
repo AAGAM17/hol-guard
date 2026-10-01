@@ -302,7 +302,13 @@ class HookWorker(HookWorkerNativeMixin):
             guard_home=guard_home,
         )
         if mode_response is not None:
-            return mode_response
+            return self._apply_structured_unavailable_overlay(
+                mode_response,
+                harness=harness,
+                event_name=event_name,
+                guard_home=guard_home,
+                workspace=workspace,
+            )
         if event_name == "PreToolUse":
             return self._review_pre_tool_http(
                 payload,
@@ -311,7 +317,7 @@ class HookWorker(HookWorkerNativeMixin):
                 guard_home=guard_home,
                 workspace=workspace,
             )
-        return self._review_post_tool_http(
+        post_response = self._review_post_tool_http(
             payload,
             harness=harness,
             default_harness=default_harness,
@@ -319,6 +325,13 @@ class HookWorker(HookWorkerNativeMixin):
             guard_home=guard_home,
             workspace=workspace,
             deadline=deadline,
+        )
+        return self._apply_structured_unavailable_overlay(
+            post_response,
+            harness=harness,
+            event_name=event_name,
+            guard_home=guard_home,
+            workspace=workspace,
         )
 
     def _claude_permission_prompt_notification_response(

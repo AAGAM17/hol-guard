@@ -16,6 +16,8 @@ mod client_stream;
 mod containment;
 #[path = "managed_resident_lease.rs"]
 mod lease;
+pub(crate) use lease::client_request;
+use lease::client_request_with_lease;
 #[path = "managed_resident_transport.rs"]
 mod managed_resident_transport;
 #[cfg(windows)]
@@ -178,35 +180,6 @@ fn try_home_states(
         }
     }
     Ok(None)
-}
-
-pub(crate) fn client_request(
-    state_base: &Path,
-    payload: &[u8],
-    timeout: Duration,
-) -> Result<Vec<u8>, String> {
-    let overall_deadline = deadline_for_timeout(timeout)?;
-    let client_lease = lease::acquire_until(state_base, overall_deadline)?;
-    client_request_with_deadline(state_base, payload, overall_deadline, &client_lease)
-}
-
-fn client_request_with_lease(
-    state_base: &Path,
-    payload: &[u8],
-    timeout: Duration,
-    _client_lease: &lease::ClientLease,
-) -> Result<Vec<u8>, String> {
-    let overall_deadline = deadline_for_timeout(timeout)?;
-    client_request_with_deadline(state_base, payload, overall_deadline, _client_lease)
-}
-
-fn deadline_for_timeout(timeout: Duration) -> Result<Instant, String> {
-    if timeout.is_zero() {
-        return Err("native_client_deadline_exceeded".to_owned());
-    }
-    Instant::now()
-        .checked_add(timeout)
-        .ok_or_else(|| "native_client_deadline_exceeded".to_owned())
 }
 
 fn client_request_with_deadline(

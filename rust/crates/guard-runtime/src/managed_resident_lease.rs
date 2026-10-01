@@ -172,6 +172,35 @@ pub(super) fn acquire_until(state_base: &Path, deadline: Instant) -> Result<Clie
     })
 }
 
+pub(crate) fn client_request(
+    state_base: &Path,
+    payload: &[u8],
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let overall_deadline = deadline_for_timeout(timeout)?;
+    let client_lease = acquire_until(state_base, overall_deadline)?;
+    super::client_request_with_deadline(state_base, payload, overall_deadline, &client_lease)
+}
+
+pub(super) fn client_request_with_lease(
+    state_base: &Path,
+    payload: &[u8],
+    timeout: Duration,
+    client_lease: &ClientLease,
+) -> Result<Vec<u8>, String> {
+    let overall_deadline = deadline_for_timeout(timeout)?;
+    super::client_request_with_deadline(state_base, payload, overall_deadline, client_lease)
+}
+
+fn deadline_for_timeout(timeout: Duration) -> Result<Instant, String> {
+    if timeout.is_zero() {
+        return Err("native_client_deadline_exceeded".to_owned());
+    }
+    Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| "native_client_deadline_exceeded".to_owned())
+}
+
 fn acquire_with_lock<F>(state_base: &Path, acquire_lock: F) -> Result<ClientLease, String>
 where
     F: FnOnce(&Path, &Path) -> Result<LeaseDirectoryLock, String>,

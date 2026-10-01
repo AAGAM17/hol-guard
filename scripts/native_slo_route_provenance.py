@@ -18,6 +18,11 @@ class RequestRouteTracker:
     Instrument only this benchmark's runner instance. Tokens are synthetic and
     registered before each request; no payload, receipt, or caller data is retained.
     Late results cannot recreate a completed token or grow the active map.
+
+    The runner must expose review and _record_route_metric; an optional worker
+    must expose review_http_payload and metrics.record_route. Missing methods
+    are harness errors and must fail before any instrumentation is installed.
+    Only private benchmark instances may be passed; this is not a daemon API.
     """
 
     def __init__(self, runner: Any, worker: Any = None) -> None:

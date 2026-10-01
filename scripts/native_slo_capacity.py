@@ -6,9 +6,10 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import TypedDict
 
 from scripts.bench_guard_native_installed_slo_runtime import _require
 from scripts.native_slo_adapter import Observation, process_rss_bytes, route_counts
@@ -47,6 +48,17 @@ ProgressCountCallback = Callable[[str, int], None]
 TransportObservationCallback = Callable[[list[Observation]], None]
 
 
+class ObserverOptions(TypedDict, total=False):
+    observer: ObserveCallback | None
+    on_submitted: ProgressCountCallback
+    on_cancelled: ProgressCountCallback
+
+
+class ConcurrentWaveOptions(ObserverOptions, total=False):
+    stage: str
+    on_transport_observations: TransportObservationCallback
+
+
 def _run_concurrent(
     session: AdapterSession,
     routes: tuple[tuple[str, str], ...],
@@ -72,7 +84,7 @@ def _run_concurrent(
     futures = [executor.submit(observe, harness, event) for harness, event in selected]
     if on_submitted is not None:
         on_submitted(stage, len(futures))
-    _, unfinished = wait(futures, timeout=_CONCURRENT_WAVE_TIMEOUT_SECONDS)
+    finished, unfinished = wait(futures, timeout=_CONCURRENT_WAVE_TIMEOUT_SECONDS)
     if unfinished:
         # Every worker is prestarted and AdapterSession transport calls have a
         # five-second I/O bound. Fail closed without blocking executor teardown
@@ -81,16 +93,29 @@ def _run_concurrent(
         if cancelled and on_cancelled is not None:
             on_cancelled(stage, cancelled)
         if on_transport_observations is not None:
-            finished: list[Observation] = []
-            for future in futures:
-                if not future.done() or future.cancelled():
+
+            def record_late(future: Future[Observation]) -> None:
+                if future.cancelled():
+                    return
+                try:
+                    observation = future.result()
+                except Exception:
+                    return
+                on_transport_observations([observation])
+
+            for future in unfinished:
+                if not future.cancelled():
+                    future.add_done_callback(record_late)
+            finished_observations: list[Observation] = []
+            for future in finished:
+                if future.cancelled():
                     continue
                 try:
-                    finished.append(future.result())
+                    finished_observations.append(future.result())
                 except Exception:
                     continue
-            if finished:
-                on_transport_observations(finished)
+            if finished_observations:
+                on_transport_observations(finished_observations)
         executor.shutdown(wait=False, cancel_futures=True)
         raise RuntimeError("native_installed_slo_failed: concurrent capacity wave timed out")
     for future in futures:
@@ -140,7 +165,7 @@ def _prewarm_ready_hook_workers(
     on_submitted: ProgressCountCallback | None = None,
     on_cancelled: ProgressCountCallback | None = None,
 ) -> tuple[list[Observation], int]:
-    kwargs: dict[str, object] = {}
+    kwargs: ConcurrentWaveOptions = {}
     if observer is not None:
         kwargs.update(observer=observer, stage="rss_baseline_requests")
     if on_submitted is not None:
@@ -178,7 +203,7 @@ def _measure_classified_wave(
     metrics = session.daemon._server.hook_worker.metrics
     before = route_counts(metrics.snapshot())
     overloads_before = session.native_overload_count()
-    wave_kwargs: dict[str, object] = {}
+    wave_kwargs: ConcurrentWaveOptions = {}
     if observer is not None:
         wave_kwargs.update(observer=observer, stage=stage)
     if on_submitted is not None:
@@ -291,7 +316,7 @@ def _prewarm_capacity_workers(
 
     try:
         _prime_load_executor(executor, _STEADY_STATE_CONCURRENCY)
-        wave_kwargs: dict[str, object] = {}
+        wave_kwargs: ConcurrentWaveOptions = {}
         if observer is not None:
             wave_kwargs.update(observer=observer, stage="capacity_prewarm")
         if on_submitted is not None:
@@ -373,7 +398,7 @@ def _measure_rss_and_c64(
     try:
         executor = ThreadPoolExecutor(max_workers=load_concurrency)
         _prime_load_executor(executor, load_concurrency)
-        baseline_kwargs: dict[str, object] = {}
+        baseline_kwargs: ObserverOptions = {}
         if progress is not None:
             baseline_kwargs.update(
                 observer=observer,
@@ -388,6 +413,7 @@ def _measure_rss_and_c64(
         baseline_completed = True
         if progress is not None:
             progress.complete("rss_baseline")
+            # Restore the enclosing stage after baseline request observations.
             progress.activate("rss_baseline")
         rss_peak = rss_baseline
         if include_capacity:

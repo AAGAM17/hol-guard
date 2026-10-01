@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import re
 import sys
 from pathlib import Path
 
@@ -18,6 +19,23 @@ from scripts.native_slo_contract import (  # noqa: E402
     proof_environment_violations,
 )
 from scripts.native_slo_session import AdapterSession  # noqa: E402
+
+# Runtime capabilities report `{arch}-{os}` from the running binary. Wheel
+# manifests store the Cargo triple beside a wheel platform tag. Both have to
+# describe that same binary before a benchmark report publishes either one.
+_RUNTIME_TARGET_BINDINGS = {
+    "aarch64-linux": (
+        r"(?:manylinux(?:_\d+_\d+|1|2010|2014)|musllinux_\d+_\d+|linux)_aarch64",
+        r"aarch64-unknown-linux-(?:gnu|musl)",
+    ),
+    "aarch64-macos": (r"macosx_\d+_\d+_arm64", r"aarch64-apple-darwin"),
+    "x86_64-linux": (
+        r"(?:manylinux(?:_\d+_\d+|1|2010|2014)|musllinux_\d+_\d+|linux)_x86_64",
+        r"x86_64-unknown-linux-(?:gnu|musl)",
+    ),
+    "x86_64-macos": (r"macosx_\d+_\d+_x86_64", r"x86_64-apple-darwin"),
+    "x86_64-windows": (r"win_amd64", r"x86_64-pc-windows-msvc"),
+}
 
 
 def _require(condition: bool, reason: object) -> None:
@@ -63,7 +81,8 @@ def _runtime_summary(runtime: Path) -> dict[str, object]:
         raise RuntimeError("native_installed_slo_failed: native runtime identity unavailable")
     _require(runtime.resolve() == identity.path.resolve(), "benchmark runtime is not the bundled default runtime")
     manifest = status.manifest
-    _require(manifest is not None, "validated native runtime manifest unavailable")
+    if manifest is None:
+        raise RuntimeError("native_installed_slo_failed: validated native runtime manifest unavailable")
     _require(
         manifest.runtime_sha256 == identity.sha256 and manifest.runtime_size == identity.size,
         "validated native runtime manifest did not match the selected artifact",
@@ -71,6 +90,18 @@ def _runtime_summary(runtime: Path) -> dict[str, object]:
     capabilities = status.capabilities
     if capabilities is None:
         raise RuntimeError("native_installed_slo_failed: native capabilities unavailable")
+    binding = _RUNTIME_TARGET_BINDINGS.get(capabilities.target)
+    if binding is None:
+        raise RuntimeError("native_installed_slo_failed: native runtime target has no provenance binding")
+    platform_pattern, manifest_target_pattern = binding
+    _require(
+        re.fullmatch(platform_pattern, manifest.platform_tag) is not None,
+        "native manifest platform tag did not match runtime target",
+    )
+    _require(
+        re.fullmatch(manifest_target_pattern, manifest.target) is not None,
+        "native manifest target did not match runtime target",
+    )
     package_path = Path(codex_plugin_scanner.__file__).resolve()
     source_package = (_REPO_ROOT / "src" / "codex_plugin_scanner").resolve()
     package_origin = "source_tree" if package_path.is_relative_to(source_package) else "installed"
@@ -87,6 +118,7 @@ def _runtime_summary(runtime: Path) -> dict[str, object]:
         "build_sha": manifest.source_sha,
         "rule_digest": manifest.rule_digest,
         "platform_tag": manifest.platform_tag,
+        "platform_tag_target_verified": True,
         "host_platform": sys.platform,
         "host_arch": platform.machine(),
         "python_version": platform.python_version(),

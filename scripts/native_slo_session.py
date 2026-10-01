@@ -394,6 +394,7 @@ class AdapterSession:
         size_class: str,
         request_payload: Mapping[str, object] | None = None,
     ) -> Observation:
+        enclosing_started = time.perf_counter()
         request, token = self._route_tracker.begin(request_payload or payload(event, size_class))
         started = time.perf_counter()
         try:
@@ -408,14 +409,18 @@ class AdapterSession:
             elapsed_ms = (time.perf_counter() - started) * 1_000.0
         finally:
             route = self._route_tracker.finish(token)
+        allowed = is_allowed(event, response)
+        overloaded = _is_explicit_capacity_response(response)
+        enclosing_ms = (time.perf_counter() - enclosing_started) * 1_000.0
         return Observation(
             harness,
             event,
             size_class,
             elapsed_ms,
             route,
-            is_allowed(event, response),
-            _is_explicit_capacity_response(response),
+            allowed,
+            overloaded,
+            enclosing_latency_ms=enclosing_ms,
         )
 
     def native_overload_count(self) -> int:

@@ -141,6 +141,7 @@ def _run_recovery(
         observation_pending = False
         precondition_returned = False
         observation_returned = False
+        failure_stage = "recovery_precondition"
         try:
             warm = (
                 session.observe("claude-code", "PostToolUse", "1k")
@@ -164,12 +165,14 @@ def _run_recovery(
                 progress.complete("recovery_precondition")
                 precondition_pending = False
                 progress.activate("recovery", harness="claude-code", event="PostToolUse", size_class="1k")
+            failure_stage = "recovery_stop"
             with preflight_operation(progress, "recovery_stop") if progress is not None else nullcontext():
                 _require(
                     session.stop_resident(preserve_clients=True),
                     f"resident stop failed during recovery sample {index}",
                 )
             started = time.perf_counter()
+            failure_stage = "recovery"
             observation = (
                 session.observe("claude-code", "PostToolUse", "1k")
                 if progress is None
@@ -217,7 +220,7 @@ def _run_recovery(
                     progress.fail_request("recovery_precondition")
                 if observation_pending and observation_returned:
                     progress.fail_request("recovery")
-                progress.record_failure(error, stage=progress.active_stage or "recovery")
+                progress.record_failure(error, stage=failure_stage)
             raise
     return values
 

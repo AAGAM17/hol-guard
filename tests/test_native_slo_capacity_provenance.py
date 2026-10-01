@@ -251,6 +251,9 @@ def test_real_interleaving_proves_resident_and_explicit_or_terminal_native_overl
     assert observations[0].allowed and not observations[0].overloaded
     assert observations[1].route == "native_fail_safe"
     assert not observations[1].allowed and observations[1].overloaded
+    for observation in observations:
+        assert observation.enclosing_latency_ms is not None
+        assert observation.enclosing_latency_ms >= observation.latency_ms
     diagnostic = json.loads(capsys.readouterr().err)
     assert diagnostic["observed_routes"] == {"native_fail_safe": 1, "native_resident": 1}
     assert diagnostic["route_counters_after"] == {"native_fail_safe": 1, "native_resident": 1}

@@ -309,7 +309,7 @@ def test_capacity_timeout_preserves_finished_observation() -> None:
     class _FixtureSession:
         def observe(self, _harness: str, event: str, _size: str) -> Observation:
             if event == "PostToolUse":
-                release.wait(0.2)
+                release.wait()
             return Observation("codex", event, "1k", 1.0, "native_resident", True)
 
     monkeypatch = pytest.MonkeyPatch()
@@ -325,12 +325,15 @@ def test_capacity_timeout_preserves_finished_observation() -> None:
                 on_transport_observations=observed.extend,
                 on_cancelled=lambda _stage, count: cancelled.append(count),
             )
+        assert len(observed) == 1
+        assert observed[0].event == "PreToolUse"
     finally:
         release.set()
         executor.shutdown(wait=True, cancel_futures=True)
         monkeypatch.undo()
 
-    assert len(observed) == 1
+    assert len(observed) == 2
+    assert {item.event for item in observed} == {"PreToolUse", "PostToolUse"}
     assert cancelled == []
     assert classify_benchmark_error(failure.value) == "capacity_wave_timeout"
 
@@ -428,17 +431,40 @@ def test_cli_export_failure_keeps_stdout_failed(
     assert "fixture secret" not in captured.err
 
 
-def test_runtime_summary_carries_validated_manifest_provenance(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("runtime_target", "manifest_target", "platform_tag", "valid"),
+    [
+        ("x86_64-linux", "x86_64-unknown-linux-musl", "manylinux_2_17_x86_64", True),
+        ("x86_64-linux", "x86_64-unknown-linux-gnu", "manylinux2014_x86_64", True),
+        ("x86_64-linux", "x86_64-unknown-linux-musl", "musllinux_1_2_x86_64", True),
+        ("aarch64-macos", "aarch64-apple-darwin", "macosx_11_0_arm64", True),
+        ("x86_64-macos", "x86_64-apple-darwin", "macosx_13_0_x86_64", True),
+        ("x86_64-windows", "x86_64-pc-windows-msvc", "win_amd64", True),
+        ("x86_64-linux", "x86_64-unknown-linux-musl", "win_amd64", False),
+        ("x86_64-macos", "x86_64-apple-darwin", "macosx_11_0_arm64", False),
+        ("x86_64-linux", "x86_64-unknown-linux-musl", "manylinux_2_17_aarch64", False),
+        ("x86_64-linux", "aarch64-apple-darwin", "manylinux_2_17_x86_64", False),
+        ("x86_64", "x86_64", "manylinux_2_17_x86_64", False),
+    ],
+)
+def test_runtime_summary_carries_validated_manifest_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    runtime_target: str,
+    manifest_target: str,
+    platform_tag: str,
+    valid: bool,
+) -> None:
     artifact = tmp_path / "fixture-runtime"
     artifact.write_bytes(b"runtime")
     identity = NativeRuntimeIdentity(artifact, artifact.stat().st_size, artifact.stat().st_mtime_ns, "a" * 64)
-    capabilities = NativeRuntimeCapabilities(1, "3.14.1", "b" * 64, "c" * 40, "x86_64", ("native",))
+    capabilities = NativeRuntimeCapabilities(1, "3.14.1", "b" * 64, "c" * 40, runtime_target, ("native",))
     manifest = NativeRuntimeManifest(
         "hol-guard.native-runtime.v1",
         1,
         "3.14.1",
-        "x86_64",
-        "manylinux_2_17_x86_64",
+        manifest_target,
+        platform_tag,
         "c" * 40,
         "b" * 64,
         "a" * 64,
@@ -454,9 +480,15 @@ def test_runtime_summary_carries_validated_manifest_provenance(monkeypatch: pyte
         str(tmp_path / "fixture/site-packages/core.py"),
     )
 
+    if not valid:
+        with pytest.raises(RuntimeError, match="runtime target"):
+            runtime_checks._runtime_summary(artifact)
+        return
+
     summary = runtime_checks._runtime_summary(artifact)
 
-    assert summary["platform_tag"] == "manylinux_2_17_x86_64"
+    assert summary["platform_tag"] == platform_tag
+    assert summary["platform_tag_target_verified"] is True
     assert summary["artifact_sha256"] == "a" * 64
     assert summary["artifact_size"] == artifact.stat().st_size
     assert summary["build_sha"] == "c" * 40

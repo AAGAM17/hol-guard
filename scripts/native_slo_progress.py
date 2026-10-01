@@ -6,7 +6,7 @@ import http.client
 import math
 from collections.abc import Mapping
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from threading import RLock
 from typing import TYPE_CHECKING
 
@@ -308,6 +308,23 @@ class SloProgress:
                     failure[key] = value if value in allowed else "unknown"
             self.failure = failure
 
+    def frozen_copy(self) -> SloProgress:
+        """Capture one report boundary while requests may still be running."""
+        with self._lock:
+            return SloProgress(
+                stages={name: replace(stage) for name, stage in self.stages.items()},
+                routes=self.routes,
+                runtime_summary=None if self.runtime_summary is None else dict(self.runtime_summary),
+                installed_corpus=None if self.installed_corpus is None else dict(self.installed_corpus),
+                active_stage=self.active_stage,
+                active_labels=dict(self.active_labels),
+                failure=None if self.failure is None else dict(self.failure),
+                timings={
+                    stage: {name: list(samples) for name, samples in values.items()}
+                    for stage, values in self.timings.items()
+                },
+            )
+
     def stage_snapshot(self) -> dict[str, dict[str, object]]:
         with self._lock:
             return {name: stage.snapshot() for name, stage in sorted(self.stages.items())}
@@ -367,6 +384,7 @@ class SloProgress:
 def incomplete_slo_result(progress: SloProgress, *, include_capacity: bool) -> dict[str, object]:
     """Render a failed run with explicit unknown and incomplete accounting."""
 
+    progress = progress.frozen_copy()
     gate_seed = gate_results(
         resident_share=0.0,
         safe_fail_rate=1.0,

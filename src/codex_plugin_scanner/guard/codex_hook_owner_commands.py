@@ -43,7 +43,35 @@ def _codex_hook_arguments(arguments: Sequence[str | None]) -> bool:
     return payload[:1] == ["hook"] and has_codex_harness_tokens(payload)
 
 
+def _import_api_keywords(tree: ast.AST) -> dict[str, str]:
+    """Identify standard import APIs from their actual imports, including aliases."""
+    apis = {"runpy.run_module": "mod_name", "importlib.import_module": "name", "builtins.__import__": "name"}
+    calls = {"__import__": "name"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for imported in node.names:
+                for api, keyword in apis.items():
+                    module, method = api.split(".")
+                    if imported.name == module:
+                        calls[f"{imported.asname or module}.{method}"] = keyword
+        elif isinstance(node, ast.ImportFrom):
+            for imported in node.names:
+                keyword = apis.get(f"{node.module}.{imported.name}")
+                if keyword is not None:
+                    calls[imported.asname or imported.name] = keyword
+    shadowed = {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+    }
+    shadowed.update(
+        node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    )
+    return {name: keyword for name, keyword in calls.items() if name.split(".")[0] not in shadowed}
+
+
 def _imports_guard_cli(tree: ast.AST) -> bool:
+    calls = _import_api_keywords(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import) and any(name.name == "codex_plugin_scanner.cli" for name in node.names):
             return True
@@ -54,14 +82,12 @@ def _imports_guard_cli(tree: ast.AST) -> bool:
             return True
         # Dynamic imports may name the module positionally or by keyword.
         if isinstance(node, ast.Call):
-            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
-            keyword = (
-                {"run_module": "mod_name", "import_module": "name", "__import__": "name"}.get(name)
-                if isinstance(name, str)
-                else None
-            )
+            name = ast.unparse(node.func) if isinstance(node.func, (ast.Name, ast.Attribute)) else ""
+            keyword = calls.get(name)
             module = (
-                node.args[0] if node.args else next((item.value for item in node.keywords if item.arg == keyword), None)
+                node.args[0]
+                if node.args and not isinstance(node.args[0], ast.Starred)
+                else next((item.value for item in node.keywords if item.arg == keyword), None)
             )
             if (
                 keyword is not None

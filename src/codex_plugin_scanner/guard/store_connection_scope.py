@@ -30,8 +30,10 @@ def connection_scope(store: GuardStore) -> Iterator[None]:
     if owns_scope(store):
         yield
         return
-    previous = tuple(getattr(_local, name, default) for name, default in
-        (("owner", None), ("connection", None), ("failure", None), ("transaction_depth", 0)))
+    previous = tuple(
+        getattr(_local, name, default)
+        for name, default in (("owner", None), ("connection", None), ("failure", None), ("transaction_depth", 0))
+    )
     with store._connect(connection_only=True) as connection:
         _local.owner = id(store)
         _local.connection = connection

@@ -620,11 +620,22 @@ class LocalCliApiService:
             args=tuple(tokens[1:]),
             transport="stdio",
         )
+        stored_observation = self._store.find_local_mcp_observation(cli_id=cli_id) if cli_id else None
+        stored_server_hash = (
+            stored_observation.get("server_identity_hash")
+            if isinstance(stored_observation, dict)
+            else None
+        )
+        stored_source_label = (
+            stored_observation.get("source_label") if isinstance(stored_observation, dict) else None
+        )
         selected_server = discovered_server_for_observation(
             servers,
             cli_id=cli_id,
             server_command=launch_identity.command,
             args_hash=launch_identity.args_hash,
+            server_identity_hash=stored_server_hash if isinstance(stored_server_hash, str) else None,
+            source_label=stored_source_label if isinstance(stored_source_label, str) else None,
         )
         # A known connection remains MCP even when its script no longer exists.
         if selected_server is None and not looks_like_mcp_launch(

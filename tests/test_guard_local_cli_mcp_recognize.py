@@ -327,7 +327,8 @@ def test_unavailable_refresh_never_guesses_a_launch_command(tmp_path: Path, monk
     assert rejected.value.code == "mcp_refresh_unavailable"
 
 
-def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(tmp_path, monkeypatch):
+@pytest.mark.parametrize("legacy", [False, True])
+def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(tmp_path, monkeypatch, legacy):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setattr("codex_plugin_scanner.guard.daemon.local_cli_api.Path.home", staticmethod(lambda: home))
@@ -340,9 +341,25 @@ def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(
         "codex_plugin_scanner.guard.daemon.local_cli_api.discover_harness_mcp_servers", lambda **_kwargs: servers
     )
     service = LocalCliApiService(store=GuardStore(home))
+    cli_id = servers[0].identity.cli_id
+    if legacy:
+        server = servers[0]
+        cli_id = f"local-cli.mcp-{server.server_identity.identity_hash[:8]}"
+        identity = UnlistedCliIdentity(
+            cli_id=cli_id, name=server.identity.name, kind="executable",
+            identity_hash=server.server_identity.identity_hash,
+            example_label=server.launch_command,
+        )
+        service._store.ensure_local_mcp_observation(
+            identity, seen_at=utc_now(),
+            server_identity_hash=server.server_identity.identity_hash,
+            server_command=server.server_identity.command,
+            server_args_hash=server.server_identity.args_hash,
+            source_label=server.source_label,
+        )
     service._observe_harness_mcp_servers()
-    before = service._store.list_local_cli_items()[0]
-    result = service.recognize({"cli_id": servers[0].identity.cli_id, "refresh": True})
+    before = next(item for item in service._store.list_local_cli_items() if item["cli_id"] == cli_id)
+    result = service.recognize({"cli_id": cli_id, "refresh": True})
     assert result["help_status"] == "failed"
     assert result["discovery_error"] == "mcp_initialize_failed"
     assert result["item"]["commands"] == before["commands"]

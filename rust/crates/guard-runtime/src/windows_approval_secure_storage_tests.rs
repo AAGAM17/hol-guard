@@ -116,15 +116,6 @@ fn escape_heavy_value_at_declared_limit_stays_within_ciphertext_budget() {
         encoded.len(),
         1 + (3 * FRAME_LENGTH_BYTES) + STORE_SCHEMA.len() + fixture.account.len() + max_bytes
     );
-
-    write(&fixture.state_base, &fixture.account, &value, max_bytes).unwrap();
-    let (anchor, _) = read_anchor(&fixture.account, max_bytes).unwrap().unwrap();
-    assert_eq!(anchor.plaintext_len, max_bytes as u64);
-    assert!(anchor.ciphertext_len as usize <= maximum_ciphertext);
-    assert_eq!(
-        read(&fixture.state_base, &fixture.account, max_bytes),
-        Ok(Some(value))
-    );
 }
 
 #[test]

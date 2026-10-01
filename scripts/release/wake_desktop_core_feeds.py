@@ -36,7 +36,7 @@ def dispatch_payload(event_name: str, event: dict, publication_version: str | No
     return None
 
 
-def read_publication_version(path: Path) -> str:
+def read_publication_version(path: Path) -> str | None:
     versions = set()
     for line in path.read_text().splitlines():
         digest, separator, filename = line.partition(" ")
@@ -45,13 +45,14 @@ def read_publication_version(path: Path) -> str:
         name = Path(filename.lstrip(" *")).name
         if not name.startswith("hol_guard-") or not name.endswith(".whl"):
             continue
-        match = re.fullmatch(r"hol_guard-(3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-.+\.whl", name)
+        match = re.fullmatch(r"hol_guard-(3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:(?:a|b|rc)[0-9]+)?)-.+\.whl", name)
         if match is None:
-            raise RuntimeError("Publication wheel does not have a stable version")
+            raise RuntimeError("Publication wheel has an invalid version")
         versions.add(match[1])
     if len(versions) != 1:
-        raise RuntimeError("Publication checksum manifest has no unique stable version")
-    return versions.pop()
+        raise RuntimeError("Publication checksum manifest has no unique version")
+    version = versions.pop()
+    return version if re.fullmatch(r"3\.[0-9]+\.[0-9]+", version) else None
 
 
 def require_published_assets(release: dict, version: str) -> None:
@@ -98,10 +99,10 @@ def main() -> None:
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "hol-guard-desktop-core-feed-wake",
     }
-    opener = urllib.request.build_opener(NoRedirect())
     version = payload.get("inputs", {}).get("core_version")
-    if publication_version is not None and version != publication_version:
+    if event_name == "workflow_run" and version != publication_version:
         raise RuntimeError("Publication manifest does not match completed run tag")
+    opener = urllib.request.build_opener(NoRedirect())
     if version:
         request = urllib.request.Request(
             f"https://api.github.com/repos/{repository}/releases/tags/v{version}", headers=headers

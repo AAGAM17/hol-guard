@@ -137,7 +137,8 @@ def test_main_dispatches_both_exact_versions_after_readiness(
     "names",
     [
         [],
-        ["hol_guard-3.14.0a1-py3-none-any.whl"],
+        ["hol_guard-invalid-py3-none-any.whl"],
+        ["hol_guard-3.14.0a1-py3-none-any.whl", "hol_guard-3.14.0-py3-none-any.whl"],
         [
             "hol_guard-3.14.0-py3-none-any.whl",
             "hol_guard-3.14.1-py3-none-any.whl",
@@ -149,6 +150,38 @@ def test_publication_manifest_must_have_one_stable_version(tmp_path: Path, names
     path.write_text("".join("a" * 64 + "  dist/" + name + "\n" for name in names))
     with pytest.raises(RuntimeError):
         CODE["read_publication_version"](path)
+
+
+@pytest.mark.parametrize("version", ["3.14.0a1", "3.14.0b2", "3.14.0rc1"])
+@pytest.mark.parametrize("branch", ["main", "v3.14.0"])
+def test_nonstable_manifest_skips_main_but_rejects_stable_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str, branch: str
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps({"workflow_run": {"conclusion": "success", "event": "workflow_dispatch", "head_branch": branch}})
+    )
+    manifest = tmp_path / "publication.txt"
+    manifest.write_text("a" * 64 + f"  dist/hol_guard-{version}-py3-none-any.whl\n")
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_run",
+        "GITHUB_EVENT_PATH": str(event),
+        "REPOSITORY": "hashgraph-online/hol-guard",
+        "GH_TOKEN": "fixture",
+        "PUBLICATION_CHECKSUMS": str(manifest),
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    def no_network(*args):
+        pytest.fail("Nonstable manifests must not make API requests")
+
+    monkeypatch.setattr(CODE["urllib"].request, "build_opener", no_network)
+    assert CODE["read_publication_version"](manifest) is None
+    if branch == "main":
+        CODE["main"]()
+    else:
+        with pytest.raises(RuntimeError, match="does not match"):
+            CODE["main"]()
 
 
 def test_publication_manifest_allows_companion_distributions(tmp_path: Path) -> None:

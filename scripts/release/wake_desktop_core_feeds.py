@@ -42,7 +42,9 @@ class ReleasePayload(TypedDict):
     assets: list[ReleaseAssetPayload]
 
 
-def dispatch_payload(event_name: str, event: EventPayload, publication_version: str | None = None) -> dict | None:
+def dispatch_payload(
+    event_name: str, event: EventPayload, publication_version: str | None = None
+) -> dict[str, object] | None:
     if event_name == "workflow_run":
         run = event.get("workflow_run", {})
         if run.get("conclusion") != "success" or run.get("event") not in {"push", "workflow_dispatch"}:

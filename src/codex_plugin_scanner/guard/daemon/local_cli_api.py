@@ -644,7 +644,9 @@ class LocalCliApiService:
             return None
         extra_env = extra_env_for_mcp_launch(servers, command=command, cli_id=cli_id)
         provisional_id = (
-            selected_server.identity.cli_id
+            cli_id
+            if cli_id and isinstance(stored_observation, dict)
+            else selected_server.identity.cli_id
             if selected_server is not None
             else (cli_id or f"local-cli.mcp-{launch_identity.identity_hash[:8]}")
         )

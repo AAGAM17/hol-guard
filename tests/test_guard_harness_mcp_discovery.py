@@ -566,9 +566,7 @@ def test_configured_inventory_retains_one_hundred_servers_without_probing(
     config_dir.mkdir(parents=True)
     names = {f"server-{index:03d}" for index in range(100)}
     (config_dir / "mcp.json").write_text(
-        json.dumps(
-            {"mcpServers": {name: {"command": "node", "args": [f"{name}.js"]} for name in names}}
-        ),
+        json.dumps({"mcpServers": {name: {"command": "node", "args": [f"{name}.js"]} for name in names}}),
         encoding="utf-8",
     )
     guard_home = tmp_path / "guard-home"
@@ -578,9 +576,7 @@ def test_configured_inventory_retains_one_hundred_servers_without_probing(
     monkeypatch.setattr(local_cli_api_module.Path, "home", staticmethod(lambda: home))
 
     def _discover(**_kwargs):
-        return discover_harness_mcp_servers(
-            home_dir=home, guard_home=guard_home, detections=(detection,)
-        )
+        return discover_harness_mcp_servers(home_dir=home, guard_home=guard_home, detections=(detection,))
 
     def _unexpected_probe(*_args, **_kwargs):
         pytest.fail("Configured inventory must not launch an MCP probe")

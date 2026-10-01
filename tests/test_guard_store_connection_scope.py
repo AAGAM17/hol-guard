@@ -171,6 +171,35 @@ def test_scope_counts_only_method_transactions_and_commits(tmp_path: Path) -> No
     assert store.sqlite_profile() == inner
 
 
+def test_scope_records_pragma_contention_and_closes_failed_connection(tmp_path: Path, monkeypatch) -> None:
+    store = fixture_store(tmp_path)
+    before = store.sqlite_profile()
+    opened = []
+    failures = [True]
+    original_connect = sqlite3.connect
+
+    class PragmaConnection(sqlite3.Connection):
+        def execute(self, statement, *args, **kwargs):
+            if statement.startswith("pragma busy_timeout") and failures:
+                failures.pop()
+                raise sqlite3.OperationalError("database is locked")
+            return super().execute(statement, *args, **kwargs)
+
+    def connect(*args, **kwargs):
+        connection = original_connect(*args, factory=PragmaConnection, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", connect)
+    with store.connection_scope(), store._connect() as connection:
+        assert connection.execute("select count(*) from scope_fixture").fetchone()[0] == 0
+    assert len(opened) == 2
+    assert store.sqlite_profile()["busy_locked"] == before["busy_locked"] + 1
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("select 1")
+
+
 def test_extended_io_error_code_poisoning_does_not_depend_on_error_text(tmp_path: Path, monkeypatch) -> None:
     store = fixture_store(tmp_path)
     recovered = []

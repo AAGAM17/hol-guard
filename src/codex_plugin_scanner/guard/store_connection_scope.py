@@ -93,12 +93,17 @@ def _open_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
     profiler.record_connect((time.monotonic() - started) * 1000)
     connection.row_factory = sqlite3.Row
     try:
-        connection.execute(f"pragma busy_timeout={int(timeout * 1000)}")
-        journal_mode = connection.execute("pragma journal_mode").fetchone()
-        if journal_mode is not None and str(journal_mode[0]).lower() == "wal":
-            connection.execute("pragma synchronous=NORMAL")
-        connection.execute(f"pragma cache_size=-{SQLITE_CACHE_SIZE_KIB}")
-        connection.execute(f"pragma mmap_size={SQLITE_MMAP_SIZE_BYTES}")
+        try:
+            connection.execute(f"pragma busy_timeout={int(timeout * 1000)}")
+            journal_mode = connection.execute("pragma journal_mode").fetchone()
+            if journal_mode is not None and str(journal_mode[0]).lower() == "wal":
+                connection.execute("pragma synchronous=NORMAL")
+            connection.execute(f"pragma cache_size=-{SQLITE_CACHE_SIZE_KIB}")
+            connection.execute(f"pragma mmap_size={SQLITE_MMAP_SIZE_BYTES}")
+        except sqlite3.OperationalError as error:
+            if sqlite_error_is_busy_locked(error):
+                profiler.record_busy_locked()
+            raise
         yield connection
     finally:
         connection.close()

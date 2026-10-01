@@ -160,6 +160,7 @@ def test_pending_decision_diff_marker(monkeypatch):
     """Report absent from a PR diff defers; carried report stays strict."""
     import tests.support.extension_freshness as freshness
 
+    monkeypatch.setattr(freshness, "pending_contribution_regen", lambda: False)
     monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
     monkeypatch.delenv("CI", raising=False)
 

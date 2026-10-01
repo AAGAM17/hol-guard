@@ -172,9 +172,7 @@ def render_extension_source_v1(config: ExtensionSourceRenderConfigV1) -> str:
     recovery_command_json = json.dumps(runtime.recovery_command)
     recovery_args_json = json.dumps(runtime.recovery_args)
     try:
-        taskkill_path = (
-            config.windows_executable_path("taskkill.exe") if config.platform_name == "nt" else None
-        )
+        taskkill_path = config.windows_executable_path("taskkill.exe") if config.platform_name == "nt" else None
     except (OSError, ValueError):
         taskkill_path = None
     taskkill_path_json = json.dumps(taskkill_path)

@@ -22,6 +22,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -13959,9 +13960,9 @@ def test_guard_run_headless_waits_for_local_approval_and_resumes(tmp_path, capsy
         guard_commands_module, "schedule_guard_daemon_ensure", lambda _guard_home, **_kwargs: "http://127.0.0.1:4455"
     )
     monkeypatch.setattr(
-        guard_runner_module.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        guard_runner_module,
+        "subprocess",
+        SimpleNamespace(run=lambda *args, **kwargs: subprocess.CompletedProcess(args=[], returncode=0)),
     )
 
     stop_resolver = threading.Event()
@@ -22445,6 +22446,7 @@ def test_policy_bundle_decisions_map_to_runtime_families(tmp_path):
 
 def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path):
     store = GuardStore(tmp_path / "guard-home")
+    now = "2026-06-05T13:31:00+00:00"
     workspace_a = str(tmp_path / "workspace-a")
     workspace_b = str(tmp_path / "workspace-b")
     allow_artifact = "codex:project:tool-action:deploy-prod"
@@ -22500,10 +22502,18 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
         expires_at=str(bundle["expiresAt"]),
     )
 
-    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a) == "allow"
-    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a) == "block"
-    assert store.resolve_policy("codex", "codex:project:tool-action:other", "hash", workspace=workspace_a) is None
-    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b) is None
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now=now) == "allow"
+    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a, now=now) == "block"
+    assert (
+        store.resolve_policy("codex", "codex:project:tool-action:other", "hash", workspace=workspace_a, now=now) is None
+    )
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b, now=now) is None
+    expiry = "2026-12-01T00:00:00+00:00"
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now=expiry) is None
+    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a, now=expiry) == "block"
+    expiry = "2027-10-01T00:00:00+00:00"
+    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a, now=expiry) is None
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now=expiry) is None
     exact_decisions = [item for item in store.list_policy_decisions() if item["source"] == "policy-bundle"]
     assert {item["scope"] for item in exact_decisions} == {"workspace"}
     stored_workspaces = {item["workspace"] for item in exact_decisions}

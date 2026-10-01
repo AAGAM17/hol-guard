@@ -8,6 +8,7 @@ from ..aibom_detection import extend_detection_with_workspace_aibom
 from ..models import GuardArtifact, HarnessDetection
 from ..shims import install_guard_shim, remove_guard_shim
 from .base import HarnessAdapter, HarnessContext, _resolve_command
+from .pi_extension_previous_source import previous_managed_extension_source
 from .pi_extension_source import legacy_managed_extension_source
 from .pi_support import (
     EXTENSION_SUFFIXES,
@@ -663,6 +664,13 @@ def legacy_omp_managed_extension_is_verified(
             harness="pi",
             display_name="Pi",
         ),
+        previous_managed_extension_source(
+            guard_home=context.guard_home,
+            home_dir=context.home_dir,
+            settings_path=omp_settings_path,
+            harness="pi",
+            display_name="Pi",
+        ),
         legacy_managed_extension_source(
             guard_home=context.guard_home,
             home_dir=context.home_dir,
@@ -685,6 +693,13 @@ def remove_legacy_omp_managed_extension(context: HarnessContext) -> bool:
         return False
     expected_sources = (
         managed_extension_source(
+            guard_home=context.guard_home,
+            home_dir=context.home_dir,
+            settings_path=omp_settings_path,
+            harness="pi",
+            display_name="Pi",
+        ),
+        previous_managed_extension_source(
             guard_home=context.guard_home,
             home_dir=context.home_dir,
             settings_path=omp_settings_path,

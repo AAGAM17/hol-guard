@@ -497,6 +497,7 @@ jobs:
           uv run --no-sync pytest @pytest-files.txt --tb=short
 
   mutation-baseline:
+    needs: native-command-evaluators
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -514,6 +515,17 @@ jobs:
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
       - run: uv sync --frozen --extra dev --python 3.12
+      - name: Download native command evaluators
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pytest-native-command-evaluators
+          path: rust/target/release
+      - run: |
+          chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
+          echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_REGRESSION=1" >> "$GITHUB_ENV"
       - name: Run command parser mutation baseline
         run: uv run --no-sync mutmut run --max-children 4
       - name: Validate mutation baseline

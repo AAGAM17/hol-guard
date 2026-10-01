@@ -46,7 +46,7 @@ from codex_plugin_scanner.guard.runtime.extension_control_proof import (
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_base import EncryptedFileSecretStore
 
-_RECEIPT_PERSISTENCE_TIMEOUT_SECONDS = 20.0
+_RECEIPT_PERSISTENCE_TIMEOUT_SECONDS = 60.0
 
 _ACTION_RANK = {
     "allow": 0,

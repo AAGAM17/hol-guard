@@ -638,7 +638,9 @@ class LocalCliApiService:
             tokens, command_text=command, cwd=home_dir, home_dir=home_dir
         ):
             return None
-        extra_env = extra_env_for_mcp_launch(servers, command=command, cli_id=cli_id)
+        extra_env = extra_env_for_mcp_launch(
+            servers, command=command, cli_id=selected_server.identity.cli_id if selected_server else cli_id
+        )
         provisional_id = (
             cli_id
             if cli_id and isinstance(stored_observation, dict)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from shutil import which
 
@@ -21,6 +22,7 @@ from codex_plugin_scanner.guard.daemon.local_cli_mcp_store import stored_mcp_rec
 from codex_plugin_scanner.guard.local_cli_trust import utc_now
 from codex_plugin_scanner.guard.models import GuardArtifact, HarnessDetection
 from codex_plugin_scanner.guard.runtime.local_cli_identity import UnlistedCliIdentity
+from codex_plugin_scanner.guard.runtime.local_mcp_probe import probe_stdio_mcp_server
 from codex_plugin_scanner.guard.runtime.local_mcp_stdio import probe_search_path
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -341,6 +343,14 @@ def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(
         _artifact(harness="opencode", name="fixture", command="python3", args=(str(home / "missing_server.py"),)),
     )
     servers = discover_harness_mcp_servers(home_dir=home, guard_home=home, detections=(detection,))
+    servers = (replace(servers[0], env={"GUARD_FIXTURE_CONFIG": "configured-value"}),)
+
+    def checked_probe(*args, **kwargs):
+        assert kwargs["extra_env"] == {"GUARD_FIXTURE_CONFIG": "configured-value"}
+        assert kwargs["connection_identity_hash"] == servers[0].identity.identity_hash
+        return probe_stdio_mcp_server(*args, **kwargs)
+
+    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.local_cli_api.probe_stdio_mcp_server", checked_probe)
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.local_cli_api.discover_harness_mcp_servers", lambda **_kwargs: servers
     )

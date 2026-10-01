@@ -9,6 +9,7 @@ import json
 import os
 import socket
 import struct
+import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -75,57 +76,60 @@ def _host(
     monkeypatch: pytest.MonkeyPatch,
     handler: Callable[[dict[str, object]], dict[str, object]],
 ) -> Iterator[tuple[Path, list[dict[str, object]]]]:
-    home = tmp_path / ".codex"
-    control = home / "app-server-control"
-    control.mkdir(parents=True, mode=0o700)
-    path = control / "app-server-control.sock"
-    pid_path = control / "hol-guard-app-server.pid"
-    pid_path.write_text(str(os.getpid()))
-    pid_path.chmod(0o600)
-    requests: list[dict[str, object]] = []
-    failures: list[BaseException] = []
-    monkeypatch.setattr(inventory, "_is_codex_process", lambda _pid: True)
-    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    listener.bind(str(path))
-    path.chmod(0o600)
-    listener.listen(1)
-    listener.settimeout(1)
+    with tempfile.TemporaryDirectory(prefix="codex-") as directory:
+        home = Path(directory) / ".codex"
+        control = home / "app-server-control"
+        control.mkdir(parents=True, mode=0o700)
+        path = control / "app-server-control.sock"
+        pid_path = control / "hol-guard-app-server.pid"
+        pid_path.write_text(str(os.getpid()))
+        pid_path.chmod(0o600)
+        requests: list[dict[str, object]] = []
+        failures: list[BaseException] = []
+        monkeypatch.setattr(inventory, "_is_codex_process", lambda _pid: True)
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(path))
+        path.chmod(0o600)
+        listener.listen(1)
+        listener.settimeout(1)
 
-    def serve() -> None:
+        def serve() -> None:
+            try:
+                with listener.accept()[0] as client:
+                    client.settimeout(2)
+                    headers = b""
+                    while not headers.endswith(b"\r\n\r\n"):
+                        headers += _exact(client, 1)
+                    key = next(
+                        line.split(b": ", 1)[1]
+                        for line in headers.split(b"\r\n")
+                        if line.startswith(b"Sec-WebSocket-Key:")
+                    )
+                    accept = base64.b64encode(hashlib.sha1(key + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest())
+                    client.sendall(
+                        b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                        b"Sec-WebSocket-Accept: " + accept + b"\r\n\r\n"
+                    )
+                    while True:
+                        request = _request(client)
+                        requests.append(request)
+                        if "id" in request:
+                            _send(client, handler(request))
+            except (TimeoutError, EOFError, BrokenPipeError, ConnectionResetError):
+                pass
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=serve)
+        thread.start()
         try:
-            with listener.accept()[0] as client:
-                client.settimeout(2)
-                headers = b""
-                while not headers.endswith(b"\r\n\r\n"):
-                    headers += _exact(client, 1)
-                key = next(
-                    line.split(b": ", 1)[1] for line in headers.split(b"\r\n") if line.startswith(b"Sec-WebSocket-Key:")
-                )
-                accept = base64.b64encode(hashlib.sha1(key + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest())
-                client.sendall(
-                    b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                    b"Sec-WebSocket-Accept: " + accept + b"\r\n\r\n"
-                )
-                while True:
-                    request = _request(client)
-                    requests.append(request)
-                    if "id" in request:
-                        _send(client, handler(request))
-        except (TimeoutError, EOFError, BrokenPipeError, ConnectionResetError):
-            pass
-        except BaseException as error:
-            failures.append(error)
-
-    thread = threading.Thread(target=serve)
-    thread.start()
-    try:
-        yield home, requests
-    finally:
-        thread.join(timeout=3)
-        listener.close()
-        path.unlink(missing_ok=True)
-        assert not thread.is_alive()
-        assert not failures
+            yield home, requests
+        finally:
+            thread.join(timeout=3)
+            listener.close()
+            path.unlink(missing_ok=True)
+            assert not thread.is_alive()
+            assert not failures
 
 
 def _handler(request: dict[str, object]) -> dict[str, object]:

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
-from codex_plugin_scanner.guard.cli import commands_hook_native_pipeline as pipeline
+from codex_plugin_scanner.guard.cli import commands_hook_native_availability as availability
 from codex_plugin_scanner.guard.cli.commands_support_hook_payload import _apply_native_edge_envelope_fields
 from codex_plugin_scanner.guard.daemon.hook_worker_native import HookWorkerNativeMixin
 from codex_plugin_scanner.guard.runtime.structured_output_mediation import STRUCTURED_OUTPUT_SETTING_PATH
@@ -93,7 +93,7 @@ def _emit_unavailable(
     def capture(command: str, payload: dict[str, object], as_json: bool) -> None:
         emitted.update(command=command, payload=payload, as_json=as_json)
 
-    monkeypatch.setattr(pipeline, "_emit", capture)
+    monkeypatch.setattr(availability, "_emit", capture)
     context = HarnessContext(
         home_dir=tmp_path / "home",
         workspace_dir=tmp_path / "workspace",
@@ -101,7 +101,7 @@ def _emit_unavailable(
     )
     args = _Args(harness=harness)
     assert (
-        pipeline._emit_native_unavailable(
+        availability._emit_native_unavailable(
             args,
             payload={"hook_event_name": event_name},
             workspace=context.workspace_dir,

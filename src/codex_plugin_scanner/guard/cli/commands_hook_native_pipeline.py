@@ -13,7 +13,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from ..daemon.hook_availability_policy import availability_harness_response
 from ..daemon.hook_request_parsing import runtime_hook_event_name
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from ..runtime.extension_control_runtime import (
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
     from ._commands_shared import _now
 
 from ._commands_shared import *
+from .commands_hook_native_availability import _emit_native_unavailable
 from .commands_hook_native_claude import (
     run_native_claude_permission_prompt_notification,
     run_native_claude_permission_request,
@@ -50,7 +50,6 @@ from .commands_support_claude_approval import (
 from .commands_support_connect import _synced_policy_payload
 from .commands_support_hook_payload import _hook_action_envelope, _normalize_hook_payload
 from .commands_support_hook_state import _load_single_claude_pending_permission
-from .commands_support_interaction import _emit
 from .commands_support_permission_store import _discard_claude_pending_permissions
 from .commands_support_runtime_artifacts import _hook_event_name, _hook_runtime_artifact
 from .commands_support_runtime_policy import _runtime_action_data_flow_signals
@@ -65,43 +64,6 @@ from .commands_support_runtime_resolution import (
 from .commands_support_workspace import _workspace_from_hook_payload
 
 _NATIVE_EDGE_EVENTS = frozenset({"PreToolUse", "PostToolUse", "UserPromptSubmit"})
-
-
-def _emit_native_unavailable(
-    args: argparse.Namespace,
-    *,
-    payload: Mapping[str, object],
-    workspace: Path | None,
-    context: HarnessContext,
-    event_name: str,
-    reason_code: str,
-    worker: HookWorker,
-    recording_only: bool = False,
-) -> int:
-    response = availability_harness_response(
-        dict(payload),
-        harness=args.harness,
-        event_name=event_name,
-        reason_code=reason_code,
-        reason="HOL Guard could not complete the native hook decision safely.",
-        workspace=workspace,
-        home_dir=context.home_dir,
-        guard_home=context.guard_home,
-        recording_only=recording_only,
-    )
-    # The native edge has already returned before this projection.  Keep the
-    # native availability response and overlay only the managed model-visible
-    # structured destination; this must not invent a native result, receipt,
-    # or decision identifier.
-    response = worker._apply_structured_unavailable_overlay(
-        response,
-        harness=args.harness,
-        event_name=event_name,
-        guard_home=context.guard_home,
-        workspace=workspace,
-    )
-    _emit("hook", response, True)
-    return 0
 
 
 def run_native_hook_pipeline(

@@ -10,6 +10,7 @@ import copy
 import ctypes
 import hashlib
 import json
+import logging
 import os
 import secrets
 import socket
@@ -31,12 +32,24 @@ from ..codex_app_server import (
     _send_websocket_text,
 )
 from ..strict_json_pairs import unique_json_object
+from .bounded_json_depth import check_json_depth
 
 _MAX_APPS = 1000
 _MAX_TOOLS = 10_000
 _MAX_MESSAGES = 128
 _MAX_JSON_DEPTH = 32
 _SNAPSHOT_TTL = 30.0
+_LOGGER = logging.getLogger(__name__)
+_FAILURE_CODES = frozenset(
+    {
+        "codex_host_changed",
+        "codex_host_untrusted",
+        "codex_host_invalid",
+        "codex_host_limit",
+        "codex_host_timeout",
+        "codex_host_unavailable",
+    }
+)
 
 
 class CodexHostInventoryCache:
@@ -54,15 +67,25 @@ class CodexHostInventoryCache:
             pid = _managed_pid(socket_path)
             if snapshot.connection_id != _source_id(codex_home, os.geteuid(), pid, source[1]):
                 raise ValueError("codex_host_changed")
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
             with self._lock:
                 self._snapshot = None
-            return
+            if (
+                isinstance(error, FileNotFoundError)
+                or isinstance(error.__cause__, FileNotFoundError)
+                or str(error) in {"codex_host_unsupported", "codex_host_cancelled"}
+            ):
+                return
+            reason = str(error) if str(error) in _FAILURE_CODES else "codex_host_invalid"
+            _LOGGER.warning("Codex host inventory failed (%s)", reason)
+            raise ValueError(reason) from None
         if cancel.is_set():
             return
         with self._lock:
             if not cancel.is_set():
-                self._snapshot = (time.monotonic(), socket_path, source, pid, snapshot.as_payload())
+                payload = snapshot.as_payload()
+                payload["expires_at_ms"] = int((time.time() + _SNAPSHOT_TTL) * 1000)
+                self._snapshot = (time.monotonic(), socket_path, source, pid, payload)
 
     def read(self) -> dict[str, object] | None:
         with self._lock:
@@ -250,23 +273,7 @@ def _array(value: object, *, maximum: int) -> list[object]:
 
 
 def _check_depth(payload: bytes) -> None:
-    depth, quoted, escaped = 0, False, False
-    for character in payload:
-        if quoted:
-            if escaped:
-                escaped = False
-            elif character == 92:
-                escaped = True
-            elif character == 34:
-                quoted = False
-        elif character == 34:
-            quoted = True
-        elif character in (91, 123):
-            depth += 1
-            if depth > _MAX_JSON_DEPTH:
-                raise ValueError("codex_host_limit")
-        elif character in (93, 125):
-            depth -= 1
+    check_json_depth(payload, maximum=_MAX_JSON_DEPTH, error_code="codex_host_limit")
 
 
 def _rpc(

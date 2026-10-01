@@ -10,6 +10,7 @@ const raw = {
   host: "Codex", connection_id: "c".repeat(64), catalog_coverage: "host-summary",
   account_verified: false, schemas_available: false, permissions_granted: false,
   snapshot_age: "unknown", metadata_complete: true,
+  expires_at_ms: Date.now() + 30_000,
   apps: [{ app_id: "example", name: "Example app", enabled: true, callable: true,
     metadata_available: true, tools: [{ name: "send_message", title: "Send a message",
       description: "Write a synthetic message", inputSchema: { type: "object" }, state: "allowed" }] }],
@@ -49,6 +50,18 @@ assert.doesNotMatch(html, /<select|role="switch"|Always allow|Always block|input
 assert.equal(renderToStaticMarkup(createElement(CodexHostConnectors)), "");
 const empty = renderToStaticMarkup(createElement(CodexHostConnectors, { inventory: { ...inventory, apps: [] } }));
 assert.match(empty, /Codex did not report any apps/);
+const expired = renderToStaticMarkup(createElement(CodexHostConnectors, {
+  inventory: { ...inventory, expires_at_ms: Date.now() - 1 },
+}));
+assert.match(expired, /Host summaries expired or are unavailable/);
+assert.doesNotMatch(expired, /Example app|send_message|<details/);
+const astral = normalizeCodexHostInventory({ ...raw,
+  apps: [{ ...raw.apps[0], name: "🧪".repeat(256) }],
+});
+assert.equal(astral?.apps[0].name, "🧪".repeat(256));
+assert.equal(normalizeCodexHostInventory({ ...raw,
+  apps: [{ ...raw.apps[0], name: "🧪".repeat(257) }],
+}), undefined);
 
 const many = { ...inventory, apps: Array.from({ length: 100 }, (_, index) => ({
   ...inventory.apps[0], app_id: `example_${index}`, name: `Example ${index}`,

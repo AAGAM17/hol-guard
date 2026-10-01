@@ -131,6 +131,7 @@ export function ExtensionsOverview(props: {
   const reloadConnections = useRef(props.onReloadConnections);
   reloadConnections.current = props.onReloadConnections;
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [hostDiscoveryError, setHostDiscoveryError] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [discoveryAttempt, setDiscoveryAttempt] = useState(0);
   useEffect(() => {
@@ -139,18 +140,34 @@ export function ExtensionsOverview(props: {
     const controller = new AbortController();
     setDiscovering(true);
     setDiscoveryError(null);
+    setHostDiscoveryError(null);
     const reload = async () => { if (!controller.signal.aborted) await reloadConnections.current(); };
     const configured = refreshMcpInventory("inventory:configured", controller.signal, true, discoveryAttempt > 0)
       .then(reload).catch(() => {
         if (!controller.signal.aborted) setDiscoveryError("Could not check host configuration. Known connections remain available.");
       });
-    const host = refreshCodexHostInventory(controller.signal, discoveryAttempt > 0).then(reload).catch(() => {
-      if (!controller.signal.aborted) setDiscoveryError("Could not read Codex app inventory. Known connections remain available.");
-    });
+    let hostRunning = false;
+    const refreshHost = async (force: boolean) => {
+      if (hostRunning || controller.signal.aborted) return;
+      hostRunning = true;
+      try {
+        await refreshCodexHostInventory(controller.signal, force);
+        if (!controller.signal.aborted) setHostDiscoveryError(null);
+      } catch {
+        if (!controller.signal.aborted) setHostDiscoveryError("Could not read Codex app inventory. Known connections remain available.");
+      } finally {
+        await reload();
+        hostRunning = false;
+      }
+    };
+    const host = refreshHost(discoveryAttempt > 0);
+    const hostTimer = window.setInterval(() => {
+      if (!document.hidden) void refreshHost(true);
+    }, 25_000);
     void Promise.all([configured, host]).finally(() => {
       if (!controller.signal.aborted) setDiscovering(false);
     });
-    return () => { controller.abort(); discoveryStarted.current = false; };
+    return () => { window.clearInterval(hostTimer); controller.abort(); discoveryStarted.current = false; };
   }, [props.active, discoveryAttempt]);
   const [filters, setFilters] = useState<CatalogFilterState>(EMPTY_CATALOG_FILTERS);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -276,7 +293,7 @@ export function ExtensionsOverview(props: {
               {props.active ? (
                 <ConnectorDiscoveryControl
                   discovering={discovering}
-                  error={discoveryError}
+                  error={discoveryError ?? hostDiscoveryError}
                   onRetry={() => setDiscoveryAttempt((attempt) => attempt + 1)}
                 />
               ) : null}

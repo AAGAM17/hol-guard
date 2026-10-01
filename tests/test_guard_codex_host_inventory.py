@@ -383,7 +383,15 @@ def test_refresh_keeps_valid_public_snapshot_visible_until_result(tmp_path, monk
             return snapshot
 
         monkeypatch.setattr(inventory, "read_codex_host_inventory", slow_read)
-        worker = threading.Thread(target=lambda: cache.refresh(codex_home=home, cancel=cancel))
+        failures = []
+
+        def refresh():
+            try:
+                cache.refresh(codex_home=home, cancel=cancel)
+            except ValueError as error:
+                failures.append(str(error))
+
+        worker = threading.Thread(target=refresh)
         worker.start()
         try:
             assert entered.wait(2)
@@ -394,6 +402,13 @@ def test_refresh_keeps_valid_public_snapshot_visible_until_result(tmp_path, monk
         assert not worker.is_alive()
         if outcome == "failure":
             assert cache.read() is None
+            assert failures == ["codex_host_unavailable"]
+        elif outcome == "success":
+            current = cache.read()
+            assert current["expires_at_ms"] >= payload["expires_at_ms"]
+            assert {key: value for key, value in current.items() if key != "expires_at_ms"} == {
+                key: value for key, value in payload.items() if key != "expires_at_ms"
+            }
         else:
             assert cache.read() == payload
 
@@ -405,6 +420,66 @@ def test_expired_public_cache_is_not_presented_as_current(tmp_path, monkeypatch)
         assert cache.read() is not None
         monkeypatch.setattr(inventory, "_SNAPSHOT_TTL", -1)
         assert cache.read() is None
+
+
+@pytest.mark.parametrize(
+    "reason", ["codex_host_timeout", "codex_host_untrusted", "codex_host_invalid", "private injected details"]
+)
+def test_host_refresh_failure_is_visible_and_logs_only_reason_code(tmp_path, monkeypatch, caplog, reason):
+    def fail(**_kwargs):
+        raise ValueError(reason)
+
+    monkeypatch.setattr(inventory, "read_codex_host_inventory", fail)
+    cache = inventory.CodexHostInventoryCache()
+    expected = reason if reason in inventory._FAILURE_CODES else "codex_host_invalid"
+    with pytest.raises(ValueError, match=expected):
+        cache.refresh(codex_home=tmp_path, cancel=threading.Event())
+    assert expected in caplog.text
+    assert "private injected details" not in caplog.text
+    assert cache.read() is None
+
+
+def test_failed_host_snapshot_marks_background_job_failed(tmp_path, monkeypatch):
+    from codex_plugin_scanner.guard.daemon.local_cli_api import LocalCliApiService
+    from codex_plugin_scanner.guard.store import GuardStore
+
+    def fail(**_kwargs):
+        raise ValueError("codex_host_untrusted")
+
+    monkeypatch.setattr(inventory, "read_codex_host_inventory", fail)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    store = GuardStore(tmp_path / "guard")
+    service = LocalCliApiService(store=store)
+    before = store.read_local_cli_revision()
+    try:
+        job = service.refresh_job({"operation": "codex-host-connections"})
+        deadline = inventory.time.monotonic() + 3
+        while inventory.time.monotonic() < deadline:
+            state = service.refresh_job({"job_id": job["job_id"]})
+            if state["state"] not in {"running", "cancelling"}:
+                break
+            inventory.time.sleep(0.01)
+        assert state["state"] == "failed"
+        assert state["error"] == "discovery_failed"
+        assert service.list_items()["host_inventory"] is None
+        assert store.read_local_cli_revision() == before
+    finally:
+        assert service._discovery_jobs.close()
+
+
+def test_shared_depth_scanner_keeps_each_rpc_limit_and_ignores_string_brackets():
+    from codex_plugin_scanner.guard.runtime.codex_config_rpc import _check_json_depth
+
+    quoted = json.dumps({"text": "[" * 100 + '\\"' + "]" * 100}).encode()
+    _check_json_depth(quoted)
+    inventory._check_depth(quoted)
+    moderate = b"[" * 33 + b"0" + b"]" * 33
+    _check_json_depth(moderate)
+    with pytest.raises(ValueError, match="codex_host_limit"):
+        inventory._check_depth(moderate)
+    excessive = b"[" * 65 + b"0" + b"]" * 65
+    with pytest.raises(ValueError, match="codex_config_rpc_invalid"):
+        _check_json_depth(excessive)
 
 
 def test_background_host_inventory_is_not_persisted_or_enrolled_as_a_grant(tmp_path, monkeypatch):

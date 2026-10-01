@@ -253,11 +253,93 @@ function optionalString(value) {
 function isLocalCliId(value) {
   return CLI_ID_PATTERN.test(value);
 }
+async function waitForDiscoveryJob(cliId, initialJob, signal, readJson2) {
+  const normalize = (body) => {
+    if (!isRecord(body) || typeof body.job_id !== "string" || !/^[a-f0-9]{32}$/.test(body.job_id) || body.cli_id !== cliId || !["running", "cancelling", "complete", "cancelled", "failed"].includes(String(body.state))) {
+      throw new Error("Invalid discovery progress");
+    }
+    return body;
+  };
+  const request2 = async (payload) => {
+    const body = await readJson2(await fetchLocalCliApi("/v1/local-clis/refresh-job", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }));
+    const next = normalize(body);
+    if (payload.job_id !== next.job_id) throw new Error("Discovery identity changed");
+    return next;
+  };
+  let job = normalize(initialJob);
+  let finished = false;
+  try {
+    for (let poll = 0; poll < 120; poll += 1) {
+      if (signal.aborted) return;
+      if (job.state === "complete" || job.state === "cancelled") {
+        finished = true;
+        return;
+      }
+      if (job.state === "failed") {
+        finished = true;
+        let message;
+        switch (job.error) {
+          case "mcp_refresh_unavailable":
+            message = "Guard cannot list this connection directly. Refresh it in its host app.";
+            break;
+          case "mcp_launch_failed":
+            message = "Guard could not launch this MCP server. Check its configured executable and dependencies in the host app. Known tools and choices were kept.";
+            break;
+          case "mcp_transport_failed":
+            message = "Guard could not communicate with this MCP server. Check its executable, dependencies, and server logs in the host app. Known tools and choices were kept.";
+            break;
+          case "mcp_initialize_failed":
+            message = "The MCP server did not complete initialization. Check that it starts in the host app and uses stdio MCP. Known tools and choices were kept.";
+            break;
+          case "mcp_protocol_unsupported":
+            message = "This server uses an MCP protocol version Guard does not support. Check the server and Guard versions. Known tools and choices were kept.";
+            break;
+          case "mcp_capability_rejected":
+            message = "The MCP server rejected Guard's discovery capabilities. Check the server's client requirements and Guard version. Known tools and choices were kept.";
+            break;
+          case "catalog_revision_conflict":
+            message = "A newer discovery finished first. Reload the inventory.";
+            break;
+          case "configured_host_scan_failed":
+            message = "Guard could not read the host's configured connections. Check the host app and retry.";
+            break;
+          case "observed_provider_scan_failed":
+            message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery.";
+            break;
+          case "catalog_limit_reached":
+            message = "This connector has more tools than Guard can catalog safely. Existing choices were kept.";
+            break;
+          default:
+            console.warn("Unknown discovery error code:", job.error);
+            message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
+        }
+        throw new Error(message);
+      }
+      await new Promise((resolve) => {
+        const done = () => {
+          window.clearTimeout(timer);
+          signal.removeEventListener("abort", done);
+          resolve();
+        };
+        const timer = window.setTimeout(done, 500);
+        signal.addEventListener("abort", done, { once: true });
+      });
+      if (!signal.aborted) job = await request2({ job_id: job.job_id });
+    }
+    throw new Error("Discovery took too long. Known tools and choices were kept.");
+  } finally {
+    if (!finished) await request2({ job_id: job.job_id, cancel: true });
+  }
+}
 function record$2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function hostMetadataText(value, maximum) {
-  if (typeof value !== "string" || !value.trim() || value.length > maximum || value.includes("\0")) {
+  if (typeof value !== "string" || !value.trim() || [...value].length > maximum || value.includes("\0")) {
     throw new Error("Invalid host metadata");
   }
   return value;
@@ -266,7 +348,7 @@ function optionalText(value, maximum) {
   return value === null || value === void 0 ? null : hostMetadataText(value, maximum);
 }
 function normalizeCodexHostInventory(value) {
-  if (!record$2(value) || value.host !== "Codex" || value.catalog_coverage !== "host-summary" || value.account_verified !== false || value.schemas_available !== false || value.permissions_granted !== false || value.snapshot_age !== "unknown" || typeof value.metadata_complete !== "boolean" || typeof value.connection_id !== "string" || !/^[a-f0-9]{64}$/.test(value.connection_id) || !Array.isArray(value.apps) || value.apps.length > 1e3) return void 0;
+  if (!record$2(value) || value.host !== "Codex" || value.catalog_coverage !== "host-summary" || value.account_verified !== false || value.schemas_available !== false || value.permissions_granted !== false || value.snapshot_age !== "unknown" || typeof value.metadata_complete !== "boolean" || typeof value.expires_at_ms !== "number" || !Number.isSafeInteger(value.expires_at_ms) || value.expires_at_ms <= 0 || typeof value.connection_id !== "string" || !/^[a-f0-9]{64}$/.test(value.connection_id) || !Array.isArray(value.apps) || value.apps.length > 1e3) return void 0;
   try {
     const appIds = /* @__PURE__ */ new Set();
     let totalTools = 0;
@@ -305,6 +387,7 @@ function normalizeCodexHostInventory(value) {
       permissions_granted: false,
       snapshot_age: "unknown",
       metadata_complete: value.metadata_complete,
+      expires_at_ms: value.expires_at_ms,
       apps
     };
   } catch {
@@ -788,86 +871,7 @@ async function refreshCodexHostInventory(signal, forceRefresh = false) {
   if (initialJob !== null) await waitForMcpDiscoveryJob("inventory:codex-host", initialJob, signal);
 }
 async function waitForMcpDiscoveryJob(cliId, initialJob, signal) {
-  const normalize = (body) => {
-    if (!isRecord(body) || typeof body.job_id !== "string" || !/^[a-f0-9]{32}$/.test(body.job_id) || body.cli_id !== cliId || !["running", "cancelling", "complete", "cancelled", "failed"].includes(String(body.state))) {
-      throw new Error("Invalid discovery progress");
-    }
-    return body;
-  };
-  const request2 = async (payload) => {
-    const body = await readJson(await fetchLocalCliApi("/v1/local-clis/refresh-job", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }));
-    const next = normalize(body);
-    if (payload.job_id !== next.job_id) throw new Error("Discovery identity changed");
-    return next;
-  };
-  let job = normalize(initialJob);
-  let finished = false;
-  try {
-    for (let poll = 0; poll < 120; poll += 1) {
-      if (signal.aborted) return;
-      if (job.state === "complete" || job.state === "cancelled") {
-        finished = true;
-        return;
-      }
-      if (job.state === "failed") {
-        finished = true;
-        let message;
-        switch (job.error) {
-          case "mcp_refresh_unavailable":
-            message = "Guard cannot list this connection directly. Refresh it in its host app.";
-            break;
-          case "mcp_launch_failed":
-            message = "Guard could not launch this MCP server. Check its configured executable and dependencies in the host app. Known tools and choices were kept.";
-            break;
-          case "mcp_transport_failed":
-            message = "Guard could not communicate with this MCP server. Check its executable, dependencies, and server logs in the host app. Known tools and choices were kept.";
-            break;
-          case "mcp_initialize_failed":
-            message = "The MCP server did not complete initialization. Check that it starts in the host app and uses stdio MCP. Known tools and choices were kept.";
-            break;
-          case "mcp_protocol_unsupported":
-            message = "This server uses an MCP protocol version Guard does not support. Check the server and Guard versions. Known tools and choices were kept.";
-            break;
-          case "mcp_capability_rejected":
-            message = "The MCP server rejected Guard's discovery capabilities. Check the server's client requirements and Guard version. Known tools and choices were kept.";
-            break;
-          case "catalog_revision_conflict":
-            message = "A newer discovery finished first. Reload the inventory.";
-            break;
-          case "configured_host_scan_failed":
-            message = "Guard could not read the host's configured connections. Check the host app and retry.";
-            break;
-          case "observed_provider_scan_failed":
-            message = "Guard could not merge observed provider tools. Known tools and choices were kept; retry discovery.";
-            break;
-          case "catalog_limit_reached":
-            message = "This connector has more tools than Guard can catalog safely. Existing choices were kept.";
-            break;
-          default:
-            console.warn("Unknown discovery error code:", job.error);
-            message = "Discovery did not finish. Known tools and choices were kept. Try again shortly.";
-        }
-        throw new Error(message);
-      }
-      await new Promise((resolve) => {
-        const done = () => {
-          window.clearTimeout(timer);
-          signal.removeEventListener("abort", done);
-          resolve();
-        };
-        const timer = window.setTimeout(done, 500);
-        signal.addEventListener("abort", done, { once: true });
-      });
-      if (!signal.aborted) job = await request2({ job_id: job.job_id });
-    }
-    throw new Error("Discovery took too long. Known tools and choices were kept.");
-  } finally {
-    if (!finished) await request2({ job_id: job.job_id, cancel: true });
-  }
+  await waitForDiscoveryJob(cliId, initialJob, signal, readJson);
 }
 async function fetchMcpProviderActions(cliId, options) {
   const body = await readJson(await fetchLocalCliApi("/v1/local-clis/provider-actions", {
@@ -6035,8 +6039,26 @@ function SkillPreflightPreview({ plan }) {
   ] });
 }
 const PAGE_SIZE = 25;
-function HostAppRow({ app }) {
+function HostAppTools({ app }) {
   const [shown, setShown] = reactExports.useState(PAGE_SIZE);
+  if (!app.metadata_available) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-brand-dark/80", children: "Tool summaries are unavailable for this app." });
+  }
+  if (app.tools.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-brand-dark/80", children: "Codex provided no tool summaries." });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-2 divide-y divide-brand-dark/10", children: app.tools.slice(0, shown).map((tool) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "py-2 text-sm text-brand-dark", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "break-words font-medium", children: tool.title ?? tool.name }),
+      tool.description ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 max-w-prose break-words leading-6 text-brand-dark/80", children: tool.description }) : null
+    ] }, tool.name)) }),
+    shown < app.tools.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "guard-extensions-chip mt-2", onClick: () => setShown((value) => value + PAGE_SIZE), children: [
+      "Show more tools for ",
+      app.name
+    ] }) : null
+  ] });
+}
+function HostAppRow({ app }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("details", { className: "border-b border-brand-dark/10 py-3", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("summary", { className: "cursor-pointer rounded-lg px-1 py-1 text-sm text-brand-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "break-words font-semibold", children: app.name }),
@@ -6048,56 +6070,69 @@ function HostAppRow({ app }) {
         " ",
         "Permissions in Guard are unchanged."
       ] }),
-      !app.metadata_available ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-brand-dark/80", children: "Tool summaries are unavailable for this app." }) : app.tools.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-brand-dark/80", children: "Codex provided no tool summaries." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-2 divide-y divide-brand-dark/10", children: app.tools.slice(0, shown).map((tool) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "py-2 text-sm text-brand-dark", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "break-words font-medium", children: tool.title ?? tool.name }),
-          tool.description ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 max-w-prose break-words leading-6 text-brand-dark/80", children: tool.description }) : null
-        ] }, tool.name)) }),
-        shown < app.tools.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "guard-extensions-chip mt-2", onClick: () => setShown((value) => value + PAGE_SIZE), children: [
-          "Show more tools for ",
-          app.name
-        ] }) : null
-      ] })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(HostAppTools, { app })
     ] })
+  ] });
+}
+function HostInventoryApps({ inventory }) {
+  const searchId = reactExports.useId();
+  const [query, setQuery] = reactExports.useState("");
+  const [shown, setShown] = reactExports.useState(PAGE_SIZE);
+  if (inventory.apps.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-brand-dark/80", children: "Codex did not report any apps. Check host connections again after using an app in Codex." });
+  }
+  const matches = filterCodexHostApps(inventory.apps, query);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: searchId, className: "mt-4 block text-sm font-medium text-brand-dark", children: "Search Codex apps and tool summaries" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        id: searchId,
+        type: "search",
+        value: query,
+        maxLength: 128,
+        onChange: (event) => {
+          setQuery(event.target.value);
+          setShown(PAGE_SIZE);
+        },
+        className: "mt-1 w-full rounded-xl border border-brand-dark/20 bg-white px-3 py-2 text-sm text-brand-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-brand-dark/80", role: "status", children: [
+      matches.length,
+      " ",
+      matches.length === 1 ? "app" : "apps",
+      query.trim() ? " match this search" : " in the host snapshot",
+      " · Tool summaries only"
+    ] }),
+    matches.slice(0, shown).map((app) => /* @__PURE__ */ jsxRuntimeExports.jsx(HostAppRow, { app }, `${inventory.connection_id}:${app.app_id}`)),
+    matches.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-brand-dark/80", children: "No Codex apps or tool summaries match this search." }) : null,
+    shown < matches.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "guard-extensions-chip mt-3", onClick: () => setShown((value) => value + PAGE_SIZE), children: "Show more Codex apps" }) : null
   ] });
 }
 function CodexHostConnectors({ inventory }) {
   const headingId = reactExports.useId();
-  const searchId = reactExports.useId();
-  const [query, setQuery] = reactExports.useState("");
-  const [shown, setShown] = reactExports.useState(PAGE_SIZE);
-  if (!inventory) return null;
-  const matches = filterCodexHostApps(inventory.apps, query);
+  const [reported, setReported] = reactExports.useState(Boolean(inventory));
+  const [now, setNow] = reactExports.useState(Date.now);
+  reactExports.useEffect(() => {
+    if (!inventory) return;
+    setReported(true);
+    setNow(Date.now());
+    const remaining = Math.max(0, Math.min(3e4, inventory.expires_at_ms - Date.now()));
+    const timer = window.setTimeout(() => setNow(Date.now()), remaining);
+    return () => window.clearTimeout(timer);
+  }, [inventory?.expires_at_ms]);
+  if (!inventory && !reported) return null;
+  let content;
+  if (!inventory || inventory.expires_at_ms <= now) {
+    content = /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-brand-dark/80", role: "status", children: "Host summaries expired or are unavailable. Check host connections again." });
+  } else {
+    content = /* @__PURE__ */ jsxRuntimeExports.jsx(HostInventoryApps, { inventory });
+  }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mt-8", "aria-labelledby": headingId, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: headingId, className: "text-xl font-semibold tracking-tight text-brand-dark", children: "Apps reported by Codex" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 max-w-prose text-sm leading-6 text-brand-dark/80", children: "Inspect apps and tool summaries from your existing Codex host. Guard has not verified their accounts or tool permissions. Manage tools Guard has observed under Custom extensions." }),
-    inventory.apps.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-brand-dark/80", children: "Codex did not report any apps. Check host connections again after using an app in Codex." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: searchId, className: "mt-4 block text-sm font-medium text-brand-dark", children: "Search Codex apps and tool summaries" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "input",
-        {
-          id: searchId,
-          type: "search",
-          value: query,
-          maxLength: 128,
-          onChange: (event) => {
-            setQuery(event.target.value);
-            setShown(PAGE_SIZE);
-          },
-          className: "mt-1 w-full rounded-xl border border-brand-dark/20 bg-white px-3 py-2 text-sm text-brand-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-brand-dark/80", role: "status", children: [
-        matches.length,
-        " ",
-        matches.length === 1 ? "app" : "apps",
-        query.trim() ? " match this search" : " in the host snapshot",
-        " · Tool summaries only"
-      ] }),
-      matches.slice(0, shown).map((app) => /* @__PURE__ */ jsxRuntimeExports.jsx(HostAppRow, { app }, `${inventory.connection_id}:${app.app_id}`)),
-      matches.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-brand-dark/80", children: "No Codex apps or tool summaries match this search." }) : null,
-      shown < matches.length ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "guard-extensions-chip mt-3", onClick: () => setShown((value) => value + PAGE_SIZE), children: "Show more Codex apps" }) : null
-    ] })
+    content
   ] });
 }
 const CUSTOM_EXTENSION_PREVIEW_COUNT = 8;
@@ -7284,6 +7319,7 @@ function ExtensionsOverview(props) {
   const reloadConnections = reactExports.useRef(props.onReloadConnections);
   reloadConnections.current = props.onReloadConnections;
   const [discoveryError, setDiscoveryError] = reactExports.useState(null);
+  const [hostDiscoveryError, setHostDiscoveryError] = reactExports.useState(null);
   const [discovering, setDiscovering] = reactExports.useState(false);
   const [discoveryAttempt, setDiscoveryAttempt] = reactExports.useState(0);
   reactExports.useEffect(() => {
@@ -7292,19 +7328,36 @@ function ExtensionsOverview(props) {
     const controller = new AbortController();
     setDiscovering(true);
     setDiscoveryError(null);
+    setHostDiscoveryError(null);
     const reload = async () => {
       if (!controller.signal.aborted) await reloadConnections.current();
     };
     const configured = refreshMcpInventory("inventory:configured", controller.signal, true, discoveryAttempt > 0).then(reload).catch(() => {
       if (!controller.signal.aborted) setDiscoveryError("Could not check host configuration. Known connections remain available.");
     });
-    const host = refreshCodexHostInventory(controller.signal, discoveryAttempt > 0).then(reload).catch(() => {
-      if (!controller.signal.aborted) setDiscoveryError("Could not read Codex app inventory. Known connections remain available.");
-    });
+    let hostRunning = false;
+    const refreshHost = async (force) => {
+      if (hostRunning || controller.signal.aborted) return;
+      hostRunning = true;
+      try {
+        await refreshCodexHostInventory(controller.signal, force);
+        if (!controller.signal.aborted) setHostDiscoveryError(null);
+      } catch {
+        if (!controller.signal.aborted) setHostDiscoveryError("Could not read Codex app inventory. Known connections remain available.");
+      } finally {
+        await reload();
+        hostRunning = false;
+      }
+    };
+    const host = refreshHost(discoveryAttempt > 0);
+    const hostTimer = window.setInterval(() => {
+      if (!document.hidden) void refreshHost(true);
+    }, 25e3);
     void Promise.all([configured, host]).finally(() => {
       if (!controller.signal.aborted) setDiscovering(false);
     });
     return () => {
+      window.clearInterval(hostTimer);
       controller.abort();
       discoveryStarted.current = false;
     };
@@ -7421,7 +7474,7 @@ function ExtensionsOverview(props) {
                 ConnectorDiscoveryControl,
                 {
                   discovering,
-                  error: discoveryError,
+                  error: discoveryError ?? hostDiscoveryError,
                   onRetry: () => setDiscoveryAttempt((attempt) => attempt + 1)
                 }
               ) : null

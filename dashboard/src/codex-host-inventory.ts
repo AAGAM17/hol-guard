@@ -23,6 +23,7 @@ export type CodexHostInventory = {
   permissions_granted: false;
   snapshot_age: "unknown";
   metadata_complete: boolean;
+  expires_at_ms: number;
   apps: CodexHostAppSummary[];
 };
 
@@ -31,7 +32,7 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 function hostMetadataText(value: unknown, maximum: number): string {
-  if (typeof value !== "string" || !value.trim() || value.length > maximum || value.includes("\0")) {
+  if (typeof value !== "string" || !value.trim() || [...value].length > maximum || value.includes("\0")) {
     throw new Error("Invalid host metadata");
   }
   return value;
@@ -45,6 +46,7 @@ export function normalizeCodexHostInventory(value: unknown): CodexHostInventory 
   if (!record(value) || value.host !== "Codex" || value.catalog_coverage !== "host-summary"
     || value.account_verified !== false || value.schemas_available !== false || value.permissions_granted !== false
     || value.snapshot_age !== "unknown" || typeof value.metadata_complete !== "boolean"
+    || typeof value.expires_at_ms !== "number" || !Number.isSafeInteger(value.expires_at_ms) || value.expires_at_ms <= 0
     || typeof value.connection_id !== "string" || !/^[a-f0-9]{64}$/.test(value.connection_id)
     || !Array.isArray(value.apps) || value.apps.length > 1000) return undefined;
   try {
@@ -73,7 +75,7 @@ export function normalizeCodexHostInventory(value: unknown): CodexHostInventory 
     });
     return { host: "Codex", connection_id: value.connection_id, catalog_coverage: "host-summary",
       account_verified: false, schemas_available: false, permissions_granted: false,
-      snapshot_age: "unknown", metadata_complete: value.metadata_complete, apps };
+      snapshot_age: "unknown", metadata_complete: value.metadata_complete, expires_at_ms: value.expires_at_ms, apps };
   } catch {
     return undefined;
   }

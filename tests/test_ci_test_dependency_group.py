@@ -56,6 +56,27 @@ def test_compatibility_workers_select_the_frozen_test_group() -> None:
     assert "uv run --no-sync pytest" in commands
 
 
+def test_coverage_cache_keeps_prebuilt_wheels_for_read_only_workers() -> None:
+    action = yaml.safe_load((ROOT / ".github/actions/setup-ci-python/action.yml").read_text())
+    uv_steps = [step for step in action["runs"]["steps"] if step.get("uses", "").startswith("astral-sh/setup-uv@")]
+    assert len(uv_steps) == 2
+    assert all(step["with"]["prune-cache"] is False for step in uv_steps)
+    assert all(step["with"]["save-cache"] == "${{ inputs.save-cache }}" for step in uv_steps)
+    assert action["inputs"]["save-cache"]["default"] == "false"
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    producer = next(
+        step for step in jobs["coverage-plan"]["steps"] if step.get("uses") == "./.github/actions/setup-ci-python"
+    )
+    consumer = next(
+        step for step in jobs["coverage"]["steps"] if step.get("uses") == "./.github/actions/setup-ci-python"
+    )
+    assert producer["with"]["save-cache"] == "true"
+    assert consumer["with"].get("save-cache", "false") == "false"
+    assert producer["with"]["python-version"] == consumer["with"]["python-version"]
+    assert producer["with"]["cache-dependency-glob"] == consumer["with"]["cache-dependency-glob"]
+    assert "coverage-plan" in jobs["coverage"]["needs"]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="macOS proof setup executes in Bash")
 @pytest.mark.parametrize("proof", ["default", "pi", "extensions", "performance"])
 def test_macos_proof_setup_preserves_its_dependency_boundary(tmp_path: Path, proof: str) -> None:

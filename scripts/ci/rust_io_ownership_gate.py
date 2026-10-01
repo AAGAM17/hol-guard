@@ -280,6 +280,17 @@ _PENDING_AUTHORITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/trusted_package_tools.py",
     }
 )
+_PERSISTENCE_ONLY_PATHS: Final = frozenset(
+    {
+        # Opt-in sealed diagnostics; these helpers never authorize a decision.
+        "src/codex_plugin_scanner/guard/codex_binding_capture.py",
+        "src/codex_plugin_scanner/guard/codex_binding_capture_bounds.py",
+        "src/codex_plugin_scanner/guard/codex_binding_capture_crypto.py",
+        "src/codex_plugin_scanner/guard/codex_binding_capture_fs.py",
+        "src/codex_plugin_scanner/guard/codex_binding_capture_join.py",
+        "src/codex_plugin_scanner/guard/codex_binding_capture_writer.py",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +437,8 @@ def _category(path: str, kind: str) -> str:
         return "compatibility_only"
     if path in _STRUCTURED_OUTPUT_MEDIATION_PATHS and kind in {"hash", "decode"}:
         return "adapter_output_mediation"
+    if path in _PERSISTENCE_ONLY_PATHS:
+        return "persistence_only"
     if path in _TRANSPORT_IDENTITY_PATHS:
         return "transport_identity"
     if path in _TRANSPORT_DECODE_PATHS and kind == "decode":

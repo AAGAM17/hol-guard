@@ -10,9 +10,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import stat
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
@@ -41,7 +40,7 @@ from .codex_binding_capture_crypto import (
     seal_receipt,
 )
 from .codex_binding_capture_crypto import receipt_projection as _receipt_projection
-from .codex_binding_capture_fs import initialize_private_capture_marker
+from .codex_binding_capture_fs import _private_directory, _private_regular, initialize_private_capture_marker
 from .codex_hook_manifest import MANAGED_CODEX_HOOK_EVENTS
 from .daemon.hook_request_parsing import runtime_hook_event_name
 from .evaluation_json import reject_duplicate_keys
@@ -52,7 +51,6 @@ CAPTURE_OUTPUT_PREFIX: Final = "codex-binding-capture."
 CAPTURE_OUTPUT_SUFFIX: Final = ".jsonl"
 MAX_TOOL_USE_ID_BYTES: Final = 256
 BINDABLE_CODEX_HOOK_EVENTS: Final = frozenset({"PreToolUse", "PostToolUse"})
-_PRIVATE_DIRECTORY_MODE: Final = 0o700
 _PRIVATE_FILE_MODE: Final = 0o600
 _ASCII_OPAQUE = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
 _MISSING = object()
@@ -75,45 +73,6 @@ def _json_object(raw: bytes) -> dict[str, object] | None:
 
 def _canonical_json(value: object) -> bytes | None:
     return canonical_json_bytes(value)
-
-
-def _owner_uid() -> int | None:
-    getuid = cast(Callable[[], int] | None, getattr(os, "getuid", None))
-    if not callable(getuid):
-        return None
-    try:
-        return int(getuid())
-    except (OSError, TypeError, ValueError):
-        return None
-
-
-def _private_directory(fd: int) -> bool:
-    try:
-        metadata = os.fstat(fd)
-    except OSError:
-        return False
-    uid = _owner_uid()
-    return (
-        uid is not None
-        and stat.S_ISDIR(metadata.st_mode)
-        and metadata.st_uid == uid
-        and stat.S_IMODE(metadata.st_mode) == _PRIVATE_DIRECTORY_MODE
-    )
-
-
-def _private_regular(fd: int) -> bool:
-    try:
-        metadata = os.fstat(fd)
-    except OSError:
-        return False
-    uid = _owner_uid()
-    return (
-        uid is not None
-        and stat.S_ISREG(metadata.st_mode)
-        and metadata.st_uid == uid
-        and stat.S_IMODE(metadata.st_mode) == _PRIVATE_FILE_MODE
-        and metadata.st_nlink == 1
-    )
 
 
 def _open_guard_home_directory(guard_home: Path) -> int | None:
@@ -363,7 +322,10 @@ def _append_row(config: CaptureSession, *, guard_home: Path, row: Mapping[str, o
         _ = os.lseek(output, 0, os.SEEK_END)
         offset = 0
         while offset < len(serialized):
-            offset += os.write(output, serialized[offset:])
+            written = os.write(output, serialized[offset:])
+            if written <= 0:
+                return False
+            offset += written
         return True
     except (OSError, TypeError, ValueError):
         return False

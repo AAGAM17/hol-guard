@@ -24,6 +24,10 @@ input limit, a maximum depth of 64 and a 4,096-node limit. Smaller configured
 record and byte limits apply to local joins too. Invalid, expired, unsupported
 or unavailable capture state records nothing.
 
+Writers retry an occupied file lock for up to 20 ms, then abandon that row.
+Capture is best effort: an unmatched side can reflect contention, limits or
+capture failure. It does not prove that the corresponding hook did not run.
+
 ## Verify locally
 
 Read the private session with `read_capture_session(guard_home)`, then pass it

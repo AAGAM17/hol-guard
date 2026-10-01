@@ -23,6 +23,7 @@ from .codex_binding_capture_bounds import (
     canonical_json_bytes,
     validate_json_value,
 )
+from .evaluation_json import reject_duplicate_keys
 from .native_decision_receipt import validate_native_decision_receipt
 
 CAPTURE_SCHEMA: Final = "guard-codex-binding-capture.v2"
@@ -101,19 +102,10 @@ def receipt_projection(receipt: object) -> dict[str, object] | None:
     if validated is None:
         return None
     projection = {key: validated[key] for key in _RECEIPT_PROJECTION_FIELDS}
-    extensions = validated.get("command_extensions")
-    if extensions is not None:
-        projection["command_extensions"] = extensions
+    for key in ("command_extensions", "prompt_risk_classes"):
+        if key in validated:
+            projection[key] = validated[key]
     return projection
-
-
-def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON key")
-        result[key] = value
-    return result
 
 
 def _session_usable(session: object, *, now: float | None = None) -> bool:
@@ -319,7 +311,7 @@ def _decode_object(plaintext: bytes) -> dict[str, object] | None:
     if bounded_utf8_bytes(plaintext) is None:
         return None
     try:
-        value = cast(object, json.loads(plaintext.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys))
+        value = cast(object, json.loads(plaintext.decode("utf-8"), object_pairs_hook=reject_duplicate_keys))
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
         return None
     if type(value) is not dict or not validate_json_value(cast(object, value)):

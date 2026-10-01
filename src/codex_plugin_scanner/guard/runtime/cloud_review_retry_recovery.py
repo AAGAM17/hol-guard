@@ -43,8 +43,8 @@ def recover_rejected_review_events(
         and event_id == events.get(sequence, {}).get("eventId")
     }
     repaired: dict[int, int] = {}
-    # Zero is valid for a fresh rejected stream; recovery needs a positive Cloud high-water mark.
-    if collisions and type(acknowledged_through) is int and 0 < acknowledged_through <= 2**53 - 1:
+    # Zero is a valid Cloud high-water mark for a fresh rejected stream.
+    if collisions and type(acknowledged_through) is int and 0 <= acknowledged_through <= 2**53 - 1:
         repaired = store.recover_review_snapshot_sequences(
             collisions=collisions, acknowledged_through=acknowledged_through, binding=binding
         )

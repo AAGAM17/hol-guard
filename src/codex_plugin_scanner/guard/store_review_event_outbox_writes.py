@@ -83,14 +83,17 @@ def recover_review_snapshot_sequences(
 
     for old_sequence in sequences:
         row = rows_by_sequence[old_sequence]
+        collided_ids = list(normalized.values())
+        id_placeholders = ", ".join("?" for _ in collided_ids)
         later = connection.execute(
-            """
+            f"""
             select 1 from guard_review_outbox_events
             where local_request_id = ? and request_sequence > ?
               and acknowledged_at is null and oauth_source = ?
+              and event_id not in ({id_placeholders})
             limit 1
             """,
-            (row["local_request_id"], row["request_sequence"], source),
+            (row["local_request_id"], row["request_sequence"], source, *collided_ids),
         ).fetchone()
         if later is not None:
             return _abort()

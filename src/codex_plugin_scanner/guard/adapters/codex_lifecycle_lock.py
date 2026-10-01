@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import stat
 from collections.abc import Callable, Generator
@@ -39,6 +40,12 @@ def _lifecycle_lock_path(directory: Path) -> Path:
     return base / f"{sha256(os.fsencode(target)).hexdigest()}.lock"
 
 
+def _unavailable_lock(stage: str, error: OSError) -> RuntimeError:
+    # Preserve a bounded OS reason without disclosing a private pathname.
+    reason = errno.errorcode.get(error.errno, "UNKNOWN") if error.errno is not None else "UNKNOWN"
+    return RuntimeError(f"codex_lifecycle_lock_invalid: lifecycle lock {stage} is unavailable (reason={reason})")
+
+
 def _lock_identity(path: Path) -> tuple[int, int] | None:
     try:
         metadata = path.lstat()
@@ -61,13 +68,13 @@ def _target_lock(directory: Path) -> Generator[None, None, None]:
         ):
             raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock directory is not private")
     except OSError as error:
-        raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock directory is unavailable") from error
+        raise _unavailable_lock("directory", error) from error
     prior = _lock_identity(path)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags, 0o600)
     except OSError as error:
-        raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock file is unavailable") from error
+        raise _unavailable_lock("file", error) from error
     try:
         metadata = os.fstat(descriptor)
         identity = metadata.st_dev, metadata.st_ino
@@ -88,6 +95,7 @@ def _target_lock(directory: Path) -> Generator[None, None, None]:
 
 @contextmanager
 def codex_lifecycle_locks(context: HarnessContext) -> Generator[None, None, None]:
+    """Requires OS advisory locking; network account profiles are unqualified."""
     # User-private account storage avoids writing to read-only projects or
     # creating configuration directories during a no-op uninstall. Cooperating
     # owners under the same OS account share resolved configuration identities.
@@ -96,6 +104,7 @@ def codex_lifecycle_locks(context: HarnessContext) -> Generator[None, None, None
     roots = [context.home_dir]
     if context.workspace_dir is not None:
         roots.append(context.workspace_dir)
+    # Resolve existing ancestors without creating an absent .codex directory.
     resolved_targets = {os.path.normcase(str((root / ".codex").resolve())): root / ".codex" for root in roots}
     targets = sorted(resolved_targets.items())
     with ExitStack() as stack:

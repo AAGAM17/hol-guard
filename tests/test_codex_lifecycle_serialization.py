@@ -10,11 +10,15 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
+from codex_plugin_scanner.guard.adapters.codex_lifecycle_lock import (
+    _account_home as real_account_home,
+)
 from codex_plugin_scanner.guard.adapters.codex_lifecycle_lock import _lifecycle_lock_path, codex_lifecycle_locks
 
 
 @pytest.fixture(autouse=True)
 def lifecycle_account_home(tmp_path, monkeypatch):
+    """Keep every lifecycle test's lock metadata outside the real account home."""
     import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
 
     profile = tmp_path / "account-profile"
@@ -148,6 +152,13 @@ def test_owner_environment_does_not_split_a_configuration_lock(tmp_path, monkeyp
             pytest.fail("different owner environments bypassed configuration serialization")
 
 
+def test_account_profile_discovery_ignores_owner_environment(tmp_path, monkeypatch):
+    expected = real_account_home()
+    for variable in ("HOME", "USERPROFILE", "TMPDIR", "TEMP", "XDG_RUNTIME_DIR"):
+        monkeypatch.setenv(variable, str(tmp_path / variable))
+    assert real_account_home() == expected
+
+
 def test_configuration_directory_aliases_share_a_lock(tmp_path):
     actual = tmp_path / "actual"
     actual.mkdir()
@@ -176,12 +187,12 @@ def test_lock_permission_failure_has_a_lifecycle_reason(tmp_path, monkeypatch):
 
     def denied_open(path, *args, **kwargs):
         if path == lock:
-            raise PermissionError("lock denied")
+            raise PermissionError(13, "lock denied", str(lock))
         return original_open(path, *args, **kwargs)
 
     monkeypatch.setattr(locks.os, "open", denied_open)
     with (
-        pytest.raises(RuntimeError, match="codex_lifecycle_lock_invalid: lifecycle lock file is unavailable"),
+        pytest.raises(RuntimeError, match=r"lock file is unavailable \(reason=EACCES\)"),
         codex_lifecycle_locks(context),
     ):
         pytest.fail("unavailable lock accepted")

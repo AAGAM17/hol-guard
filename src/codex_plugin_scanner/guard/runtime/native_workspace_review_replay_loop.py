@@ -55,19 +55,24 @@ def prepare_native_workspace_review_replay(
     setattr(replay_store, replay._PROBE_STATE_ATTRIBUTE, probe_state)
     if not replay._binding_matches(replay_store, binding):
         return 0
-    cursor = replay._scan_cursor(replay_store, binding)
+    cursor, upper = replay._scan_bounds(replay_store, binding)
     try:
+        if upper is None:
+            tail = replay_store.list_pending_review_request_ids(binding=binding, limit=1, descending=True)
+            if not tail:
+                return 0
+            upper = tail[0]
         request_ids = replay_store.list_pending_review_request_ids(
             binding=binding,
             limit=replay._MAX_CONTEXT_PROBES,
             after_request_id=cursor,
+            through_request_id=upper,
         )
     except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
         return 0
     changed_at = replay._timestamp(replay._now())
-    next_cursor = request_ids[-1] if len(request_ids) == replay._MAX_CONTEXT_PROBES else None
-    replay._save_scan_cursor(replay_store, binding, next_cursor, changed_at)
     if not request_ids:
+        replay._save_scan_cursor(replay_store, binding, None, changed_at, None)
         return 0
 
     replayed = 0
@@ -181,4 +186,10 @@ def prepare_native_workspace_review_replay(
         with suppress(OSError, RuntimeError, TypeError, ValueError):
             replay_store.set_sync_payload(marker_key, updated_authority, changed_at)
         replayed += count
+    # Finish a finite snapshot before accepting a higher watermark. Do not
+    # advance durable progress until the batch has completed.
+    next_cursor = (
+        request_ids[-1] if len(request_ids) == replay._MAX_CONTEXT_PROBES and request_ids[-1] < upper else None
+    )
+    replay._save_scan_cursor(replay_store, binding, next_cursor, changed_at, upper if next_cursor else None)
     return replayed

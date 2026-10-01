@@ -86,12 +86,19 @@ class _ReplayStore:
         binding: dict[str, str],
         limit: int,
         after_request_id: str | None = None,
+        through_request_id: str | None = None,
+        descending: bool = False,
     ) -> list[str]:
         self.list_calls += 1
         if binding != self.binding:
             return []
-        start = self.request_ids.index(after_request_id) + 1 if after_request_id in self.request_ids else 0
-        return self.request_ids[start : start + limit]
+        candidates = sorted(
+            request_id
+            for request_id in self.request_ids
+            if (after_request_id is None or request_id > after_request_id)
+            and (through_request_id is None or request_id <= through_request_id)
+        )
+        return list(reversed(candidates))[:limit] if descending else candidates[:limit]
 
     def requeue_pending_review_events_with_marker(
         self,
@@ -138,6 +145,66 @@ def test_replay_rotates_past_failed_first_page(tmp_path: Path, monkeypatch: pyte
     )
     assert store.context_calls[-2:] == ["request-08", "request-09"]
     assert [call["request_ids"] for call in store.requeue_calls] == [{"request-08"}, {"request-09"}]
+
+
+def test_replay_revisits_lower_ids_despite_continuous_full_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _ReplayStore(tmp_path, [f"request-{index:02d}" for index in range(4)])
+
+    def context(_store: object, _home: Path, request_id: str) -> None:
+        store.context_calls.append(request_id)
+
+    monkeypatch.setattr(replay, "build_native_workspace_review_context", context)
+
+    def prepare() -> int:
+        return replay.prepare_native_workspace_review_replay(
+            cast(GuardStore, cast(object, store)), binding=store.binding, force_probe=True
+        )
+
+    assert prepare() == 0
+    store.request_ids.extend(["request--1", "request-99"])
+    assert prepare() == 0
+    store.request_ids.append("request-100")
+    assert prepare() == 0
+    assert store.context_calls == ["request-00", "request-01", "request-02", "request-03", "request--1", "request-00"]
+
+
+def test_interrupted_batch_does_not_advance_scan_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _ReplayStore(tmp_path, ["request-00", "request-01"])
+    read_marker = replay._request_marker
+
+    def interrupted_marker(*_args: object) -> tuple[str, dict[str, object] | None]:
+        raise OSError("interrupted batch")
+
+    monkeypatch.setattr(replay, "_request_marker", interrupted_marker)
+    with pytest.raises(OSError, match="interrupted batch"):
+        replay.prepare_native_workspace_review_replay(cast(GuardStore, cast(object, store)), binding=store.binding)
+    assert store.payloads == {}
+    monkeypatch.setattr(replay, "_request_marker", read_marker)
+
+    def context(_store: object, _home: Path, request_id: str) -> None:
+        store.context_calls.append(request_id)
+
+    monkeypatch.setattr(replay, "build_native_workspace_review_context", context)
+    assert (
+        replay.prepare_native_workspace_review_replay(cast(GuardStore, cast(object, store)), binding=store.binding) == 0
+    )
+    assert store.context_calls == ["request-00", "request-01"]
+
+
+def test_pending_scan_bounds_are_binding_checked_in_sqlite(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard")
+    _connect(store)
+    for request_id in ("request-00", "request-01", "request-02"):
+        store.add_approval_request(_request(request_id), "2026-09-27T12:00:00+00:00")
+    binding = store.get_review_event_oauth_binding()
+    assert binding is not None
+    assert store.list_pending_review_request_ids(binding=binding, limit=1, descending=True) == ["request-02"]
+    assert store.list_pending_review_request_ids(
+        binding=binding, limit=2, after_request_id="request-00", through_request_id="request-01"
+    ) == ["request-01"]
+    assert store.list_pending_review_request_ids(binding={**binding, "machine_id": "other"}, limit=1) == []
 
 
 def test_replay_marker_prevents_duplicate_flood_and_projects_context(

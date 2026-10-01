@@ -44,6 +44,8 @@ class _NativeWorkspaceReplayStore(Protocol):
         binding: Mapping[str, str],
         limit: int,
         after_request_id: str | None = None,
+        through_request_id: str | None = None,
+        descending: bool = False,
     ) -> list[str]: ...
 
     def list_review_event_snapshots(self, request_id: str) -> list[dict[str, object]]: ...
@@ -100,12 +102,15 @@ def _binding_matches(store: _NativeWorkspaceReplayStore, binding: Mapping[str, s
     return isinstance(current, dict) and dict(current) == dict(binding)
 
 
-def _scan_cursor(store: _NativeWorkspaceReplayStore, binding: Mapping[str, str]) -> str | None:
+def _scan_bounds(store: _NativeWorkspaceReplayStore, binding: Mapping[str, str]) -> tuple[str | None, str | None]:
     state = store.get_sync_payload(_scan_key(store))
     if not isinstance(state, dict) or state.get("binding") != dict(binding):
-        return None
+        return None, None
     cursor = state.get("cursor")
-    return cursor if isinstance(cursor, str) and cursor else None
+    upper = state.get("through_request_id")
+    if not isinstance(upper, str) or not upper:
+        return None, None
+    return (cursor if isinstance(cursor, str) and cursor else None), upper
 
 
 def _save_scan_cursor(
@@ -113,6 +118,7 @@ def _save_scan_cursor(
     binding: Mapping[str, str],
     cursor: str | None,
     changed_at: str,
+    through_request_id: str | None,
 ) -> None:
     store.set_sync_payload(
         _scan_key(store),
@@ -120,6 +126,7 @@ def _save_scan_cursor(
             "schema": "guard-cloud-review-native-workspace-review-scan.v1",
             "binding": dict(binding),
             "cursor": cursor,
+            "through_request_id": through_request_id,
         },
         changed_at,
     )

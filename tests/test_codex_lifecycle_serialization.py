@@ -9,7 +9,7 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
-from codex_plugin_scanner.guard.adapters.codex_lifecycle_lock import codex_lifecycle_locks
+from codex_plugin_scanner.guard.adapters.codex_lifecycle_lock import _lifecycle_lock_path, codex_lifecycle_locks
 
 
 @pytest.mark.parametrize("competing_operation", ("install", "uninstall"))
@@ -91,14 +91,77 @@ def test_shared_workspace_contends_between_different_home_directories(tmp_path):
         pass
 
 
+def test_lock_acquisition_does_not_create_codex_configuration_directories(tmp_path):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    context = HarnessContext(home_dir=home, workspace_dir=workspace, guard_home=tmp_path / "guard")
+    with codex_lifecycle_locks(context):
+        assert not (home / ".codex").exists()
+        assert not (workspace / ".codex").exists()
+
+
+def test_read_only_workspace_does_not_block_global_lifecycle_lock(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    original_mkdir = Path.mkdir
+
+    def read_only_mkdir(path, *args, **kwargs):
+        if path == workspace / ".codex":
+            raise PermissionError("read-only workspace")
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", read_only_mkdir)
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=workspace, guard_home=tmp_path / "guard")
+    with codex_lifecycle_locks(context):
+        assert not (workspace / ".codex").exists()
+
+
+def test_configuration_directory_aliases_share_a_lock(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    first_home = tmp_path / "first"
+    second_home = tmp_path / "second"
+    first_home.mkdir()
+    second_home.mkdir()
+    (first_home / ".codex").symlink_to(actual, target_is_directory=True)
+    (second_home / ".codex").symlink_to(actual, target_is_directory=True)
+    first = HarnessContext(home_dir=first_home, workspace_dir=None, guard_home=tmp_path / "first-guard")
+    second = HarnessContext(home_dir=second_home, workspace_dir=None, guard_home=tmp_path / "second-guard")
+    with (
+        codex_lifecycle_locks(first),
+        pytest.raises(RuntimeError, match="codex_lifecycle_busy"),
+        codex_lifecycle_locks(second),
+    ):
+        pytest.fail("configuration alias bypassed the lock")
+
+
+def test_lock_permission_failure_has_a_lifecycle_reason(tmp_path, monkeypatch):
+    import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
+
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard")
+    lock = _lifecycle_lock_path(context.home_dir / ".codex")
+    original_open = locks.os.open
+
+    def denied_open(path, *args, **kwargs):
+        if path == lock:
+            raise PermissionError("lock denied")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(locks.os, "open", denied_open)
+    with (
+        pytest.raises(RuntimeError, match="codex_lifecycle_lock_invalid: lifecycle lock file is unavailable"),
+        codex_lifecycle_locks(context),
+    ):
+        pytest.fail("unavailable lock accepted")
+
+
 @pytest.mark.parametrize("link_kind", ("symbolic", "hard"))
 def test_lock_links_are_rejected_without_changing_the_target(tmp_path, link_kind):
     home = tmp_path / "home"
-    directory = home / ".codex"
-    directory.mkdir(parents=True)
+    lock = _lifecycle_lock_path(home / ".codex")
+    lock.parent.mkdir(mode=0o700, exist_ok=True)
     target = tmp_path / "user-file"
     target.write_bytes(b"preserved user content")
-    lock = directory / ".hol-guard-lifecycle.lock"
     if link_kind == "symbolic":
         lock.symlink_to(target)
     else:

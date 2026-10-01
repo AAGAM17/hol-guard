@@ -4,14 +4,23 @@ from __future__ import annotations
 
 import os
 import stat
+import tempfile
 from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager
 from functools import wraps
+from hashlib import sha256
 from pathlib import Path
 
 from ..daemon.file_locking import try_lock_daemon_file
 from ..mdm.file_lock import release_file_lock
-from .base import HarnessContext, _ensure_path_within_root
+from .base import HarnessContext
+
+
+def _lifecycle_lock_path(directory: Path) -> Path:
+    user = str(os.getuid()) if hasattr(os, "getuid") else sha256(str(Path.home()).encode()).hexdigest()
+    base = Path(tempfile.gettempdir()) / f"hol-guard-codex-lifecycle-{user}"
+    target = os.path.normcase(str(directory.resolve()))
+    return base / f"{sha256(os.fsencode(target)).hexdigest()}.lock"
 
 
 def _lock_identity(path: Path) -> tuple[int, int] | None:
@@ -25,17 +34,24 @@ def _lock_identity(path: Path) -> tuple[int, int] | None:
 
 
 @contextmanager
-def _target_lock(root: Path) -> Generator[None]:
-    directory = root / ".codex"
-    _ensure_path_within_root(root, directory, label="Codex lifecycle lock")
-    directory.mkdir(parents=True, exist_ok=True)
-    if not stat.S_ISDIR(directory.lstat().st_mode):
-        raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle directory must not be a symbolic link")
-    _ensure_path_within_root(root, directory, label="Codex lifecycle lock")
-    path = directory / ".hol-guard-lifecycle.lock"
+def _target_lock(directory: Path) -> Generator[None, None, None]:
+    path = _lifecycle_lock_path(directory)
+    try:
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        # lstat rejects a substituted symlink instead of following it.
+        metadata = path.parent.lstat()
+        if not stat.S_ISDIR(metadata.st_mode) or (
+            hasattr(os, "getuid") and (metadata.st_uid != os.getuid() or metadata.st_mode & 0o077)
+        ):
+            raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock directory is not private")
+    except PermissionError as error:
+        raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock directory is unavailable") from error
     prior = _lock_identity(path)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o600)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except PermissionError as error:
+        raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock file is unavailable") from error
     try:
         metadata = os.fstat(descriptor)
         identity = metadata.st_dev, metadata.st_ino
@@ -55,13 +71,14 @@ def _target_lock(root: Path) -> Generator[None]:
 
 
 @contextmanager
-def codex_lifecycle_locks(context: HarnessContext) -> Generator[None]:
-    # Store locks beside shared configurations, not in an owner's Guard home.
-    # A different owner must contend on the same file before reading inventory.
+def codex_lifecycle_locks(context: HarnessContext) -> Generator[None, None, None]:
+    # Shared user temporary storage avoids writing to read-only projects or
+    # creating configuration directories during a no-op uninstall. Owners in
+    # this temporary namespace contend on resolved configuration identities.
     roots = [context.home_dir]
     if context.workspace_dir is not None:
         roots.append(context.workspace_dir)
-    targets = sorted({os.path.normcase(str(root.resolve())): root for root in roots}.items())
+    targets = sorted({os.path.normcase(str((root / ".codex").resolve())): root / ".codex" for root in roots}.items())
     with ExitStack() as stack:
         for _identity, root in targets:
             stack.enter_context(_target_lock(root))

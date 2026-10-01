@@ -186,6 +186,8 @@ def test_proxy_inventory_keeps_distinct_accounts_separate(tmp_path: Path) -> Non
     "suffix",
     [
         ("--unknown", "value"),
+        ("--home", "--arg=x"),
+        ("--workspace", "--arg=x"),
         ("--command",),
         ("--arg=bad\x00value",),
         ("--server-env-key=missing",),
@@ -336,6 +338,14 @@ def test_cursor_global_copy_recovers_saved_workspace_origin(tmp_path: Path, monk
     monkeypatch.setattr("codex_plugin_scanner.guard.adapters.cursor.install_cursor_hooks", lambda context: {})
     CursorHarnessAdapter().install(context)
     global_context = replace(context, workspace_dir=None)
+    # Simulate the state format written by earlier published installations.
+    state_path = CursorHarnessAdapter._state_path(context.home_dir / ".cursor/mcp.json", context)
+    state = json.loads(state_path.read_text())
+    state.pop("managed_origins")
+    state_path.write_text(json.dumps(state))
+    CursorHarnessAdapter().install(global_context)
+    assert json.loads(state_path.read_text())["managed_origins"]["fixture"] == ["project", str(project_config)]
+    CursorHarnessAdapter().install(global_context)
     after = discover_harness_mcp_servers(
         home_dir=context.home_dir,
         guard_home=context.guard_home,

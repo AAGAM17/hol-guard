@@ -25,6 +25,7 @@ from .mcp_servers import (
     ManagedMcpServer,
     is_guard_proxy_command,
     managed_stdio_servers,
+    observable_stdio_servers_with_proxy,
     proxy_cli_args,
     proxy_process_env,
     skipped_stdio_server_names,
@@ -255,10 +256,16 @@ class CursorHarnessAdapter(HarnessAdapter):
         state_path.parent.mkdir(parents=True, exist_ok=True)
         workspace_dir = str(context.workspace_dir.resolve()) if context.workspace_dir is not None else None
         previous = _json_payload(state_path)
-        origins = dict(cast(dict[str, list[str]], previous.get("managed_origins") or {}))
+        previous_origins = previous.get("managed_origins")
+        origins = dict(cast(dict[str, list[str]], previous_origins)) if isinstance(previous_origins, dict) else {}
+        for server in observable_stdio_servers_with_proxy(detection):
+            if server.source_scope == "project":
+                origins[server.name] = [server.source_scope, server.config_path]
         for server in managed_servers:
             if server.source_scope == "project":
                 origins[server.name] = [server.source_scope, server.config_path]
+            else:
+                origins.pop(server.name, None)
         state = {
             "managed_config_path": str(target_path),
             "backup_path": str(backup_path),
@@ -508,12 +515,20 @@ class CursorHarnessAdapter(HarnessAdapter):
         state = _json_payload(self._state_path(config_path, context))
         managed_origins = state.get("managed_origins")
         origin = managed_origins.get(server_name) if isinstance(managed_origins, dict) else None
+        if "managed_origins" not in state:
+            # Older installs recorded only the active workspace. Resolve that
+            # bounded legacy origin before a reinstall rewrites the state.
+            workspace = state.get("workspace_dir")
+            if isinstance(workspace, str) and Path(workspace).is_absolute():
+                origin = ["project", str(Path(workspace) / ".cursor" / "mcp.json")]
         if (
             state.get("managed_config_path") != str(config_path)
             or state.get("surface") != "editor"
             or not isinstance(origin, list)
             or len(origin) != 2
             or not all(isinstance(value, str) for value in origin)
+            or origin[0] != "project"
+            or not Path(origin[1]).is_absolute()
         ):
             return {}
         return {

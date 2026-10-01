@@ -21,7 +21,13 @@ _VALUE_OPTIONS = frozenset(
     }
 )
 _REQUIRED_OPTIONS = _VALUE_OPTIONS - {"--home", "--workspace"}
-_LAUNCHER_ENV_KEYS = frozenset({"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONBREAKPOINT", "__PYVENV_LAUNCHER__"})
+_ALLOWED_PROXY_KEYS = _VALUE_OPTIONS | {"--arg", "--server-env-key"}
+MAX_PROXY_ARGS = 512
+MAX_PROXY_ARGS_BYTES = 262_144
+MAX_PROXY_UNWRAP_LAYERS = 4
+PROXY_LAUNCHER_ENV_KEYS = frozenset(
+    {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONBREAKPOINT", "__PYVENV_LAUNCHER__"}
+)
 _PROXY_HARNESSES = {
     "codex-mcp-proxy": "codex",
     "opencode-mcp-proxy": "opencode",
@@ -57,10 +63,10 @@ def read_managed_mcp_upstream(artifact: GuardArtifact, commands: frozenset[str])
     by the caller. These fields describe inventory, never trusted tool schemas
     or execution permission. Unknown or ambiguous forms remain unavailable.
     """
-    if len(artifact.args) > 512:
+    if len(artifact.args) > MAX_PROXY_ARGS:
         return None
     try:
-        if sum(len(value.encode("utf-8")) for value in artifact.args) > 262_144:
+        if sum(len(value.encode("utf-8")) for value in artifact.args) > MAX_PROXY_ARGS_BYTES:
             return None
     except UnicodeError:
         return None
@@ -76,13 +82,15 @@ def read_managed_mcp_upstream(artifact: GuardArtifact, commands: frozenset[str])
     index = 0
     while index < len(tail):
         key, separator, value = tail[index].partition("=")
-        if key not in _VALUE_OPTIONS | {"--arg", "--server-env-key"}:
+        if key not in _ALLOWED_PROXY_KEYS:
             return None
         if not separator:
             index += 1
             if index >= len(tail):
                 return None
             value = tail[index]
+            if value.startswith("--"):
+                return None
         if "\x00" in value:
             return None
         if key == "--arg":
@@ -123,7 +131,7 @@ def read_managed_mcp_upstream(artifact: GuardArtifact, commands: frozenset[str])
     }
     env: dict[str, str] = {}
     for key in sorted(env_keys):
-        if key.upper() in _LAUNCHER_ENV_KEYS:
+        if key.upper() in PROXY_LAUNCHER_ENV_KEYS:
             continue
         value = normalized_env.get(key)
         if not isinstance(value, str):

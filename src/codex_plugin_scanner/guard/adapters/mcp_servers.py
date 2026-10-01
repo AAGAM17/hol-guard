@@ -13,7 +13,12 @@ from ..launcher import merge_guard_launcher_env
 from ..models import GuardArtifact, HarnessDetection
 from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity
 from .base import HarnessContext
-from .managed_mcp_upstream import proxy_argument_tail, read_managed_mcp_upstream
+from .managed_mcp_upstream import (
+    MAX_PROXY_UNWRAP_LAYERS,
+    PROXY_LAUNCHER_ENV_KEYS,
+    proxy_argument_tail,
+    read_managed_mcp_upstream,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,9 +78,7 @@ _STABLE_SLASH_FLAG_TOKENS = frozenset(
         "/verbose",
     }
 )
-_PROXY_ENV_BLOCKLIST = frozenset(
-    {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONBREAKPOINT", "__PYVENV_LAUNCHER__"}
-)
+_PROXY_ENV_BLOCKLIST = PROXY_LAUNCHER_ENV_KEYS
 
 
 def managed_stdio_servers(detection: HarnessDetection) -> tuple[ManagedMcpServer, ...]:
@@ -232,7 +235,7 @@ def _managed_stdio_server(
         return None
     if artifact.command is None or not artifact.name.strip():
         return None
-    for _ in range(4):
+    for _ in range(MAX_PROXY_UNWRAP_LAYERS):
         if not is_guard_proxy_command(artifact.command, artifact.args):
             break
         if not include_guard_managed_proxy:

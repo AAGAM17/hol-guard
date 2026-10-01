@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchLocalCliApi } from "../guard-api";
 import type { LocalCliItem } from "../local-cli-api";
 import type { GuardApprovalGatePublicConfig } from "../guard-types";
@@ -270,25 +270,24 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
       setError(caught instanceof Error ? caught.message : "Codex setup did not finish. Review this connection in Codex before retrying."); }
     finally { operation.current = null; setBusy(false); }
   }
-  let setupStatus: string | null = null;
-  if (configured) {
+  const setupStatus = useMemo(() => {
+    if (!configured) return null;
     const change = configured.removed ? "removed from" : "added to";
-    setupStatus = `${configured.name} was ${change} Codex. Restart Codex to load this configuration change.`;
+    let text = `${configured.name} was ${change} Codex. Restart Codex to load this configuration change.`;
     if (!configured.removed) {
-      setupStatus += " Complete any provider-owned sign-in there.";
-      if (configured.kind === "package") setupStatus += " Codex may download and run the pinned package on first use.";
-      setupStatus += " Review each tool in Extensions after Codex loads it.";
+      text += " Complete any provider-owned sign-in there.";
+      if (configured.kind === "package") text += " Codex may download and run the pinned package on first use.";
+      text += " Review each tool in Extensions after Codex loads it.";
     }
-    setupStatus += " No tool permission was granted.";
-  }
-  let setupReviewText: string | null = null;
-  if (candidate && !candidate.rollback_handle) {
+    return `${text} No tool permission was granted.`;
+  }, [configured]);
+  const setupReviewText = useMemo(() => {
+    if (!candidate || candidate.rollback_handle) return null;
     if (candidate.kind === "package") {
-      setupReviewText = "This changes Codex configuration. Codex may download and execute this package on first use. It does not authenticate an account or allow tools in Guard.";
-    } else {
-      setupReviewText = "This changes Codex configuration. It does not download a package, authenticate an account, activate this session, or allow tools in Guard.";
+      return "This changes Codex configuration. Codex may download and execute this package on first use. It does not authenticate an account or allow tools in Guard.";
     }
-  }
+    return "This changes Codex configuration. It does not download a package, authenticate an account, activate this session, or allow tools in Guard.";
+  }, [candidate]);
   return <details className="mt-6 rounded-2xl border border-slate-200 bg-white p-4" onToggle={(event) => {
     setOpen(event.currentTarget.open);
     onOpenChange(event.currentTarget.open);

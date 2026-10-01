@@ -14,7 +14,7 @@ export function parseRecentMcpSetups(value: unknown): RecentMcpSetup[] {
     if (entry === null || typeof entry !== "object" || Array.isArray(entry)
       || !isSetupDigest(entry.rollback_handle) || !isSetupDigest(entry.selection_digest)
       || handles.has(entry.rollback_handle)
-      || typeof entry.setup_name !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(entry.setup_name)
+      || typeof entry.setup_name !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(entry.setup_name)
       || !["remote", "package"].includes(entry.kind)
       || typeof entry.registry_name !== "string" || entry.registry_name.length > 256
       || typeof entry.version !== "string" || entry.version.length > 80) {

@@ -90,6 +90,7 @@ def install_codex_remote_mcp(
     candidate: Mapping[str, object],
     *,
     on_installed: Callable[[CodexMcpSetupReceipt], None] | None = None,
+    on_version_chain: Callable[[str, list[tuple[str, str]]], None] | None = None,
 ) -> str:
     executable = shutil.which("codex")
     if executable is None:
@@ -97,7 +98,9 @@ def install_codex_remote_mcp(
     name, endpoint = candidate.get("setup_name"), candidate.get("endpoint")
     if not isinstance(name, str) or not isinstance(endpoint, str):
         raise ValueError("invalid_codex_setup_selection")
-    return install_reviewed_codex_mcp(executable, name, {"url": endpoint}, on_installed=on_installed)
+    return install_reviewed_codex_mcp(
+        executable, name, {"url": endpoint}, on_installed=on_installed, on_version_chain=on_version_chain
+    )
 
 
 def reviewed_codex_package_candidate(payload: dict[str, object]) -> dict[str, object]:
@@ -176,6 +179,7 @@ def install_codex_package_mcp(
     candidate: Mapping[str, object],
     *,
     on_installed: Callable[[CodexMcpSetupReceipt], None] | None = None,
+    on_version_chain: Callable[[str, list[tuple[str, str]]], None] | None = None,
 ) -> str:
     """Configure a reviewed pinned recipe; Codex owns first launch and auth."""
     executable = shutil.which("codex")
@@ -191,5 +195,9 @@ def install_codex_package_mcp(
     ):
         raise ValueError("invalid_codex_package_selection")
     return install_reviewed_codex_mcp(
-        executable, name, {"command": command, "args": arguments}, on_installed=on_installed
+        executable,
+        name,
+        {"command": command, "args": arguments},
+        on_installed=on_installed,
+        on_version_chain=on_version_chain,
     )

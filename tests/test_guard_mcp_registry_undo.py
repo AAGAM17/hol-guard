@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -209,3 +211,60 @@ def test_version_chain_does_not_touch_receipts_from_another_profile(tmp_path):
     )
     assert undo._receipts[handle].receipt == receipt
     assert undo._receipts[handle].available is True
+
+
+@pytest.mark.parametrize("stage", ["approval", "host"])
+def test_history_and_preview_remain_responsive_during_undo(tmp_path, monkeypatch, stage):
+    store, service, _, handle, payload = _setup(tmp_path)
+    _protect(store)
+    entered, release = threading.Event(), threading.Event()
+
+    def wait():
+        entered.set()
+        assert release.wait(5), "test did not release the pending Undo"
+
+    original_trust = mcp_registry_undo.require_local_cli_trust
+
+    def trust(*args, **kwargs):
+        if stage == "approval":
+            wait()
+        return original_trust(*args, **kwargs)
+
+    def remove(*_args):
+        if stage == "host":
+            wait()
+        return "v2"
+
+    monkeypatch.setattr(mcp_registry_undo, "require_local_cli_trust", trust)
+    monkeypatch.setattr(mcp_registry_undo.shutil, "which", lambda _name: "/synthetic/codex")
+    monkeypatch.setattr(mcp_registry_undo, "rollback_reviewed_codex_mcp", remove)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        undo = workers.submit(service.registry_setup, {**payload, "approval_password": "synthetic-password"})
+        try:
+            assert entered.wait(3)
+            recent = workers.submit(service.registry_setup, {"operation": "recent"}).result(timeout=2)
+            assert recent["setups"][0]["rollback_handle"] == handle
+            preview = workers.submit(
+                service.registry_setup, {"operation": "rollback-preview", "rollback_handle": handle}
+            ).result(timeout=2)
+            assert preview["rollback_handle"] == handle
+        finally:
+            release.set()
+        assert undo.result(timeout=3)["setup_rolled_back"] is True
+
+
+def test_undo_does_not_remove_a_receipt_replaced_while_host_was_pending(tmp_path, monkeypatch):
+    store, service, _, handle, payload = _setup(tmp_path)
+    _protect(store)
+    undo = service._registry_setup_undo
+    monkeypatch.setattr(mcp_registry_undo.shutil, "which", lambda _name: "/synthetic/codex")
+
+    def remove(*_args):
+        undo.advance_version_chain("/synthetic/private/config.toml", [("v1", "v2")])
+        return "v3"
+
+    monkeypatch.setattr(mcp_registry_undo, "rollback_reviewed_codex_mcp", remove)
+    with pytest.raises(LocalCliApiError) as uncertain:
+        service.registry_setup({**payload, "approval_password": "synthetic-password"})
+    assert uncertain.value.code == "codex_setup_outcome_uncertain"
+    assert undo._receipts[handle].receipt.version == "v2"

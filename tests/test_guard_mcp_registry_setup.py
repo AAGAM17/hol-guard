@@ -51,7 +51,7 @@ def test_setup_preview_binds_exact_listing_and_requires_local_proof(tmp_path: Pa
     monkeypatch.setattr(mcp_registry_setup, "search_mcp_registry", _listing)
     launched = []
 
-    def install(candidate, *, on_installed):
+    def install(candidate, *, on_installed, on_version_chain):
         launched.append(candidate)
         return _mock_install(candidate, on_installed=on_installed)
 
@@ -129,7 +129,7 @@ def test_codex_remote_setup_uses_the_version_checked_host_adapter(monkeypatch):
     monkeypatch.setattr(mcp_registry_setup.shutil, "which", lambda name: "/synthetic/codex")
     calls = []
 
-    def install(executable, name, entry, *, on_installed):
+    def install(executable, name, entry, *, on_installed, on_version_chain):
         calls.append((executable, name, entry, on_installed))
         return name
 
@@ -170,7 +170,7 @@ def test_package_setup_revalidates_pinned_recipe_and_requires_local_proof(tmp_pa
     monkeypatch.setattr(mcp_registry_setup.shutil, "which", lambda _name: "/synthetic/npx")
     installed = []
 
-    def install(candidate, *, on_installed):
+    def install(candidate, *, on_installed, on_version_chain):
         installed.append(candidate)
         return _mock_install(candidate, on_installed=on_installed)
 
@@ -217,7 +217,7 @@ def test_codex_package_setup_preserves_the_pinned_recipe_without_launching_it(mo
     candidate = {"setup_name": "example", "command": "/synthetic/npx", "arguments": ["-y", "@example/server@2.3.4"]}
     calls = []
 
-    def install(executable, name, entry, *, on_installed):
+    def install(executable, name, entry, *, on_installed, on_version_chain):
         calls.append((executable, name, entry, on_installed))
         return name
 

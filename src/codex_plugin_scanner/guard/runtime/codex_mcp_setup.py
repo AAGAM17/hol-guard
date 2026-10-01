@@ -123,6 +123,7 @@ def install_reviewed_codex_mcp(
     entry: dict[str, object],
     *,
     on_installed: Callable[[CodexMcpSetupReceipt], None] | None = None,
+    on_version_chain: Callable[[str, list[tuple[str, str]]], None] | None = None,
 ) -> str:
     if not _NAME.fullmatch(name):
         raise ValueError("invalid_codex_setup_selection")
@@ -149,7 +150,11 @@ def install_reviewed_codex_mcp(
                 on_installed(installed)
         except (ValueError, OSError) as error:
             try:
-                _rollback(rpc, installed)
+                removed_version = _rollback(rpc, installed)
+                if on_version_chain is not None:
+                    on_version_chain(
+                        before.file_path, [(before.version, installed.version), (installed.version, removed_version)]
+                    )
             except (ValueError, OSError):
                 raise ValueError("codex_setup_outcome_uncertain") from error
             raise ValueError("codex_setup_rolled_back") from error

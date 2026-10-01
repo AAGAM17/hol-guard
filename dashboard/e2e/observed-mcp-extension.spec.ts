@@ -9,6 +9,9 @@ for (const width of [1280, 390]) {
     let discoveryCalls = 0;
     let finishApply: () => void = () => undefined;
     const applyGate = new Promise<void>((resolve) => { finishApply = resolve; });
+    let applied = false;
+    const older = { rollback_handle: "c".repeat(64), setup_name: "older-server", kind: "remote",
+      registry_name: "io.github.sample/older-server", version: "1.0.0", selection_digest: "c".repeat(64) };
     await mount(page);
     await page.route("**/v1/local-clis**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -35,11 +38,13 @@ for (const width of [1280, 390]) {
       }
       if (path.endsWith("/registry-setup")) {
         if (body.operation === "recent") {
-          await route.fulfill({ json: { setups: [] } });
+          await route.fulfill({ json: { setups: [{ ...older, rollback_available: !applied },
+            ...(applied ? [{ rollback_handle: "a".repeat(64), setup_name: "newserver", kind: "remote",
+              registry_name: "io.github.sample/newserver", version: "1.2.3", selection_digest: "b".repeat(64) }] : [])] } });
           return;
         }
         requests.push(body);
-        if (body.operation === "apply") await applyGate;
+        if (body.operation === "apply") { await applyGate; applied = true; }
         await route.fulfill({ json: body.operation === "preview"
           ? { host: "codex", kind: "remote", registry_name: body.registry_name, version: body.version, endpoint: body.endpoint,
             setup_name: "newserver", selection_digest: "b".repeat(64),
@@ -76,12 +81,14 @@ for (const width of [1280, 390]) {
     const beforeApply = discoveryCalls;
     await review.getByRole("button", { name: "Add to Codex", exact: true }).click();
     await expect.poll(() => requests.length).toBe(2);
-    await expect(registry.getByRole("status")).toContainText("Adding the reviewed connection to Codex…");
+    await expect(registry.getByRole("status").filter({ hasText: "Adding the reviewed connection to Codex…" })).toBeVisible();
     await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
     await page.getByText("Find an MCP server in the public registry", { exact: true }).click();
     await expect(review.getByRole("button", { name: "Add to Codex", exact: true })).toBeDisabled();
     finishApply();
-    await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
+    await expect(registry.getByRole("status").filter({ hasText: "No tool permission was granted." })).toBeVisible();
+    await expect(registry.getByRole("button", { name: "Undo setup for older-server", exact: true })).toBeDisabled();
+    await expect(registry.getByRole("button", { name: "Undo setup for newserver", exact: true })).toBeEnabled();
     await expect.poll(() => discoveryCalls).toBe(beforeApply + 1);
     if (width === 390) {
       await expect(registry.getByRole("alert")).toContainText("Codex configuration changed, but Guard could not fully rescan host connections.");
@@ -151,7 +158,7 @@ for (const width of [1280, 390]) {
     await review.getByLabel("Authenticator code").fill("123456");
     const beforeApply = discoveryCalls;
     await review.getByRole("button", { name: "Add to Codex", exact: true }).click();
-    await expect(registry.getByRole("status")).toContainText("No tool permission was granted.");
+    await expect(registry.getByRole("status").filter({ hasText: "No tool permission was granted." })).toBeVisible();
     await expect.poll(() => discoveryCalls).toBe(beforeApply + 1);
     expect(requests[1]).toMatchObject({ operation: "apply", kind: "package",
       package_identifier: "@sample/server", package_version: "2.3.4", selection_digest: "c".repeat(64),
@@ -248,7 +255,8 @@ for (const width of [1280, 390]) {
     expect(errors).toEqual([]);
   });
 
-  test(`changed Codex configuration leaves Undo unavailable at ${width}px`, async ({ page }) => {
+  for (const conflictStage of ["rollback-preview", "rollback"]) {
+  test(`changed Codex configuration leaves Undo unavailable during ${conflictStage} at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const saved = { rollback_handle: "a".repeat(64), setup_name: "saved-server", kind: "remote",
       registry_name: "io.github.sample/saved-server", version: "1.2.3", selection_digest: "b".repeat(64) };
@@ -261,8 +269,14 @@ for (const width of [1280, 390]) {
         if (body.operation === "recent") {
           await route.fulfill({ json: { setups: [{ ...saved, rollback_available: available }] } });
         } else if (body.operation === "rollback-preview") {
-          await route.fulfill({ json: { ...saved, host: "codex", endpoint: "https://example.com/mcp",
-            permissions_granted: false, host_change_applied: false } });
+          if (conflictStage === "rollback-preview") {
+            available = false;
+            await route.fulfill({ status: 409, json: { error: "codex_config_changed",
+              message: "Codex configuration changed. Guard kept it unchanged." } });
+          } else {
+            await route.fulfill({ json: { ...saved, host: "codex", endpoint: "https://example.com/mcp",
+              permissions_granted: false, host_change_applied: false } });
+          }
         } else if (body.operation === "rollback") {
           changes += 1;
           available = false;
@@ -287,14 +301,17 @@ for (const width of [1280, 390]) {
     const undo = registry.getByRole("button", { name: "Undo setup for saved-server", exact: true });
     await undo.click();
     const review = registry.getByRole("region", { name: "Review Codex MCP setup", exact: true });
-    await review.getByLabel("Authenticator code").fill("123456");
-    await review.getByRole("button", { name: "Remove from Codex", exact: true }).click();
+    if (conflictStage === "rollback") {
+      await review.getByLabel("Authenticator code").fill("123456");
+      await review.getByRole("button", { name: "Remove from Codex", exact: true }).click();
+    }
     await expect(registry.getByRole("alert")).toContainText("kept it unchanged");
     await expect(review).toHaveCount(0);
     await expect(undo).toBeDisabled();
     await expect(registry.getByRole("region", { name: "Recent MCP setup", exact: true })).toContainText("Configuration changed. Review this connection in Codex.");
-    expect(changes).toBe(1);
+    expect(changes).toBe(conflictStage === "rollback" ? 1 : 0);
   });
+  }
 
   test(`closing the registry dismisses delayed Undo previews at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -302,7 +319,9 @@ for (const width of [1280, 390]) {
       registry_name: "io.github.sample/saved-server", version: "1.2.3", selection_digest: "b".repeat(64) };
     let finishPreview: () => void = () => undefined;
     const previewGate = new Promise<void>((resolve) => { finishPreview = resolve; });
-    let previewStarted = false;
+    let finishSecondPreview: () => void = () => undefined;
+    const secondPreviewGate = new Promise<void>((resolve) => { finishSecondPreview = resolve; });
+    let previewsStarted = 0;
     let previewFinished = false;
     await mount(page);
     await page.route("**/v1/local-clis**", async (route) => {
@@ -310,11 +329,11 @@ for (const width of [1280, 390]) {
       if (new URL(route.request().url()).pathname.endsWith("/registry-setup")) {
         if (body.operation === "recent") await route.fulfill({ json: { setups: [saved] } });
         else if (body.operation === "rollback-preview") {
-          previewStarted = true;
-          await previewGate;
+          const previewNumber = ++previewsStarted;
+          await (previewNumber === 1 ? previewGate : secondPreviewGate);
           await route.fulfill({ json: { ...saved, host: "codex", endpoint: "https://example.com/mcp",
             permissions_granted: false, host_change_applied: false } });
-          previewFinished = true;
+          if (previewNumber === 1) previewFinished = true;
         } else throw new Error(`Unexpected setup operation: ${body.operation}`);
         return;
       }
@@ -328,14 +347,20 @@ for (const width of [1280, 390]) {
     const registry = page.getByRole("region", { name: "Public MCP registry search", exact: true });
     const undo = registry.getByRole("button", { name: "Undo setup for saved-server", exact: true });
     await undo.click();
-    await expect.poll(() => previewStarted).toBe(true);
+    await expect.poll(() => previewsStarted).toBe(1);
     await expect(registry.getByRole("status").filter({ hasText: "Checking the saved setup" })).toBeVisible();
     await toggle.click();
     await toggle.click();
+    await expect(undo).toBeEnabled();
+    await undo.click();
+    await expect.poll(() => previewsStarted).toBe(2);
     finishPreview();
     await expect.poll(() => previewFinished).toBe(true);
-    await expect(undo).toBeEnabled();
+    await expect(registry.getByRole("status").filter({ hasText: "Checking the saved setup" })).toBeVisible();
+    await expect(undo).toBeDisabled();
     await expect(registry.getByRole("region", { name: "Review Codex MCP setup", exact: true })).toHaveCount(0);
+    finishSecondPreview();
+    await expect(registry.getByRole("region", { name: "Review Codex MCP setup", exact: true })).toBeVisible();
   });
 
   test(`observed connector permissions remain exact at ${width}px`, async ({ page }, testInfo) => {

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
+from codex_plugin_scanner.guard.daemon.mcp_registry_undo import RegistrySetupUndo
 from codex_plugin_scanner.guard.runtime import codex_mcp_setup
+from codex_plugin_scanner.guard.store import GuardStore
 
 
 class ConfigHost:
@@ -47,12 +50,13 @@ class ConfigHost:
         if params["expectedVersion"] != str(self.version):
             raise ValueError("codex_config_changed")
         [edit] = params["edits"]
-        assert edit["keyPath"] == "mcp_servers.reviewed" and edit["mergeStrategy"] == "replace"
+        assert edit["keyPath"].startswith("mcp_servers.") and edit["mergeStrategy"] == "replace"
+        name = edit["keyPath"].removeprefix("mcp_servers.")
         self.writes.append(copy.deepcopy(params))
         if edit["value"] is None:
-            self.config["mcp_servers"].pop("reviewed")
+            self.config["mcp_servers"].pop(name)
         else:
-            self.config["mcp_servers"]["reviewed"] = copy.deepcopy(edit["value"])
+            self.config["mcp_servers"][name] = copy.deepcopy(edit["value"])
         self.version += 1
         if self.drop_write_reply:
             raise ValueError("codex_config_rpc_timeout")
@@ -141,6 +145,42 @@ def test_failed_receipt_retention_rolls_back_before_reporting_success(host):
             "fixture", "reviewed", {"url": "https://example.test"}, on_installed=fail
         )
     assert host.config == before
+
+
+@pytest.mark.parametrize("failure", ["verification", "receipt"])
+@pytest.mark.parametrize("outside_edit", [False, True])
+def test_failed_setup_reports_both_owned_writes_without_reviving_external_edits(host, tmp_path, failure, outside_edit):
+    undo = RegistrySetupUndo(GuardStore(tmp_path / "guard"))
+    entry = host.config["mcp_servers"]["existing"]
+    receipt = codex_mcp_setup.CodexMcpSetupReceipt("existing", host.path, "1", json.dumps(entry))
+    handle = undo.remember(receipt, {"setup_name": "existing", "kind": "remote", "endpoint": entry["url"]})
+    if outside_edit:
+        host.version += 1
+        host.config["user_edit"] = "preserved"
+    if failure == "verification":
+        host.corrupt_verification = True
+
+    def fail(_receipt):
+        raise ValueError("receipt_retention_failed")
+
+    with pytest.raises(ValueError, match="codex_setup_rolled_back"):
+        codex_mcp_setup.install_reviewed_codex_mcp(
+            "fixture",
+            "reviewed",
+            {"url": "https://example.test/reviewed"},
+            on_installed=fail if failure == "receipt" else None,
+            on_version_chain=undo.advance_version_chain,
+        )
+    record = undo._receipts[handle]
+    assert "reviewed" not in host.config["mcp_servers"]
+    if outside_edit:
+        assert record.available is False
+        assert host.config["user_edit"] == "preserved"
+        assert record.receipt.version == "1"
+    else:
+        assert record.available is True and record.receipt.version == "3"
+        assert codex_mcp_setup.rollback_reviewed_codex_mcp("fixture", record.receipt) == "4"
+        assert host.config == {"model": "untouched", "mcp_servers": {}}
 
 
 @pytest.mark.parametrize("name", ["other.config", "../../config", "", "a" * 65])

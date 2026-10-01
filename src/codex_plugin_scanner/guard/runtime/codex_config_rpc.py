@@ -20,6 +20,8 @@ from ..strict_json_pairs import unique_json_object
 
 _MAX_MESSAGE_BYTES = 1_048_576
 _MAX_JSON_DEPTH = 64
+# Bound unsolicited notifications while waiting for one config RPC response.
+_MAX_RESPONSE_MESSAGES = 64
 _METHODS = frozenset({"config/read", "config/batchWrite"})
 
 
@@ -153,7 +155,7 @@ class CodexConfigRpc:
         request_id = self._sequence
         self._send({"id": request_id, "method": method, "params": dict(params)})
         deadline = time.monotonic() + self._timeout
-        for _ in range(64):
+        for _ in range(_MAX_RESPONSE_MESSAGES):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("codex_config_rpc_timeout")

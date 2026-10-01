@@ -519,24 +519,33 @@ class LocalCliApiService:
             with self._registry_setup_lock:
                 self._registry_setup_undo.ensure_capacity()
                 configured = (
-                    install_codex_package_mcp(candidate, on_installed=remember)
+                    install_codex_package_mcp(
+                        candidate,
+                        on_installed=remember,
+                        on_version_chain=self._registry_setup_undo.advance_version_chain,
+                    )
                     if package_setup
-                    else install_codex_remote_mcp(candidate, on_installed=remember)
+                    else install_codex_remote_mcp(
+                        candidate,
+                        on_installed=remember,
+                        on_version_chain=self._registry_setup_undo.advance_version_chain,
+                    )
                 )
                 if rollback_handle is None or configured != candidate["setup_name"]:
                     raise ValueError("codex_setup_outcome_uncertain")
         except ValueError as error:
-            message = (
-                "Codex may have changed its connection. Check the host configuration before retrying."
-                if str(error) == "codex_setup_outcome_uncertain"
-                else "Setup did not verify and its new connection was removed. Review setup and retry."
-                if str(error) == "codex_setup_rolled_back"
-                else "Codex configuration changed. Review it before retrying setup."
-                if str(error) == "codex_config_changed"
-                else "Recent setup history is full. Wait for an older setup to expire before adding another connection."
-                if str(error) == "codex_setup_receipt_limit"
-                else "Codex could not add this connection. Update or review its host configuration and retry."
-            )
+            if str(error) == "codex_setup_outcome_uncertain":
+                message = "Codex may have changed its connection. Check the host configuration before retrying."
+            elif str(error) == "codex_setup_rolled_back":
+                message = "Setup did not verify and its new connection was removed. Review setup and retry."
+            elif str(error) == "codex_config_changed":
+                message = "Codex configuration changed. Review it before retrying setup."
+            elif str(error) == "codex_setup_receipt_limit":
+                message = (
+                    "Recent setup history is full. Wait for an older setup to expire before adding another connection."
+                )
+            else:
+                message = "Codex could not add this connection. Update or review its host configuration and retry."
             raise LocalCliApiError(409, str(error), message) from error
         return {
             "schema_version": _LOCAL_CLI_API_SCHEMA,

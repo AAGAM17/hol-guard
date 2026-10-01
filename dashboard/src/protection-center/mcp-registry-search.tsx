@@ -130,14 +130,20 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
     if (operation.current) return;
     returnFocus.current = button;
     const generation = ++interactionGeneration.current; operation.current = "rollback-preview";
+    const next = new AbortController(); controller.current = next;
     setBusy(true); setError(null); setCandidate(null); setConfigured(null); setPassword(""); setTotp("");
     try {
       const response = await fetchLocalCliApi("/v1/local-clis/registry-setup", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operation: "rollback-preview", rollback_handle: setup.rollback_handle }),
+        signal: next.signal,
       });
       const body: unknown = await response.json();
-      if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Could not review removal. Review this connection in Codex.");
+      if (next.signal.aborted || interactionGeneration.current !== generation) return;
+      if (!response.ok) {
+        if (object(body) && (body.error === "codex_config_changed" || body.code === "codex_config_changed")) void loadRecent();
+        throw new Error(object(body) && typeof body.message === "string" ? body.message : "Could not review removal. Review this connection in Codex.");
+      }
       if (!object(body) || body.host !== "codex" || body.rollback_handle !== setup.rollback_handle
         || body.setup_name !== setup.setup_name || body.selection_digest !== setup.selection_digest
         || body.registry_name !== setup.registry_name || body.version !== setup.version || body.kind !== setup.kind
@@ -149,15 +155,19 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
             || body.verified_package !== false)) throw new Error("Could not verify removal. Review this connection in Codex.");
       if (interactionGeneration.current === generation) setCandidate(body as SetupCandidate);
     } catch (caught) {
-      if (interactionGeneration.current === generation) {
+      if (!next.signal.aborted && interactionGeneration.current === generation) {
         setError(caught instanceof Error ? caught.message : "Could not review removal.");
       }
     }
-    finally { operation.current = null; setBusy(false); }
+    finally {
+      if (controller.current === next && interactionGeneration.current === generation) {
+        controller.current = null; operation.current = null; setBusy(false);
+      }
+    }
   }
   async function search() {
     if (query.trim().length < 2 || busy || operation.current) return;
-    interactionGeneration.current += 1;
+    const generation = ++interactionGeneration.current;
     operation.current = "search";
     const next = new AbortController();
     controller.current = next; setBusy(true); setError(null); setEntries(null); setCandidate(null); setConfigured(null);
@@ -166,13 +176,17 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
       if (!next.signal.aborted) { setEntries(result.entries); setMoreAvailable(result.moreAvailable); }
     }
     catch (caught) { if (!next.signal.aborted) setError(caught instanceof Error ? caught.message : "Registry unavailable."); }
-    finally { operation.current = null; if (controller.current === next) controller.current = null;
-      if (!next.signal.aborted) setBusy(false); }
+    finally {
+      if (controller.current === next && interactionGeneration.current === generation) {
+        controller.current = null; operation.current = null; setBusy(false);
+      }
+    }
   }
   async function preview(entry: RegistryEntry, target: { endpoint: string } | { packageOption: PackageOption }) {
     if (operation.current) return;
     const generation = ++interactionGeneration.current;
     operation.current = "preview";
+    const next = new AbortController(); controller.current = next;
     setBusy(true); setError(null); setCandidate(null); setConfigured(null); setPassword(""); setTotp("");
     const setupName = entry.name.split("/").at(-1)?.toLowerCase().replace(/[^a-z0-9_-]/g, "-") ?? "mcp-server";
     try {
@@ -182,6 +196,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
           setup_name: setupName, ...("endpoint" in target ? { kind: "remote", endpoint: target.endpoint }
             : { kind: "package", package_identifier: target.packageOption.identifier,
               package_version: target.packageOption.version }) }),
+        signal: next.signal,
       });
       const body: unknown = await response.json();
       if (!response.ok) throw new Error(object(body) && typeof body.message === "string" ? body.message : "Could not review setup.");
@@ -195,13 +210,17 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
         || body.package_version !== target.packageOption.version || typeof body.command !== "string"
         || !Array.isArray(body.arguments) || !body.arguments.every((argument) => typeof argument === "string")
         || body.verified_package !== false) throw new Error("Invalid Codex package preview");
-      if (interactionGeneration.current === generation) setCandidate(body as SetupCandidate);
+      if (!next.signal.aborted && interactionGeneration.current === generation) setCandidate(body as SetupCandidate);
     } catch (caught) {
-      if (interactionGeneration.current === generation) {
+      if (!next.signal.aborted && interactionGeneration.current === generation) {
         setError(caught instanceof Error ? caught.message : "Could not review setup.");
       }
     }
-    finally { operation.current = null; setBusy(false); }
+    finally {
+      if (controller.current === next && interactionGeneration.current === generation) {
+        controller.current = null; operation.current = null; setBusy(false);
+      }
+    }
   }
   async function apply() {
     if (!candidate || busy || operation.current || isApprovalProofSubmitDisabled(approvalGate,
@@ -239,6 +258,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
       else setRecent((previous) => [{ rollback_handle: body.rollback_handle as string,
         setup_name: candidate.setup_name, kind: candidate.kind, registry_name: candidate.registry_name,
         version: candidate.version, selection_digest: candidate.selection_digest }, ...previous].slice(0, 32));
+      void loadRecent();
       setConfigured({ name: candidate.setup_name, kind: candidate.kind, removed: Boolean(candidate.rollback_handle) });
       setCandidate(null); setPassword(""); setTotp("");
       void Promise.resolve().then(onConfigured).then((outcome) => {
@@ -250,14 +270,33 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
       setError(caught instanceof Error ? caught.message : "Codex setup did not finish. Review this connection in Codex before retrying."); }
     finally { operation.current = null; setBusy(false); }
   }
+  let setupStatus: string | null = null;
+  if (configured) {
+    const change = configured.removed ? "removed from" : "added to";
+    setupStatus = `${configured.name} was ${change} Codex. Restart Codex to load this configuration change.`;
+    if (!configured.removed) {
+      setupStatus += " Complete any provider-owned sign-in there.";
+      if (configured.kind === "package") setupStatus += " Codex may download and run the pinned package on first use.";
+      setupStatus += " Review each tool in Extensions after Codex loads it.";
+    }
+    setupStatus += " No tool permission was granted.";
+  }
+  let setupReviewText: string | null = null;
+  if (candidate && !candidate.rollback_handle) {
+    if (candidate.kind === "package") {
+      setupReviewText = "This changes Codex configuration. Codex may download and execute this package on first use. It does not authenticate an account or allow tools in Guard.";
+    } else {
+      setupReviewText = "This changes Codex configuration. It does not download a package, authenticate an account, activate this session, or allow tools in Guard.";
+    }
+  }
   return <details className="mt-6 rounded-2xl border border-slate-200 bg-white p-4" onToggle={(event) => {
     setOpen(event.currentTarget.open);
     onOpenChange(event.currentTarget.open);
     if (event.currentTarget.open) void loadRecent();
     else { invalidateHistory(); if (operation.current !== "apply") {
+      controller.current?.abort(); controller.current = null; operation.current = null; setBusy(false);
       interactionGeneration.current += 1; setCandidate(null); setPassword(""); setTotp("");
     } }
-    if (!event.currentTarget.open && operation.current === "search") { controller.current?.abort(); setBusy(false); }
   }}>
     <summary className="min-h-11 cursor-pointer py-3 font-semibold text-brand-dark">Find an MCP server in the public registry</summary>
     {open ? <section aria-label="Public MCP registry search">
@@ -278,13 +317,7 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
           apply: candidate?.rollback_handle ? "Removing the reviewed connection from Codex…" : "Adding the reviewed connection to Codex…" }[operation.current ?? "apply"]}
       </p> : null}
       {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
-      {configured ? <p role="status" className="mt-3 text-sm text-brand-dark">
-        {configured.name} was {configured.removed ? "removed from" : "added to"} Codex. Restart Codex to load this configuration change.
-        {!configured.removed ? <> Complete any provider-owned sign-in there.
-          {configured.kind === "package" ? " Codex may download and run the pinned package on first use." : null}
-          {" "}Review each tool in Extensions after Codex loads it.</> : null}
-        {" "}No tool permission was granted.
-      </p> : null}
+      {setupStatus ? <p role="status" className="mt-3 text-sm text-brand-dark">{setupStatus}</p> : null}
       {candidate ? <section aria-label="Review Codex MCP setup" className="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-brand-dark">
         <h3 className="font-semibold">{candidate.rollback_handle ? "Review removal from Codex" : "Review Codex connection"}</h3>
         <p className="mt-2">{candidate.registry_name} · version {candidate.version}</p>
@@ -292,13 +325,10 @@ export function McpRegistrySearch({ items, approvalGate, onOpenChange, onConfigu
         {candidate.kind === "package" ? <>
           <p className="mt-2">Unverified registry package: {candidate.package_identifier} · pinned version {candidate.package_version}</p>
           <p className="mt-1 break-all font-mono text-xs">Launch: {[candidate.command, ...candidate.arguments].map((part) => JSON.stringify(part)).join(" ")}</p>
-          {!candidate.rollback_handle ? <p className="mt-2">This changes Codex configuration. Codex may download and execute this package on first use.
-            It does not authenticate an account or allow tools in Guard.</p> : null}
         </> : <>
           <p className="mt-1 break-all">HTTPS endpoint: {candidate.endpoint}</p>
-          {!candidate.rollback_handle ? <p className="mt-2">This changes Codex configuration. It does not download a package,
-            authenticate an account, activate this session, or allow tools in Guard.</p> : null}
         </>}
+        {setupReviewText ? <p className="mt-2">{setupReviewText}</p> : null}
         {candidate.rollback_handle ? <p className="mt-2">Remove only the connection added by this setup.
           If Codex configuration has changed since then, Guard leaves it unchanged so you can review it in Codex.
           Removing setup does not revoke provider access or erase Guard tool choices.</p> : null}

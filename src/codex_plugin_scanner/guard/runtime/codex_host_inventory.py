@@ -68,12 +68,14 @@ class CodexHostInventoryCache:
             if snapshot.connection_id != _source_id(codex_home, os.geteuid(), pid, source[1]):
                 raise ValueError("codex_host_changed")
         except (OSError, ValueError) as error:
+            if isinstance(error, ValueError) and str(error) == "codex_host_cancelled":
+                return
             with self._lock:
                 self._snapshot = None
             if (
                 isinstance(error, FileNotFoundError)
                 or isinstance(error.__cause__, FileNotFoundError)
-                or str(error) in {"codex_host_unsupported", "codex_host_cancelled"}
+                or str(error) == "codex_host_unsupported"
             ):
                 return
             reason = str(error) if str(error) in _FAILURE_CODES else "codex_host_invalid"

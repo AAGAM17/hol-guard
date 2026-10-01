@@ -363,7 +363,7 @@ def test_public_cache_never_reads_rpc_on_listing_and_invalidates_reconnect(tmp_p
     assert cache.read() is None
 
 
-@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled", "cancelled-during-read"])
 def test_refresh_keeps_valid_public_snapshot_visible_until_result(tmp_path, monkeypatch, outcome):
     cache = inventory.CodexHostInventoryCache()
     with _host(tmp_path, monkeypatch, _handler) as (home, _requests):
@@ -378,8 +378,10 @@ def test_refresh_keeps_valid_public_snapshot_visible_until_result(tmp_path, monk
             assert release.wait(2)
             if outcome == "failure":
                 raise ValueError("codex_host_unavailable")
-            if outcome == "cancelled":
+            if outcome.startswith("cancelled"):
                 cancel.set()
+                if outcome == "cancelled-during-read":
+                    raise ValueError("codex_host_cancelled")
             return snapshot
 
         monkeypatch.setattr(inventory, "read_codex_host_inventory", slow_read)
@@ -411,6 +413,9 @@ def test_refresh_keeps_valid_public_snapshot_visible_until_result(tmp_path, monk
             }
         else:
             assert cache.read() == payload
+            assert not failures
+            monkeypatch.setattr(inventory, "_SNAPSHOT_TTL", -1)
+            assert cache.read() is None
 
 
 def test_expired_public_cache_is_not_presented_as_current(tmp_path, monkeypatch):

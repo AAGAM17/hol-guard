@@ -75,21 +75,32 @@ def _emit_native_unavailable(
     context: HarnessContext,
     event_name: str,
     reason_code: str,
+    worker: HookWorker,
+    recording_only: bool = False,
 ) -> int:
-    _emit(
-        "hook",
-        availability_harness_response(
-            dict(payload),
-            harness=args.harness,
-            event_name=event_name,
-            reason_code=reason_code,
-            reason="HOL Guard could not complete the native hook decision safely.",
-            workspace=workspace,
-            home_dir=context.home_dir,
-            guard_home=context.guard_home,
-        ),
-        getattr(args, "json", False),
+    response = availability_harness_response(
+        dict(payload),
+        harness=args.harness,
+        event_name=event_name,
+        reason_code=reason_code,
+        reason="HOL Guard could not complete the native hook decision safely.",
+        workspace=workspace,
+        home_dir=context.home_dir,
+        guard_home=context.guard_home,
+        recording_only=recording_only,
     )
+    # The native edge has already returned before this projection.  Keep the
+    # native availability response and overlay only the managed model-visible
+    # structured destination; this must not invent a native result, receipt,
+    # or decision identifier.
+    response = worker._apply_structured_unavailable_overlay(
+        response,
+        harness=args.harness,
+        event_name=event_name,
+        guard_home=context.guard_home,
+        workspace=workspace,
+    )
+    _emit("hook", response, getattr(args, "json", False))
     return 0
 
 
@@ -172,6 +183,8 @@ def run_native_hook_pipeline(
             context=context,
             event_name=event_name,
             reason_code=str(edge_failure or "native_hook_event_unavailable"),
+            worker=worker,
+            recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
         )
 
     def fresh_copilot_tool_call_authority():

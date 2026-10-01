@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from codex_plugin_scanner.guard.adapters.pi_extension_source import managed_extension_source
 from codex_plugin_scanner.guard.daemon.hook_worker_responses import (
@@ -14,18 +18,21 @@ from codex_plugin_scanner.guard.daemon.hook_worker_responses import (
 )
 
 
-def _generated_source(tmp_path: Path) -> str:
+def _generated_source(tmp_path: Path, *, harness: str = "omp") -> str:
     return managed_extension_source(
         guard_home=tmp_path / "guard-home",
         home_dir=tmp_path / "home",
         settings_path=tmp_path / "settings.json",
-        harness="omp",
+        harness=harness,
         display_name="Oh My Pi",
     )
 
 
 def _strip_generated_types(fragment: str) -> str:
     replacements = {
+        "const errorPayload = JSON.parse(errorBody) as { error?: unknown };": (
+            "const errorPayload = JSON.parse(errorBody);"
+        ),
         "function compactHookEventName(value: unknown): string {": "function compactHookEventName(value) {",
         "function normalizeGuardResponse(value: unknown): GuardResponse | null {": (
             "function normalizeGuardResponse(value) {"
@@ -39,7 +46,7 @@ def _strip_generated_types(fragment: str) -> str:
 ) {""",
         "  payload: Record<string, unknown>,": "  payload,",
         "  cwd?: string,": "  cwd,",
-        "  options?: { enforceSizeCap?: boolean },": "  options,",
+        "  options?: { enforceSizeCap?: boolean; deadlineAt?: number },": "  options,",
         "  reasonCode: string,": "  reasonCode,",
         "  reason: string,": "  reason,",
         "): GuardResponse {": ") {",
@@ -59,7 +66,7 @@ def _strip_generated_types(fragment: str) -> str:
         """async function runGuard(
   payload: Record<string, unknown>,
   cwd?: string,
-  options?: { enforceSizeCap?: boolean },
+  options?: { enforceSizeCap?: boolean; deadlineAt?: number },
 ): Promise<GuardResponse> {""": """async function runGuard(
   payload,
   cwd,
@@ -109,7 +116,13 @@ const GUARD_DEADLINE_RESERVE_MS = 250;
 const GUARD_DAEMON_RECOVERY_TIMEOUT_MS = 250;
 const GUARD_DAEMON_RETRY_TIMEOUT_MS = 150;
 const GUARD_CLI_TIMEOUT_MS = 300;
+const GUARD_SOURCE_REF_MAX_OUTPUT_CHARS = 5 * 1024 * 1024;
+const GUARD_CONTENT_ITEM_LIMIT = 24;
+const GUARD_OBJECT_KEY_LIMIT = 24;
+const GUARD_MAX_DEPTH = 24;
 const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = 24000;
+const GUARD_MAX_SERIALIZED_RESPONSE_CHARS = 12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;
+const OUTPUT_TEXT_KEYS = ["stdout", "stderr", "output", "content", "result", "message", "text"];
 const GUARD_ARGS = [];
 const GUARD_CLI_WRAPPER_COMMAND = "hol-guard";
 const GUARD_CLI_WRAPPER_ARGS = [];
@@ -140,13 +153,36 @@ async function runGuardCliCommand() {{
   return cliResult;
 }}
 
-globalThis.fetch = async () => ({{
-  ok: true,
-  status: 200,
-  text: async () => fetchBodies.shift() ?? "",
-}});
+function responseBody(value) {{
+  let used = false;
+  return {{
+    getReader() {{
+      return {{
+        async read() {{
+          if (used) return {{ done: true, value: undefined }};
+          used = true;
+          return {{ done: false, value: new TextEncoder().encode(value) }};
+        }},
+        async cancel() {{ used = true; }},
+        releaseLock() {{}},
+      }};
+    }},
+  }};
+}}
+
+globalThis.fetch = async () => {{
+  const value = fetchBodies.shift() ?? "";
+  return {{
+    ok: true,
+    status: 200,
+    body: responseBody(value),
+    text: async () => value,
+  }};
+}};
 
 {helper}
+
+{_generated_preprocessing_helper(source)}
 
 {daemon}
 
@@ -181,6 +217,8 @@ fetchBodies = ['{{"decision":"maybe"}}'];
 result.daemon_unknown = await daemonGuardResponse("{{}}", "/tmp", 100, Date.now() + 1000);
 fetchBodies = ['{{"decision":"block","reason":"fixture block"}}'];
 result.daemon_block = (await daemonGuardResponse("{{}}", "/tmp", 100, Date.now() + 1000)).response;
+fetchBodies = ["x".repeat(GUARD_MAX_SERIALIZED_RESPONSE_CHARS + 1)];
+result.daemon_oversized_body = await daemonGuardResponse("{{}}", "/tmp", 100, Date.now() + 1000);
 
 daemonMode = "retry-shape";
 fetchBodies = ['{{"unknown":"first"}}', '{{"unknown":"second"}}'];
@@ -306,42 +344,21 @@ const GUARD_SOURCE_REF_MAX_OUTPUT_CHARS = 5 * 1024 * 1024;
 const GUARD_CONTENT_ITEM_LIMIT = 24;
 const GUARD_OBJECT_KEY_LIMIT = 24;
 const GUARD_MAX_DEPTH = 24;
+const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = 24000;
+const GUARD_MAX_SERIALIZED_RESPONSE_CHARS = 12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;
+const GUARD_TIMEOUT_MS = 4250;
+const GUARD_DEADLINE_RESERVE_MS = 250;
+const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;
+const GUARD_STRUCTURED_MAX_DEPTH = 8;
+const GUARD_STRUCTURED_MAX_NODES = 128;
+const GUARD_STRUCTURED_MAX_FIELDS = 64;
 const blockedToolResults = new Map();
 const handlers = {{}};
 const notifications = [];
 let guardResponse = {{ decision: "allow", model_output_action: "allow_original" }};
 
-function digestOutputText(value) {{
-  const text = Array.isArray(value)
-    ? value.map((item) => item && item.type === "text" ? item.text : "").join("")
-    : "";
-  const sha256 = createHash("sha256").update(text, "utf8").digest("hex");
-  return {{
-    sha256,
-    chars: text.length,
-    textForExcerpt: text.slice(0, GUARD_TEXT_LIMIT_CHARS),
-    excerptTruncated: text.length > GUARD_TEXT_LIMIT_CHARS,
-    traversalTruncated: false,
-  }};
-}}
-
-function boundValue(value) {{
-  if (!Array.isArray(value)) return {{ value, truncated: false }};
-  let truncated = false;
-  const bounded = value.map((item) => {{
-    if (item && item.type === "text" && typeof item.text === "string" && item.text.length > GUARD_TEXT_LIMIT_CHARS) {{
-      truncated = true;
-      return {{ ...item, text: item.text.slice(0, GUARD_TEXT_LIMIT_CHARS) }};
-    }}
-    return item;
-  }});
-  return {{ value: bounded, truncated }};
-}}
-
-function boundedOutputText(value) {{
-  const digest = digestOutputText(value);
-  return {{ value: digest.textForExcerpt, truncated: digest.excerptTruncated }};
-}}
+{_generated_preprocessing_helper(source)}
+{_generated_structured_helper(source)}
 
 function sourceFileRefForPostToolUse() {{ return null; }}
 function toolCallIdKey(value) {{ return typeof value === "string" && value.trim() ? value.trim() : null; }}
@@ -354,7 +371,18 @@ function reviewedToolResult(content, details, isError) {{
   if (isError) result.isError = true;
   return result;
 }}
-async function runGuard() {{ return guardResponse; }}
+function handlerAbortSignal(ctx) {{
+  const candidate = ctx?.signal;
+  return candidate && typeof candidate === "object" && typeof candidate.aborted === "boolean"
+    && typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function"
+    ? candidate : undefined;
+}}
+async function runGuard(payload, cwd, options) {{
+  if (options?.enforceSizeCap === true && !payloadWithinSerializedBudget(payload)) {{
+    return {{ decision: "deny", reason_code: "hook_payload_unbounded" }};
+  }}
+  return guardResponse;
+}}
 const pi = {{ on(name, handler) {{ handlers[name] = handler; }} }};
 {handler}
 
@@ -417,25 +445,148 @@ console.log(JSON.stringify(result));
 
 
 def _generated_digest_helper(source: str) -> str:
-    start = source.index("function digestOutputText(")
-    end = source.index("\n\nfunction sourcePathFromToolInput(", start)
-    helper = _strip_generated_types(source[start:end])
+    return _generated_preprocessing_helper(source)
+
+
+def _generated_preprocessing_helper(source: str) -> str:
+    start = source.index("/* HOL Guard bounded preprocessing begins */")
+    end = source.index("/* HOL Guard bounded preprocessing ends */", start)
+    helper = source[start:end]
+    helper = re.sub(r"/\* HOL Guard bounded preprocessing begins \*/\n?", "", helper, count=1)
+    helper = re.sub(r"type TraversalBudget = \{.*?\};\n", "", helper, count=1, flags=re.DOTALL)
+    helper = helper.replace(
+        "type BoundedCodePointPrefix = { text: string; chars: number; complete: boolean };\n",
+        "",
+    )
     for old, new in {
-        "function digestOutputText(value: unknown): OutputDigest {": "function digestOutputText(value) {",
+        "function createTraversalBudget(deadlineAt?: number): TraversalBudget {": (
+            "function createTraversalBudget(deadlineAt) {"
+        ),
+        "function traversalBudgetReady(budget: TraversalBudget): boolean {": "function traversalBudgetReady(budget) {",
+        "function consumeTraversalNode(budget: TraversalBudget): boolean {": "function consumeTraversalNode(budget) {",
+        "function hasCallableSerializationHook(value: object): boolean {": (
+            "function hasCallableSerializationHook(value) {"
+        ),
+        "function safeEnumerableDataKeys(record: Record<string, unknown>): string[] | null {": (
+            "function safeEnumerableDataKeys(record) {"
+        ),
+        "    let owner: object | null = value;": "    let owner = value;",
+        "function digestOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): OutputDigest {":  # noqa: E501
+        "function digestOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
+        "function boundValue(\n  value: unknown,\n  depth = 0,\n  seen = new WeakSet<object>(),\n  budget = createTraversalBudget(),\n): BoundedValue {":  # noqa: E501
+        "function boundValue(value, depth = 0, seen = new WeakSet(), budget = createTraversalBudget()) {",
+        "function boundedOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): BoundedValue {":  # noqa: E501
+        "function boundedOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
+        "function boundedCodePointPrefix(\n  value: string,\n  limit: number,\n  budget: TraversalBudget,\n): BoundedCodePointPrefix {":  # noqa: E501
+        "function boundedCodePointPrefix(value, limit, budget) {",
+        "function appendSafeExcerpt(\n  accumulator: { text: string; truncated: boolean },\n  value: string,\n  budget: TraversalBudget,\n): void {":  # noqa: E501
+        "function appendSafeExcerpt(accumulator, value, budget) {",
+        "function safeTruncateText(\n  value: string,\n  limit = GUARD_TEXT_LIMIT_CHARS,\n  budget: TraversalBudget = createTraversalBudget(),\n): string {":  # noqa: E501
+        "function safeTruncateText(value, limit = GUARD_TEXT_LIMIT_CHARS, budget = createTraversalBudget()) {",
+        "function safeCollectOutputText(\n  value: unknown,\n  accumulator: { text: string; truncated: boolean; itemCount: number },\n  depth: number,\n  seen: WeakSet<object>,\n  budget: TraversalBudget,\n): void {":  # noqa: E501
+        "function safeCollectOutputText(value, accumulator, depth, seen, budget) {",
+        (
+            "function boundedResponseText(\n  response: Response,\n"
+            "  maxChars: number,\n  deadlineAt?: number,\n): Promise<string | null> {"
+        ): "function boundedResponseText(response, maxChars, deadlineAt) {",
+        "function boundedJsonStringSize(value: string, budget: TraversalBudget): number | null {": (
+            "function boundedJsonStringSize(value, budget) {"
+        ),
+        (
+            "function boundedJsonSize(\n  value: unknown,\n  budget: TraversalBudget,\n"
+            "  depth: number,\n  seen: WeakSet<object>,\n  inArray: boolean,\n): number | null {"
+        ): "function boundedJsonSize(value, budget, depth, seen, inArray) {",
+        "function payloadWithinSerializedBudget(payload: Record<string, unknown>, deadlineAt?: number): boolean {": (
+            "function payloadWithinSerializedBudget(payload, deadlineAt) {"
+        ),
+        "function traverse(val: unknown, depth: number): void {": "function traverse(val, depth) {",
+        "const refuse = (): void => {": "const refuse = () => {",
         "  function update(text: string): void {": "  function update(text) {",
-        "  function traverse(val: unknown, depth: number): void {": "  function traverse(val, depth) {",
         "const seen = new WeakSet<object>();": "const seen = new WeakSet();",
+        "const chunk = next.value as Uint8Array;": "const chunk = next.value;",
+        "return (async (): Promise<string | null> => {": "return (async () => {",
+        "new WeakSet<object>()": "new WeakSet()",
         "const obj = val as object;": "const obj = val;",
+        "const objectValue = value as object;": "const objectValue = value;",
+        "const record = value as Record<string, unknown>;": "const record = value;",
         "const record = val as Record<string, unknown>;": "const record = val;",
+        "const nextItems: unknown[] = [];": "const nextItems = [];",
+        "const nextRecord: Record<string, unknown> = {};": "const nextRecord = {};",
+    }.items():
+        helper = helper.replace(old, new)
+    helper = re.sub(r"\s+as (?:object|Record<string, unknown>)", "", helper)
+    return helper
+
+
+def _generated_structured_helper(source: str) -> str:
+    start = source.index("function structuredOutputJsonForPostToolUse(")
+    end = source.index("\n\nfunction sourcePathFromToolInput(", start)
+    helper = source[start:end]
+    for old, new in {
+        "function structuredOutputJsonForPostToolUse(value: unknown, deadlineAt?: number): string | null {": (
+            "function structuredOutputJsonForPostToolUse(value, deadlineAt) {"
+        ),
+        "  function hasUnpairedSurrogate(text: string): boolean {": "  function hasUnpairedSurrogate(text) {",
+        "  function canonicalize(item: unknown, depth: number): unknown {": "  function canonicalize(item, depth) {",
+        "  function canonicalStringify(item: unknown): string {": "  function canonicalStringify(item) {",
+        "const entries: string[] = [];": "const entries = [];",
+        "  const deadlineExceeded = (): boolean => deadlineAt !== undefined && Date.now() >= deadlineAt;": (
+            "  const deadlineExceeded = () => deadlineAt !== undefined && Date.now() >= deadlineAt;"
+        ),
+        "  const checkDeadline = (): void => {": "  const checkDeadline = () => {",
+        "const seen = new WeakSet<object>();": "const seen = new WeakSet();",
+        "const record = item as Record<string, unknown>;": "const record = item;",
+        "const blockRecord = block as Record<string, unknown>;": "const blockRecord = block;",
+        "const parsed = JSON.parse(structuredText) as unknown;": "const parsed = JSON.parse(structuredText);",
+        "const normalized = Object.create(null) as Record<string, unknown>;": "const normalized = Object.create(null);",
     }.items():
         helper = helper.replace(old, new)
     return helper
 
 
+def _run_generated_preprocessing_fixture(source: str, body: str) -> dict[str, object]:
+    javascript = f"""\
+import {{ createHash }} from "node:crypto";
+
+const GUARD_TEXT_LIMIT_CHARS = 12000;
+const GUARD_SOURCE_REF_MAX_OUTPUT_CHARS = 5 * 1024 * 1024;
+const GUARD_CONTENT_ITEM_LIMIT = 24;
+const GUARD_OBJECT_KEY_LIMIT = 24;
+const GUARD_MAX_DEPTH = 24;
+const GUARD_MAX_SERIALIZED_PAYLOAD_CHARS = 24000;
+const GUARD_MAX_SERIALIZED_RESPONSE_CHARS = 12 * GUARD_TEXT_LIMIT_CHARS + GUARD_MAX_SERIALIZED_PAYLOAD_CHARS;
+
+{_generated_preprocessing_helper(source)}
+
+{body}
+"""
+    with tempfile.NamedTemporaryFile("w", suffix=".mjs", prefix="omp-preprocessing-contract-", delete=False) as fixture:
+        fixture.write(javascript)
+        fixture_path = fixture.name
+    try:
+        completed = subprocess.run(
+            ["node", fixture_path],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        Path(fixture_path).unlink(missing_ok=True)
+    assert completed.returncode == 0, completed.stderr
+    return json.loads(completed.stdout)
+
+
 def _run_generated_callback_payload(
     source: str,
-    content: list[dict[str, object]],
+    content: object,
     guard_response: dict[str, object],
+    *,
+    include_signal: bool = True,
+    abort_before_guard: bool = False,
+    abort_during_guard: bool = False,
+    abort_during_structured_proof: bool = False,
+    expire_during_structured_proof: bool = False,
+    guard_timeout_ms: int = 4250,
 ) -> dict[str, object]:
     handler_start = source.index('  pi.on("tool_result"')
     handler_end = source.index("\n  });\n}", handler_start) + len("\n  });")
@@ -469,6 +620,12 @@ const GUARD_SOURCE_REF_MAX_OUTPUT_CHARS = 5 * 1024 * 1024;
 const GUARD_CONTENT_ITEM_LIMIT = 24;
 const GUARD_OBJECT_KEY_LIMIT = 24;
 const GUARD_MAX_DEPTH = 24;
+const GUARD_TIMEOUT_MS = {guard_timeout_ms};
+const GUARD_DEADLINE_RESERVE_MS = 250;
+const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;
+const GUARD_STRUCTURED_MAX_DEPTH = 8;
+const GUARD_STRUCTURED_MAX_NODES = 128;
+const GUARD_STRUCTURED_MAX_FIELDS = 64;
 const OUTPUT_TEXT_KEYS = ["stdout", "stderr", "output", "content", "result", "message", "text"];
 const blockedToolResults = new Map();
 const handlers = {{}};
@@ -476,14 +633,13 @@ const notifications = [];
 let capturedPayload = null;
 let capturedSerializedPayload = null;
 const guardResponse = JSON.parse({json.dumps(response_json)});
+const realDateNow = Date.now;
+let forceExpiredDeadline = false;
+Date.now = () => forceExpiredDeadline ? realDateNow() + 60_000 : realDateNow();
 
-{_generated_digest_helper(source)}
+{_generated_preprocessing_helper(source)}
+{_generated_structured_helper(source)}
 
-function boundValue(value) {{ return {{ value, truncated: false }}; }}
-function boundedOutputText(value) {{
-  const digest = digestOutputText(value);
-  return {{ value: digest.textForExcerpt, truncated: digest.excerptTruncated }};
-}}
 function sourceFileRefForPostToolUse() {{ return null; }}
 function toolCallIdKey(value) {{ return typeof value === "string" && value.trim() ? value.trim() : null; }}
 function modelVisibleBlockedReason(reason) {{ return `blocked: ${{reason}}`; }}
@@ -493,7 +649,35 @@ function blockedToolResult(reason, details) {{
 function reviewedToolResult(content, details, isError) {{
   return isError ? {{ content, details, isError: true }} : {{ content, details }};
 }}
+function handlerAbortSignal(ctx) {{
+  const candidate = ctx?.signal;
+  return candidate && typeof candidate === "object" && typeof candidate.aborted === "boolean"
+    && typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function"
+    ? candidate : undefined;
+}}
+const handlerController = new AbortController();
+if ({str(abort_before_guard).lower()}) handlerController.abort();
+const handlerSignal = {"handlerController.signal" if include_signal else "undefined"};
+if (
+  guardResponse.structured_content_mediation &&
+  ({str(abort_during_structured_proof).lower()} || {str(expire_during_structured_proof).lower()})
+) {{
+  const mediation = guardResponse.structured_content_mediation;
+  const contentSha256 = mediation.content_sha256;
+  Object.defineProperty(mediation, "content_sha256", {{
+    configurable: true,
+    get() {{
+      if ({str(abort_during_structured_proof).lower()}) handlerController.abort();
+      if ({str(expire_during_structured_proof).lower()}) forceExpiredDeadline = true;
+      return contentSha256;
+    }},
+  }});
+}}
 async function runGuard(payload) {{
+  if ({str(abort_during_guard).lower()}) handlerController.abort();
+  if (!payloadWithinSerializedBudget(payload, Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS)) {{
+    return {{ decision: "deny", reason_code: "hook_payload_unbounded" }};
+  }}
   capturedSerializedPayload = JSON.stringify(payload);
   capturedPayload = JSON.parse(JSON.stringify(payload));
   return guardResponse;
@@ -502,7 +686,7 @@ const pi = {{ on(name, handler) {{ handlers[name] = handler; }} }};
 {handler}
 
 const event = JSON.parse({json.dumps(event_json)});
-const ctx = {{ cwd: "/tmp", ui: {{ notify(message) {{ notifications.push(message); }} }} }};
+const ctx = {{ cwd: "/tmp", signal: handlerSignal, ui: {{ notify(message) {{ notifications.push(message); }} }} }};
 const result = await handlers.tool_result(event, ctx);
 console.log(JSON.stringify({{
   payload: capturedPayload,
@@ -529,7 +713,7 @@ console.log(JSON.stringify({{
 
 def _run_generated_source_ref_fixture(
     source: str,
-    content: list[dict[str, object]],
+    content: object,
     path: Path,
 ) -> dict[str, object]:
     source_path_start = source.index("function sourcePathFromToolInput(")
@@ -570,10 +754,15 @@ const GUARD_SOURCE_REF_MAX_OUTPUT_CHARS = 5 * 1024 * 1024;
 const GUARD_CONTENT_ITEM_LIMIT = 24;
 const GUARD_OBJECT_KEY_LIMIT = 24;
 const GUARD_MAX_DEPTH = 24;
+const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;
+const GUARD_STRUCTURED_MAX_DEPTH = 8;
+const GUARD_STRUCTURED_MAX_NODES = 128;
+const GUARD_STRUCTURED_MAX_FIELDS = 64;
 const GUARD_SOURCE_REF_ALLOWED_TOOL_NAMES = new Set(["Read"]);
 const OUTPUT_TEXT_KEYS = ["stdout", "stderr", "output", "content", "result", "message", "text"];
 
 {_generated_digest_helper(source)}
+{_generated_structured_helper(source)}
 {source_path}
 {virtual}
 {source_ref}
@@ -654,6 +843,10 @@ def test_generated_omp_rejects_ambiguous_success_and_preserves_retry_semantics(t
     assert result["daemon_array"] == {"response": None, "recoveryKind": "transport-failure"}
     assert result["daemon_unknown"] == {"response": None, "recoveryKind": "transport-failure"}
     assert result["daemon_block"] == {"decision": "deny", "reason": "fixture block"}
+    assert result["daemon_oversized_body"] == {
+        "response": None,
+        "recoveryKind": "transport-failure",
+    }
 
     assert result["retry_still_malformed"] == {
         "decision": "deny",
@@ -731,4 +924,683 @@ def test_generated_omp_tool_result_preserves_daemon_allow_without_hash(tmp_path:
     assert result["missing_digest"]["isError"] is True
     assert result["mismatched_digest"]["isError"] is True
     assert result["reviewed_excerpt"]["content"][0]["text"] == "reviewed-long"
+    assert result["reviewed_excerpt"].get("isError") is not True
     assert result["observe_mode"] is True
+
+
+def test_generated_tool_result_keeps_checked_excerpt_after_local_content_cap(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    content = [{"type": "text", "text": f"block-{index}"} for index in range(25)]
+    result = _run_generated_callback_payload(
+        source,
+        content,
+        {"decision": "allow", "notice": "excerpt"},
+    )
+
+    returned = result["result"]
+    assert isinstance(returned, dict)
+    assert returned.get("isError") is not True
+    returned_text = returned["content"][0]["text"]
+    assert isinstance(returned_text, str)
+    assert returned_text.startswith("block-0\n")
+    assert "block-23" in returned_text
+    assert "block-24" not in returned_text
+
+
+@pytest.mark.parametrize("harness", ["pi", "omp"])
+def test_generated_structured_receiver_requires_exact_clean_forward_bytes(
+    tmp_path: Path,
+    harness: str,
+) -> None:
+    source = managed_extension_source(
+        guard_home=tmp_path / harness / "guard-home",
+        home_dir=tmp_path / harness / "home",
+        settings_path=tmp_path / harness / "settings.json",
+        harness=harness,
+        display_name=harness,
+    )
+    content = [{"type": "text", "text": '{"employee":{"email":"","id":7},"note":"π"}'}]
+    candidate = '{"employee":{"email":"","id":7},"note":"π"}'
+    text_digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+    structured_digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+    forward = _run_generated_callback_payload(
+        source,
+        content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": text_digest,
+            "structured_content_mediation": {
+                "schema": "guard-structured-content-mediation.v1",
+                "action": "forward",
+                "reason_code": "structured_clean_forward",
+                "native_decision_id": "a" * 64,
+                "content_sha256": structured_digest,
+            },
+        },
+    )
+    assert forward["payload"]["structured_output_json"] == candidate
+    assert forward["preserved"] is True
+
+    withhold = _run_generated_callback_payload(
+        source,
+        content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": text_digest,
+            "structured_content_mediation": {
+                "schema": "guard-structured-content-mediation.v1",
+                "action": "withhold",
+                "reason_code": "structured_declared_schema_scan",
+                "native_decision_id": "a" * 64,
+            },
+        },
+    )
+    assert withhold["result"]["isError"] is True
+    assert "π" not in withhold["result"]["content"][0]["text"]
+
+    changed = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": '{"employee":{"email":"","id":7},"note":"changed"}'}],
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": text_digest,
+            "structured_content_mediation": {
+                "schema": "guard-structured-content-mediation.v1",
+                "action": "forward",
+                "reason_code": "structured_clean_forward",
+                "native_decision_id": "a" * 64,
+                "content_sha256": structured_digest,
+            },
+        },
+    )
+    assert changed["result"]["isError"] is True
+
+    protected_content = [
+        {"type": "text", "text": '{"employee":{"email":"person@example.test","id":7},"note":"π"}'},
+    ]
+    protected_candidate = '{"employee":{"email":"person@example.test","id":7},"note":"π"}'
+    protected = _run_generated_callback_payload(
+        source,
+        protected_content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": hashlib.sha256(protected_candidate.encode("utf-8")).hexdigest(),
+            "structured_content_mediation": {
+                "schema": "guard-structured-content-mediation.v1",
+                "action": "withhold",
+                "reason_code": "structured_declared_schema_scan",
+                "native_decision_id": "a" * 64,
+            },
+        },
+    )
+    assert protected["result"]["isError"] is True
+    assert "person@example.test" not in protected["result"]["content"][0]["text"]
+
+    unknown_metadata = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": candidate, "metadata": {"fixture": "unknown"}}],
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": text_digest,
+            "structured_content_mediation": {
+                "schema": "guard-structured-content-mediation.v1",
+                "action": "forward",
+                "reason_code": "structured_clean_forward",
+                "native_decision_id": "a" * 64,
+                "content_sha256": structured_digest,
+            },
+        },
+    )
+    assert unknown_metadata["result"]["isError"] is True
+
+
+def test_generated_structured_receiver_fails_closed_without_host_cancellation_signal(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    candidate = '{"employee":{"email":"","id":7},"note":"x"}'
+    response = {
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "reviewed_output_sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+        "structured_content_mediation": {
+            "schema": "guard-structured-content-mediation.v1",
+            "action": "forward",
+            "reason_code": "structured_clean_forward",
+            "native_decision_id": "a" * 64,
+            "content_sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+        },
+    }
+    result = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": candidate}],
+        response,
+        include_signal=False,
+    )
+    assert "structured_output_json" not in result["payload"]
+    assert result["preserved"] is False
+    assert result["result"]["isError"] is True
+
+
+def test_generated_managed_structured_mediation_precedes_watch_shortcut(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path, harness="pi")
+    benign = '{"employee":{"email":"","id":7},"note":"watch"}'
+    benign_response = {
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "observe_mode": True,
+        "reviewed_output_sha256": hashlib.sha256(benign.encode("utf-8")).hexdigest(),
+        "structured_content_mediation": {
+            "schema": "guard-structured-content-mediation.v1",
+            "action": "forward",
+            "reason_code": "structured_clean_forward",
+            "native_decision_id": "a" * 64,
+            "content_sha256": hashlib.sha256(benign.encode("utf-8")).hexdigest(),
+        },
+    }
+    allowed = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": benign}],
+        benign_response,
+    )
+    assert allowed["preserved"] is True
+    assert allowed["payload"]["structured_output_json"] == benign
+
+    protected = '{"employee":{"email":"person@example.test","id":7},"note":"watch"}'
+    protected_response = {
+        **benign_response,
+        "reviewed_output_sha256": hashlib.sha256(protected.encode("utf-8")).hexdigest(),
+        "structured_content_mediation": {
+            **benign_response["structured_content_mediation"],
+            "action": "withhold",
+            "reason_code": "structured_declared_schema_scan",
+        },
+    }
+    blocked = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": protected}],
+        protected_response,
+    )
+    assert blocked["preserved"] is False
+    assert blocked["result"]["isError"] is True
+    assert "person@example.test" not in blocked["result"]["content"][0]["text"]
+
+
+def test_generated_structured_receiver_rejects_late_cancellation_and_expired_deadline(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    candidate = '{"employee":{"email":"","id":7},"note":"x"}'
+    response = {
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "reviewed_output_sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+        "structured_content_mediation": {
+            "schema": "guard-structured-content-mediation.v1",
+            "action": "forward",
+            "reason_code": "structured_clean_forward",
+            "native_decision_id": "a" * 64,
+            "content_sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+        },
+    }
+    cancelled = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": candidate}],
+        response,
+        abort_during_guard=True,
+    )
+    assert cancelled["preserved"] is False
+    assert cancelled["result"]["isError"] is True
+
+    expired = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": candidate}],
+        response,
+        guard_timeout_ms=0,
+    )
+    assert expired["payload"] is None
+    assert expired["preserved"] is False
+    assert expired["result"]["isError"] is True
+
+
+@pytest.mark.parametrize("trigger", ["abort", "deadline"])
+def test_generated_structured_receiver_rechecks_lifecycle_at_final_original_proof(
+    tmp_path: Path,
+    trigger: str,
+) -> None:
+    source = _generated_source(tmp_path, harness="pi")
+    candidate = '{"employee":{"email":"","id":7},"note":"final"}'
+    digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+    response = {
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "reviewed_output_sha256": digest,
+        "structured_content_mediation": {
+            "schema": "guard-structured-content-mediation.v1",
+            "action": "forward",
+            "reason_code": "structured_clean_forward",
+            "native_decision_id": "a" * 64,
+            "content_sha256": digest,
+        },
+    }
+    result = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": candidate}],
+        response,
+        abort_during_structured_proof=trigger == "abort",
+        expire_during_structured_proof=trigger == "deadline",
+    )
+    assert result["preserved"] is False
+    assert result["result"]["isError"] is True
+
+
+def test_generated_large_non_source_result_fails_closed_before_serialization(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    large_text = "x" * (5 * 1024 * 1024 + 1)
+    content = [{"type": "text", "text": large_text}]
+    captured = _run_generated_callback_payload(
+        source,
+        content,
+        {"decision": "deny", "reason": "capture"},
+    )
+    assert captured["serialized_payload"] is None
+    assert captured["payload"] is None
+    result = captured["result"]
+    assert isinstance(result, dict)
+    assert result["isError"] is True
+    assert "blocked" in result["content"][0]["text"]
+
+
+def test_generated_preprocessing_rejects_oversized_single_text_before_hash(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const content = [{ type: "text", text: "x".repeat(5 * 1024 * 1024 + 1) }];
+const digest = digestOutputText(content, Date.now() + 10_000);
+const bounded = boundValue(content, 0, new WeakSet(), createTraversalBudget(Date.now() + 10_000));
+const excerpt = boundedOutputText(content, Date.now() + 10_000);
+console.log(JSON.stringify({
+  digest: {
+    sha256: digest.sha256,
+    chars: digest.chars,
+    excerptChars: digest.textForExcerpt.length,
+    traversalTruncated: digest.traversalTruncated,
+  },
+  bounded: { truncated: bounded.truncated },
+  excerpt: { chars: excerpt.value.length, truncated: excerpt.truncated },
+}));
+""",
+    )
+
+    assert result["digest"] == {
+        "sha256": None,
+        "chars": 0,
+        "excerptChars": 12_000,
+        "traversalTruncated": True,
+    }
+    assert result["bounded"] == {"truncated": True}
+    assert result["excerpt"] == {"chars": 12_000, "truncated": True}
+
+
+def test_generated_preprocessing_caps_branching_traversal_work(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const branching = Array.from({ length: 24 }, () =>
+  Array.from({ length: 24 }, () => ({ type: "text", text: "x" })));
+const digest = digestOutputText(branching);
+const bounded = boundValue(branching);
+const excerpt = boundedOutputText(branching);
+console.log(JSON.stringify({
+  digest: {
+    sha256: digest.sha256,
+    traversalTruncated: digest.traversalTruncated,
+    chars: digest.chars,
+  },
+  bounded: { truncated: bounded.truncated },
+  excerpt: { truncated: excerpt.truncated, chars: excerpt.value.length },
+}));
+""",
+    )
+
+    assert result["digest"]["sha256"] is None
+    assert result["digest"]["traversalTruncated"] is True
+    assert result["digest"]["chars"] < 24 * 24
+    assert result["bounded"] == {"truncated": True}
+    assert result["excerpt"]["truncated"] is True
+
+
+def test_generated_preprocessing_withholds_when_deadline_is_already_expired(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const branching = Array.from({ length: 24 }, () =>
+  Array.from({ length: 24 }, () => ({ type: "text", text: "x" })));
+const deadlineAt = Date.now() - 1;
+const digest = digestOutputText(branching, deadlineAt);
+const bounded = boundValue(branching, 0, new WeakSet(), createTraversalBudget(deadlineAt));
+const excerpt = boundedOutputText(branching, deadlineAt);
+console.log(JSON.stringify({
+  digest: { sha256: digest.sha256, traversalTruncated: digest.traversalTruncated },
+  bounded: { truncated: bounded.truncated },
+  excerpt: { truncated: excerpt.truncated },
+}));
+""",
+    )
+
+    assert result == {
+        "digest": {"sha256": None, "traversalTruncated": True},
+        "bounded": {"truncated": True},
+        "excerpt": {"truncated": True},
+    }
+
+
+def test_generated_payload_budget_rejects_large_tool_input_before_json_stringify(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const payload = {
+  hook_event_name: "PostToolUse",
+  tool_input: { command: "x".repeat(5 * 1024 * 1024 + 1) },
+  tool_response: [{ type: "text", text: "small" }],
+};
+console.log(JSON.stringify({ bounded: payloadWithinSerializedBudget(payload, Date.now() + 10_000) }));
+""",
+    )
+    assert result == {"bounded": False}
+
+
+def test_generated_payload_budget_accepts_valid_reference_sized_json(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        r"""
+const samples = [
+  "x".repeat(25_000),
+  "\t\n\r\b\f\u0000\"\\".repeat(4_000),
+  "\u00e9\u4e2d\ud83e\uddea\ud800".repeat(4_000),
+];
+const cases = samples.map((text) => {
+  const payload = { tool_response: [{ type: "text", text }] };
+  const actualBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+  const measuredBytes = boundedJsonSize(payload, createTraversalBudget(Date.now() + 10_000),
+    0, new WeakSet(), false);
+  return {
+    exactBytes: actualBytes === measuredBytes,
+    usesReference: JSON.stringify(payload).length > GUARD_MAX_SERIALIZED_PAYLOAD_CHARS,
+    bounded: payloadWithinSerializedBudget(payload, Date.now() + 10_000),
+  };
+});
+console.log(JSON.stringify({ cases }));
+""",
+    )
+    assert result == {"cases": [{"exactBytes": True, "usesReference": True, "bounded": True}] * 3}
+
+
+def test_generated_payload_budget_accepts_ordinary_shape_below_reference_limit(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const toolInput = Object.fromEntries(Array.from({ length: 25 }, (_, index) => [`field_${index}`, index]));
+const payload = {
+  hook_event_name: "PostToolUse",
+  tool_input: toolInput,
+  tool_response: Array.from({ length: 85 }, () => ({ type: "text", text: "small" })),
+};
+const serialized = JSON.stringify(payload);
+console.log(JSON.stringify({
+  bounded: payloadWithinSerializedBudget(payload, Date.now() + 10_000),
+  belowReferenceLimit: Buffer.byteLength(serialized, "utf8") < GUARD_MAX_REFERENCE_JSON_BYTES,
+}));
+""",
+    )
+    assert result == {"bounded": True, "belowReferenceLimit": True}
+
+
+def test_generated_payload_budget_has_independent_reference_node_cap(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const ordinary = { tool_response: Array.from({ length: 4096 }, () => '') };
+const exhausted = { tool_response: Array.from({ length: 100001 }, () => '') };
+console.log(JSON.stringify({
+  ordinary: payloadWithinSerializedBudget(ordinary),
+  exhausted: payloadWithinSerializedBudget(exhausted),
+}));
+""",
+    )
+    assert result == {"ordinary": True, "exhausted": False}
+
+
+def test_generated_payload_budget_rejects_array_serialization_hook_without_invoking_it(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const content = [];
+let hookCalls = 0;
+content.toJSON = () => {
+  hookCalls += 1;
+  return "x".repeat(GUARD_MAX_REFERENCE_JSON_BYTES + 1);
+};
+const bounded = payloadWithinSerializedBudget({ tool_response: content }, Date.now() + 10_000);
+console.log(JSON.stringify({ bounded, hookCalls }));
+""",
+    )
+    assert result == {"bounded": False, "hookCalls": 0}
+
+
+def test_generated_payload_budget_rejects_inherited_array_serialization_hook(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const original = Object.getOwnPropertyDescriptor(Array.prototype, "toJSON");
+let hookCalls = 0;
+Object.defineProperty(Array.prototype, "toJSON", {
+  configurable: true,
+  value: () => {
+    hookCalls += 1;
+    return "x".repeat(GUARD_MAX_REFERENCE_JSON_BYTES + 1);
+  },
+});
+let bounded;
+try {
+  bounded = payloadWithinSerializedBudget({ tool_response: ["small"] }, Date.now() + 10_000);
+} finally {
+  if (original) Object.defineProperty(Array.prototype, "toJSON", original);
+  else delete Array.prototype.toJSON;
+}
+console.log(JSON.stringify({ bounded, hookCalls }));
+""",
+    )
+    assert result == {"bounded": False, "hookCalls": 0}
+
+
+def test_generated_payload_budget_rejects_sparse_array_inherited_accessor(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const original = Object.getOwnPropertyDescriptor(Array.prototype, "0");
+let getterCalls = 0;
+Object.defineProperty(Array.prototype, "0", {
+  configurable: true,
+  get: () => {
+    getterCalls += 1;
+    return "unexpected";
+  },
+});
+let bounded;
+try {
+  bounded = payloadWithinSerializedBudget({ tool_response: new Array(1) }, Date.now() + 10_000);
+} finally {
+  if (original) Object.defineProperty(Array.prototype, "0", original);
+  else delete Array.prototype["0"];
+}
+console.log(JSON.stringify({ bounded, getterCalls }));
+""",
+    )
+    assert result == {"bounded": False, "getterCalls": 0}
+
+
+def test_generated_payload_budget_rejects_custom_prototype_data(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const custom = Object.create({ inherited: true });
+custom.value = "small";
+console.log(JSON.stringify({
+  bounded: payloadWithinSerializedBudget({ tool_response: custom }, Date.now() + 10_000),
+}));
+""",
+    )
+    assert result == {"bounded": False}
+
+
+def test_generated_payload_budget_rejects_reference_overflow_before_stringify(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const payload = { text: "\\ud83e\\uddea".repeat(Math.ceil((5 * 1024 * 1024) / 4)) };
+const originalStringify = JSON.stringify;
+let payloadSerializationCalls = 0;
+JSON.stringify = (value, ...args) => {
+  if (value === payload) payloadSerializationCalls += 1;
+  return originalStringify(value, ...args);
+};
+const bounded = payloadWithinSerializedBudget(payload, Date.now() + 10_000);
+JSON.stringify = originalStringify;
+console.log(JSON.stringify({ bounded, payloadSerializationCalls }));
+""",
+    )
+    assert result == {"bounded": False, "payloadSerializationCalls": 0}
+
+
+def test_generated_response_reader_withholds_completion_after_deadline(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const originalNow = Date.now;
+const cases = [];
+try {
+  for (const done of [false, true]) {
+    let now = 100;
+    let cancelled = false;
+    let released = false;
+    Date.now = () => now;
+    const reader = {
+      async read() {
+        now = 201;
+        return { done, value: new TextEncoder().encode('late') };
+      },
+      async cancel() { cancelled = true; },
+      releaseLock() { released = true; },
+    };
+    const text = await boundedResponseText({ body: { getReader: () => reader } }, 100, 200);
+    cases.push({ text, cancelled, released });
+  }
+} finally {
+  Date.now = originalNow;
+}
+console.log(JSON.stringify({ cases }));
+""",
+    )
+    assert result == {"cases": [{"text": None, "cancelled": True, "released": True}] * 2}
+
+
+def test_generated_response_reader_bounds_ensure_ascii_reviewed_excerpts(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const makeResponse = (body) => {
+  const state = { cancelled: false, released: false, used: false };
+  const reader = {
+    async read() {
+      if (state.used) return { done: true, value: undefined };
+      state.used = true;
+      return { done: false, value: new TextEncoder().encode(body) };
+    },
+    async cancel() { state.cancelled = true; },
+    releaseLock() { state.released = true; },
+  };
+  return { response: { body: { getReader: () => reader } }, state };
+};
+const bodyFor = (text) => `{"content":[{"type":"text","text":"${text}"}]}`;
+const samples = [
+  { label: "bmp", text: "b".repeat(12_000) },
+  { label: "astral_ensure_ascii", text: String.raw`\\ud83e\\uddea`.repeat(12_000) },
+];
+const cases = [];
+for (const sample of samples) {
+  const body = bodyFor(sample.text);
+  const fixture = makeResponse(body);
+  const received = await boundedResponseText(
+    fixture.response,
+    GUARD_MAX_SERIALIZED_RESPONSE_CHARS,
+    Date.now() + 10_000,
+  );
+  cases.push({
+    label: sample.label,
+    accepted: received === body,
+    cancelled: fixture.state.cancelled,
+    released: fixture.state.released,
+  });
+}
+const oversized = makeResponse("x".repeat(GUARD_MAX_SERIALIZED_RESPONSE_CHARS + 1));
+const rejected = await boundedResponseText(
+  oversized.response,
+  GUARD_MAX_SERIALIZED_RESPONSE_CHARS,
+  Date.now() + 10_000,
+);
+cases.push({
+  label: "over_cap",
+  accepted: rejected !== null,
+  cancelled: oversized.state.cancelled,
+  released: oversized.state.released,
+});
+console.log(JSON.stringify({ cases }));
+""",
+    )
+    assert result == {
+        "cases": [
+            {"label": "bmp", "accepted": True, "cancelled": False, "released": True},
+            {"label": "astral_ensure_ascii", "accepted": True, "cancelled": False, "released": True},
+            {"label": "over_cap", "accepted": False, "cancelled": True, "released": True},
+        ],
+    }
+
+
+def test_generated_payload_budget_matches_exact_encrypted_reference_boundary(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_preprocessing_fixture(
+        source,
+        """
+const emptyBytes = Buffer.byteLength(JSON.stringify({ text: '' }), 'utf8');
+const cases = [0, 1].map((overflow) => {
+  const payload = { text: 'x'.repeat(GUARD_MAX_REFERENCE_JSON_BYTES - emptyBytes + overflow) };
+  return {
+    ciphertextBytes: Buffer.byteLength(JSON.stringify(payload), 'utf8') + 16,
+    bounded: payloadWithinSerializedBudget(payload, Date.now() + 10_000),
+  };
+});
+console.log(JSON.stringify({ cases }));
+""",
+    )
+    assert result == {
+        "cases": [
+            {"ciphertextBytes": 5 * 1024 * 1024, "bounded": True},
+            {"ciphertextBytes": 5 * 1024 * 1024 + 1, "bounded": False},
+        ],
+    }

@@ -24,35 +24,37 @@ class CodexMcpSetupReceipt:
 
 def _layers(payload: dict[str, object]) -> tuple[dict[str, object], list[dict[str, object]]]:
     layers = payload.get("layers")
-    if not isinstance(layers, list) or not 1 <= len(layers) <= 32:
+    if isinstance(layers, list) and not layers:
+        raise ValueError("codex_config_no_layers")
+    if not isinstance(layers, list) or len(layers) > 32:
         raise ValueError("codex_config_layers_unavailable")
     checked: list[dict[str, object]] = []
     users: list[dict[str, object]] = []
     for layer in layers:
         if not isinstance(layer, dict) or not isinstance(layer.get("config"), dict):
-            raise ValueError("codex_config_layers_unavailable")
+            raise ValueError("codex_config_invalid_layer")
         config = layer["config"]
         servers = config.get("mcp_servers", {})
         if not isinstance(servers, dict):
-            raise ValueError("codex_config_layers_unavailable")
+            raise ValueError("codex_config_invalid_servers")
         checked.append(layer)
         source = layer.get("name")
         if isinstance(source, dict) and source.get("type") == "user" and source.get("profile") is None:
             users.append(layer)
+    if not users:
+        raise ValueError("codex_config_no_user_layer")
     if len(users) != 1:
-        raise ValueError("codex_config_layers_unavailable")
+        raise ValueError("codex_config_multiple_user_layers")
     user = users[0]
     source = user["name"]
     assert isinstance(source, dict)
     version, path = user.get("version"), source.get("file")
-    if (
-        not isinstance(version, str)
-        or not 1 <= len(version) <= 256
-        or not isinstance(path, str)
-        or not os.path.isabs(path)
-        or user.get("disabledReason") is not None
-    ):
-        raise ValueError("codex_config_layers_unavailable")
+    if not isinstance(version, str) or not 1 <= len(version) <= 256:
+        raise ValueError("codex_config_invalid_user_version")
+    if not isinstance(path, str) or not os.path.isabs(path):
+        raise ValueError("codex_config_invalid_user_path")
+    if user.get("disabledReason") is not None:
+        raise ValueError("codex_config_user_layer_disabled")
     return user, checked
 
 

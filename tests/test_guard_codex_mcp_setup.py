@@ -93,6 +93,56 @@ def test_existing_connection_including_null_metadata_is_never_replaced(host):
     assert host.writes == []
 
 
+@pytest.mark.parametrize(
+    "case,reason",
+    [
+        ("malformed_layers", "codex_config_layers_unavailable"),
+        ("no_layers", "codex_config_no_layers"),
+        ("malformed_layer", "codex_config_invalid_layer"),
+        ("invalid_servers", "codex_config_invalid_servers"),
+        ("no_user", "codex_config_no_user_layer"),
+        ("multiple_users", "codex_config_multiple_user_layers"),
+        ("invalid_version", "codex_config_invalid_user_version"),
+        ("invalid_path", "codex_config_invalid_user_path"),
+        ("disabled", "codex_config_user_layer_disabled"),
+    ],
+)
+def test_invalid_host_layers_have_safe_distinct_reasons_before_any_write(host, monkeypatch, case, reason):
+    before = copy.deepcopy(host.config)
+    payload = host.request("config/read", {})
+    layer = payload["layers"][0]
+    if case == "malformed_layers":
+        payload["layers"] = "private configuration"
+    elif case == "no_layers":
+        payload["layers"] = []
+    elif case == "malformed_layer":
+        layer["config"] = "private configuration"
+    elif case == "invalid_servers":
+        layer["config"]["mcp_servers"] = "private configuration"
+    elif case == "no_user":
+        layer["name"]["type"] = "project"
+    elif case == "multiple_users":
+        payload["layers"].append(copy.deepcopy(layer))
+    elif case == "invalid_version":
+        layer["version"] = {"private": "configuration"}
+    elif case == "invalid_path":
+        layer["name"]["file"] = "private/config.toml"
+    elif case == "disabled":
+        layer["disabledReason"] = "private configuration"
+    original_request = host.request
+
+    def read_layers(method, params):
+        if method == "config/read":
+            return payload
+        return original_request(method, params)
+
+    monkeypatch.setattr(host, "request", read_layers)
+    with pytest.raises(ValueError) as caught:
+        codex_mcp_setup.install_reviewed_codex_mcp("fixture", "reviewed", {"url": "https://example.test"})
+    assert str(caught.value) == reason
+    assert host.writes == [] and host.config == before
+
+
 def test_setup_version_conflict_preserves_concurrent_user_edits(host):
     host.change_before_write = True
     with pytest.raises(ValueError, match="codex_config_changed"):

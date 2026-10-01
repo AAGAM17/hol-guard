@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import time
 
@@ -28,7 +29,10 @@ for line in sys.stdin:
         if mode == "blocked_input":
             time.sleep(60)
         continue
-    if mode == "timeout":
+    if mode == "exit":
+        print("private configuration must never be logged", file=sys.stderr, flush=True)
+        sys.exit(7)
+    elif mode == "timeout":
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         time.sleep(60)
     elif mode == "oversized":
@@ -98,6 +102,19 @@ def test_stalled_response_terminates_only_the_task_owned_host(fake_host):
         rpc.request("config/read", {"includeLayers": True})
     assert time.monotonic() - started < 5
     assert rpc._process is not None and rpc._process.poll() is not None
+
+
+def test_process_exit_records_only_generic_debug_diagnostics(fake_host, caplog):
+    rpc = fake_host("exit")
+    with (
+        caplog.at_level(logging.DEBUG, logger="codex_plugin_scanner.guard.runtime.codex_config_rpc"),
+        pytest.raises(ValueError, match="codex_config_rpc_unavailable"),
+        rpc,
+    ):
+        rpc.request("config/read", {"includeLayers": True})
+    assert "Codex app-server exited with code 7" in caplog.text
+    assert "private configuration" not in caplog.text
+    assert rpc._process is not None and rpc._process.poll() == 7
 
 
 def test_stalled_input_pipe_cannot_bypass_timeout_or_prevent_cleanup(fake_host):

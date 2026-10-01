@@ -7,6 +7,7 @@ Configuration writes always carry the host's version; there is no CLI-write fall
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import subprocess
 import threading
@@ -21,8 +22,9 @@ from ..strict_json_pairs import unique_json_object
 _MAX_MESSAGE_BYTES = 1_048_576
 _MAX_JSON_DEPTH = 64
 # Bound unsolicited notifications while waiting for one config RPC response.
-_MAX_RESPONSE_MESSAGES = 64
+_MAX_RECEIVED_MESSAGES = 64
 _METHODS = frozenset({"config/read", "config/batchWrite"})
+_LOGGER = logging.getLogger(__name__)
 
 
 def _reject_json_constant(_value: str) -> None:
@@ -155,7 +157,7 @@ class CodexConfigRpc:
         request_id = self._sequence
         self._send({"id": request_id, "method": method, "params": dict(params)})
         deadline = time.monotonic() + self._timeout
-        for _ in range(_MAX_RESPONSE_MESSAGES):
+        for _ in range(_MAX_RECEIVED_MESSAGES):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("codex_config_rpc_timeout")
@@ -226,3 +228,5 @@ class CodexConfigRpc:
             if process.stdout is not None:
                 with suppress(OSError, ValueError):
                     process.stdout.close()
+            # Only report the exit status: child diagnostics may contain secrets.
+            _LOGGER.debug("Codex app-server exited with code %s", process.returncode)

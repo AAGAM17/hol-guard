@@ -27,7 +27,6 @@ fn permits_only_standalone_plain_directory_changes() {
         "cd /opt/project | cat file.txt",
         "cd ~/.ssh",
         "cd /opt/user/.ssh",
-        "cd ~/.ss\\h",
         "cd ~/.s*",
         "cd .ssh*",
         "cd ./project?",

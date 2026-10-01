@@ -5,8 +5,6 @@ HOL Guard can represent two local activation milestones without serializing loca
 - `local_install_verified`: the installer reached a binary-verification or product-corroboration state tied to a server-issued handoff.
 - `first_local_proof_generated`: Guard generated a real local proof and emits only the proof kind plus a SHA-256 digest of the evidence.
 
-The versioned receipt implementation is `codex_plugin_scanner.guard.outcome_receipt`.
-
 ## Privacy boundary
 
 A receipt contains only:

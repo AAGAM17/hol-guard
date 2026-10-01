@@ -110,21 +110,6 @@ accepted claimant set and must be revalidated before a transfer or other elevate
 action. Contribution IDs retain the native 256-character contract; mapped MCP
 runtime IDs and source paths allow the additional prefix and filename characters.
 
-## Generate a separate listing template
-
-The optional helper reads and validates an existing contribution kit, then prints
-presentation metadata. It does not modify the kit, add managed paths, upgrade a
-builder version, write files, or contact a service:
-
-```bash
-uv run python -m codex_plugin_scanner.guard.extension_builder.listing_cli path/to/kit
-```
-
-Review the output before saving it as a sidecar. No GitHub identity is inferred.
-An accepted native homepage that is unsuitable for public presentation is omitted
-from the optional template; it does not prevent native contribution generation.
-Existing kit formats and their ownership checks are unchanged.
-
 ## Public catalog projection
 
 ```bash

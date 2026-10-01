@@ -34,6 +34,7 @@ class StoreReviewEventSequenceRecoveryMixin:
             )
         except (AttributeError, TypeError, ValueError):
             return {}
+        # The canonical connection context owns commit, rollback, and close for every return path.
         with self._connect() as connection:
             return recover_in_transaction(
                 connection,

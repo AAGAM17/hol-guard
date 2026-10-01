@@ -190,12 +190,23 @@ def test_canonical_transport_rejects_invalid_advertised_batch_limits(monkeypatch
             _post([_event()])
 
 
-@pytest.mark.parametrize("high_water", [0, -1, True, 2**53, "529"])
+@pytest.mark.parametrize("high_water", [-1, True, 2**53, "529"])
 def test_canonical_transport_rejects_invalid_high_water(monkeypatch: pytest.MonkeyPatch, high_water: object) -> None:
     response = {**_response(status="rejected"), "acknowledgedThrough": high_water}
     monkeypatch.setattr(delivery, "_post_json", lambda *_args, **_kwargs: response)
     with pytest.raises(delivery.CloudReviewEventProtocolError, match="invalid protocol 2 acknowledgement"):
         _post([_event()])
+
+
+def test_canonical_transport_accepts_zero_for_an_all_rejected_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = {**_response(status="rejected"), "acknowledgedThrough": 0}
+    monkeypatch.setattr(delivery, "_post_json", lambda *_args, **_kwargs: response)
+
+    normalized = _post([_event()])
+
+    assert normalized["acknowledgedThrough"] == 0
+    assert normalized["accepted"] == 0
+    assert normalized["rejected"] == 1
 
 
 @pytest.mark.parametrize("code", ["review_event_snapshot_sequence_collision", "review_event_sequence_conflict"])

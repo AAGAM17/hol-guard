@@ -106,7 +106,7 @@ def _normalize_response(
         or len(results) != len(events)
         or type(acknowledged_through) is not int
         or not 0 <= acknowledged_through <= 2**53 - 1
-    ): 
+    ):
         raise CloudReviewEventProtocolError(
             "Guard Cloud Review returned an invalid protocol 2 acknowledgement. Update HOL Guard before retrying."
         )

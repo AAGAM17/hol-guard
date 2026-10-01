@@ -54,6 +54,10 @@ fn startup_wait_honors_remaining_caller_budget() {
         elapsed >= Duration::from_millis(1_500),
         "premature startup failure: {elapsed:?}"
     );
+    assert!(
+        elapsed < Duration::from_secs(4),
+        "startup exceeded the caller deadline: {elapsed:?}"
+    );
 }
 
 #[test]

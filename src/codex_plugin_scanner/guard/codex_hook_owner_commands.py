@@ -82,6 +82,8 @@ class _GuardImportCalls(ast.NodeVisitor):
         """Inspect deferred bodies against module bindings available when called."""
         self.module_bindings = self.bindings.copy()
         roots = self.deferred.copy()
+        # Nested definitions join the deferred queue during analysis. Count them
+        # in the bound; stable bindings still stop after the first pass.
         body_count = sum(
             isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
             for node, _, _ in roots
@@ -180,18 +182,36 @@ class _GuardImportCalls(ast.NodeVisitor):
     def _assignment_bindings(self, target: ast.expr, value: ast.expr) -> list[tuple[str, frozenset[str]]]:
         if isinstance(target, ast.Name):
             return [(target.id, self._identity(value))]
-        if (
-            isinstance(target, (ast.Tuple, ast.List))
-            and isinstance(value, (ast.Tuple, ast.List))
-            and len(target.elts) == len(value.elts)
-            and not any(isinstance(item, ast.Starred) for item in (*target.elts, *value.elts))
-        ):
-            return [
-                binding
-                for item, expression in zip(target.elts, value.elts, strict=True)
-                for binding in self._assignment_bindings(item, expression)
-            ]
-        return []
+        values = self._literal_sequence(value)
+        if not isinstance(target, (ast.Tuple, ast.List)) or values is None:
+            return []
+        stars = [index for index, item in enumerate(target.elts) if isinstance(item, ast.Starred)]
+        pairs: list[tuple[ast.expr, ast.expr]]
+        if not stars and len(target.elts) == len(values):
+            pairs = list(zip(target.elts, values, strict=True))
+        elif len(stars) == 1 and len(values) >= len(target.elts) - 1:
+            index = stars[0]
+            suffix = target.elts[index + 1 :]
+            pairs = list(zip(target.elts[:index], values[:index], strict=True))
+            if suffix:
+                pairs.extend(zip(suffix, values[-len(suffix) :], strict=True))
+        else:
+            return []
+        return [binding for item, expression in pairs for binding in self._assignment_bindings(item, expression)]
+
+    def _literal_sequence(self, node: ast.expr) -> list[ast.expr] | None:
+        if not isinstance(node, (ast.Tuple, ast.List)):
+            return None
+        values: list[ast.expr] = []
+        for item in node.elts:
+            if isinstance(item, ast.Starred):
+                nested = self._literal_sequence(item.value)
+                if nested is None:
+                    return None
+                values.extend(nested)
+            else:
+                values.append(item)
+        return values
 
     @override
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -411,6 +431,8 @@ def _inline_python_codex_hook(script: str, trailing_arguments: Sequence[str]) ->
     try:
         tree = ast.parse(script)
     except (SyntaxError, ValueError, RecursionError):
+        # Parse errors precede import analysis. The traversal recursion guard
+        # separately preserves possible conflicts when a valid AST is too deep.
         return False
     if not _imports_guard_cli(tree):
         return False

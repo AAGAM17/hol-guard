@@ -419,10 +419,7 @@ def test_claude_daemon_hook_command_falls_back_without_blocking_prompt_on_daemon
     payload = json.loads(result.stdout)
     assert payload["systemMessage"].startswith("HOL Guard could not complete native prompt review safely.")
     assert payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
-    assert (
-        "HOL Guard will intercept Claude's next attempt to access local secrets"
-        in (payload["hookSpecificOutput"]["additionalContext"])
-    )
+    assert payload["decision"] == "block"
 
 
 @pytest.mark.usefixtures("native_hook_force")

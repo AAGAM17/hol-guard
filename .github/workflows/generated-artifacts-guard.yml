@@ -11,7 +11,7 @@ jobs:
     # Only the regen workflow's own artifact PRs may touch generated paths;
     # every other PR must leave them to post-merge regen. A fork cannot claim
     # the exemption since it requires a same-repo regen/artifacts-* branch.
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'regen/artifacts-') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'regen/artifacts-') && github.event.pull_request.user.login == vars.GUARD_AUTOMATION_LOGIN) }}
     steps:
       - name: Reject changes to regen-owned generated paths
         env:

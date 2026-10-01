@@ -22507,7 +22507,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
     assert store.resolve_policy(
         "codex", "codex:project:tool-action:other", "hash", workspace=workspace_a, now=now
     ) is None
-    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b, now=now) is None
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b, now=now) == "block"
     assert store.resolve_policy(
         "codex", block_artifact, "hash", workspace=workspace_a, now="2026-10-01T00:00:00+00:00"
     ) is None

@@ -58,8 +58,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert "--deselect" not in collector
     assert payload["env"]["CI_PYTHON_VERSION"] == "3.12.14"
     assert payload["env"]["NATIVE_CHANGED_FROM_SHA"] == (
-        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || "
-        "(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before) || '' }}"
+        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}"
     )
     assert "test-plan" not in jobs
     assert "tests" not in jobs

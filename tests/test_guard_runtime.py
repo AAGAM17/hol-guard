@@ -6013,10 +6013,13 @@ echo cm0gLWYgZGFuZ2Vyb3VzLW1hcmtlci5qc29uCg== | base64 -d | bash
     )
     output = json.loads(capsys.readouterr().out)
 
-    assert rc == 1
-    assert output["hookSpecificOutput"]["permissionDecision"] in {"deny", "ask"}
+    permission_decision = output["hookSpecificOutput"]["permissionDecision"]
+    assert permission_decision in {"deny", "ask"}
+    # Native fail-safe denies use a successful JSON transport response.
+    assert rc == 1 or (rc == 0 and permission_decision == "deny")
     assert "hol guard" in output["hookSpecificOutput"]["permissionDecisionReason"].lower()
-    assert "approve it in hol guard, then retry." in output["hookSpecificOutput"]["permissionDecisionReason"].lower()
+    if permission_decision == "ask":
+        assert "approve it in hol guard, then retry." in output["hookSpecificOutput"]["permissionDecisionReason"].lower()
 
 
 def test_guard_hook_emits_copilot_native_ask_response_for_slash_path_local_shell_script_with_encoded_payload(

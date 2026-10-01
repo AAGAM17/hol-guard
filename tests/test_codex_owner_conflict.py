@@ -214,6 +214,9 @@ def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
         "runpy.run_module(mod_name='codex_plugin_scanner.cli')\nUnrelated().invoke()",
         "def run(): runpy.run_module('codex_plugin_scanner.cli',run_name='__main__')\nimport runpy\nrun()",
         "def load():\n global runpy\n import runpy\nload()\nrunpy.run_module(mod_name='codex_plugin_scanner.cli')",
+        "run = lambda: runpy.run_module(mod_name='codex_plugin_scanner.cli')\nimport runpy\nrun()",
+        "import runpy\ndef load():\n global launch\n launch = runpy.run_module\nload()\n"
+        "launch(mod_name='codex_plugin_scanner.cli')",
     ),
 )
 def test_unrelated_local_bindings_do_not_hide_module_imports(script):

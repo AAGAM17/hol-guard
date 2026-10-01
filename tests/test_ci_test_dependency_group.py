@@ -48,6 +48,14 @@ def test_test_workers_select_the_frozen_group_without_default_dev_dependencies()
     assert "--frozen --no-dev --no-install-project" in proof_setup
 
 
+def test_compatibility_workers_select_the_frozen_test_group() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["compatibility"]["steps"])
+    assert "uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}" in commands
+    assert "--extra dev" not in commands
+    assert "uv run --no-sync pytest" in commands
+
+
 @pytest.mark.skipif(os.name == "nt", reason="macOS proof setup executes in Bash")
 @pytest.mark.parametrize("proof", ["default", "pi", "extensions", "performance"])
 def test_macos_proof_setup_preserves_its_dependency_boundary(tmp_path: Path, proof: str) -> None:

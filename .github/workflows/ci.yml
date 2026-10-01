@@ -425,7 +425,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
-      - run: uv sync --frozen --extra dev --python ${{ matrix.python-version }}
+      - run: uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}
       - name: Run cross-version compatibility contracts
         run: >-
           uv run --no-sync pytest

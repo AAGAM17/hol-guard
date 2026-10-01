@@ -128,18 +128,21 @@ def validate_retirement_ledger(root: Path, contract: dict[str, object]) -> dict[
             raise RuntimeError("retirement ledger requires a file::test node reference")
         filename, node = reference.split("::", 1)
         path = _path(root, filename)
+        base, separator, params = node.partition("[")
+        valid_node = bool(base) and all(part.isidentifier() for part in base.split("::"))
+        if separator:
+            valid_node = valid_node and len(params) > 1 and node.endswith("]")
         if (
-            not node
-            or not all(part.isidentifier() for part in node.split("::"))
+            not valid_node
             or path.suffix not in {".py", ".rs"}
-            or (path.suffix == ".rs" and "::" in node)
+            or (path.suffix == ".rs" and ("::" in node or "[" in node))
         ):
-            raise RuntimeError(f"retirement ledger requires a non-parametrized test node: {reference}")
+            raise RuntimeError(f"retirement ledger requires an invalid test node: {reference}")
         if not path.is_file():
             return False
         if filename not in inventory:
             inventory[filename] = _test_nodes(path)
-        return node in inventory[filename]
+        return base in inventory[filename]
 
     old_nodes: set[str] = set()
     replacements_checked: set[str] = set()

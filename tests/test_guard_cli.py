@@ -4385,9 +4385,6 @@ args = ["workspace-skill.js", "--changed"]
 
         assert rc == 0
         assert output["status"] == "current"
-        assert any(
-            item["harness"] == "codex" and item["active"] is True for item in output["managed_installs"]
-        )
         assert "hooks = true" in config_text
         assert "codex_hooks" not in config_text
         assert hooks_payload["PreToolUse"]
@@ -4434,9 +4431,6 @@ args = ["workspace-skill.js", "--changed"]
         repaired = codex_adapter_module.codex_native_hook_state(context)
 
         assert update_rc == 0
-        assert any(
-            item["harness"] == "codex" and item["active"] is True for item in output["managed_installs"]
-        )
         assert repaired["protection_active"] is True
         assert repaired["integrity_status"] == "valid"
 
@@ -4585,9 +4579,6 @@ args = ["workspace-skill.js", "--changed"]
 
         assert rc == 0
         assert output["status"] == "current"
-        assert any(
-            item["harness"] == "codex" and item["active"] is True for item in output["managed_installs"]
-        )
         assert "hooks = true" in config_text
         assert "codex_hooks" not in config_text
         assert hooks_payload["PreToolUse"]

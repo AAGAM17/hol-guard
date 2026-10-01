@@ -646,25 +646,14 @@ class LocalCliApiService:
         expected_catalog_revision = prior_revision if type(prior_revision) is int and prior_revision >= 0 else 0
         failure_code = "discovery_failed"
         try:
-            probed = (
-                probe_stdio_mcp_server(
-                    command,
-                    cwd=home_dir,
-                    home_dir=home_dir,
-                    extra_env=extra_env,
-                    cancel=cancel,
-                    connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
-                    **({"report_failure": True} if selected_server is not None else {}),
-                )
-                if cancel is not None
-                else probe_stdio_mcp_server(
-                    command,
-                    cwd=home_dir,
-                    home_dir=home_dir,
-                    extra_env=extra_env,
-                    connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
-                    **({"report_failure": True} if selected_server is not None else {}),
-                )
+            probed = probe_stdio_mcp_server(
+                command,
+                cwd=home_dir,
+                home_dir=home_dir,
+                extra_env=extra_env,
+                cancel=cancel,
+                connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
+                report_failure=selected_server is not None,
             )
         except McpProbeError as error:
             failure_code = error.code

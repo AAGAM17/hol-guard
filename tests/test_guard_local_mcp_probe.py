@@ -36,6 +36,8 @@ from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_i
     [
         ("transport_failed", "mcp_transport_failed"),
         ("initialize_failed", "mcp_initialize_failed"),
+        ("invalid_initialize", "mcp_initialize_failed"),
+        ("invalid_discovery", "mcp_initialize_failed"),
         ("unsupported_protocol", "mcp_protocol_unsupported"),
         ("PRIVATE_PROVIDER_OUTPUT", "discovery_failed"),
     ],

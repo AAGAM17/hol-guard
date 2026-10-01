@@ -131,9 +131,13 @@ def _hook_group_command_blob(group: object) -> str:
 
 
 def _has_codex_harness(blob: str) -> bool:
-    tokens = _command_tokens(blob)
+    return _has_codex_harness_tokens(_command_tokens(blob))
+
+
+def _has_codex_harness_tokens(tokens: Sequence[str]) -> bool:
     return any(
-        token == "--harness=codex" or (token == "--harness" and tokens[index + 1 : index + 2] == ["codex"])
+        token == "--harness=codex"
+        or (token == "--harness" and index + 1 < len(tokens) and tokens[index + 1] == "codex")
         for index, token in enumerate(tokens)
     )
 
@@ -233,10 +237,11 @@ def _codex_hook_arguments(arguments: Sequence[str]) -> bool:
     payload = list(arguments)
     if payload[:1] == ["guard"]:
         payload = payload[1:]
-    return payload[:1] == ["hook"] and _has_codex_harness(shlex.join(payload))
+    return payload[:1] == ["hook"] and _has_codex_harness_tokens(payload)
 
 
 def _inline_python_codex_hook(script: str) -> bool:
+    """Inspect static argv without executing code or resolving dynamic values."""
     if "codex_plugin_scanner.cli" not in script:
         return False
     try:
@@ -246,10 +251,18 @@ def _inline_python_codex_hook(script: str) -> bool:
     for node in ast.walk(tree):
         if not isinstance(node, (ast.List, ast.Tuple)):
             continue
-        arguments = [item.value for item in node.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)]
-        if len(arguments) != len(node.elts):
+        values = [
+            item.value if isinstance(item, ast.Constant) and isinstance(item.value, str) else None for item in node.elts
+        ]
+        if values[:1] == ["guard"]:
+            values = values[1:]
+        if values[:1] != ["hook"]:
             continue
-        if _codex_hook_arguments(arguments):
+        # A dynamic harness operand cannot prove this is an unrelated handler.
+        if any(value == "--harness" and values[index + 1 : index + 2] == [None] for index, value in enumerate(values)):
+            return True
+        arguments = [value for value in values if value is not None]
+        if len(arguments) == len(values) and _codex_hook_arguments(arguments):
             return True
     return False
 
@@ -263,13 +276,20 @@ def require_codex_hook_owner(command: str, *, ownership: str) -> None:
     """
     tokens = _command_tokens(command)
     python_hook = False
-    if tokens and Path(tokens[0]).name.lower().startswith("python"):
+    python_launcher = bool(tokens and Path(tokens[0]).name.lower().startswith("python"))
+    if python_launcher:
         payload = _python_hook_payload(tokens[1:])
         python_hook = payload[:2] == ["-m", "codex_plugin_scanner.cli"] and _codex_hook_arguments(payload[2:])
         python_hook = python_hook or bool(payload and Path(payload[0]).name == "codex_daemon_hook_bridge.py")
         if payload[:1] == ["-c"] and len(payload) > 1:
             python_hook = python_hook or _inline_python_codex_hook(payload[1])
-    if ownership == "unmanaged" and (python_hook or _is_live_guard_codex_hook_command(command)):
+            python_hook = python_hook or (
+                "codex_plugin_scanner.cli" in payload[1]
+                and "sys.argv" in payload[1]
+                and _codex_hook_arguments(payload[2:])
+            )
+    guard_hook = python_hook if python_launcher else _is_live_guard_codex_hook_command(command)
+    if ownership == "unmanaged" and guard_hook:
         raise RuntimeError(
             "codex_hook_owner_conflict: An existing Codex Guard handler has no verified ownership binding. "
             "Resolve its installation owner before retrying install; existing hooks have been preserved."

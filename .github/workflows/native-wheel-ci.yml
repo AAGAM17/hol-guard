@@ -357,7 +357,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prove native source compiler output
         shell: pwsh
+        env:
+          HOL_GUARD_BUILD_SHA: ${{ github.sha }}
         run: |
+          $version = uv run --no-sync python scripts/sync_repo_version.py --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:HOL_GUARD_PACKAGE_VERSION = $version.Trim()
           $arguments = @("--compiler", "rust/target/release/guard-command-source.exe")
           if ("${{ github.event_name }}" -eq "pull_request") {
             $arguments += @("--changed-from", "${{ github.event.pull_request.base.sha }}")

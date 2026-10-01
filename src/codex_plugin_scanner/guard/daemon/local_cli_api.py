@@ -622,13 +622,9 @@ class LocalCliApiService:
         )
         stored_observation = self._store.find_local_mcp_observation(cli_id=cli_id) if cli_id else None
         stored_server_hash = (
-            stored_observation.get("server_identity_hash")
-            if isinstance(stored_observation, dict)
-            else None
+            stored_observation.get("server_identity_hash") if isinstance(stored_observation, dict) else None
         )
-        stored_source_label = (
-            stored_observation.get("source_label") if isinstance(stored_observation, dict) else None
-        )
+        stored_source_label = stored_observation.get("source_label") if isinstance(stored_observation, dict) else None
         selected_server = discovered_server_for_observation(
             servers,
             cli_id=cli_id,

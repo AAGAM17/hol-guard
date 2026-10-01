@@ -13,6 +13,7 @@ ref. Stdlib only; no repository imports.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -22,8 +23,12 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "contracts/extensions/command-catalog.v1.json"
 
 
-class GitDiffError(ValueError):
+class GitDiffError(RuntimeError):
     """Raised when a comparison revision cannot be inspected safely."""
+
+
+# Kept as a compatibility alias for CI tests and callers from the base branch.
+ContributionDiffError = GitDiffError
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,7 @@ def is_decision_report_input(path: str) -> bool:
 
 
 def contribution_ids() -> set[str]:
+    """Collect canonical extension identities from each contribution format."""
     ids = {str(json.loads(path.read_text())["id"]) for path in (ROOT / "contributions/extensions").glob("*.json")}
     ids.update(
         str(json.loads(path.read_text())["extension"]["extension_id"])
@@ -115,41 +121,73 @@ def contribution_ids() -> set[str]:
 
 
 def catalog_ids() -> set[str]:
+    """Read the identities covered by the checked-in generated catalog."""
     catalog = json.loads(CATALOG.read_text())
     return {entry["extension_id"] for entry in catalog["catalog"]}
 
 
-def _git_changed_paths(base_sha: str) -> list[str]:
-    if not base_sha or not base_sha.strip():
-        raise GitDiffError("A non-empty base revision is required for regeneration qualification.")
+def _git_changed_paths(base_sha: str, *, pathspec: tuple[str, ...] = (), nul: bool = True) -> list[str]:
+    """Return changed paths only after a bounded, verified Git comparison."""
 
-    command = ["git", "diff", "--name-only", "--no-renames", "-z", base_sha, "HEAD", "--"]
+    if not isinstance(base_sha, str) or not base_sha.strip():
+        raise GitDiffError("A non-empty base revision is required; the comparison base must be a full Git commit SHA")
+    if re.fullmatch(r"[0-9a-fA-F]{40}", base_sha) is None:
+        raise GitDiffError("Could not determine changed files: the comparison base must be a full Git commit SHA")
+    normalized_sha = base_sha.lower()
+    command = ["git", "diff", "--name-only"]
+    if nul:
+        command.extend(("--no-renames", "-z"))
+    command.extend((normalized_sha, "HEAD", "--", *pathspec))
 
     def _diff() -> subprocess.CompletedProcess[str]:
+        """Read contribution changes without exposing Git output in error messages."""
         return subprocess.run(
             command,
             cwd=ROOT,
             capture_output=True,
             text=True,
             check=False,
+            timeout=30,
         )
 
-    completed = _diff()
-    if completed.returncode:
-        # Shallow checkouts lack the base commit; fetch it and retry once.
-        fetched = subprocess.run(
-            ["git", "fetch", "--depth=1", "origin", base_sha],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if fetched.returncode == 0:
+    try:
+        completed = _diff()
+        if completed.returncode:
+            # Shallow checkouts lack the base commit; fetch it and retry once.
+            fetched = subprocess.run(
+                ["git", "fetch", "--depth=1", "origin", normalized_sha],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
+            if fetched.returncode:
+                raise GitDiffError(
+                    "Could not determine changed files: Cannot compare contribution sources: "
+                    "fetching the PR base failed"
+                )
             completed = _diff()
+    except subprocess.TimeoutExpired:
+        raise GitDiffError("Cannot compare contribution sources: Git timed out [git_timeout]") from None
+    except UnicodeError:
+        raise GitDiffError("Cannot compare contribution sources: Git output unreadable [git_encoding]") from None
+    except OSError:
+        raise GitDiffError("Cannot compare contribution sources: Git unavailable [git_process]") from None
     if completed.returncode:
-        detail = (completed.stderr or completed.stdout).strip()
-        raise GitDiffError(f"Could not determine changed files from base revision {base_sha!r}: {detail[:512]}")
-    return [path for path in completed.stdout.split("\0") if path]
+        raise GitDiffError(
+            "Could not determine changed files: Cannot compare contribution sources: "
+            "Git diff failed after fetching the PR base"
+        )
+    output = completed.stdout or ""
+    paths = output.split("\0") if nul else output.splitlines()
+    return [path.rstrip("\r\n") for path in paths if path]
+
+
+def _contributions_changed(base_sha: str) -> list[str]:
+    """Return contribution paths changed since a verified base revision."""
+
+    return _git_changed_paths(base_sha, pathspec=("contributions/",), nul=False)
 
 
 def is_native_implementation_input(path: str) -> bool:
@@ -178,6 +216,7 @@ def changed_regen_inputs(base_sha: str) -> ChangedRegenInputs:
 
 
 def main() -> int:
+    """Print regeneration status only after any requested base comparison succeeds."""
     pending_ids = sorted(contribution_ids() - catalog_ids())
     changed: list[str] = []
     changed_implementation: list[str] = []
@@ -191,7 +230,7 @@ def main() -> int:
             inputs = changed_regen_inputs(sys.argv[index + 1])
         except GitDiffError as error:
             print(str(error), file=sys.stderr)
-            return 2
+            return 1
         changed = list(inputs.contribution_paths)
         changed_implementation = list(inputs.implementation_paths)
         changed_report = list(inputs.report_paths)

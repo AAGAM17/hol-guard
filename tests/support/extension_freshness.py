@@ -22,6 +22,7 @@ from scripts.ci.detect_pending_extension_regen import (
     GitDiffError,
     changed_regen_inputs,
     contribution_ids,
+    is_decision_report_input,
 )
 
 
@@ -78,7 +79,70 @@ def pending_source_regen() -> bool:
         changed = changed_regen_inputs(base_sha)
     except GitDiffError as error:
         raise RuntimeError(f"Could not qualify generated-artifact freshness: {error}") from error
-    return bool(changed.contribution_paths or changed.implementation_paths or changed.report_paths)
+    return bool(changed.contribution_paths or changed.implementation_paths)
+
+
+def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(["git", *arguments], check=False, capture_output=True, text=True)
+    except OSError:
+        return subprocess.CompletedProcess(["git", *arguments], 1, "", "")
+
+
+def _pr_diff_paths() -> list[str] | None:
+    """Paths this ref changes relative to the base branch, or None outside PR CI.
+
+    CI checkouts are shallow, so diff against a depth-1 fetch of the base ref —
+    tree-to-tree, no merge-base history required. Locally, fall back to the
+    merge-base against ``main`` when that ref exists.
+    """
+
+    base_ref = os.environ.get("GITHUB_BASE_REF")
+    if base_ref:
+        probe = _git("rev-parse", "--is-shallow-repository")
+        shallow = probe.returncode != 0 or probe.stdout.strip() == "true"
+        fetch = [
+            "fetch",
+            "-q",
+            *(["--depth=1"] if shallow else []),
+            "origin",
+            f"+refs/heads/{base_ref}:refs/remotes/pending-diff/base",
+        ]
+        if _git(*fetch).returncode:
+            return None
+        result = _git("diff", "--name-only", "pending-diff/base", "HEAD")
+        return result.stdout.splitlines() if result.returncode == 0 else None
+    for base_ref in ("main", "origin/main"):
+        if _git("rev-parse", "--verify", base_ref).returncode != 0:
+            continue
+        result = _git("diff", "--name-only", f"{base_ref}...HEAD")
+        return result.stdout.splitlines() if result.returncode == 0 else None
+    return None
+
+
+def pending_decision_diff_regen() -> bool:
+    """The branch changes report-bound inputs but leaves the report to regen.
+
+    The decision-diff report is regen-owned: generated-artifacts-guard rejects
+    it in PR diffs, so a branch that changes any bound input cannot also update
+    the report. Freshness is enforced on main and on regen PRs — whose diff
+    does carry the report — and deferred here.
+    """
+
+    if pending_contribution_regen():
+        return True
+    report_outputs = {
+        "tests/fixtures/guard-command-corpus/decision-diff-report.json",
+        "tests/fixtures/guard-command-corpus/decision-diff-report.framed-sha256",
+    }
+    diff = _pr_diff_paths()
+    if diff is None:
+        # Outside a PR checkout there is no branch diff to qualify.
+        return False
+    normalized = {path.replace("\\", "/") for path in diff}
+    if normalized & report_outputs:
+        return False
+    return any(is_decision_report_input(path) for path in normalized)
 
 
 requires_fresh_projections = pytest.mark.skipif(
@@ -87,4 +151,9 @@ requires_fresh_projections = pytest.mark.skipif(
         "checked-in projections do not cover a pending source-bound input; "
         "freshness is enforced after maintainer regeneration"
     ),
+)
+
+requires_fresh_decision_diff = pytest.mark.skipif(
+    pending_decision_diff_regen(),
+    reason="decision-diff report is regen-owned; enforced after maintainer regeneration",
 )

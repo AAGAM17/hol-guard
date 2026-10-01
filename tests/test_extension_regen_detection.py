@@ -34,7 +34,7 @@ def test_changed_regen_inputs_classifies_native_bound_and_unrelated_paths(monkey
 
     monkeypatch.setattr(detector.subprocess, "run", fake_run)
 
-    changed = detector.changed_regen_inputs("base-sha")
+    changed = detector.changed_regen_inputs("a" * 40)
 
     assert changed.contribution_paths == ("contributions/command-sources/command.example.json",)
     assert changed.implementation_paths == (
@@ -69,7 +69,7 @@ def test_changed_regen_inputs_fails_closed_when_git_diff_is_invalid(monkeypatch:
     monkeypatch.setattr(detector.subprocess, "run", fake_run)
 
     with pytest.raises(detector.GitDiffError, match="Could not determine changed files"):
-        detector.changed_regen_inputs("invalid-sha")
+        detector.changed_regen_inputs("a" * 40)
 
 
 def test_verifier_generates_and_restores_for_implementation_only_changes(

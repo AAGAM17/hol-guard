@@ -28,19 +28,34 @@ GENERATED_PATHS = (
 
 
 def _run(command: list[str]) -> None:
+    """Propagate a failed command before later verification stages execute."""
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode:
         raise SystemExit(completed.returncode)
 
 
 def main() -> int:
+    """Choose strict or pending-source validation from a successful comparison."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", required=True)
     parser.add_argument("--changed-from")
     args = parser.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from detect_pending_extension_regen import GitDiffError, catalog_ids, changed_regen_inputs, contribution_ids
+    try:
+        from detect_pending_extension_regen import GitDiffError
+    except ImportError:
+        from detect_pending_extension_regen import ContributionDiffError as GitDiffError
+    from detect_pending_extension_regen import catalog_ids, contribution_ids
+
+    try:
+        from detect_pending_extension_regen import changed_regen_inputs
+    except ImportError:
+        changed_regen_inputs = None
+    try:
+        from detect_pending_extension_regen import _contributions_changed
+    except ImportError:
+        _contributions_changed = None
 
     pending = sorted(contribution_ids() - catalog_ids())
     changed = []
@@ -48,12 +63,18 @@ def main() -> int:
     changed_report = []
     if args.changed_from is not None:
         try:
-            inputs = changed_regen_inputs(args.changed_from)
+            if changed_regen_inputs is not None:
+                inputs = changed_regen_inputs(args.changed_from)
+                changed = list(inputs.contribution_paths)
+                changed_implementation = list(inputs.implementation_paths)
+                changed_report = list(inputs.report_paths)
+            elif _contributions_changed is not None:
+                changed = list(_contributions_changed(args.changed_from))
+            else:
+                raise GitDiffError("The regeneration detector does not expose a comparison helper")
         except GitDiffError as error:
-            raise SystemExit(str(error)) from error
-        changed = list(inputs.contribution_paths)
-        changed_implementation = list(inputs.implementation_paths)
-        changed_report = list(inputs.report_paths)
+            print(str(error), file=sys.stderr)
+            return 1
     command = [
         sys.executable,
         "scripts/build_native_command_program.py",

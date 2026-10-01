@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,8 +15,12 @@ REPORT_PATHS = (
 )
 
 
-def _run(command: list[str]) -> None:
-    completed = subprocess.run(command, cwd=ROOT, check=False)
+def _run(command: list[str], *, strict_decision_report: bool = False) -> None:
+    environment = None
+    if strict_decision_report:
+        environment = os.environ.copy()
+        environment["HOL_GUARD_STRICT_DECISION_REPORT"] = "1"
+    completed = subprocess.run(command, cwd=ROOT, check=False, env=environment)
     if completed.returncode:
         raise SystemExit(completed.returncode)
 
@@ -39,7 +44,7 @@ def main() -> int:
 
     report_command = [sys.executable, "tests/guard_command_decision_diff.py"]
     if args.changed_from is None or not _source_only_inputs(args.changed_from):
-        _run([*report_command, "--check"])
+        _run([*report_command, "--check"], strict_decision_report=True)
         return 0
 
     from verify_native_command_program import GENERATED_PATHS
@@ -55,7 +60,7 @@ def main() -> int:
             ]
         )
         _run([*report_command, "--write"])
-        _run([*report_command, "--check"])
+        _run([*report_command, "--check"], strict_decision_report=True)
     finally:
         _run(["git", "checkout", "--", *generated_paths])
         _run(["git", "clean", "-fdq", "--", *GENERATED_PATHS])

@@ -100,6 +100,8 @@ def test_evaluator_becomes_ready_when_store_prewarm_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The entrypoint normally owns a process; restore its environment change here.
+    monkeypatch.setenv("HOL_GUARD_INTERNAL_HOOK_SQLITE_TIMEOUT_MS", "250")
     connection = MagicMock()
     connection.recv.return_value = ("stop", None)
     monkeypatch.setattr(

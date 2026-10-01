@@ -252,9 +252,9 @@ fn safe_directory_target(target: &str) -> bool {
     crate::is_plain_cd_target(target)
         && !target.contains(['*', '?', '[', ']'])
         && !sensitive_command(target)
-        && !normalized_haystack(target).split('/').any(|component| {
-            matches!(component, ".ssh" | ".aws" | ".kube" | ".gnupg" | ".docker")
-        })
+        && !normalized_haystack(target)
+            .split('/')
+            .any(|component| matches!(component, ".ssh" | ".aws" | ".kube" | ".gnupg" | ".docker"))
 }
 
 fn exact_safe_command(model: &CanonicalCommandV1, allow_git_helper_context: bool) -> bool {

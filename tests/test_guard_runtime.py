@@ -22452,7 +22452,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
     block_artifact = "codex:project:file-read:secret-env"
     bundle = {
         "bundleVersion": "policy-2026-06-05.9",
-        "expiresAt": "2026-12-01T00:00:00+00:00",
+        "expiresAt": "2099-12-01T00:00:00+00:00",
         "rules": [
             {
                 "ruleId": "memory-allow-deploy",
@@ -22481,7 +22481,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
                     "harnesses": ["codex"],
                     "locations": [workspace_a],
                 },
-                "expiresAt": "2026-10-01T00:00:00+00:00",
+                "expiresAt": "2099-10-01T00:00:00+00:00",
                 "sourceDecisionId": "decision-block",
                 "sourceSuggestionId": "suggestion-block",
             },
@@ -22512,8 +22512,8 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
     assert next(iter(stored_workspaces)).startswith("workspace:")
     assert {item["artifact_id"] for item in exact_decisions} == {allow_artifact, block_artifact}
     assert {item["expires_at"] for item in exact_decisions} == {
-        "2026-12-01T00:00:00.000000+00:00",
-        "2026-10-01T00:00:00.000000+00:00",
+        "2099-12-01T00:00:00.000000+00:00",
+        "2099-10-01T00:00:00.000000+00:00",
     }
 
 

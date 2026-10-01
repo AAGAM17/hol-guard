@@ -307,12 +307,12 @@ def _deny_event(event: str, message: str) -> str:
 
 def _degraded(reason: str, data: str) -> str:
     event = _event_name(data)
-    message = _DEGRADED_DAEMON_MESSAGE.format(reason=reason)
     if event == "UserPromptSubmit":
         return _degraded_prompt(data)
     if event == "PreToolUse" or event.startswith("Permission"):
         # An unavailable or malformed evaluator grants no execution authority.
         # This bridge has no authenticated Watch snapshot to authorize a bypass.
+        message = _DEGRADED_DAEMON_MESSAGE.format(reason=reason)
         return _deny_event(event, message)
     return "{}"
 

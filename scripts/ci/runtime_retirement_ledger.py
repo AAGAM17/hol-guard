@@ -192,7 +192,7 @@ def _parametrize_suffixes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[s
     # (last) decorator contributes the leftmost id part.
     suffixes = cast(list[list[str]], layers)[-1]
     for layer in reversed(cast(list[list[str]], layers)[:-1]):
-        suffixes = [outer + "-" + inner for outer in layer for inner in suffixes]
+        suffixes = [inner + "-" + outer for outer in layer for inner in suffixes]
     return set(suffixes)
 
 

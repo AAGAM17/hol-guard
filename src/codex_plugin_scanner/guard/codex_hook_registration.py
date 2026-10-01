@@ -284,9 +284,7 @@ def require_codex_hook_owner(command: str, *, ownership: str) -> None:
         if payload[:1] == ["-c"] and len(payload) > 1:
             python_hook = python_hook or _inline_python_codex_hook(payload[1])
             python_hook = python_hook or (
-                "codex_plugin_scanner.cli" in payload[1]
-                and "sys.argv" in payload[1]
-                and _codex_hook_arguments(payload[2:])
+                "codex_plugin_scanner.cli" in payload[1] and _codex_hook_arguments(payload[2:])
             )
     guard_hook = python_hook if python_launcher else _is_live_guard_codex_hook_command(command)
     if ownership == "unmanaged" and guard_hook:

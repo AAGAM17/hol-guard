@@ -105,8 +105,16 @@ def test_python_attached_module_and_short_hook_commands_require_ownership(launch
 
 @pytest.mark.parametrize("python_options", ("-I", "-W ignore", "-IW ignore"))
 @pytest.mark.parametrize("attached", (True, False))
-def test_inline_bootstrap_hook_argv_requires_ownership(python_options, attached):
-    script = "import sys; from codex_plugin_scanner.cli import main; raise SystemExit(main(sys.argv[1:]))"
+@pytest.mark.parametrize(
+    "script",
+    (
+        "import sys; from codex_plugin_scanner.cli import main; raise SystemExit(main(sys.argv[1:]))",
+        "from codex_plugin_scanner.cli import main; raise SystemExit(main())",
+        "from sys import argv; from codex_plugin_scanner.cli import main; main(argv[1:])",
+        "import sys as s; from codex_plugin_scanner.cli import main; main(s.argv[1:])",
+    ),
+)
+def test_inline_bootstrap_hook_argv_requires_ownership(python_options, attached, script):
     command = "python " + python_options + " -c" + ("" if attached else " ") + shlex.quote(script)
     with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
         require_codex_hook_owner(command + " guard hook --harness codex", ownership="unmanaged")

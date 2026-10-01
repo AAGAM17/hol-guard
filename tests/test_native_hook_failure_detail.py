@@ -1,6 +1,6 @@
 """Native proof failures report a category without leaking response content."""
 
-from ci.native_runtime.hook_failure_detail import hook_failure_detail
+from ci.native_runtime.installed_hook_client import hook_failure_detail
 
 
 def test_failure_detail_includes_bounded_native_reason():

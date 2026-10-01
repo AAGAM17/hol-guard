@@ -23,7 +23,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.append(str(_REPO_ROOT))
 
 import codex_plugin_scanner
-from ci.native_runtime.hook_failure_detail import hook_failure_detail
 from codex_plugin_scanner.guard.config import hook_fast_path_enabled
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
 from codex_plugin_scanner.guard.native_policy_test_support import native_policy_snapshot
@@ -59,6 +58,7 @@ if _HOOK_CLIENT_SPEC is None or _HOOK_CLIENT_SPEC.loader is None:
 _HOOK_CLIENT_MODULE = importlib.util.module_from_spec(_HOOK_CLIENT_SPEC)
 _HOOK_CLIENT_SPEC.loader.exec_module(_HOOK_CLIENT_MODULE)
 _installed_hook_request = _HOOK_CLIENT_MODULE.installed_hook_request
+hook_failure_detail = _HOOK_CLIENT_MODULE.hook_failure_detail
 
 
 def _request(root: Path, text: str, request_id: str) -> HookReviewRequest:

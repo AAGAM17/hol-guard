@@ -81,19 +81,34 @@ class _GuardImportCalls(ast.NodeVisitor):
     def finish(self) -> None:
         """Inspect deferred bodies against module bindings available when called."""
         self.module_bindings = self.bindings.copy()
-        index = 0
-        while index < len(self.deferred):
-            node, enclosing, parameters = self.deferred[index]
-            index += 1
-            self.bindings = enclosing.copy()
-            self._merge(self.module_bindings)
-            self.bindings.update(parameters)
-            self.global_names = set()
-            self.in_function = True
-            if isinstance(node, ast.Lambda):
-                self.visit(node.body)
-            else:
-                self._body(node.body)
+        roots = self.deferred.copy()
+        body_count = sum(
+            isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+            for node, _, _ in roots
+            for item in ast.walk(node)
+        )
+        for _ in range(body_count + 1):
+            previous = self.global_updates.copy()
+            self.deferred = roots.copy()
+            index = 0
+            while index < len(self.deferred):
+                node, enclosing, parameters = self.deferred[index]
+                index += 1
+                self.bindings = enclosing.copy()
+                self._merge(self.module_bindings)
+                self.bindings.update(parameters)
+                self.global_names = set()
+                self.in_function = True
+                if isinstance(node, ast.Lambda):
+                    self.visit(node.body)
+                else:
+                    self._body(node.body)
+            if self.found or self.global_updates == previous:
+                break
+        else:
+            # Cyclic attribute aliases can grow without converging. Bound analysis
+            # and preserve the possible conflict rather than hanging installation.
+            self.found = True
         self.in_function = False
         self.global_names = set()
         # Global imports in deferred bodies can supply later module-level calls.
@@ -366,8 +381,12 @@ def _imports_guard_cli(tree: ast.AST) -> bool:
         ):
             return True
     calls = _GuardImportCalls()
-    calls.visit(tree)
-    calls.finish()
+    try:
+        calls.visit(tree)
+        calls.finish()
+    except RecursionError:
+        # An unanalyzable handler cannot establish that it is unrelated.
+        return True
     return calls.found
 
 

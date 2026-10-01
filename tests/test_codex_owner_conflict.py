@@ -217,6 +217,8 @@ def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
         "run = lambda: runpy.run_module(mod_name='codex_plugin_scanner.cli')\nimport runpy\nrun()",
         "import runpy\ndef load():\n global launch\n launch = runpy.run_module\nload()\n"
         "launch(mod_name='codex_plugin_scanner.cli')",
+        "def run(): runpy.run_module('codex_plugin_scanner.cli')\n"
+        "def load():\n global runpy\n import runpy\nload()\nrun()",
     ),
 )
 def test_unrelated_local_bindings_do_not_hide_module_imports(script):
@@ -227,6 +229,12 @@ def test_unrelated_local_bindings_do_not_hide_module_imports(script):
 def test_imported_foreign_helper_is_not_the_builtin_import_api():
     script = "from third_party import __import__; __import__(name='codex_plugin_scanner.cli')"
     require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
+
+
+def test_deep_python_structure_preserves_the_owner_conflict_error():
+    script = "1+" * 600 + "1\nimport runpy\nrunpy.run_module('codex_plugin_scanner.cli')"
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
 
 
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))

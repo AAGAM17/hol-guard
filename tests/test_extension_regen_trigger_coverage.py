@@ -10,11 +10,27 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/extension-artifact-regen.yml"
+# Same lower bound as the evidence report contract; the exact count grows.
+MIN_REPORT_INPUTS = 40
+
+
+def _triggers(workflow: dict) -> dict:
+    """Accept YAML 1.1 and 1.2 loaders without accepting ambiguous event keys."""
+    assert not ("on" in workflow and True in workflow), "Ambiguous workflow event keys"
+    triggers = workflow.get("on", workflow.get(True))
+    assert isinstance(triggers, dict), "Workflow events must be a mapping"
+    return triggers
 
 
 def _matches(path: str, pattern: str) -> bool:
-    """Match the workflow's positive *, ** subset without crossing / for * alone."""
-    assert not any(token in pattern for token in ("!", "?", "[", "]")), pattern
+    """Match only positive * and terminal ** patterns used by this workflow.
+
+    Fail explicitly for other glob syntax rather than silently approximating
+    negation, character classes, or zero-directory **/ matching.
+    """
+    assert not any(token in pattern for token in ("!", "?", "[", "]", "+", "**/")), (
+        "Unsupported regeneration trigger pattern: " + pattern
+    )
     expression = re.escape(pattern).replace(r"\*\*", ".*").replace(r"\*", "[^/]*")
     return re.fullmatch(expression, path) is not None
 
@@ -47,25 +63,44 @@ def test_regen_trigger_covers_every_decision_diff_input() -> None:
 
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     # PyYAML's YAML 1.1 parser reads the Actions "on" key as True.
-    patterns = workflow[True]["push"]["paths"]
+    patterns = _triggers(workflow)["push"]["paths"]
     inputs = {
         path.relative_to(REPO_ROOT).as_posix()
         for path in (*_EVIDENCE_SOURCE_PATHS, KNOWN_GAPS_PATH, MANIFEST_PATH, PAIRS_PATH, NATIVE_CONTRACT_PATH)
     }
-    assert len(inputs) >= 40
+    assert len(inputs) >= MIN_REPORT_INPUTS
     missing = sorted(path for path in inputs if not any(_matches(path, pattern) for pattern in patterns))
     assert not missing, "Report inputs missing from the regeneration trigger:\n" + "\n".join(missing)
 
 
 def test_regen_keeps_main_scope_and_reviewed_publication() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    assert workflow[True]["push"]["branches"] == ["main"]
-    assert "workflow_dispatch" in workflow[True]
-    assert "pull_request" not in workflow[True]
+    assert _triggers(workflow)["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in _triggers(workflow)
+    assert "pull_request" not in _triggers(workflow)
     assert workflow["concurrency"]["cancel-in-progress"] is False
     steps = workflow["jobs"]["regen"]["steps"]
-    publish = next(step for step in steps if step.get("name") == "Regenerate and publish refreshed artifacts")
+    publish = next((step for step in steps if step.get("name") == "Regenerate and publish refreshed artifacts"), None)
+    assert publish is not None, "Missing reviewed artifact publication step"
     assert "gh pr create" in publish["run"]
     assert 'gh pr merge --repo "${GH_REPO}" --auto --squash' in publish["run"]
     assert "--admin" not in publish["run"]
     assert "continue-on-error" not in publish
+
+
+@pytest.mark.parametrize("key", ["on", True])
+def test_event_keys_support_both_yaml_versions(key: object) -> None:
+    events = {"push": {"branches": ["main"]}}
+    assert _triggers({key: events}) == events
+
+
+@pytest.mark.parametrize("workflow", [{}, {"on": None}, {"on": {}, True: {}}])
+def test_invalid_or_ambiguous_event_keys_fail_explicitly(workflow: dict) -> None:
+    with pytest.raises(AssertionError):
+        _triggers(workflow)
+
+
+@pytest.mark.parametrize("pattern", ["!src/**", "tests/test?.py", "tests/[ab].py", "tests/a+.py", "**/test.py"])
+def test_unsupported_glob_syntax_fails_explicitly(pattern: str) -> None:
+    with pytest.raises(AssertionError, match="Unsupported regeneration trigger pattern"):
+        _matches("tests/test.py", pattern)

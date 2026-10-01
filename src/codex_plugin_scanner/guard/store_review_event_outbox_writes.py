@@ -70,32 +70,31 @@ def recover_review_snapshot_sequences(
         return _abort()
 
     sequences = sorted(normalized)
-    placeholders = ", ".join("?" for _ in sequences)
-    rows = connection.execute(
-        f"select * from guard_review_outbox_events where stream_sequence in ({placeholders})",
-        sequences,
-    ).fetchall()
-    rows_by_sequence = {int(row["stream_sequence"]): row for row in rows}
+    rows_by_sequence: dict[int, sqlite3.Row] = {}
+    for sequence in sequences:
+        row = connection.execute(
+            "select * from guard_review_outbox_events where stream_sequence = ?",
+            (sequence,),
+        ).fetchone()
+        if row is not None:
+            rows_by_sequence[sequence] = row
     if len(rows_by_sequence) != len(normalized):
         return _abort()
 
     from .runtime.review_event_delivery import StoredReviewEventError, decode_stored_review_event
 
+    collided_ids = set(normalized.values())
     for old_sequence in sequences:
         row = rows_by_sequence[old_sequence]
-        collided_ids = list(normalized.values())
-        id_placeholders = ", ".join("?" for _ in collided_ids)
-        later = connection.execute(
-            f"""
-            select 1 from guard_review_outbox_events
+        later_rows = connection.execute(
+            """
+            select event_id from guard_review_outbox_events
             where local_request_id = ? and request_sequence > ?
               and acknowledged_at is null and oauth_source = ?
-              and event_id not in ({id_placeholders})
-            limit 1
             """,
-            (row["local_request_id"], row["request_sequence"], source, *collided_ids),
-        ).fetchone()
-        if later is not None:
+            (row["local_request_id"], row["request_sequence"], source),
+        ).fetchall()
+        if any(later["event_id"] not in collided_ids for later in later_rows):
             return _abort()
         if (
             row["event_id"] != normalized[old_sequence]

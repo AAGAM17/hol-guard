@@ -111,8 +111,8 @@ def test_cleanup_contract_covers_every_scoped_hook_capability() -> None:
 
     assert payload["schema"] == "hol-guard.python-capability-cleanup.v1"
     assert payload["status"] == "passed"
-    # The runtime values module is explicitly owned under the existing native scope glob.
-    assert payload["scope_files"] == 95
+    # The combined hook and native modules remain covered by the existing scope globs.
+    assert payload["scope_files"] == 96
     assert "legacy_python_resident_transport" not in payload["capabilities"]
     assert payload["candidate_evidence"] == []
     contract = GATE._read_json(ROOT / GATE.CONTRACT)

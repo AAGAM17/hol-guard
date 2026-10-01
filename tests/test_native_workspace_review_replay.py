@@ -170,6 +170,38 @@ def test_replay_revisits_lower_ids_despite_continuous_full_batches(
     assert store.context_calls == ["request-00", "request-01", "request-02", "request-03", "request--1", "request-00"]
 
 
+def test_legacy_unbounded_cursor_restarts_from_lower_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _ReplayStore(tmp_path, ["request-00", "request-99"])
+    replay_store = cast(replay._NativeWorkspaceReplayStore, cast(object, store))
+    store.payloads[replay._scan_key(replay_store)] = {"binding": store.binding, "cursor": "request-99"}
+
+    def context(_store: object, _home: Path, request_id: str) -> None:
+        store.context_calls.append(request_id)
+
+    monkeypatch.setattr(replay, "build_native_workspace_review_context", context)
+    assert (
+        replay.prepare_native_workspace_review_replay(cast(GuardStore, cast(object, store)), binding=store.binding) == 0
+    )
+    assert store.context_calls == ["request-00", "request-99"]
+
+
+def test_failed_markers_are_revisited_after_finite_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _ReplayStore(tmp_path, [f"request-{index:02d}" for index in range(4)])
+    store.fail_marker_update = True
+
+    def context(_store: object, _home: Path, request_id: str) -> None:
+        store.context_calls.append(request_id)
+
+    monkeypatch.setattr(replay, "build_native_workspace_review_context", context)
+    for _ in range(3):
+        assert (
+            replay.prepare_native_workspace_review_replay(cast(GuardStore, cast(object, store)), binding=store.binding)
+            == 0
+        )
+    assert store.context_calls == ["request-00", "request-01", "request-02", "request-03", "request-00", "request-01"]
+    assert not any(":request:" in key for key in store.payloads)
+
+
 def test_interrupted_batch_does_not_advance_scan_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = _ReplayStore(tmp_path, ["request-00", "request-01"])
     read_marker = replay._request_marker

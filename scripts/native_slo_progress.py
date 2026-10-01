@@ -132,6 +132,7 @@ class SloProgress:
     active_labels: dict[str, str] = field(default_factory=dict)
     failure: dict[str, object] | None = None
     timings: dict[str, dict[str, list[float]]] = field(default_factory=dict)
+    _warm_iterations: int = field(default=0, init=False, repr=False, compare=False)
     _lock: RLock = field(default_factory=RLock, repr=False)
 
     def configure_invocation(

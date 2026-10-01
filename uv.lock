@@ -1212,6 +1212,12 @@ publish = [
 ]
 
 [package.dev-dependencies]
+ci-test = [
+    { name = "build" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
 cisco-mcp = [
     { name = "cisco-ai-mcp-scanner", marker = "python_full_version >= '3.11.4'" },
 ]
@@ -1246,6 +1252,12 @@ requires-dist = [
 provides-extras = ["cisco", "dev", "mdm-build", "publish"]
 
 [package.metadata.requires-dev]
+ci-test = [
+    { name = "build", specifier = ">=1.5.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "ruff", specifier = ">=0.15.15" },
+]
 cisco-mcp = [{ name = "cisco-ai-mcp-scanner", marker = "python_full_version >= '3.11.4'", specifier = "==4.8.1" }]
 dev = [{ name = "mutmut", specifier = ">=3.4,<4" }]
 

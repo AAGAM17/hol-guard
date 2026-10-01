@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import re
 import shlex
 from collections.abc import Mapping, Sequence
@@ -11,6 +10,7 @@ from pathlib import Path
 
 from .codex_hook_file_integrity import split_hook_command
 from .codex_hook_manifest import MANAGED_CODEX_HOOK_EVENTS
+from .codex_hook_owner_commands import has_codex_harness_tokens, python_codex_hook_command
 from .frozen_runtime_commands import frozen_codex_bridge_tokens_are_live
 
 _STATE_PATH_RE = re.compile(r'"state_path"\s*:\s*"([^"]+)"')
@@ -131,11 +131,7 @@ def _hook_group_command_blob(group: object) -> str:
 
 
 def _has_codex_harness(blob: str) -> bool:
-    tokens = _command_tokens(blob)
-    return any(
-        token == "--harness=codex" or (token == "--harness" and tokens[index + 1 : index + 2] == ["codex"])
-        for index, token in enumerate(tokens)
-    )
+    return has_codex_harness_tokens(_command_tokens(blob))
 
 
 def _looks_like_guard_codex_hook(blob: str) -> bool:
@@ -210,50 +206,15 @@ def _is_live_guard_codex_hook_command(command: str) -> bool:
     return False
 
 
-def _inline_python_codex_hook(script: str) -> bool:
-    if "codex_plugin_scanner.cli" not in script:
-        return False
-    try:
-        tree = ast.parse(script)
-    except (SyntaxError, ValueError, RecursionError):
-        return False
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.List, ast.Tuple)):
-            continue
-        arguments = [item.value for item in node.elts if isinstance(item, ast.Constant) and isinstance(item.value, str)]
-        if len(arguments) != len(node.elts):
-            continue
-        if "guard" in arguments and "hook" in arguments and _has_codex_harness(shlex.join(arguments)):
-            return True
-    return False
-
-
 def require_codex_hook_owner(command: str, *, ownership: str) -> None:
     """Reject competing Guard handlers without silently adopting or deleting them.
 
-    Legacy module launchers are conflict evidence, not proof of a live managed
-    bridge. Health detection must not promote unowned command syntax to an
-    authenticated registration.
+    Launcher syntax is conflict evidence, never proof of a live managed bridge.
     """
     tokens = _command_tokens(command)
-    python_hook = False
-    if tokens and Path(tokens[0]).name.lower().startswith("python"):
-        payload = tokens[1:]
-        while payload and payload[0].startswith("-") and payload[0] not in {"-c", "-m"}:
-            if payload[0] == "--":
-                break
-            operand_count = 2 if payload[0] in {"-W", "-X", "--check-hash-based-pycs"} else 1
-            payload = payload[operand_count:]
-        python_hook = (
-            payload[:2] == ["-m", "codex_plugin_scanner.cli"]
-            and "guard" in payload[2:]
-            and "hook" in payload[2:]
-            and _has_codex_harness(" ".join(payload))
-        )
-        python_hook = python_hook or bool(payload and Path(payload[0]).name == "codex_daemon_hook_bridge.py")
-        if payload[:1] == ["-c"] and len(payload) > 1:
-            python_hook = python_hook or _inline_python_codex_hook(payload[1])
-    if ownership == "unmanaged" and (python_hook or _is_live_guard_codex_hook_command(command)):
+    python_launcher = bool(tokens and Path(tokens[0]).name.lower().startswith("python"))
+    guard_hook = python_codex_hook_command(tokens) if python_launcher else _is_live_guard_codex_hook_command(command)
+    if ownership == "unmanaged" and guard_hook:
         raise RuntimeError(
             "codex_hook_owner_conflict: An existing Codex Guard handler has no verified ownership binding. "
             "Resolve its installation owner before retrying install; existing hooks have been preserved."

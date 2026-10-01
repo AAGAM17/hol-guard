@@ -48,19 +48,19 @@ def _pr_diff_paths() -> list[str] | None:
 
     base_ref = os.environ.get("GITHUB_BASE_REF")
     if base_ref:
-        shallow = _git("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+        probe = _git("rev-parse", "--is-shallow-repository")
+        shallow = probe.returncode != 0 or probe.stdout.strip() == "true"
         fetch = [
-            "fetch", "-q", *( ["--depth=1"] if shallow else []), "origin",
-            f"+refs/heads/{base_ref}:refs/remotes/pending-diff/{base_ref}",
+            "fetch", "-q", *(["--depth=1"] if shallow else []), "origin",
+            f"+refs/heads/{base_ref}:refs/remotes/pending-diff/base",
         ]
         if _git(*fetch).returncode:
             return None
-        target = f"pending-diff/{base_ref}"
-        result = _git("diff", "--name-only", target, "HEAD")
-        return result.stdout.split() if result.returncode == 0 else None
+        result = _git("diff", "--name-only", "pending-diff/base", "HEAD")
+        return result.stdout.splitlines() if result.returncode == 0 else None
     if _git("rev-parse", "--verify", "main").returncode == 0:
         result = _git("diff", "--name-only", "main...HEAD")
-        return result.stdout.split() if result.returncode == 0 else None
+        return result.stdout.splitlines() if result.returncode == 0 else None
     return None
 
 
@@ -96,7 +96,13 @@ def pending_decision_diff_regen() -> bool:
     except (ImportError, ValueError):
         pass
     diff = _pr_diff_paths()
-    if diff is None or report in diff:
+    if diff is None:
+        # PR context but the base fetch/diff failed (infra flake): the report
+        # cannot be committed in-PR regardless, so deferring cannot mask real
+        # drift — the post-merge regen check on main still enforces it. Outside
+        # PR context with no local main, enforce strictly.
+        return bool(os.environ.get("GITHUB_BASE_REF"))
+    if report in diff:
         return False
     return any(path in bound or path.startswith(prefixes) for path in diff)
 

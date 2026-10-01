@@ -146,10 +146,22 @@ def _is_codex_process(pid: int) -> bool:
         if name == "codex":
             return True
         if name == "rosetta":
-            # Docker Desktop translates a verified x86 Codex binary on ARM.
+            # Docker Desktop may expose the translator before the original argv.
             with Path(f"/proc/{pid}/cmdline").open("rb") as stream:
                 arguments = stream.read(65_537)
-            return len(arguments) <= 65_536 and Path(arguments.split(b"\0", 1)[0].decode()).name == "codex"
+            if len(arguments) > 65_536:
+                return False
+            argv = arguments.split(b"\0")
+            if Path(argv[0].decode()).name == "codex":
+                return True
+            return (
+                len(argv) >= 4
+                and argv[0] == b"/run/rosetta/rosetta"
+                and argv[1] == argv[2]
+                and Path(argv[1].decode()).is_absolute()
+                and Path(argv[1].decode()).name == "codex"
+                and argv[3] == b"app-server"
+            )
         return False
     if sys.platform == "darwin":
         result = subprocess.run(

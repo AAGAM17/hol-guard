@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import os
 import socket
@@ -18,6 +19,25 @@ import pytest
 from codex_plugin_scanner.guard.runtime import codex_host_inventory as inventory
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="Codex host inventory requires Unix peer credentials")
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (b"/opt/codex/codex\0app-server\0", True),
+        (b"/run/rosetta/rosetta\0/opt/codex/codex\0/opt/codex/codex\0app-server\0", True),
+        (b"/run/rosetta/rosetta\0/opt/codex/codex\0/opt/other/codex\0app-server\0", False),
+        (b"/run/rosetta/rosetta\0codex\0codex\0app-server\0", False),
+        (b"/run/rosetta/rosetta\0/opt/other/tool\0/opt/other/tool\0app-server\0", False),
+        (b"/run/rosetta/rosetta\0/opt/codex/codex\0/opt/codex/codex\0exec\0", False),
+        (b"/opt/codex/codex\0" + b"x" * 65_536, False),
+    ],
+)
+def test_translated_codex_process_layouts(monkeypatch: pytest.MonkeyPatch, arguments: bytes, expected: bool) -> None:
+    monkeypatch.setattr(inventory.sys, "platform", "linux")
+    monkeypatch.setattr(inventory.os, "readlink", lambda _path: "/run/rosetta/rosetta")
+    monkeypatch.setattr(Path, "open", lambda _path, _mode: io.BytesIO(arguments))
+    assert inventory._is_codex_process(123) is expected
 
 
 def _exact(client: socket.socket, size: int) -> bytes:

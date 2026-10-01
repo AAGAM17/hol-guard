@@ -3,11 +3,13 @@
 Prints ``{"pending": ..., "pending_ids": [...]}`` (or a bare ``true``/``false``
 with ``--flag``) when any canonical contribution under ``contributions/``
 declares an extension id that the checked-in ``command-catalog.v1.json`` does
-not contain, or when native implementation or decision-report inputs changed
-from ``--changed-from``.
+not contain.
 That state means the source-only ref is awaiting maintainer-owned projection
 regeneration, so generated-artifact freshness gates should stand down for that
-ref. Stdlib only; no repository imports.
+ref. Native implementation and decision-report inputs also qualify for
+source-only validation under ``--changed-from``. The native compiler binds its
+program identity to implementation sources, manifests and Cargo.lock.
+Stdlib only; no repository imports.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ import json
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,13 +32,20 @@ class GitDiffError(RuntimeError):
 ContributionDiffError = GitDiffError
 
 
-@dataclass(frozen=True)
 class ChangedRegenInputs:
     """Inputs whose changes permit source-only projection validation."""
 
-    contribution_paths: tuple[str, ...]
-    implementation_paths: tuple[str, ...]
-    report_paths: tuple[str, ...] = ()
+    __slots__ = ("contribution_paths", "implementation_paths", "report_paths")
+
+    def __init__(
+        self,
+        contribution_paths: tuple[str, ...],
+        implementation_paths: tuple[str, ...],
+        report_paths: tuple[str, ...] = (),
+    ) -> None:
+        self.contribution_paths = contribution_paths
+        self.implementation_paths = implementation_paths
+        self.report_paths = report_paths
 
 
 _GENERATED_OUTPUTS = frozenset(
@@ -140,7 +148,9 @@ def _git_changed_paths(base_sha: str, *, pathspec: tuple[str, ...] = (), nul: bo
     command.extend((normalized_sha, "HEAD", "--", *pathspec))
 
     def _diff() -> subprocess.CompletedProcess[str]:
-        """Read contribution changes without exposing Git output in error messages."""
+        """Read source changes without exposing Git output in error messages."""
+        # Ordinary PRs cannot commit regenerated projections, including Rust
+        # identity updates; generated-artifacts-guard enforces that ownership.
         return subprocess.run(
             command,
             cwd=ROOT,
@@ -187,7 +197,7 @@ def _git_changed_paths(base_sha: str, *, pathspec: tuple[str, ...] = (), nul: bo
 def _contributions_changed(base_sha: str) -> list[str]:
     """Return contribution paths changed since a verified base revision."""
 
-    return _git_changed_paths(base_sha, pathspec=("contributions/",), nul=False)
+    return _git_changed_paths(base_sha, pathspec=("contributions/", "rust/"), nul=False)
 
 
 def is_native_implementation_input(path: str) -> bool:

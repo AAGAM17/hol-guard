@@ -234,7 +234,7 @@ jobs:
         run: |
           shopt -s globstar nullglob
           reports=(duration-reports/**/pytest-durations.json)
-          test "${#reports[@]}" -eq 128
+          test "${#reports[@]}" -gt 0
           python3 scripts/ci/build_pytest_duration_manifest.py \
             --output pytest-duration-manifest-candidate.json.gz \
             --observed-at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \

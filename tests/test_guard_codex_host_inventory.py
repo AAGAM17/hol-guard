@@ -358,6 +358,41 @@ def test_public_cache_never_reads_rpc_on_listing_and_invalidates_reconnect(tmp_p
     assert cache.read() is None
 
 
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
+def test_refresh_keeps_valid_public_snapshot_visible_until_result(tmp_path, monkeypatch, outcome):
+    cache = inventory.CodexHostInventoryCache()
+    with _host(tmp_path, monkeypatch, _handler) as (home, _requests):
+        cache.refresh(codex_home=home, cancel=threading.Event())
+        payload = cache.read()
+        assert payload is not None
+        snapshot = inventory.CodexHostInventory(payload["connection_id"], tuple(payload["apps"]), True)
+        entered, release, cancel = threading.Event(), threading.Event(), threading.Event()
+
+        def slow_read(**_kwargs):
+            entered.set()
+            assert release.wait(2)
+            if outcome == "failure":
+                raise ValueError("codex_host_unavailable")
+            if outcome == "cancelled":
+                cancel.set()
+            return snapshot
+
+        monkeypatch.setattr(inventory, "read_codex_host_inventory", slow_read)
+        worker = threading.Thread(target=lambda: cache.refresh(codex_home=home, cancel=cancel))
+        worker.start()
+        try:
+            assert entered.wait(2)
+            assert cache.read() == payload
+        finally:
+            release.set()
+            worker.join(2)
+        assert not worker.is_alive()
+        if outcome == "failure":
+            assert cache.read() is None
+        else:
+            assert cache.read() == payload
+
+
 def test_expired_public_cache_is_not_presented_as_current(tmp_path, monkeypatch):
     cache = inventory.CodexHostInventoryCache()
     with _host(tmp_path, monkeypatch, _handler) as (home, _requests):

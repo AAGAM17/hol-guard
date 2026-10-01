@@ -3,6 +3,7 @@
 set -eo pipefail
 
 extras=()
+# Preserve the existing proof-specific boundary; only extensions select test tooling.
 if [[ "$NATIVE_PROOF" == "extensions" ]]; then
   extras=(--group ci-test)
 fi

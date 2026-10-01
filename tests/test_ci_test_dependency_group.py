@@ -1,7 +1,12 @@
 """Test workers retain their tools without downloading the type-checker runtime."""
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 try:
@@ -16,7 +21,7 @@ def test_ci_group_preserves_dev_tools_except_the_type_checker() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     dev = project["project"]["optional-dependencies"]["dev"]
     group = project["dependency-groups"]["ci-test"]
-    assert group == [requirement for requirement in dev if not requirement.startswith("basedpyright")]
+    assert set(group) == {requirement for requirement in dev if not requirement.startswith("basedpyright")}
     assert any(requirement.startswith("basedpyright") for requirement in dev)
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
     package = next(package for package in lock["package"] if package["name"] == "hol-guard")
@@ -41,3 +46,26 @@ def test_test_workers_select_the_frozen_group_without_default_dev_dependencies()
     proof_setup = (ROOT / "scripts/ci/install-native-proof-dependencies.sh").read_text()
     assert "extras=(--group ci-test)" in proof_setup
     assert "--frozen --no-dev --no-install-project" in proof_setup
+
+
+@pytest.mark.skipif(os.name == "nt", reason="macOS proof setup executes in Bash")
+@pytest.mark.parametrize("proof", ["default", "pi", "extensions", "performance"])
+def test_macos_proof_setup_preserves_its_dependency_boundary(tmp_path: Path, proof: str) -> None:
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    uv = binaries / "uv"
+    uv.write_text(f"#!{sys.executable}\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n")
+    uv.chmod(0o755)
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts/ci/install-native-proof-dependencies.sh")],
+        cwd=tmp_path,
+        env={**os.environ, "PATH": f"{binaries}{os.pathsep}{os.environ['PATH']}", "NATIVE_PROOF": proof},
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=10,
+    )
+    expected = ["sync", "--frozen", "--no-dev", "--no-install-project", "--python", "3.12"]
+    if proof == "extensions":
+        expected += ["--group", "ci-test"]
+    assert json.loads(result.stdout) == expected

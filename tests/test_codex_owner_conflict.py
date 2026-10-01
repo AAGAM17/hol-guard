@@ -222,6 +222,7 @@ def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
         "import runpy; left,right=runpy,runpy; left.run_module(mod_name='codex_plugin_scanner.cli')",
         "import runpy; runpy,launch=None,runpy; launch.run_module(mod_name='codex_plugin_scanner.cli')",
         "import runpy; (unused,(launch,))=(None,(runpy,)); launch.run_module(mod_name='codex_plugin_scanner.cli')",
+        "import runpy; [launch]=[runpy]; launch.run_module(mod_name='codex_plugin_scanner.cli')",
     ),
 )
 def test_unrelated_local_bindings_do_not_hide_module_imports(script):

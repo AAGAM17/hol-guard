@@ -25,6 +25,26 @@ def _run(command: list[str], *, strict_decision_report: bool = False) -> None:
         raise SystemExit(completed.returncode)
 
 
+def _rebuild_source_compiler(compiler: Path) -> None:
+    """Refresh the compiler's embedded program after temporary projection generation."""
+
+    resolved = compiler.resolve(strict=True)
+    if resolved.name != "guard-command-source" or resolved.parent.name not in {"debug", "release"}:
+        raise SystemExit("The native source compiler must live in a debug or release target profile")
+    command = [
+        "cargo",
+        "+1.88.0",
+        "build",
+        "--locked",
+        "--manifest-path",
+        str(ROOT / "rust/Cargo.toml"),
+    ]
+    if resolved.parent.name == "release":
+        command.append("--release")
+    command.extend(("-p", "guard-command", "--bin", "guard-command-source"))
+    _run(command)
+
+
 def _source_only_inputs(base_sha: str) -> bool:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from detect_pending_extension_regen import GitDiffError, changed_regen_inputs
@@ -59,11 +79,13 @@ def main() -> int:
                 args.compiler,
             ]
         )
+        _rebuild_source_compiler(Path(args.compiler))
         _run([*report_command, "--write"])
         _run([*report_command, "--check"], strict_decision_report=True)
     finally:
         _run(["git", "checkout", "--", *generated_paths])
         _run(["git", "clean", "-fdq", "--", *GENERATED_PATHS])
+        _rebuild_source_compiler(Path(args.compiler))
     return 0
 
 

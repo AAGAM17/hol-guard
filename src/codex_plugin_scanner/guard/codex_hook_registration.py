@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import shlex
 from collections.abc import Mapping, Sequence
@@ -209,6 +210,24 @@ def _is_live_guard_codex_hook_command(command: str) -> bool:
     return False
 
 
+def _inline_python_codex_hook(script: str) -> bool:
+    if "codex_plugin_scanner.cli" not in script:
+        return False
+    try:
+        tree = ast.parse(script)
+    except (SyntaxError, ValueError, RecursionError):
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.List, ast.Tuple)):
+            continue
+        if not all(isinstance(item, ast.Constant) and isinstance(item.value, str) for item in node.elts):
+            continue
+        arguments = [item.value for item in node.elts]
+        if "guard" in arguments and "hook" in arguments and _has_codex_harness(shlex.join(arguments)):
+            return True
+    return False
+
+
 def require_codex_hook_owner(command: str, *, ownership: str) -> None:
     """Reject competing Guard handlers without silently adopting or deleting them.
 
@@ -232,6 +251,8 @@ def require_codex_hook_owner(command: str, *, ownership: str) -> None:
             and _has_codex_harness(" ".join(payload))
         )
         python_hook = python_hook or bool(payload and Path(payload[0]).name == "codex_daemon_hook_bridge.py")
+        if payload[:1] == ["-c"] and len(payload) > 1:
+            python_hook = python_hook or _inline_python_codex_hook(payload[1])
     if ownership == "unmanaged" and (python_hook or _is_live_guard_codex_hook_command(command)):
         raise RuntimeError(
             "codex_hook_owner_conflict: An existing Codex Guard handler has no verified ownership binding. "

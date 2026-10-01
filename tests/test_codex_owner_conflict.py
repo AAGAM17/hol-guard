@@ -71,6 +71,18 @@ def test_python_option_terminator_does_not_execute_module():
     )
 
 
+@pytest.mark.parametrize("python_options", ("", "-W ignore", "-X dev"))
+@pytest.mark.parametrize("harness", ("codex", "claude"))
+def test_inline_python_hook_checks_exact_harness(python_options, harness):
+    script = "from codex_plugin_scanner.cli import main; main(['guard','hook','--harness','" + harness + "'])"
+    command = "python " + python_options + " -c " + shlex.quote(script)
+    if harness == "codex":
+        with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+            require_codex_hook_owner(command, ownership="unmanaged")
+    else:
+        require_codex_hook_owner(command, ownership="unmanaged")
+
+
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))
 @pytest.mark.parametrize("source_format", ("toml", "json"))
 @pytest.mark.parametrize("feature_enabled", (True, False))

@@ -38,6 +38,7 @@ class RequestRouteTracker:
             worker.metrics.record_route = self._tracked_worker_record
 
     def begin(self, payload: Mapping[str, object]) -> tuple[dict[str, object], str]:
+        """Reject use after shutdown; a closed harness is not a native sample."""
         token = uuid.uuid4().hex
         with self._lock:
             if self._closed:
@@ -75,7 +76,8 @@ class RequestRouteTracker:
         try:
             result = review(*args, **kwargs)
             result_payload = result if isinstance(result, Mapping) else getattr(result, "payload", None)
-            if depth == 0 and result_payload is not None:
+            terminal_failure = isinstance(getattr(result, "reason_code", None), str)
+            if depth == 0 and (result_payload is not None or terminal_failure):
                 payload = kwargs.get("payload")
                 token = payload.get(_PROBE_KEY) if isinstance(payload, Mapping) else None
                 if isinstance(token, str):

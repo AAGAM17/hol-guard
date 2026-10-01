@@ -26,6 +26,8 @@ class _Runner:
         if self.barrier is not None:
             self.barrier.wait(timeout=5)
         self._record_route_metric(payload.get("route"))
+        if payload.get("empty"):
+            return HookProcessReview(None, None)
         if payload.get("failed"):
             return HookProcessReview(None, "daemon_hook_process_deadline_exhausted")
         return HookProcessReview({"decision": "allow"}, None)
@@ -52,14 +54,27 @@ def test_overlapping_worker_results_preserve_individual_routes() -> None:
         tracker.close()
 
 
-@pytest.mark.parametrize("payload", [{"route": "unrecognized"}, {"route": "native_resident", "failed": True}, {}])
-def test_missing_invalid_or_failed_result_cannot_claim_resident(payload: dict[str, object]) -> None:
+@pytest.mark.parametrize("payload", [{"route": "unrecognized"}, {"route": "native_resident", "empty": True}, {}])
+def test_missing_or_invalid_route_cannot_claim_resident(payload: dict[str, object]) -> None:
     runner = _Runner()
     tracker = RequestRouteTracker(runner)
     try:
         request, token = tracker.begin(payload)
         runner.review(payload=request)
         assert tracker.finish(token) == "native_fail_safe"
+    finally:
+        tracker.close()
+
+
+def test_terminal_failure_keeps_route_without_claiming_allowed_decision() -> None:
+    runner = _Runner()
+    tracker = RequestRouteTracker(runner)
+    try:
+        request, token = tracker.begin({"route": "native_resident", "failed": True})
+        result = runner.review(payload=request)
+        assert result.payload is None
+        assert result.reason_code == "daemon_hook_process_deadline_exhausted"
+        assert tracker.finish(token) == "native_resident"
     finally:
         tracker.close()
 

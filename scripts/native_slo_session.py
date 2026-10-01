@@ -419,16 +419,13 @@ class AdapterSession:
         )
 
     def native_overload_count(self) -> int:
-        """Return the process-local native overload counter for this session."""
-
         return native_runtime_health(self.guard_home).overloads
 
     def close(self) -> None:
         try:
             self._close()
         finally:
-            tracker = getattr(self, "_route_tracker", None)
-            if tracker is not None:
+            if (tracker := getattr(self, "_route_tracker", None)) is not None:
                 tracker.close()
 
     def _close(self) -> None:
@@ -436,8 +433,7 @@ class AdapterSession:
             if self._connection is not None:
                 self._connection.close()
         finally:
-            # Stop the native resident while worker-owned persistent clients
-            # still exist so their supervisor reapers can verify containment.
+            # Stop the resident before worker clients disappear, preserving containment evidence.
             with suppress(Exception):
                 self.stop_resident()
             try:

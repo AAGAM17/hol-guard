@@ -7474,7 +7474,7 @@ function ExtensionsOverview(props) {
                 ConnectorDiscoveryControl,
                 {
                   discovering,
-                  error: discoveryError ?? hostDiscoveryError,
+                  error: [discoveryError, hostDiscoveryError].filter(Boolean).join(" ") || null,
                   onRetry: () => setDiscoveryAttempt((attempt) => attempt + 1)
                 }
               ) : null

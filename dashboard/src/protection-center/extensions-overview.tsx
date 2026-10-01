@@ -293,7 +293,7 @@ export function ExtensionsOverview(props: {
               {props.active ? (
                 <ConnectorDiscoveryControl
                   discovering={discovering}
-                  error={discoveryError ?? hostDiscoveryError}
+                  error={[discoveryError, hostDiscoveryError].filter(Boolean).join(" ") || null}
                   onRetry={() => setDiscoveryAttempt((attempt) => attempt + 1)}
                 />
               ) : null}

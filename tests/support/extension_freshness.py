@@ -77,8 +77,6 @@ def pending_decision_diff_regen() -> bool:
 
     if pending_contribution_regen():
         return True
-    if not os.environ.get("GITHUB_BASE_REF"):
-        return False
     report = "tests/fixtures/guard-command-corpus/decision-diff-report.json"
     try:
         from tests.guard_command_decision_diff import REPO_ROOT, REPORT_PATH
@@ -86,12 +84,12 @@ def pending_decision_diff_regen() -> bool:
         report = str(REPORT_PATH.relative_to(REPO_ROOT))
     except (ImportError, ValueError):
         pass
+    in_pr = bool(os.environ.get("GITHUB_BASE_REF"))
     diff = _pr_diff_paths()
     if diff is None:
-        # Base fetch/diff failed (infra flake): the report cannot be committed
-        # in-PR regardless, so deferring cannot mask drift — the post-merge
-        # regen check on main still enforces it.
-        return True
+        return in_pr
+    if not in_pr and not diff:
+        return False
     return report not in diff
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import time
@@ -32,7 +33,8 @@ from tests.codex_binding_capture_support import (
 )
 
 
-def test_capture_retries_brief_lock_contention(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("failure", [BlockingIOError("synthetic lock contention"), OSError(errno.EINTR, "interrupted")])
+def test_capture_retries_brief_lock_contention(tmp_path: Path, monkeypatch, failure: OSError) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
     assert capture.fcntl is not None
@@ -43,7 +45,7 @@ def test_capture_retries_brief_lock_contention(tmp_path: Path, monkeypatch) -> N
         if operation & capture.fcntl.LOCK_NB:
             attempts.append(fd)
             if len(attempts) == 1:
-                raise BlockingIOError("synthetic lock contention")
+                raise failure
         real_flock(fd, operation)
 
     monkeypatch.setattr(capture.fcntl, "flock", briefly_busy)
@@ -56,7 +58,10 @@ def test_capture_retries_brief_lock_contention(tmp_path: Path, monkeypatch) -> N
     assert len(_rows(directory)) == 1
 
 
-def test_capture_abandons_persistent_contention(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "failure", [BlockingIOError("synthetic persistent contention"), OSError(errno.EINTR, "interrupted")]
+)
+def test_capture_abandons_persistent_contention(tmp_path: Path, monkeypatch, failure: OSError) -> None:
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
     assert capture.fcntl is not None
@@ -65,7 +70,7 @@ def test_capture_abandons_persistent_contention(tmp_path: Path, monkeypatch) -> 
 
     def always_busy(fd: int, operation: int) -> None:
         attempts.append(fd)
-        raise BlockingIOError("synthetic persistent contention")
+        raise failure
 
     monkeypatch.setattr(capture.fcntl, "flock", always_busy)
     monkeypatch.setattr(capture.time, "monotonic", lambda: next(times, 0.021))

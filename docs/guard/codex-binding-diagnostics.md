@@ -2,7 +2,7 @@
 
 Optional local diagnostics connect bridge ingress to a native worker result.
 Capture stays off unless an evaluator explicitly creates a valid, unexpired
-private v2 marker. A diagnostic failure does not change the native decision.
+private v2 marker. Capture cannot supply native authority or an approval.
 
 ## Start a local capture
 
@@ -27,6 +27,18 @@ or unavailable capture state records nothing.
 Writers retry an occupied file lock for up to 20 ms, then abandon that row.
 Capture is best effort: an unmatched side can reflect contention, limits or
 capture failure. It does not prove that the corresponding hook did not run.
+
+The daemon submits native capture only after releasing the review fence and
+checking the original deadline. Its separate writer retains at most eight
+immutable tasks, each with at most 64 KiB of payload and receipt JSON. Queue
+contention, a full queue, startup failure or shutdown drops the diagnostic;
+review never waits for capture file I/O or for the queue to drain. Marker
+validation, sealing and file writes run in that writer and remain default off.
+
+Bridge capture is synchronous and consumes the existing hook budget. The lock
+retry bound does not bound filesystem calls or total hook delivery time.
+Neither capture route proves that every hook was recorded or meets a host
+latency target. A missing row remains ambiguous.
 
 ## Verify locally
 

@@ -445,12 +445,13 @@ def test_native_receipt_validation_rejects_forged_or_mismatched_receipt(tmp_path
     assert not _output_path(directory).exists()
 
 
-def test_shared_native_worker_boundary_captures_after_receipt_acceptance(tmp_path: Path) -> None:
+def test_shared_native_worker_defers_capture_after_receipt_acceptance(tmp_path: Path) -> None:
     from codex_plugin_scanner.guard.daemon.hook_worker_native import HookWorkerNativeMixin
 
     guard_home = tmp_path / "guard-home"
     directory = _enable_capture(guard_home)
     receipt = _valid_native_receipt()
+    capture_receipts = []
     edge = {
         "event_name": "PreToolUse",
         "harness": "codex",
@@ -490,15 +491,11 @@ def test_shared_native_worker_boundary_captures_after_receipt_acceptance(tmp_pat
         deadline=None,
         policy_snapshot=None,
         recording_only=False,
+        capture_receipts=capture_receipts,
     )
 
     assert native_used is True
     assert response["policy_action"] == "allow"
-    rows = _rows(directory)
-    assert len(rows) == 1
-    assert rows[0]["decision_scope"] == "native_edge"
-    assert "receipt" not in rows[0]
-    assert "decision_id" not in rows[0]
-    decrypted = open_receipt(_session(guard_home), rows[0], cast(dict[str, object], rows[0]["sealed_receipt"]))
-    assert decrypted is not None
-    assert decrypted["decision_id"] == receipt["decision_id"]
+    assert _rows(directory) == []
+    assert len(capture_receipts) == 1
+    assert capture_receipts[0]["decision_id"] == receipt["decision_id"]

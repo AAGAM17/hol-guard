@@ -7,6 +7,7 @@ authenticates hook ingress or participates in a hook decision.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -300,12 +301,12 @@ def _append_row(config: CaptureSession, *, guard_home: Path, row: Mapping[str, o
                 fcntl.flock(output, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 locked = True
                 break
-            except BlockingIOError:
+            except OSError as error:
+                if not isinstance(error, BlockingIOError) and error.errno != errno.EINTR:
+                    return False
                 if time.monotonic() >= deadline:
                     return False
                 time.sleep(0.001)
-            except OSError:
-                return False
         metadata = os.fstat(output)
         if metadata.st_size > config.max_bytes:
             return False

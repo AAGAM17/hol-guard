@@ -280,6 +280,7 @@ _PERSISTENCE_ONLY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/codex_binding_capture_crypto.py",
         "src/codex_plugin_scanner/guard/codex_binding_capture_fs.py",
         "src/codex_plugin_scanner/guard/codex_binding_capture_join.py",
+        "src/codex_plugin_scanner/guard/codex_binding_capture_writer.py",
     }
 )
 

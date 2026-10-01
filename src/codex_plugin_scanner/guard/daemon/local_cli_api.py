@@ -611,7 +611,7 @@ class LocalCliApiService:
         cancel: threading.Event | None = None,
     ) -> dict[str, object] | None:
         tokens = mcp_launch_tokens(command, cwd=home_dir, home_dir=home_dir)
-        if tokens is None or not looks_like_mcp_launch(tokens, command_text=command, cwd=home_dir, home_dir=home_dir):
+        if tokens is None:
             return None
         servers = self._discovered_servers()
         launch_identity = build_mcp_server_identity(
@@ -626,6 +626,11 @@ class LocalCliApiService:
             server_command=launch_identity.command,
             args_hash=launch_identity.args_hash,
         )
+        # A known connection remains MCP even when its script no longer exists.
+        if selected_server is None and not looks_like_mcp_launch(
+            tokens, command_text=command, cwd=home_dir, home_dir=home_dir
+        ):
+            return None
         extra_env = extra_env_for_mcp_launch(servers, command=command, cli_id=cli_id)
         provisional_id = (
             selected_server.identity.cli_id

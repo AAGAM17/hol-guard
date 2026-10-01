@@ -327,6 +327,29 @@ def test_unavailable_refresh_never_guesses_a_launch_command(tmp_path: Path, monk
     assert rejected.value.code == "mcp_refresh_unavailable"
 
 
+def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.local_cli_api.Path.home", staticmethod(lambda: home))
+    detection = _detection(
+        "opencode",
+        _artifact(harness="opencode", name="fixture", command="python3", args=(str(home / "missing_server.py"),)),
+    )
+    servers = discover_harness_mcp_servers(home_dir=home, guard_home=home, detections=(detection,))
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.local_cli_api.discover_harness_mcp_servers", lambda **_kwargs: servers
+    )
+    service = LocalCliApiService(store=GuardStore(home))
+    service._observe_harness_mcp_servers()
+    before = service._store.list_local_cli_items()[0]
+    result = service.recognize({"cli_id": servers[0].identity.cli_id, "refresh": True})
+    assert result["help_status"] == "failed"
+    assert result["discovery_error"] == "mcp_initialize_failed"
+    assert result["item"]["commands"] == before["commands"]
+    assert result["item"]["grant_revision"] == before["grant_revision"]
+    assert "missing_server.py" not in result["summary"]
+
+
 def test_handle_local_cli_post_extends_recognize_timeout() -> None:
     class FakeConnection:
         def __init__(self) -> None:

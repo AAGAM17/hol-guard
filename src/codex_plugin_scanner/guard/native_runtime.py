@@ -99,6 +99,10 @@ class NativeRuntimeStatus:
     reason: str
     identity: NativeRuntimeIdentity | None = None
     capabilities: NativeRuntimeCapabilities | None = None
+    # The manifest is already validated against the bundled artifact and
+    # runtime capabilities.  Exposing that same object lets bounded reports
+    # carry provenance without creating a second trust path.
+    manifest: NativeRuntimeManifest | None = None
 
 
 def native_mode() -> NativeMode:
@@ -481,6 +485,7 @@ def native_runtime_status() -> NativeRuntimeStatus:
                 reason="native_protocol_mismatch",
                 identity=identity,
                 capabilities=capabilities,
+                manifest=manifest,
             )
         if manifest is not None:
             if capabilities.protocol_version != manifest.protocol_version:
@@ -501,6 +506,7 @@ def native_runtime_status() -> NativeRuntimeStatus:
                     reason=reason,
                     identity=identity,
                     capabilities=capabilities,
+                    manifest=manifest,
                 )
         expected_version = _python_package_version()
         version_compatible = expected_version is None or capabilities.runtime_version == expected_version
@@ -512,6 +518,7 @@ def native_runtime_status() -> NativeRuntimeStatus:
             reason="native_ready" if compatible else "native_version_mismatch",
             identity=identity,
             capabilities=capabilities,
+            manifest=manifest,
         )
     return NativeRuntimeStatus(
         mode=mode,

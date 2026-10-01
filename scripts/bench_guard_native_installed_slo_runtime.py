@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import sys
 from pathlib import Path
 
@@ -31,11 +32,24 @@ def _clear_proof_overrides() -> None:
     _require(not proof_environment_violations(), "native/test override remained in proof environment")
 
 
-def _readiness_samples(runtime: Path, count: int) -> list[float]:
+def _readiness_samples(
+    runtime: Path,
+    count: int,
+    *,
+    progress_submit: object = None,
+    progress_attempt: object = None,
+    progress_complete: object = None,
+) -> list[float]:
     values: list[float] = []
     for _ in range(count):
+        if callable(progress_submit):
+            progress_submit("readiness")
+        if callable(progress_attempt):
+            progress_attempt("readiness")
         with AdapterSession(runtime) as session:
             values.append(session.readiness_ms)
+        if callable(progress_complete):
+            progress_complete("readiness")
     return values
 
 
@@ -48,6 +62,12 @@ def _runtime_summary(runtime: Path) -> dict[str, object]:
     if identity is None:
         raise RuntimeError("native_installed_slo_failed: native runtime identity unavailable")
     _require(runtime.resolve() == identity.path.resolve(), "benchmark runtime is not the bundled default runtime")
+    manifest = status.manifest
+    _require(manifest is not None, "validated native runtime manifest unavailable")
+    _require(
+        manifest.runtime_sha256 == identity.sha256 and manifest.runtime_size == identity.size,
+        "validated native runtime manifest did not match the selected artifact",
+    )
     capabilities = status.capabilities
     if capabilities is None:
         raise RuntimeError("native_installed_slo_failed: native capabilities unavailable")
@@ -62,4 +82,12 @@ def _runtime_summary(runtime: Path) -> dict[str, object]:
         "runtime_version": capabilities.runtime_version,
         "protocol_version": capabilities.protocol_version,
         "package_origin": package_origin,
+        "artifact_sha256": manifest.runtime_sha256,
+        "artifact_size": manifest.runtime_size,
+        "build_sha": manifest.source_sha,
+        "rule_digest": manifest.rule_digest,
+        "platform_tag": manifest.platform_tag,
+        "host_platform": sys.platform,
+        "host_arch": platform.machine(),
+        "python_version": platform.python_version(),
     }

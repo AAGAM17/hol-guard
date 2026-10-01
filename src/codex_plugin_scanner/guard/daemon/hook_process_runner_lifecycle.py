@@ -69,7 +69,8 @@ class HookProcessRunnerLifecycleMixin:
         raise RuntimeError(f"initial isolated hook worker did not become ready{detail}")
 
     def _remember_startup_failure(self, slot: HookWorkerSlot) -> None:
-        failure_code = allowlisted_startup_failure_code(slot.startup_failure_code)
+        with slot.startup_failure_lock:
+            failure_code = allowlisted_startup_failure_code(slot.startup_failure_code)
         if failure_code is None:
             return
         with self._metrics_lock:

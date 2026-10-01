@@ -66,6 +66,7 @@ class HookWorkerSlot:
     pre_isolation_contained: bool = False
     request_exposed: bool = False
     startup_failure_code: str | None = None
+    startup_failure_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 @dataclass(frozen=True, slots=True)

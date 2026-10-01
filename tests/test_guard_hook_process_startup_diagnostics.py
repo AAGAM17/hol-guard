@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections import deque
 from pathlib import Path
 from typing import final
@@ -152,11 +153,7 @@ def test_runner_stats_and_startup_exception_keep_allowlisted_reason(
     runner = HookProcessRunner(guard_home=tmp_path, process_limit=1)
     slot = _slot(_Connection())
     slot.startup_failure_code = "hook_process_evaluator_pipe_failed"
-    object.__setattr__(
-        runner,
-        "_last_startup_failure_code",
-        allowlisted_startup_failure_code(slot.startup_failure_code),
-    )
+    runner._remember_startup_failure(slot)
 
     def never_ready(**_kwargs: object) -> bool:
         return False
@@ -173,3 +170,32 @@ def test_runner_drops_unallowlisted_slot_reason() -> None:
     slot.startup_failure_code = "untrusted-detail"
 
     assert allowlisted_startup_failure_code(slot.startup_failure_code) is None
+
+
+@pytest.mark.parametrize("reader", [False, True])
+def test_startup_failure_reader_and_writer_share_lock(tmp_path: Path, reader: bool) -> None:
+    runner = HookProcessRunner(guard_home=tmp_path, process_limit=1)
+    slot = _slot(_Connection())
+    slot.startup_failure_code = "hook_process_ready_timeout" if reader else None
+    started = threading.Event()
+    completed = threading.Event()
+
+    def access_failure() -> None:
+        started.set()
+        if reader:
+            runner._remember_startup_failure(slot)
+        else:
+            _ = hook_worker_became_ready(slot, 0)
+        completed.set()
+
+    thread = threading.Thread(target=access_failure)
+    with slot.startup_failure_lock:
+        thread.start()
+        assert started.wait(2)
+        assert not completed.wait(0.05)
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert completed.is_set()
+    assert slot.startup_failure_code == "hook_process_ready_timeout"
+    if reader:
+        assert runner.stats()["last_startup_failure"] == "hook_process_ready_timeout"

@@ -11,8 +11,9 @@ from .hook_process_worker import HookWorkerSlot, allowlisted_startup_failure_cod
 
 
 def _record_startup_failure(slot: HookWorkerSlot, code: str) -> None:
-    if slot.startup_failure_code is None:
-        slot.startup_failure_code = code
+    with slot.startup_failure_lock:
+        if slot.startup_failure_code is None:
+            slot.startup_failure_code = code
 
 
 def _message_startup_failure(message: object, *, kind: str, prefix: str, fallback: str) -> str:

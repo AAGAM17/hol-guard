@@ -10,16 +10,14 @@ jobs:
     runs-on: ubuntu-24.04
     # The regen workflow's own artifact PRs (regen/artifacts-*) are allowed to
     # touch generated paths; every other PR must leave them to post-merge regen.
-    if: ${{ !startsWith(github.event.pull_request.head.ref, 'regen/') }}
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'regen/artifacts-')) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - name: Reject changes to regen-owned generated paths
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "${BASE_SHA}" "${HEAD_SHA}"
           owned='^contracts/extensions/(native-command-program|command-catalog|trust-class-map)\.v1\.json$'
           owned+='|^contracts/managed-controls/'
           owned+='|^docs/guard/extensions/(README\.md|catalog\.v[12]\.json)$'
@@ -29,7 +27,7 @@ jobs:
           owned+='|^tests/fixtures/guard-command-corpus/decision-diff-report\.(json|framed-sha256)$'
           owned+='|^tests/test_guard_extension_trust\.py$'
           owned+='|^tests/test_policy_bundle_delivery_runtime\.py$'
-          changed=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -E "${owned}" || true)
+          changed=$(git diff --name-only HEAD^1 HEAD | grep -E "${owned}" || true)
           if [ -n "${changed}" ]; then
             printf '%s\n' "::error::This PR modifies paths owned by the extension-artifact-regen workflow. Generated artifacts are regenerated on main after merge — drop them from this diff:" "${changed}"
             exit 1

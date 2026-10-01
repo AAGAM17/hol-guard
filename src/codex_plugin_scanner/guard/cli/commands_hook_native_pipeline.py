@@ -100,7 +100,7 @@ def _emit_native_unavailable(
         guard_home=context.guard_home,
         workspace=workspace,
     )
-    _emit("hook", response, getattr(args, "json", False))
+    _emit("hook", response, True)
     return 0
 
 

@@ -67,6 +67,9 @@ _TRANSPORT_IDENTITY_PATHS: Final = frozenset(
     {
         # Payload-reference metadata validation; the native edge reads bytes.
         "src/codex_plugin_scanner/guard/daemon/hook_request_parsing.py",
+        # Archive-inspection transport: lease, request binding, and the
+        # bounded native worker invocation; all archive semantics are Rust.
+        "src/codex_plugin_scanner/guard/native_archive_inspection.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_resident_client.py",
         "src/codex_plugin_scanner/guard/native_runtime_resilience.py",
@@ -227,8 +230,6 @@ _PENDING_AUTHORITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/runtime/mcp_server_contribution.py",
         "src/codex_plugin_scanner/guard/runtime/mcp_skill_firewall.py",
         "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
-        "src/codex_plugin_scanner/guard/runtime/offline_archive_inspection.py",
-        "src/codex_plugin_scanner/guard/runtime/offline_archive_sandbox.py",
         "src/codex_plugin_scanner/guard/runtime/package_evidence_common.py",
         "src/codex_plugin_scanner/guard/runtime/package_intent_common.py",
         "src/codex_plugin_scanner/guard/runtime/package_intent_parser.py",

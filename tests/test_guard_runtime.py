@@ -22482,7 +22482,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
                     "harnesses": ["codex"],
                     "locations": [workspace_a],
                 },
-                "expiresAt": "2026-10-01T00:00:00+00:00",
+                "expiresAt": "2027-10-01T00:00:00+00:00",
                 "sourceDecisionId": "decision-block",
                 "sourceSuggestionId": "suggestion-block",
             },
@@ -22508,9 +22508,12 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
         store.resolve_policy("codex", "codex:project:tool-action:other", "hash", workspace=workspace_a, now=now) is None
     )
     assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b, now=now) is None
-    expiry = "2026-10-01T00:00:00+00:00"
+    expiry = "2026-12-01T00:00:00+00:00"
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now=expiry) is None
+    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a, now=expiry) == "block"
+    expiry = "2027-10-01T00:00:00+00:00"
     assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a, now=expiry) is None
-    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now=expiry) == "allow"
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now=expiry) is None
     exact_decisions = [item for item in store.list_policy_decisions() if item["source"] == "policy-bundle"]
     assert {item["scope"] for item in exact_decisions} == {"workspace"}
     stored_workspaces = {item["workspace"] for item in exact_decisions}
@@ -22519,7 +22522,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
     assert {item["artifact_id"] for item in exact_decisions} == {allow_artifact, block_artifact}
     assert {item["expires_at"] for item in exact_decisions} == {
         "2026-12-01T00:00:00.000000+00:00",
-        "2026-10-01T00:00:00.000000+00:00",
+        "2027-10-01T00:00:00.000000+00:00",
     }
 
 

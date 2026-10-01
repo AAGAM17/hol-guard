@@ -344,6 +344,7 @@
    "id": "native_edge_launcher",
    "class": "python_transport",
    "paths": [
+    "src/codex_plugin_scanner/guard/native_archive_inspection.py",
     "src/codex_plugin_scanner/guard/native_hook_edge.py",
     "src/codex_plugin_scanner/guard/native_decision_receipt.py",
     "src/codex_plugin_scanner/guard/native_response_decoder.py",
@@ -358,8 +359,8 @@
     "src/codex_plugin_scanner/guard/native_approval_v4_portal.py",
     "src/codex_plugin_scanner/guard/native_approval_v4_protocol.py"
    ],
-   "current": "mechanical bounded guard-hook-envelope.v2 serialization, package-bound native invocation, typed result decoding, and harness response projection",
-   "target": "minimal launcher, serialization, and response projection only"
+   "current": "mechanical bounded guard-hook-envelope.v2 and guard-archive-inspection.v1 serialization, package-bound native invocation, typed result decoding, advisory archive-inspection lease admission, and harness response projection",
+   "target": "minimal launcher, archive-inspection lease admission, serialization, and response projection only"
   },
   {
    "id": "python_reference_oracle",
@@ -504,6 +505,7 @@
    "paths": [
     "rust/crates/guard-command/**",
     "rust/crates/guard-contracts/**",
+    "rust/crates/guard-archive/**",
     "rust/crates/guard-policy-snapshot/**",
     "rust/crates/guard-rule-contract/**",
     "rust/crates/guard-rules/**",

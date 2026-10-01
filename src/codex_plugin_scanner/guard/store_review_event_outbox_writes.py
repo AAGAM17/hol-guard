@@ -40,7 +40,7 @@ def recover_review_snapshot_sequences(
         or not collisions
         or len(collisions) > _MAX_SNAPSHOT_SEQUENCE_COLLISIONS
         or type(acknowledged_through) is not int
-        or not 0 < acknowledged_through <= _MAX_SAFE_STREAM_SEQUENCE
+        or not 0 <= acknowledged_through <= _MAX_SAFE_STREAM_SEQUENCE
         or len(binding) != 4
         or not all(isinstance(value, str) and value and value.strip() == value for value in binding)
     ):
@@ -60,9 +60,14 @@ def recover_review_snapshot_sequences(
         return {}
 
     connection.execute("begin immediate")
+
+    def _abort() -> dict[int, int]:
+        connection.rollback()
+        return {}
+
     current = load_review_oauth_binding(connection, source)
     if current is None or tuple(current[key] for key in _REVIEW_BINDING_COLUMNS) != binding:
-        return {}
+        return _abort()
 
     sequences = sorted(normalized)
     placeholders = ", ".join("?" for _ in sequences)
@@ -72,7 +77,7 @@ def recover_review_snapshot_sequences(
     ).fetchall()
     rows_by_sequence = {int(row["stream_sequence"]): row for row in rows}
     if len(rows_by_sequence) != len(normalized):
-        return {}
+        return _abort()
 
     from .runtime.review_event_delivery import StoredReviewEventError, decode_stored_review_event
 
@@ -88,7 +93,7 @@ def recover_review_snapshot_sequences(
             (row["local_request_id"], row["request_sequence"], source),
         ).fetchone()
         if later is not None:
-            return {}
+            return _abort()
         if (
             row["event_id"] != normalized[old_sequence]
             or row["oauth_source"] != source
@@ -97,17 +102,17 @@ def recover_review_snapshot_sequences(
             or row["acknowledged_at"] is not None
             or row["event_type"] != "review.request.snapshot_requeued"
         ):
-            return {}
+            return _abort()
         try:
             stored_event = decode_stored_review_event(dict(row))
         except (StoredReviewEventError, TypeError, ValueError):
-            return {}
+            return _abort()
         if (
             stored_event.stream_sequence != old_sequence
             or stored_event.event_id != normalized[old_sequence]
             or stored_event.event_type != "review.request.snapshot_requeued"
         ):
-            return {}
+            return _abort()
 
     local_cursor_row = connection.execute(
         """
@@ -129,7 +134,7 @@ def recover_review_snapshot_sequences(
     sqlite_sequence = int(sqlite_sequence_row["seq"]) if sqlite_sequence_row is not None else 0
     base = max(acknowledged_through, local_cursor, local_max, sqlite_sequence)
     if base > _MAX_SAFE_STREAM_SEQUENCE - len(sequences):
-        return {}
+        return _abort()
     replacements = {old_sequence: base + index for index, old_sequence in enumerate(sequences, start=1)}
 
     for old_sequence in sequences:

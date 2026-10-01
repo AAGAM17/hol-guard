@@ -2,27 +2,19 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import TypedDict
 
 import pytest
 
-from codex_plugin_scanner.guard.models import GuardApprovalRequest
 from codex_plugin_scanner.guard.runtime.cloud_review_event_projection import project_cloud_review_event
 from codex_plugin_scanner.guard.runtime.review_event_delivery import decode_stored_review_event
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_review_event_outbox_schema import REVIEW_REQUEST_SNAPSHOT_COLUMNS
+from tests.guard_review_event_outbox_test_support import _all_events, _connect, _DeliveryBinding, _request
 
 # pyright: reportMissingImports=false
 
 _NOW = "2026-08-24T12:00:00+00:00"
 _LATER = "2026-08-24T12:00:01+00:00"
-
-
-class _DeliveryBinding(TypedDict):
-    oauth_subject_hash: str
-    workspace_id: str
-    machine_id: str
-    machine_installation_id: str
 
 
 def _plain_binding(binding: _DeliveryBinding) -> dict[str, str]:
@@ -32,59 +24,6 @@ def _plain_binding(binding: _DeliveryBinding) -> dict[str, str]:
         "machine_id": binding["machine_id"],
         "machine_installation_id": binding["machine_installation_id"],
     }
-
-
-def _request(request_id: str, *, summary: str = "Review test action") -> GuardApprovalRequest:
-    return GuardApprovalRequest(
-        request_id=request_id,
-        harness="codex",
-        artifact_id=f"codex:project:{request_id}",
-        artifact_name="Test action",
-        artifact_hash="hash-abc",
-        policy_action="require-reapproval",
-        recommended_scope="artifact",
-        changed_fields=("tool_action_request",),
-        source_scope="project",
-        config_path="/test/config.toml",
-        review_command=f"hol-guard approvals approve {request_id}",
-        approval_url=f"http://127.0.0.1:5474/requests/{request_id}",
-        action_identity=request_id,
-        queue_group_id=request_id,
-        trigger_summary=summary,
-        last_seen_at=_NOW,
-    )
-
-
-def _connect(
-    store: GuardStore,
-    *,
-    grant_id: str = "grant-1",
-    workspace_id: str = "workspace-1",
-    machine_id: str = "machine-1",
-) -> _DeliveryBinding:
-    state_key = (
-        "oauth_local_credentials"
-        if store.guard_source == "default"
-        else f"oauth_local_credentials:{store.guard_source}"
-    )
-    store.set_sync_payload(
-        state_key,
-        {"grant_id": grant_id, "workspace_id": workspace_id, "machine_id": machine_id},
-        _NOW,
-    )
-    binding = store.get_review_event_oauth_binding()
-    assert binding is not None
-    return {
-        "oauth_subject_hash": binding["oauth_subject_hash"],
-        "workspace_id": binding["workspace_id"],
-        "machine_id": binding["machine_id"],
-        "machine_installation_id": binding["machine_installation_id"],
-    }
-
-
-def _all_events(store: GuardStore) -> list[sqlite3.Row]:
-    with store._connect() as connection:
-        return connection.execute("select * from guard_review_outbox_events order by stream_sequence").fetchall()
 
 
 def _seed_snapshot_sequence_collisions(tmp_path, *, acknowledged_through: int = 529):
@@ -251,11 +190,33 @@ def test_recover_review_snapshot_sequences_allows_collisions_above_cloud_high_wa
 
     replacements = store.recover_review_snapshot_sequences(
         collisions=_snapshot_collision_ids(before_rows),
-        acknowledged_through=33,
+        acknowledged_through=0,
         binding=_plain_binding(binding),
     )
 
     assert replacements == dict(zip(range(34, 57), range(57, 80), strict=True))
+
+
+def test_recover_review_snapshot_sequences_defers_when_a_later_event_is_pending(tmp_path) -> None:
+    store, binding, before_rows = _seed_snapshot_sequence_collisions(tmp_path)
+    store.resolve_approval_request(
+        "target-00",
+        resolution_action="approve",
+        resolution_scope="artifact",
+        reason=None,
+        resolved_at=_LATER,
+    )
+
+    assert (
+        store.recover_review_snapshot_sequences(
+            collisions={int(before_rows[0]["stream_sequence"]): str(before_rows[0]["event_id"])},
+            acknowledged_through=529,
+            binding=_plain_binding(binding),
+        )
+        == {}
+    )
+    snapshot = next(row for row in _all_events(store) if row["event_id"] == before_rows[0]["event_id"])
+    assert snapshot["stream_sequence"] == before_rows[0]["stream_sequence"]
 
 
 def test_recover_review_snapshot_sequences_rejects_mismatch_binding_and_acknowledged_rows(tmp_path) -> None:

@@ -64,7 +64,7 @@ def test_exact_codex_module_hook_requires_ownership(argument, python_options):
         )
 
 
-@pytest.mark.parametrize("python_options", ("-W ignore", "-X dev", "--check-hash-based-pycs always"))
+@pytest.mark.parametrize("python_options", ("-W ignore", "-X dev", "--check-hash-based-pycs always", "--"))
 def test_codex_bridge_with_python_option_operand_requires_ownership(python_options):
     with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
         require_codex_hook_owner(
@@ -132,6 +132,31 @@ def test_inline_dynamic_harness_cannot_establish_unrelated_ownership():
     script = "from codex_plugin_scanner.cli import main; main(['guard','hook','--harness',harness_var])"
     with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
         require_codex_hook_owner("python -c " + shlex.quote(script), ownership="unmanaged")
+
+
+def test_static_codex_harness_with_dynamic_later_argument_requires_ownership():
+    script = (
+        "from codex_plugin_scanner.cli import main; extra = '--json'; main(['guard','hook','--harness','codex',extra])"
+    )
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner("python -c " + shlex.quote(script), ownership="unmanaged")
+
+
+@pytest.mark.parametrize(
+    "script",
+    (
+        "# from codex_plugin_scanner.cli import main\nprint(['guard','hook','--harness','codex'])",
+        "module = 'codex_plugin_scanner.cli'; print(['guard','hook','--harness','codex'])",
+    ),
+)
+def test_module_name_in_comment_or_string_is_not_a_guard_import(script):
+    require_codex_hook_owner("python -c " + shlex.quote(script), ownership="unmanaged")
+
+
+def test_inline_cli_import_alias_with_trailing_arguments_requires_ownership():
+    script = "from codex_plugin_scanner import cli; cli.main()"
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
 
 
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))

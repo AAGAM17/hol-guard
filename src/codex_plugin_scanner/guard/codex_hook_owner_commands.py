@@ -52,11 +52,19 @@ def _imports_guard_cli(tree: ast.AST) -> bool:
             or (node.module == "codex_plugin_scanner" and any(name.name == "cli" for name in node.names))
         ):
             return True
-        if isinstance(node, ast.Call) and node.args:
+        # Dynamic imports may name the module positionally or by keyword.
+        if isinstance(node, ast.Call):
             name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
-            module = node.args[0]
+            keyword = (
+                {"run_module": "mod_name", "import_module": "name", "__import__": "name"}.get(name)
+                if isinstance(name, str)
+                else None
+            )
+            module = (
+                node.args[0] if node.args else next((item.value for item in node.keywords if item.arg == keyword), None)
+            )
             if (
-                name in {"run_module", "import_module", "__import__"}
+                keyword is not None
                 and isinstance(module, ast.Constant)
                 and module.value in {"codex_plugin_scanner.cli", "codex_plugin_scanner"}
             ):

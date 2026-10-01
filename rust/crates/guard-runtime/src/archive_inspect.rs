@@ -28,6 +28,7 @@ use guard_contracts::{
 use sha2::{Digest, Sha256};
 
 const MAX_ARCHIVE_PATH_BYTES: usize = 16 * 1024;
+#[cfg(unix)]
 /// Lease file inside the caller-declared Guard home. Exactly one archive
 /// inspector may hold it at a time across client processes and runtime
 /// generations; contenders get a bounded `overloaded` result, never a queue.

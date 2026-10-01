@@ -21,7 +21,10 @@ def _account_home() -> Path:
         return trusted_windows_user_profile()
     import pwd
 
-    return Path(pwd.getpwuid(os.getuid()).pw_dir)
+    try:
+        return Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except KeyError as error:
+        raise OSError("codex_lifecycle_account_home_unavailable") from error
 
 
 def _lock_base() -> Path:

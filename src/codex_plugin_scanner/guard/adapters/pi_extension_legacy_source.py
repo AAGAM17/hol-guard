@@ -1,4 +1,5 @@
 from .pi_extension_source import Path, managed_extension_source
+from .pi_extension_source_body import _STRUCTURED_BLOCKED_REASON_PRELUDE
 
 
 def legacy_managed_extension_source(
@@ -22,6 +23,10 @@ def legacy_managed_extension_source(
     # The legacy source is a frozen migration artifact.  Remove additions from
     # the current managed source before applying the historical compatibility
     # substitutions below so the old byte contract remains exact.
+    if source.count(_STRUCTURED_BLOCKED_REASON_PRELUDE) != 1:
+        raise RuntimeError("managed Pi extension legacy source contract drifted")
+    source = source.replace(_STRUCTURED_BLOCKED_REASON_PRELUDE, "", 1)
+
     structured_constants = (
         "const GUARD_STRUCTURED_MAX_BYTES = 64 * 1024;\n"
         "const GUARD_STRUCTURED_MAX_DEPTH = 8;\n"

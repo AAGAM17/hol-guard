@@ -311,8 +311,12 @@ def test_unavailable_refresh_never_guesses_a_launch_command(tmp_path: Path, monk
         "codex_plugin_scanner.guard.daemon.local_cli_api.discover_harness_mcp_servers", lambda **_kwargs: []
     )
     identity = UnlistedCliIdentity(
-        cli_id="local-cli.mcp-unavailable", name="Fixture connector", kind="executable",
-        identity_hash="c" * 64, example_label="Observed through a host", interpreter_name=None,
+        cli_id="local-cli.mcp-unavailable",
+        name="Fixture connector",
+        kind="executable",
+        identity_hash="c" * 64,
+        example_label="Observed through a host",
+        interpreter_name=None,
     )
     store = GuardStore(home)
     store.record_local_cli_observation(identity, seen_at=utc_now(), surface="mcp")
@@ -346,12 +350,15 @@ def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(
         server = servers[0]
         cli_id = f"local-cli.mcp-{server.server_identity.identity_hash[:8]}"
         identity = UnlistedCliIdentity(
-            cli_id=cli_id, name=server.identity.name, kind="executable",
+            cli_id=cli_id,
+            name=server.identity.name,
+            kind="executable",
             identity_hash=server.server_identity.identity_hash,
             example_label=server.launch_command,
         )
         service._store.ensure_local_mcp_observation(
-            identity, seen_at=utc_now(),
+            identity,
+            seen_at=utc_now(),
             server_identity_hash=server.server_identity.identity_hash,
             server_command=server.server_identity.command,
             server_args_hash=server.server_identity.args_hash,
@@ -360,6 +367,7 @@ def test_configured_refresh_preserves_initialize_failure_and_stored_permissions(
     service._observe_harness_mcp_servers()
     before = next(item for item in service._store.list_local_cli_items() if item["cli_id"] == cli_id)
     result = service.recognize({"cli_id": cli_id, "refresh": True})
+    assert result["item"]["cli_id"] == cli_id
     assert result["help_status"] == "failed"
     assert result["discovery_error"] == "mcp_initialize_failed"
     assert result["item"]["commands"] == before["commands"]

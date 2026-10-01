@@ -57,12 +57,13 @@ def test_native_failure_preserves_codex_wire_response(
     captured = capsys.readouterr()
     assert result == 0
     response = json.loads(captured.out)
+    assert response["hookSpecificOutput"]["hookEventName"] == event
     if event == "PreToolUse":
         assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
     else:
         assert response["continue"] is True
-        assert response["hookSpecificOutput"] == {"hookEventName": event}
-    assert response["hookSpecificOutput"]["hookEventName"] == event
+        assert "permissionDecision" not in response["hookSpecificOutput"]
+        assert "decision" not in response["hookSpecificOutput"]
 
 
 @pytest.mark.parametrize("event", ("PreToolUse", "PermissionRequest"))

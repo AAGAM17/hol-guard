@@ -260,14 +260,16 @@ fn client_request_with_deadline(
     match request_result {
         Ok(response) => Ok(response),
         Err(error) => {
-            let _ = containment::abort_spawned_managed(
+            // Cleanup retries share the request deadline. A failed containment
+            // check must remain visible rather than be hidden by the request error.
+            containment::abort_spawned_managed(
                 &mut spawned,
                 &scope,
                 &digest,
                 generation,
                 &token,
-                overall_deadline.max(Instant::now() + MANAGED_STOP_TIMEOUT),
-            );
+                overall_deadline,
+            )?;
             Err(error)
         }
     }

@@ -55,6 +55,53 @@ class _GuardImportCalls(ast.NodeVisitor):
         self.bindings: dict[str, frozenset[str]] = {"__import__": frozenset({"builtins.__import__"})}
         self.found: bool = False
         self.class_globals: dict[str, frozenset[str]] | None = None
+        self.module_bindings: dict[str, frozenset[str]] = {}
+        self.global_names: set[str] = set()
+        self.global_updates: dict[str, frozenset[str]] = {}
+        self.deferred: list[
+            tuple[
+                ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+                dict[str, frozenset[str]],
+                dict[str, frozenset[str]],
+            ]
+        ] = []
+        self.module_calls: list[tuple[ast.Call, dict[str, frozenset[str]]]] = []
+        self.in_function: bool = False
+
+    def _bind(self, name: str, identity: frozenset[str]) -> None:
+        self.bindings[name] = identity
+        if name in self.global_names:
+            self.module_bindings[name] = self.module_bindings.get(name, frozenset()) | identity
+            self.global_updates[name] = self.global_updates.get(name, frozenset()) | identity
+
+    @override
+    def visit_Global(self, node: ast.Global) -> None:
+        self.global_names.update(node.names)
+
+    def finish(self) -> None:
+        """Inspect deferred bodies against module bindings available when called."""
+        self.module_bindings = self.bindings.copy()
+        index = 0
+        while index < len(self.deferred):
+            node, enclosing, parameters = self.deferred[index]
+            index += 1
+            self.bindings = enclosing.copy()
+            self._merge(self.module_bindings)
+            self.bindings.update(parameters)
+            self.global_names = set()
+            self.in_function = True
+            if isinstance(node, ast.Lambda):
+                self.visit(node.body)
+            else:
+                self._body(node.body)
+        self.in_function = False
+        self.global_names = set()
+        # Global imports in deferred bodies can supply later module-level calls.
+        for node, bindings in self.module_calls:
+            self.bindings = bindings.copy()
+            for name, identities in self.global_updates.items():
+                self.bindings[name] = self.bindings.get(name, frozenset()) | identities
+            self._check_call(node)
 
     def _identity(self, node: ast.AST) -> frozenset[str]:
         if isinstance(node, ast.Name):
@@ -91,20 +138,20 @@ class _GuardImportCalls(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for imported in node.names:
             root = imported.name.split(".")[0]
-            self.bindings[imported.asname or root] = frozenset({imported.name if imported.asname else root})
+            self._bind(imported.asname or root, frozenset({imported.name if imported.asname else root}))
 
     @override
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for imported in node.names:
             identity = f"{node.module}.{imported.name}" if node.module and node.level == 0 else ""
-            self.bindings[imported.asname or imported.name] = frozenset({identity})
+            self._bind(imported.asname or imported.name, frozenset({identity}))
 
     @override
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Del):
             _ = self.bindings.pop(node.id, None)
         elif isinstance(node.ctx, ast.Store):
-            self.bindings[node.id] = frozenset()
+            self._bind(node.id, frozenset())
 
     @override
     def visit_Assign(self, node: ast.Assign) -> None:
@@ -113,7 +160,7 @@ class _GuardImportCalls(ast.NodeVisitor):
         for target in node.targets:
             self.visit(target)
             if isinstance(target, ast.Name):
-                self.bindings[target.id] = identity
+                self._bind(target.id, identity)
 
     @override
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -123,7 +170,7 @@ class _GuardImportCalls(ast.NodeVisitor):
             identity = self._identity(node.value)
             self.visit(node.target)
             if isinstance(node.target, ast.Name):
-                self.bindings[node.target.id] = identity
+                self._bind(node.target.id, identity)
 
     @override
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -135,7 +182,7 @@ class _GuardImportCalls(ast.NodeVisitor):
         self.visit(node.value)
         identity = self._identity(node.value)
         self.visit(node.target)
-        self.bindings[node.target.id] = identity
+        self._bind(node.target.id, identity)
 
     def _parameters(self, arguments: ast.arguments) -> dict[str, frozenset[str]]:
         positional = [*arguments.posonlyargs, *arguments.args]
@@ -156,15 +203,10 @@ class _GuardImportCalls(ast.NodeVisitor):
             if expression is not None:
                 self.visit(expression)
         self.bindings[node.name] = frozenset()
-        outer = self.bindings
         parameters = self._parameters(node.args)
         enclosing_class = self.class_globals
-        self.bindings = (enclosing_class if enclosing_class is not None else outer).copy()
-        self.class_globals = None
-        self.bindings.update(parameters)
-        self._body(node.body)
-        self.bindings = outer
-        self.class_globals = enclosing_class
+        enclosing = (enclosing_class if enclosing_class is not None else self.bindings).copy()
+        self.deferred.append((node, enclosing, parameters))
 
     @override
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
@@ -175,15 +217,10 @@ class _GuardImportCalls(ast.NodeVisitor):
         for default in (*node.args.defaults, *node.args.kw_defaults):
             if default is not None:
                 self.visit(default)
-        outer = self.bindings
         parameters = self._parameters(node.args)
         enclosing_class = self.class_globals
-        self.bindings = (enclosing_class if enclosing_class is not None else outer).copy()
-        self.class_globals = None
-        self.bindings.update(parameters)
-        self.visit(node.body)
-        self.bindings = outer
-        self.class_globals = enclosing_class
+        enclosing = (enclosing_class if enclosing_class is not None else self.bindings).copy()
+        self.deferred.append((node, enclosing, parameters))
 
     @override
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -297,6 +334,12 @@ class _GuardImportCalls(ast.NodeVisitor):
 
     @override
     def visit_Call(self, node: ast.Call) -> None:
+        if not self.in_function:
+            self.module_calls.append((node, self.bindings.copy()))
+        self._check_call(node)
+        self.generic_visit(node)
+
+    def _check_call(self, node: ast.Call) -> None:
         for identity in self._identity(node.func):
             keyword = _IMPORT_APIS.get(identity)
             if keyword is None:
@@ -311,7 +354,6 @@ class _GuardImportCalls(ast.NodeVisitor):
                 "codex_plugin_scanner",
             }:
                 self.found = True
-        self.generic_visit(node)
 
 
 def _imports_guard_cli(tree: ast.AST) -> bool:
@@ -325,6 +367,7 @@ def _imports_guard_cli(tree: ast.AST) -> bool:
             return True
     calls = _GuardImportCalls()
     calls.visit(tree)
+    calls.finish()
     return calls.found
 
 

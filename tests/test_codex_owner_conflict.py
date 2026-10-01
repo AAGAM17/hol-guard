@@ -212,6 +212,8 @@ def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
         "from builtins import __import__ as load\nload('runpy').run_module(mod_name='codex_plugin_scanner.cli')",
         "import runpy\nclass Unrelated:\n runpy = None\n def invoke(self): "
         "runpy.run_module(mod_name='codex_plugin_scanner.cli')\nUnrelated().invoke()",
+        "def run(): runpy.run_module('codex_plugin_scanner.cli',run_name='__main__')\nimport runpy\nrun()",
+        "def load():\n global runpy\n import runpy\nload()\nrunpy.run_module(mod_name='codex_plugin_scanner.cli')",
     ),
 )
 def test_unrelated_local_bindings_do_not_hide_module_imports(script):

@@ -226,6 +226,10 @@ def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
         "import runpy; launch,*rest=(runpy,None); launch.run_module(mod_name='codex_plugin_scanner.cli')",
         "import runpy; *rest,launch=(None,runpy); launch.run_module(mod_name='codex_plugin_scanner.cli')",
         "import runpy; launch,=(*[runpy],); launch.run_module(mod_name='codex_plugin_scanner.cli')",
+        "import runpy; first,*rest=(None,runpy); rest[0].run_module(mod_name='codex_plugin_scanner.cli')",
+        "import runpy; modules=[runpy]; modules[-1].run_module(mod_name='codex_plugin_scanner.cli')",
+        "import runpy\nif flag: modules=[runpy]\nelse: modules=[None,None]\n"
+        "modules[-1].run_module(mod_name='codex_plugin_scanner.cli')",
     ),
 )
 def test_unrelated_local_bindings_do_not_hide_module_imports(script):
@@ -235,6 +239,11 @@ def test_unrelated_local_bindings_do_not_hide_module_imports(script):
 
 def test_imported_foreign_helper_is_not_the_builtin_import_api():
     script = "from third_party import __import__; __import__(name='codex_plugin_scanner.cli')"
+    require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
+
+
+def test_starred_collection_is_not_itself_an_import_module():
+    script = "import runpy; first,*rest=(None,runpy); rest.run_module(mod_name='codex_plugin_scanner.cli')"
     require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
 
 

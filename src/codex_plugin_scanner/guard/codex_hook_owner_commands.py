@@ -126,6 +126,31 @@ class _GuardImportCalls(ast.NodeVisitor):
             return self.bindings.get(node.id, default)
         if isinstance(node, ast.Attribute):
             return frozenset(f"{base}.{node.attr}" for base in self._identity(node.value))
+        if isinstance(node, (ast.Tuple, ast.List)):
+            values = self._literal_sequence(node)
+            if values is not None:
+                return frozenset(
+                    f"sequence:{len(values)}:{index}:{identity}"
+                    for index, item in enumerate(values)
+                    for identity in (self._identity(item) or frozenset({""}))
+                )
+        if isinstance(node, ast.Subscript):
+            index = node.slice
+            negative = isinstance(index, ast.UnaryOp) and isinstance(index.op, ast.USub)
+            constant = index.operand if negative and isinstance(index, ast.UnaryOp) else index
+            if isinstance(constant, ast.Constant) and isinstance(constant.value, int):
+                values = [identity.split(":", 3) for identity in self._identity(node.value)]
+                entries = [
+                    (int(parts[1]), int(parts[2]), parts[3])
+                    for parts in values
+                    if len(parts) == 4 and parts[0] == "sequence"
+                ]
+                selected = int(constant.value) * (-1 if negative else 1)
+                return frozenset(
+                    identity
+                    for length, position, identity in entries
+                    if position == (selected + length if selected < 0 else selected) and identity
+                )
         if isinstance(node, ast.Call):
             for identity in self._identity(node.func):
                 keyword = _IMPORT_APIS.get(identity)
@@ -193,6 +218,10 @@ class _GuardImportCalls(ast.NodeVisitor):
             index = stars[0]
             suffix = target.elts[index + 1 :]
             pairs = list(zip(target.elts[:index], values[:index], strict=True))
+            target_rest = target.elts[index]
+            if isinstance(target_rest, ast.Starred):
+                end = len(values) - len(suffix)
+                pairs.append((target_rest.value, ast.List(elts=values[index:end], ctx=ast.Load())))
             if suffix:
                 pairs.extend(zip(suffix, values[-len(suffix) :], strict=True))
         else:

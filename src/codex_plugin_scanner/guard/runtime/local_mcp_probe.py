@@ -136,7 +136,7 @@ def probe_stdio_mcp_server(
         transport="stdio",
     )
     argv = _resolve_launch_argv(tokens, cwd=cwd)
-    if argv is None:
+    if argv is None or (report_failure and not Path(argv[0]).is_file()):
         if report_failure:
             raise McpProbeError("invalid_launch")
         return None

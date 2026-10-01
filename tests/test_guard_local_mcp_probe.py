@@ -52,9 +52,9 @@ def test_bound_probe_failure_is_finite_and_unbound_detection_stays_compatible(tm
     assert str(caught.value) == code
 
 
-def test_bound_probe_reports_real_transport_failure(tmp_path):
+def test_bound_probe_reports_missing_executable(tmp_path):
     executable = tmp_path / "missing-mcp-server"
-    with pytest.raises(McpProbeError, match="mcp_transport_failed"):
+    with pytest.raises(McpProbeError, match="mcp_launch_failed"):
         probe_stdio_mcp_server(str(executable), cwd=tmp_path, home_dir=tmp_path, report_failure=True)
 
 

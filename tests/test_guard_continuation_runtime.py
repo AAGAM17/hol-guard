@@ -21,6 +21,7 @@ from codex_plugin_scanner.guard.continuation_worker import StoreContinuationPlan
 from codex_plugin_scanner.guard.live_process_identity import current_process_identity
 from codex_plugin_scanner.guard.models import GuardApprovalRequest
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.continuation_spawn_test_support import successful_isolated_plan as _successful_isolated_plan
 
 NOW = "2026-08-24T12:00:00+00:00"
 
@@ -39,22 +40,6 @@ def _live_codex_wait_metadata() -> dict[str, object]:
         "codex_browser_wait_process": identity,
         "hook_event_name": "PreToolUse",
     }
-
-
-def _successful_isolated_plan(
-    _plan: object,
-    offer: ContinuationOffer,
-    _action: str,
-    _timeout_seconds: float,
-) -> ContinuationResult:
-    return ContinuationResult(
-        correlation_id=offer.correlation_id,
-        capability=offer.capability,
-        status="resumed",
-        reason="app_server_turn_started",
-        completed_at=datetime.fromisoformat(NOW),
-        evidence_id="evidence-app-server-0001",
-    )
 
 
 def _blocking_waiting_isolated_plan(

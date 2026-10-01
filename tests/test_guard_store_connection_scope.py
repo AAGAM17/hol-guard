@@ -124,17 +124,20 @@ def test_nested_different_stores_restore_the_original_scope(tmp_path: Path) -> N
             assert restored.execute("select value from scope_fixture").fetchone()[0] == 1
 
 
-def test_caught_corruption_still_fails_the_scope_and_reaches_recovery(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("failure", ["database disk image is malformed", "disk I/O error"])
+def test_caught_fatal_error_still_fails_the_scope_and_reaches_recovery(
+    tmp_path: Path, monkeypatch, failure: str,
+) -> None:
     store = fixture_store(tmp_path)
     failures = []
     monkeypatch.setattr(store, "_recover_fatal_sqlite_store", lambda error, **kwargs: failures.append(error))
-    with pytest.raises(sqlite3.DatabaseError, match="malformed"), store.connection_scope():
+    with pytest.raises(sqlite3.DatabaseError, match=failure), store.connection_scope():
         try:
             with store._connect():
-                raise sqlite3.DatabaseError("database disk image is malformed")
+                raise sqlite3.DatabaseError(failure)
         except sqlite3.DatabaseError:
             pass
-        with pytest.raises(sqlite3.DatabaseError, match="malformed"), store._connect():
+        with pytest.raises(sqlite3.DatabaseError, match=failure), store._connect():
             pytest.fail("A failed connection must not be reused")
     assert len(failures) == 1
     with store.connection_scope(), store._connect() as connection:
@@ -146,3 +149,21 @@ def test_scopes_keep_the_storage_gate_until_connection_closes(tmp_path: Path) ->
     with store.connection_scope(), store._try_hold_storage_gate(exclusive=True) as acquired:
         # Same-thread upgrade is rejected rather than replacing a live DB.
         assert acquired is False
+
+
+def test_scope_counts_only_method_transactions_and_commits(tmp_path: Path) -> None:
+    store = fixture_store(tmp_path)
+    before = store.sqlite_profile()
+    with store.connection_scope():
+        opened = store.sqlite_profile()
+        assert opened["connects"] == before["connects"] + 1
+        assert opened["transactions"] == before["transactions"]
+        assert opened["commits"] == before["commits"]
+        with store._connect() as connection:
+            connection.execute("insert into scope_fixture values (1)")
+        with store._connect() as connection:
+            assert connection.execute("select count(*) from scope_fixture").fetchone()[0] == 1
+        inner = store.sqlite_profile()
+        assert inner["transactions"] == before["transactions"] + 2
+        assert inner["commits"] == before["commits"] + 2
+    assert store.sqlite_profile() == inner

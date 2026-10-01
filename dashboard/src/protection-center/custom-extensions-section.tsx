@@ -196,17 +196,17 @@ export function CustomExtensionsSection(props: {
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {pageCount > 1 ? (
                 <nav aria-label="Custom extension pages" className="flex flex-wrap items-center gap-3">
-                  <button type="button" disabled={currentPage === 0} aria-controls={rowsId}
-                    onClick={() => setPage(currentPage - 1)}
-                    className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark disabled:opacity-50">
+                  <button type="button" aria-disabled={currentPage === 0} aria-controls={rowsId}
+                    onClick={() => { if (currentPage > 0) setPage(currentPage - 1); }}
+                    className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50">
                     Previous page
                   </button>
                   <p role="status" className="text-sm text-brand-dark/70 tabular-nums">
                     Page {currentPage + 1} of {pageCount} · Showing {start + 1}–{start + visible.length} of {added.length}
                   </p>
-                  <button type="button" disabled={currentPage === pageCount - 1} aria-controls={rowsId}
-                    onClick={() => setPage(currentPage + 1)}
-                    className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark disabled:opacity-50">
+                  <button type="button" aria-disabled={currentPage === pageCount - 1} aria-controls={rowsId}
+                    onClick={() => { if (currentPage < pageCount - 1) setPage(currentPage + 1); }}
+                    className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50">
                     Next page
                   </button>
                 </nav>

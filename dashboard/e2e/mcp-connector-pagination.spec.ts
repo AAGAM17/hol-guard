@@ -40,13 +40,17 @@ for (const width of [1280, 390]) {
     await expect(previous).toBeDisabled();
     await expect(section.getByRole("status")).toHaveText("Page 1 of 5 · Showing 1–25 of 120");
     const visited = new Set<string>();
+    await next.focus();
     for (let current = 0; current < 5; current += 1) {
       for (const name of await rows.allTextContents()) visited.add(name);
-      if (current < 4) { await next.focus(); await page.keyboard.press("Enter"); }
+      if (current < 4) await page.keyboard.press("Enter");
+      await expect(next).toBeFocused();
     }
     expect(visited.size).toBe(120);
     await expect(rows).toHaveCount(20);
     await expect(next).toBeDisabled();
+    await page.keyboard.press("Enter");
+    await expect(next).toBeFocused();
     await expect(section.getByRole("status")).toHaveText("Page 5 of 5 · Showing 101–120 of 120");
     await previous.click();
     await expect(section.getByRole("status")).toContainText("Page 4 of 5");

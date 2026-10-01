@@ -6097,10 +6097,12 @@ function CustomExtensionsSection(props) {
             "button",
             {
               type: "button",
-              disabled: currentPage === 0,
+              "aria-disabled": currentPage === 0,
               "aria-controls": rowsId,
-              onClick: () => setPage(currentPage - 1),
-              className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark disabled:opacity-50",
+              onClick: () => {
+                if (currentPage > 0) setPage(currentPage - 1);
+              },
+              className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50",
               children: "Previous page"
             }
           ),
@@ -6120,10 +6122,12 @@ function CustomExtensionsSection(props) {
             "button",
             {
               type: "button",
-              disabled: currentPage === pageCount - 1,
+              "aria-disabled": currentPage === pageCount - 1,
               "aria-controls": rowsId,
-              onClick: () => setPage(currentPage + 1),
-              className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark disabled:opacity-50",
+              onClick: () => {
+                if (currentPage < pageCount - 1) setPage(currentPage + 1);
+              },
+              className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50",
               children: "Next page"
             }
           )

@@ -21,3 +21,5 @@ def check_json_depth(message: bytes, *, maximum: int, error_code: str) -> None:
                 raise ValueError(error_code)
         elif character in (93, 125):
             depth -= 1
+            if depth < 0:
+                raise ValueError(error_code)

@@ -480,6 +480,11 @@ def test_shared_depth_scanner_keeps_each_rpc_limit_and_ignores_string_brackets()
     excessive = b"[" * 65 + b"0" + b"]" * 65
     with pytest.raises(ValueError, match="codex_config_rpc_invalid"):
         _check_json_depth(excessive)
+    for malformed in (b"]", b"}" * 64 + excessive, b"]" * 32 + moderate):
+        with pytest.raises(ValueError, match="codex_config_rpc_invalid"):
+            _check_json_depth(malformed)
+        with pytest.raises(ValueError, match="codex_host_limit"):
+            inventory._check_depth(malformed)
 
 
 def test_background_host_inventory_is_not_persisted_or_enrolled_as_a_grant(tmp_path, monkeypatch):

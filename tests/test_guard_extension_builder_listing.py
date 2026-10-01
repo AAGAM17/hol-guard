@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import socket
 from dataclasses import replace
@@ -26,8 +27,9 @@ from codex_plugin_scanner.guard.extension_builder.listing import (
     load_listing,
     validate_listing,
 )
+from codex_plugin_scanner.guard.extension_builder.listing_cli import main
 from codex_plugin_scanner.guard.extension_builder.review import default_review
-from tests.extension_builder_support import REPOSITORY, cli_document, metadata
+from tests.extension_builder_support import REPOSITORY, cli_document, make_kit, metadata
 
 
 def listing() -> dict[str, object]:
@@ -203,6 +205,25 @@ def test_optional_listing_does_not_invalidate_native_metadata(tmp_path: Path, ho
     row = json.loads(listing_template(discovery.metadata))
     assert "documentationUrl" not in row
     assert validate_listing(row)["extensionId"] == discovery.metadata.contribution_id
+
+
+@pytest.mark.parametrize("kind", ["cli", "mcp"])
+def test_listing_command_is_explicit_and_never_modifies_a_kit(tmp_path: Path, kind: Literal["cli", "mcp"]) -> None:
+    kit = make_kit(tmp_path, kind)
+    target = tmp_path / "kit"
+    write_kit(kit, target)
+    before = {p.relative_to(target): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    output = io.StringIO()
+    assert main([str(target)], output=output) == 0
+    assert validate_listing(json.loads(output.getvalue()))["extensionId"] == kit.discovery.metadata.contribution_id
+    assert {p.relative_to(target): p.read_bytes() for p in target.rglob("*") if p.is_file()} == before
+    assert "listing-template.json" not in dict(kit.files)
+
+
+def test_listing_command_rejects_an_invalid_kit_without_output(tmp_path: Path) -> None:
+    output = io.StringIO()
+    assert main([str(tmp_path / "missing")], output=output) != 0
+    assert output.getvalue() == ""
 
 
 def test_category_labels_are_total_for_supported_ids() -> None:

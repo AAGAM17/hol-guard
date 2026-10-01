@@ -8,12 +8,41 @@ import re
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import TypedDict
 
 WORKFLOWS = ("desktop-core-alpha-feed.yml", "desktop-core-linux-feed.yml")
 STABLE_VERSION_PATTERN = r"3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 
 
-def dispatch_payload(event_name: str, event: dict, publication_version: str | None = None) -> dict | None:
+class WorkflowRunPayload(TypedDict, total=False):
+    conclusion: str
+    event: str
+    head_branch: str
+
+
+class IssuePayload(TypedDict, total=False):
+    author_association: str
+    title: str
+
+
+class EventPayload(TypedDict, total=False):
+    workflow_run: WorkflowRunPayload
+    issue: IssuePayload
+    ref: str
+
+
+class ReleaseAssetPayload(TypedDict):
+    name: str
+
+
+class ReleasePayload(TypedDict):
+    draft: bool
+    prerelease: bool
+    tag_name: str
+    assets: list[ReleaseAssetPayload]
+
+
+def dispatch_payload(event_name: str, event: EventPayload, publication_version: str | None = None) -> dict | None:
     if event_name == "workflow_run":
         run = event.get("workflow_run", {})
         if run.get("conclusion") != "success" or run.get("event") not in {"push", "workflow_dispatch"}:
@@ -56,7 +85,7 @@ def read_publication_version(path: Path) -> str | None:
     return version if re.fullmatch(STABLE_VERSION_PATTERN, version) else None
 
 
-def require_published_assets(release: dict, version: str) -> None:
+def require_published_assets(release: ReleasePayload, version: str) -> None:
     if not (release.get("draft") is False and release.get("prerelease") is False):
         raise RuntimeError("Core release is not published stable")
     if release.get("tag_name") != f"v{version}":

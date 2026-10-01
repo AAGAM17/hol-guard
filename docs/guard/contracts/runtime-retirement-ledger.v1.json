@@ -1,7 +1,7 @@
 {
  "schema": "hol-guard.runtime-retirement-ledger.v1",
  "baseline_sha": "b22841ac004b9d8a6deccdeee1a1be3600fddfb9",
- "scope": "RMN-009 resident retirement complete; RMN-008 and RMN-010 through RMN-014 hook-oracle cutover incomplete pending live prompt, permission, and package caller closure",
+ "scope": "RMN-009 resident retirement complete; offline archive inspection retired to guard-archive via hol-guard-runtime archive-inspect; RMN-008 and RMN-010 through RMN-014 hook-oracle cutover incomplete pending live prompt, permission, and package caller closure",
  "retired_source_paths": [
   "src/codex_plugin_scanner/guard/cli/commands_hook_claude.py",
   "src/codex_plugin_scanner/guard/cli/commands_hook_compat_bootstrap.py",
@@ -26,7 +26,12 @@
   "src/codex_plugin_scanner/guard/native_approval_bridge.py",
   "src/codex_plugin_scanner/guard/native_approval_bridge_v3.py",
   "src/codex_plugin_scanner/guard/native_approval_models.py",
-  "src/codex_plugin_scanner/guard/native_approval_v4_bridge.py"
+  "src/codex_plugin_scanner/guard/native_approval_v4_bridge.py",
+  "src/codex_plugin_scanner/guard/runtime/offline_archive_contract.py",
+  "src/codex_plugin_scanner/guard/runtime/offline_archive_inspection.py",
+  "src/codex_plugin_scanner/guard/runtime/offline_archive_policy.py",
+  "src/codex_plugin_scanner/guard/runtime/offline_archive_sandbox.py",
+  "src/codex_plugin_scanner/guard/runtime/offline_archive_worker.py"
  ],
  "retired_tests": [
   {
@@ -1786,6 +1791,565 @@
     "rust/crates/guard-runtime/src/approval_v4_negative_tests.rs::v4_restart_and_concurrent_claims_fail_closed"
    ],
    "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_accepts_clean_digest_bound_archive",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_accepts_clean_digest_bound_archive"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_parent_path_member",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_parent_path_member"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_install_script_without_executing_it",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_install_script_without_executing_it"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_all_npm_install_lifecycle_scripts[prepublish]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_all_npm_install_lifecycle_scripts[prepublish]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_all_npm_install_lifecycle_scripts[preprepare]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_all_npm_install_lifecycle_scripts[preprepare]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_all_npm_install_lifecycle_scripts[postprepare]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_all_npm_install_lifecycle_scripts[postprepare]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_python_sdist_execution_without_running_it",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_python_sdist_execution_without_running_it"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_treats_every_setup_py_as_executable_build_metadata",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_treats_every_setup_py_as_executable_build_metadata"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_project_local_python_build_backend",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_project_local_python_build_backend"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_remote_python_build_requirement",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_remote_python_build_requirement"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_implicit_node_gyp_install_lifecycle",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_implicit_node_gyp_install_lifecycle"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[https://evil.example/payload.tgz]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[https://evil.example/payload.tgz]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[file:./payload.tgz]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[file:./payload.tgz]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[attacker/repository#main]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[attacker/repository#main]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[npm:evil@https://evil.example/payload.tgz]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[npm:evil@https://evil.example/payload.tgz]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[exec:./generator.js]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[exec:./generator.js]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[jsr:@scope/payload@1.0.0]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[jsr:@scope/payload@1.0.0]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_unbound_nested_source_dependencies[unknown-protocol:payload]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_unbound_nested_source_dependencies[unknown-protocol:payload]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_allows_registry_only_dependency_specifiers[^1.2.3]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_allows_registry_only_dependency_specifiers[^1.2.3]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_allows_registry_only_dependency_specifiers[latest]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_allows_registry_only_dependency_specifiers[latest]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_allows_registry_only_dependency_specifiers[npm:safe-package@^1.2.3]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_allows_registry_only_dependency_specifiers[npm:safe-package@^1.2.3]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_allows_registry_only_dependency_specifiers[npm:@scope/safe@latest]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_allows_registry_only_dependency_specifiers[npm:@scope/safe@latest]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_digest_mismatch",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_digest_mismatch"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_fails_closed_when_subprocess_is_unavailable",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_reports_native_unavailable",
+    "tests/test_native_archive_inspection.py::test_archive_inspector_fails_closed_when_worker_cannot_start"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_rejects_symlink_blob",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_rejects_symlink_blob"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_accepts_regular_blob_below_symlinked_temp_root",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_accepts_regular_blob_below_symlinked_temp_root"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_escaping_links[2]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_escaping_links[2]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_escaping_links[1]",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_escaping_links[1]"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_special_device_member",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_special_device_member",
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_fifo_member"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_duplicate_member_path",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_duplicate_member_path"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_portable_case_collisions",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_portable_case_collisions"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_accepts_root_relative_hardlink_target",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_accepts_root_relative_hardlink_target"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_blocks_linked_package_manifest",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_blocks_linked_package_manifest"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_enforces_decompression_ratio",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_enforces_decompression_ratio"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_rejects_unsupported_bzip2_before_tar_parsing",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_rejects_unsupported_bzip2_before_tar_parsing",
+    "tests/test_native_archive_inspection.py::test_archive_inspector_rejects_unsupported_xz"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_enforces_file_count_and_nested_archive_limits",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_enforces_file_count_and_nested_archive_limits"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_fails_closed_on_malformed_archive",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_fails_closed_on_malformed_archive",
+    "tests/test_native_archive_inspection.py::test_archive_inspector_fails_closed_on_truncated_gzip"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_fails_closed_on_timeout_or_child_crash",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_inspector_fails_closed_on_worker_timeout_and_crash"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_offline_archive_inspector_child_denies_socket_creation",
+   "replacement_nodes": [
+    "tests/test_native_archive_inspection.py::test_archive_worker_self_contains_without_wrapper"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_offline_archive_inspection.py::test_isolated_child_command_derives_root_from_installed_package",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Python worker derived the package root to re-exec sys.executable; the native worker is a bundled hol-guard-runtime binary resolved by native_runtime_status, so there is no child-command derivation surface left to test."
+  },
+  {
+   "old_node": "tests/test_guard_network_public_suffix.py::test_registrable_domain_uses_bundled_psl_without_network",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Bundled-PSL registrable-domain projection never gained a production caller; deleted as dead scaffolding outside the REM network remediation program."
+  },
+  {
+   "old_node": "tests/test_guard_remote_approval_execution.py::test_explicit_no_transport_is_resolved_without_resume_confirmation",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Remote-approval resume helpers never gained a caller; remote approval semantics are owned by the native approval flow."
+  },
+  {
+   "old_node": "tests/test_guard_remote_approval_execution.py::test_supported_transport_retry_failure_remains_unconfirmed",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Remote-approval resume helpers never gained a caller; remote approval semantics are owned by the native approval flow."
+  },
+  {
+   "old_node": "tests/test_guard_remote_approval_execution.py::test_missing_support_proof_remains_unconfirmed",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Remote-approval resume helpers never gained a caller; remote approval semantics are owned by the native approval flow."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_parses_and_safe_fixtures_pass",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_rejects_unknown_fields",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_rejects_wildcard_matchers",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_rejects_a_fixture_that_does_not_match_expected_behavior",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_rejects_an_invalid_calendar_date",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_requires_positive_and_negative_fixtures",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_guard_policy_recipe.py::test_policy_recipe_is_inert_and_has_no_apply_or_command_fields",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Recipe validation helpers never gained a caller; recipes remain inert fixtures with no shipped consumer."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_valid_one_command_trace_returns_structural_summary_without_output",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_matching_multiline_command_is_accepted_without_exporting_its_text",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_command_rejects_unsafe_control_characters",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_string_trace_with_unpaired_surrogate_has_clear_encoding_error",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_nonzero_command_is_recorded_without_a_guard_decision",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_declined_command_with_no_exit_code_is_observed_without_a_pass_claim",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_completed_command_still_requires_an_exit_code",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_non_declined_command_requires_an_exit_code",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_turn_completion_allows_null_exit_code",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_command_lifecycle_and_exact_command_are_required",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_completed_command_without_started_is_rejected",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_other_action_item_cannot_hide_in_one_command_trace",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_thread_and_command_ids_must_remain_bound",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_exported_identity_and_status_fields_cannot_contain_private_text",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_malformed_json_is_rejected",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_byte_and_event_limits_are_enforced",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_failed_or_errored_turn_is_rejected",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_pre_turn_configuration_error_cannot_be_treated_as_a_clean_run",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_error_item_after_turn_start_is_rejected",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_codex_event_trace.py::test_ambiguous_json_and_invalid_utf8_are_rejected",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The Codex event-trace parser never gained a caller; the evaluation wheel records evidence through its own path."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_defaults_valid",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_digest_order_independent",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_digest_changes_on_value",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_rejects_out_of_range",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_rejects_bool",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestResourceBudget::test_rejects_bad_schema_version",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestBackendSupport::test_current_platform",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestBackendSupport::test_unknown_platform_no_rlimit",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControls::test_output_bounding_applied_on_all_backends",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControls::test_rlimit_controls_applied_on_rlimit_backend",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControls::test_unsupported_controls_not_implied",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControls::test_applied_control_limit_value_set_when_applied",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControls::test_unapplied_control_limit_value_dropped",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControlValidation::test_rejects_non_enum_kind",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
+  },
+  {
+   "old_node": "tests/test_guard_resource_budget.py::TestAppliedControlValidation::test_rejects_non_bool_applied",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "The ResourceBudget contract never gained a consumer; containment executors report applied controls through their own records."
   }
  ],
  "preserved_tests": [

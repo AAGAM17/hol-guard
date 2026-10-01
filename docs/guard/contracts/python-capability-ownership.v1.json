@@ -72,7 +72,13 @@
  ],
  "parity_fixture": "tests/fixtures/native-hook-parity/cases.v1.json",
  "package_excluded_candidates": [],
- "deletion_candidates": [],
+ "deletion_candidates": [
+  "src/codex_plugin_scanner/guard/evaluation_codex_event_trace.py",
+  "src/codex_plugin_scanner/guard/policy_recipe.py",
+  "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
+  "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
+  "src/codex_plugin_scanner/guard/runtime/resource_budget.py"
+ ],
  "dependency_delta": {
   "removed_project_dependencies": [],
   "removed_entrypoints": [],
@@ -396,6 +402,77 @@
    "native_replacements": [
     "rust/crates/guard-runtime/src/approval.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/offline_archive_contract.py",
+   "module": "codex_plugin_scanner.guard.runtime.offline_archive_contract",
+   "source_sha256": "ab648e0429641751d80d269758459c045b4ab1d8285885fc6a53cc65c7f1d856",
+   "forbidden_symbols": [
+    "_ArchivePolicyError"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-contracts/src/archive_inspection.rs",
+    "rust/crates/guard-archive/src/lib.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/offline_archive_inspection.py",
+   "module": "codex_plugin_scanner.guard.runtime.offline_archive_inspection",
+   "source_sha256": "c7ecb5019e38429b0a341b94c74df28b5d5dddd08f45838968c47373dd8d0fd9",
+   "forbidden_symbols": [
+    "inspect_archive_offline",
+    "_isolated_child_command",
+    "_child_main"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/archive_inspect.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/offline_archive_worker.py",
+   "module": "codex_plugin_scanner.guard.runtime.offline_archive_worker",
+   "source_sha256": "9a2987b06f6ee8ee0a597282a5e7657d8933e4cf1e5b90df35200e7c9b3b6d0b",
+   "forbidden_symbols": [
+    "_inspect_archive"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-archive/src/tar_policy.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/offline_archive_policy.py",
+   "module": "codex_plugin_scanner.guard.runtime.offline_archive_policy",
+   "source_sha256": "c795cab423c55277ac52a1c005da5a87a52d916d31ce01ce1d4a060588630c65",
+   "forbidden_symbols": [
+    "_unsafe_member_reason",
+    "_member_kind",
+    "_member_path_conflicts",
+    "_normalized_link_target",
+    "_install_script_risk",
+    "_npm_dependency_specifier_requires_external_fetch",
+    "_python_build_script_risk",
+    "_hash_stream",
+    "_preflight_expanded_tar_stream"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-archive/src/manifest.rs",
+    "rust/crates/guard-archive/src/posix_path.rs",
+    "rust/crates/guard-archive/src/tar_policy.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/offline_archive_sandbox.py",
+   "module": "codex_plugin_scanner.guard.runtime.offline_archive_sandbox",
+   "source_sha256": "d5c86c3abb584cd09bbcd553875299c07647f2b5fffa1323da3e19b10d7f3be5",
+   "forbidden_symbols": [
+    "_darwin_virtual_size_bytes",
+    "_child_limits",
+    "_install_child_capability_guard",
+    "_platform_sandbox_command"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/archive_inspect.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -403,9 +480,15 @@
   "ci/native_runtime/test_guard_native_runtime_resident_cross_process.py",
   "ci/native_runtime/test_guard_native_runtime_windows_resident.py",
   "tests/test_cli_hook_source_ref.py",
+  "tests/test_codex_event_trace.py",
   "tests/test_guard_codex_apply_patch_policy.py",
   "tests/test_guard_cursor_exact_action.py",
   "tests/test_guard_durable_exact_shell_approval_expiry.py",
+  "tests/test_guard_network_public_suffix.py",
+  "tests/test_guard_offline_archive_inspection.py",
+  "tests/test_guard_policy_recipe.py",
+  "tests/test_guard_remote_approval_execution.py",
+  "tests/test_guard_resource_budget.py",
   "tests/test_hook_content_scanner.py",
   "tests/test_hook_decision_cache.py",
   "tests/test_hook_review_engine.py",

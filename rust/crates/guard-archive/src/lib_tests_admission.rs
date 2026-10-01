@@ -24,11 +24,9 @@ fn unique_dir(label: &str) -> PathBuf {
 fn write_blob(dir: &std::path::Path, bytes: &[u8]) -> PathBuf {
     let path = dir.join("blob.tar");
     std::fs::write(&path, bytes).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-    }
+    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&path, permissions).unwrap();
     path
 }
 

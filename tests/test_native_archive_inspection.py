@@ -102,6 +102,22 @@ def test_archive_inspector_accepts_clean_digest_bound_archive(
     assert result.sha256 == digest
 
 
+def test_archive_inspector_fails_closed_when_state_dir_is_a_file(
+    native_hook_force: Path, tmp_path: Path
+) -> None:
+    """A state_dir that collides with a regular file cannot host the lease —
+    the adapter must report incomplete rather than raising OSError."""
+    package_json = json.dumps({"name": "safe-package", "version": "1.0.0"}).encode()
+    archive_path, digest = _archive_path(tmp_path, [("package/package.json", package_json)])
+    blocked_state = tmp_path / "occupied-state"
+    blocked_state.write_bytes(b"not-a-directory")
+
+    result = _inspect(archive_path, expected_sha256=digest, state_dir=blocked_state)
+
+    assert result.status == "incomplete"
+    assert result.code == "external_archive_inspection_incomplete"
+
+
 def test_archive_inspector_blocks_parent_path_member(native_hook_force: Path, state_dir: Path, tmp_path: Path) -> None:
     archive_path, digest = _archive_path(tmp_path, [("../escape.sh", b"echo unsafe")])
 

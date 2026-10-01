@@ -9,28 +9,12 @@ from copy import deepcopy
 from pathlib import Path
 
 from .codex_hook_file_integrity import split_hook_command
+from .codex_hook_inventory import _matches_authenticated_hook_handler
 from .codex_hook_manifest import MANAGED_CODEX_HOOK_EVENTS
 from .frozen_runtime_commands import frozen_codex_bridge_tokens_are_live
 
 _STATE_PATH_RE = re.compile(r'"state_path"\s*:\s*"([^"]+)"')
 _GUARD_HOME_QUERY_RE = re.compile(r"guard-home=([^&\"'\s]+)")
-
-
-def _matches_authenticated_hook_handler(
-    handler: Mapping[str, object],
-    expected_handler: Mapping[str, object],
-) -> bool:
-    if handler == expected_handler:
-        return True
-    expected_command = split_hook_command(expected_handler.get("command"))
-    actual_command = split_hook_command(handler.get("command"))
-    return (
-        bool(expected_command)
-        and actual_command is not None
-        and len(actual_command) >= len(expected_command)
-        and actual_command[: len(expected_command)] == expected_command
-        and handler.get("type") == expected_handler.get("type")
-    )
 
 
 def remove_manifest_bound_hook_events(
@@ -76,8 +60,7 @@ def remove_manifest_bound_hook_events(
                 (
                     index
                     for index, handler in enumerate(handlers)
-                    if isinstance(handler, Mapping)
-                    and _matches_authenticated_hook_handler(handler, expected_handler)
+                    if isinstance(handler, Mapping) and _matches_authenticated_hook_handler(handler, expected_handler)
                 ),
                 None,
             )

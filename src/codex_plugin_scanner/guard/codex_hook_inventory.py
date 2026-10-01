@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from .codex_hook_file_integrity import split_hook_command
 from .codex_hook_identity import (
     CODEX_HOOK_IDENTITY_SCHEMA,
     canonical_codex_command_argv,
@@ -420,6 +421,23 @@ def _ownership(
     return "unmanaged"
 
 
+def _matches_authenticated_hook_handler(
+    handler: Mapping[str, object],
+    expected_handler: Mapping[str, object],
+) -> bool:
+    if handler == expected_handler:
+        return True
+    expected_command = split_hook_command(expected_handler.get("command"))
+    actual_command = split_hook_command(handler.get("command"))
+    return (
+        bool(expected_command)
+        and actual_command is not None
+        and len(actual_command) >= len(expected_command)
+        and actual_command[: len(expected_command)] == expected_command
+        and handler.get("type") == expected_handler.get("type")
+    )
+
+
 def _bindings_contain_handler(
     bindings: Sequence[Mapping[str, object]],
     event_name: str,
@@ -428,11 +446,13 @@ def _bindings_contain_handler(
 ) -> bool:
     for binding in bindings:
         expected_group = binding.get("group")
+        expected_handler = binding.get("handler")
         if (
             binding.get("event") == event_name
             and isinstance(expected_group, Mapping)
             and expected_group.get("matcher") == group.get("matcher")
-            and binding.get("handler") == handler
+            and isinstance(expected_handler, Mapping)
+            and _matches_authenticated_hook_handler(handler, expected_handler)
         ):
             return True
     return False

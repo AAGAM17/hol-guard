@@ -54,9 +54,12 @@ def scoped_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
     depth = _local.transaction_depth
     _local.transaction_depth += 1
     try:
-        method_transaction = store._connection_transaction(_local.connection) if depth == 0 else store._connect_once()
-        with method_transaction as connection:
-            yield connection
+        with store._hold_storage_gate(exclusive=False):
+            method_transaction = (
+                store._connection_transaction(_local.connection) if depth == 0 else store._connect_once()
+            )
+            with method_transaction as connection:
+                yield connection
     except sqlite3.DatabaseError as error:
         if store._is_fatal_sqlite_error(error) or SQLITE_IO_ERROR_MARKER in str(error).lower():
             _local.failure = error

@@ -500,8 +500,11 @@ class StoreConnectionSchemaMixin:
         failed_identity: tuple[int, int] | None = None
         with self._hold_storage_gate(exclusive=False):
             try:
-                opener = (store_connection_scope.open_connection(cast("GuardStore", self))
-                    if connection_only else self._connect_once())
+                opener = (
+                    store_connection_scope.open_connection(cast("GuardStore", self))
+                    if connection_only
+                    else self._connect_once()
+                )
                 with opener as connection:
                     yielded = True
                     yield connection
@@ -527,8 +530,11 @@ class StoreConnectionSchemaMixin:
             raise fatal_error
         if not recovered and not sqlite_error_is_busy_locked(fatal_error):
             raise fatal_error
-        opener = (store_connection_scope.open_connection(cast("GuardStore", self))
-            if connection_only else self._connect_once())
+        opener = (
+            store_connection_scope.open_connection(cast("GuardStore", self))
+            if connection_only
+            else self._connect_once()
+        )
         with self._hold_storage_gate(exclusive=False), opener as connection:
             yield connection
 

@@ -17,7 +17,7 @@ from .base import HarnessContext
 
 
 def _lifecycle_lock_path(directory: Path) -> Path:
-    user = str(os.getuid()) if hasattr(os, "getuid") else sha256(str(Path.home()).encode()).hexdigest()
+    user = str(os.getuid()) if hasattr(os, "getuid") else sha256(os.fsencode(Path.home())).hexdigest()
     base = Path(tempfile.gettempdir()) / f"hol-guard-codex-lifecycle-{user}"
     target = os.path.normcase(str(directory.resolve()))
     return base / f"{sha256(os.fsencode(target)).hexdigest()}.lock"
@@ -44,13 +44,13 @@ def _target_lock(directory: Path) -> Generator[None, None, None]:
             hasattr(os, "getuid") and (metadata.st_uid != os.getuid() or metadata.st_mode & 0o077)
         ):
             raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock directory is not private")
-    except PermissionError as error:
+    except OSError as error:
         raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock directory is unavailable") from error
     prior = _lock_identity(path)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags, 0o600)
-    except PermissionError as error:
+    except OSError as error:
         raise RuntimeError("codex_lifecycle_lock_invalid: lifecycle lock file is unavailable") from error
     try:
         metadata = os.fstat(descriptor)
@@ -75,10 +75,13 @@ def codex_lifecycle_locks(context: HarnessContext) -> Generator[None, None, None
     # Shared user temporary storage avoids writing to read-only projects or
     # creating configuration directories during a no-op uninstall. Owners in
     # this temporary namespace contend on resolved configuration identities.
+    # Keep lock files between calls: unlinking them could split concurrent
+    # owners across different inodes. Each configuration reuses one file.
     roots = [context.home_dir]
     if context.workspace_dir is not None:
         roots.append(context.workspace_dir)
-    targets = sorted({os.path.normcase(str((root / ".codex").resolve())): root / ".codex" for root in roots}.items())
+    resolved_targets = {os.path.normcase(str((root / ".codex").resolve())): root / ".codex" for root in roots}
+    targets = sorted(resolved_targets.items())
     with ExitStack() as stack:
         for _identity, root in targets:
             stack.enter_context(_target_lock(root))

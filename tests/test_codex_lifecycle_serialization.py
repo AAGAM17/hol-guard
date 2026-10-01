@@ -1,6 +1,7 @@
 """Concurrent lifecycle callers must not discover or mutate the same files."""
 
 import multiprocessing
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -153,6 +154,33 @@ def test_lock_permission_failure_has_a_lifecycle_reason(tmp_path, monkeypatch):
         codex_lifecycle_locks(context),
     ):
         pytest.fail("unavailable lock accepted")
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="requires kernel no-follow open")
+def test_symlink_raced_before_open_preserves_target_and_reports_invalid_lock(tmp_path, monkeypatch):
+    import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
+
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard")
+    lock = _lifecycle_lock_path(context.home_dir / ".codex")
+    target = tmp_path / "user-file"
+    target.write_bytes(b"preserved user content")
+    original_open = locks.os.open
+
+    def raced_open(path, *args, **kwargs):
+        if path == lock:
+            lock.symlink_to(target)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(locks.os, "open", raced_open)
+    try:
+        with (
+            pytest.raises(RuntimeError, match="codex_lifecycle_lock_invalid: lifecycle lock file is unavailable"),
+            codex_lifecycle_locks(context),
+        ):
+            pytest.fail("raced symlink accepted")
+        assert target.read_bytes() == b"preserved user content"
+    finally:
+        lock.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("link_kind", ("symbolic", "hard"))

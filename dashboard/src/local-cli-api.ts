@@ -81,6 +81,7 @@ export type LocalCliItem = {
 };
 
 export type LocalCliListResponse = {
+  host_inventory?: import("./codex-host-inventory").CodexHostInventory;
   schema_version: string;
   revision: number;
   discovery_issue?: "catalog_limit_reached" | "observed_provider_scan_failed" | "configured_host_scan_failed" | "package_catalog_refresh_failed";
@@ -415,6 +416,18 @@ export async function refreshMcpInventory(
   )));
   if (initialJob === null) return;
   await waitForMcpDiscoveryJob(cliId, initialJob, signal);
+}
+
+export async function refreshCodexHostInventory(signal: AbortSignal, forceRefresh = false): Promise<void> {
+  if (signal.aborted) return;
+  const initialJob = await startCancelableDiscoveryJob(signal, async (clientJobId) => readJson(await fetchLocalCliApi(
+    "/v1/local-clis/refresh-job", {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal,
+      body: JSON.stringify({ operation: "codex-host-connections", client_job_id: clientJobId,
+        ...(forceRefresh ? { force_refresh: true } : {}) }),
+    },
+  )));
+  if (initialJob !== null) await waitForMcpDiscoveryJob("inventory:codex-host", initialJob, signal);
 }
 
 export async function waitForMcpDiscoveryJob(cliId: string, initialJob: unknown, signal: AbortSignal): Promise<void> {

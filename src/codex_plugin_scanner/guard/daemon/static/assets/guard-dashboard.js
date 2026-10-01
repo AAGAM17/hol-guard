@@ -1,12 +1,17 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard.js","assets/chunks/home-protection-module.js","assets/chunks/fleet-workspace.js","assets/chunks/app-catalog.js","assets/chunks/harness-detection.js","assets/chunks/connect-guard-cloud-button.js","assets/chunks/settings-workspace.js","assets/chunks/confirm-dialog.js","assets/chunks/extensions-workspace.js","assets/chunks/extension-controls-api.js","assets/chunks/approval-proof-modal.js","assets/chunks/app-detail-workspace.js","assets/chunks/supply-chain-hub-workspace.js","assets/chunks/policy-workspace-page.js","assets/chunks/protection-repair-page.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
-  if (relList && relList.supports && relList.supports("modulepreload")) return;
-  for (const link of document.querySelectorAll('link[rel="modulepreload"]')) processPreload(link);
+  if (relList && relList.supports && relList.supports("modulepreload"))
+    return;
+  for (const link of document.querySelectorAll('link[rel="modulepreload"]'))
+    processPreload(link);
   new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      if (mutation.type !== "childList") continue;
-      for (const node of mutation.addedNodes) if (node.tagName === "LINK" && node.rel === "modulepreload") processPreload(node);
+      if (mutation.type !== "childList")
+        continue;
+      for (const node of mutation.addedNodes)
+        if (node.tagName === "LINK" && node.rel === "modulepreload")
+          processPreload(node);
     }
   }).observe(document, {
     childList: true,
@@ -14,15 +19,21 @@ const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-das
   });
   function getFetchOpts(link) {
     const fetchOpts = {};
-    if (link.integrity) fetchOpts.integrity = link.integrity;
-    if (link.referrerPolicy) fetchOpts.referrerPolicy = link.referrerPolicy;
-    if (link.crossOrigin === "use-credentials") fetchOpts.credentials = "include";
-    else if (link.crossOrigin === "anonymous") fetchOpts.credentials = "omit";
-    else fetchOpts.credentials = "same-origin";
+    if (link.integrity)
+      fetchOpts.integrity = link.integrity;
+    if (link.referrerPolicy)
+      fetchOpts.referrerPolicy = link.referrerPolicy;
+    if (link.crossOrigin === "use-credentials")
+      fetchOpts.credentials = "include";
+    else if (link.crossOrigin === "anonymous")
+      fetchOpts.credentials = "omit";
+    else
+      fetchOpts.credentials = "same-origin";
     return fetchOpts;
   }
   function processPreload(link) {
-    if (link.ep) return;
+    if (link.ep)
+      return;
     link.ep = true;
     const fetchOpts = getFetchOpts(link);
     fetch(link.href, fetchOpts);
@@ -12501,37 +12512,42 @@ const __vitePreload = function preload(baseModule, deps, importerUrl) {
       }))));
     };
     document.getElementsByTagName("link");
-    const cspNonceMeta = document.querySelector("meta[property=csp-nonce]");
-    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
+    const cspNonceMeta = document.querySelector("meta[property=csp-nonce]"), cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
     promise = allSettled(deps.map((dep) => {
       dep = assetsURL(dep);
-      if (dep in seen) return;
+      if (dep in seen)
+        return;
       seen[dep] = true;
-      const isCss = dep.endsWith(".css");
-      const cssSelector = isCss ? '[rel="stylesheet"]' : "";
-      if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) return;
+      const isCss = dep.endsWith(".css"), cssSelector = isCss ? '[rel="stylesheet"]' : "";
+      if (document.querySelector(`link[href="${dep}"]${cssSelector}`))
+        return;
       const link = document.createElement("link");
       link.rel = isCss ? "stylesheet" : scriptRel;
-      if (!isCss) link.as = "script";
+      if (!isCss)
+        link.as = "script";
       link.crossOrigin = "";
       link.href = dep;
-      if (cspNonce) link.setAttribute("nonce", cspNonce);
+      if (cspNonce)
+        link.setAttribute("nonce", cspNonce);
       document.head.appendChild(link);
-      if (isCss) return new Promise((res, rej) => {
-        link.addEventListener("load", res);
-        link.addEventListener("error", () => rej(/* @__PURE__ */ new Error(`Unable to preload CSS for ${dep}`)));
-      });
+      if (isCss)
+        return new Promise((res, rej) => {
+          link.addEventListener("load", res);
+          link.addEventListener("error", () => rej(Error(`Unable to preload CSS for ${dep}`)));
+        });
     }));
   }
   function handlePreloadError(err$2) {
     const e$1 = new Event("vite:preloadError", { cancelable: true });
     e$1.payload = err$2;
     window.dispatchEvent(e$1);
-    if (!e$1.defaultPrevented) throw err$2;
+    if (!e$1.defaultPrevented)
+      throw err$2;
   }
   return promise.then((res) => {
     for (const item of res || []) {
-      if (item.status !== "rejected") continue;
+      if (item.status !== "rejected")
+        continue;
       handlePreloadError(item.reason);
     }
     return baseModule().catch(handlePreloadError);

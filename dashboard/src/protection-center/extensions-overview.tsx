@@ -6,9 +6,10 @@ import {
   extensionStateLabel,
 } from "../extension-control-center-model";
 import type { EffectiveExtensionControls, ExtensionCatalogItem } from "../extension-controls-api";
-import { connectorWorkspaceItems, refreshMcpInventory, type LocalCliItem } from "../local-cli-api";
+import { connectorWorkspaceItems, refreshCodexHostInventory, refreshMcpInventory, type LocalCliItem } from "../local-cli-api";
 import { WorkspacePageHeader } from "../workspace-page-header";
 import { LocalSkillsWorkspace } from "./local-skills-workspace";
+import { CodexHostConnectors } from "./codex-host-connectors";
 import { AddCustomExtensionButton } from "./local-clis-panel";
 import { CustomExtensionsSection } from "./custom-extensions-section";
 import { CatalogFilterBar, CatalogFilterTrigger } from "./components/catalog-filter-bar";
@@ -76,7 +77,7 @@ function ConnectorDiscoveryControl(props: {
   if (props.discovering) {
     return (
       <p role="status" className="px-1 text-xs text-brand-dark/60">
-        Checking host configuration for connectors…
+        Checking host connections…
       </p>
     );
   }
@@ -110,6 +111,7 @@ export function ExtensionsOverview(props: {
   catalogExtensions: ExtensionCatalogItem[];
   effective: EffectiveExtensionControls;
   localCliItems: LocalCliItem[];
+  hostInventory?: import("../codex-host-inventory").CodexHostInventory;
   localCliError: string | null;
   localCliNotice: string | null;
   mutationError: string | null;
@@ -137,11 +139,15 @@ export function ExtensionsOverview(props: {
     const controller = new AbortController();
     setDiscovering(true);
     setDiscoveryError(null);
-    void refreshMcpInventory("inventory:configured", controller.signal, true, discoveryAttempt > 0).then(async () => {
-      if (!controller.signal.aborted) await reloadConnections.current();
-    }).catch(() => {
-      if (!controller.signal.aborted) setDiscoveryError("Could not check host configuration. Known connections remain available.");
-    }).finally(() => {
+    const reload = async () => { if (!controller.signal.aborted) await reloadConnections.current(); };
+    const configured = refreshMcpInventory("inventory:configured", controller.signal, true, discoveryAttempt > 0)
+      .then(reload).catch(() => {
+        if (!controller.signal.aborted) setDiscoveryError("Could not check host configuration. Known connections remain available.");
+      });
+    const host = refreshCodexHostInventory(controller.signal, discoveryAttempt > 0).then(reload).catch(() => {
+      if (!controller.signal.aborted) setDiscoveryError("Could not read Codex app inventory. Known connections remain available.");
+    });
+    void Promise.all([configured, host]).finally(() => {
       if (!controller.signal.aborted) setDiscovering(false);
     });
     return () => { controller.abort(); discoveryStarted.current = false; };
@@ -302,6 +308,7 @@ export function ExtensionsOverview(props: {
           />
 
           <LocalSkillsWorkspace />
+          <CodexHostConnectors inventory={props.hostInventory} />
           <section className="mt-10" aria-labelledby="all-tools-heading">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>

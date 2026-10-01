@@ -145,7 +145,7 @@ def test_main_dispatches_both_exact_versions_after_readiness(
         ],
     ],
 )
-def test_publication_manifest_must_have_one_stable_version(tmp_path: Path, names: list[str]) -> None:
+def test_publication_manifest_rejects_invalid_or_ambiguous_versions(tmp_path: Path, names: list[str]) -> None:
     path = tmp_path / "publication.txt"
     path.write_text("".join("a" * 64 + "  dist/" + name + "\n" for name in names))
     with pytest.raises(RuntimeError):

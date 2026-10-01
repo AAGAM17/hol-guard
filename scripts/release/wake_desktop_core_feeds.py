@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 
 WORKFLOWS = ("desktop-core-alpha-feed.yml", "desktop-core-linux-feed.yml")
+STABLE_VERSION_PATTERN = r"3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 
 
 def dispatch_payload(event_name: str, event: dict, publication_version: str | None = None) -> dict | None:
@@ -22,7 +23,7 @@ def dispatch_payload(event_name: str, event: dict, publication_version: str | No
             if publication_version is None:
                 return None
             return {"ref": "main", "inputs": {"core_version": publication_version}}
-        if not isinstance(branch, str) or not re.fullmatch(r"v3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", branch):
+        if not isinstance(branch, str) or not re.fullmatch(rf"v{STABLE_VERSION_PATTERN}", branch):
             return None
         return {"ref": "main", "inputs": {"core_version": branch[1:]}}
     if event_name == "push" and event.get("ref") == "refs/heads/main":
@@ -45,14 +46,14 @@ def read_publication_version(path: Path) -> str | None:
         name = Path(filename.lstrip(" *")).name
         if not name.startswith("hol_guard-") or not name.endswith(".whl"):
             continue
-        match = re.fullmatch(r"hol_guard-(3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:(?:a|b|rc)[0-9]+)?)-.+\.whl", name)
+        match = re.fullmatch(rf"hol_guard-({STABLE_VERSION_PATTERN}(?:(?:a|b|rc)[0-9]+)?)-.+\.whl", name)
         if match is None:
-            raise RuntimeError("Publication wheel has an invalid version")
+            raise RuntimeError("Publication wheel name does not match expected pattern")
         versions.add(match[1])
     if len(versions) != 1:
         raise RuntimeError("Publication checksum manifest has no unique version")
     version = versions.pop()
-    return version if re.fullmatch(r"3\.[0-9]+\.[0-9]+", version) else None
+    return version if re.fullmatch(STABLE_VERSION_PATTERN, version) else None
 
 
 def require_published_assets(release: dict, version: str) -> None:
@@ -100,6 +101,8 @@ def main() -> None:
         "User-Agent": "hol-guard-desktop-core-feed-wake",
     }
     version = payload.get("inputs", {}).get("core_version")
+    # A stable tag must not dispatch from a nonstable manifest (None).
+    # Nonstable main publications already returned before this point.
     if event_name == "workflow_run" and version != publication_version:
         raise RuntimeError("Publication manifest does not match completed run tag")
     opener = urllib.request.build_opener(NoRedirect())

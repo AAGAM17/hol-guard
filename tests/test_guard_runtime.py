@@ -22508,9 +22508,12 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
         "codex", "codex:project:tool-action:other", "hash", workspace=workspace_a, now=now
     ) is None
     assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b, now=now) is None
-    assert store.resolve_policy(
+    expired_action = store.resolve_policy(
         "codex", block_artifact, "hash", workspace=workspace_a, now="2026-10-01T00:00:00+00:00"
-    ) is None
+    )
+    assert expired_action is None, store.resolve_policy_decision_lookup_with_memory_pattern(
+        "codex", block_artifact, "hash", workspace=workspace_a, now="2026-10-01T00:00:00+00:00"
+    )
     exact_decisions = [item for item in store.list_policy_decisions() if item["source"] == "policy-bundle"]
     assert {item["scope"] for item in exact_decisions} == {"workspace"}
     stored_workspaces = {item["workspace"] for item in exact_decisions}

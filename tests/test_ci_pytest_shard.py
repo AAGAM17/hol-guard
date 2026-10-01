@@ -57,6 +57,10 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert "--ignore" not in collector
     assert "--deselect" not in collector
     assert payload["env"]["CI_PYTHON_VERSION"] == "3.12.14"
+    assert payload["env"]["NATIVE_CHANGED_FROM_SHA"] == (
+        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || "
+        "(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before) || '' }}"
+    )
     assert "test-plan" not in jobs
     assert "tests" not in jobs
     assert "needs" not in jobs["coverage-plan"]
@@ -67,6 +71,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     verify_step = native_steps[verify_index]
     assert "--compiler rust/target/release/guard-command-source" in verify_step["run"]
     assert "--changed-from" in verify_step["run"]
+    assert 'if [[ -n "${NATIVE_CHANGED_FROM_SHA}" ]]' in verify_step["run"]
     assert "if" not in verify_step
     assert verify_step.get("continue-on-error", False) is False
     upload_index = next(

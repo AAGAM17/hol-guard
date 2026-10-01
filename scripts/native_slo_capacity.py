@@ -278,7 +278,7 @@ def _measure_c16(
         )
     except BaseException as error:
         if progress is not None:
-            progress.record_failure(error, stage="concurrent_16")
+            progress.record_failure(error, stage="concurrent_16", labels={"wave": "sixteen"})
         executor.shutdown(wait=False, cancel_futures=True)
         raise
     else:
@@ -367,7 +367,7 @@ def _prewarm_capacity_workers(
         )
     except BaseException as error:
         if progress is not None:
-            progress.record_failure(error, stage="capacity_prewarm")
+            progress.record_failure(error, stage="capacity_prewarm", labels={"wave": "prewarm"})
         executor.shutdown(wait=False, cancel_futures=True)
         raise
     else:
@@ -434,7 +434,11 @@ def _measure_rss_and_c64(
         if progress is not None and not baseline_completed:
             progress.fail_request("rss_baseline")
         if progress is not None:
-            progress.record_failure(error, stage=failure_stage)
+            progress.record_failure(
+                error,
+                stage=failure_stage,
+                labels={"wave": "sixty_four"} if failure_stage == "concurrent_64" else {},
+            )
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
         raise

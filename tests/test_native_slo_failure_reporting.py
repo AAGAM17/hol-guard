@@ -303,17 +303,31 @@ def test_main_session_start_failure_marks_readiness_before_warm(
 
 def test_capacity_timeout_preserves_finished_observation() -> None:
     release = threading.Event()
+    pre_done = threading.Event()
+    post_entered = threading.Event()
     observed: list[Observation] = []
     cancelled: list[int] = []
 
     class _FixtureSession:
         def observe(self, _harness: str, event: str, _size: str) -> Observation:
             if event == "PostToolUse":
+                post_entered.set()
                 release.wait()
-            return Observation("codex", event, "1k", 1.0, "native_resident", True)
+            observation = Observation("codex", event, "1k", 1.0, "native_resident", True)
+            if event == "PreToolUse":
+                pre_done.set()
+            return observation
 
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(capacity, "_CONCURRENT_WAVE_TIMEOUT_SECONDS", 0.01)
+    original_wait = capacity.wait
+
+    def wait_after_pre(futures, *, timeout):
+        assert pre_done.wait(timeout=2)
+        assert post_entered.wait(timeout=2)
+        return original_wait(futures, timeout=timeout)
+
+    monkeypatch.setattr(capacity, "wait", wait_after_pre)
     executor = ThreadPoolExecutor(max_workers=2)
     try:
         with pytest.raises(RuntimeError, match="concurrent capacity wave timed out") as failure:

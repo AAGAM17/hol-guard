@@ -18,13 +18,15 @@ def test_executor_setup_failure_keeps_stage_without_inventing_requests(
         raise FileNotFoundError("synthetic private runtime path")
 
     progress = SloProgress()
+    progress.activate(stage, harness="codex", event="PreToolUse", size_class="1k")
     monkeypatch.setattr(capacity, "_prime_load_executor", fail)
     with pytest.raises(FileNotFoundError):
         if stage == "concurrent_16":
             capacity._measure_c16(None, (), include_capacity=True, progress=progress)
         else:
             capacity._prewarm_capacity_workers(None, (), 2, progress=progress)
-    assert progress.snapshot_failure() == {"stage": stage, "category": "environment_error"}
+    wave = "sixteen" if stage == "concurrent_16" else "prewarm"
+    assert progress.snapshot_failure() == {"stage": stage, "category": "environment_error", "wave": wave}
     assert all(value["attempted"] == 0 for value in progress.stage_snapshot().values())
 
 
@@ -47,7 +49,10 @@ def test_failure_after_rss_readiness_keeps_its_stage(monkeypatch: pytest.MonkeyP
     )
     with pytest.raises(ConnectionResetError):
         capacity._measure_rss_and_c64(session, (), 2, include_capacity=True, progress=progress)
-    assert progress.snapshot_failure() == {"stage": failed_stage, "category": "transport_error"}
+    expected = {"stage": failed_stage, "category": "transport_error"}
+    if failed_stage == "concurrent_64":
+        expected["wave"] = "sixty_four"
+    assert progress.snapshot_failure() == expected
     baseline = progress.stage_snapshot()["rss_baseline"]
     assert baseline["attempted"] == baseline["completed"] == 1
     assert baseline["failed"] == 0

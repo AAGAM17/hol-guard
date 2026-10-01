@@ -654,7 +654,7 @@ class LocalCliApiService:
                     extra_env=extra_env,
                     cancel=cancel,
                     connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
-                    **({"report_failure": True} if selected_server is not None else {}),
+                    report_failure=selected_server is not None,
                 )
                 if cancel is not None
                 else probe_stdio_mcp_server(
@@ -663,7 +663,7 @@ class LocalCliApiService:
                     home_dir=home_dir,
                     extra_env=extra_env,
                     connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
-                    **({"report_failure": True} if selected_server is not None else {}),
+                    report_failure=selected_server is not None,
                 )
             )
         except McpProbeError as error:

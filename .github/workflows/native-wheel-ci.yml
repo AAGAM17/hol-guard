@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_HTTP_TIMEOUT: "120"
+
 concurrency:
   group: native-wheel-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

@@ -418,6 +418,14 @@ _CAPABILITIES_RETRY_BACKOFF_SECONDS = 0.25
 _CAPABILITIES_CACHE_MAX = 16
 
 
+def _clear_capabilities_probe_state() -> None:
+    """Reset the probe cache and retry windows; tests call this between
+    distinct fake binaries so a prior probe cannot leak into the next case."""
+    with _capabilities_probe_lock:
+        _capabilities_cache.clear()
+        _capabilities_retry_after.clear()
+
+
 def _capabilities_for_identity(
     path: str,
     size: int,

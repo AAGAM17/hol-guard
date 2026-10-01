@@ -182,6 +182,7 @@ def _no_post_execution_proof_smoke() -> dict[str, object]:
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         guard_home = root / "guard-home"
+        guard_home.mkdir()
         workspace = root / "workspace"
         workspace.mkdir()
         initialized = subprocess.run(

@@ -311,7 +311,7 @@ class SloProgress:
     def frozen_copy(self) -> SloProgress:
         """Capture one report boundary while requests may still be running."""
         with self._lock:
-            return SloProgress(
+            snapshot = SloProgress(
                 stages={name: replace(stage) for name, stage in self.stages.items()},
                 routes=self.routes,
                 runtime_summary=None if self.runtime_summary is None else dict(self.runtime_summary),
@@ -324,6 +324,8 @@ class SloProgress:
                     for stage, values in self.timings.items()
                 },
             )
+            snapshot._warm_iterations = self._warm_iterations
+            return snapshot
 
     def stage_snapshot(self) -> dict[str, dict[str, object]]:
         with self._lock:

@@ -29,6 +29,7 @@ _INTEGRITY_FAILURE_REASONS = frozenset(
     }
 )
 
+# Public API names re-exported by the native_runtime bridge, which owns runtime I/O.
 _NATIVE_RUNTIME_EXPORTS = [
     "NativeRuntimeCapabilities",
     "NativeRuntimeHealthSnapshot",

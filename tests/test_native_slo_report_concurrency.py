@@ -95,6 +95,15 @@ def test_timed_out_prewarm_records_a_late_success_once(monkeypatch: pytest.Monke
     assert observations[0].route == "native_resident"
 
 
+def test_frozen_progress_preserves_route_dependent_warm_denominators() -> None:
+    progress = _progress()
+    snapshot = progress.frozen_copy()
+    snapshot.configure_routes((("codex", "PreToolUse"), ("pi", "PreToolUse")))
+
+    assert snapshot.stage_snapshot()["warm"]["planned"] == 2
+    assert progress.stage_snapshot()["warm"]["planned"] == 1
+
+
 def test_serialized_warmup_transport_failure_counts_one_request() -> None:
     class Session:
         def observe(self, *_args: object) -> Observation:

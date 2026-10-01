@@ -413,8 +413,6 @@ def _measure_rss_and_c64(
         baseline_completed = True
         if progress is not None:
             progress.complete("rss_baseline")
-            # Restore the enclosing stage after baseline request observations.
-            progress.activate("rss_baseline")
         rss_peak = rss_baseline
         if include_capacity:
             failure_stage = "concurrent_64"

@@ -190,6 +190,11 @@ def test_unrelated_same_named_function_is_not_a_guard_import(name, keyword):
     require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
 
 
+def test_exception_variable_shadowing_import_api_is_not_a_guard_import():
+    script = "try: pass\nexcept Exception as __import__: __import__(name='codex_plugin_scanner.cli')"
+    require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
+
+
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))
 @pytest.mark.parametrize("source_format", ("toml", "json"))
 @pytest.mark.parametrize("feature_enabled", (True, False))

@@ -47,24 +47,23 @@ def _import_api_keywords(tree: ast.AST) -> dict[str, str]:
     """Identify standard import APIs from their actual imports, including aliases."""
     apis = {"runpy.run_module": "mod_name", "importlib.import_module": "name", "builtins.__import__": "name"}
     calls = {"__import__": "name"}
+    shadowed: set[str] = set()
     for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            shadowed.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler)) and node.name:
+            shadowed.add(node.name)
         if isinstance(node, ast.Import):
             for imported in node.names:
                 for api, keyword in apis.items():
-                    module, method = api.split(".")
+                    module, method = api.rsplit(".", 1)
                     if imported.name == module:
                         calls[f"{imported.asname or module}.{method}"] = keyword
-        elif isinstance(node, ast.ImportFrom):
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
             for imported in node.names:
                 keyword = apis.get(f"{node.module}.{imported.name}")
                 if keyword is not None:
                     calls[imported.asname or imported.name] = keyword
-    shadowed = {
-        node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
-    }
-    shadowed.update(
-        node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    )
     return {name: keyword for name, keyword in calls.items() if name.split(".")[0] not in shadowed}
 
 

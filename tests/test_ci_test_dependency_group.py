@@ -48,12 +48,35 @@ def test_test_workers_select_the_frozen_group_without_default_dev_dependencies()
     assert "--frozen --no-dev --no-install-project" in proof_setup
 
 
-def test_compatibility_workers_select_the_frozen_test_group() -> None:
+@pytest.mark.parametrize("job", ["compatibility", "deep-compatibility", "cross-platform", "windows-updater"])
+def test_compatibility_workers_select_the_frozen_test_group(job: str) -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["compatibility"]["steps"])
+    commands = "\n".join(step.get("run", "") for step in workflow["jobs"][job]["steps"])
     assert "uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}" in commands
     assert "--extra dev" not in commands
     assert "uv run --no-sync pytest" in commands
+
+
+def test_reporting_and_optional_workers_preserve_their_dependency_boundaries() -> None:
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    commands = {name: "\n".join(step.get("run", "") for step in job["steps"]) for name, job in jobs.items()}
+    assert "uv sync --frozen --no-dev --group ci-test --python ${{ env.CI_PYTHON_VERSION }}" in commands["sonar"]
+    assert (
+        "uv sync --frozen --no-dev --group ci-test --extra cisco --group cisco-mcp --python 3.13"
+        in commands["cisco-full"]
+    )
+    assert "uv sync --frozen --no-dev --group ci-test --extra mdm-build" in commands["cross-platform"]
+    assert "uv sync --frozen --extra dev" in commands["quality"]
+    assert "uv sync --frozen --extra dev" in commands["mutation-baseline"]
+
+
+def test_staged_evaluator_wheel_selects_test_tools_without_installing_the_source_project() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/evaluation-wheel-ci.yml").read_text())
+    commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["staged-evaluator-wheel"]["steps"])
+    assert "uv sync --frozen --no-dev --group ci-test --no-install-project --python 3.12" in commands
+    assert "--extra dev" not in commands
+    assert "uv build --wheel" in commands
+    assert "--no-deps evaluation-dist/*.whl" in commands
 
 
 def test_coverage_cache_keeps_prebuilt_wheels_for_read_only_workers() -> None:

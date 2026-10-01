@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import os
+import re
 import stat
 from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager
@@ -42,7 +43,11 @@ def _lifecycle_lock_path(directory: Path) -> Path:
 
 def _unavailable_lock(stage: str, error: OSError) -> RuntimeError:
     # Preserve a bounded OS reason without disclosing a private pathname.
-    reason = errno.errorcode.get(error.errno, "UNKNOWN") if error.errno is not None else "UNKNOWN"
+    if error.errno is not None:
+        reason = errno.errorcode.get(error.errno, "UNKNOWN")
+    else:
+        token = error.args[0] if len(error.args) == 1 and isinstance(error.args[0], str) else ""
+        reason = token if re.fullmatch(r"[a-z_]{1,64}", token) else "UNKNOWN"
     return RuntimeError(f"codex_lifecycle_lock_invalid: lifecycle lock {stage} is unavailable (reason={reason})")
 
 

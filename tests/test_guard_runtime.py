@@ -22,6 +22,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -13959,9 +13960,9 @@ def test_guard_run_headless_waits_for_local_approval_and_resumes(tmp_path, capsy
         guard_commands_module, "schedule_guard_daemon_ensure", lambda _guard_home, **_kwargs: "http://127.0.0.1:4455"
     )
     monkeypatch.setattr(
-        guard_runner_module.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        guard_runner_module,
+        "subprocess",
+        SimpleNamespace(run=lambda *args, **kwargs: subprocess.CompletedProcess(args=[], returncode=0)),
     )
 
     stop_resolver = threading.Event()
@@ -22480,7 +22481,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
                     "harnesses": ["codex"],
                     "locations": [workspace_a],
                 },
-                "expiresAt": "2026-10-01T00:00:00+00:00",
+                "expiresAt": "2027-10-01T00:00:00+00:00",
                 "sourceDecisionId": "decision-block",
                 "sourceSuggestionId": "suggestion-block",
             },
@@ -22512,7 +22513,7 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
     assert {item["artifact_id"] for item in exact_decisions} == {allow_artifact, block_artifact}
     assert {item["expires_at"] for item in exact_decisions} == {
         "2026-12-01T00:00:00.000000+00:00",
-        "2026-10-01T00:00:00.000000+00:00",
+        "2027-10-01T00:00:00.000000+00:00",
     }
 
 

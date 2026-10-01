@@ -594,7 +594,7 @@ def test_guard_codex_install_safely_readopts_exact_current_legacy_bridge(tmp_pat
     assert state["foreign_hook_entries_present"] is False
 
 
-def test_guard_codex_install_preserves_ambiguous_foreign_direct_hook(tmp_path: Path) -> None:
+def test_guard_codex_install_rejects_ambiguous_foreign_direct_hook(tmp_path: Path) -> None:
     context = HarnessContext(
         home_dir=tmp_path / "home",
         workspace_dir=None,
@@ -617,15 +617,11 @@ def test_guard_codex_install_preserves_ambiguous_foreign_direct_hook(tmp_path: P
         dump_toml({"features": {"hooks": True}, "hooks": {"PreToolUse": [foreign_group]}}),
     )
 
-    CodexHarnessAdapter().install(context)
-    installed = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    state = codex_adapter.codex_native_hook_state(context)
-    commands = [handler["command"] for group in installed["hooks"]["PreToolUse"] for handler in group["hooks"]]
-
-    assert foreign_command in commands
-    assert len(installed["hooks"]["PreToolUse"]) == 2
-    assert state["protection_active"] is True
-    assert state["foreign_hook_entries_present"] is True
+    original_config = config_path.read_bytes()
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        CodexHarnessAdapter().install(context)
+    assert config_path.read_bytes() == original_config
+    assert not codex_adapter.hook_manifest_path(context.guard_home, config_path).exists()
 
 
 def test_guard_codex_authenticated_hook_transaction_rolls_back_after_partial_config_write(
@@ -745,7 +741,7 @@ def test_guard_codex_launch_uses_remote_control_for_dashboard_continuation(tmp_p
     assert environment["CODEX_HOME"] == str(home_dir / ".codex")
 
 
-def test_guard_install_and_repair_codex_preserve_ambiguous_legacy_post_tool_hooks(
+def test_guard_install_and_repair_codex_reject_ambiguous_legacy_post_tool_hooks(
     tmp_path,
     capsys,
     monkeypatch,
@@ -844,113 +840,30 @@ def test_guard_install_and_repair_codex_preserve_ambiguous_legacy_post_tool_hook
         ),
     )
 
-    install_rc = main(
-        [
-            "guard",
-            "install",
-            "codex",
-            "--home",
-            str(home_dir),
-            "--workspace",
-            str(workspace_dir),
-            "--guard-home",
-            str(guard_home),
-            "--json",
-        ]
-    )
-    json.loads(capsys.readouterr().out)
-    installed_payload = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
-    installed_payload["hooks"]["PostToolUse"].append(
-        {
-            "matcher": "Bash",
-            "hooks": [{"type": "command", "command": stale_direct_command}],
-        }
-    )
-    _write_text(codex_home / "config.toml", dump_toml(installed_payload))
-    connect_rc = main(
-        [
-            "guard",
-            "apps",
-            "connect",
-            "codex",
-            "--home",
-            str(home_dir),
-            "--workspace",
-            str(workspace_dir),
-            "--guard-home",
-            str(guard_home),
-            "--json",
-        ]
-    )
-    json.loads(capsys.readouterr().out)
-    connected_payload = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
-    connected_commands = [
-        hook["command"]
-        for group in connected_payload["hooks"]["PostToolUse"]
-        for hook in group["hooks"]
-        if hook["type"] == "command"
-    ]
-    assert stale_direct_command in connected_commands
-    connected_payload["hooks"]["PostToolUse"].append(
-        {
-            "matcher": "Bash",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": stale_bridge_command,
-                    "statusMessage": "HOL Guard checking tool result",
-                }
-            ],
-        }
-    )
-    _write_text(codex_home / "config.toml", dump_toml(connected_payload))
-    repair_rc = main(
-        [
-            "guard",
-            "apps",
-            "repair",
-            "codex",
-            "--home",
-            str(home_dir),
-            "--workspace",
-            str(workspace_dir),
-            "--guard-home",
-            str(guard_home),
-            "--json",
-        ]
-    )
-    json.loads(capsys.readouterr().out)
-    config_payload = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
-    commands = [
-        hook["command"]
-        for group in config_payload["hooks"]["PostToolUse"]
-        for hook in group["hooks"]
-        if hook["type"] == "command"
-    ]
-    command_tokens = [shlex.split(command) for command in commands]
-    current_bridge_path = Path(codex_adapter.__file__).with_name("codex_daemon_hook_bridge.py").resolve()
-    authenticated_bridge_commands = [
-        tokens for tokens in command_tokens if len(tokens) > 2 and Path(tokens[2]).resolve() == current_bridge_path
-    ]
-    final_state = codex_adapter.codex_native_hook_state(
-        HarnessContext(
-            home_dir=home_dir,
-            workspace_dir=workspace_dir,
-            guard_home=guard_home,
-            home_override_explicit=True,
-            workspace_override_explicit=True,
+    config_path = codex_home / "config.toml"
+    original_config = config_path.read_bytes()
+    for command in (
+        ["guard", "install", "codex"],
+        ["guard", "apps", "connect", "codex"],
+        ["guard", "apps", "repair", "codex"],
+    ):
+        rc = main(
+            [
+                *command,
+                "--home",
+                str(home_dir),
+                "--workspace",
+                str(workspace_dir),
+                "--guard-home",
+                str(guard_home),
+                "--json",
+            ]
         )
-    )
-
-    assert install_rc == 0
-    assert connect_rc == 0
-    assert repair_rc == 0
-    assert lean_command in commands
-    assert stale_bridge_command in commands
-    assert stale_direct_command in commands
-    assert len(authenticated_bridge_commands) == 1
-    assert final_state["protection_active"] is True
-    assert final_state["foreign_hook_entries_present"] is True
+        captured = capsys.readouterr()
+        assert rc != 0
+        assert "codex_hook_owner_conflict" in captured.out + captured.err
+        assert config_path.read_bytes() == original_config
+        assert not codex_adapter.hook_manifest_path(guard_home, config_path).exists()
 
 
 def test_guard_install_codex_rewrites_workspace_config_with_proxy_entries(tmp_path, capsys, monkeypatch):

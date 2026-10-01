@@ -57,6 +57,7 @@ from ..codex_hook_registration import (
     finalize_codex_doctor_warnings,
     install_managed_codex_hook_groups,
     overlay_live_owned_event_matches,
+    require_codex_hook_owner,
 )
 from ..codex_hook_registration import (
     remove_manifest_bound_hook_events as _remove_manifest_bound_hook_events,
@@ -1201,6 +1202,10 @@ class CodexHarnessAdapter(HarnessAdapter):
             )
             _require_complete_preactivation_inventory(config_inventory)
             _require_complete_preactivation_inventory(json_inventory)
+            for inventory in (config_inventory, json_inventory):
+                for record in inventory.records:
+                    if record.command is not None:
+                        require_codex_hook_owner(record.command, ownership=record.ownership)
         _require_hook_inventory_sources_unchanged(
             config_payloads=inventory_config_payloads,
             hook_payloads=inventory_hook_payloads,

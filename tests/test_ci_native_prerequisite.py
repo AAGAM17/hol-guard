@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_barrier_tracks_every_coverage_prerequisite() -> None:
+    """Keep the barrier prerequisite names aligned with the coverage dependency graph."""
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     assert set(barrier._PREREQUISITE_LABELS) == set(jobs["coverage"]["needs"])
 
@@ -24,6 +25,7 @@ def test_barrier_tracks_every_coverage_prerequisite() -> None:
 def test_failed_prerequisite_stops_without_waiting_for_an_unexpanded_matrix(
     conclusion: str, prerequisite: str, placeholder_position: str
 ) -> None:
+    """Report a failed prerequisite regardless of matrix placeholder pagination order."""
     failed = dict(_job(1000), name=prerequisite, conclusion=conclusion)
     placeholder = dict(_job(1001), name="coverage (3.12, ${{ matrix.shard-index }})", conclusion="skipped")
     jobs = [failed]
@@ -36,6 +38,7 @@ def test_failed_prerequisite_stops_without_waiting_for_an_unexpanded_matrix(
     calls: list[str] = []
 
     def fetch(path: str, _timeout: float) -> object:
+        """Return a deterministic API page without using a network connection."""
         calls.append(path)
         page = int(path.rsplit("=", 1)[1])
         return {"total_count": len(jobs), "jobs": jobs[(page - 1) * 100 : page * 100]}
@@ -56,6 +59,7 @@ def test_failed_prerequisite_stops_without_waiting_for_an_unexpanded_matrix(
 
 @pytest.mark.parametrize("status", ["queued", "in_progress"])
 def test_pending_native_build_waits_for_complete_successful_coverage(status: str) -> None:
+    """Keep polling pending builds until every expected coverage producer succeeds."""
     pending = dict(_job(1000), name="native-command-evaluators", status=status, conclusion=None)
     complete = dict(pending, status="completed", conclusion="success")
     calls, logs = _run([[pending], [complete, *_jobs()]])
@@ -64,18 +68,21 @@ def test_pending_native_build_waits_for_complete_successful_coverage(status: str
 
 
 def test_successful_native_build_cannot_replace_a_missing_shard() -> None:
+    """A successful prerequisite never substitutes for a missing coverage result."""
     native = dict(_job(1000), name="native-command-evaluators")
     with pytest.raises(barrier.ShardWaitError, match="Timed out"):
         _run([[native, *_jobs()[:-1]]], timeout_seconds=10)
 
 
 def test_unrelated_failed_job_does_not_supply_or_invalidate_coverage() -> None:
+    """Ignore failures outside the coverage producer dependency chain."""
     other = dict(_job(1000), name="unrelated-job", conclusion="failure")
     _, logs = _run([[other, *_jobs()]])
     assert logs[-1].startswith("All 128 Python coverage shards succeeded")
 
 
 def test_duplicate_native_build_is_rejected() -> None:
+    """Reject ambiguous duplicate native prerequisite records."""
     native = dict(_job(1000), name="native-command-evaluators")
     duplicate = dict(native, id=9999)
     with pytest.raises(barrier.ShardWaitError, match="duplicate native-command-evaluators jobs"):
@@ -84,6 +91,41 @@ def test_duplicate_native_build_is_rejected() -> None:
 
 @pytest.mark.parametrize("field,value", [("run_id", _RUN_ID + 1), ("run_attempt", 1)])
 def test_native_build_from_another_execution_is_rejected(field: str, value: int) -> None:
+    """Reject prerequisite records from another run or attempt."""
     native = dict(_job(1000), name="native-command-evaluators", **{field: value})
     with pytest.raises(barrier.ShardWaitError, match="another (run|attempt)"):
         _run([[native, *_jobs()]])
+
+
+@pytest.mark.parametrize("prerequisite", ["coverage-plan", "native-command-evaluators", "both"])
+@pytest.mark.parametrize("position", ["before", "after", "previous-page"])
+def test_deferred_matrix_classification_uses_the_complete_snapshot(prerequisite: str, position: str) -> None:
+    """Prerequisite ordering cannot turn the same invalid matrix into a retry."""
+    names = list(barrier._PREREQUISITE_LABELS) if prerequisite == "both" else [prerequisite]
+    dependencies = [dict(_job(1000 + i), name=name) for i, name in enumerate(names)]
+    placeholder = dict(_job(1100), name="coverage (3.12, ${{ matrix.shard-index }})", conclusion="skipped")
+    jobs = [*dependencies, placeholder]
+    if position == "after":
+        jobs = [placeholder, *dependencies]
+    elif position == "previous-page":
+        jobs = [placeholder, *[dict(_job(2000 + i), name=f"other-{i}") for i in range(99)], *dependencies]
+    calls: list[str] = []
+
+    def fetch(path: str, _timeout: float) -> object:
+        """Return the fixed inventory in the requested API order."""
+        calls.append(path)
+        page = int(path.rsplit("=", 1)[1])
+        return {"total_count": len(jobs), "jobs": jobs[(page - 1) * 100 : page * 100]}
+
+    with pytest.raises(barrier.ShardWaitError, match="invalid Python coverage shard index") as caught:
+        barrier.wait_for_shards(
+            "owner/repo",
+            _RUN_ID,
+            2,
+            fetch_json=fetch,
+            clock=lambda: 0.0,
+            sleep=lambda _delay: pytest.fail("Final prerequisite state must determine classification"),
+            log=lambda _message: None,
+        )
+    assert type(caught.value) is barrier.ShardWaitError
+    assert len(calls) == (2 if position == "previous-page" else 1)

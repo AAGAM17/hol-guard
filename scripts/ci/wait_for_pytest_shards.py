@@ -142,12 +142,12 @@ def _snapshot(
     deadline: float,
     clock: Callable[[], float],
 ) -> tuple[str, ...]:
+    """Validate the full inventory before classifying a deferred matrix error."""
     states = ["absent"] * SHARD_COUNT
     jobs_by_id: dict[int, dict[str, object]] = {}
     seen_shards: set[int] = set()
-    plan_seen = False
     seen_prerequisites: set[str] = set()
-    matrix_error: ShardWaitError | None = None
+    invalid_matrix = False
     total_count = 0
     for page in range(1, _MAX_JOBS // 100 + 1):
         remaining = deadline - clock()
@@ -182,7 +182,7 @@ def _snapshot(
                     # Scheduling shifts offset pages even after matrix expansion.
                     # Retry the whole snapshot; duplicates cannot fill missing shards.
                     raise _SchedulingRaceError("GitHub jobs API paginated a changing job list")
-                if not plan_seen and not seen_shards:
+                if not seen_prerequisites and not seen_shards:
                     raise _SchedulingRaceError("GitHub jobs API paginated a changing job list")
                 raise ShardWaitError("GitHub jobs API returned a duplicate job")
             jobs_by_id[job_id] = job
@@ -190,7 +190,6 @@ def _snapshot(
                 if name in seen_prerequisites:
                     raise ShardWaitError(f"GitHub jobs API returned duplicate {name} jobs")
                 seen_prerequisites.add(name)
-                plan_seen = plan_seen or name == "coverage-plan"
                 _job_state(job, _PREREQUISITE_LABELS[name])
             if not name.startswith("coverage (3.12,"):
                 continue
@@ -199,13 +198,7 @@ def _snapshot(
                 # A skipped matrix may appear before its failed prerequisite,
                 # even on an earlier API page. Read the bounded snapshot before
                 # reporting the placeholder so the actual blocker is retained.
-                error: ShardWaitError
-                if not plan_seen and not seen_shards:
-                    error = _SchedulingRaceError("GitHub jobs API exposed an unexpanded coverage matrix")
-                else:
-                    error = ShardWaitError("GitHub jobs API returned an invalid Python coverage shard index")
-                if matrix_error is None:
-                    matrix_error = error
+                invalid_matrix = True
                 continue
             index = int(match[1])
             if index in seen_shards:
@@ -216,8 +209,10 @@ def _snapshot(
             if states[index] == "success":
                 _require_current_execution(job, label)
         if len(jobs_by_id) == total_count:
-            if matrix_error is not None:
-                raise matrix_error
+            if invalid_matrix:
+                if not seen_prerequisites and not seen_shards:
+                    raise _SchedulingRaceError("GitHub jobs API exposed an unexpanded coverage matrix")
+                raise ShardWaitError("GitHub jobs API returned an invalid Python coverage shard index")
             return tuple(states)
         if len(jobs_by_id) > total_count:
             raise ShardWaitError("GitHub jobs API returned an incomplete job list")

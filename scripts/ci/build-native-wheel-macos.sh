@@ -21,7 +21,7 @@ RULE_DIGEST=$("$runtime" capabilities --json | python -c 'import json,sys; print
 # freshness checks for pushes, scheduled builds and manual runs.
 verification_arguments=(--compiler "$source_compiler")
 if [[ -n "${NATIVE_PR_BASE_SHA:-}" ]]; then
-  if [[ ! "$NATIVE_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  if [[ ! "$NATIVE_PR_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
     echo "NATIVE_PR_BASE_SHA must be a full Git commit SHA" >&2
     exit 1
   fi

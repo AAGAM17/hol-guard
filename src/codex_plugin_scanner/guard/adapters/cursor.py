@@ -6,6 +6,7 @@ import json
 import sys
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 from ..aibom_detection import enrich_mcp_server_metadata, extend_detection_with_workspace_aibom
 from ..launcher import merge_guard_launcher_env
@@ -254,7 +255,7 @@ class CursorHarnessAdapter(HarnessAdapter):
         state_path.parent.mkdir(parents=True, exist_ok=True)
         workspace_dir = str(context.workspace_dir.resolve()) if context.workspace_dir is not None else None
         previous = _json_payload(state_path)
-        origins = dict(previous.get("managed_origins") or {})
+        origins = dict(cast(dict[str, list[str]], previous.get("managed_origins") or {}))
         for server in managed_servers:
             if server.source_scope == "project":
                 origins[server.name] = [server.source_scope, server.config_path]

@@ -62,6 +62,8 @@ class CodexBindingCaptureWriter:
             self._lock.release()
 
     def stop_capture(self) -> None:
+        # Never wait for an in-flight write. The event prevents queued work
+        # from running even if a submission temporarily owns the queue lock.
         self._stopped.set()
         if self._lock.acquire(blocking=False):
             try:
@@ -75,7 +77,7 @@ class CodexBindingCaptureWriter:
                 task = self._pending.popleft() if self._pending else None
             if task is None or self._stopped.is_set():
                 continue
-            with suppress(Exception):
+            with suppress(OSError, json.JSONDecodeError):
                 receipt = json.loads(task.receipt)
                 _ = record_native_worker(
                     guard_home=task.guard_home,

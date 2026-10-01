@@ -385,6 +385,14 @@ def record_bridge_ingress(
     forwarded = _json_object(forwarded_encoded)
     if payload is None or forwarded is None:
         return False
+    # Daemon admission removes these transport fields before native review.
+    # Preserve them in the raw digest, but bind the forwarded digest to the
+    # same payload that reaches the native edge.
+    forwarded = {
+        key: value
+        for key, value in forwarded.items()
+        if key not in {"guard_remaining_seconds", "guard_remaining_ms", "hook_env"}
+    }
     raw_fingerprint = payload_hmac(config, "raw", payload)
     forwarded_fingerprint = payload_hmac(config, "forwarded", forwarded)
     if raw_fingerprint is None or forwarded_fingerprint is None:

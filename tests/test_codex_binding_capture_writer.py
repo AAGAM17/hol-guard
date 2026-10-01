@@ -34,6 +34,43 @@ def test_optional_capture_start_failure_does_not_prevent_daemon_start(monkeypatc
     assert writer_module.start_codex_binding_capture_writer() is None
 
 
+@pytest.mark.parametrize("failure", [OSError, TypeError])
+def test_capture_keeps_expected_io_failures_optional_and_surfaces_programming_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: type[Exception]
+) -> None:
+    attempted = threading.Event()
+    completed = threading.Event()
+    unexpected = []
+    calls = []
+
+    def record(**_kwargs: object) -> bool:
+        calls.append(_kwargs)
+        if len(calls) == 1:
+            attempted.set()
+            raise failure("synthetic capture failure")
+        completed.set()
+        return True
+
+    def capture_thread_error(args: threading.ExceptHookArgs) -> None:
+        unexpected.append(args.exc_type)
+        completed.set()
+
+    monkeypatch.setattr(writer_module, "record_native_worker", record)
+    monkeypatch.setattr(threading, "excepthook", capture_thread_error)
+    writer = CodexBindingCaptureWriter()
+    kwargs = {"guard_home": tmp_path, "payload": {}, "receipt": _valid_native_receipt()}
+    try:
+        assert writer.submit_native_capture(**kwargs)
+        assert attempted.wait(2.0)
+        if failure is OSError:
+            assert writer.submit_native_capture(**kwargs)
+        assert completed.wait(2.0)
+    finally:
+        _finish(writer, completed)
+    assert unexpected == ([] if failure is OSError else [TypeError])
+    assert len(calls) == (2 if failure is OSError else 1)
+
+
 @pytest.mark.parametrize("valid_receipt", [True, False])
 def test_native_allow_does_not_wait_for_optional_capture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_receipt: bool
@@ -112,13 +149,16 @@ def test_native_allow_does_not_wait_for_optional_capture(
         worker.close()
 
 
+@pytest.mark.parametrize("stop_contended", [False, True])
 def test_capture_queue_drops_when_full_or_contended_and_stops_without_drain(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stop_contended: bool
 ) -> None:
     entered = threading.Event()
     release = threading.Event()
+    recorded = []
 
     def blocked_record(**_kwargs: object) -> bool:
+        recorded.append(_kwargs)
         entered.set()
         assert release.wait(30.0)
         return True
@@ -134,12 +174,18 @@ def test_capture_queue_drops_when_full_or_contended_and_stops_without_drain(
         assert not writer.submit_native_capture(**kwargs)
         with writer._lock:
             assert not writer.submit_native_capture(**kwargs)
-        writer.stop_capture()
+        if stop_contended:
+            with writer._lock:
+                writer.stop_capture()
+            assert len(writer._pending) == writer_module._QUEUE_LIMIT
+        else:
+            writer.stop_capture()
+            assert not writer._pending
         assert not writer.submit_native_capture(**kwargs)
-        assert not writer._pending
         assert writer._thread.is_alive()
     finally:
         _finish(writer, release)
+    assert len(recorded) == 1
 
 
 def test_capture_queue_keeps_bounded_immutable_snapshots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

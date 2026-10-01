@@ -52,6 +52,15 @@ def _imports_guard_cli(tree: ast.AST) -> bool:
             or (node.module == "codex_plugin_scanner" and any(name.name == "cli" for name in node.names))
         ):
             return True
+        if isinstance(node, ast.Call) and node.args:
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+            module = node.args[0]
+            if (
+                name in {"run_module", "import_module", "__import__"}
+                and isinstance(module, ast.Constant)
+                and module.value in {"codex_plugin_scanner.cli", "codex_plugin_scanner"}
+            ):
+                return True
     return False
 
 

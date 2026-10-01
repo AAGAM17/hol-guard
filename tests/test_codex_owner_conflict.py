@@ -159,6 +159,20 @@ def test_inline_cli_import_alias_with_trailing_arguments_requires_ownership():
         require_codex_hook_owner("python -c " + shlex.quote(script) + " hook --harness codex", ownership="unmanaged")
 
 
+@pytest.mark.parametrize(
+    "script",
+    (
+        "import runpy,sys; sys.argv[1:]=['hook','--harness','codex']; "
+        "runpy.run_module('codex_plugin_scanner.cli',run_name='__main__')",
+        "import importlib; importlib.import_module('codex_plugin_scanner.cli').main(['hook','--harness','codex'])",
+        "__import__('codex_plugin_scanner.cli',fromlist=['main']).main(['hook','--harness','codex'])",
+    ),
+)
+def test_dynamic_cli_import_with_static_module_requires_ownership(script):
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner("python -c " + shlex.quote(script), ownership="unmanaged")
+
+
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))
 @pytest.mark.parametrize("source_format", ("toml", "json"))
 @pytest.mark.parametrize("feature_enabled", (True, False))

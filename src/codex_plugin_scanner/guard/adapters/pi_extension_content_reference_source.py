@@ -187,21 +187,23 @@ function boundedCodePointPrefix(
   value: string,
   limit: number,
   budget: TraversalBudget,
+  limitKind: 'code_points' | 'code_units' = 'code_points',
 ): BoundedCodePointPrefix {
   const max = Math.max(limit, 0);
   let index = 0;
   let chars = 0;
-  while (index < value.length && chars < max) {
+  while (index < value.length && (limitKind === 'code_units' ? index : chars) < max) {
     if ((chars & 0x3ff) === 0 && !traversalBudgetReady(budget)) {
       return { text: value.slice(0, index), chars, complete: false };
     }
     const code = value.charCodeAt(index);
+    let width = 1;
     if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
       const next = value.charCodeAt(index + 1);
-      index += next >= 0xdc00 && next <= 0xdfff ? 2 : 1;
-    } else {
-      index += 1;
+      if (next >= 0xdc00 && next <= 0xdfff) width = 2;
     }
+    if (limitKind === 'code_units' && index + width > max) break;
+    index += width;
     chars += 1;
   }
   if (!traversalBudgetReady(budget)) {
@@ -230,7 +232,7 @@ function appendSafeExcerpt(
     accumulator.text += `${prefix}${value}`;
     return;
   }
-  const bounded = boundedCodePointPrefix(value, available, budget);
+  const bounded = boundedCodePointPrefix(value, available, budget, 'code_units');
   accumulator.text += `${prefix}${bounded.text}`;
   accumulator.truncated = true;
 }
@@ -241,7 +243,7 @@ function safeTruncateText(
   budget: TraversalBudget = createTraversalBudget(),
 ): string {
   if (value.length <= limit && traversalBudgetReady(budget)) return value;
-  const bounded = boundedCodePointPrefix(value, limit, budget);
+  const bounded = boundedCodePointPrefix(value, limit, budget, 'code_units');
   return `${bounded.text}\n...[truncated by HOL Guard]...`;
 }
 

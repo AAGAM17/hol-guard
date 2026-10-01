@@ -7,6 +7,37 @@ from tests.pi_extension_response_runtime_support import _run_generated_preproces
 from tests.pi_extension_response_source_support import _generated_source
 
 
+def test_generated_astral_excerpts_obey_code_unit_limits_without_splitting_pairs(tmp_path: Path) -> None:
+    result = _run_generated_preprocessing_fixture(
+        _generated_source(tmp_path),
+        r"""
+const text = '😀'.repeat(7000);
+const excerpt = boundedOutputText(text);
+const truncated = safeTruncateText(text, 7).split('\n')[0];
+const digestPrefix = boundedCodePointPrefix(text, 7, createTraversalBudget());
+const oddPrefix = boundedCodePointPrefix('a😀b', 2, createTraversalBudget(), 'code_units');
+console.log(JSON.stringify({
+  excerptUnits: excerpt.value.length,
+  excerptPoints: Array.from(excerpt.value).length,
+  truncatedUnits: truncated.length,
+  truncatedPoints: Array.from(truncated).length,
+  digestUnits: digestPrefix.text.length,
+  digestPoints: digestPrefix.chars,
+  oddPrefix: oddPrefix.text,
+}));
+""",
+    )
+    assert result == {
+        "excerptUnits": 12_000,
+        "excerptPoints": 6_000,
+        "truncatedUnits": 6,
+        "truncatedPoints": 3,
+        "digestUnits": 14,
+        "digestPoints": 7,
+        "oddPrefix": "a",
+    }
+
+
 def test_generated_large_non_source_result_fails_closed_before_serialization(tmp_path: Path) -> None:
     source = _generated_source(tmp_path)
     large_text = "x" * (5 * 1024 * 1024 + 1)

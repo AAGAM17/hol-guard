@@ -113,8 +113,8 @@ def _generated_preprocessing_helper(source: str) -> str:
         "function boundValue(value, depth = 0, seen = new WeakSet(), budget = createTraversalBudget()) {",
         "function boundedOutputText(\n  value: unknown,\n  deadlineAt?: number,\n  budget = createTraversalBudget(deadlineAt),\n): BoundedValue {":  # noqa: E501
         "function boundedOutputText(value, deadlineAt, budget = createTraversalBudget(deadlineAt)) {",
-        "function boundedCodePointPrefix(\n  value: string,\n  limit: number,\n  budget: TraversalBudget,\n): BoundedCodePointPrefix {":  # noqa: E501
-        "function boundedCodePointPrefix(value, limit, budget) {",
+        "function boundedCodePointPrefix(\n  value: string,\n  limit: number,\n  budget: TraversalBudget,\n  limitKind: 'code_points' | 'code_units' = 'code_points',\n): BoundedCodePointPrefix {":  # noqa: E501
+        "function boundedCodePointPrefix(value, limit, budget, limitKind = 'code_points') {",
         "function appendSafeExcerpt(\n  accumulator: { text: string; truncated: boolean },\n  value: string,\n  budget: TraversalBudget,\n): void {":  # noqa: E501
         "function appendSafeExcerpt(accumulator, value, budget) {",
         "function safeTruncateText(\n  value: string,\n  limit = GUARD_TEXT_LIMIT_CHARS,\n  budget: TraversalBudget = createTraversalBudget(),\n): string {":  # noqa: E501

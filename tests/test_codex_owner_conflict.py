@@ -34,20 +34,41 @@ def test_install_preserves_inactive_unowned_handlers(tmp_path, scope, activation
 
 
 @pytest.mark.parametrize("argument", ("--harness codex-other", "--harness=codexevil", "--harness claude"))
-def test_other_harness_module_hook_is_not_a_codex_conflict(argument):
+@pytest.mark.parametrize("python_options", ("", "-W ignore -X dev"))
+def test_other_harness_module_hook_is_not_a_codex_conflict(argument, python_options):
     require_codex_hook_owner(
-        "python -m codex_plugin_scanner.cli guard hook " + argument,
+        "python " + python_options + " -m codex_plugin_scanner.cli guard hook " + argument,
         ownership="unmanaged",
     )
 
 
 @pytest.mark.parametrize("argument", ("--harness codex", "--harness=codex"))
-def test_exact_codex_module_hook_requires_ownership(argument):
+@pytest.mark.parametrize(
+    "python_options",
+    ("", "-W ignore", "-X dev", "--check-hash-based-pycs always", "-I -W ignore -X dev", "-Wignore", "-Xdev"),
+)
+def test_exact_codex_module_hook_requires_ownership(argument, python_options):
     with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
         require_codex_hook_owner(
-            "python -m codex_plugin_scanner.cli guard hook " + argument,
+            "python " + python_options + " -m codex_plugin_scanner.cli guard hook " + argument,
             ownership="unmanaged",
         )
+
+
+@pytest.mark.parametrize("python_options", ("-W ignore", "-X dev", "--check-hash-based-pycs always"))
+def test_codex_bridge_with_python_option_operand_requires_ownership(python_options):
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner(
+            "python " + python_options + " /opt/guard/codex_daemon_hook_bridge.py",
+            ownership="unmanaged",
+        )
+
+
+def test_python_option_terminator_does_not_execute_module():
+    require_codex_hook_owner(
+        "python -- -m codex_plugin_scanner.cli guard hook --harness codex",
+        ownership="unmanaged",
+    )
 
 
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))

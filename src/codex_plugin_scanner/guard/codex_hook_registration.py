@@ -217,18 +217,22 @@ def require_codex_hook_owner(command: str, *, ownership: str) -> None:
     authenticated registration.
     """
     tokens = _command_tokens(command)
-    module_hook = False
+    python_hook = False
     if tokens and Path(tokens[0]).name.lower().startswith("python"):
         payload = tokens[1:]
         while payload and payload[0].startswith("-") and payload[0] not in {"-c", "-m"}:
-            payload = payload[1:]
-        module_hook = (
+            if payload[0] == "--":
+                break
+            operand_count = 2 if payload[0] in {"-W", "-X", "--check-hash-based-pycs"} else 1
+            payload = payload[operand_count:]
+        python_hook = (
             payload[:2] == ["-m", "codex_plugin_scanner.cli"]
             and "guard" in payload[2:]
             and "hook" in payload[2:]
             and _has_codex_harness(" ".join(payload))
         )
-    if ownership == "unmanaged" and (module_hook or _is_live_guard_codex_hook_command(command)):
+        python_hook = python_hook or bool(payload and Path(payload[0]).name == "codex_daemon_hook_bridge.py")
+    if ownership == "unmanaged" and (python_hook or _is_live_guard_codex_hook_command(command)):
         raise RuntimeError(
             "codex_hook_owner_conflict: An existing Codex Guard handler has no verified ownership binding. "
             "Resolve its installation owner before retrying install; existing hooks have been preserved."

@@ -11,6 +11,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+# Extension-bound reviews append a lowercase SHA256 policy-domain digest.
 _NATIVE_REVIEW_BINDING = re.compile(r"native-review-v4:[0-9a-f]{64}(?::[a-z0-9_-]{1,128}){4}(?::[0-9a-f]{64})?")
 
 

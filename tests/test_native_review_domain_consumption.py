@@ -133,6 +133,8 @@ def test_policy_bound_review_has_only_one_concurrent_consumer(tmp_path: Path) ->
 def test_malformed_policy_domain_is_rejected_before_database_access(suffix: str) -> None:
     binding = f"native-review-v4:{'a' * 64}:deny:review:review:native_sensitive_access_review"
     with sqlite3.connect(":memory:") as connection:
+        statements: list[str] = []
+        connection.set_trace_callback(statements.append)
         assert not consume_native_review_approval(
             connection,
             harness="claude-code",
@@ -143,6 +145,7 @@ def test_malformed_policy_domain_is_rejected_before_database_access(suffix: str)
             workspace=None,
             now=datetime.now(timezone.utc).isoformat(),
         )
+        assert not statements
 
 
 def test_policy_domain_cannot_be_stripped_or_substituted(tmp_path: Path) -> None:

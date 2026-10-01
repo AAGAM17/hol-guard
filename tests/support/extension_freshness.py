@@ -30,9 +30,12 @@ def pending_contribution_regen() -> bool:
 
 
 def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *arguments], check=False, capture_output=True, text=True
-    )
+    try:
+        return subprocess.run(
+            ["git", *arguments], check=False, capture_output=True, text=True
+        )
+    except OSError:
+        return subprocess.CompletedProcess(["git", *arguments], 1, "", "")
 
 
 def _pr_diff_paths() -> list[str] | None:
@@ -45,10 +48,12 @@ def _pr_diff_paths() -> list[str] | None:
 
     base_ref = os.environ.get("GITHUB_BASE_REF")
     if base_ref:
-        if _git(
-            "fetch", "-q", "--depth=1", "origin",
+        shallow = _git("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+        fetch = [
+            "fetch", "-q", *( ["--depth=1"] if shallow else []), "origin",
             f"+refs/heads/{base_ref}:refs/remotes/pending-diff/{base_ref}",
-        ).returncode:
+        ]
+        if _git(*fetch).returncode:
             return None
         target = f"pending-diff/{base_ref}"
         result = _git("diff", "--name-only", target, "HEAD")

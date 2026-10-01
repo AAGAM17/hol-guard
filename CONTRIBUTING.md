@@ -164,12 +164,15 @@ checks authoring outside the checkout. Include the relevant CI results in the PR
 2. For a new extension or material authority change, describe the capability boundary and stable
    IDs in a draft pull request using the **Command extension** template. Keep the PR draft until the
    scope is reviewable; maintainers can redirect overlapping IDs there before implementation is complete.
-3. Make one coherent change, with native behavior fixtures when applicable. Never commit
-   regen-owned generated artifacts (catalogs, the native command program, packaged contract
-   copies, digest vectors, the decision-diff report, generated test snapshots): the
-   `generated-artifacts-guard` check rejects them, and `extension-artifact-regen` reproduces them
-   on `main` after merge. (`trust-class-map.v1.json` stays authored — contributions add their
-   `external` entry there; regen only appends unmapped ids.)
+3. Make one coherent change, with native behavior fixtures when applicable. For PRs that
+   change `contributions/**`, do not commit regen-owned generated projections: the
+   `generated-artifacts-guard` check rejects them and `extension-artifact-regen` reproduces them
+   on `main` after merge. For ordinary runtime or compiler changes, the strict native verifier
+   may require the native command program, command catalog, and packaged extension mirrors to be
+   regenerated in the same PR; include those files when `build_native_command_program.py --check`
+   requires them. Secondary projections such as digest vectors, directory renders, decision-diff
+   reports, and generated test anchors remain post-merge-owned. (`trust-class-map.v1.json` stays
+   authored — contributions add their `external` entry there; regen only appends unmapped ids.)
 4. Run the relevant validation and inspect the complete diff.
 5. For a command extension, run `hol-guard extensions handoff` and use the **Command extension**
    PR template. Describe the problem, resulting behavior, exact validation commands, and any

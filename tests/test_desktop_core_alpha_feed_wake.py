@@ -17,9 +17,8 @@ def test_desktop_core_feed_wake_is_narrow_and_least_privilege() -> None:
     value = yaml.safe_load(text)
     events = value[True]
     workflow_path = ".github/workflows/wake-desktop-core-alpha-feed.yml"
-    assert set(events) == {"workflow_run", "release", "issues", "push", "pull_request"}
+    assert set(events) == {"workflow_run", "issues", "push", "pull_request"}
     assert events["workflow_run"] == {"workflows": ["Publish to PyPI"], "types": ["completed"]}
-    assert events["release"] == {"types": ["published"]}
     assert events["issues"] == {"types": ["opened"]}
     assert events["push"] == {"branches": ["main"], "paths": [workflow_path]}
     assert events["pull_request"] == {"paths": [workflow_path]}
@@ -39,8 +38,6 @@ def test_desktop_core_feed_wake_is_narrow_and_least_privilege() -> None:
         "github.event.issue.author_association == 'MEMBER' || "
         "github.event.issue.author_association == 'COLLABORATOR') && "
         "startsWith(github.event.issue.title, '[desktop-core-feed]')) || "
-        "(github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v3.') && "
-        "github.event.release.prerelease == false) || "
         "(github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && "
         "github.event.workflow_run.event == 'push' && "
         "github.event.workflow_run.head_branch == 'main')"

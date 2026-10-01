@@ -22501,10 +22501,10 @@ def test_policy_bundle_exact_artifact_rules_apply_with_workspace_scope(tmp_path)
         expires_at=str(bundle["expiresAt"]),
     )
 
-    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a) == "allow"
-    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a) == "block"
-    assert store.resolve_policy("codex", "codex:project:tool-action:other", "hash", workspace=workspace_a) is None
-    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b) is None
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_a, now="2026-06-05T13:31:00+00:00") == "allow"
+    assert store.resolve_policy("codex", block_artifact, "hash", workspace=workspace_a, now="2026-06-05T13:31:00+00:00") == "block"
+    assert store.resolve_policy("codex", "codex:project:tool-action:other", "hash", workspace=workspace_a, now="2026-06-05T13:31:00+00:00") is None
+    assert store.resolve_policy("codex", allow_artifact, "hash", workspace=workspace_b, now="2026-06-05T13:31:00+00:00") is None
     exact_decisions = [item for item in store.list_policy_decisions() if item["source"] == "policy-bundle"]
     assert {item["scope"] for item in exact_decisions} == {"workspace"}
     stored_workspaces = {item["workspace"] for item in exact_decisions}

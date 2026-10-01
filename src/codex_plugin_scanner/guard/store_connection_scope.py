@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from . import store_review_event_outbox_schema
 from .sqlite_profile import sqlite_error_is_busy_locked
-from .sqlite_recovery import SQLITE_IO_ERROR_MARKER
+from .sqlite_recovery import sqlite_error_is_io
 from .store_base import SQLITE_CACHE_SIZE_KIB, SQLITE_MMAP_SIZE_BYTES, sqlite_connect_timeout_seconds
 
 if TYPE_CHECKING:
@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from .store import GuardStore
 
 _local = threading.local()
-_SQLITE_IOERR_PRIMARY_CODE = 10  # Extended result codes keep the primary code in the low byte.
 
 
 def owns_scope(store: GuardStore) -> bool:
@@ -65,9 +64,7 @@ def scoped_connection(store: GuardStore) -> Iterator[sqlite3.Connection]:
             with method_transaction as connection:
                 yield connection
     except sqlite3.DatabaseError as error:
-        code = getattr(error, "sqlite_errorcode", None)
-        io_error = isinstance(code, int) and code & 0xFF == _SQLITE_IOERR_PRIMARY_CODE
-        if store._is_fatal_sqlite_error(error) or io_error or SQLITE_IO_ERROR_MARKER in str(error).lower():
+        if store._is_fatal_sqlite_error(error) or sqlite_error_is_io(error):
             _local.failure = error
         raise
     finally:

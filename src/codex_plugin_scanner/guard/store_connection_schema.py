@@ -29,6 +29,7 @@ from .sqlite_recovery import (
     SQLITE_IO_ERROR_MARKER,
     restore_readable_sqlite_store,
     salvage_local_cli_state,
+    sqlite_error_is_io,
     sqlite_store_probe_detail,
 )
 
@@ -358,7 +359,7 @@ class StoreConnectionSchemaMixin:
     ) -> bool:
         self._last_sqlite_recovery = "skipped"
         self._last_sqlite_recovery_details = None
-        is_io_error = SQLITE_IO_ERROR_MARKER in str(error).lower()
+        is_io_error = sqlite_error_is_io(error)
         if (
             not isinstance(error, sqlite3.DatabaseError)
             or (not self._is_fatal_sqlite_error(error) and not is_io_error)

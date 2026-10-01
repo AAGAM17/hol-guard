@@ -78,6 +78,17 @@ def recover_review_snapshot_sequences(
 
     for old_sequence in sequences:
         row = rows_by_sequence[old_sequence]
+        later = connection.execute(
+            """
+            select 1 from guard_review_outbox_events
+            where local_request_id = ? and request_sequence > ?
+              and acknowledged_at is null and oauth_source = ?
+            limit 1
+            """,
+            (row["local_request_id"], row["request_sequence"], source),
+        ).fetchone()
+        if later is not None:
+            return {}
         if (
             row["event_id"] != normalized[old_sequence]
             or row["oauth_source"] != source

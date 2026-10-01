@@ -511,7 +511,6 @@ jobs:
           uv run --no-sync pytest @pytest-files.txt --tb=short
 
   mutation-baseline:
-    needs: native-command-evaluators
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: native-command-evaluators
     runs-on: ubuntu-latest

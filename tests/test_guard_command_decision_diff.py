@@ -48,7 +48,9 @@ def _golden_report_framed_digest() -> str:
 
 def test_report_cli_writes_and_checks_framed_digest(tmp_path: Path, monkeypatch) -> None:
     from tests import guard_command_decision_diff as module
+    from tests.support import extension_freshness
 
+    monkeypatch.setattr(extension_freshness, "pending_decision_diff_regen", lambda: False)
     report = {"schema": "synthetic-report"}
     path = tmp_path / "decision-diff-report.json"
     digest_path = path.with_name("decision-diff-report.framed-sha256")

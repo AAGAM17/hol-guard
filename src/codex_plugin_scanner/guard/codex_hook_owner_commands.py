@@ -60,9 +60,7 @@ def _import_api_keywords(tree: ast.AST) -> dict[str, str]:
                 if keyword is not None:
                     calls[imported.asname or imported.name] = keyword
     shadowed = {
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+        node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
     }
     shadowed.update(
         node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))

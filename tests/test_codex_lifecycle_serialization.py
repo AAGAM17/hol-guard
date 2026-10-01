@@ -13,6 +13,16 @@ from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
 from codex_plugin_scanner.guard.adapters.codex_lifecycle_lock import _lifecycle_lock_path, codex_lifecycle_locks
 
 
+@pytest.fixture(autouse=True)
+def lifecycle_account_home(tmp_path, monkeypatch):
+    import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
+
+    profile = tmp_path / "account-profile"
+    profile.mkdir(mode=0o700)
+    monkeypatch.setattr(locks, "_account_home", lambda: profile)
+    return profile
+
+
 @pytest.mark.parametrize("competing_operation", ("install", "uninstall"))
 def test_competing_lifecycle_call_is_rejected_before_discovery(tmp_path, monkeypatch, competing_operation):
     context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard")
@@ -40,7 +50,10 @@ def test_competing_lifecycle_call_is_rejected_before_discovery(tmp_path, monkeyp
             first.result(timeout=5)
 
 
-def _hold_process_lock(home, guard_home, connection):
+def _hold_process_lock(home, guard_home, account_home, connection):
+    import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
+
+    locks._account_home = lambda: Path(account_home)
     context = HarnessContext(home_dir=Path(home), workspace_dir=None, guard_home=Path(guard_home))
     with codex_lifecycle_locks(context):
         connection.send(True)
@@ -48,11 +61,16 @@ def _hold_process_lock(home, guard_home, connection):
 
 
 @pytest.mark.parametrize("owner_exit", ("normal", "interrupted"))
-def test_separate_installation_owners_contend_and_process_exit_releases_lock(tmp_path, owner_exit):
+def test_separate_installation_owners_contend_and_process_exit_releases_lock(
+    tmp_path, owner_exit, lifecycle_account_home
+):
     spawn = multiprocessing.get_context("spawn")
     parent_connection, child_connection = spawn.Pipe()
     home = tmp_path / "home"
-    child = spawn.Process(target=_hold_process_lock, args=(str(home), str(tmp_path / "first-guard"), child_connection))
+    child = spawn.Process(
+        target=_hold_process_lock,
+        args=(str(home), str(tmp_path / "first-guard"), str(lifecycle_account_home), child_connection),
+    )
     child.start()
     child_connection.close()
     context = HarnessContext(home_dir=home, workspace_dir=None, guard_home=tmp_path / "second-guard")
@@ -115,6 +133,19 @@ def test_read_only_workspace_does_not_block_global_lifecycle_lock(tmp_path, monk
     context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=workspace, guard_home=tmp_path / "guard")
     with codex_lifecycle_locks(context):
         assert not (workspace / ".codex").exists()
+
+
+def test_owner_environment_does_not_split_a_configuration_lock(tmp_path, monkeypatch):
+    first_runtime = tmp_path / "first-runtime"
+    second_runtime = tmp_path / "second-runtime"
+    first_runtime.mkdir()
+    second_runtime.mkdir()
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(first_runtime))
+    with codex_lifecycle_locks(context):
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(second_runtime))
+        with pytest.raises(RuntimeError, match="codex_lifecycle_busy"), codex_lifecycle_locks(context):
+            pytest.fail("different owner environments bypassed configuration serialization")
 
 
 def test_configuration_directory_aliases_share_a_lock(tmp_path):

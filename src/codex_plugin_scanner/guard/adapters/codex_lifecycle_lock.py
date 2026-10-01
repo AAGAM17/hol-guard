@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import stat
-import tempfile
 from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager
 from functools import wraps
@@ -13,15 +12,22 @@ from pathlib import Path
 
 from ..daemon.file_locking import try_lock_daemon_file
 from ..mdm.file_lock import release_file_lock
+from ..windows_paths import trusted_windows_user_profile
 from .base import HarnessContext
 
 
+def _account_home() -> Path:
+    if os.name == "nt":
+        return trusted_windows_user_profile()
+    import pwd
+
+    return Path(pwd.getpwuid(os.getuid()).pw_dir)
+
+
 def _lock_base() -> Path:
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime and Path(runtime).is_dir():
-        return Path(runtime) / "hol-guard-codex-lifecycle"
-    user = str(os.getuid()) if hasattr(os, "getuid") else sha256(os.fsencode(Path.home())).hexdigest()
-    return Path(tempfile.gettempdir()) / f"hol-guard-codex-lifecycle-{user}"
+    # CLI and Desktop environments may disagree on HOME, TMPDIR or XDG paths.
+    # Resolve the account through the OS so both owners use the same locks.
+    return _account_home() / ".hol-guard-codex-lifecycle-locks"
 
 
 def _lifecycle_lock_path(directory: Path) -> Path:
@@ -42,8 +48,8 @@ def _lock_identity(path: Path) -> tuple[int, int] | None:
 
 @contextmanager
 def _target_lock(directory: Path) -> Generator[None, None, None]:
-    path = _lifecycle_lock_path(directory)
     try:
+        path = _lifecycle_lock_path(directory)
         path.parent.mkdir(mode=0o700, exist_ok=True)
         # lstat rejects a substituted symlink instead of following it.
         metadata = path.parent.lstat()
@@ -79,9 +85,9 @@ def _target_lock(directory: Path) -> Generator[None, None, None]:
 
 @contextmanager
 def codex_lifecycle_locks(context: HarnessContext) -> Generator[None, None, None]:
-    # Shared user temporary storage avoids writing to read-only projects or
-    # creating configuration directories during a no-op uninstall. Owners in
-    # this temporary namespace contend on resolved configuration identities.
+    # User-private account storage avoids writing to read-only projects or
+    # creating configuration directories during a no-op uninstall. Cooperating
+    # owners under the same OS account share resolved configuration identities.
     # Keep lock files between calls: unlinking them could split concurrent
     # owners across different inodes. Each configuration reuses one file.
     roots = [context.home_dir]

@@ -171,11 +171,27 @@ class _GuardImportCalls(ast.NodeVisitor):
     @override
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
-        identity = self._identity(node.value)
+        bindings = [binding for target in node.targets for binding in self._assignment_bindings(target, node.value)]
         for target in node.targets:
             self.visit(target)
-            if isinstance(target, ast.Name):
-                self._bind(target.id, identity)
+        for name, identity in bindings:
+            self._bind(name, identity)
+
+    def _assignment_bindings(self, target: ast.expr, value: ast.expr) -> list[tuple[str, frozenset[str]]]:
+        if isinstance(target, ast.Name):
+            return [(target.id, self._identity(value))]
+        if (
+            isinstance(target, (ast.Tuple, ast.List))
+            and isinstance(value, (ast.Tuple, ast.List))
+            and len(target.elts) == len(value.elts)
+            and not any(isinstance(item, ast.Starred) for item in (*target.elts, *value.elts))
+        ):
+            return [
+                binding
+                for item, expression in zip(target.elts, value.elts, strict=True)
+                for binding in self._assignment_bindings(item, expression)
+            ]
+        return []
 
     @override
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:

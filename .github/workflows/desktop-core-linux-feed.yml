@@ -206,8 +206,11 @@ jobs:
           gh release view "$CORE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name' > "$RUNNER_TEMP/release-assets.txt"
           mkdir -p "$RUNNER_TEMP/core-marker"
-          gh release download "$CORE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$BASE.attested.json" --dir "$RUNNER_TEMP/core-marker" || true
+          if grep -Fxq "$BASE.attested.json" "$RUNNER_TEMP/release-assets.txt"; then
+            gh release download "$CORE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$BASE.attested.json" --dir "$RUNNER_TEMP/core-marker"
+            test -f "$RUNNER_TEMP/core-marker/$BASE.attested.json"
+          fi
           python3 -I scripts/release/desktop_core_alpha_feed.py inspect-assets \
             --assets "$RUNNER_TEMP/release-assets.txt" --base "$BASE" \
             --marker "$RUNNER_TEMP/core-marker/$BASE.attested.json" \

@@ -10,6 +10,7 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.cli import commands_hook_native_authority as cli
+from codex_plugin_scanner.guard.cli import commands_hook_native_pipeline as pipeline
 from codex_plugin_scanner.guard.daemon.hook_availability_policy import availability_harness_response
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -62,3 +63,27 @@ def test_native_failure_preserves_codex_wire_response(
         assert response["continue"] is True
         assert response["hookSpecificOutput"] == {"hookEventName": event}
     assert response["hookSpecificOutput"]["hookEventName"] == event
+
+
+@pytest.mark.parametrize("event", ("PreToolUse", "PermissionRequest"))
+@pytest.mark.parametrize("json_requested", (False, True))
+def test_pipeline_unavailable_preserves_codex_wire_response(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], event: str, json_requested: bool
+) -> None:
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard-home")
+    payload = {"hook_event_name": event, "tool_name": "Bash", "tool_input": {"command": "printf test > output.txt"}}
+    result = pipeline._emit_native_unavailable(
+        Mock(harness="codex", json=json_requested),
+        payload=payload,
+        workspace=None,
+        context=context,
+        event_name=event,
+        reason_code="native_hook_event_unavailable",
+    )
+    assert result == 0
+    response = json.loads(capsys.readouterr().out)
+    assert response["hookSpecificOutput"]["hookEventName"] == event
+    if event == "PreToolUse":
+        assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+    else:
+        assert response["continue"] is True

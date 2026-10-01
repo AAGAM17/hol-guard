@@ -106,10 +106,7 @@ def _validated_record(
 
     if capture_session is None:
         return (None, "missing_capture_key")
-    if (
-        capture_session.run_id != row_run_id
-        or capture_session.key_id != value.get("key_id")
-    ):
+    if capture_session.run_id != row_run_id or capture_session.key_id != value.get("key_id"):
         return (None, "capture_key_mismatch")
     if capture_session.expires_at <= int(time.time()):
         return (None, "capture_key_expired")
@@ -181,15 +178,11 @@ def join_binding_records(
     issues: list[dict[str, object]] = []
     aggregate_bytes = 0
     aggregate_limit = (
-        min(MAX_CAPTURE_BYTES, capture_session.max_bytes)
-        if capture_session is not None
-        else MAX_CAPTURE_BYTES
+        min(MAX_CAPTURE_BYTES, capture_session.max_bytes) if capture_session is not None else MAX_CAPTURE_BYTES
     )
     aggregate_exceeded = False
     record_limit = (
-        min(MAX_CAPTURE_RECORDS, capture_session.max_records)
-        if capture_session is not None
-        else MAX_CAPTURE_RECORDS
+        min(MAX_CAPTURE_RECORDS, capture_session.max_records) if capture_session is not None else MAX_CAPTURE_RECORDS
     )
     record_limit_exceeded = False
     count = 0
@@ -243,9 +236,7 @@ def join_binding_records(
             joins.append({"status": "ambiguous", "reason": "duplicate_join_rows", "identity": key})
         elif not bridge_rows or not native_rows:
             joins.append({"status": "unbound", "reason": "missing_join_side", "identity": key})
-        elif bridge_rows[0].get("forwarded_payload_hmac_sha256") != native_rows[0].get(
-            "forwarded_payload_hmac_sha256"
-        ):
+        elif bridge_rows[0].get("forwarded_payload_hmac_sha256") != native_rows[0].get("forwarded_payload_hmac_sha256"):
             joins.append({"status": "invalid", "reason": "payload_fingerprint_mismatch", "identity": key})
         else:
             joins.append({"status": "bound", "scope": "native_edge_binding", "identity": key})

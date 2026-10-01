@@ -86,16 +86,22 @@ def test_missing_or_wrong_publication_fails_closed(field: str, value: object) ->
         CODE["require_published_assets"](release, "3.14.0")
 
 
-def test_main_dispatches_both_exact_versions_after_readiness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("branch", ["v3.14.0", "main"])
+def test_main_dispatches_both_exact_versions_after_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, branch: str
+) -> None:
     event = tmp_path / "event.json"
     event.write_text(
-        json.dumps({"workflow_run": {"conclusion": "success", "event": "workflow_dispatch", "head_branch": "v3.14.0"}})
+        json.dumps({"workflow_run": {"conclusion": "success", "event": "workflow_dispatch", "head_branch": branch}})
     )
+    manifest = tmp_path / "publication.txt"
+    manifest.write_text("a" * 64 + "  dist/hol_guard-3.14.0-py3-none-manylinux_2_17_x86_64.whl\n")
     for key, value in {
         "GITHUB_EVENT_NAME": "workflow_run",
         "GITHUB_EVENT_PATH": str(event),
         "REPOSITORY": "hashgraph-online/hol-guard",
         "GH_TOKEN": "fixture",
+        "PUBLICATION_CHECKSUMS": str(manifest),
     }.items():
         monkeypatch.setenv(key, value)
     requests = []
@@ -125,3 +131,37 @@ def test_main_dispatches_both_exact_versions_after_readiness(tmp_path: Path, mon
     for request, workflow in zip(requests[1:], CODE["WORKFLOWS"], strict=True):
         assert request.full_url.endswith(f"/{workflow}/dispatches")
         assert json.loads(request.data) == {"ref": "main", "inputs": {"core_version": "3.14.0"}}
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        [],
+        ["hol_guard-3.14.0a1-py3-none-any.whl"],
+        [
+            "hol_guard-3.14.0-py3-none-any.whl",
+            "hol_guard-3.14.1-py3-none-any.whl",
+        ],
+    ],
+)
+def test_publication_manifest_must_have_one_stable_version(tmp_path: Path, names: list[str]) -> None:
+    path = tmp_path / "publication.txt"
+    path.write_text("".join("a" * 64 + "  dist/" + name + "\n" for name in names))
+    with pytest.raises(RuntimeError):
+        CODE["read_publication_version"](path)
+
+
+def test_publication_manifest_allows_companion_distributions(tmp_path: Path) -> None:
+    path = tmp_path / "publication.txt"
+    path.write_text(
+        "".join(
+            "a" * 64 + "  dist/" + name + "\n"
+            for name in (
+                "hol_guard-3.14.0-py3-none-any.whl",
+                "hol_guard-3.14.0-py3-none-macosx_11_0_arm64.whl",
+                "plugin_scanner-3.14.0-py3-none-any.whl",
+                "hol_guard-3.14.0.tar.gz",
+            )
+        )
+    )
+    assert CODE["read_publication_version"](path) == "3.14.0"

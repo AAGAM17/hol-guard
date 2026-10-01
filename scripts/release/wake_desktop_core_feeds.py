@@ -20,7 +20,7 @@ def dispatch_payload(event_name: str, event: dict, publication_version: str | No
         branch = run.get("head_branch", "")
         if branch == "main" and run.get("event") == "workflow_dispatch":
             if publication_version is None:
-                raise RuntimeError("Completed main publication has no exact version")
+                return None
             return {"ref": "main", "inputs": {"core_version": publication_version}}
         if not isinstance(branch, str) or not re.fullmatch(r"v3\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", branch):
             return None

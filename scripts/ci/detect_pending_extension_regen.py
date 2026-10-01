@@ -44,12 +44,12 @@ def _contributions_changed(base_sha: str) -> list[str]:
     """Compare a verified base, fetching it once when a shallow checkout needs it."""
     if re.fullmatch(r"[0-9a-fA-F]{40}", base_sha) is None:
         raise ContributionDiffError("The comparison base must be a full Git commit SHA")
-    base_sha = base_sha.lower()
+    normalized_sha = base_sha.lower()
 
     def _diff() -> subprocess.CompletedProcess[str]:
         """Read contribution changes without exposing Git output in error messages."""
         return subprocess.run(
-            ["git", "diff", "--name-only", base_sha, "HEAD", "--", "contributions/"],
+            ["git", "diff", "--name-only", normalized_sha, "HEAD", "--", "contributions/"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -62,7 +62,7 @@ def _contributions_changed(base_sha: str) -> list[str]:
         if completed.returncode:
             # Shallow checkouts lack the base commit; fetch it and retry once.
             fetched = subprocess.run(
-                ["git", "fetch", "--depth=1", "origin", base_sha],
+                ["git", "fetch", "--depth=1", "origin", normalized_sha],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -72,8 +72,12 @@ def _contributions_changed(base_sha: str) -> list[str]:
             if fetched.returncode:
                 raise ContributionDiffError("Cannot compare contribution sources: fetching the PR base failed")
             completed = _diff()
-    except (OSError, subprocess.TimeoutExpired, UnicodeError):
-        raise ContributionDiffError("Cannot compare contribution sources: Git failed or timed out") from None
+    except subprocess.TimeoutExpired:
+        raise ContributionDiffError("Cannot compare contribution sources: Git timed out [git_timeout]") from None
+    except UnicodeError:
+        raise ContributionDiffError("Cannot compare contribution sources: Git output unreadable [git_encoding]") from None
+    except OSError:
+        raise ContributionDiffError("Cannot compare contribution sources: Git unavailable [git_process]") from None
     if completed.returncode:
         raise ContributionDiffError("Cannot compare contribution sources: Git diff failed after fetching the PR base")
     return [line for line in completed.stdout.splitlines() if line.strip()]

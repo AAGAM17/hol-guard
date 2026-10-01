@@ -97,7 +97,7 @@ def test_native_build_from_another_execution_is_rejected(field: str, value: int)
         _run([[native, *_jobs()]])
 
 
-@pytest.mark.parametrize("prerequisite", ["coverage-plan", "native-command-evaluators", "both"])
+@pytest.mark.parametrize("prerequisite", ["coverage-plan", "both"])
 @pytest.mark.parametrize("position", ["before", "after", "previous-page"])
 def test_deferred_matrix_classification_uses_the_complete_snapshot(prerequisite: str, position: str) -> None:
     """Prerequisite ordering cannot turn the same invalid matrix into a retry."""
@@ -129,3 +129,26 @@ def test_deferred_matrix_classification_uses_the_complete_snapshot(prerequisite:
         )
     assert type(caught.value) is barrier.ShardWaitError
     assert len(calls) == (2 if position == "previous-page" else 1)
+
+
+@pytest.mark.parametrize("status", ["queued", "in_progress", "completed"])
+@pytest.mark.parametrize("position", ["before", "after", "previous-page"])
+def test_native_prerequisite_alone_does_not_require_an_expanded_coverage_matrix(status: str, position: str) -> None:
+    """Native work can be visible before planning has expanded the coverage matrix."""
+    native = dict(
+        _job(1000),
+        name="native-command-evaluators",
+        status=status,
+        conclusion="success" if status == "completed" else None,
+    )
+    placeholder = dict(_job(1100), name="coverage (3.12, ${{ matrix.shard-index }})", conclusion=None, status="queued")
+    early = [native, placeholder]
+    if position == "after":
+        early = [placeholder, native]
+    elif position == "previous-page":
+        early = [placeholder, *[dict(_job(2000 + i), name=f"other-{i}") for i in range(99)], native]
+    complete_native = dict(native, status="completed", conclusion="success")
+    complete_plan = dict(_job(1200), name="coverage-plan")
+    calls, logs = _run([early, [complete_native, complete_plan, *_jobs()]])
+    assert len(calls) == (4 if position == "previous-page" else 3)
+    assert logs[-1].startswith("All 128 Python coverage shards succeeded")

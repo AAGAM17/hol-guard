@@ -71,7 +71,9 @@ def test_failed_base_lookup_never_returns_unchanged(
 
 
 @pytest.mark.parametrize("phase", [0, 1, 2])
-@pytest.mark.parametrize("error", [OSError("private-os-error"), subprocess.TimeoutExpired("private-command", 30)])
+@pytest.mark.parametrize(
+    "error", [OSError("private-os-error"), subprocess.TimeoutExpired("private-command", 30), UnicodeError("private-bytes")]
+)
 def test_git_transport_errors_are_bounded_and_redacted(
     monkeypatch: pytest.MonkeyPatch, phase: int, error: Exception
 ) -> None:
@@ -81,6 +83,13 @@ def test_git_transport_errors_are_bounded_and_redacted(
     with pytest.raises(RuntimeError, match="Cannot compare contribution sources") as caught:
         detector._contributions_changed(BASE)
     assert "private" not in str(caught.value)
+    expected_code = {
+        OSError: "git_process",
+        subprocess.TimeoutExpired: "git_timeout",
+        UnicodeError: "git_encoding",
+    }
+    assert f"[{expected_code[type(error)]}]" in str(caught.value)
+    assert caught.value.__suppress_context__ is True
     assert len(calls) == phase + 1
 
 

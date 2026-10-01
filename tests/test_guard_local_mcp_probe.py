@@ -34,12 +34,15 @@ from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_i
 @pytest.mark.parametrize(
     ("reason", "code"),
     [
+        ("invalid_launch", "mcp_launch_failed"),
         ("transport_failed", "mcp_transport_failed"),
         ("initialize_failed", "mcp_initialize_failed"),
         ("invalid_initialize", "mcp_initialize_failed"),
         ("invalid_discovery", "mcp_initialize_failed"),
         ("unsupported_protocol", "mcp_protocol_unsupported"),
         ("PRIVATE_PROVIDER_OUTPUT", "discovery_failed"),
+        (None, "discovery_failed"),
+        ("", "discovery_failed"),
     ],
 )
 def test_bound_probe_failure_is_finite_and_unbound_detection_stays_compatible(tmp_path, monkeypatch, reason, code):

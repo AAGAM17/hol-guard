@@ -5946,7 +5946,7 @@ function SkillPreflightPreview({ plan }) {
   ] });
 }
 const CUSTOM_EXTENSION_PREVIEW_COUNT = 8;
-const CUSTOM_EXTENSION_RENDER_LIMIT = 100;
+const CUSTOM_EXTENSION_PAGE_SIZE = 25;
 function CustomExtensionRow(props) {
   const cliId = props.item.cli_id;
   const onOpen = props.onOpen;
@@ -6007,15 +6007,45 @@ function CustomExtensionEmptyState(props) {
 function CustomExtensionsSection(props) {
   const [search, setSearch] = reactExports.useState("");
   const [showAll, setShowAll] = reactExports.useState(false);
-  const all = connectorWorkspaceItems(props.items);
-  const added = search ? connectorWorkspaceItems(props.items, search) : all;
+  const [page, setPage] = reactExports.useState(0);
+  const rowsId = reactExports.useId();
+  const all = reactExports.useMemo(() => connectorWorkspaceItems(props.items), [props.items]);
+  const added = reactExports.useMemo(
+    () => search ? connectorWorkspaceItems(props.items, search) : all,
+    [props.items, search, all]
+  );
   const searchable = all.length > CUSTOM_EXTENSION_PREVIEW_COUNT || search !== "";
   const filteredOut = props.filteredOut === true && search === "";
   const needsReview = added.filter(customExtensionNeedsReview);
   const reviewed = added.filter((item) => !customExtensionNeedsReview(item));
   const grouped = needsReview.length > 0 && reviewed.length > 0;
-  const expandedLimit = showAll ? CUSTOM_EXTENSION_RENDER_LIMIT : CUSTOM_EXTENSION_PREVIEW_COUNT;
-  const visible = added.length > expandedLimit ? added.slice(0, expandedLimit) : added;
+  const pageCount = Math.max(1, Math.ceil(added.length / CUSTOM_EXTENSION_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const handleSearchChange = reactExports.useCallback((event) => {
+    setSearch(event.target.value);
+    setShowAll(false);
+    setPage(0);
+  }, []);
+  const handleClearSearch = reactExports.useCallback(() => {
+    setSearch("");
+    setPage(0);
+  }, []);
+  const handleExpand = reactExports.useCallback(() => {
+    setShowAll(true);
+    setPage(0);
+  }, []);
+  const handleCollapse = reactExports.useCallback(() => {
+    setShowAll(false);
+    setPage(0);
+  }, []);
+  const handlePrevious = reactExports.useCallback(() => {
+    if (currentPage > 0) setPage(currentPage - 1);
+  }, [currentPage]);
+  const handleNext = reactExports.useCallback(() => {
+    if (currentPage < pageCount - 1) setPage(currentPage + 1);
+  }, [currentPage, pageCount]);
+  const start = showAll ? currentPage * CUSTOM_EXTENSION_PAGE_SIZE : 0;
+  const visible = added.slice(start, start + (showAll ? CUSTOM_EXTENSION_PAGE_SIZE : CUSTOM_EXTENSION_PREVIEW_COUNT));
   const visibleNeedsReview = grouped ? visible.filter(customExtensionNeedsReview) : visible;
   const visibleReviewed = grouped ? visible.filter((item) => !customExtensionNeedsReview(item)) : [];
   const unit = added.length === 1 ? "extension" : "extensions";
@@ -6034,10 +6064,7 @@ function CustomExtensionsSection(props) {
             {
               type: "search",
               value: search,
-              onChange: (event) => {
-                setSearch(event.target.value);
-                setShowAll(false);
-              },
+              onChange: handleSearchChange,
               placeholder: "Search connectors",
               className: "min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-normal text-brand-dark sm:w-64"
             }
@@ -6057,9 +6084,9 @@ function CustomExtensionsSection(props) {
         discovering: props.discovering,
         onAdd: props.onAdd,
         onClearFilters: props.onClearFilters,
-        onClearSearch: () => setSearch("")
+        onClearSearch: handleClearSearch
       }
-    ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4", children: [
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4", id: rowsId, children: [
       grouped && visibleNeedsReview.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs font-semibold text-brand-dark/55", children: [
         "Needs review · ",
         needsReview.length
@@ -6070,14 +6097,15 @@ function CustomExtensionsSection(props) {
         reviewed.length
       ] }) : null,
       visibleReviewed.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx(CustomExtensionRow, { item, onOpen: props.onOpen }, item.cli_id)),
-      added.length > visible.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center gap-3", children: [
-        showAll ? null : /* @__PURE__ */ jsxRuntimeExports.jsx(
+      !showAll && added.length > visible.length ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center gap-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             type: "button",
-            onClick: () => setShowAll(true),
+            onClick: handleExpand,
+            "aria-controls": rowsId,
             className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
-            children: added.length > CUSTOM_EXTENSION_RENDER_LIMIT ? `Show first ${CUSTOM_EXTENSION_RENDER_LIMIT}` : `Show all ${added.length} ${unit}`
+            children: added.length > CUSTOM_EXTENSION_PAGE_SIZE ? `Browse all ${added.length} ${unit}` : `Show all ${added.length} ${unit}`
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-brand-dark/70", children: [
@@ -6088,15 +6116,54 @@ function CustomExtensionsSection(props) {
           ". Search to narrow the list."
         ] })
       ] }) : null,
-      showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => setShowAll(false),
-          className: "mt-4 min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
-          children: "Show fewer"
-        }
-      ) : null
+      showAll && added.length > CUSTOM_EXTENSION_PREVIEW_COUNT ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center gap-3", children: [
+        pageCount > 1 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { "aria-label": "Custom extension pages", className: "flex flex-wrap items-center gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              "aria-disabled": currentPage === 0,
+              "aria-controls": rowsId,
+              onClick: handlePrevious,
+              className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50",
+              children: "Previous page"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { role: "status", className: "text-sm text-brand-dark/70 tabular-nums", children: [
+            "Page ",
+            currentPage + 1,
+            " of ",
+            pageCount,
+            " · Showing ",
+            start + 1,
+            "–",
+            start + visible.length,
+            " of ",
+            added.length
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              "aria-disabled": currentPage === pageCount - 1,
+              "aria-controls": rowsId,
+              onClick: handleNext,
+              className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark aria-disabled:opacity-50",
+              children: "Next page"
+            }
+          )
+        ] }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: handleCollapse,
+            "aria-controls": rowsId,
+            className: "min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-brand-dark",
+            children: "Show fewer"
+          }
+        )
+      ] }) : null
     ] })
   ] });
 }

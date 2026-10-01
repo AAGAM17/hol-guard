@@ -94,6 +94,30 @@ class _GuardCommandsProxy:
 guard_commands_module = _GuardCommandsProxy()
 
 
+def _resolve_native_hook_runtime() -> Path:
+    """Resolve the caller-pinned runtime path used by native hook tests.
+
+    A source-tree ``target/release`` or ``target/debug`` binary may belong to
+    another checkout revision. Requiring the explicit CI/local override keeps
+    stale native artifacts from being selected silently. The caller remains
+    responsible for building and provenance-verifying the selected runtime.
+    """
+
+    binary = os.environ.get("HOL_GUARD_NATIVE_BINARY")
+    if not binary:
+        pytest.fail(
+            "HOL_GUARD_NATIVE_BINARY must explicitly name the compiled Rust runtime; "
+            "native retirement proof cannot select a source-tree fallback"
+        )
+    runtime = Path(binary).expanduser()
+    if not runtime.is_file():
+        pytest.fail(f"HOL_GUARD_NATIVE_BINARY does not name an existing runtime file: {runtime}")
+    try:
+        return runtime.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        pytest.fail(f"HOL_GUARD_NATIVE_BINARY could not be resolved: {runtime} ({exc})")
+
+
 @pytest.fixture
 def native_hook_force(monkeypatch: pytest.MonkeyPatch) -> Path:
     """Drive hook entrypoints through the compiled native runtime.
@@ -104,17 +128,7 @@ def native_hook_force(monkeypatch: pytest.MonkeyPatch) -> Path:
     There is no Python fallback, so the runtime is required, not skipped.
     """
 
-    binary = os.environ.get("HOL_GUARD_NATIVE_BINARY")
-    if binary:
-        runtime = Path(binary).expanduser()
-    else:
-        root = Path(__file__).resolve().parents[1]
-        runtime = root / "rust" / "target" / "release" / "hol-guard-runtime"
-        if not runtime.is_file():
-            runtime = root / "rust" / "target" / "debug" / "hol-guard-runtime"
-    if not runtime.is_file():
-        pytest.fail("HOL_GUARD_NATIVE_BINARY must name the compiled Rust runtime; native retirement proof cannot skip")
-    runtime = runtime.resolve(strict=True)
+    runtime = _resolve_native_hook_runtime()
     monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
     monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(runtime))
     return runtime

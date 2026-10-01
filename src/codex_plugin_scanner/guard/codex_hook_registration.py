@@ -130,12 +130,10 @@ def _hook_group_command_blob(group: object) -> str:
 
 
 def _has_codex_harness(blob: str) -> bool:
-    compact = blob.replace(" ", "")
-    return (
-        "--harness codex" in blob
-        or "--harness=codex" in blob
-        or '"--harness","codex"' in compact
-        or "'--harness','codex'" in compact
+    tokens = _command_tokens(blob)
+    return any(
+        token == "--harness=codex" or (token == "--harness" and tokens[index + 1 : index + 2] == ["codex"])
+        for index, token in enumerate(tokens)
     )
 
 
@@ -212,7 +210,12 @@ def _is_live_guard_codex_hook_command(command: str) -> bool:
 
 
 def require_codex_hook_owner(command: str, *, ownership: str) -> None:
-    """Reject competing Guard handlers without silently adopting or deleting them."""
+    """Reject competing Guard handlers without silently adopting or deleting them.
+
+    Legacy module launchers are conflict evidence, not proof of a live managed
+    bridge. Health detection must not promote unowned command syntax to an
+    authenticated registration.
+    """
     tokens = _command_tokens(command)
     module_hook = False
     if tokens and Path(tokens[0]).name.lower().startswith("python"):
@@ -394,22 +397,28 @@ def install_managed_codex_hook_groups(
     *,
     current_guard_home: Path,
 ) -> None:
+    """Append after authenticated and explicitly adopted bindings are removed.
+
+    Remaining Guard handlers have no proven owner; matching command syntax
+    alone cannot authorize their replacement or duplication.
+    """
     for event_name in managed_groups:
         existing = hooks.get(event_name)
         for group in existing if isinstance(existing, list) else []:
-            if not isinstance(group, Mapping):
+            if not isinstance(group, Mapping) or not _hook_entry_is_active(group):
                 continue
             handlers = group.get("hooks")
             for handler in handlers if isinstance(handlers, list) else [group]:
-                if isinstance(handler, Mapping) and isinstance((command := handler.get("command")), str):
+                if (
+                    isinstance(handler, Mapping)
+                    and _hook_entry_is_active(handler)
+                    and isinstance((command := handler.get("command")), str)
+                ):
                     require_codex_hook_owner(command, ownership="unmanaged")
     for event_name, managed_group in managed_groups.items():
         existing = hooks.get(event_name)
         hooks[event_name] = [
-            *prune_foreign_guard_codex_hook_groups(
-                existing if isinstance(existing, list) else [],
-                current_guard_home=current_guard_home,
-            ),
+            *deepcopy(existing if isinstance(existing, list) else []),
             managed_group,
         ]
 

@@ -13,12 +13,48 @@ from codex_plugin_scanner.guard.adapters import codex as codex_adapter
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
 from codex_plugin_scanner.guard.codex_config import dump_toml, read_toml_payload
+from codex_plugin_scanner.guard.codex_hook_registration import require_codex_hook_owner
+
+
+@pytest.mark.parametrize("scope", ("group", "handler"))
+@pytest.mark.parametrize("activation", ({"enabled": False}, {"disabled": True}))
+def test_install_preserves_inactive_unowned_handlers(tmp_path, scope, activation):
+    home = tmp_path / "home"
+    config = home / ".codex" / "config.toml"
+    config.parent.mkdir(parents=True)
+    handler = {"type": "command", "command": "python -m codex_plugin_scanner.cli guard hook --harness codex"}
+    group = {"matcher": "Bash", "hooks": [handler]}
+    (group if scope == "group" else handler).update(activation)
+    config.write_text(dump_toml({"hooks": {"PreToolUse": [group]}}), encoding="utf-8")
+    context = HarnessContext(home_dir=home, workspace_dir=None, guard_home=tmp_path / "guard-home")
+    CodexHarnessAdapter().install(context)
+    groups = read_toml_payload(config)["hooks"]["PreToolUse"]
+    assert group in groups
+    assert len(groups) == 2
+
+
+@pytest.mark.parametrize("argument", ("--harness codex-other", "--harness=codexevil", "--harness claude"))
+def test_other_harness_module_hook_is_not_a_codex_conflict(argument):
+    require_codex_hook_owner(
+        "python -m codex_plugin_scanner.cli guard hook " + argument,
+        ownership="unmanaged",
+    )
+
+
+@pytest.mark.parametrize("argument", ("--harness codex", "--harness=codex"))
+def test_exact_codex_module_hook_requires_ownership(argument):
+    with pytest.raises(RuntimeError, match="codex_hook_owner_conflict"):
+        require_codex_hook_owner(
+            "python -m codex_plugin_scanner.cli guard hook " + argument,
+            ownership="unmanaged",
+        )
 
 
 @pytest.mark.parametrize("binding_kind", ("same_home_bridge", "foreign_home_guard_cli"))
 @pytest.mark.parametrize("source_format", ("toml", "json"))
+@pytest.mark.parametrize("feature_enabled", (True, False))
 def test_install_rejects_unowned_guard_bridge_without_committing(
-    tmp_path: Path, binding_kind: str, source_format: str
+    tmp_path: Path, binding_kind: str, source_format: str, feature_enabled: bool
 ) -> None:
     guard_home = tmp_path / "guard-home"
     home_dir = tmp_path / "home"
@@ -39,7 +75,7 @@ def test_install_rejects_unowned_guard_bridge_without_committing(
     events = ("PreToolUse", "PermissionRequest", "UserPromptSubmit", "PostToolUse")
     hook_payload = {"hooks": {event: [deepcopy(old_bridge), deepcopy(third_party)] for event in events}}
     hooks_path = config_path.with_name("hooks.json")
-    config_payload = {"features": {"hooks": True}, **(hook_payload if source_format == "toml" else {})}
+    config_payload = {"features": {"hooks": feature_enabled}, **(hook_payload if source_format == "toml" else {})}
     config_path.write_text(dump_toml(config_payload), encoding="utf-8")
     if source_format == "json":
         hooks_path.write_text(json.dumps(hook_payload), encoding="utf-8")
@@ -77,7 +113,8 @@ def test_install_rejects_unowned_guard_bridge_without_committing(
         f"integrity={result.get('managed_hook_integrity') if result else None}, manifest={manifest_path.exists()}, "
         f"old_present={old_command in commands}, third_party_present={'lean-ctx hook observe' in commands}"
     )
-    assert "codex_hook_owner_conflict" in str(failure)
+    expected_reason = "codex_hook_owner_conflict" if feature_enabled else "codex_hook_inventory_unmanaged_executable"
+    assert expected_reason in str(failure)
     assert config_path.read_bytes() == before
     if before_json is not None:
         assert hooks_path.read_bytes() == before_json

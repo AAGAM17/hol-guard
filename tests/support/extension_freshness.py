@@ -44,7 +44,10 @@ def _projection_base_sha() -> str | None:
     if event_path:
         try:
             event = json.loads(Path(event_path).read_text(encoding="utf-8"))
-            base_sha = event.get("pull_request", {}).get("base", {}).get("sha")
+            pull_request = event.get("pull_request") if isinstance(event, dict) else None
+            if pull_request is None:
+                return None
+            base_sha = (pull_request.get("base") or {}).get("sha")
         except (OSError, json.JSONDecodeError, AttributeError, TypeError) as error:
             raise RuntimeError(f"Could not read pull-request base revision from {event_path!r}") from error
         if not isinstance(base_sha, str) or not base_sha.strip():

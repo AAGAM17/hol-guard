@@ -35,6 +35,13 @@ class ChangedRegenInputs:
     report_paths: tuple[str, ...] = ()
 
 
+_GENERATED_OUTPUTS = frozenset(
+    {
+        "contracts/extensions/command-catalog.v1.json",
+        "contracts/extensions/native-command-program.v1.json",
+    }
+)
+
 _DECISION_REPORT_FIXED_INPUTS = frozenset(
     {
         "contracts/extensions/command-catalog.v1.json",
@@ -80,6 +87,8 @@ def is_decision_report_input(path: str) -> bool:
     """Return whether ``path`` is hashed into the decision-diff report."""
 
     normalized = path.replace("\\", "/")
+    if normalized in _GENERATED_OUTPUTS:
+        return False
     if normalized in _DECISION_REPORT_FIXED_INPUTS:
         return True
     runtime_prefix = "src/codex_plugin_scanner/guard/runtime/"

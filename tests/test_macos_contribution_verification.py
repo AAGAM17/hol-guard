@@ -22,8 +22,7 @@ def test_native_wheel_verification_selects_pr_base_or_main_push_before_sha() -> 
     """Use a comparison SHA only for PR validation and post-merge main validation."""
     workflow = yaml.safe_load((ROOT / ".github/workflows/native-wheel-ci.yml").read_text())
     assert workflow["env"]["NATIVE_CHANGED_FROM_SHA"] == (
-        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || "
-        "(github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before) || '' }}"
+        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}"
     )
     build = next(
         step

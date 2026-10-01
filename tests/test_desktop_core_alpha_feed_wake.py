@@ -24,7 +24,13 @@ def test_desktop_core_feed_wake_is_narrow_and_least_privilege() -> None:
         "branches": ["main"],
         "paths": [workflow_path, "scripts/release/wake_desktop_core_feeds.py"],
     }
-    assert events["pull_request"] == {"paths": [workflow_path]}
+    assert events["pull_request"] == {
+        "paths": [
+            workflow_path,
+            "scripts/release/wake_desktop_core_feeds.py",
+            "tests/test_wake_desktop_core_feeds.py",
+        ]
+    }
     assert value["permissions"] == {"contents": "read"}
     assert set(value["jobs"]) == {"wake"}
     wake = value["jobs"]["wake"]

@@ -88,18 +88,22 @@ def _walk_json_value(
         try:
             items = cast(dict[object, object], value)
             for key, item in items.items():
-                if type(key) is not str or not _walk_json_value(
-                    key,
-                    depth=depth + 1,
-                    nodes=nodes,
-                    active=active,
-                    maximum_bytes=maximum_bytes,
-                ) or not _walk_json_value(
-                    item,
-                    depth=depth + 1,
-                    nodes=nodes,
-                    active=active,
-                    maximum_bytes=maximum_bytes,
+                if (
+                    type(key) is not str
+                    or not _walk_json_value(
+                        key,
+                        depth=depth + 1,
+                        nodes=nodes,
+                        active=active,
+                        maximum_bytes=maximum_bytes,
+                    )
+                    or not _walk_json_value(
+                        item,
+                        depth=depth + 1,
+                        nodes=nodes,
+                        active=active,
+                        maximum_bytes=maximum_bytes,
+                    )
                 ):
                     return False
             return True

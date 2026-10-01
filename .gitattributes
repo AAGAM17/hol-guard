@@ -24,8 +24,9 @@
 /contracts/extensions/trust-class-map.v1.json text eol=lf
 
 
-# Regen-owned generated artifacts (extension-artifact-regen.yml); collapsed in
-# diffs and blocked from PRs by generated-artifacts-guard.
+# Generated artifacts (extension-artifact-regen.yml); collapsed in diffs.
+# Secondary projections are blocked from PRs, while strict native verification
+# may require the native program/catalog mirrors in non-contribution PRs.
 /contracts/extensions/native-command-program.v1.json linguist-generated
 /contracts/extensions/command-catalog.v1.json linguist-generated
 /contracts/managed-controls/v1/extension-projection-digest-vector.json linguist-generated

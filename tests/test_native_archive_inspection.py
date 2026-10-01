@@ -1047,3 +1047,35 @@ def test_archive_worker_aborts_when_orphaned(native_hook_force: Path, state_dir:
     if content:
         payload = json.loads(content)
         assert payload["status"] != "clean"
+
+
+def test_archive_worker_orphaned_by_closed_liveness_channel(
+    native_hook_force: Path, state_dir: Path, tmp_path: Path
+) -> None:
+    """A liveness pipe whose write end already closed — a parent that died
+    before the worker armed its guards — must fail the inspection as orphaned
+    even while getppid still reports the adopting supervisor."""
+    archive_path, digest = _archive_path(tmp_path, [("package/readme.txt", b"safe")])
+    state_dir.mkdir(parents=True, exist_ok=True)
+    request = _worker_request(archive_path, digest, state_dir)
+
+    read_fd, write_fd = os.pipe()
+    try:
+        os.set_inheritable(read_fd, True)
+        # The supervising side is already gone before the worker starts.
+        os.close(write_fd)
+        completed = subprocess.run(
+            [str(native_hook_force), "archive-inspect", "--stdin"],
+            input=request,
+            capture_output=True,
+            timeout=15,
+            env={**os.environ, "HOL_GUARD_PARENT_LIVENESS_FD": str(read_fd)},
+            pass_fds=(read_fd,),
+            check=False,
+        )
+    finally:
+        os.close(read_fd)
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "incomplete"
+    assert payload["code"] == "external_archive_inspection_orphaned"

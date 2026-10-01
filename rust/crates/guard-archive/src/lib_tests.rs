@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::{inspect_path, ArchiveCaps, ArchiveStatus};
 
-fn caps() -> ArchiveCaps {
+pub(crate) fn caps() -> ArchiveCaps {
     ArchiveCaps {
         max_archive_bytes: 6 * 1024 * 1024,
         max_files: 500,
@@ -17,7 +17,7 @@ fn caps() -> ArchiveCaps {
     }
 }
 
-fn never_halt() -> bool {
+pub(crate) fn never_halt() -> bool {
     false
 }
 
@@ -55,12 +55,18 @@ fn inspect_with_caps(bytes: &[u8], caps: &ArchiveCaps) -> crate::ArchiveOutcome 
     outcome
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::Digest;
     hex::encode(sha2::Sha256::digest(bytes))
 }
 
-fn tar_member(name: &str, typeflag: u8, size: u64, linkname: &str, data: &[u8]) -> Vec<u8> {
+pub(crate) fn tar_member(
+    name: &str,
+    typeflag: u8,
+    size: u64,
+    linkname: &str,
+    data: &[u8],
+) -> Vec<u8> {
     let mut block = [0u8; 512];
     let name_bytes = name.as_bytes();
     block[..name_bytes.len().min(100)].copy_from_slice(&name_bytes[..name_bytes.len().min(100)]);
@@ -93,7 +99,7 @@ fn tar_member(name: &str, typeflag: u8, size: u64, linkname: &str, data: &[u8]) 
     out
 }
 
-fn tar_archive(members: Vec<Vec<u8>>) -> Vec<u8> {
+pub(crate) fn tar_archive(members: Vec<Vec<u8>>) -> Vec<u8> {
     let mut out = Vec::new();
     for member in members {
         out.extend(member);
@@ -449,56 +455,6 @@ fn path_depth_limit_enforced() {
 }
 
 #[test]
-fn elapsed_deadline_produces_timeout() {
-    let tar = tar_archive(vec![tar_member("a", b'0', 1, "", b"x")]);
-    let dir = std::env::temp_dir().join("guard-archive-deadline");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path: PathBuf = dir.join("blob.tar");
-    std::fs::write(&path, &tar).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-    }
-    let sha = sha256_hex(&tar);
-    let outcome = inspect_path(
-        &path,
-        &sha,
-        &caps(),
-        Instant::now() - Duration::from_secs(1),
-        &never_halt,
-    );
-    std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(outcome.status, ArchiveStatus::Incomplete);
-    assert_eq!(outcome.code, "external_archive_inspection_timeout");
-}
-
-#[test]
-fn halt_predicate_stops_inspection() {
-    let tar = tar_archive(vec![tar_member("a", b'0', 1, "", b"x")]);
-    let dir = std::env::temp_dir().join("guard-archive-halt");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path: PathBuf = dir.join("blob.tar");
-    std::fs::write(&path, &tar).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-    }
-    let sha = sha256_hex(&tar);
-    let outcome = inspect_path(
-        &path,
-        &sha,
-        &caps(),
-        Instant::now() + Duration::from_secs(30),
-        &|| true,
-    );
-    std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(outcome.status, ArchiveStatus::Halted);
-    assert_eq!(outcome.code, "external_archive_inspection_incomplete");
-}
-
-#[test]
 fn non_utf8_member_name_scanned_bytewise() {
     let member = {
         let mut m = tar_member("a", b'0', 1, "", b"x");
@@ -519,74 +475,4 @@ fn non_utf8_member_name_scanned_bytewise() {
     let outcome = inspect_bytes(&tar);
     // Lossy display names are only presentation; path policy ran on raw bytes.
     assert_eq!(outcome.status, ArchiveStatus::Clean, "{outcome:?}");
-}
-
-#[test]
-fn missing_blob_is_incomplete_not_blocked() {
-    let dir = std::env::temp_dir().join("guard-archive-missing");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path: PathBuf = dir.join("absent.tar");
-    let outcome = inspect_path(
-        &path,
-        &"0".repeat(64),
-        &caps(),
-        Instant::now() + Duration::from_secs(5),
-        &never_halt,
-    );
-    std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(outcome.status, ArchiveStatus::Incomplete);
-    assert_eq!(outcome.code, "external_archive_inspection_incomplete");
-}
-
-#[test]
-fn symlink_leaf_blob_rejected() {
-    let tar = tar_archive(vec![tar_member("a", b'0', 1, "", b"x")]);
-    let dir = std::env::temp_dir().join("guard-archive-symlink-leaf");
-    std::fs::create_dir_all(&dir).unwrap();
-    let real = dir.join("real.tar");
-    let link = dir.join("link.tar");
-    std::fs::write(&real, &tar).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o444)).unwrap();
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-    }
-    let sha = sha256_hex(&tar);
-    let outcome = inspect_path(
-        &link,
-        &sha,
-        &caps(),
-        Instant::now() + Duration::from_secs(5),
-        &never_halt,
-    );
-    std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(outcome.status, ArchiveStatus::Blocked);
-    assert_eq!(outcome.code, "external_archive_blob_rejected");
-}
-
-#[test]
-fn hardlinked_blob_rejected() {
-    let tar = tar_archive(vec![tar_member("a", b'0', 1, "", b"x")]);
-    let dir = std::env::temp_dir().join("guard-archive-hardlink");
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("blob.tar");
-    std::fs::write(&path, &tar).unwrap();
-    std::fs::hard_link(&path, dir.join("second.tar")).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-    }
-    let sha = sha256_hex(&tar);
-    let outcome = inspect_path(
-        &path,
-        &sha,
-        &caps(),
-        Instant::now() + Duration::from_secs(5),
-        &never_halt,
-    );
-    std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(outcome.status, ArchiveStatus::Blocked);
-    assert_eq!(outcome.code, "external_archive_blob_rejected");
 }

@@ -6,17 +6,19 @@
 //! then hands the digest-bound blob to `guard_archive`. Every inspection
 //! outcome is a typed result on stdout with exit code 0; transport-level
 //! failures exit nonzero so the caller fails closed.
+//!
+//! Admission, limits, sandbox application, and capability probes live in
+//! `archive_inspect_containment`; this module owns request handling,
+//! lifecycle supervision, and result binding.
 
 #[cfg(unix)]
-use std::fs::{File, OpenOptions};
+use std::path::Path;
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 #[cfg(unix)]
 use std::time::Duration;
 use std::time::Instant;
 
-#[cfg(unix)]
-use fs2::FileExt;
 use guard_archive::{ArchiveCaps, ArchiveOutcome, ArchiveStatus};
 use guard_contracts::{
     ArchiveInspectionCountersV1, ArchiveInspectionRequestV1, ArchiveInspectionResultV1,
@@ -27,27 +29,22 @@ use guard_contracts::{
 };
 use sha2::{Digest, Sha256};
 
-const MAX_ARCHIVE_PATH_BYTES: usize = 16 * 1024;
-#[cfg(unix)]
-/// Lease file inside the caller-declared Guard home. Exactly one archive
-/// inspector may hold it at a time across client processes and runtime
-/// generations; contenders get a bounded `overloaded` result, never a queue.
-const ARCHIVE_LEASE_NAME: &str = "archive-inspect.lock";
-
-/// In-process seatbelt profile for the archive worker. The `sandbox-exec`
-/// wrapper the caller applies can only deny `network*` — a profile applied
-/// before `execvp` cannot deny `process-exec` without preventing the launch
-/// itself — so the full denial set is applied here, after start, and then
-/// proven by the capability probes below.
+use crate::archive_inspect_containment::sandbox_unavailable;
 #[cfg(target_os = "macos")]
-const ARCHIVE_SEATBELT_PROFILE: &str = "(version 1) (allow default) (deny network*) \
-     (deny file-write*) (deny process-exec) (deny process-fork)";
+use crate::archive_inspect_containment::warm_allocator_regions;
+#[cfg(unix)]
+use crate::archive_inspect_containment::{
+    acquire_archive_lease, apply_capability_deny, apply_child_limits, network_capability_denied,
+    spawn_capability_denied, write_capability_denied,
+};
+
+const MAX_ARCHIVE_PATH_BYTES: usize = 16 * 1024;
 
 /// Arm parent-death termination and capture the spawning process identity.
 /// On Linux the kernel delivers SIGKILL when the parent thread dies — even
-/// for a parent that exits while this worker is mid-parse. There is no
-/// Darwin equivalent, so the halt closure below also polls `getppid`; an
-/// already-reparented worker (`ppid == 1` at capture) aborts up front.
+/// for a parent that exits while this worker is mid-parse. Darwin has no
+/// equivalent, so `run_inspection` also watches the inherited liveness pipe
+/// and polls `getppid` for a reparent onto init.
 #[cfg(unix)]
 fn arm_parent_death_guard() -> i32 {
     #[cfg(target_os = "linux")]
@@ -55,78 +52,6 @@ fn arm_parent_death_guard() -> i32 {
         let _ = nix::sys::prctl::set_pdeathsig(Some(nix::sys::signal::Signal::SIGKILL));
     }
     nix::unistd::getppid().as_raw()
-}
-
-/// Take the native one-inspector lease for this request's Guard home. The
-/// worker — not the caller — owns admission, so direct CLI invocations and
-/// adapter callers contend on the same kernel lease. `Ok(None)` means a peer
-/// already holds it: the result is `overloaded`, not a queued wait.
-#[cfg(unix)]
-fn acquire_archive_lease(state_dir: &str) -> Result<Option<(File, PathBuf)>, ArchiveOutcome> {
-    let canonical = match std::fs::canonicalize(state_dir) {
-        Ok(path) if path.is_dir() => path,
-        _ => {
-            return Err(ArchiveOutcome::incomplete(
-                "external_archive_inspection_incomplete",
-                "External archive inspection lease could not be established.",
-                None,
-            ));
-        }
-    };
-    let lease_path = canonical.join(ARCHIVE_LEASE_NAME);
-    let file = match OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&lease_path)
-    {
-        Ok(file) => file,
-        Err(_) => {
-            return Err(ArchiveOutcome::incomplete(
-                "external_archive_inspection_incomplete",
-                "External archive inspection lease could not be established.",
-                None,
-            ));
-        }
-    };
-    match file.try_lock_exclusive() {
-        Ok(()) => Ok(Some((file, lease_path))),
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-        Err(_) => Err(ArchiveOutcome::incomplete(
-            "external_archive_inspection_incomplete",
-            "External archive inspection lease could not be established.",
-            None,
-        )),
-    }
-}
-
-/// Probe that writes are actually denied: opening the already-held lease
-/// file for writing must fail under seccomp (openat flagged) and seatbelt
-/// (file-write*). A successful open means no sandbox is active.
-#[cfg(unix)]
-fn write_capability_denied(lease_path: &Path) -> bool {
-    OpenOptions::new().write(true).open(lease_path).is_err()
-}
-
-/// Probe that child creation is actually denied: under seccomp `clone`
-/// fails, under seatbelt `process-exec`/`process-fork` deny `posix_spawn`.
-/// A spawned child means containment is absent, so reap it and fail closed.
-#[cfg(unix)]
-fn spawn_capability_denied() -> bool {
-    match std::process::Command::new("/bin/true")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        Err(_) => true,
-        Ok(mut child) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            false
-        }
-    }
 }
 
 pub(crate) fn evaluate_archive_inspection_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -139,6 +64,10 @@ pub(crate) fn evaluate_archive_inspection_bytes(bytes: &[u8]) -> Result<Vec<u8>,
     let request: ArchiveInspectionRequestV1 = serde_json::from_value(value)
         .map_err(|_| "archive_inspection_request_invalid".to_owned())?;
     let request_sha256 = hex::encode(Sha256::digest(bytes));
+    // Self-hash up front, inside the caller's budget: hashing the runtime
+    // binary after inspection could push the result write past the kill, and
+    // a contender that loses the lease should not wait on it either.
+    let runtime_sha256 = crate::resident_state::runtime_digest()?;
     let outcome = match validated_caps(&request) {
         Some(caps) => run_inspection(&request, caps, original_parent),
         None => ArchiveOutcome::incomplete(
@@ -147,7 +76,6 @@ pub(crate) fn evaluate_archive_inspection_bytes(bytes: &[u8]) -> Result<Vec<u8>,
             None,
         ),
     };
-    let runtime_sha256 = crate::resident_state::runtime_digest()?;
     let result = ArchiveInspectionResultV1 {
         schema: ARCHIVE_INSPECTION_RESULT_SCHEMA.to_owned(),
         request_id: request.request_id.clone(),
@@ -223,14 +151,6 @@ fn validated_caps(request: &ArchiveInspectionRequestV1) -> Option<ArchiveCaps> {
     })
 }
 
-fn sandbox_unavailable() -> ArchiveOutcome {
-    ArchiveOutcome::incomplete(
-        "external_archive_sandbox_unavailable",
-        "External archive resource sandbox is unavailable on this platform.",
-        None,
-    )
-}
-
 #[cfg(not(unix))]
 fn run_inspection(
     _request: &ArchiveInspectionRequestV1,
@@ -252,7 +172,22 @@ fn run_inspection(
     // and turn ordinary post-limit allocations into sporadic aborts.
     #[cfg(target_os = "macos")]
     warm_allocator_regions();
-    // Lease first: it needs a writable open, so it must happen before the
+    // Arm the inherited liveness channel before containment: the watcher
+    // thread it spawns would itself be denied by the clone/exec deny rules.
+    // When the supervising caller dies the pipe write-end closes and the
+    // flag flips — including a death that landed before this worker started.
+    let parent_alive = match crate::resident_transport_service::resident_parent_liveness() {
+        Ok(flag) => flag,
+        Err(_) => {
+            return ArchiveOutcome::incomplete(
+                "external_archive_inspection_orphaned",
+                "External archive inspection lost its supervising process.",
+                None,
+            );
+        }
+    };
+    let has_liveness_channel = std::env::var_os(crate::PARENT_LIVENESS_FD_ENV).is_some();
+    // Lease next: it needs a writable open, so it must happen before the
     // capability deny turns off file-write*. Holding the `File` keeps the
     // kernel lock until this process exits, covering crash paths.
     let lease = match acquire_archive_lease(&request.state_dir) {
@@ -282,9 +217,14 @@ fn run_inspection(
     {
         return sandbox_unavailable();
     }
-    // A worker already reparented to init at capture time was orphaned before
-    // inspection began; there is no caller left to answer.
-    if original_parent <= 1 {
+    // Orphaned workers have no caller left to answer. A closed liveness pipe
+    // is authoritative; a ppid that changed since capture means init adopted
+    // us. When no channel was supplied, a PID-1 parent cannot be proven
+    // alive, so it is refused — adapters always pass the channel.
+    if !parent_alive.load(Ordering::Acquire)
+        || nix::unistd::getppid().as_raw() != original_parent
+        || (!has_liveness_channel && original_parent <= 1)
+    {
         return ArchiveOutcome::incomplete(
             "external_archive_inspection_orphaned",
             "External archive inspection lost its supervising process.",
@@ -295,8 +235,7 @@ fn run_inspection(
     // If the spawning parent disappears the inspection is orphaned: stop
     // rather than burn the budget unattributed.
     let halt = move || {
-        let parent = nix::unistd::getppid().as_raw();
-        parent != original_parent || parent <= 1
+        !parent_alive.load(Ordering::Acquire) || nix::unistd::getppid().as_raw() != original_parent
     };
     guard_archive::inspect_path(
         Path::new(&request.archive_path),
@@ -305,310 +244,4 @@ fn run_inspection(
         deadline,
         &halt,
     )
-}
-
-/// `_child_limits` port: CPU, file-descriptor, and address-space bounds that
-/// must all be established before parsing untrusted bytes. Returns false when
-/// any required limit cannot be applied — the caller fails closed.
-#[cfg(unix)]
-fn apply_child_limits(timeout_ms: u64, max_memory_bytes: u64) -> bool {
-    use nix::sys::resource::{getrlimit, setrlimit, Resource};
-
-    let cpu_seconds = timeout_ms.div_ceil(1000).max(1);
-    let cpu_ok = match getrlimit(Resource::RLIMIT_CPU) {
-        Ok((_soft, hard)) => {
-            let limit = if hard == u64::MAX {
-                cpu_seconds
-            } else {
-                cpu_seconds.min(hard)
-            };
-            limit > 0
-                && setrlimit(
-                    Resource::RLIMIT_CPU,
-                    limit,
-                    if hard == u64::MAX { u64::MAX } else { hard },
-                )
-                .is_ok()
-        }
-        Err(_) => false,
-    };
-    let files_ok = match getrlimit(Resource::RLIMIT_NOFILE) {
-        Ok((_soft, hard)) => {
-            let limit = if hard == u64::MAX {
-                32
-            } else {
-                32u64.min(hard)
-            };
-            limit >= 8 && setrlimit(Resource::RLIMIT_NOFILE, limit, hard).is_ok()
-        }
-        Err(_) => false,
-    };
-    let memory_ok = apply_address_space_limit(max_memory_bytes);
-    cpu_ok && files_ok && memory_ok
-}
-
-#[cfg(unix)]
-fn apply_address_space_limit(max_memory_bytes: u64) -> bool {
-    use nix::sys::resource::{getrlimit, setrlimit, Resource};
-
-    let current_virtual = current_virtual_size_bytes().unwrap_or(0);
-    // Darwin materializes shared-cache submaps and allocator reservations on
-    // demand after measurement, so the kernel's map accounting can exceed the
-    // sampled task vsize by hundreds of MB. A fixed slack keeps the ceiling
-    // enforceable for real growth without aborting ordinary allocations.
-    #[cfg(target_os = "macos")]
-    let slack_bytes = 512 * 1024 * 1024u64;
-    #[cfg(not(target_os = "macos"))]
-    let slack_bytes = 0u64;
-    let memory_limit = current_virtual
-        .saturating_add(max_memory_bytes)
-        .saturating_add(slack_bytes);
-    match getrlimit(Resource::RLIMIT_AS) {
-        Ok((_soft, hard)) => {
-            let applied = if hard == u64::MAX {
-                memory_limit
-            } else {
-                memory_limit.min(hard)
-            };
-            if applied <= current_virtual {
-                return false;
-            }
-            if setrlimit(Resource::RLIMIT_AS, applied, applied).is_err() {
-                return false;
-            }
-            match getrlimit(Resource::RLIMIT_AS) {
-                Ok((soft, hard)) => current_virtual < soft && soft <= applied && hard == soft,
-                Err(_) => false,
-            }
-        }
-        Err(_) => false,
-    }
-}
-
-/// Force lazy allocator regions to exist before `RLIMIT_AS` is computed from
-/// the current virtual size. A `Vec` per size class materializes the Darwin
-/// malloc zones and the Rust arena reservations the worker will rely on; the
-/// reservations persist after the buffers drop, so the measured limit stays
-/// above them. Untouched pages are never committed.
-#[cfg(target_os = "macos")]
-fn warm_allocator_regions() {
-    for size in [64usize, 4 * 1024, 64 * 1024, 1024 * 1024, 16 * 1024 * 1024] {
-        let mut region = vec![0u8; size];
-        region[0] = 1;
-        region[size - 1] = 1;
-    }
-}
-
-/// The process's current address-space footprint. On Darwin the shared cache
-/// is mapped into every task, so the AS limit must be incremental over the
-/// kernel's own accounting — `proc_taskinfo.pti_virtual_size` is the same
-/// value the retired Python worker read via `task_info(TASK_BASIC_INFO)`.
-/// On Linux the incremental component is zero — the budget is absolute.
-#[cfg(target_os = "macos")]
-fn current_virtual_size_bytes() -> Option<u64> {
-    use libproc::proc_pid::pidinfo;
-    use libproc::task_info::TaskInfo;
-
-    let info = pidinfo::<TaskInfo>(std::process::id() as i32, 0).ok()?;
-    (info.pti_virtual_size > 0).then_some(info.pti_virtual_size)
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-fn current_virtual_size_bytes() -> Option<u64> {
-    Some(0)
-}
-
-/// Capability denial: on Linux a seccomp deny-list removes the socket and
-/// process families outright; on macOS the worker applies its own seatbelt
-/// profile in-process — the `sandbox-exec` wrapper cannot deny exec without
-/// blocking the launch, so the stricter profile must land after start.
-/// Other Unix targets have no containment layer to verify, so inspection is
-/// unavailable.
-#[cfg(unix)]
-fn apply_capability_deny() -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        apply_seccomp_deny_list().is_ok()
-    }
-    #[cfg(target_os = "macos")]
-    {
-        guard_seatbelt::apply(ARCHIVE_SEATBELT_PROFILE)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        false
-    }
-}
-
-/// Probe that outbound network is actually denied before parsing untrusted
-/// bytes. Under seccomp the socket call itself fails; under seatbelt the
-/// socket is created but connect is denied. Anything else means the worker
-/// has unmediated network and must refuse to inspect.
-#[cfg(unix)]
-fn network_capability_denied() -> bool {
-    use nix::sys::socket::{connect, socket, AddressFamily, SockFlag, SockType, SockaddrIn};
-    use std::os::fd::AsRawFd;
-
-    let descriptor = match socket(
-        AddressFamily::Inet,
-        SockType::Stream,
-        SockFlag::empty(),
-        None,
-    ) {
-        Ok(descriptor) => descriptor,
-        Err(_) => return true,
-    };
-    let loopback = SockaddrIn::new(127, 0, 0, 1, 9);
-    matches!(
-        connect(descriptor.as_raw_fd(), &loopback),
-        Err(nix::errno::Errno::EPERM) | Err(nix::errno::Errno::EACCES)
-    )
-}
-
-/// Linux deny-list: network creation, process creation/exec, io_uring, and
-/// filesystem-mutation syscalls return EPERM. The inspection code never uses
-/// them, so the list is a kernel enforcement of the worker's documented
-/// behavior — matching the retired Python audit hook's deny set.
-#[cfg(target_os = "linux")]
-fn apply_seccomp_deny_list() -> Result<(), ()> {
-    use seccompiler::{
-        apply_filter, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter, SeccompRule,
-        TargetArch,
-    };
-    use std::collections::BTreeMap;
-
-    fn deny(syscall: i64) -> (i64, Vec<SeccompRule>) {
-        (syscall, Vec::new())
-    }
-    fn deny_flagged(syscall: i64, arg_index: u8, flag: u64) -> (i64, Vec<SeccompRule>) {
-        let condition = SeccompCondition::new(
-            arg_index,
-            SeccompCmpArgLen::Qword,
-            SeccompCmpOp::MaskedEq(flag),
-            flag,
-        )
-        .expect("static seccomp condition");
-        (
-            syscall,
-            vec![SeccompRule::new(vec![condition]).expect("non-empty rule")],
-        )
-    }
-
-    let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
-    for syscall in [
-        libc::SYS_socket,
-        libc::SYS_socketpair,
-        libc::SYS_clone,
-        libc::SYS_clone3,
-        libc::SYS_execve,
-        libc::SYS_execveat,
-        libc::SYS_ptrace,
-        libc::SYS_bpf,
-        libc::SYS_perf_event_open,
-        libc::SYS_kexec_load,
-        libc::SYS_kexec_file_load,
-        libc::SYS_init_module,
-        libc::SYS_finit_module,
-        libc::SYS_delete_module,
-        libc::SYS_mount,
-        libc::SYS_umount2,
-        libc::SYS_pivot_root,
-        libc::SYS_chroot,
-        libc::SYS_unshare,
-        libc::SYS_setns,
-        libc::SYS_io_uring_setup,
-        libc::SYS_io_uring_enter,
-        libc::SYS_io_uring_register,
-        libc::SYS_mkdirat,
-        libc::SYS_unlinkat,
-        libc::SYS_renameat,
-        libc::SYS_renameat2,
-        libc::SYS_linkat,
-        libc::SYS_symlinkat,
-        libc::SYS_mknodat,
-        libc::SYS_fchmod,
-        libc::SYS_fchmodat,
-        libc::SYS_fchown,
-        libc::SYS_fchownat,
-        libc::SYS_truncate,
-        libc::SYS_ftruncate,
-        libc::SYS_fallocate,
-        libc::SYS_utimensat,
-        libc::SYS_setxattr,
-        libc::SYS_lsetxattr,
-        libc::SYS_fsetxattr,
-        libc::SYS_removexattr,
-        libc::SYS_lremovexattr,
-        libc::SYS_fremovexattr,
-        // openat2 flags live in a user-space struct the filter cannot
-        // inspect, and open_by_handle_at bypasses the path walk; both must
-        // be denied unconditionally to keep the write denial complete.
-        libc::SYS_openat2,
-        libc::SYS_open_by_handle_at,
-        libc::SYS_open_tree,
-        libc::SYS_move_mount,
-        libc::SYS_fsopen,
-        libc::SYS_fsmount,
-        libc::SYS_fsconfig,
-        libc::SYS_fspick,
-        libc::SYS_mount_setattr,
-    ] {
-        rules.insert(syscall, deny(syscall).1);
-    }
-    // Legacy single-argument syscalls absent on aarch64/riscv64 (the *at
-    // variants above already cover their semantics there).
-    #[cfg(target_arch = "x86_64")]
-    for syscall in [
-        libc::SYS_fork,
-        libc::SYS_vfork,
-        libc::SYS_creat,
-        libc::SYS_mkdir,
-        libc::SYS_rmdir,
-        libc::SYS_unlink,
-        libc::SYS_rename,
-        libc::SYS_link,
-        libc::SYS_symlink,
-        libc::SYS_mknod,
-        libc::SYS_chmod,
-        libc::SYS_chown,
-        libc::SYS_lchown,
-        libc::SYS_utime,
-        libc::SYS_utimes,
-        libc::SYS_futimesat,
-    ] {
-        rules.insert(syscall, deny(syscall).1);
-    }
-    // Open-with-write family: any access-mode or destructive flag bit set.
-    // open() carries flags in arg1, openat(dirfd, path, flags, mode) in arg2;
-    // libc/glibc issue openat exclusively, so the arg2 rule is the one that
-    // actually gates writes.
-    for flag in [
-        libc::O_WRONLY as u64,
-        libc::O_RDWR as u64,
-        libc::O_CREAT as u64,
-        libc::O_TRUNC as u64,
-        libc::O_APPEND as u64,
-        libc::O_TMPFILE as u64,
-    ] {
-        #[cfg(target_arch = "x86_64")]
-        rules
-            .entry(libc::SYS_open)
-            .or_default()
-            .extend(deny_flagged(libc::SYS_open, 1, flag).1);
-        rules
-            .entry(libc::SYS_openat)
-            .or_default()
-            .extend(deny_flagged(libc::SYS_openat, 2, flag).1);
-    }
-    let filter = SeccompFilter::new(
-        rules,
-        seccompiler::SeccompAction::Allow,
-        seccompiler::SeccompAction::Errno(libc::EPERM as u32),
-        // Unknown architectures must not silently receive x86_64's filter;
-        // seccompiler kills the process on arch mismatch, so fail closed.
-        TargetArch::try_from(std::env::consts::ARCH).map_err(|_| ())?,
-    )
-    .map_err(|_| ())?;
-    let program: seccompiler::BpfProgram = filter.try_into().map_err(|_| ())?;
-    apply_filter(&program).map_err(|_| ())
 }

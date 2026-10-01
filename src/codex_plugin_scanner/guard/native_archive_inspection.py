@@ -220,6 +220,7 @@ def inspect_archive_native(
         environment=_worker_environment(),
         deadline_monotonic=deadline_monotonic,
         output_limit=_RESULT_MAX_BYTES + 1024,
+        parent_liveness=True,
     )
     if completed.timed_out:
         return _result(

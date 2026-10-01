@@ -14,6 +14,7 @@ permissions:
 
 env:
   UV_HTTP_TIMEOUT: "120"
+  NATIVE_CHANGED_FROM_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before) || '' }}
 
 concurrency:
   group: native-wheel-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -68,7 +69,6 @@ jobs:
       - name: Build and assemble version-matched native wheel
         env:
           HOL_GUARD_BUILD_SHA: ${{ github.sha }}
-          NATIVE_PR_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
           PLATFORM_TAG: ${{ matrix.platform_tag }}
           TARGET: ${{ matrix.target }}
@@ -177,8 +177,8 @@ jobs:
           HOL_GUARD_PACKAGE_VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check)
           export HOL_GUARD_PACKAGE_VERSION
           arguments=(--compiler rust/target/x86_64-unknown-linux-musl/release/guard-command-source)
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            arguments+=(--changed-from "${{ github.event.pull_request.base.sha }}")
+          if [[ -n "${NATIVE_CHANGED_FROM_SHA}" ]]; then
+            arguments+=(--changed-from "${NATIVE_CHANGED_FROM_SHA}")
           fi
           uv run --no-sync python scripts/ci/verify_native_command_program.py "${arguments[@]}"
           rust/target/x86_64-unknown-linux-musl/release/guard-command-source compile < source-build.json > source-compiled.json
@@ -364,8 +364,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:HOL_GUARD_PACKAGE_VERSION = $version.Trim()
           $arguments = @("--compiler", "rust/target/release/guard-command-source.exe")
-          if ("${{ github.event_name }}" -eq "pull_request") {
-            $arguments += @("--changed-from", "${{ github.event.pull_request.base.sha }}")
+          if ($env:NATIVE_CHANGED_FROM_SHA) {
+            $arguments += @("--changed-from", $env:NATIVE_CHANGED_FROM_SHA)
           }
           uv run --no-sync python scripts/ci/verify_native_command_program.py @arguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

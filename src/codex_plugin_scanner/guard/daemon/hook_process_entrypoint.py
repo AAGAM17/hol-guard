@@ -77,9 +77,7 @@ def _hook_evaluator_ready_timeout_seconds() -> float:
     ``HOL_GUARD_HOOK_EVALUATOR_READY_TIMEOUT_SECONDS``.  Bounded by a floor and
     a hard cap so a misconfiguration cannot wedge startup.
     """
-    outer = _parse_timeout_env(
-        os.environ.get(_HOOK_WORKER_READY_TIMEOUT_ENV), _HOOK_EVALUATOR_READY_TIMEOUT_SECONDS
-    )
+    outer = _parse_timeout_env(os.environ.get(_HOOK_WORKER_READY_TIMEOUT_ENV), _HOOK_EVALUATOR_READY_TIMEOUT_SECONDS)
     derived_floor = _HOOK_EVALUATOR_READY_TIMEOUT_SECONDS
     if outer is not None:
         derived_floor = max(
@@ -248,9 +246,7 @@ def _hook_evaluator_loop(
         if message_type == "close_native_resident_clients":
             from ..native_resident_client import close_native_resident_clients
 
-            guard_home = (
-                Path(configured_guard_home).resolve(strict=False) if configured_guard_home is not None else None
-            )
+            guard_home = Path(configured_guard_home).resolve(strict=False) if configured_guard_home is not None else None
             close_native_resident_clients(guard_home)
             try:
                 connection.send(("closed_native_resident_clients", None))

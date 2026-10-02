@@ -83,7 +83,7 @@ fn validate_identifier(v: &str) -> WfResult<()> {
 /// `validate_workflow_capability_identifier(name, value)` — the named-export
 /// validator used across the authority-state/transition modules; rejects with
 /// `invalid_{name}` (a per-field reason), not `invalid_identifier`.
-pub(crate) fn validate_workflow_capability_identifier(
+pub fn validate_workflow_capability_identifier(
     name: &'static str,
     v: &str,
 ) -> WfResult<()> {
@@ -260,6 +260,36 @@ impl WorkflowCapabilityBinding {
         };
         binding.validate()?;
         Ok(binding)
+    }
+
+    /// `to_value` — canonical binding `Value` for canonical-JSON persistence.
+    pub fn to_value(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("operation_id".into(), Value::String(self.operation_id.clone()));
+        m.insert("resource_type".into(), Value::String(self.resource_type.clone()));
+        m.insert("resource_sha256".into(), Value::String(self.resource_sha256.clone()));
+        m.insert("repository_sha256".into(), Value::String(self.repository_sha256.clone()));
+        m.insert("workspace_sha256".into(), Value::String(self.workspace_sha256.clone()));
+        m.insert("executable_sha256".into(), Value::String(self.executable_sha256.clone()));
+        m.insert("launch_sha256".into(), Value::String(self.launch_sha256.clone()));
+        m.insert("policy_id".into(), Value::String(self.policy_id.clone()));
+        m.insert("policy_version".into(), Value::String(self.policy_version.clone()));
+        m.insert("effect_id".into(), Value::String(self.effect_id.clone()));
+        m.insert("effect_version".into(), Value::String(self.effect_version.clone()));
+        m.insert("decision_id".into(), Value::String(self.decision_id.clone()));
+        m.insert("decision_version".into(), Value::String(self.decision_version.clone()));
+        let rules: Vec<Value> = self
+            .rules
+            .iter()
+            .map(|r| {
+                let mut rm = Map::new();
+                rm.insert("rule_id".into(), Value::String(r.rule_id.clone()));
+                rm.insert("rule_version".into(), Value::String(r.rule_version.clone()));
+                Value::Object(rm)
+            })
+            .collect();
+        m.insert("rules".into(), Value::Array(rules));
+        Value::Object(m)
     }
 }
 
@@ -585,6 +615,26 @@ impl WorkflowCapabilityReceipt {
             .validate()
             .map_err(|_| WorkflowCapabilityError("invalid_receipt_binding"))
     }
+
+    /// `to_value` — canonical receipt `Value`.
+    pub fn to_value(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
+        m.insert("receipt_id".into(), Value::String(self.receipt_id.clone()));
+        m.insert("capability_id".into(), Value::String(self.capability_id.clone()));
+        m.insert("task_id".into(), Value::String(self.task_id.clone()));
+        m.insert("invocation_id".into(), Value::String(self.invocation_id.clone()));
+        m.insert(
+            "approval_provenance_id".into(),
+            Value::String(self.approval_provenance_id.clone()),
+        );
+        m.insert("claim_sha256".into(), Value::String(self.claim_sha256.clone()));
+        m.insert("binding".into(), self.binding.to_value());
+        m.insert("use_number".into(), Value::from(self.use_number));
+        m.insert("event_id".into(), Value::from(self.event_id));
+        m.insert("claimed_at".into(), Value::String(self.claimed_at.clone()));
+        Value::Object(m)
+    }
 }
 
 /// `SignedWorkflowCapabilityReceipt`.
@@ -619,6 +669,77 @@ pub fn canonical_framed_payload(purpose: &str, payload: &Value) -> WfResult<Vec<
     out.extend_from_slice(&canonical);
     Ok(out)
 }
+
+/// `_canonical_json` — the store-side canonical serializer for a `to_value`.
+/// Used to persist `signed_claim_json`/`signed_receipt_json`/event payloads
+/// byte-identically to Python `json.dumps(sort_keys=True,separators=(",",":"),ensure_ascii=True)`.
+pub fn capability_canonical_json(value: &Value) -> WfResult<String> {
+    let mut out = Vec::new();
+    write_canonical_json(value, &mut out)
+        .map_err(|_| WorkflowCapabilityError("invalid_canonical_payload"))?;
+    String::from_utf8(out).map_err(|_| WorkflowCapabilityError("invalid_canonical_payload"))
+}
+
+impl SignedWorkflowCapability {
+    /// `to_dict` — canonical-JSON encode of the signed-claim envelope, the
+    /// exact bytes persisted into `signed_claim_json`.
+    pub fn to_canonical_json(&self) -> WfResult<String> {
+        capability_canonical_json(&self.to_value())
+    }
+
+    /// `from_dict` over a canonical JSON string (the `_decode_signed_claim`
+    /// store helper).
+    pub fn from_canonical_json(encoded: &str) -> WfResult<Self> {
+        let payload: Value = serde_json::from_str(encoded)
+            .map_err(|_| WorkflowCapabilityError("capability_claim_invalid"))?;
+        Self::decode(&payload)
+    }
+}
+
+impl SignedWorkflowCapabilityReceipt {
+    /// `to_value` — canonical receipt-envelope `Value`.
+    pub fn to_value(&self) -> Value {
+        let mut m = Map::new();
+        m.insert(
+            "envelope_schema".into(),
+            Value::String(self.envelope_schema.clone()),
+        );
+        m.insert("algorithm".into(), Value::String(self.algorithm.clone()));
+        m.insert("receipt".into(), self.receipt.to_value());
+        m.insert("key_id".into(), Value::String(self.key_id.clone()));
+        m.insert("signature".into(), Value::String(self.signature.clone()));
+        Value::Object(m)
+    }
+
+    /// `to_dict` — canonical-JSON encode of the signed-receipt envelope.
+    pub fn to_canonical_json(&self) -> WfResult<String> {
+        capability_canonical_json(&self.to_value())
+    }
+
+    /// `from_dict` over a canonical JSON string.
+    pub fn from_canonical_json(encoded: &str) -> WfResult<Self> {
+        let payload: Value = serde_json::from_str(encoded)
+            .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
+        let m = strict_object(&payload, SIGNED_RECEIPT_KEYS)
+            .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
+        let receipt = WorkflowCapabilityReceipt::decode(require(&m, "receipt")?)
+            .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
+        Ok(SignedWorkflowCapabilityReceipt {
+            envelope_schema: require_str(&m, "envelope_schema")
+                .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
+            algorithm: require_str(&m, "algorithm")
+                .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
+            receipt,
+            key_id: require_str(&m, "key_id")
+                .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
+            signature: require_str(&m, "signature")
+                .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
+        })
+    }
+}
+
+const SIGNED_RECEIPT_KEYS: &[&str] =
+    &["envelope_schema", "algorithm", "receipt", "key_id", "signature"];
 
 fn hmac_hex(key: &[u8], message: &[u8]) -> String {
     let mut mac = <HmacSha256 as Mac>::new_from_slice(key).expect("hmac accepts any key length");
@@ -714,6 +835,38 @@ pub fn sign_workflow_capability_receipt(
         key_id: key_id.to_string(),
         signature: hmac_hex(key, &framed),
     })
+}
+
+/// `verify_workflow_capability_receipt` — recompute the envelope signature and
+/// compare in constant time. Mirrors `sign_workflow_capability_receipt`'s
+/// framed `receipt-envelope` payload.
+pub fn verify_workflow_capability_receipt(
+    signed: &SignedWorkflowCapabilityReceipt,
+    key: &[u8],
+    key_id: &str,
+) -> WfResult<()> {
+    validate_key(key)?;
+    validate_identifier(key_id)?;
+    if signed.envelope_schema != WORKFLOW_CAPABILITY_RECEIPT_ENVELOPE_SCHEMA {
+        return err("unsupported_receipt_envelope");
+    }
+    if signed.receipt.schema_version != WORKFLOW_CAPABILITY_RECEIPT_SCHEMA {
+        return err("unsupported_receipt_schema");
+    }
+    if signed.algorithm != WORKFLOW_CAPABILITY_ALGORITHM {
+        return err("unsupported_receipt_algorithm");
+    }
+    validate_identifier(&signed.key_id)?;
+    validate_sha256(&signed.signature)?;
+    if signed.key_id != key_id {
+        return err("receipt_key_mismatch");
+    }
+    let expected =
+        sign_workflow_capability_receipt(signed.receipt.clone(), key, key_id)?.signature;
+    if !constant_time_eq(expected.as_bytes(), signed.signature.as_bytes()) {
+        return err("receipt_signature_invalid");
+    }
+    Ok(())
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {

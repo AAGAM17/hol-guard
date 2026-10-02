@@ -86,6 +86,11 @@ def read_contained_test_request(path: Path, expected_sha256: str, *, workspace: 
         ):
             raise _reject()
         payload = value["payload"]
+        if "cwd" in payload and (
+            not isinstance(payload["cwd"], str)
+            or Path(payload["cwd"]).resolve(strict=True) != workspace.resolve(strict=True)
+        ):
+            raise _reject()
         tool_input = payload.get("tool_input")
         if (
             payload.get("hook_event_name") != "PreToolUse"

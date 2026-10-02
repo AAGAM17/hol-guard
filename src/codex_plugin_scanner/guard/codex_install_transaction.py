@@ -46,6 +46,22 @@ class CodexInstallOwner:
 _OWNER: ContextVar[CodexInstallOwner | None] = ContextVar("codex_install_owner", default=None)
 
 
+@contextmanager
+def _home_owner_lock(guard_home: Path, *, deadline: float | None = None) -> Iterator[None]:
+    deadline = time.monotonic() + 5 if deadline is None else deadline
+    home = guard_home.resolve(strict=False)
+    with _locks_guard:
+        lock = _locks.setdefault(str(home), threading.RLock())
+    if not lock.acquire(timeout=max(0, deadline - time.monotonic())):
+        raise TimeoutError("Codex installation transaction deadline exceeded.")
+    owning_pid = os.getpid()
+    try:
+        yield
+    finally:
+        if owning_pid == os.getpid():
+            lock.release()
+
+
 def _after_fork_child() -> None:
     global _locks, _locks_guard, _open_lock_handles, _process_identity, _dropped_events
     # A fork duplicates the locked open-file description. Close only the
@@ -168,20 +184,12 @@ def codex_install_transaction(
     # Same-home callers contend on this lock before any target file lock.
     # The home directory is created only after the configuration lock is held,
     # so a competing path cannot leave a new home behind.
-    with _locks_guard:
-        lock = _locks.setdefault(str(home), threading.RLock())
-    if not lock.acquire(timeout=max(0, deadline - time.monotonic())):
-        raise TimeoutError("Codex installation transaction deadline exceeded.")
-    owning_pid = os.getpid()
-    try:
+    with _home_owner_lock(guard_home, deadline=deadline):
         with (
             codex_configuration_lock(config_path, deadline=deadline),
             _guard_home_install_transaction(guard_home, config_path, actor=actor, deadline=deadline) as owner,
         ):
             yield owner
-    finally:
-        if owning_pid == os.getpid():
-            lock.release()
 
 
 @contextmanager

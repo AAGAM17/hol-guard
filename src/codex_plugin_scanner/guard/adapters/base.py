@@ -165,10 +165,11 @@ _MutationResult = TypeVar("_MutationResult")
 def _owned_adapter_mutation(method: Callable[..., _MutationResult]) -> Callable[..., _MutationResult]:
     @wraps(method)
     def owned(self: HarnessAdapter, context: HarnessContext, *args: object, **kwargs: object) -> _MutationResult:
-        from ..codex_install_transaction import codex_install_transaction
+        from ..codex_install_transaction import _home_owner_lock, codex_install_transaction
         from ..runtime_transition import assert_transition_mutation_allowed
 
         with ExitStack() as ownership:
+            ownership.enter_context(_home_owner_lock(context.guard_home))
             if self.harness == "codex":
                 from .codex_lifecycle_lock import codex_lifecycle_locks
 

@@ -32,6 +32,15 @@ fn one(capability: &'static str) -> Capabilities {
     Some(vec![capability])
 }
 
+pub(super) fn arguments_are_read_only(arguments: &[String]) -> bool {
+    classify(arguments).is_some_and(|capabilities| {
+        !capabilities.is_empty()
+            && capabilities
+                .iter()
+                .all(|capability| matches!(*capability, "read_local" | "read_remote"))
+    })
+}
+
 fn classify(original: &[String]) -> Capabilities {
     // Quoted dynamic-looking values are deliberately outside this small native
     // grammar too. Distinguishing their expansion provenance needs literal proof.

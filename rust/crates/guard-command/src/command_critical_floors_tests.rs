@@ -93,6 +93,7 @@ fn to_v1(row: &V1Row) -> CanonicalCommandV1 {
         uncertainty_reason: row.uncertainty_reason.clone(),
         path_overridden: row.path_overridden,
         parser_profile: row.parser_profile.clone(),
+        security_identity: String::new(),
     }
 }
 
@@ -182,6 +183,7 @@ fn explicitly_allowed_github_capabilities_pass_through() {
         uncertainty_reason: None,
         path_overridden: false,
         parser_profile: "posix".to_owned(),
+        security_identity: String::new(),
     });
     // With AdminMergeRemote allowed, the gh factor is suppressed.
     let suppressed = command_critical_floor_factors(

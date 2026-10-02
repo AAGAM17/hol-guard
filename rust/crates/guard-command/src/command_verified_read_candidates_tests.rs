@@ -86,6 +86,7 @@ fn to_v1(row: &V1Row) -> CanonicalCommandV1 {
         uncertainty_reason: row.uncertainty_reason.clone(),
         path_overridden: row.path_overridden,
         parser_profile: row.parser_profile.clone(),
+        security_identity: String::new(),
     }
 }
 

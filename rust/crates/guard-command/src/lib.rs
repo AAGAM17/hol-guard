@@ -10,6 +10,8 @@ pub mod command_evaluation;
 mod command_critical_floors;
 #[cfg(test)]
 mod command_critical_floors_tests;
+#[cfg(test)]
+mod command_evaluation_tests;
 pub mod command_decision_adapter;
 mod command_operand_matchers;
 mod command_option_parsing;
@@ -17,6 +19,7 @@ mod command_specialized_matchers;
 mod command_structured_matchers;
 pub mod effect_decision;
 mod command_verified_read_candidates;
+mod command_workspace_write_candidates;
 #[cfg(test)]
 mod command_verified_read_candidates_tests;
 pub mod canonical_command;
@@ -105,6 +108,13 @@ pub struct CanonicalCommandV1 {
     pub uncertainty_reason: Option<String>,
     pub path_overridden: bool,
     pub parser_profile: String,
+    /// Python `CanonicalCommand.security_identity` — the authoritative
+    /// `command-security-v2:` digest serialized on `to_dict`. The wire omits
+    /// embedded-command `text` and redirect spans, so the identity cannot be
+    /// re-derived from the public model; the resident path supplies it. Empty
+    /// string on the pure-native path → `from_v1` recomputes it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub security_identity: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,6 +262,7 @@ pub fn parse_command(request: &CommandModelRequestV1) -> Result<CanonicalCommand
         uncertainty_reason: None,
         path_overridden,
         parser_profile: parser_profile.to_owned(),
+        security_identity: String::new(),
     })
 }
 
@@ -268,6 +279,7 @@ fn uncertain(request: &CommandModelRequestV1, raw: &str, reason: &str) -> Canoni
         uncertainty_reason: Some(reason.to_owned()),
         path_overridden: false,
         parser_profile: "posix-simple-v1".to_owned(),
+        security_identity: String::new(),
     }
 }
 

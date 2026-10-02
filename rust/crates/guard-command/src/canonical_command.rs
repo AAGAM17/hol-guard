@@ -73,8 +73,14 @@ pub struct CanonicalCommand {
 }
 
 impl CanonicalCommand {
-    /// Project a `CanonicalCommandV1` into the evaluation-facing model,
-    /// computing `security_identity` (native path ⇒ empty redirects/embedded).
+    /// Project a `CanonicalCommandV1` into the evaluation-facing model.
+    ///
+    /// `security_identity`: the wire carries Python's authoritative digest
+    /// (embedded-command `text` and redirect spans are not on the public model,
+    /// so the identity cannot be re-derived). An empty `security_identity`
+    /// means the pure-native path — recompute it over the empty
+    /// redirect/embedded projection (`build_command_security_identity` for the
+    /// `redirects=()`/`embedded_commands=()` case).
     pub fn from_v1(command: &CanonicalCommandV1) -> Self {
         Self {
             normalized_text: command.normalized_text.clone(),
@@ -83,7 +89,11 @@ impl CanonicalCommand {
             extraction_provenance: command.extraction_provenance.clone(),
             wrapper_chain: command.wrapper_chain.clone(),
             segments: command.segments.clone(),
-            security_identity: command_security_identity(command),
+            security_identity: if command.security_identity.is_empty() {
+                command_security_identity(command)
+            } else {
+                command.security_identity.clone()
+            },
             confidence: command.confidence.clone(),
             uncertainty_reason: command.uncertainty_reason.clone(),
             path_overridden: command.path_overridden,
@@ -145,6 +155,7 @@ mod tests {
             uncertainty_reason: None,
             path_overridden: false,
             parser_profile: "posix".to_owned(),
+            security_identity: String::new(),
         };
         assert_eq!(
             command_security_identity(&command),

@@ -84,7 +84,11 @@ pub struct CatalogExtension {
     pub source: String,
     pub required: bool,
     pub trust_class: String,
+    #[serde(default)]
     pub aliases: Vec<String>,
+    /// `dependencies` — resolver extension-closure input.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
     pub rules: Vec<CatalogRule>,
     pub permissions: Vec<CatalogPermission>,
 }

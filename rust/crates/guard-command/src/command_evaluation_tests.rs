@@ -170,10 +170,14 @@ fn evaluate_command_matches_python_oracle() {
     let raw = include_str!("../testdata/evaluate_command_oracle.json");
     let mut fixture: Fixture = serde_json::from_str(raw).expect("oracle parses");
     let catalog = packaged_command_catalog().expect("packaged catalog loads");
+    let pinned_catalog_digest = fixture.catalog_digest.clone();
+    assert_eq!(
+        catalog.catalog_digest, pinned_catalog_digest,
+        "oracle was generated against a different catalog; regenerate testdata/evaluate_command_oracle.json"
+    );
     // The packaged program/catalog digests rotate whenever the compiled
-    // artifacts are regenerated (post-merge regen workflow). The oracle pins
-    // them at authoring time, so substitute the live pair before evaluation —
-    // the binding check still rejects actual mismatches per row.
+    // artifacts are regenerated (post-merge regen workflow). The binding check
+    // still rejects actual mismatches per row after substituting the live pair.
     fixture.catalog_digest = catalog.catalog_digest.clone();
     for row in &mut fixture.cases {
         if let Some(binding) = row
@@ -192,11 +196,6 @@ fn evaluate_command_matches_python_oracle() {
             );
         }
     }
-    assert_eq!(
-        catalog.catalog_digest, fixture.catalog_digest,
-        "oracle was generated against a different catalog"
-    );
-
     let snapshot = NativeCommandControlBindingV1 {
         schema: guard_contracts::NATIVE_COMMAND_CONTROL_BINDING_SCHEMA.to_owned(),
         program_digest: catalog.program_digest.clone(),

@@ -1,0 +1,20 @@
+name: One-off fixture repair source transfer
+on:
+  push:
+    branches: [work/fixture-repair-transfer-20261002]
+    paths: [.github/workflows/fixture-repair-transfer.yml]
+permissions:
+  contents: write
+jobs:
+  transfer:
+    if: github.repository == 'hashgraph-online/hol-guard' && github.ref == 'refs/heads/work/fixture-repair-transfer-20261002'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Verify and upload source blobs without changing refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .repair-transfer/transfer.py

@@ -2,15 +2,18 @@
 
 import json
 import sqlite3
+import urllib.error
+import urllib.request
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from codex_plugin_scanner.guard.approval_gate import ApprovalGateInput, require_approval_decision
+from codex_plugin_scanner.guard.approval_gate import ApprovalGateError, ApprovalGateInput, require_approval_decision
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution, bulk_allow_read_only_once
 from codex_plugin_scanner.guard.config import GuardConfig
+from codex_plugin_scanner.guard.daemon import GuardDaemonServer
 from codex_plugin_scanner.guard.mcp_tool_calls import evaluate_tool_call
 from codex_plugin_scanner.guard.models import PolicyDecision
 from codex_plugin_scanner.guard.proxy import OpenCodeMcpGuardProxy
@@ -59,6 +62,10 @@ def _save_rule(store, request, action):
         "corrupt",
         "final-catalog",
         "postclaim-config",
+        "host",
+        "config-path",
+        "connection",
+        "source-scope",
     ],
 )
 def test_fresh_opencode_reapproval_runs_exactly_once(
@@ -110,7 +117,48 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     request = store.list_approval_requests(limit=1)[0]
     if mutation == "older-allow":
         _save_rule(store, request, "allow")
-    if grant_kind == "single":
+    if mutation.startswith("http-"):
+        policies_before = store.list_policy_decisions()
+        daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
+        daemon.start()
+        review = urllib.request.Request(
+            f"http://127.0.0.1:{daemon.port}/v1/requests/{request['request_id']}/approve",
+            data=b"{" if mutation == "http-malformed" else b'{"scope":"artifact"}',
+            headers={"Content-Type": "application/json", "X-Guard-Token": daemon._server.auth_token},
+            method="POST",
+        )
+        try:
+            if mutation == "http-unavailable":
+                daemon.stop()
+                with pytest.raises(urllib.error.URLError):
+                    urllib.request.urlopen(review, timeout=2)
+            else:
+                with pytest.raises(urllib.error.HTTPError) as rejected:
+                    urllib.request.urlopen(review, timeout=5)
+                assert rejected.value.code == (400 if mutation == "http-malformed" else 403)
+        finally:
+            daemon.stop()
+        assert store.list_policy_decisions() == policies_before
+        assert store.get_approval_request(request["request_id"])["status"] == "pending"
+        assert proxy.config == config
+    elif mutation in {"unavailable-review", "malformed-review"}:
+        policies_before = store.list_policy_decisions()
+        kwargs = {"mcp_grant_target": "connection"} if mutation == "malformed-review" else {}
+        expected_error = ValueError if mutation == "malformed-review" else ApprovalGateError
+        with pytest.raises(expected_error):
+            apply_approval_resolution(
+                store=store,
+                request_id=request["request_id"],
+                action="allow",
+                scope="artifact",
+                workspace=str(ctx.workspace_dir),
+                reason="synthetic invalid review must not grant authority",
+                **kwargs,
+            )
+        assert store.list_policy_decisions() == policies_before
+        assert store.get_approval_request(request["request_id"])["status"] == "pending"
+        assert proxy.config == config
+    elif grant_kind == "single":
         apply_approval_resolution(
             store=store,
             request_id=request["request_id"],
@@ -138,8 +186,8 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
             workspace=str(ctx.workspace_dir),
             publisher=None,
             action="allow",
-            created_at="2026-10-02T00:00:00+00:00",
-            expires_at="2099-10-02T00:00:00+00:00",
+            created_at="2000-10-02T00:00:00+00:00" if mutation == "expired" else "2026-10-02T00:00:00+00:00",
+            expires_at="2000-10-03T00:00:00+00:00" if mutation == "expired" else "2099-10-02T00:00:00+00:00",
         )
     if mutation == "args":
         messages[2]["params"]["arguments"] = {"target": "different.txt"}
@@ -147,6 +195,14 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
         proxy.command[-1] = proxy.command[-1].replace("Write a synthetic issue", "Changed tool definition")
     elif mutation == "config":
         proxy._current_config_provider = lambda: replace(config, risk_actions={"mcp_dangerous_tool": "block"})
+    elif mutation == "host":
+        proxy.harness = "claude-code"
+    elif mutation == "config-path":
+        proxy.config_path = str(ctx.workspace_dir / ".opencode" / "other-config.json")
+    elif mutation == "connection":
+        proxy.server_name = "another-synthetic-connection"
+    elif mutation == "source-scope":
+        proxy.source_scope = "global"
     elif mutation == "corrupt":
         with sqlite3.connect(ctx.guard_home / "guard.db") as connection:
             for table in ("policy_decisions", "guard_local_once_approvals"):
@@ -228,6 +284,16 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
 def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, install_fake_system_keyring):
     test_fresh_opencode_reapproval_runs_exactly_once(
         tmp_path, monkeypatch, install_fake_system_keyring, "retained", "none"
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["expired", "unavailable-review", "malformed-review", "http-malformed", "http-missing-auth", "http-unavailable"],
+)
+def test_invalid_review_never_launches(tmp_path, monkeypatch, install_fake_system_keyring, mutation):
+    test_fresh_opencode_reapproval_runs_exactly_once(
+        tmp_path, monkeypatch, install_fake_system_keyring, "local-once", mutation
     )
 
 

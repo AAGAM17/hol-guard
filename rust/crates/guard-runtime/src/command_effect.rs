@@ -17,12 +17,12 @@
 use std::path::PathBuf;
 
 use super::context_digest_json::write_canonical_json_with_limit;
+#[cfg(unix)]
+use guard_command::command_shell_read_factors::shell_read_floor_factors;
 use guard_command::extension_control::{
     ControlLayerKind, ControlState, ControlTarget, ControlTargetKind, ExtensionControl,
     ExtensionControlLayer,
 };
-#[cfg(unix)]
-use guard_command::command_shell_read_factors::shell_read_floor_factors;
 use guard_command::{
     canonical_command::CanonicalCommand,
     github_workflow_authorization::GitHubWorkflowAuthorizationV1,

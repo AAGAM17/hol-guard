@@ -1020,7 +1020,7 @@ impl RsaPssVerify for RingRsaPssVerify {
         if !(2048..=8192).contains(&modulus_bits) {
             return Err("RSA modulus must be between 2048 and 8192 bits".to_string());
         }
-        let encoded_message_len = ((modulus_bits - 1).div_ceil(8)) as usize;
+        let encoded_message_len = (modulus_bits - 1).div_ceil(8);
         let salt_len = encoded_message_len - Sha256::output_size() - 2;
         let verifying_key = RsaPssVerifyingKey::<Sha256>::new_with_salt_len(public_key, salt_len);
         let signature = RsaPssSignature::try_from(signature)

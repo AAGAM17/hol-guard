@@ -233,7 +233,7 @@ fn current_uid() -> i64 {
                 }
             }
         }
-        return -1;
+        -1
     }
     #[cfg(not(target_os = "linux"))]
     {

@@ -42,6 +42,7 @@ from ..local_supply_chain import (
     compose_current_package_policy_action,
     package_request_policy_hash,
 )
+from ..mcp_fresh_approval import fresh_claim_allows_reapproval
 from ..mcp_tool_calls import (
     ApprovalReuseClaimDisposition,
     ToolCallDecision,
@@ -51,7 +52,6 @@ from ..mcp_tool_calls import (
     build_tool_call_hash,
     claimed_approval_authorizes_postclaim_review,
     evaluate_tool_call,
-    fresh_local_tool_approval_matches,
     resolve_tool_call_policy_action,
     tool_call_risk_categories,
     tool_call_risk_summary,
@@ -65,7 +65,7 @@ from ..runtime.approval_context import (
     resolved_runtime_launch_executable,
     runtime_launch_identity_matches,
 )
-from ..runtime.approval_reuse import APPROVAL_REUSE_CLAIM_FAILED, APPROVAL_REUSE_NO_SAVED_DECISION
+from ..runtime.approval_reuse import APPROVAL_REUSE_CLAIM_FAILED
 from ..runtime.browser_mcp_intent import normalize_browser_mcp_intent
 from ..runtime.composio_contract import composio_requires_action_review
 from ..runtime.harness_attribution import origin_harness_env
@@ -2898,12 +2898,12 @@ class RuntimeMcpGuardProxy:
                 not context_matches
                 or (
                     fresh_action == "require-reapproval"
-                    and not (
-                        claim_disposition == "consumed"
-                        and fresh_decision.approval_reuse_reason_code in {None, APPROVAL_REUSE_NO_SAVED_DECISION}
-                        and fresh_local_tool_approval_matches(
-                            pending, artifact=fresh_authority.artifact, artifact_hash=fresh_authority.artifact_hash
-                        )
+                    and not fresh_claim_allows_reapproval(
+                        claim_disposition=claim_disposition,
+                        reason_code=fresh_decision.approval_reuse_reason_code,
+                        decision=pending,
+                        artifact=fresh_authority.artifact,
+                        artifact_hash=fresh_authority.artifact_hash,
                     )
                 )
                 or (fresh_action == "review" and not claim_authorizes_review)

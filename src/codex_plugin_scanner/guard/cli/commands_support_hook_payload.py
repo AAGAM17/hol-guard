@@ -727,7 +727,11 @@ def _headless_approval_resolver(
 
         try:
             daemon_client = load_guard_surface_daemon_client(context.guard_home)
-        except RuntimeError:
+        except RuntimeError as daemon_load_error:
+            # Preserve the daemon-failure category through the local-queue
+            # fallback so the unresolved launch-validation reason is evidence,
+            # not a silently absorbed error.
+            payload["daemon_queue_unavailable"] = type(daemon_load_error).__name__
             return resolve_from_local_queue()
         try:
             session = daemon_client.start_session(
@@ -754,7 +758,8 @@ def _headless_approval_resolver(
                 open_key=None,
                 redaction_level=config.receipt_redaction_level,
             )
-        except RuntimeError:
+        except RuntimeError as daemon_operation_error:
+            payload["daemon_queue_unavailable"] = type(daemon_operation_error).__name__
             return resolve_from_local_queue()
         operation = blocked_operation["operation"] if isinstance(blocked_operation.get("operation"), dict) else {}
         queued = (

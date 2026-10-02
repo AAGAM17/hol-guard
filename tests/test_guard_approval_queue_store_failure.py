@@ -117,3 +117,45 @@ def test_programming_error_in_queue_still_propagates(
             _detection(),
             {"artifacts": [{"artifact_id": "art-1", "policy_action": "require-reapproval"}]},
         )
+
+
+def test_daemon_load_failure_records_category_on_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The daemon-unavailable fallback preserves the exception category."""
+    guard_home = tmp_path / "guard"
+    store = GuardStore(guard_home)
+    config = GuardConfig(guard_home=guard_home, workspace=None)
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=guard_home)
+    args = argparse.Namespace(harness="claude-code", json=True)
+
+    monkeypatch.setattr(
+        payload_module, "queue_blocked_approvals", lambda **_kwargs: []
+    )
+    monkeypatch.setattr(
+        payload_module, "schedule_guard_daemon_ensure", lambda *_a, **_k: "http://127.0.0.1:4455"
+    )
+    monkeypatch.setattr(payload_module, "_managed_install_for", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        payload_module,
+        "approval_prompt_flow",
+        lambda *_a, **_k: {"tier": "local"},
+    )
+
+    class FailingLoadError(RuntimeError):
+        pass
+
+    def failing_load(*_a, **_k):
+        raise FailingLoadError("daemon transport refused")
+
+    monkeypatch.setattr(payload_module, "load_guard_surface_daemon_client", failing_load)
+
+    resolver = payload_module._headless_approval_resolver(
+        args=args, context=context, store=store, config=config
+    )
+    result = resolver(
+        _detection(),
+        {"artifacts": [{"artifact_id": "art-1", "policy_action": "require-reapproval"}]},
+    )
+
+    assert result["daemon_queue_unavailable"] == "FailingLoadError"

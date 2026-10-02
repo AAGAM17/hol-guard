@@ -177,7 +177,3 @@ fn executable_digest(executable: &Path) -> Result<String, String> {
         &hasher.finalize(),
     ))
 }
-pub(crate) fn executable_missing(path: &std::path::Path) -> bool {
-    path.metadata()
-        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-}

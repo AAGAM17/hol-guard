@@ -721,6 +721,8 @@ def run_native_generic_payload(
 
     bind_context_digest_home(getattr(store, "guard_home", None))
     payload_map = dict(payload)
+    payload_map.pop("blocked_request_guidance", None)
+    blocked_request_guidance: str | None = None
     artifact_id = _coalesce_string(
         getattr(args, "artifact_id", None),
         payload_map.get("artifact_id"),
@@ -1166,10 +1168,11 @@ def run_native_generic_payload(
             policy_action="block",
             approval_requests=[],
             prompted=False,
-            blocked_request_guidance=safe_alternative_reason(
-                str(payload_map.get("permission_decision_reason") or "HOL Guard blocked this action.")
-            ),
         )
+        blocked_request_guidance = safe_alternative_reason(
+            "HOL Guard could not allow this action under current policy."
+        )
+        payload_map["blocked_request_guidance"] = blocked_request_guidance
     changed_capabilities = _string_list(payload_map.get("changed_capabilities"))
     if not changed_capabilities and isinstance(payload_map.get("event"), str):
         changed_capabilities = [str(payload_map["event"])]
@@ -1251,12 +1254,11 @@ def run_native_generic_payload(
     ):
         return 0
     if _should_emit_copilot_hook_response(args):
-        guidance = payload_map.get("blocked_request_guidance")
         _emit_copilot_hook_response(
             policy_action=policy_action,
             reason=(
-                guidance
-                if isinstance(guidance, str)
+                blocked_request_guidance
+                if blocked_request_guidance is not None
                 else _copilot_hook_reason(payload_map.get("permission_decision_reason"))
             ),
             output_stream=output_stream,
@@ -1378,7 +1380,7 @@ def run_native_generic_payload(
         payload_map["approval_center_url"] = approval_center_url
     _localize_pending_approval_copy(payload_map, harness=args.harness)
     incoming_reason = (
-        payload_map.get("blocked_request_guidance")
+        blocked_request_guidance
         or daemon_failure_reason
         or _decision_v2_harness_message(payload_map)
         or payload_map.get("permission_decision_reason")
@@ -1476,8 +1478,8 @@ def run_native_generic_payload(
     }
     if isinstance(payload_map.get("approval_requests"), list):
         hook_envelope["approval_requests"] = payload_map["approval_requests"]
-    if isinstance(payload_map.get("blocked_request_guidance"), str):
-        hook_envelope["blocked_request_guidance"] = payload_map["blocked_request_guidance"]
+    if blocked_request_guidance is not None:
+        hook_envelope["blocked_request_guidance"] = blocked_request_guidance
         hook_envelope["prompted"] = False
     if getattr(args, "json", False) and output_stream is None:
         json_result = _native_hook_json_document(

@@ -8,6 +8,7 @@ mod command_database_matchers;
 mod command_launcher_floors;
 pub mod command_evaluation;
 mod command_critical_floors;
+mod command_shell_read_factors;
 #[cfg(test)]
 mod command_critical_floors_tests;
 #[cfg(test)]
@@ -48,6 +49,12 @@ mod env_wrapper;
 mod command_structure;
 mod command_tokens;
 mod shell_command_wrappers;
+mod shell_execution_context;
+mod shell_secret_read_flow;
+mod shell_secret_read_support;
+mod runtime_read_paths;
+mod shell_secret_reads;
+mod shell_execution_context_support;
 mod home_path_text;
 mod shell_read_literal_wrapper;
 mod shell_structure;

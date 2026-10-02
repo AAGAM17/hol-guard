@@ -458,7 +458,7 @@ def mark_owned_hook_publication_conflict(home: Path, config: Path) -> None:
     payload = _load_record(home, live_config_conflict=True)
     if (
         payload.get("operation_id") != owner.operation_id
-        or payload.get("config_path") != os.path.abspath(config)
+        or payload.get("config_path") != canonical_path(config)
         or payload.get("phase") != "prepared"
         or "repair_plan" in payload
     ):
@@ -493,7 +493,7 @@ def record_owned_hook_config_publication(home: Path, config: Path, identity: tup
     if (
         payload.get("operation_id") != owner.operation_id
         or payload.get("phase") != "prepared"
-        or payload.get("config_path") != os.path.abspath(config)
+        or payload.get("config_path") != canonical_path(config)
         or "repair_plan" in payload
     ):
         raise _error("config_publication_owner_mismatch")

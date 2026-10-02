@@ -307,12 +307,12 @@ def _record_files(payload: Mapping[str, object]) -> list[dict[str, object]]:
             raise TransitionError("files_invalid")
         _validate_digest_dependency(change)
         for generation in ("before", "after"):
-            mode = change[f"{generation}_mode"]
-            if (
-                isinstance(mode, bool)
-                or not isinstance(mode, int)
-                or _unsafe_file_mode(mode, change.get("artifact_identity"))
-            ):
+            recorded_mode = change[f"{generation}_mode"]
+            if isinstance(recorded_mode, bool) or not isinstance(recorded_mode, int):
+                raise TransitionError("file_mode_invalid")
+            if recorded_mode & ~0o777:
+                raise TransitionError("file_mode_invalid")
+            if generation == "after" and _unsafe_file_mode(recorded_mode, change.get("artifact_identity")):
                 raise TransitionError("file_mode_invalid")
             encoded = change[generation]
             if encoded is not None and not isinstance(encoded, str):
@@ -537,7 +537,11 @@ class TransitionFile:
             raise TransitionError("file_publication_contract_invalid")
         if self.kind not in {"binding", "selection"}:
             raise TransitionError("file_kind_invalid")
-        if any(_unsafe_file_mode(mode, self.artifact_identity) for mode in (self.before_mode, self.after_mode)):
+        for mode in (self.before_mode, self.after_mode):
+            if isinstance(mode, bool) or bool(mode & ~0o777):
+                raise TransitionError("file_mode_invalid")
+        # The previous mode is the user's file. Only the published mode must be private.
+        if _unsafe_file_mode(self.after_mode, self.artifact_identity):
             raise TransitionError("file_mode_invalid")
         payload: dict[str, object] = {
             "path": str(self.path.resolve(strict=False)),

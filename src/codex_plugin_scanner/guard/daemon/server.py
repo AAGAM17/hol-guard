@@ -782,12 +782,8 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         admission_deadline = accepted_at + _DAEMON_CONNECTION_ADMISSION_WAIT_SECONDS
         control = self._transport_request_is_control(request_socket)
         pending = not control and not self._reserve_normal_connection(request_socket)
-        # Partial control requests may occupy reserved transport slots. Only
-        # unclassified sockets can be evicted; classified requests keep ownership.
-        if not self._guard_slots.acquire(blocking=False):
-            self._evict_oldest_unclassified_connection()
-        else:
-            self._guard_slots.release()
+        # A live holder keeps its slot until it finishes or the watchdog
+        # expires it. Evicting it here would admit the newcomer and hide overload.
         try:
             guard_admitted = self._guard_admit_request(request_socket)
         except BaseException:

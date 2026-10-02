@@ -255,10 +255,20 @@ def _cursor_availability_response(
             guard_home=Path(GUARD_HOME),
             recording_only=False,
         )
-    except Exception:
-        # This generated hook is the final denial boundary, including for faulty
-        # evaluators. An unexpected exception must never escape as a permission.
+    except ModuleNotFoundError:
+        # The isolated hook cannot load the policy package. Deny without guessing.
         return _cursor_unavailable_response(hook_event_name)
+    except Exception:
+        # A present evaluator that fails still owes the repair instruction.
+        compact = hook_event_name.strip().lower().replace("_", "").replace("-", "")
+        if compact in {"aftershellexecution", "aftermcpexecution"}:
+            return {}, 0
+        reason = "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
+        return {
+            "permission": "deny",
+            "user_message": reason,
+            "agent_message": reason,
+        }, 2
 
 
 def _cursor_unavailable_response(hook_event_name: str) -> tuple[dict[str, object], int]:

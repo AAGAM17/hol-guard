@@ -787,17 +787,23 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         # health, until each of those peers had been polled.
         path = self._peek_request_path(request_socket)
         control = path in _DAEMON_CONTROL_PATHS or path in _DAEMON_CRITICAL_PATHS
-        if not control and self._normal_admission_full():
-            if path is None:
-                # The line can still be in flight after accept returns.
-                # Taking a reserved seat here answers health with overload.
-                self._park_saturation_probe(request_socket, client_address, accepted_at)
-                return
+        if path is not None and not control and self._normal_admission_full():
             with self.request_capacity_lock:
                 self.rejected_requests += 1
             self._guard_reject_overload(request_socket)
             return
-        pending = not control and not self._reserve_normal_connection(request_socket)
+        reserved_normal = False
+        if not control:
+            reserved_normal = self._reserve_normal_connection(request_socket)
+            if path is None and not reserved_normal and self._normal_admission_full():
+                # Park only while a connection permit remains. That permit is
+                # reserved for control, so an in-flight line must not take it.
+                # A full pool still goes through admission and can evict.
+                if self.connection_capacity.acquire(blocking=False):
+                    self.connection_capacity.release()
+                    self._park_saturation_probe(request_socket, client_address, accepted_at)
+                    return
+        pending = not control and not reserved_normal
         self._accept_classified_request(
             request_socket,
             client_address,
@@ -867,7 +873,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
 
     def _park_saturation_probe(self, request: socket.socket, client_address: Any, accepted_at: float) -> None:
         deadline = accepted_at + 0.15
-        limit = max(1, self.control_request_capacity_limit + self.critical_request_capacity_limit)
+        limit = max(1, self.connection_capacity_limit)
         with self.unclassified_connections_lock:
             if len(self.saturation_probes) < limit:
                 self.saturation_probes[id(request)] = (request, cast(tuple[str, int], client_address), deadline)
@@ -1137,7 +1143,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                     control=True,
                     pending=False,
                     accepted_at=accepted_at,
-                    admission_deadline=accepted_at,
+                    admission_deadline=accepted_at + _DAEMON_CONNECTION_ADMISSION_WAIT_SECONDS,
                 )
             except BaseException:
                 self.handle_error(request, address)

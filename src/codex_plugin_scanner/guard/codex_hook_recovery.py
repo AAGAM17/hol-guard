@@ -444,6 +444,16 @@ def _record_authentication_targets(home: Path, payload: dict[str, object]) -> tu
     return manifest, manifest.with_name(f"hooks-{target_hash}.authority-receipt.json")
 
 
+def _config_publication_slot(path: Path) -> str:
+    """Return the config slot without following a substituted leaf symlink.
+
+    Preparation records the resolved regular file. Replacing that leaf with a
+    symlink must not move the publication onto the foreign target.
+    """
+    candidate = path.expanduser()
+    return str(candidate.parent.resolve(strict=False) / candidate.name)
+
+
 def mark_owned_hook_publication_conflict(home: Path, config: Path) -> None:
     """Durably refuse an inverse after this live owner sees a competing config.
 
@@ -458,7 +468,7 @@ def mark_owned_hook_publication_conflict(home: Path, config: Path) -> None:
     payload = _load_record(home, live_config_conflict=True)
     if (
         payload.get("operation_id") != owner.operation_id
-        or hashlib.sha256(str(payload.get("config_path")).encode("utf-8")).hexdigest() != owner.target_id
+        or payload.get("config_path") != _config_publication_slot(config)
         or payload.get("phase") != "prepared"
         or "repair_plan" in payload
     ):

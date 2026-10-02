@@ -282,8 +282,7 @@ def main(
                         + "\n"
                     )
                 if any(
-                    isinstance(cause, dict)
-                    and cause.get("reason_code") == "codex_hook_validation_deadline_expired"
+                    isinstance(cause, dict) and cause.get("reason_code") == "codex_hook_validation_deadline_expired"
                     for cause in failure_causes
                 ):
                     response = _unavailable_response(

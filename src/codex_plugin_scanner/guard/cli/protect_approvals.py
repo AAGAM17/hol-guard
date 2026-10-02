@@ -36,6 +36,25 @@ def _queue_local_protect_approvals(
 ) -> None:
     if not _should_queue_local_protect_approval(response_payload):
         return
+    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+    config = load_guard_config(guard_home)
+    if not asks_for_approval(config):
+        verdict = response_payload.get("verdict")
+        reason = verdict.get("reason") if isinstance(verdict, dict) else None
+        guidance = safe_alternative_reason(str(reason or "HOL Guard blocked this package request."))
+        response_payload.update(policy_action="block", approval_requests=[], prompted=False, review_hint=guidance)
+        evaluation = response_payload.get("supply_chain_evaluation")
+        if isinstance(evaluation, dict):
+            evaluation["decision"] = "block"
+            user_copy = evaluation.get("user_copy")
+            evaluation["user_copy"] = {
+                **(user_copy if isinstance(user_copy, dict) else {}),
+                "harness_message": guidance,
+                "next_step": guidance,
+                "dashboard_url": None,
+            }
+        return
     artifact = _protect_request_artifact(response_payload, workspace=workspace)
     if artifact is None:
         return

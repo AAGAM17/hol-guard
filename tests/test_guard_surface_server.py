@@ -42,6 +42,8 @@ from tests.conftest import guard_commands_module
 from tests.daemon_hook_test_client import open_authenticated_claude_request
 from tests.support.network import urlopen_json
 
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
+
 
 def _seed_guard_cloud(store, *, workspace_id=None, sync_url=None, token="demo-token", now="2026-05-19T00:00:00Z"):
     """Seed OAuth credentials (replaces legacy set_sync_credentials scaffolding).

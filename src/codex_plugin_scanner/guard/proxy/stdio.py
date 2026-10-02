@@ -23,6 +23,7 @@ from ..approvals import (
     first_approval_url,
     queue_blocked_approvals,
 )
+from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
 from ..browser_opener import open_browser_url
 from ..config import GuardConfig, resolve_risk_action
 from ..consumer import artifact_hash
@@ -820,7 +821,9 @@ class StdioGuardProxy:
                             source_scope=runtime_artifact.source_scope,
                             approval_source=(
                                 "approval_center"
-                                if policy_action == "require-reapproval" and self.approval_center_url is not None
+                                if policy_action == "require-reapproval"
+                                and self.approval_center_url is not None
+                                and asks_for_approval(self.guard_config)
                                 else "policy"
                             ),
                             scanner_evidence=reuse_evidence,
@@ -840,10 +843,15 @@ class StdioGuardProxy:
                         "guardPolicyAction": policy_action,
                         "transportOutcome": "not-forwarded",
                     }
-                    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
-
                     if not asks_for_approval(self.guard_config):
-                        non_forward_message = safe_alternative_reason(non_forward_message)
+                        non_forward_message = safe_alternative_reason(
+                            _sensitive_read_non_forward_message(
+                                "block",
+                                tool_name=tool_name,
+                                path_class=sensitive_request.path_match.path_class,
+                            )
+                        )
+                        response_data["guardPolicyAction"] = "block"
                     if (
                         self.guard_store is not None
                         and self.approval_center_url is not None

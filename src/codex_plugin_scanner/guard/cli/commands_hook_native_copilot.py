@@ -252,16 +252,16 @@ def run_native_copilot_pretool(
                 payload=payload,
                 policy_action=policy_action,
             )
+            if safe_alternative:
+                denial_reason = safe_alternative_reason(decision.summary)
+            elif saved_policy_blocks:
+                denial_reason = f"HOL Guard blocked {runtime_artifact.name}. {decision.summary}"
+            else:
+                denial_reason = _copilot_hook_reason(decision.summary, runtime_artifact.name)
             _emit_copilot_pretool_response(
                 args,
                 policy_action=policy_action,
-                reason=(
-                    safe_alternative_reason(decision.summary)
-                    if safe_alternative
-                    else f"HOL Guard blocked {runtime_artifact.name}. {decision.summary}"
-                    if saved_policy_blocks
-                    else _copilot_hook_reason(decision.summary, runtime_artifact.name)
-                ),
+                reason=denial_reason,
                 approval_reuse=approval_reuse,
                 scanner_evidence=decision_scanner_evidence,
                 output_stream=output_stream,

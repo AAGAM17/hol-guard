@@ -17,6 +17,8 @@ from codex_plugin_scanner.guard.trusted_local_tools import (
 )
 from tests.conftest import guard_commands_module
 
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
+
 
 def _write_event(
     path: Path,

@@ -96,7 +96,8 @@ from tests.policy_bundle_signing_helpers import (
 )
 from tests.support.network import stub_authenticated_urlopen
 
-pytestmark = pytest.mark.usefixtures("native_hook_force")
+pytestmark = [pytest.mark.usefixtures("approval_questionnaire_mode"), pytest.mark.usefixtures("native_hook_force")]
+
 
 COPILOT_NATIVE_DENY_COMMANDS = (
     """node -e "require('fs').unlinkSync('dangerous-marker.json')" """,

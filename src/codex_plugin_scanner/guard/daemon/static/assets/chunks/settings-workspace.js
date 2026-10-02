@@ -4330,7 +4330,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
               }
             ),
             !approvalGateEnabled ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-brand-blue/10 bg-brand-blue/[0.03] px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-brand-dark", children: draft?.approval_gate?.configured === true ? "Ask for proof is off. Your saved password and authenticator stay on this device." : "Add a password or phone app code before allow or trust changes stick." }) }) : null,
-            draft.blocked_request_mode === "ask" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            draft.blocked_request_mode === "ask" && /* @__PURE__ */ jsxRuntimeExports.jsx(
               SettingsFormSection,
               {
                 title: "Where Guard asks",
@@ -4346,7 +4346,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
                       options: surfacePolicyOptions
                     }
                   ),
-                  draft.approval_surface_policy === "attention-aware" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid gap-3 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block", children: [
+                  draft.approval_surface_policy === "attention-aware" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid gap-3 sm:grid-cols-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium text-brand-dark", children: "Browser delay (seconds)" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "input",
@@ -4359,10 +4359,10 @@ function SettingsWorkspace({ onApprovalGateChange }) {
                         className: "mt-2 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
                       }
                     )
-                  ] }) }) : null
+                  ] }) })
                 ] })
               }
-            ) : null,
+            ),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               ApprovalGateCard,
               {

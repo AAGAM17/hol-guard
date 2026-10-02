@@ -1653,7 +1653,7 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
                 </p>
               </div>
             ) : null}
-            {draft.blocked_request_mode === "ask" ? <SettingsFormSection
+            {draft.blocked_request_mode === "ask" && <SettingsFormSection
               title="Where Guard asks"
               description="This only chooses the surface for Ask once. It does not change what Guard stops."
             >
@@ -1665,7 +1665,7 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
                   onChange={handleStringChange("approval_surface_policy")}
                   options={surfacePolicyOptions}
                 />
-                {draft.approval_surface_policy === "attention-aware" ? (
+                {draft.approval_surface_policy === "attention-aware" && (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="text-sm font-medium text-brand-dark">Browser delay (seconds)</span>
@@ -1679,9 +1679,9 @@ export function SettingsWorkspace({ onApprovalGateChange }: SettingsWorkspacePro
                       />
                     </label>
                   </div>
-                ) : null}
+                )}
               </div>
-            </SettingsFormSection> : null}
+            </SettingsFormSection>}
             <ApprovalGateCard
               enabled={approvalGateEnabled}
               gateConfig={draft.approval_gate ?? null}

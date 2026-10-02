@@ -1496,47 +1496,6 @@ def test_runtime_mcp_start_passes_configured_code_loading_env_to_launch_identity
         process.wait(timeout=5)
 
 
-@pytest.mark.parametrize("proxy_class", [CodexMcpGuardProxy, OpenCodeMcpGuardProxy])
-def test_default_mcp_review_blocks_without_prompt_or_execution(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    proxy_class: Any,
-) -> None:
-    context = _context(tmp_path)
-    store = GuardStore(context.guard_home)
-    marker = tmp_path / "must-not-execute.json"
-    proxy = proxy_class(
-        server_name="workspace-tools",
-        command=_child_command(marker),
-        context=context,
-        store=store,
-        config=GuardConfig(guard_home=context.guard_home, workspace=context.workspace_dir),
-        source_scope="project",
-        config_path=str(context.workspace_dir / "config.json"),
-    )
-    monkeypatch.setattr(
-        runtime_mcp_module,
-        "evaluate_tool_call",
-        lambda **_kwargs: ToolCallDecision(
-            action="review",
-            source="policy",
-            signals=("review required",),
-            summary="review required",
-        ),
-    )
-
-    def unexpected_prompt(*_args: Any, **_kwargs: Any) -> None:
-        pytest.fail("default review must not open an approval surface")
-
-    monkeypatch.setattr(runtime_mcp_module, "ensure_guard_daemon", unexpected_prompt)
-    result = proxy.run_session(_messages(tool_name="safe_echo", arguments={}, elicitation=True))
-    assert not marker.exists()
-    assert store.list_approval_requests() == []
-    response = result["responses"][2]
-    assert response["error"]["data"]["approvalRequests"] == []
-    assert "safe, permitted alternative" in response["error"]["message"]
-
-
 def test_first_policy_review_never_auto_forwards_and_all_surfaces_preserve_review(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

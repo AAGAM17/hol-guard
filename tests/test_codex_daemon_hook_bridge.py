@@ -35,6 +35,8 @@ from tests.codex_daemon_hook_bridge_fixtures import (
     _write_authenticated_daemon_files,
 )
 
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
+
 
 def _assert_bridge_denied(payload: dict[str, object]) -> None:
     """The bridge output holds the action with a blocking decision."""

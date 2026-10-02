@@ -1154,6 +1154,22 @@ def run_native_generic_payload(
                 }
             )
     hook_event_name = hook_event_name or "PreToolUse"
+    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+    if (
+        hook_is_pre_event(hook_event_name)
+        and policy_action in {"review", "require-reapproval"}
+        and not asks_for_approval(config)
+    ):
+        policy_action = "block"
+        payload_map.update(
+            policy_action="block",
+            approval_requests=[],
+            prompted=False,
+            blocked_request_guidance=safe_alternative_reason(
+                str(payload_map.get("permission_decision_reason") or "HOL Guard blocked this action.")
+            ),
+        )
     changed_capabilities = _string_list(payload_map.get("changed_capabilities"))
     if not changed_capabilities and isinstance(payload_map.get("event"), str):
         changed_capabilities = [str(payload_map["event"])]
@@ -1357,7 +1373,8 @@ def run_native_generic_payload(
         payload_map["approval_center_url"] = approval_center_url
     _localize_pending_approval_copy(payload_map, harness=args.harness)
     incoming_reason = (
-        daemon_failure_reason
+        payload_map.get("blocked_request_guidance")
+        or daemon_failure_reason
         or _decision_v2_harness_message(payload_map)
         or payload_map.get("permission_decision_reason")
     )
@@ -1454,6 +1471,9 @@ def run_native_generic_payload(
     }
     if isinstance(payload_map.get("approval_requests"), list):
         hook_envelope["approval_requests"] = payload_map["approval_requests"]
+    if isinstance(payload_map.get("blocked_request_guidance"), str):
+        hook_envelope["blocked_request_guidance"] = payload_map["blocked_request_guidance"]
+        hook_envelope["prompted"] = False
     if getattr(args, "json", False) and output_stream is None:
         json_result = _native_hook_json_document(
             args,

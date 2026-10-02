@@ -2433,9 +2433,20 @@ class RuntimeMcpGuardProxy:
         policy_action: GuardAction,
         scanner_evidence: tuple[dict[str, object], ...],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        approval_center_url = ensure_guard_daemon(self.context.guard_home)
         decision_v2_payload = self._package_decision_v2(package_evaluation, policy_action)
         risk_signals = tuple(str(item.get("message") or item.get("code") or "") for item in package_evaluation.reasons)
+        if not asks_for_approval(self.config):
+            return self._queue_approval_center_response(
+                message_id=message_id,
+                artifact=artifact,
+                artifact_hash=artifact_hash,
+                tool_name=tool_name,
+                params=params,
+                signals=(package_evaluation.risk_summary, *risk_signals),
+                scanner_evidence=scanner_evidence,
+                policy_action=policy_action,
+            )
+        approval_center_url = ensure_guard_daemon(self.context.guard_home)
         queued = queue_blocked_approvals(
             redaction_level=self.config.receipt_redaction_level,
             detection=HarnessDetection(
@@ -3437,7 +3448,7 @@ class RuntimeMcpGuardProxy:
                 store=self.store,
                 artifact=artifact,
                 artifact_hash=artifact_hash,
-                decision_source="safe-alternative",
+                decision_source="policy-safe-alternative",
                 now=_now(),
                 signals=signals,
                 risk_categories=tool_call_risk_categories(artifact, params.get("arguments")),
@@ -3448,8 +3459,10 @@ class RuntimeMcpGuardProxy:
             return _blocked_tool_response(
                 message_id,
                 tool_name,
-                safe_alternative_reason(f"HOL Guard blocked tool call {tool_name} from {self.server_name}."),
-                {"approvalRequests": [], "guardPolicyAction": policy_action, "transportOutcome": "not-forwarded"},
+                safe_alternative_reason(
+                    f"HOL Guard blocked tool call {tool_name} from {self.server_name}. " + " ".join(signals)
+                ),
+                {"approvalRequests": [], "guardPolicyAction": "block", "transportOutcome": "not-forwarded"},
             ), {
                 "method": "tools/call",
                 "tool_name": tool_name,

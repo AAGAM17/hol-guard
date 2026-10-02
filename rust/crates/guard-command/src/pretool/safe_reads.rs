@@ -101,6 +101,7 @@ pub(super) fn bounded_read_target(
     allow_directory: bool,
 ) -> bool {
     let path = value.trim();
+    let path = path.strip_prefix(r"\\?\").unwrap_or(path);
     if path.is_empty() || path.len() > 4096 {
         return false;
     }

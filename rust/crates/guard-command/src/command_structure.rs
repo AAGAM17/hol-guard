@@ -16,8 +16,10 @@ use crate::shell_structure::{ShellHeredoc, ShellScanState};
 fn redirect_pattern() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
+        // Rust `regex` has no lookahead/lookbehind. `(?<![<>])` and
+        // `(?![<>&])` are enforced manually around `captures` in the scan loop.
         Regex::new(
-            r#"^(?P<operator>(?:\d*)(?:<>|>\||>>?|<))(?![<>&])\s*(?P<target>"[^"]+"|'[^']+'|[^ \t\r\n;&|<>]+)"#,
+            r#"^(?P<operator>(?:\d*)(?:<>|>\||>>?|<))\s*(?P<target>"[^"]+"|'[^']+'|[^ \t\r\n;&|<>]+)"#,
         )
         .expect("redirect pattern")
     })
@@ -155,6 +157,15 @@ pub fn extract_command_redirects(
                 continue;
             }
         };
+        // `(?![<>&])`: the char immediately after the matched operator must not
+        // be `<`, `>`, or `&` (guards `<`/`>`/`>>` matching the head of `<<`,
+        // `<&`, `>&`, `>>>`).
+        let op_end_in_tail = caps.name("operator").unwrap().end();
+        let op_end_char = index + tail[..op_end_in_tail].chars().count();
+        if op_end_char < n && matches!(chars[op_end_char], '<' | '>' | '&') {
+            index += 1;
+            continue;
+        }
         if heredoc_operator_starts.contains(&index) {
             index += 1;
             continue;

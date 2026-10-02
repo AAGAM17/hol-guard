@@ -5,6 +5,8 @@ use serde_json::Value;
 
 mod approval_contracts;
 pub use approval_contracts::*;
+mod approval_reuse;
+pub use approval_reuse::*;
 mod native_hook_receipt;
 pub use native_hook_receipt::*;
 mod native_command_observations;

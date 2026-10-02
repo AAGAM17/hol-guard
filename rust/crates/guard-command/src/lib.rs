@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+pub mod action_lattice;
+pub mod approval_reuse;
 mod command_ascii_comparison;
 mod command_candidate_common;
 mod command_contained_routine_candidates;

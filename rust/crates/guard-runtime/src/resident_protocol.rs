@@ -2,7 +2,7 @@ use guard_command::CommandModelRequestV1;
 use guard_contracts::{
     ApprovalChallengeRequestV3, ApprovalChallengeRequestV4, ApprovalConsumeRequestV3,
     ApprovalConsumeRequestV4, ApprovalValidateRequestV3, ApprovalValidateRequestV4,
-    CommandEffectRequestV1, ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1,
+    ApprovalReuseRequestV1, CommandEffectRequestV1, ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1,
     GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
     NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
@@ -31,6 +31,7 @@ pub(crate) enum ResidentOperationV1 {
     WorkspaceReviewDecision(WorkspaceReviewDecisionRequestV1),
     ContextDigest(ContextDigestRequestV1),
     CommandEffectDecide(CommandEffectRequestV1),
+    ApprovalReuseDecide(ApprovalReuseRequestV1),
     Health(Value),
     Shutdown(Value),
 }
@@ -102,6 +103,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         guard_contracts::ARCHIVE_INSPECTION_FEATURE.into(),
         guard_contracts::CONTEXT_DIGEST_FEATURE.into(),
         guard_contracts::COMMAND_EFFECT_FEATURE.into(),
+        guard_contracts::APPROVAL_REUSE_FEATURE.into(),
     ];
     if cfg!(windows) {
         features.push("authenticated-loopback-resident-v1".into());
@@ -279,6 +281,9 @@ pub(crate) fn evaluate_resident_bytes(
             }
             ResidentOperationV1::CommandEffectDecide(request) => {
                 crate::command_effect::evaluate_command_effect_request(&request)
+            }
+            ResidentOperationV1::ApprovalReuseDecide(request) => {
+                crate::approval_reuse::evaluate_approval_reuse_request(&request)
             }
             ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
                 "status": "ready",

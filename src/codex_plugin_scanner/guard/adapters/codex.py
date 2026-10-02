@@ -1762,9 +1762,12 @@ class CodexHarnessAdapter(HarnessAdapter):
             except BaseException as exc:  # pragma: no cover - catastrophic local I/O failure
                 rollback_error = exc
             if rollback_error is not None:
-                raise RuntimeError(
-                    "Codex hook transaction failed and rollback could not be completed."
-                ) from transaction_error
+                failure = RuntimeError(
+                    "Codex hook transaction failed and rollback could not be completed: "
+                    f"{type(rollback_error).__name__}: {rollback_error}"
+                )
+                failure.add_note(f"rollback error: {rollback_error!r}")
+                raise failure from transaction_error
             raise
 
     @staticmethod

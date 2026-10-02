@@ -409,7 +409,8 @@ pub fn defer_request_resume_to_live_hook(
         .map(py_str)
         .unwrap_or_default();
     if !(live_hook_wait_is_active(metadata, now, deps)
-        || event_name == "PreToolUse" && pretool_bridge_wait_is_active(store, &operation, now, deps))
+        || event_name == "PreToolUse"
+            && pretool_bridge_wait_is_active(store, &operation, now, deps))
     {
         return Ok(None);
     }

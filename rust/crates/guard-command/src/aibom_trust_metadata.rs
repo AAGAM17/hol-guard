@@ -236,7 +236,10 @@ fn a_str<'a>(artifact: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
 
 /// `metadata.get(key)` → non-empty `str` or `None` (`_metadata_string`).
 fn meta_str<'a>(metadata: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
-    metadata.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
 }
 
 fn run_meta(run: &Map<String, Value>) -> Option<&Map<String, Value>> {
@@ -244,14 +247,15 @@ fn run_meta(run: &Map<String, Value>) -> Option<&Map<String, Value>> {
 }
 
 fn run_findings(run: &Map<String, Value>) -> &[Value] {
-    run.get("findings").and_then(Value::as_array).map_or(&[], Vec::as_slice)
+    run.get("findings")
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
 }
 
 /// `getattr(finding, key, None)` on a finding `Map`.
 fn finding_str<'a>(finding: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     finding.get(key).and_then(Value::as_str)
 }
-
 
 // ---------------------------------------------------------------------------
 // `_normalize_inventory_datetime` — local mirror of the inventory_contract
@@ -268,10 +272,7 @@ pub fn normalize_inventory_datetime(value: &Value) -> Value {
 
 fn parse_iso8601(value: &str) -> Option<String> {
     let text = value.trim().replace(['Z', 'z'], "+00:00");
-    let (date_part, time_part) = match text
-        .split_once('T')
-        .or_else(|| text.split_once(' '))
-    {
+    let (date_part, time_part) = match text.split_once('T').or_else(|| text.split_once(' ')) {
         Some((d, t)) => (d, t),
         None => (text.as_str(), ""),
     };
@@ -290,7 +291,9 @@ fn parse_iso8601(value: &str) -> Option<String> {
     let hour: i32 = time_seg.next()?.parse().ok()?;
     let minute: i32 = time_seg.next()?.parse().ok()?;
     let sec_raw = time_seg.next().unwrap_or("0");
-    let (sec_s, frac_s) = sec_raw.split_once('.').map_or((sec_raw, ""), |(s, f)| (s, f));
+    let (sec_s, frac_s) = sec_raw
+        .split_once('.')
+        .map_or((sec_raw, ""), |(s, f)| (s, f));
     let second: i32 = sec_s.parse().ok()?;
     if hour > 23 || minute > 59 || second > 60 {
         return None;
@@ -298,9 +301,16 @@ fn parse_iso8601(value: &str) -> Option<String> {
     let offset_minutes = match tz {
         Some(tz_raw) => {
             let sign = if tz_raw.starts_with('-') { -1 } else { 1 };
-            let digits: String = tz_raw.chars().skip(1).filter(|c| c.is_ascii_digit()).collect();
+            let digits: String = tz_raw
+                .chars()
+                .skip(1)
+                .filter(|c| c.is_ascii_digit())
+                .collect();
             let (oh, om) = if digits.len() >= 4 {
-                (digits[..2].parse::<i32>().ok()?, digits[2..4].parse::<i32>().ok()?)
+                (
+                    digits[..2].parse::<i32>().ok()?,
+                    digits[2..4].parse::<i32>().ok()?,
+                )
             } else if digits.len() == 2 {
                 (digits.parse::<i32>().ok()?, 0)
             } else {
@@ -342,9 +352,7 @@ fn parse_iso8601(value: &str) -> Option<String> {
             format!(".{micros:06}")
         }
     };
-    Some(format!(
-        "{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}{frac}Z"
-    ))
+    Some(format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}{frac}Z"))
 }
 
 fn days_from_civil(y: i32, m: i32, d: i32) -> i32 {
@@ -443,13 +451,8 @@ pub fn apply_local_trust_metadata(
     let mut trust_layers: Vec<Map<String, Value>> = Vec::new();
 
     if LOCAL_BASELINE_ITEM_KINDS.contains(&item_kind) {
-        let domain = _local_trust_domain_for_artifact(
-            artifact,
-            deps,
-            item_kind,
-            &enriched,
-            workspace_dir,
-        );
+        let domain =
+            _local_trust_domain_for_artifact(artifact, deps, item_kind, &enriched, workspace_dir);
         if let Some(domain) = domain {
             enriched.insert(
                 "trustResolution".into(),
@@ -512,7 +515,14 @@ fn _local_security_for_artifact(
     if skill_security.is_some() {
         return skill_security;
     }
-    _local_mcp_security_for_artifact(artifact, deps, item_kind, captured_at, cisco_runs, workspace_dir)
+    _local_mcp_security_for_artifact(
+        artifact,
+        deps,
+        item_kind,
+        captured_at,
+        cisco_runs,
+        workspace_dir,
+    )
 }
 
 /// `_cisco_local_security_payload(run, findings, *, captured_at, scripts_total, extra_safety_fields=None)`
@@ -539,9 +549,18 @@ fn _cisco_local_security_payload(
     findings.sort_by(|a, b| {
         let key = |f: &Map<String, Value>| {
             (
-                f.get("file").and_then(Value::as_str).unwrap_or("").to_string(),
-                f.get("ruleId").and_then(Value::as_str).unwrap_or("").to_string(),
-                f.get("message").and_then(Value::as_str).unwrap_or("").to_string(),
+                f.get("file")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                f.get("ruleId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                f.get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
             )
         };
         key(a).cmp(&key(b))
@@ -615,8 +634,7 @@ fn _local_skill_security_for_artifact(
         return None;
     }
 
-    let trust_root =
-        _trust_root_for_artifact(artifact, item_kind, workspace_dir)?;
+    let trust_root = _trust_root_for_artifact(artifact, item_kind, workspace_dir)?;
     let run = cisco_runs.iter().find(|candidate| {
         a_str(candidate, "source") == Some("cisco-skill-scanner")
             && _matches_skill_cisco_run(artifact, item_kind, candidate, workspace_dir)
@@ -633,7 +651,13 @@ fn _local_skill_security_for_artifact(
         );
 
     if let Some(run_metadata) = run_meta(run) {
-        for key in ["analyzersUsed", "policyName", "mode", "skillsScanned", "skillsSkipped"] {
+        for key in [
+            "analyzersUsed",
+            "policyName",
+            "mode",
+            "skillsScanned",
+            "skillsSkipped",
+        ] {
             if let Some(value) = run_metadata.get(key) {
                 metadata_payload.insert(key.into(), value.clone());
             }
@@ -669,7 +693,10 @@ fn _local_skill_security_for_artifact(
             out.insert("safety".into(), Value::Null);
         }
     }
-    out.insert("findings".into(), Value::Array(findings.into_iter().map(Value::Object).collect()));
+    out.insert(
+        "findings".into(),
+        Value::Array(findings.into_iter().map(Value::Object).collect()),
+    );
     out.insert("metadata".into(), Value::Object(metadata_payload));
     Some(out)
 }
@@ -684,7 +711,10 @@ fn _local_mcp_security_for_artifact(
     workspace_dir: Option<&Path>,
 ) -> Option<Map<String, Value>> {
     if !(item_kind == "mcp_server" || item_kind == "mcp_tool")
-        || !matches!(a_str(artifact, "artifact_type"), Some("mcp_server" | "mcp_tool"))
+        || !matches!(
+            a_str(artifact, "artifact_type"),
+            Some("mcp_server" | "mcp_tool")
+        )
     {
         return None;
     }
@@ -746,7 +776,10 @@ fn _local_mcp_security_for_artifact(
             out.insert("safety".into(), Value::Null);
         }
     }
-    out.insert("findings".into(), Value::Array(findings.into_iter().map(Value::Object).collect()));
+    out.insert(
+        "findings".into(),
+        Value::Array(findings.into_iter().map(Value::Object).collect()),
+    );
     out.insert("metadata".into(), Value::Object(metadata_payload));
     Some(out)
 }
@@ -756,7 +789,9 @@ fn _local_mcp_security_findings(
     run: &Map<String, Value>,
     scan_root: &Path,
 ) -> Vec<Map<String, Value>> {
-    let resolved_scan_root = scan_root.canonicalize().unwrap_or_else(|_| scan_root.to_path_buf());
+    let resolved_scan_root = scan_root
+        .canonicalize()
+        .unwrap_or_else(|_| scan_root.to_path_buf());
     let mut results = Vec::new();
     for finding in run_findings(run) {
         let finding = match finding.as_object() {
@@ -802,7 +837,10 @@ fn _local_mcp_security_findings(
             )),
         );
         row.insert("file".into(), json!(relative_file));
-        row.insert("message".into(), json!(_local_mcp_security_message(finding)));
+        row.insert(
+            "message".into(),
+            json!(_local_mcp_security_message(finding)),
+        );
         results.push(row);
     }
     results
@@ -840,7 +878,9 @@ fn _local_skill_security_findings(
     run: &Map<String, Value>,
     skill_root: &Path,
 ) -> Vec<Map<String, Value>> {
-    let resolved_root = skill_root.canonicalize().unwrap_or_else(|_| skill_root.to_path_buf());
+    let resolved_root = skill_root
+        .canonicalize()
+        .unwrap_or_else(|_| skill_root.to_path_buf());
     let mut results = Vec::new();
     for finding in run_findings(run) {
         let finding = match finding.as_object() {
@@ -881,7 +921,10 @@ fn _local_skill_security_findings(
             )),
         );
         row.insert("file".into(), json!(relative_file));
-        row.insert("message".into(), json!(_local_skill_security_message(finding)));
+        row.insert(
+            "message".into(),
+            json!(_local_skill_security_message(finding)),
+        );
         results.push(row);
     }
     results
@@ -959,7 +1002,9 @@ fn _local_trust_domain_for_artifact(
         "plugin" => deps.scoring.build_plugin_domain(&trust_root),
         "skill" => {
             let options = ScanOptions::inventory_trust_scan_options();
-            let context = deps.scoring.resolve_skill_security_context(&trust_root, &options);
+            let context = deps
+                .scoring
+                .resolve_skill_security_context(&trust_root, &options);
             if let Some(domain) = deps.scoring.build_skill_domain(&trust_root, &context) {
                 return Some(domain);
             }
@@ -979,17 +1024,14 @@ fn _local_trust_domain_for_artifact(
             }
             None
         }
-        "mcp_server" => deps
-            .scoring
-            .build_mcp_domain(&trust_root)
-            .or_else(|| {
-                deps.scoring.build_mcp_surface_domain(
-                    a_str(artifact, "name"),
-                    a_str(artifact, "command"),
-                    a_str(artifact, "url"),
-                    a_str(artifact, "transport"),
-                )
-            }),
+        "mcp_server" => deps.scoring.build_mcp_domain(&trust_root).or_else(|| {
+            deps.scoring.build_mcp_surface_domain(
+                a_str(artifact, "name"),
+                a_str(artifact, "command"),
+                a_str(artifact, "url"),
+                a_str(artifact, "transport"),
+            )
+        }),
         "mcp_tool" => deps.scoring.build_mcp_surface_domain(
             Some(
                 meta_str(metadata, "toolName")
@@ -1034,14 +1076,20 @@ fn _trust_root_for_artifact(
             .map(|n| n.to_string_lossy().to_lowercase() == "skill.md")
             .unwrap_or(false)
         {
-            path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone())
+            path.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| path.clone())
         } else {
             path.clone()
         };
         for candidate in std::iter::once(skill_dir.clone())
             .chain(skill_dir.ancestors().skip(1).map(Path::to_path_buf))
         {
-            if candidate.join(".codex-plugin").join("plugin.json").is_file() {
+            if candidate
+                .join(".codex-plugin")
+                .join("plugin.json")
+                .is_file()
+            {
                 return Some(candidate);
             }
             let name_is_skill_md = path
@@ -1057,7 +1105,8 @@ fn _trust_root_for_artifact(
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy().to_lowercase() == "skills")
                     .unwrap_or(false)
-                && (candidate.join("README.md").is_file() || candidate.join("SECURITY.md").is_file())
+                && (candidate.join("README.md").is_file()
+                    || candidate.join("SECURITY.md").is_file())
                 && _skill_file_name_matches_root(artifact, &candidate)
             {
                 return Some(candidate);
@@ -1079,7 +1128,9 @@ fn _trust_root_for_artifact(
         let dir = if path.is_dir() {
             path.clone()
         } else {
-            path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone())
+            path.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| path.clone())
         };
         return Some(dir);
     }
@@ -1157,7 +1208,10 @@ fn _local_baseline_evidence_payload(
     payload.insert("status".into(), json!("local"));
     payload.insert("capturedAt".into(), captured_at.clone());
     payload.insert("trustScore".into(), json!(py_round(domain.score)));
-    payload.insert("componentCount".into(), json!(trust_components.len() as i64));
+    payload.insert(
+        "componentCount".into(),
+        json!(trust_components.len() as i64),
+    );
     payload.insert("specId".into(), json!(domain.spec_id));
     payload.insert("specVersion".into(), json!(domain.spec_version));
     payload.insert("profileId".into(), json!(domain.profile_id));
@@ -1293,7 +1347,10 @@ fn _matches_mcp_cisco_run(artifact: &Map<String, Value>, run: &Map<String, Value
     if path.is_file()
         && (_paths_related(&path, &run_target)
             || _paths_related(
-                &path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone()),
+                &path
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| path.clone()),
                 &run_target,
             ))
     {
@@ -1404,7 +1461,10 @@ fn _cisco_trust_layer(
         .map(|v| v.as_i64().unwrap_or(0))
         .sum();
     safe_metadata.insert("totalFindings".into(), json!(total_findings));
-    safe_metadata.insert("findingsBySeverity".into(), Value::Object(severity_counts.clone()));
+    safe_metadata.insert(
+        "findingsBySeverity".into(),
+        Value::Object(severity_counts.clone()),
+    );
     if let Some(d) = run.get("duration_ms").and_then(Value::as_i64) {
         safe_metadata.insert("durationMs".into(), json!(d));
     }
@@ -1513,7 +1573,10 @@ fn _cisco_evidence_payload(
             payload.insert("trustScore".into(), Value::Null);
         }
     }
-    payload.insert("componentCount".into(), json!(trust_components.len() as i64));
+    payload.insert(
+        "componentCount".into(),
+        json!(trust_components.len() as i64),
+    );
     payload.insert(
         "totalFindings".into(),
         metadata.get("totalFindings").cloned().unwrap_or(json!(0)),
@@ -1549,7 +1612,10 @@ fn _cisco_severity_counts(run: &Map<String, Value>) -> Map<String, Value> {
         counts.insert(key.into(), json!(0));
     }
     if let Some(metadata) = run_meta(run) {
-        if let Some(raw_counts) = metadata.get("findingsBySeverity").and_then(Value::as_object) {
+        if let Some(raw_counts) = metadata
+            .get("findingsBySeverity")
+            .and_then(Value::as_object)
+        {
             let mut resolved = Map::new();
             for key in ["critical", "high", "medium", "low"] {
                 let value = raw_counts
@@ -1603,8 +1669,8 @@ fn _cisco_analyzers_used(run: &Map<String, Value>) -> Vec<String> {
 /// `_cisco_layer_score(severity_counts, *, analyzers_used=("yara",))`
 fn _cisco_layer_score(severity_counts: &Map<String, Value>, analyzers_used: &[String]) -> i64 {
     let get = |k: &str| severity_counts.get(k).and_then(Value::as_i64).unwrap_or(0);
-    let raw_score = 100
-        - (30 * get("critical") + 12 * get("high") + 4 * get("medium") + get("low"));
+    let raw_score =
+        100 - (30 * get("critical") + 12 * get("high") + 4 * get("medium") + get("low"));
     let analyzer_count = analyzers_used.len();
     let ceiling = if analyzer_count >= 3 {
         100
@@ -1642,7 +1708,10 @@ fn _trust_components_from_adapter(adapter: &TrustAdapterScore) -> Vec<Map<String
 }
 
 /// `_trust_component_row(adapter, component)`
-fn _trust_component_row(adapter: &TrustAdapterScore, component: &TrustComponentScore) -> Map<String, Value> {
+fn _trust_component_row(
+    adapter: &TrustAdapterScore,
+    component: &TrustComponentScore,
+) -> Map<String, Value> {
     let score = py_round(component.score);
     let status = if score < 40 {
         "critical"
@@ -1652,7 +1721,10 @@ fn _trust_component_row(adapter: &TrustAdapterScore, component: &TrustComponentS
         "positive"
     };
     let mut payload = Map::new();
-    payload.insert("componentId".into(), json!(format!("{}:{}", adapter.adapter_id, component.key)));
+    payload.insert(
+        "componentId".into(),
+        json!(format!("{}:{}", adapter.adapter_id, component.key)),
+    );
     payload.insert("confidence".into(), json!(85));
     payload.insert("label".into(), json!(adapter.label));
     payload.insert("score".into(), json!(score));
@@ -1660,10 +1732,7 @@ fn _trust_component_row(adapter: &TrustAdapterScore, component: &TrustComponentS
     payload.insert("summary".into(), json!(component.rationale));
     payload.insert("weight".into(), json!(adapter.weight));
     if !component.evidence.is_empty() {
-        payload.insert(
-            "evidence".into(),
-            json!({ "lines": component.evidence }),
-        );
+        payload.insert("evidence".into(), json!({ "lines": component.evidence }));
     }
     payload
 }

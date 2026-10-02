@@ -1000,6 +1000,7 @@ pub mod false_positive_rules;
 pub mod hook_evidence_writer;
 pub mod hook_responses;
 pub mod inventory_contract;
+pub mod linux_artifact_supply_chain;
 pub mod mcp_decision;
 pub mod restricted_archive;
 #[cfg(unix)]
@@ -1011,7 +1012,6 @@ pub mod review_event_outbox_schema;
 pub mod sandbox;
 pub mod shims;
 pub mod signals;
-pub mod linux_artifact_supply_chain;
 pub mod supply_chain_bundle;
 pub mod supply_chain_package_identity;
 pub mod supply_chain_support;

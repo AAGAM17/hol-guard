@@ -47,10 +47,7 @@ fn hmac_sha1(key: &[u8], msg: &[u8]) -> [u8; 20] {
 /// `_normalize_base32` (`totp.py:163-166`): strip, drop spaces/dashes, uppercase,
 /// repad to a multiple of 8.
 fn normalize_base32(value: &str) -> String {
-    let normalized: String = value
-        .trim()
-        .replace([' ', '-'], "")
-        .to_uppercase();
+    let normalized: String = value.trim().replace([' ', '-'], "").to_uppercase();
     let pad = (8 - normalized.len() % 8) % 8;
     format!("{}{}", normalized, "=".repeat(pad))
 }

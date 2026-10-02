@@ -503,7 +503,10 @@ pub fn harness_json_from_native_post_tool(
     if response.get("decision") == Some(&json!("allow"))
         && response.get("model_output_action") == Some(&json!("allow_original"))
     {
-        let action = response.get("policy_action").and_then(Value::as_str).unwrap_or("allow");
+        let action = response
+            .get("policy_action")
+            .and_then(Value::as_str)
+            .unwrap_or("allow");
         let mut output = json!({
             "policy_action": action,
             "hookSpecificOutput": {"hookEventName": "PostToolUse"},

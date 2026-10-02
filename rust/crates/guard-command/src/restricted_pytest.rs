@@ -1042,9 +1042,7 @@ pub fn runtime_distribution_root(executable: &Path) -> PathBuf {
 fn host_home_directory() -> Option<PathBuf> {
     // `pwd.getpwuid(os.getuid())` requires unsafe; the POSIX-fallback `Path.home()`
     // path is used for all platforms here.
-    let home = env::var_os("HOME")
-        .map(PathBuf::from)
-        .or_else(dirs_home)?;
+    let home = env::var_os("HOME").map(PathBuf::from).or_else(dirs_home)?;
     home.canonicalize().ok()
 }
 

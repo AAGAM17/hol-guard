@@ -78,7 +78,10 @@ pub trait RedactionApi {
 /// `aibom_cli` + inventory-contract api seam.
 pub trait ReportingApi {
     /// `extract_aibom_metadata_extensions(metadata)`
-    fn extract_aibom_metadata_extensions(&self, metadata: &Map<String, Value>) -> Map<String, Value>;
+    fn extract_aibom_metadata_extensions(
+        &self,
+        metadata: &Map<String, Value>,
+    ) -> Map<String, Value>;
     /// `apply_local_trust_metadata(artifact, *, captured_at, item_kind, metadata, workspace_dir)`
     fn apply_local_trust_metadata(
         &self,
@@ -147,7 +150,11 @@ pub fn summarize_aibom_layers(
                 "policy" => *counts.get_mut("policies").unwrap() += 1,
                 _ => {}
             }
-            if item.metadata.get("trustResolution").is_some_and(Value::is_object) {
+            if item
+                .metadata
+                .get("trustResolution")
+                .is_some_and(Value::is_object)
+            {
                 *counts.get_mut("trust").unwrap() += 1;
             }
             let source_links = item.metadata.get("sourceLinks");
@@ -220,7 +227,9 @@ pub fn summarize_aibom_trust(snapshots: &[GuardAgentInventorySnapshot]) -> Map<S
     let average_score = if scores.is_empty() {
         Value::Null
     } else {
-        json!(py_round_f64(scores.iter().sum::<i64>() as f64 / scores.len() as f64))
+        json!(py_round_f64(
+            scores.iter().sum::<i64>() as f64 / scores.len() as f64
+        ))
     };
     let mut out = Map::new();
     out.insert("eligible".into(), json!(eligible));
@@ -320,7 +329,8 @@ pub fn _artifact_rows_from_store(
             .get(&key)
             .and_then(Value::as_object)
             .cloned();
-        let config_path = if item.get("artifact_type").and_then(Value::as_str) == Some("skill_file") {
+        let config_path = if item.get("artifact_type").and_then(Value::as_str) == Some("skill_file")
+        {
             _store_row_config_path(&item)
         } else {
             None
@@ -428,7 +438,9 @@ fn _store_only_artifact_metadata_extensions(
 }
 
 /// `_aggregate_redaction_report(snapshots)`
-pub fn _aggregate_redaction_report(snapshots: &[GuardAgentInventorySnapshot]) -> Map<String, Value> {
+pub fn _aggregate_redaction_report(
+    snapshots: &[GuardAgentInventorySnapshot],
+) -> Map<String, Value> {
     let mut redacted_fields: BTreeSet<String> = BTreeSet::new();
     let mut raw_secrets = false;
     let mut symlink_items = 0i64;
@@ -575,10 +587,16 @@ pub fn _render_aibom_markdown(payload: &Map<String, Value>) -> String {
                 "trust_verdict",
             ]
             .iter()
-            .map(|field| _markdown_table_cell(item.get(*field).unwrap_or(&Value::String(String::new()))))
+            .map(|field| {
+                _markdown_table_cell(item.get(*field).unwrap_or(&Value::String(String::new())))
+            })
             .collect();
             cells.push(
-                if item.get("present").and_then(Value::as_bool).unwrap_or(false) {
+                if item
+                    .get("present")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
                     "yes"
                 } else {
                     "no"
@@ -598,7 +616,10 @@ pub fn _render_aibom_markdown(payload: &Map<String, Value>) -> String {
             value_display(&get("covered")),
             value_display(&get("eligible"))
         ));
-        lines.push(format!("- Coverage: {}%", value_display(&get("coverage_percent"))));
+        lines.push(format!(
+            "- Coverage: {}%",
+            value_display(&get("coverage_percent"))
+        ));
         lines.push(String::new());
     }
     let mut out = lines.join("\n");

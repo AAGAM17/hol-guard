@@ -628,9 +628,9 @@ pub fn resolve_extension_controls(
     let mut failures: BTreeSet<ControlResolverFailure> =
         composed.failures.iter().copied().collect();
 
-    if let Some(failure) = authority_failure.filter(|_| {
-        surface != ControlSurface::TrustedLocalProof
-    }) {
+    if let Some(failure) =
+        authority_failure.filter(|_| surface != ControlSurface::TrustedLocalProof)
+    {
         failures.insert(ControlResolverFailure::new(failure, None));
     }
 

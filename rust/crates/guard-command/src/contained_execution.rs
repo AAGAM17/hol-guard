@@ -1643,10 +1643,9 @@ pub fn reject_external_node_modules(
             .map_err(|_| "input_outside_workspace".to_owned())?;
         let mut parts = relative.components().peekable();
         if let Some(std::path::Component::Normal(first)) = parts.peek() {
-            if *first == "node_modules"
-                && !resolved.starts_with(&canonical_package_root) {
-                    return Err("input_outside_package_root".to_owned());
-                }
+            if *first == "node_modules" && !resolved.starts_with(&canonical_package_root) {
+                return Err("input_outside_package_root".to_owned());
+            }
         }
     }
     Ok(())
@@ -1899,15 +1898,17 @@ pub fn build_local_node_runner_evidence(
     if !bin_ok {
         reasons.push("executable_mismatch".to_owned());
     }
-    if declared.as_deref() != installed_version.as_deref() && declared.is_some()
+    if declared.as_deref() != installed_version.as_deref()
+        && declared.is_some()
         && !version_spec_matches(
             declared.as_deref(),
             installed_version.as_deref(),
             &SCRIPT_VERSION_RE,
             true,
-        ) {
-            reasons.push("declared_dependency_mismatch".to_owned());
-        }
+        )
+    {
+        reasons.push("declared_dependency_mismatch".to_owned());
+    }
     if !version_spec_matches(
         installed_version.as_deref(),
         locked_version.as_deref(),
@@ -2205,9 +2206,10 @@ pub fn try_execute_contained_typescript(
             || arg.ends_with(".tsx")
             || arg.ends_with(".cts")
             || arg.ends_with(".mts"))
-            && !arg.starts_with('-') {
-                sources.push(arg.clone());
-            }
+            && !arg.starts_with('-')
+        {
+            sources.push(arg.clone());
+        }
     }
     if sources.is_empty() {
         return None;

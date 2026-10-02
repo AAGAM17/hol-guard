@@ -61,7 +61,12 @@ impl CanonicalPackageIdentity {
 
     /// `display` (:31).
     pub fn display(&self) -> String {
-        format!("{}:{}@{}", self.ecosystem, self.qualified_name(), self.version)
+        format!(
+            "{}:{}@{}",
+            self.ecosystem,
+            self.qualified_name(),
+            self.version
+        )
     }
 }
 
@@ -77,10 +82,7 @@ pub fn normalize_ecosystem(ecosystem: &str) -> PackageIdentityResult<String> {
 }
 
 /// `normalize_package_component(ecosystem, value)` (:43).
-pub fn normalize_package_component(
-    ecosystem: &str,
-    value: &str,
-) -> PackageIdentityResult<String> {
+pub fn normalize_package_component(ecosystem: &str, value: &str) -> PackageIdentityResult<String> {
     let normalized_ecosystem = normalize_ecosystem(ecosystem)?;
     let mut normalized = value.trim().to_string();
     if normalized.is_empty() {
@@ -168,7 +170,9 @@ pub fn parse_package_identity(
     let normalized_ecosystem = normalize_ecosystem(ecosystem)?;
     let value = package_name.trim().to_string();
     if value.is_empty() {
-        return Err(PackageIdentityError("Package name cannot be empty".to_string()));
+        return Err(PackageIdentityError(
+            "Package name cannot be empty".to_string(),
+        ));
     }
     let mut namespace: Option<&str> = None;
     let mut name: &str = value.as_str();

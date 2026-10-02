@@ -14,12 +14,11 @@ use std::path::Path;
 use std::time::Instant;
 
 use guard_contracts::{
-    ARCHIVE_CAP_ARCHIVE_BYTES, ARCHIVE_CAP_EXPANDED_BYTES, ARCHIVE_CAP_FILES,
-    ARCHIVE_CAP_MEMBER_BYTES, ARCHIVE_INSPECTION_FEATURE,
+    NativeRuntimeStatusV1, ARCHIVE_CAP_ARCHIVE_BYTES, ARCHIVE_CAP_EXPANDED_BYTES,
+    ARCHIVE_CAP_FILES, ARCHIVE_CAP_MEMBER_BYTES, ARCHIVE_INSPECTION_FEATURE,
     ARCHIVE_INSPECTION_REQUEST_SCHEMA, ARCHIVE_INSPECTION_RESULT_SCHEMA,
-    NativeRuntimeStatusV1,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 /// `ArchiveInspectionResult` (native_archive_inspection.py:69) mirror.
@@ -153,7 +152,10 @@ pub trait NativeRuntimeStatusApi {
 }
 
 fn is_lower_hex64(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// `inspect_archive_native` (native_archive_inspection.py:101).
@@ -177,8 +179,8 @@ pub fn inspect_archive_native(
 ) -> ArchiveInspectionResult {
     // The caller's timeout covers the whole adapter — including the cold-start
     // capabilities probe — so capture the deadline up front.
-    let deadline_monotonic = Instant::now()
-        + std::time::Duration::from_secs_f64(timeout_seconds.max(0.0) + 0.5);
+    let deadline_monotonic =
+        Instant::now() + std::time::Duration::from_secs_f64(timeout_seconds.max(0.0) + 0.5);
     let policy_invalid = |_: &str| {
         result(
             "incomplete",
@@ -325,18 +327,12 @@ pub fn inspect_archive_native(
         "max_decompression_ratio".into(),
         json!(max_decompression_ratio),
     );
-    caps.insert(
-        "max_nested_archives".into(),
-        json!(max_nested_archives),
-    );
+    caps.insert("max_nested_archives".into(), json!(max_nested_archives));
     caps.insert("max_path_depth".into(), json!(max_path_depth));
     let mut request = Map::new();
     request.insert("schema".into(), json!(REQUEST_SCHEMA));
     request.insert("request_id".into(), json!(request_id));
-    request.insert(
-        "archive_path".into(),
-        json!(archive_path.to_string_lossy()),
-    );
+    request.insert("archive_path".into(), json!(archive_path.to_string_lossy()));
     request.insert(
         "state_dir".into(),
         json!(canonical_state_dir.to_string_lossy()),
@@ -417,17 +413,16 @@ pub fn inspect_archive_native(
     let code = get_str("code");
     let message = get_str("message");
     let severity = get_str("severity");
-    let sha256_value = obj.get("sha256").and_then(|v| v.as_str().map(str::to_string));
+    let sha256_value = obj
+        .get("sha256")
+        .and_then(|v| v.as_str().map(str::to_string));
     let runtime_sha256 = get_str("runtime_sha256");
     let counters = obj.get("counters").and_then(|v| v.as_object());
     let counters_valid = counters
         .map(|c| {
             c.keys().all(|k| COUNTER_KEYS.contains(&k.as_str()))
                 && c.values().all(|v| {
-                    v.as_u64()
-                        .map(|n| n <= MAX_COUNTER)
-                        .unwrap_or(false)
-                        && !v.is_boolean()
+                    v.as_u64().map(|n| n <= MAX_COUNTER).unwrap_or(false) && !v.is_boolean()
                 })
         })
         .unwrap_or(false);
@@ -435,13 +430,15 @@ pub fn inspect_archive_native(
     if obj.get("schema").and_then(|v| v.as_str()) != Some(RESULT_SCHEMA)
         || obj.get("request_id").and_then(|v| v.as_str())
             != request.get("request_id").and_then(|v| v.as_str())
-        || obj.get("request_sha256").and_then(|v| v.as_str())
-            != Some(request_digest.as_str())
+        || obj.get("request_sha256").and_then(|v| v.as_str()) != Some(request_digest.as_str())
         || !matches!(
             status_value.as_deref(),
             Some("clean" | "blocked" | "incomplete")
         )
-        || !code.as_deref().map(|c| !c.is_empty() && c.len() <= MAX_CODE_CHARS).unwrap_or(false)
+        || !code
+            .as_deref()
+            .map(|c| !c.is_empty() && c.len() <= MAX_CODE_CHARS)
+            .unwrap_or(false)
         || !message
             .as_deref()
             .map(|m| !m.is_empty() && m.len() <= MAX_MESSAGE_CHARS)

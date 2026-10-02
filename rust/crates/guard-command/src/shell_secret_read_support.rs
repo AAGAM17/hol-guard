@@ -1621,7 +1621,9 @@ pub(crate) fn direct_secret_read_paths(
                 if ["-c", "-e", "--eval", "-p", "--print"].contains(&arg.as_str()) {
                     candidates.extend(literal_read_paths(&args[index + 1]));
                 } else if arg.starts_with("--eval=") || arg.starts_with("--print=") {
-                    candidates.extend(literal_read_paths(arg.split_once('=').map(|x| x.1).unwrap_or("")));
+                    candidates.extend(literal_read_paths(
+                        arg.split_once('=').map(|x| x.1).unwrap_or(""),
+                    ));
                 }
             }
             // `--eval=`/`--print=` on the final arg are missed by `[:-1]`? No —

@@ -1253,7 +1253,9 @@ pub fn evaluate_package_request_artifact(
     match (result, error) {
         (Some(result), _) => Ok(result),
         (None, Some(message)) => Err(EvalError::Internal(message)),
-        (None, None) => Err(EvalError::Internal("evaluate_package_request_artifact: no result".into())),
+        (None, None) => Err(EvalError::Internal(
+            "evaluate_package_request_artifact: no result".into(),
+        )),
     }
 }
 
@@ -2112,11 +2114,8 @@ fn finalize_evaluation(
     package_intent_hash: &str,
     workspace_fingerprint: Option<&str>,
 ) -> PackageEvalResult {
-    let packages: Vec<Map<String, Value>> = draft
-        .packages
-        .iter()
-        .map(with_support_metadata)
-        .collect();
+    let packages: Vec<Map<String, Value>> =
+        draft.packages.iter().map(with_support_metadata).collect();
     let primary_package: Map<String, Value> = packages.first().cloned().unwrap_or_default();
     let package_display = package_display_name(&primary_package);
     let requested_version = optional_string(primary_package.get("requestedVersion"))
@@ -5623,7 +5622,9 @@ fn pnpm_lock_target_versions(
                 continue;
             }
             if dependency_name.is_some() && indent >= 4 && stripped.starts_with("version:") {
-                let v = stripped.split_once(':').map(|x| x.1)
+                let v = stripped
+                    .split_once(':')
+                    .map(|x| x.1)
                     .unwrap_or("")
                     .trim()
                     .trim_matches('"')
@@ -5690,7 +5691,9 @@ fn pnpm_lock_target_versions(
             continue;
         }
         if dependency_name.is_some() && indent >= 8 && stripped.starts_with("version:") {
-            let v = stripped.split_once(':').map(|x| x.1)
+            let v = stripped
+                .split_once(':')
+                .map(|x| x.1)
                 .unwrap_or("")
                 .trim()
                 .trim_matches('"')
@@ -6640,8 +6643,7 @@ fn bun_lockfile_binary_fallback_packages(
     let Some(ws) = workspace_dir else {
         return Vec::new();
     };
-    let Some(Value::Array(lockfile_paths)) =
-        artifact.metadata.get("lockfile_paths").cloned()
+    let Some(Value::Array(lockfile_paths)) = artifact.metadata.get("lockfile_paths").cloned()
     else {
         return Vec::new();
     };

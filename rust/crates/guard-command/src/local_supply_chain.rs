@@ -41,7 +41,8 @@ use crate::package_execution_context::{
 };
 use crate::package_intent_common::{
     build_package_request_artifact, composer_target, coordinate_target, js_target, python_target,
-    redact_package_request_token, version_target, GuardArtifact, PackageIntent, PackageIntentTarget,
+    redact_package_request_token, version_target, GuardArtifact, PackageIntent,
+    PackageIntentTarget,
 };
 use crate::package_manifest_diff::parse_manifest_dependencies;
 
@@ -1051,9 +1052,7 @@ impl Timestamp {
     /// `datetime.isoformat()` — `+00:00` suffix, seconds precision.
     pub fn isoformat(&self) -> String {
         let (y, m, d, h, mi, s, _) = self.utc_parts();
-        format!(
-            "{y:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}+00:00"
-        )
+        format!("{y:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}+00:00")
     }
 }
 
@@ -2991,9 +2990,11 @@ fn inventory_from_purl(purl: Option<&str>) -> Option<Map<String, Value>> {
     if remainder.is_empty() {
         return None;
     }
-    let package_ref = remainder.split('?')
+    let package_ref = remainder
+        .split('?')
         .next()
-        .unwrap_or("").split('#')
+        .unwrap_or("")
+        .split('#')
         .next()
         .unwrap_or("");
     let (package_path, package_version) = match package_ref.split_once('@') {
@@ -4186,13 +4187,13 @@ fn workspace_scan_intent(
     paths: &dyn PathSupportApi,
     manifest_parser: &dyn ManifestParserApi,
 ) -> Option<PackageIntent> {
-    let (resolved_manifest_paths, resolved_lockfile_paths) =
-        match (manifest_paths, lockfile_paths) {
-            (Some(manifest_paths), Some(lockfile_paths)) => {
-                (manifest_paths.to_vec(), lockfile_paths.to_vec())
-            }
-            _ => workspace_files(workspace_dir),
-        };
+    let (resolved_manifest_paths, resolved_lockfile_paths) = match (manifest_paths, lockfile_paths)
+    {
+        (Some(manifest_paths), Some(lockfile_paths)) => {
+            (manifest_paths.to_vec(), lockfile_paths.to_vec())
+        }
+        _ => workspace_files(workspace_dir),
+    };
     let resolved_inventory: Vec<Map<String, Value>> = match inventory {
         Some(items) => items.to_vec(),
         None => workspace_inventory_from_paths(
@@ -4536,7 +4537,10 @@ fn redacted_workspace_folder_path(workspace_dir: &Path) -> Option<String> {
 }
 
 /// `_read_git_origin_codebase` (:3785-3801).
-fn read_git_origin_codebase(workspace_dir: &Path, _runner: &dyn RuntimeRunnerApi) -> Option<String> {
+fn read_git_origin_codebase(
+    workspace_dir: &Path,
+    _runner: &dyn RuntimeRunnerApi,
+) -> Option<String> {
     let git_dir = workspace_dir.join(".git");
     let config_path = git_dir.join("config");
     let text = std::fs::read_to_string(config_path).ok()?;
@@ -4893,13 +4897,15 @@ pub fn build_workspace_audit_payload(
 ) -> Result<Map<String, Value>, LocalSupplyChainError> {
     let context =
         build_workspace_context_payload(workspace_dir, workspace_label, workspace_id, runner);
-    let diff_inventory = before_workspace_dir.map(|before_dir| workspace_diff_audit_inventory(
+    let diff_inventory = before_workspace_dir.map(|before_dir| {
+        workspace_diff_audit_inventory(
             before_dir,
             workspace_dir,
             sbom_paths,
             paths,
             manifest_parser,
-        ));
+        )
+    });
     let (manifest_paths, lockfile_paths, sbom_paths_resolved, package_items, summary) =
         match &diff_inventory {
             Some(inv) => (
@@ -5228,8 +5234,7 @@ fn package_evaluation_requires_external_archive_binding(
 /// `_external_archive_downloads` — extract archive downloads from an evaluation.
 #[allow(dead_code)]
 fn external_archive_downloads(evaluation: &PackageRequestEvaluation) -> Vec<Value> {
-    evaluation
-        .external_archive_downloads().to_vec()
+    evaluation.external_archive_downloads().to_vec()
 }
 
 /// `_cleanup_external_archive_downloads` (:1258-1260).
@@ -8595,18 +8600,12 @@ fn cloud_audit_workspace_context(
         "folderPath".into(),
         redacted_workspace_folder_path(workspace_dir).map_or(Value::Null, Value::String),
     );
-    out.insert(
-        "lockfilePaths".into(),
-        json!(lockfile_paths.to_vec()),
-    );
+    out.insert("lockfilePaths".into(), json!(lockfile_paths.to_vec()));
     out.insert(
         "machine".into(),
         safe_machine_name().map_or(Value::Null, Value::String),
     );
-    out.insert(
-        "manifestPaths".into(),
-        json!(manifest_paths.to_vec()),
-    );
+    out.insert("manifestPaths".into(), json!(manifest_paths.to_vec()));
     out.insert(
         "packageManager".into(),
         json!(package_manager_for_scan(manifest_paths)),
@@ -8858,13 +8857,11 @@ fn run_managed_workspace_audit_job(
     );
     row.insert(
         "manifest_paths".into(),
-        json!(inventory
-            .manifest_paths.to_vec()),
+        json!(inventory.manifest_paths.to_vec()),
     );
     row.insert(
         "lockfile_paths".into(),
-        json!(inventory
-            .lockfile_paths.to_vec()),
+        json!(inventory.lockfile_paths.to_vec()),
     );
     row.insert("message".into(), message.unwrap_or(Value::Null));
     Ok((outcome, row))

@@ -997,24 +997,22 @@ pub fn build_runtime_launch_identity(
     }
     let raw_command = command_str.trim_start();
     let raw_current_user_tilde = raw_command.starts_with("~/");
-    let executable_identity: Value = if !structured_command
-        && executable.starts_with('~')
-        && !raw_current_user_tilde
-    {
-        unreusable_executable_identity(
-            &Value::String(executable.clone()),
-            "ambiguous_tilde_syntax",
-            None,
-        )
-    } else {
-        build_runtime_executable_identity(
-            &Value::String(executable.clone()),
-            search_path,
-            Some(&effective_cwd),
-            home_dir,
-            true,
-        )
-    };
+    let executable_identity: Value =
+        if !structured_command && executable.starts_with('~') && !raw_current_user_tilde {
+            unreusable_executable_identity(
+                &Value::String(executable.clone()),
+                "ambiguous_tilde_syntax",
+                None,
+            )
+        } else {
+            build_runtime_executable_identity(
+                &Value::String(executable.clone()),
+                search_path,
+                Some(&effective_cwd),
+                home_dir,
+                true,
+            )
+        };
     let (executable_shebang, executable_shebang_status) =
         raw_shebang_for_identity(&executable_identity);
     let entrypoint = runtime_entrypoint_identity(

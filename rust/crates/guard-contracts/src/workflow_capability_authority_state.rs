@@ -612,18 +612,16 @@ mod tests {
 
     #[test]
     fn revocation_sign_verify_round_trip() {
-        let r =
-            WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "consumed", TS)
-                .unwrap();
+        let r = WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "consumed", TS)
+            .unwrap();
         let s = sign_revocation(r, &key(), KEY_ID).unwrap();
         verify_revocation(&s, &key(), KEY_ID).unwrap();
     }
 
     #[test]
     fn revocation_encode_decode_canonical() {
-        let r =
-            WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "consumed", TS)
-                .unwrap();
+        let r = WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "consumed", TS)
+            .unwrap();
         let s = sign_revocation(r, &key(), KEY_ID).unwrap();
         let enc = encode_signed_revocation(&s).unwrap();
         let back = decode_signed_revocation(&enc).unwrap();

@@ -94,9 +94,7 @@ impl LinuxArtifactSupplyChainManifest {
             ("key_id", &key_id),
         ] {
             if !IDENTIFIER_PATTERN.is_match(value) {
-                return Err(LinuxArtifactSupplyChainError(format!(
-                    "invalid {label}"
-                )));
+                return Err(LinuxArtifactSupplyChainError(format!("invalid {label}")));
             }
         }
         if version.is_empty() || version != version.trim() || version.len() > 128 {
@@ -108,9 +106,7 @@ impl LinuxArtifactSupplyChainManifest {
             ("source_digest", &source_digest),
         ] {
             if !SHA256_PATTERN.is_match(value) {
-                return Err(LinuxArtifactSupplyChainError(format!(
-                    "invalid {label}"
-                )));
+                return Err(LinuxArtifactSupplyChainError(format!("invalid {label}")));
             }
         }
         if !SIGNATURE_PATTERN.is_match(&signature) {
@@ -144,10 +140,7 @@ impl LinuxArtifactSupplyChainManifest {
         out.insert("builder_id".to_string(), json!(self.builder_id));
         out.insert("component_id".to_string(), json!(self.component_id));
         out.insert("key_id".to_string(), json!(self.key_id));
-        out.insert(
-            "release_sequence".to_string(),
-            json!(self.release_sequence),
-        );
+        out.insert("release_sequence".to_string(), json!(self.release_sequence));
         out.insert("sbom_digest".to_string(), json!(self.sbom_digest));
         out.insert("schema_version".to_string(), json!(self.schema_version));
         out.insert("signature".to_string(), json!(self.signature));
@@ -241,32 +234,20 @@ impl LinuxArtifactSupplyChainReceipt {
         })?;
         verifier
             .verify(&public_key, &signature_payload(manifest), &signature)
-            .map_err(|_| {
-                LinuxArtifactSupplyChainError("receipt provenance is invalid".to_string())
-            })
+            .map_err(|_| LinuxArtifactSupplyChainError("receipt provenance is invalid".to_string()))
     }
 }
 
 /// Ed25519 verify seam — `cryptography Ed25519PublicKey.verify`.
 pub trait Ed25519Verify {
-    fn verify(
-        &self,
-        public_key: &[u8],
-        payload: &[u8],
-        signature: &[u8],
-    ) -> Result<(), String>;
+    fn verify(&self, public_key: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), String>;
 }
 
 /// Default Ed25519 verifier via `ring::signature::ED25519`.
 pub struct RingEd25519;
 
 impl Ed25519Verify for RingEd25519 {
-    fn verify(
-        &self,
-        public_key: &[u8],
-        payload: &[u8],
-        signature: &[u8],
-    ) -> Result<(), String> {
+    fn verify(&self, public_key: &[u8], payload: &[u8], signature: &[u8]) -> Result<(), String> {
         let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public_key);
         key.verify(payload, signature)
             .map_err(|_| "invalid signature".to_string())
@@ -402,17 +383,13 @@ pub fn verify_linux_artifact_supply_chain_with(
             "SBOM digest mismatch".to_string(),
         ));
     }
-    let public_key = hex::decode(public_key_hex).map_err(|_| {
-        LinuxArtifactSupplyChainError("manifest signature is invalid".to_string())
-    })?;
-    let signature = hex::decode(&manifest.signature).map_err(|_| {
-        LinuxArtifactSupplyChainError("manifest signature is invalid".to_string())
-    })?;
+    let public_key = hex::decode(public_key_hex)
+        .map_err(|_| LinuxArtifactSupplyChainError("manifest signature is invalid".to_string()))?;
+    let signature = hex::decode(&manifest.signature)
+        .map_err(|_| LinuxArtifactSupplyChainError("manifest signature is invalid".to_string()))?;
     verifier
         .verify(&public_key, &signature_payload(manifest), &signature)
-        .map_err(|_| {
-            LinuxArtifactSupplyChainError("manifest signature is invalid".to_string())
-        })?;
+        .map_err(|_| LinuxArtifactSupplyChainError("manifest signature is invalid".to_string()))?;
     LinuxArtifactSupplyChainReceipt::try_new(
         manifest.component_id.clone(),
         manifest.version.clone(),
@@ -502,17 +479,13 @@ pub fn revalidate_linux_artifact_supply_chain_receipt_with(
             "receipt manifest binding is invalid".to_string(),
         ));
     }
-    let public_key = hex::decode(public_key_hex).map_err(|_| {
-        LinuxArtifactSupplyChainError("manifest signature is invalid".to_string())
-    })?;
-    let signature = hex::decode(&manifest.signature).map_err(|_| {
-        LinuxArtifactSupplyChainError("manifest signature is invalid".to_string())
-    })?;
+    let public_key = hex::decode(public_key_hex)
+        .map_err(|_| LinuxArtifactSupplyChainError("manifest signature is invalid".to_string()))?;
+    let signature = hex::decode(&manifest.signature)
+        .map_err(|_| LinuxArtifactSupplyChainError("manifest signature is invalid".to_string()))?;
     verifier
         .verify(&public_key, &signature_payload(manifest), &signature)
-        .map_err(|_| {
-            LinuxArtifactSupplyChainError("manifest signature is invalid".to_string())
-        })
+        .map_err(|_| LinuxArtifactSupplyChainError("manifest signature is invalid".to_string()))
 }
 
 /// `_signature_payload` (:265) — `DOMAIN + canonical_json(asdict minus signature)`.

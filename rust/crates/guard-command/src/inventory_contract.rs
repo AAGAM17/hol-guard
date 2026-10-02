@@ -118,7 +118,12 @@ pub trait InventoryRedactionApi {
     /// the Python default resolution applies.
     fn redact_local_path(&self, path: &Path, home_dir: Option<&Path>) -> String;
     /// `_redact_known_path(value, home_dir, workspace_dir)`
-    fn _redact_known_path(&self, value: &str, home_dir: &Path, workspace_dir: Option<&Path>) -> String;
+    fn _redact_known_path(
+        &self,
+        value: &str,
+        home_dir: &Path,
+        workspace_dir: Option<&Path>,
+    ) -> String;
     /// `_safe_finding_text(value, *, home_dir, workspace_dir)`
     fn _safe_finding_text(
         &self,
@@ -265,7 +270,9 @@ fn run_str<'a>(run: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
 }
 
 fn run_findings(run: &Map<String, Value>) -> &[Value] {
-    run.get("findings").and_then(Value::as_array).map_or(&[], Vec::as_slice)
+    run.get("findings")
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +324,10 @@ pub fn _normalize_redaction_report(report: &Value) -> Map<String, Value> {
         .cloned()
         .unwrap_or_default();
     let mut out = Map::new();
-    out.insert("rawSecretsIncluded".into(), json!(raw_secrets.as_bool() == Some(true)));
+    out.insert(
+        "rawSecretsIncluded".into(),
+        json!(raw_secrets.as_bool() == Some(true)),
+    );
     out.insert("redactedFields".into(), Value::Array(redacted_fields));
     out
 }
@@ -383,12 +393,16 @@ fn _inventory_item_json(
     obj.insert("itemId".into(), json!(item.item_id));
     obj.insert("itemKind".into(), json!(item.item_kind));
     obj.insert("displayName".into(), json!(item.display_name));
-    obj.insert("capabilityCategories".into(), json!(item.capability_categories));
+    obj.insert(
+        "capabilityCategories".into(),
+        json!(item.capability_categories),
+    );
     obj.insert("contentHash".into(), json!(item.content_hash));
     obj.insert("driftState".into(), json!(item.drift_state));
     obj.insert(
         "metadata".into(),
-        deps.redaction._safe_json(&Value::Object(metadata), "", false),
+        deps.redaction
+            ._safe_json(&Value::Object(metadata), "", false),
     );
     for (k, v) in &item.extra {
         obj.insert(_snake_to_camel_case_key(k), v.clone());
@@ -492,11 +506,10 @@ pub fn cloud_inventory_artifacts_from_detection(
             .iter()
             .map(|a| a_str(a, "artifact_id").unwrap_or("").to_string())
             .collect();
-        for artifact in deps.items.discover_shared_workspace_aibom_artifacts(
-            &harness,
-            home_dir,
-            workspace_dir,
-        ) {
+        for artifact in
+            deps.items
+                .discover_shared_workspace_aibom_artifacts(&harness, home_dir, workspace_dir)
+        {
             let aid = a_str(&artifact, "artifact_id").unwrap_or("").to_string();
             if !existing_ids.contains(&aid) {
                 existing_ids.insert(aid);
@@ -528,12 +541,7 @@ pub fn inventory_snapshot_from_detection(
     let harness = a_str(detection, "harness").unwrap_or("unknown").to_string();
     let artifact_list: Vec<LocalArtifact> = match artifacts {
         Some(list) => list.to_vec(),
-        None => cloud_inventory_artifacts_from_detection(
-            detection,
-            deps,
-            home_dir,
-            workspace_dir,
-        ),
+        None => cloud_inventory_artifacts_from_detection(detection, deps, home_dir, workspace_dir),
     };
     let mut items: Vec<GuardAgentInventoryItem> = Vec::new();
     for artifact in &artifact_list {
@@ -567,7 +575,11 @@ pub fn inventory_snapshot_from_detection(
         .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
-                .map(|p| p.as_str().map(str::to_string).unwrap_or_else(|| p.to_string()))
+                .map(|p| {
+                    p.as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| p.to_string())
+                })
                 .filter(|s| seen.insert(s.clone()))
                 .collect()
         })
@@ -592,7 +604,8 @@ pub fn inventory_snapshot_from_detection(
             }
         })
         .collect();
-    let cisco_findings = _cisco_inventory_findings(cisco_runs, deps, &items, home_dir, workspace_dir);
+    let cisco_findings =
+        _cisco_inventory_findings(cisco_runs, deps, &items, home_dir, workspace_dir);
     let symlink_findings = if include_symlinks {
         _symlink_findings_from_items(&harness, &items)
     } else {
@@ -743,24 +756,27 @@ pub fn _cisco_inventory_findings(
             );
             let file_path = run_str(raw_finding, "file_path");
             let safe_path = match file_path {
-                Some(p) if !p.is_empty() => {
-                    Some(deps.redaction._redact_known_path(p, home_dir, workspace_dir))
-                }
+                Some(p) if !p.is_empty() => Some(deps.redaction._redact_known_path(
+                    p,
+                    home_dir,
+                    workspace_dir,
+                )),
                 _ => None,
             };
-            let line_number = run.get("line_number")
+            let line_number = run
+                .get("line_number")
                 .and_then(Value::as_i64)
                 .or_else(|| raw_finding.get("line_number").and_then(Value::as_i64));
-            let severity = _inventory_severity(
-                raw_finding.get("severity").unwrap_or(&Value::Null),
-            );
+            let severity = _inventory_severity(raw_finding.get("severity").unwrap_or(&Value::Null));
             let artifact_id = _artifact_id_for_cisco_finding(safe_path.as_deref(), items);
             let finding_id = format!(
                 "{}:{}:{}:{}",
                 source,
                 artifact_id,
                 rule_id,
-                line_number.map(|n| n.to_string()).unwrap_or_else(|| "0".into())
+                line_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "0".into())
             );
             if !seen.insert(finding_id.clone()) {
                 continue;
@@ -851,7 +867,10 @@ pub fn _symlink_findings_from_items(
         );
         evidence.insert(
             "pathClass".into(),
-            source_of_truth.get("pathClass").cloned().unwrap_or(Value::Null),
+            source_of_truth
+                .get("pathClass")
+                .cloned()
+                .unwrap_or(Value::Null),
         );
         findings.push(GuardAgentInventoryFinding {
             finding_id: format!("{}:symlink:{}:{}", harness, item.item_id, validation_state),

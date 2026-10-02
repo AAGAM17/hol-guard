@@ -156,17 +156,17 @@ fn require_string_array(data: &Map<String, Value>, key: &str) -> BundleResult<Ve
 
 /// `_parse_iso_timestamp` (:89) — naive values are UTC; returns unix seconds.
 fn parse_iso_timestamp(value: &str, field_name: &str) -> BundleResult<f64> {
-    parse_timestamp(value).map(|t| t.unix_seconds() as f64).ok_or_else(|| {
-        malformed(format!("Invalid ISO timestamp for {field_name:?}"))
-    })
+    parse_timestamp(value)
+        .map(|t| t.unix_seconds() as f64)
+        .ok_or_else(|| malformed(format!("Invalid ISO timestamp for {field_name:?}")))
 }
 
 /// `_bundle_version_timestamp` (:98).
 pub fn bundle_version_timestamp(bundle_version: &str) -> BundleResult<i64> {
     let prefix = bundle_version.split('-').next().unwrap_or("");
-    prefix.parse::<i64>().map_err(|_| {
-        malformed("bundleVersion must start with a unix-ms timestamp prefix")
-    })
+    prefix
+        .parse::<i64>()
+        .map_err(|_| malformed("bundleVersion must start with a unix-ms timestamp prefix"))
 }
 
 // ---------------------------------------------------------------------------
@@ -656,19 +656,11 @@ impl SupplyChainBundle {
         };
         let rules_list = match raw_policy_rules {
             Some(Value::Array(items)) => items.clone(),
-            _ => {
-                return Err(malformed(
-                    "Bundle policyRules must be a list".to_string(),
-                ))
-            }
+            _ => return Err(malformed("Bundle policyRules must be a list".to_string())),
         };
         let hashes_list = match raw_source_hashes {
             Some(Value::Array(items)) => items.clone(),
-            _ => {
-                return Err(malformed(
-                    "Bundle sourceHashes must be a list".to_string(),
-                ))
-            }
+            _ => return Err(malformed("Bundle sourceHashes must be a list".to_string())),
         };
 
         let mut parsed_packages = Vec::with_capacity(packages_list.len());
@@ -906,21 +898,16 @@ pub fn check_supply_chain_bundle_rollback(
 pub fn load_supply_chain_bundle_response_from_str(
     raw_json: &str,
 ) -> BundleResult<SupplyChainBundleResponse> {
-    let data: Value = serde_json::from_str(raw_json).map_err(|error| {
-        malformed(format!("Bundle JSON is invalid: {error}"))
-    })?;
+    let data: Value = serde_json::from_str(raw_json)
+        .map_err(|error| malformed(format!("Bundle JSON is invalid: {error}")))?;
     load_supply_chain_bundle_response(&data)
 }
 
 /// `load_supply_chain_bundle_response` (:100) — object input variant.
-pub fn load_supply_chain_bundle_response(
-    raw: &Value,
-) -> BundleResult<SupplyChainBundleResponse> {
+pub fn load_supply_chain_bundle_response(raw: &Value) -> BundleResult<SupplyChainBundleResponse> {
     let data = match raw {
         Value::Object(map) => map,
-        _ => {
-            return Err(malformed("Bundle root must be a JSON object".to_string()))
-        }
+        _ => return Err(malformed("Bundle root must be a JSON object".to_string())),
     };
     let raw_bundle = match data.get("bundle") {
         Some(Value::Object(map)) => map.clone(),
@@ -1010,12 +997,8 @@ fn signing_key_is_trusted(
 /// PKCS#1 DER extracted from the advertised PEM plus the canonical payload and
 /// decoded signature; `Err` maps to `SupplyChainBundleSignatureError`.
 pub trait RsaPssVerify {
-    fn verify(
-        &self,
-        public_key_der: &[u8],
-        payload: &[u8],
-        signature: &[u8],
-    ) -> Result<(), String>;
+    fn verify(&self, public_key_der: &[u8], payload: &[u8], signature: &[u8])
+        -> Result<(), String>;
 }
 
 /// Default seam — verifies RSA-PSS-SHA256 with a maximum-length salt.
@@ -1039,8 +1022,7 @@ impl RsaPssVerify for RingRsaPssVerify {
         }
         let encoded_message_len = ((modulus_bits - 1).div_ceil(8)) as usize;
         let salt_len = encoded_message_len - Sha256::output_size() - 2;
-        let verifying_key =
-            RsaPssVerifyingKey::<Sha256>::new_with_salt_len(public_key, salt_len);
+        let verifying_key = RsaPssVerifyingKey::<Sha256>::new_with_salt_len(public_key, salt_len);
         let signature = RsaPssSignature::try_from(signature)
             .map_err(|_| "invalid RSA-PSS signature".to_string())?;
         verifying_key
@@ -1078,9 +1060,7 @@ fn load_rsa_public_key_der(pem: &str) -> Result<Vec<u8>, SupplyChainBundleError>
         )
     })?;
     let der = Base64::decode_vec(&body_lines.concat()).map_err(|error| {
-        SupplyChainBundleError::Signature(format!(
-            "Failed to load verification key: {error}"
-        ))
+        SupplyChainBundleError::Signature(format!("Failed to load verification key: {error}"))
     })?;
     // `isinstance(public_key, RSAPublicKey)` — SPKI carries the RSA OID
     // 1.2.840.113549.1.1.1 (DER: 06 09 2a 86 48 86 f7 0d 01 01 01).
@@ -1089,7 +1069,9 @@ fn load_rsa_public_key_der(pem: &str) -> Result<Vec<u8>, SupplyChainBundleError>
     ];
     let is_rsa = if label == "PUBLIC KEY" {
         der.windows(RSA_OID_DER.len()).any(|w| w == RSA_OID_DER)
-    } else { label == "RSA PUBLIC KEY" };
+    } else {
+        label == "RSA PUBLIC KEY"
+    };
     if !is_rsa {
         return Err(SupplyChainBundleError::Signature(
             "Verification key must be RSA".to_string(),
@@ -1102,9 +1084,7 @@ fn load_rsa_public_key_der(pem: &str) -> Result<Vec<u8>, SupplyChainBundleError>
 fn python_b64decode(value: &str) -> Result<Vec<u8>, String> {
     let filtered: Vec<u8> = value
         .bytes()
-        .filter(|b| {
-            b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'=')
-        })
+        .filter(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
         .collect();
     Base64::decode_vec(&String::from_utf8_lossy(&filtered)).map_err(|e| e.to_string())
 }
@@ -1133,8 +1113,7 @@ pub fn verify_supply_chain_bundle_response(
         .find(|item| item.key_id == response.bundle.key_id)
         .ok_or_else(|| {
             SupplyChainBundleError::Keyring(
-                "Bundle keyId is not present in the advertised verification keyring"
-                    .to_string(),
+                "Bundle keyId is not present in the advertised verification keyring".to_string(),
             )
         })?;
     validate_key_fingerprints(response)?;
@@ -1162,9 +1141,7 @@ pub fn verify_supply_chain_bundle_response(
     }
     let public_key_der = load_rsa_public_key_der(&signing_key.public_key_pem)?;
     let signature_bytes = python_b64decode(&response.signature).map_err(|error| {
-        SupplyChainBundleError::Signature(format!(
-            "Signature is not valid base64: {error}"
-        ))
+        SupplyChainBundleError::Signature(format!("Signature is not valid base64: {error}"))
     })?;
     verifier
         .verify(&public_key_der, &canonical_payload, &signature_bytes)
@@ -1198,11 +1175,8 @@ pub fn evaluate_cached_supply_chain_bundle(
     } else {
         None
     };
-    let deny_entries = matching_emergency_deny_entries(
-        &response.bundle,
-        package_name,
-        ecosystem_opt.as_deref(),
-    );
+    let deny_entries =
+        matching_emergency_deny_entries(&response.bundle, package_name, ecosystem_opt.as_deref());
     if let Some(deny_entry) = deny_entries.first() {
         return OfflineSupplyChainDecision {
             action: "block".to_string(),
@@ -1297,7 +1271,12 @@ fn emergency_deny_identity_matches(
     entry: &SupplyChainBundleEmergencyDeny,
     package_name: &str,
 ) -> bool {
-    package_identity_matches(&entry.ecosystem, entry.namespace.as_deref(), &entry.name, package_name)
+    package_identity_matches(
+        &entry.ecosystem,
+        entry.namespace.as_deref(),
+        &entry.name,
+        package_name,
+    )
 }
 
 /// `_is_high_confidence_block` (:310).

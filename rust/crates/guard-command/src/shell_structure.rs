@@ -176,7 +176,11 @@ pub fn mask_heredoc_bodies(command: &str, heredocs: &[ShellHeredoc]) -> String {
     }
     let mut characters: Vec<char> = command.chars().collect();
     for heredoc in heredocs {
-        for character in characters.iter_mut().take(heredoc.end).skip(heredoc.body_start) {
+        for character in characters
+            .iter_mut()
+            .take(heredoc.end)
+            .skip(heredoc.body_start)
+        {
             if *character != '\n' {
                 *character = ' ';
             }

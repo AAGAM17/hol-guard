@@ -167,9 +167,10 @@ impl EncryptedFileSecretStore {
 
     /// `_encrypt_fernet` → `{version:"fernet-v1", ciphertext:<token>}`.
     fn encrypt_fernet(&self, value: &str) -> std::io::Result<Value> {
-        let key = self.fernet_key.as_ref().ok_or_else(|| {
-            std::io::Error::other("secret store is not initialized")
-        })?;
+        let key = self
+            .fernet_key
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("secret store is not initialized"))?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -423,7 +424,6 @@ pub(crate) fn fernet_decrypt(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     const ORACLE: &str = include_str!("../testdata/secret_store_oracle.json");
 

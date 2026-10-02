@@ -189,7 +189,9 @@ impl DnsResolverSlot {
                     "External archive DNS resolution exceeded Guard's time limit.",
                 ));
             }
-            std::thread::sleep(std::time::Duration::from_secs_f64(DNS_RESOLVER_WAIT_SECONDS));
+            std::thread::sleep(std::time::Duration::from_secs_f64(
+                DNS_RESOLVER_WAIT_SECONDS,
+            ));
         }
     }
 }
@@ -272,9 +274,7 @@ fn quote_with_safe(value: &str, safe: &[u8]) -> String {
     let mut out = String::new();
     for &byte in value.as_bytes() {
         let ch = byte as char;
-        if ch.is_ascii_alphanumeric()
-            || matches!(ch, '.' | '-' | '_' | '~')
-            || safe.contains(&byte)
+        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | '~') || safe.contains(&byte)
         {
             out.push(ch);
         } else {
@@ -313,8 +313,7 @@ fn split_netloc(netloc: &str) -> (Option<&str>, &str, Option<&str>) {
         match rest.find(']') {
             Some(close) => {
                 let host = &hostport[..close + 2]; // include brackets
-                let port = hostport[close + 2..]
-                    .strip_prefix(':');
+                let port = hostport[close + 2..].strip_prefix(':');
                 return (userinfo, host, port);
             }
             None => return (userinfo, hostport, None),
@@ -355,9 +354,7 @@ fn urlsplit(url: &str) -> (String, String, String, String) {
     };
     // Netloc — `//` authority extends to the next `/`, `?`, or `#`.
     let (netloc, path_query) = if let Some(stripped) = rest.strip_prefix("//") {
-        let end = stripped
-            .find(['/', '?', '#'])
-            .unwrap_or(stripped.len());
+        let end = stripped.find(['/', '?', '#']).unwrap_or(stripped.len());
         (stripped[..end].to_string(), &stripped[end..])
     } else {
         (String::new(), rest)
@@ -626,8 +623,16 @@ fn ipv6_is_global(address: Ipv6Addr) -> bool {
 /// `_address_is_public` (restricted_archive_destination.py:138).
 fn address_is_public(address: IpAddr) -> bool {
     let (is_global, is_private, is_reserved) = match address {
-        IpAddr::V4(v4) => (ipv4_is_global(v4), ipv4_is_private(v4), ipv4_is_reserved(v4)),
-        IpAddr::V6(v6) => (ipv6_is_global(v6), ipv6_is_private(v6), ipv6_is_reserved(v6)),
+        IpAddr::V4(v4) => (
+            ipv4_is_global(v4),
+            ipv4_is_private(v4),
+            ipv4_is_reserved(v4),
+        ),
+        IpAddr::V6(v6) => (
+            ipv6_is_global(v6),
+            ipv6_is_private(v6),
+            ipv6_is_reserved(v6),
+        ),
     };
     let is_link_local = match address {
         IpAddr::V4(v4) => v4_contains(&v4net([169, 254, 0, 0], 16), v4),
@@ -777,7 +782,9 @@ fn response_header(response: &dyn ReadableResponse, name: &str) -> Option<String
 }
 
 /// `_validate_response_headers` (restricted_archive_stream.py).
-fn validate_response_headers(response: &dyn ReadableResponse) -> Result<(), RestrictedDownloadError> {
+fn validate_response_headers(
+    response: &dyn ReadableResponse,
+) -> Result<(), RestrictedDownloadError> {
     let invalid = || {
         RestrictedDownloadError::new(
             "external_archive_response_headers_invalid",
@@ -939,65 +946,66 @@ fn write_bounded_response(
     };
     let mut digest = Sha256::new();
     let mut size: u64 = 0;
-    let result = (|file: &mut std::fs::File| -> Result<RestrictedArchiveDownload, RestrictedDownloadError> {
-        require_remaining(deadline)?;
-        loop {
-            response.set_timeout(require_remaining(deadline)?);
-            // Keep one byte of overflow probe capacity.
-            let remaining_with_probe = max_bytes.saturating_sub(size) + 1;
-            let chunk = response.read(
-                usize::try_from(remaining_with_probe.min(READ_CHUNK_BYTES))
-                    .unwrap_or(usize::MAX),
-            )?;
-            if chunk.is_empty() {
-                break;
-            }
-            size += chunk.len() as u64;
-            if size > max_bytes {
-                return Err(RestrictedDownloadError::new(
-                    "external_archive_download_size_limit",
-                    "External archive exceeded Guard's download size limit.",
-                ));
-            }
-            write_chunk_with_deadline(file, &chunk, deadline)?;
-            digest.update(&chunk);
+    let result =
+        (|file: &mut std::fs::File| -> Result<RestrictedArchiveDownload, RestrictedDownloadError> {
             require_remaining(deadline)?;
-        }
-        if let Some(expected) = expected_size {
-            if size != expected {
-                return Err(RestrictedDownloadError::new(
-                    "external_archive_incomplete_response",
-                    "External archive response ended before its declared content length.",
-                ));
+            loop {
+                response.set_timeout(require_remaining(deadline)?);
+                // Keep one byte of overflow probe capacity.
+                let remaining_with_probe = max_bytes.saturating_sub(size) + 1;
+                let chunk = response.read(
+                    usize::try_from(remaining_with_probe.min(READ_CHUNK_BYTES))
+                        .unwrap_or(usize::MAX),
+                )?;
+                if chunk.is_empty() {
+                    break;
+                }
+                size += chunk.len() as u64;
+                if size > max_bytes {
+                    return Err(RestrictedDownloadError::new(
+                        "external_archive_download_size_limit",
+                        "External archive exceeded Guard's download size limit.",
+                    ));
+                }
+                write_chunk_with_deadline(file, &chunk, deadline)?;
+                digest.update(&chunk);
+                require_remaining(deadline)?;
             }
-        }
-        file.flush().map_err(|_| {
-            RestrictedDownloadError::new(
-                "external_archive_connection_failed",
-                "External archive temporary blob could not be written completely.",
-            )
-        })?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).map_err(
-                |_| {
-                    RestrictedDownloadError::new(
-                        "external_archive_connection_failed",
-                        "External archive temporary blob could not be locked read-only.",
-                    )
-                },
-            )?;
-        }
-        require_remaining(deadline)?;
-        Ok(RestrictedArchiveDownload {
-            path: path.clone(),
-            sha256: hex::encode(digest.finalize()),
-            size,
-            source_url: source_url.to_string(),
-            final_url: final_url.to_string(),
-        })
-    })(&mut file);
+            if let Some(expected) = expected_size {
+                if size != expected {
+                    return Err(RestrictedDownloadError::new(
+                        "external_archive_incomplete_response",
+                        "External archive response ended before its declared content length.",
+                    ));
+                }
+            }
+            file.flush().map_err(|_| {
+                RestrictedDownloadError::new(
+                    "external_archive_connection_failed",
+                    "External archive temporary blob could not be written completely.",
+                )
+            })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).map_err(
+                    |_| {
+                        RestrictedDownloadError::new(
+                            "external_archive_connection_failed",
+                            "External archive temporary blob could not be locked read-only.",
+                        )
+                    },
+                )?;
+            }
+            require_remaining(deadline)?;
+            Ok(RestrictedArchiveDownload {
+                path: path.clone(),
+                sha256: hex::encode(digest.finalize()),
+                size,
+                source_url: source_url.to_string(),
+                final_url: final_url.to_string(),
+            })
+        })(&mut file);
     if result.is_err() {
         let _ = std::fs::remove_file(&path);
     }
@@ -1031,7 +1039,12 @@ pub fn download_restricted_archive(
         for redirect_count in 0..=max_redirects {
             let destination = canonical_destination(&current_url)?;
             let addresses = resolve_public_addresses(&destination, resolver, deadline)?;
-            response = Some(open_destination(&destination, &addresses, transport, deadline)?);
+            response = Some(open_destination(
+                &destination,
+                &addresses,
+                transport,
+                deadline,
+            )?);
             validate_response_headers(response.as_ref().unwrap().as_ref())?;
             if REDIRECT_STATUSES.contains(&response.as_ref().unwrap().status()) {
                 let location = response_header(response.as_ref().unwrap().as_ref(), "Location");

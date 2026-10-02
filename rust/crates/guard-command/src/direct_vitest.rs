@@ -1065,10 +1065,7 @@ fn temp_dir() -> PathBuf {
 
 fn semver_parse_version(text: &str) -> Option<(u64, u64, u64)> {
     let text = text.strip_prefix('v').unwrap_or(text);
-    let core = text
-        .split(['-', '+'])
-        .next()
-        .unwrap_or_default();
+    let core = text.split(['-', '+']).next().unwrap_or_default();
     let parts: Vec<&str> = core.split('.').collect();
     if parts.len() != 3 {
         return None;

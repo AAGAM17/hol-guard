@@ -914,7 +914,11 @@ pub fn is_routine_squash_merge(args: &[String]) -> bool {
             if repository.is_some() {
                 return false;
             }
-            let v = argument.split_once('=').map(|x| x.1).unwrap_or("").to_string();
+            let v = argument
+                .split_once('=')
+                .map(|x| x.1)
+                .unwrap_or("")
+                .to_string();
             repository = Some(v.clone());
             if !is_static_repository(&v) {
                 return false;

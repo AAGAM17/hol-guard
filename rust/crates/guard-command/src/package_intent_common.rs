@@ -1222,7 +1222,8 @@ pub fn js_target(spec: &str) -> PackageIntentTarget {
     }
     let (package_name, requested_specifier) = split_package_token(&normalized_spec);
     let parsed_source = parse_npm_source_spec(requested_specifier.as_deref());
-    if let (Some(specifier), Some(source)) = (requested_specifier.as_ref(), parsed_source.as_ref()) {
+    if let (Some(specifier), Some(source)) = (requested_specifier.as_ref(), parsed_source.as_ref())
+    {
         return js_source_target(spec, specifier, source, package_name, alias);
     }
     PackageIntentTarget {

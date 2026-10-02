@@ -18,6 +18,7 @@ def _server(request: socket.socket) -> _GuardDaemonHttpServer:
     server = object.__new__(_GuardDaemonHttpServer)
     server.unclassified_connections = {id(request): (request, 0.0)}
     server.pending_classifications = {}
+    server.saturation_probes = {}
     server.unclassified_connections_lock = threading.Lock()
     iterations = iter((False, True))
     server.unclassified_watchdog_stop = SimpleNamespace(wait=lambda _delay: next(iterations))

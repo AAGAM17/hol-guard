@@ -168,16 +168,20 @@ def _owned_adapter_mutation(method: Callable[..., _MutationResult]) -> Callable[
         from ..codex_install_transaction import codex_install_transaction
         from ..runtime_transition import assert_transition_mutation_allowed
 
-        with codex_install_transaction(
-            context.guard_home, context.guard_home / "managed", actor=f"adapter.{self.harness}.{method.__name__}"
-        ), ExitStack() as ownership:
+        with ExitStack() as ownership:
             if self.harness == "codex":
                 from .codex_lifecycle_lock import codex_lifecycle_locks
 
                 ownership.enter_context(codex_lifecycle_locks(context))
             assert_transition_mutation_allowed(context.guard_home)
             self.preflight_management(context, operation=method.__name__)
-            return method(self, context, *args, **kwargs)
+            with codex_install_transaction(
+                context.guard_home,
+                context.guard_home / "managed",
+                actor=f"adapter.{self.harness}.{method.__name__}",
+            ):
+                assert_transition_mutation_allowed(context.guard_home)
+                return method(self, context, *args, **kwargs)
 
     owned.__dict__["_guard_mutation_owned"] = True
     return owned

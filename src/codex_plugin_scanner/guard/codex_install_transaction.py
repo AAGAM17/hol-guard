@@ -154,13 +154,34 @@ def codex_install_transaction(
     from .adapters.codex_lifecycle_lock import codex_configuration_lock
 
     deadline = time.monotonic() + 5 if deadline is None else deadline
-    # The home owner is the outer exclusion. Target file locks stay inside it
-    # so a second install contends here before it reaches lifecycle locks.
-    with (
-        _guard_home_install_transaction(guard_home, config_path, actor=actor, deadline=deadline) as owner,
-        codex_configuration_lock(config_path, deadline=deadline),
+    home = guard_home.resolve(strict=False)
+    previous = _OWNER.get()
+    if (
+        previous is not None
+        and previous.guard_home == home
+        and previous.pid == os.getpid()
+        and previous.thread_id == threading.get_ident()
     ):
-        yield owner
+        with codex_configuration_lock(config_path, deadline=deadline):
+            yield previous
+        return
+    # Same-home callers contend on this lock before any target file lock.
+    # The home directory is created only after the configuration lock is held,
+    # so a competing path cannot leave a new home behind.
+    with _locks_guard:
+        lock = _locks.setdefault(str(home), threading.RLock())
+    if not lock.acquire(timeout=max(0, deadline - time.monotonic())):
+        raise TimeoutError("Codex installation transaction deadline exceeded.")
+    owning_pid = os.getpid()
+    try:
+        with (
+            codex_configuration_lock(config_path, deadline=deadline),
+            _guard_home_install_transaction(guard_home, config_path, actor=actor, deadline=deadline) as owner,
+        ):
+            yield owner
+    finally:
+        if owning_pid == os.getpid():
+            lock.release()
 
 
 @contextmanager

@@ -25,7 +25,6 @@ const EMBEDDED_CATALOG: &[u8] = include_bytes!(concat!(
 /// One rule's metadata — the fields `GeneratedCommandRule` exposes that the
 /// compiled `ProgramRule` does not carry.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CatalogRule {
     pub rule_id: String,
     pub rule_version: String,
@@ -36,11 +35,32 @@ pub struct CatalogRule {
     pub safer_alternatives: Vec<String>,
     pub default_mode: String,
     pub compatibility_fallback: bool,
+    pub title: Option<String>,
+    pub family: Option<String>,
+    pub matcher_kind: Option<String>,
+    pub matcher_contract_digest: Option<String>,
+    /// Known safe variants — `GeneratedCommandRule.safe_variants`; the
+    /// wire-evidence validator rejects `variant_id`s not present here.
+    #[serde(default)]
+    pub safe_variants: Vec<CatalogSafeVariant>,
+}
+
+/// One catalog safe variant — only `variant_id` is read by the evidence
+/// validator; the remaining fields are display metadata bound by the
+/// catalog digest.
+#[derive(Debug, Deserialize)]
+pub struct CatalogSafeVariant {
+    pub variant_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub matcher_kind: Option<String>,
+    #[serde(default)]
+    pub matcher_contract_digest: Option<String>,
 }
 
 /// One permission's metadata — `GeneratedCommandPermission`.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CatalogPermission {
     pub permission_id: String,
     pub extension_id: String,
@@ -58,7 +78,6 @@ pub struct CatalogPermission {
 
 /// One extension's metadata — `GeneratedCommandExtension`.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CatalogExtension {
     pub extension_id: String,
     pub version: String,

@@ -12,6 +12,9 @@ mod command_structured_matchers;
 pub mod effect_decision;
 pub mod canonical_command;
 pub mod extension_evidence;
+pub mod native_command_extension_evidence;
+#[cfg(test)]
+mod native_command_extension_evidence_tests;
 mod executable_flag_contract;
 pub mod extension_control;
 pub mod native_command_controls;

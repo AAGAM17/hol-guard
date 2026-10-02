@@ -31,18 +31,11 @@ REGEN_OWNED_PATHS: tuple[str, ...] = (
     "contracts/extensions/native-command-program.v1.json",
     "contracts/extensions/command-catalog.v1.json",
     "contracts/extensions/native-command-control-authority.v1.fixtures.json",
-    "contracts/managed-controls/v1/extension-projection-digest-vector.json",
-    "contracts/managed-controls/v1/policy-bundle-v2-extension-signature-vector.json",
     "docs/guard/extensions/README.md",
     "docs/guard/extensions/catalog.v1.json",
     "docs/guard/extensions/catalog.v2.json",
     "src/codex_plugin_scanner/guard/contracts/data/extensions",
     "src/codex_plugin_scanner/guard/contracts/data/mcp_servers",
-    "tests/fixtures/extension-controls/catalog-baseline.v1.json",
-    "tests/fixtures/guard-command-corpus/decision-diff-report.json",
-    "tests/fixtures/guard-command-corpus/decision-diff-report.framed-sha256",
-    "tests/test_guard_extension_trust.py",
-    "tests/test_policy_bundle_delivery_runtime.py",
 )
 
 # Canonical inputs whose changes can stale the projections above.
@@ -138,6 +131,7 @@ def _contributions_changed(base_sha: str) -> list[str]:
 
 
 def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """Read Git state for projection ownership without modifying the checkout."""
     try:
         return subprocess.run(["git", *arguments], cwd=ROOT, check=False, capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
@@ -203,6 +197,7 @@ def pr_diff_paths() -> list[str] | None:
 
 
 def _owned_path(path: str) -> bool:
+    """Recognize product projection paths owned by native artifact generation."""
     if path.endswith(".schema.json"):
         return False
     return any(path == owned or path.startswith(owned.rstrip("/") + "/") for owned in REGEN_OWNED_PATHS)

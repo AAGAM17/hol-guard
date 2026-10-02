@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support.ci_workflow import expand_ci_job_actions
+
 
 @pytest.fixture
 def detector():
@@ -31,7 +33,10 @@ def detector():
     ],
 )
 def test_source_only_native_changes_report_pending(detector, monkeypatch, capsys, changed):
+    """Verify source only native changes report pending."""
+
     def diff(command, **kwargs):
+        """Supply the changed paths needed to exercise pending projection detection."""
         assert command[-len(detector.REGEN_INPUT_PATHSPECS) :] == list(detector.REGEN_INPUT_PATHSPECS)
         return subprocess.CompletedProcess(command, 0, stdout=changed + "\n", stderr="")
 
@@ -45,6 +50,7 @@ def test_source_only_native_changes_report_pending(detector, monkeypatch, capsys
 
 
 def test_unchanged_canonical_inputs_still_require_fresh_artifacts(detector, monkeypatch, capsys):
+    """Verify unchanged canonical inputs still require fresh artifacts."""
     monkeypatch.setattr(
         subprocess, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="", stderr="")
     )
@@ -75,15 +81,22 @@ def verifier():
         ("rust/target/x86_64-apple-darwin/release/guard-command-source", "x86_64-apple-darwin", True),
     ],
 )
-def test_rebuild_uses_original_compiler_target(verifier, compiler, target, release):
-    command = verifier._rebuild_command(compiler)
-    assert ("--release" in command) is release
-    assert (command[-2:] == ["--target", target]) if target else "--target" not in command
-    assert "hol-guard-runtime" in command and "guard-command-source" in command
+def test_verifier_preserves_original_compiler_target_without_rebuilding(
+    verifier, monkeypatch, compiler, target, release
+):
+    """Verify verifier preserves original compiler target without rebuilding."""
+    monkeypatch.setattr(sys, "argv", ["verify", "--compiler", compiler])
+    calls = []
+    monkeypatch.setattr(verifier, "_run", calls.append)
+    assert verifier.main() == 0
+    assert len(calls) == 2
+    assert all(command[command.index("--compiler") + 1] == compiler for command in calls)
+    assert all(command[0] != "cargo" for command in calls)
 
 
 @pytest.mark.parametrize("pending", [True, False])
-def test_preparation_retains_generated_outputs_and_checks_after_rebuild(verifier, monkeypatch, pending):
+def test_preparation_retains_generated_outputs_and_checks_without_rebuild(verifier, monkeypatch, pending):
+    """Verify preparation retains generated outputs and checks without rebuild."""
     import types
 
     detector = types.SimpleNamespace(
@@ -107,19 +120,17 @@ def test_preparation_retains_generated_outputs_and_checks_after_rebuild(verifier
     monkeypatch.setattr(verifier, "_run", commands.append)
     assert verifier.main() == 0
     assert commands[-1][-1] == "--check"
-    if pending:
-        assert len(commands) == 3
-        assert "--check" not in commands[0]
-        assert commands[1][0] == "cargo"
-    else:
-        assert len(commands) == 1
+    assert len(commands) == 2
+    assert "--check" not in commands[0]
+    assert all(command[0] != "cargo" for command in commands)
     assert all(command[0] != "git" for command in commands)
 
 
 @pytest.mark.parametrize("job_name", ["linux-build", "windows-build"])
 def test_wheel_rebuild_preserves_identity_and_precedes_packaging(job_name):
+    """Verify wheel rebuild preserves identity and precedes packaging."""
     root = Path(__file__).parents[1]
-    workflow = yaml.safe_load((root / ".github/workflows/native-wheel-ci.yml").read_text())
+    workflow = expand_ci_job_actions(yaml.safe_load((root / ".github/workflows/native-wheel-ci.yml").read_text()))
     steps = workflow["jobs"][job_name]["steps"]
     verification = next(step for step in steps if "scripts/ci/verify_native_command_program.py" in step.get("run", ""))
     assert verification["env"]["HOL_GUARD_BUILD_SHA"] == "${{ github.sha }}"

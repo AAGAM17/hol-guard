@@ -78,10 +78,14 @@ fn ordinary_copies_keep_source_and_destination_risk_boundaries() {
     let project = std::fs::canonicalize(&project).unwrap();
     let linked = std::fs::canonicalize(&linked).unwrap();
     let temporary = Path::new("/tmp").join(format!("guard-copy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temporary);
     std::fs::create_dir(&temporary).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::write(temporary.join("existing.ts"), "synthetic previous copy").unwrap();
+    std::fs::write(temporary.join("origin.ts"), "synthetic").unwrap();
     std::os::unix::fs::symlink(project.join("source.ts"), temporary.join("link.ts")).unwrap();
-    std::fs::hard_link(project.join("source.ts"), temporary.join("hardlink.ts")).unwrap();
+    std::fs::hard_link(temporary.join("origin.ts"), temporary.join("hardlink.ts")).unwrap();
     for command in [
         "cp source.ts copied.ts".to_owned(),
         "cp -- auth.ts copied.ts".to_owned(),

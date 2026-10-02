@@ -10,6 +10,7 @@ mod context_digest_json;
 mod edge;
 mod hardening;
 mod managed_resident;
+mod local_once_store;
 mod native_hook_receipt;
 mod oneshot;
 mod policy_enforcement;

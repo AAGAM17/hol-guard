@@ -152,6 +152,10 @@ pub trait NativeRuntimeStatusApi {
     fn native_runtime_status(&self, deadline_monotonic: Instant) -> NativeRuntimeStatusV1;
 }
 
+fn is_lower_hex64(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// `inspect_archive_native` (native_archive_inspection.py:101).
 pub fn inspect_archive_native(
     path: &Path,
@@ -196,10 +200,7 @@ pub fn inspect_archive_native(
         || max_decompression_ratio <= 0.0
         || max_nested_archives == u64::MAX // treat as non-finite sentinel
         || max_path_depth == 0
-        || !expected_sha256
-            .chars()
-            .all(|ch| ch.is_ascii_hexdigit() && ch.is_ascii_lowercase())
-        || expected_sha256.len() != 64
+        || !is_lower_hex64(expected_sha256)
     {
         return policy_invalid("");
     }
@@ -429,12 +430,7 @@ pub fn inspect_archive_native(
                 })
         })
         .unwrap_or(false);
-    let hex64 = |value: &str| {
-        value.len() == 64
-            && value
-                .chars()
-                .all(|ch| ch.is_ascii_hexdigit() && ch.is_ascii_lowercase())
-    };
+    let hex64 = is_lower_hex64;
     if obj.get("schema").and_then(|v| v.as_str()) != Some(RESULT_SCHEMA)
         || obj.get("request_id").and_then(|v| v.as_str())
             != request.get("request_id").and_then(|v| v.as_str())

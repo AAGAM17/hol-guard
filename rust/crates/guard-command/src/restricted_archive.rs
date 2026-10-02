@@ -907,11 +907,14 @@ fn write_bounded_response(
             hex::encode(random_bytes),
             std::process::id()
         ));
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
         {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&candidate) {
             Ok(opened) => {
                 path = candidate;
                 file = Some(opened);
@@ -1029,11 +1032,13 @@ pub fn download_restricted_archive(
         for redirect_count in 0..=max_redirects {
             let destination = canonical_destination(&current_url)?;
             let addresses = resolve_public_addresses(&destination, resolver, deadline)?;
-            let mut opened = open_destination(&destination, &addresses, transport, deadline)?;
-            validate_response_headers(opened.as_ref())?;
-            if REDIRECT_STATUSES.contains(&opened.status()) {
-                let location = response_header(opened.as_ref(), "Location");
-                opened.close();
+            response = Some(open_destination(&destination, &addresses, transport, deadline)?);
+            validate_response_headers(response.as_ref().unwrap().as_ref())?;
+            if REDIRECT_STATUSES.contains(&response.as_ref().unwrap().status()) {
+                let location = response_header(response.as_ref().unwrap().as_ref(), "Location");
+                if let Some(mut opened) = response.take() {
+                    opened.close();
+                }
                 if redirect_count >= max_redirects {
                     return Err(RestrictedDownloadError::new(
                         "external_archive_redirect_limit",
@@ -1061,21 +1066,23 @@ pub fn download_restricted_archive(
                 }
                 continue;
             }
-            if opened.status() != 200 {
+            if response.as_ref().unwrap().status() != 200 {
                 return Err(RestrictedDownloadError::new(
                     "external_archive_http_error",
                     "External archive server returned a non-success response.",
                 ));
             }
             let download = write_bounded_response(
-                opened.as_mut(),
+                response.as_mut().unwrap().as_mut(),
                 source_url,
                 &destination.url,
                 deadline,
                 max_bytes,
                 temp_dir,
             )?;
-            opened.close();
+            if let Some(mut opened) = response.take() {
+                opened.close();
+            }
             return Ok(download);
         }
         Err(RestrictedDownloadError::new(

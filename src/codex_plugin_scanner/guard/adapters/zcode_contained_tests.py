@@ -26,6 +26,24 @@ _PROFILES = {
 }
 
 
+def route_zcode_containment(
+    response: dict[str, object], *, harness: str, payload: Mapping[str, object],
+    guard_home: Path, home_dir: Path, workspace: Path | None,
+) -> dict[str, object]:
+    """Rewrite at the authority edge so frozen/stdlib hook clients also work."""
+    if harness != "zcode" or workspace is None:
+        return response
+    config = {
+        "harness": "zcode", "guard_home": str(guard_home), "python_executable": sys.executable,
+        "package_root": str(Path(__file__).resolve().parents[3]),
+    }
+    routed = contained_zcode_response(
+        response, input_text=json.dumps({**payload, "cwd": str(workspace)}), config=config,
+        cli_args=["--home", str(home_dir)],
+    )
+    return routed if routed is not None else response
+
+
 def contained_zcode_response(
     response: Mapping[str, object], *, input_text: str, config: Mapping[str, object],
     cli_args: Sequence[str],

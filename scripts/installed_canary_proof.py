@@ -172,7 +172,8 @@ def _source_cache_matches(path: Path) -> bool:
     source = path.parent.parent / f"{path.name.split('.', 1)[0]}.py"
     if not source.is_file() or source.is_symlink():
         return False
-    if path != Path(importlib.util.cache_from_source(str(source))):
+    cache_name = Path(importlib.util.cache_from_source(str(source))).name
+    if path != source.parent / "__pycache__" / cache_name:
         return False
     if source.stat().st_size > 4_194_304 or path.stat().st_size > 16_777_216:
         return False

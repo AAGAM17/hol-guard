@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import math
 import multiprocessing
 import os
 import signal
@@ -33,7 +34,61 @@ if TYPE_CHECKING:
     from .hook_worker import HookWorker
 
 _HOOK_SQLITE_TIMEOUT_ENV = "HOL_GUARD_INTERNAL_HOOK_SQLITE_TIMEOUT_MS"
+_HOOK_EVALUATOR_READY_TIMEOUT_ENV = "HOL_GUARD_HOOK_EVALUATOR_READY_TIMEOUT_SECONDS"
+# The daemon-side worker-ready budget.  The worker inherits the daemon's
+# environment through multiprocessing "spawn", so it can derive its inner
+# evaluator budget from the same operator override instead of needing a second
+# knob set to a consistent value.
+_HOOK_WORKER_READY_TIMEOUT_ENV = "HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS"
 _HOOK_EVALUATOR_READY_TIMEOUT_SECONDS = 12.0
+_HOOK_EVALUATOR_READY_TIMEOUT_MAX_SECONDS = 120.0
+# Slack the worker keeps between its inner evaluator poll and the outer
+# daemon->worker deadline so the "ready" reply can cross back before the daemon
+# declares the worker dead.
+_EVALUATOR_TO_WORKER_READY_MARGIN_SECONDS = 3.0
+
+
+def _parse_timeout_env(raw: str | None, default: float) -> float | None:
+    """Parse an env timeout to a positive float, or None to use ``default``."""
+    if raw is None:
+        return None
+    try:
+        parsed = float(raw.strip())
+    except ValueError:
+        return None
+    if not math.isfinite(parsed) or parsed <= 0:
+        return None
+    return parsed
+
+
+def _hook_evaluator_ready_timeout_seconds() -> float:
+    """Return the worker-side evaluator-ready budget.
+
+    The spawned hook worker polls this long for its isolated evaluator child to
+    report ``ready``.  On slow hosts (QEMU guests, cold CI, low-memory machines)
+    the evaluator's heavy import graph can exceed the 12 s default and the
+    worker would otherwise report ``worker_failed`` even though the evaluator is
+    healthy.  This is a *nested* budget: it must stay below the daemon->worker
+    ``HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS`` deadline or the daemon kills
+    a healthy worker mid-wait.  It therefore defaults to ``outer - margin`` when
+    the operator raised the outer budget (inherited through the spawn env), and
+    can still be raised independently via
+    ``HOL_GUARD_HOOK_EVALUATOR_READY_TIMEOUT_SECONDS``.  Bounded by a floor and
+    a hard cap so a misconfiguration cannot wedge startup.
+    """
+    outer = _parse_timeout_env(os.environ.get(_HOOK_WORKER_READY_TIMEOUT_ENV), _HOOK_EVALUATOR_READY_TIMEOUT_SECONDS)
+    derived_floor = _HOOK_EVALUATOR_READY_TIMEOUT_SECONDS
+    if outer is not None:
+        derived_floor = max(
+            derived_floor,
+            outer - _EVALUATOR_TO_WORKER_READY_MARGIN_SECONDS,
+        )
+    explicit = _parse_timeout_env(os.environ.get(_HOOK_EVALUATOR_READY_TIMEOUT_ENV), derived_floor)
+    if explicit is None:
+        explicit = derived_floor
+    return min(_HOOK_EVALUATOR_READY_TIMEOUT_MAX_SECONDS, max(_HOOK_EVALUATOR_READY_TIMEOUT_SECONDS, explicit))
+
+
 _TRANSIENT_HOOK_STORAGE_TIMEOUTS = frozenset(
     {
         "Timed out waiting for Guard storage access.",
@@ -87,7 +142,7 @@ def hook_worker_main(connection: Connection, configured_guard_home: str | None) 
         _hold_containment_anchor()
     evaluator_connection.close()
     try:
-        if not guardian_connection.poll(_HOOK_EVALUATOR_READY_TIMEOUT_SECONDS):
+        if not guardian_connection.poll(_hook_evaluator_ready_timeout_seconds()):
             connection.send(("worker_failed", {"reason_code": "hook_process_evaluator_ready_timeout"}))
             _hold_containment_anchor()
         try:

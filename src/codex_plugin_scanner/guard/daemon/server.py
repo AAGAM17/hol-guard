@@ -569,6 +569,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     request_capacity_lock: threading.Lock
     unclassified_connections: dict[int, tuple[socket.socket, float]]
     pending_classifications: dict[int, tuple[tuple[str, int], float]]
+    saturation_probes: dict[int, tuple[socket.socket, tuple[str, int], float]]
     unclassified_connections_lock: threading.Lock
     unclassified_watchdog_stop: threading.Event
     unclassified_watchdog_thread: threading.Thread | None
@@ -695,6 +696,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         self.request_capacity_lock = threading.Lock()
         self.unclassified_connections = {}
         self.pending_classifications = {}
+        self.saturation_probes = {}
         self.unclassified_connections_lock = threading.Lock()
         self.unclassified_watchdog_stop = threading.Event()
         self.unclassified_watchdog_thread = None
@@ -780,8 +782,41 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         request_socket = cast(socket.socket, request)
         accepted_at = time.monotonic()
         admission_deadline = accepted_at + _DAEMON_CONNECTION_ADMISSION_WAIT_SECONDS
-        control = self._transport_request_is_control(request_socket)
+        # Do not wait for bytes on the accept thread. A saturated burst of
+        # idle peers would otherwise hold the next connection, including
+        # health, until each of those peers had been polled.
+        path = self._peek_request_path(request_socket)
+        control = path in _DAEMON_CONTROL_PATHS or path in _DAEMON_CRITICAL_PATHS
+        if not control and self._normal_admission_full():
+            if path is None:
+                # The line can still be in flight after accept returns.
+                # Taking a reserved seat here answers health with overload.
+                self._park_saturation_probe(request_socket, client_address, accepted_at)
+                return
+            with self.request_capacity_lock:
+                self.rejected_requests += 1
+            self._guard_reject_overload(request_socket)
+            return
         pending = not control and not self._reserve_normal_connection(request_socket)
+        self._accept_classified_request(
+            request_socket,
+            client_address,
+            control=control,
+            pending=pending,
+            accepted_at=accepted_at,
+            admission_deadline=admission_deadline,
+        )
+
+    def _accept_classified_request(
+        self,
+        request_socket: socket.socket,
+        client_address: Any,
+        *,
+        control: bool,
+        pending: bool,
+        accepted_at: float,
+        admission_deadline: float,
+    ) -> None:
         # A live holder keeps its slot until it finishes or the watchdog
         # expires it. Evicting it here would admit the newcomer and hide overload.
         try:
@@ -830,6 +865,17 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             return
         self._submit_transport_request(request_socket, client_address, control=control)
 
+    def _park_saturation_probe(self, request: socket.socket, client_address: Any, accepted_at: float) -> None:
+        # Cover the write that follows accept without holding a permit.
+        # The watchdog already polls inside this window.
+        deadline = accepted_at + 0.15
+        with self.unclassified_connections_lock:
+            self.saturation_probes[id(request)] = (
+                request,
+                cast(tuple[str, int], client_address),
+                deadline,
+            )
+
     def _submit_transport_request(self, request_socket: socket.socket, client_address: Any, *, control: bool) -> None:
         executor = (
             self.control_request_executor
@@ -846,13 +892,20 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 self.rejected_requests += 1
             self._discard_request(request_socket)
 
+    def _normal_admission_limit(self) -> int:
+        capacity = min(self.connection_capacity_limit, self._guard_capacity_limit)
+        reserved = min(self.control_request_capacity_limit + self.critical_request_capacity_limit, capacity // 4)
+        return capacity - reserved
+
+    def _normal_admission_full(self) -> bool:
+        with self.request_capacity_lock:
+            return len(self.normal_connections) >= self._normal_admission_limit()
+
     def _reserve_normal_connection(self, request: socket.socket) -> bool:
         # Reserve within both admission bounds, including a smaller configured
         # outer HTTP limit. No new sockets, workers or priority authorization.
-        capacity = min(self.connection_capacity_limit, self._guard_capacity_limit)
-        reserved = min(self.control_request_capacity_limit + self.critical_request_capacity_limit, capacity // 4)
         with self.request_capacity_lock:
-            if len(self.normal_connections) >= capacity - reserved:
+            if len(self.normal_connections) >= self._normal_admission_limit():
                 return False
             self.normal_connections.add(id(request))
         return True
@@ -904,7 +957,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         return accepted_at + timeout_seconds
 
     @staticmethod
-    def _transport_request_is_control(request: socket.socket, *, deadline: float | None = None) -> bool:
+    def _peek_request_path(request: socket.socket, *, deadline: float | None = None) -> str | None:
         try:
             request.setblocking(False)
             while True:
@@ -915,7 +968,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 if b"\n" in buffered:
                     break
                 if deadline is None or time.monotonic() >= deadline or len(buffered) >= 4_096:
-                    return False
+                    return None
                 remaining = max(0.0, deadline - time.monotonic())
                 if buffered:
                     # MSG_PEEK keeps a partial line readable, so select would
@@ -924,18 +977,22 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 else:
                     select.select([request], [], [], remaining)
         except (BlockingIOError, InterruptedError, OSError, ValueError):
-            return False
+            return None
         finally:
             with suppress(OSError):
                 request.settimeout(_DAEMON_REQUEST_READ_TIMEOUT_SECONDS)
         request_line = buffered.splitlines()[0] if buffered else b""
         parts = request_line.split()
         if len(parts) != 3 or not parts[2].startswith(b"HTTP/"):
-            return False
+            return None
         try:
-            path = parts[1].decode("ascii").split("?", 1)[0]
+            return parts[1].decode("ascii").split("?", 1)[0]
         except UnicodeDecodeError:
-            return False
+            return None
+
+    @staticmethod
+    def _transport_request_is_control(request: socket.socket, *, deadline: float | None = None) -> bool:
+        path = _GuardDaemonHTTPServer._peek_request_path(request, deadline=deadline)
         return path in _DAEMON_CONTROL_PATHS or path in _DAEMON_CRITICAL_PATHS
 
     def _stop_request_executors(self) -> bool:
@@ -946,6 +1003,10 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         with self.unclassified_connections_lock:
             pending = set(self.pending_classifications)
             self.pending_classifications.clear()
+            probes = [probe[0] for probe in self.saturation_probes.values()]
+            self.saturation_probes.clear()
+        for request in probes:
+            self._close_unclassified_socket(request)
         for request in requests:
             if id(request) in pending:
                 self._discard_request(request)
@@ -960,6 +1021,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         with self.unclassified_connections_lock:
             self.unclassified_connections.pop(id(request), None)
             self.pending_classifications.pop(id(request), None)
+            self.saturation_probes.pop(id(request), None)
 
     def _evict_oldest_unclassified_connection(self) -> None:
         with self.unclassified_connections_lock:
@@ -999,6 +1061,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     def _watch_unclassified_connections(self) -> None:
         while not self.unclassified_watchdog_stop.wait(_DAEMON_UNCLASSIFIED_WATCHDOG_POLL_SECONDS):
             self._advance_pending_classifications()
+            self._advance_saturation_probes()
             now = time.monotonic()
             with self.unclassified_connections_lock:
                 expired = [request for request, deadline in self.unclassified_connections.values() if deadline <= now]
@@ -1044,6 +1107,39 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 self._submit_transport_request(request, address, control=control)
             except BaseException:
                 # Submission already discarded this socket and its permits.
+                self.handle_error(request, address)
+
+    def _advance_saturation_probes(self) -> None:
+        with self.unclassified_connections_lock:
+            probes = list(self.saturation_probes.values())
+        for request, address, deadline in probes:
+            path = self._peek_request_path(request)
+            if path is None and time.monotonic() < deadline:
+                continue
+            with self.unclassified_connections_lock:
+                current = self.saturation_probes.pop(id(request), None)
+            if current is None or current[0] is not request:
+                continue
+            control = path in _DAEMON_CONTROL_PATHS or path in _DAEMON_CRITICAL_PATHS
+            if path is None or not control:
+                with self.request_capacity_lock:
+                    self.rejected_requests += 1
+                if path is None:
+                    self._close_unclassified_socket(request)
+                else:
+                    self._guard_reject_overload(request)
+                continue
+            accepted_at = time.monotonic()
+            try:
+                self._accept_classified_request(
+                    request,
+                    address,
+                    control=True,
+                    pending=False,
+                    accepted_at=accepted_at,
+                    admission_deadline=accepted_at + _DAEMON_CONNECTION_ADMISSION_WAIT_SECONDS,
+                )
+            except BaseException:
                 self.handle_error(request, address)
 
     @staticmethod

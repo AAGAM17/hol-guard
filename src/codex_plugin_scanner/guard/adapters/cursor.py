@@ -279,6 +279,17 @@ class CursorHarnessAdapter(HarnessAdapter):
         payload["mcpServers"] = normalized
         hooks = prepare_cursor_hooks(context)
         files = list(hooks.files)
+        previous_state = _json_payload(state_path)
+        previous_origins = previous_state.get("managed_origins")
+        origins = dict(cast(dict[str, list[str]], previous_origins)) if isinstance(previous_origins, dict) else {}
+        for server in observable_stdio_servers_with_proxy(detection):
+            if server.source_scope == "project":
+                origins[server.name] = [server.source_scope, server.config_path]
+        for server in managed_servers:
+            if server.source_scope == "project":
+                origins[server.name] = [server.source_scope, server.config_path]
+            else:
+                origins.pop(server.name, None)
         state: dict[str, object] = {
             "managed_config_path": str(target),
             "backup_path": str(backup),

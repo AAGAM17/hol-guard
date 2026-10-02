@@ -228,7 +228,7 @@ def _pending_workflow_request(store: GuardStore) -> dict[str, object]:
         "tool_input": {"command": _WORKFLOW_COMMAND},
         "tool_call_id": "codex_lab_workflow_initial_0001",
     }
-    _run_installed_hook("codex", payload, expected_status=1)
+    _run_installed_hook("codex", payload, expected_status=1, policy_action="review")
     all_pending = store.list_approval_requests(status="pending")
     pending = [
         request

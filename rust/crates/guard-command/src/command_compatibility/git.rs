@@ -90,8 +90,6 @@ pub(super) fn inspection_arguments(arguments: &[String]) -> Option<&[String]> {
         let target = if argument == "-C" {
             index += 1;
             arguments.get(index)?.as_str()
-        } else if let Some(target) = argument.strip_prefix("-C") {
-            target
         } else {
             break;
         };

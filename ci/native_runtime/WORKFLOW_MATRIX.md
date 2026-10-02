@@ -29,12 +29,15 @@ on Windows, enable Developer Mode or use an account with that privilege.
 - Coverage includes quoted/absolute/outside reads; multi-file, clustered-option,
   piped and recursive searches; copy-file/copy-directory; mkdir/touch/mv; GitHub
   GET comparison with a quoted jq expression; GitHub compound commands using
-  sequences, AND/OR lists and pipelines; Bun x/bunx and cross-project cwd.
+  sequences, AND/OR lists and pipelines; bounded numeric sleep; Git inspection
+  with directory routing; Bun x/bunx and cross-project cwd. Git inspection uses
+  a fresh repository inside the disposable workspace, not a user's repository.
 - Synthetic secret reads/copies, secret aliases, secret directory walks,
   directory deletion, destructive chains, Git metadata writes, GitHub mutation,
   external hosts and auth-token reads must remain guarded. Safe GitHub reads
   combined with secret access, deletion or unknown execution must also remain
-  guarded. Negative cases never execute.
+  guarded. Git configuration/execution overrides and unsupported routing forms
+  remain guarded. Negative cases never execute.
 
 Without `--live-omp`, this verifies installed admission only, not actual host
 execution. Without `--test-project`, it omits the optional contained-test suite;

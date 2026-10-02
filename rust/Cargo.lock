@@ -369,6 +369,7 @@ dependencies = [
 name = "guard-command"
 version = "0.1.0"
 dependencies = [
+ "base64ct",
  "getrandom 0.3.4",
  "guard-contracts",
  "guard-secure-fs",
@@ -376,6 +377,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "regex",
+ "ring",
  "roxmltree",
  "serde",
  "serde_json",

@@ -1251,9 +1251,14 @@ def run_native_generic_payload(
     ):
         return 0
     if _should_emit_copilot_hook_response(args):
+        guidance = payload_map.get("blocked_request_guidance")
         _emit_copilot_hook_response(
             policy_action=policy_action,
-            reason=_copilot_hook_reason(payload_map.get("permission_decision_reason")),
+            reason=(
+                guidance
+                if isinstance(guidance, str)
+                else _copilot_hook_reason(payload_map.get("permission_decision_reason"))
+            ),
             output_stream=output_stream,
         )
         return 0

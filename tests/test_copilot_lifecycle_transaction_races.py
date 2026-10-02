@@ -134,7 +134,7 @@ def test_concurrent_installs_preserve_original_backup(
         def release(self) -> None:
             self.lock.release()
 
-    monkeypatch.setitem(install_transaction._LOCKS, str(context.guard_home.resolve()), ObservedOwnerLock())
+    monkeypatch.setitem(install_transaction._locks, str(context.guard_home.resolve()), ObservedOwnerLock())
 
     def observe_lock_attempt(handle: BinaryIO) -> bool:
         nonlocal lock_attempts

@@ -154,8 +154,9 @@ class _PersistentNativeClientPool:
             self._idle.clear()
             self._condition.notify_all()
         for client in clients:
-            contained = (client.close() if deadline_monotonic is None else
-                         client.close(deadline_monotonic=deadline_monotonic))
+            contained = (
+                client.close() if deadline_monotonic is None else client.close(deadline_monotonic=deadline_monotonic)
+            )
             if contained is not False:
                 with self._condition:
                     self._clients.discard(client)
@@ -224,8 +225,9 @@ def close_native_resident_clients(guard_home: Path | None = None, *, deadline_mo
     all_contained = True
     for key, pool in selected:
         try:
-            contained = (pool.close() if deadline_monotonic is None else
-                         pool.close(deadline_monotonic=deadline_monotonic))
+            contained = (
+                pool.close() if deadline_monotonic is None else pool.close(deadline_monotonic=deadline_monotonic)
+            )
             if contained is False:
                 all_contained = False
             else:
@@ -280,8 +282,11 @@ def close_native_residents(guard_home: Path | None = None, *, deadline_monotonic
     """Stop this process's residents, optionally limited to one Guard home."""
 
     resolved_guard_home = guard_home.expanduser().resolve() if guard_home is not None else None
-    clients_contained = (close_native_resident_clients(guard_home) if deadline_monotonic is None else
-                         close_native_resident_clients(guard_home, deadline_monotonic=deadline_monotonic))
+    clients_contained = (
+        close_native_resident_clients(guard_home)
+        if deadline_monotonic is None
+        else close_native_resident_clients(guard_home, deadline_monotonic=deadline_monotonic)
+    )
     with _RESIDENTS_LOCK:
         residents = [
             (key, environment)
@@ -299,7 +304,10 @@ def close_native_residents(guard_home: Path | None = None, *, deadline_monotonic
             continue
         remaining_seconds = 3.0 if deadline_monotonic is None else min(3.0, deadline_monotonic - time.monotonic())
         stopped = remaining_seconds > 0 and stop_native_resident(
-            executable=executable, state_dir=state_dir, environment=environment, timeout_seconds=remaining_seconds,
+            executable=executable,
+            state_dir=state_dir,
+            environment=environment,
+            timeout_seconds=remaining_seconds,
             deadline_monotonic=deadline_monotonic,
         )
         if not stopped:

@@ -420,14 +420,20 @@ class GrokHarnessAdapter(HarnessAdapter):
             mode = backup.stat().st_mode & 0o777 if before is not None else 0o644
             source = snapshots[path]
             after_mode = path.stat().st_mode & 0o777 if before is None and source is not None else mode
-            change = TransitionFile(backup.resolve(strict=False), before, before if before is not None else source,
-                                    before_mode=mode, after_mode=after_mode)
+            change = TransitionFile(
+                backup.resolve(strict=False),
+                before,
+                before if before is not None else source,
+                before_mode=mode,
+                after_mode=after_mode,
+            )
             change.payload()
             files.append(change)
         for path in paths:
             mode = path.stat().st_mode & 0o777 if snapshots[path] is not None else 0o644
-            change = TransitionFile(path.resolve(strict=False), snapshots[path], after[path],
-                                    before_mode=mode, after_mode=mode)
+            change = TransitionFile(
+                path.resolve(strict=False), snapshots[path], after[path], before_mode=mode, after_mode=mode
+            )
             change.payload()
             files.append(change)
 
@@ -504,7 +510,9 @@ class GrokHarnessAdapter(HarnessAdapter):
 
 
 def _prior_compat_hooks_from_state(
-    state_path: Path, *, payload: dict[str, object] | None = None,
+    state_path: Path,
+    *,
+    payload: dict[str, object] | None = None,
 ) -> dict[str, str | None]:
     if payload is None:
         if not state_path.is_file():

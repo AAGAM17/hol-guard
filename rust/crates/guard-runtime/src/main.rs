@@ -3,6 +3,7 @@
 mod approval;
 mod archive_inspect;
 mod archive_inspect_containment;
+mod command_effect;
 mod context_digest;
 mod context_digest_json;
 mod edge;

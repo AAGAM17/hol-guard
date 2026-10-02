@@ -62,6 +62,7 @@ from ..codex_hook_registration import (
 from ..codex_hook_registration import (
     remove_manifest_bound_hook_events as _remove_manifest_bound_hook_events,
 )
+from ..codex_hook_rollback import require_unchanged_config_for_rollback
 from ..codex_hook_sources import (
     require_hook_inventory_sources_unchanged as _require_hook_inventory_sources_unchanged,
 )
@@ -1681,20 +1682,21 @@ class CodexHarnessAdapter(HarnessAdapter):
 
         if config_path.exists() or config_path.is_symlink():
             validate_regular_file(config_path, role="config_target", executable_required=False)
-            original_config = config_path.read_text(encoding="utf-8")
+            original_config = config_path.read_bytes()
         else:
             original_config = None
         manifest_path = hook_manifest_path(context.guard_home, config_path)
         secret_path = hook_secret_path(context.guard_home)
         original_manifest = snapshot_regular_file(manifest_path)
         original_secret = snapshot_regular_file(secret_path)
+        rendered_config = dump_toml(payload)
         try:
             manifest = build_authenticated_hook_manifest(
                 _hook_manifest_spec(context), previous_manifest=previous_manifest
             )
             _assert_package_reauthentication_is_safe(previous_manifest, manifest)
             write_hook_manifest(context.guard_home, config_path, manifest)
-            atomic_write_text(config_path, dump_toml(payload), mode=0o600)
+            atomic_write_text(config_path, rendered_config, mode=0o600)
             written_payload = _strict_toml_object(config_path, label="rendered Codex config file")
             _require_hook_semantics_readback(
                 payload,
@@ -1710,6 +1712,7 @@ class CodexHarnessAdapter(HarnessAdapter):
                 )
             return state
         except BaseException:
+            require_unchanged_config_for_rollback(config_path, original_config, rendered_config.encode("utf-8"))
             rollback_error: BaseException | None = None
             try:
                 if original_config is None:
@@ -1717,7 +1720,7 @@ class CodexHarnessAdapter(HarnessAdapter):
                         raise RuntimeError("Guard refused to unlink a symlink while rolling back Codex config.")
                     config_path.unlink(missing_ok=True)
                 else:
-                    atomic_write_text(config_path, original_config, mode=0o600)
+                    atomic_write_text(config_path, original_config.decode("utf-8"), mode=0o600)
                 restore_private_file(manifest_path, original_manifest)
                 restore_private_file(secret_path, original_secret)
             except BaseException as exc:  # pragma: no cover - catastrophic local I/O failure

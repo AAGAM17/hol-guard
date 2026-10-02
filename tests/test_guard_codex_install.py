@@ -714,7 +714,7 @@ def test_guard_codex_launch_uses_remote_control_for_dashboard_continuation(tmp_p
 def test_guard_install_codex_rewrites_workspace_config_with_proxy_entries(tmp_path, capsys, monkeypatch):
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"
-    source_root = str(Path(__file__).resolve().parents[1] / "src")
+    source_root = str(Path(codex_adapter.__file__).resolve().parents[3])
     monkeypatch.setenv("PYTHONPATH", str(tmp_path / "stale-site-packages"))
     _build_guard_fixture(home_dir, workspace_dir)
 

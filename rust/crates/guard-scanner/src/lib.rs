@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod git_read;
+pub mod precommit;
 pub mod repository_scanner;
 pub mod secret_detection;
 pub mod staged_scanner;

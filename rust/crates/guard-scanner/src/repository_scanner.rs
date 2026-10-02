@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::git_read::{run_git, GIT_TIMEOUT_SECONDS};
 use crate::secret_detection::{
     detector_version, scan_secret_text, EmptyFingerprintKeyError, PublicFinding, SecretFinding,
 };
@@ -34,10 +35,6 @@ pub const DEFAULT_MAX_FINDINGS: usize = 500;
 /// `DEFAULT_MAX_COMMITS` from the Python module.
 pub const DEFAULT_MAX_COMMITS: usize = 500;
 
-// `_GIT_TIMEOUT_SECONDS`: retained for parity documentation while the git
-// subprocess entry points below are stubbed.
-#[allow(dead_code)]
-const GIT_TIMEOUT_SECONDS: u64 = 20;
 
 /// Python `_TRUNCATION_REASON_ORDER`.
 const TRUNCATION_REASON_ORDER: [&str; 4] = [
@@ -295,37 +292,116 @@ fn filesystem_paths(root: &Path, canonical_root: &Path) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Git subprocess entry points.
-// TODO(deps): `git_read.rs` (SUBPROC) lands separately; every helper below
-// fails closed exactly like the Python `except (OSError, SubprocessError)` /
-// nonzero-returncode paths, so `scan_repository_secrets` currently degrades
-// to the filesystem walk and treats every target as non-git.
+// Git subprocess entry points. Each helper mirrors the Python `except
+// (OSError, subprocess.SubprocessError)` / `returncode != 0` early exits:
+// `run_git` folds all three failure modes into `Err(GitError)` and `Ok`
+// guarantees `returncode == 0`, so `Err(_) => None`/`false` is the verbatim
+// port of the Python degradation.
 
-fn is_git_repository(_root: &Path) -> bool {
-    // TODO(deps): git subprocess `rev-parse --is-inside-work-tree`.
-    false
+/// Python `bytes.strip()`: ASCII whitespace off both ends.
+fn strip_bytes(data: &[u8]) -> &[u8] {
+    let mut start = 0;
+    let mut end = data.len();
+    while start < end && data[start].is_ascii_whitespace() {
+        start += 1;
+    }
+    while end > start && data[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    &data[start..end]
 }
 
-fn git_working_paths(_root: &Path) -> Option<Vec<String>> {
-    // TODO(deps): git subprocess `ls-files -co --exclude-standard -z`.
-    None
+/// `_is_git_repository`: `git rev-parse --is-inside-work-tree` must exit 0
+/// and print exactly `true`.
+fn is_git_repository(root: &Path) -> bool {
+    let Ok(result) = run_git(root, &["rev-parse", "--is-inside-work-tree"], GIT_TIMEOUT_SECONDS)
+    else {
+        return false;
+    };
+    strip_bytes(&result.stdout) == b"true"
 }
 
-fn git_commits(_root: &Path, _max_commits: usize) -> Option<Vec<String>> {
-    // TODO(deps): git subprocess `rev-list --all --max-count=<n>`.
-    None
+/// `item.decode("utf-8", errors="surrogateescape")` over NUL-separated git
+/// output. Rust strings cannot hold surrogates, so `from_utf8_lossy` is the
+/// closest faithful decode: valid UTF-8 is byte-identical and invalid bytes
+/// become `U+FFFD` instead of lone surrogates.
+fn decode_nul_paths(stdout: &[u8]) -> Vec<String> {
+    stdout
+        .split(|byte| *byte == 0)
+        .filter(|item| !item.is_empty())
+        .map(|item| String::from_utf8_lossy(item).into_owned())
+        .collect()
 }
 
-fn git_changed_paths(_root: &Path, _commit: &str) -> Option<Vec<String>> {
-    // TODO(deps): git subprocess
-    // `diff-tree --root --no-commit-id --name-only -r -z <commit>`.
-    None
+/// `_git_working_paths`: `git ls-files -co --exclude-standard -z` split on
+/// NUL (tracked, untracked, and non-ignored files).
+fn git_working_paths(root: &Path) -> Option<Vec<String>> {
+    let result = run_git(
+        root,
+        &["ls-files", "-co", "--exclude-standard", "-z"],
+        GIT_TIMEOUT_SECONDS,
+    )
+    .ok()?;
+    Some(decode_nul_paths(&result.stdout))
 }
 
-fn git_blob(_root: &Path, _commit: &str, _path: &str, _max_file_bytes: usize) -> Option<Vec<u8>> {
-    // TODO(deps): git subprocess `cat-file -s` then `cat-file blob` on
-    // `<commit>:<path>` with the byte bound applied to both.
-    None
+/// `_git_commits`: `git rev-list --all --max-count=<n>`, one commit per line.
+fn git_commits(root: &Path, max_commits: usize) -> Option<Vec<String>> {
+    let max_count = format!("--max-count={max_commits}");
+    let result = run_git(
+        root,
+        &["rev-list", "--all", max_count.as_str()],
+        GIT_TIMEOUT_SECONDS,
+    )
+    .ok()?;
+    Some(
+        String::from_utf8_lossy(&result.stdout)
+            .split('\n')
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
+/// `_git_changed_paths`: `git diff-tree --root --no-commit-id --name-only
+/// -r -z <commit>` split on NUL.
+fn git_changed_paths(root: &Path, commit: &str) -> Option<Vec<String>> {
+    let result = run_git(
+        root,
+        &[
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "-z",
+            commit,
+        ],
+        GIT_TIMEOUT_SECONDS,
+    )
+    .ok()?;
+    Some(decode_nul_paths(&result.stdout))
+}
+
+/// `_git_blob`: size-check `git cat-file -s <commit>:<path>` against
+/// `max_file_bytes`, then `git cat-file blob <commit>:<path>` with the bound
+/// re-applied to the streamed payload.
+fn git_blob(root: &Path, commit: &str, path: &str, max_file_bytes: usize) -> Option<Vec<u8>> {
+    let spec = format!("{commit}:{path}");
+    let size_result = run_git(root, &["cat-file", "-s", spec.as_str()], GIT_TIMEOUT_SECONDS).ok()?;
+    // Python `int(strip_bytes(&size_result.stdout))`; `from_utf8` covers any byte
+    // garbage the way `ValueError` catches non-numeric output.
+    let size_text = std::str::from_utf8(strip_bytes(&size_result.stdout)).ok()?;
+    let size: i64 = size_text.parse().ok()?;
+    if size < 0 || size > max_file_bytes as i64 {
+        return None;
+    }
+    let blob_result =
+        run_git(root, &["cat-file", "blob", spec.as_str()], GIT_TIMEOUT_SECONDS).ok()?;
+    if blob_result.stdout.len() > max_file_bytes {
+        return None;
+    }
+    Some(blob_result.stdout)
 }
 // ---------------------------------------------------------------------------
 
@@ -386,10 +462,10 @@ pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
 /// max_commits=..., max_files=..., max_file_bytes=..., max_total_bytes=...,
 /// max_findings=...)`.
 ///
-/// History scanning requires `git`; until `git_read.rs` lands the subprocess
-/// helpers fail closed, so `include_history` currently follows the non-git
-/// `history_requested_for_non_git_target` error path — identical to pointing
-/// the Python scanner at a non-git directory.
+/// History scanning requires `git`: targets outside a worktree, or invocations
+/// where git exits non-zero/times out, degrade exactly like the Python
+/// `except`/`returncode != 0` early exits — `include_history` on a non-git
+/// target reports `history_requested_for_non_git_target`.
 pub fn scan_repository_secrets(
     target: &Path,
     options: &RepositoryScanOptions,

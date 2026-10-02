@@ -3,14 +3,13 @@
 //! Port of `codex_plugin_scanner.guard.secrets.secret_staged_scanner`
 //! (RTM-032). Scanning is local and read-only: staged blob content is fetched
 //! through Git plumbing (`diff --cached`, `cat-file`) and never written back
-//! to disk or sent over the network. Until the `git_read` helpers land the
-//! subprocess entry points fail closed, matching the Python `except`/
-//! non-zero-returncode behavior.
+//! to disk or sent over the network.
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::git_read::{run_git, GIT_TIMEOUT_SECONDS};
 use crate::repository_scanner::{
     bounded_positive, expand_tilde, scan_blob, RepositorySecretScanResult, DEFAULT_MAX_FILE_BYTES,
     DEFAULT_MAX_FILES, DEFAULT_MAX_FINDINGS, DEFAULT_MAX_TOTAL_BYTES,
@@ -39,30 +38,94 @@ impl Default for StagedScanOptions {
 }
 
 // --- git subprocess helpers -------------------------------------------------
-// TODO(deps): each helper is a thin wrapper over `repository_scanner::run_git`
-// (Python `_run_git`). They currently fail closed — return `None` — which is
-// equivalent to the Python `except (OSError, subprocess.SubprocessError)` and
-// `returncode != 0` early exits, so callers degrade exactly as Python does.
+// Thin wrappers over `git_read::run_git` (Python `_run_git`). `run_git` folds
+// `OSError`/`SubprocessError`/`returncode != 0` into `Err(GitError)`, so
+// `.ok()` below is the verbatim port of each Python `except` + `returncode`
+// early exit.
 
-/// Python `_git_repository_root`: `git rev-parse --show-toplevel` then
-/// `Path(raw).resolve()`.
-fn git_repository_root(_root: &Path) -> Option<PathBuf> {
-    None
+/// Python `bytes.strip()`: ASCII whitespace off both ends.
+fn strip_bytes(data: &[u8]) -> &[u8] {
+    let mut start = 0;
+    let mut end = data.len();
+    while start < end && data[start].is_ascii_whitespace() {
+        start += 1;
+    }
+    while end > start && data[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    &data[start..end]
+}
+
+/// Python `_git_repository_root`: `git rev-parse --show-toplevel`, strict
+/// UTF-8 decode of the trimmed output, then `Path(raw).resolve()`.
+fn git_repository_root(root: &Path) -> Option<PathBuf> {
+    let result = run_git(root, &["rev-parse", "--show-toplevel"], GIT_TIMEOUT_SECONDS).ok()?;
+    // `result.stdout.decode("utf-8", errors="strict").strip()`; a strict
+    // decode failure is a `ValueError`, which Python does not catch here, but
+    // the surrounding callers degrade identically on `None`.
+    let raw = std::str::from_utf8(&result.stdout).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // `Path(raw).resolve()` — non-strict in Python, so a failed canonicalize
+    // still yields the raw path rather than `None`.
+    let path = PathBuf::from(trimmed);
+    Some(path.canonicalize().unwrap_or(path))
 }
 
 /// Python `_git_staged_paths`:
-/// `git diff --cached --name-only --diff-filter=ACMR -z --` split on NUL,
-/// decoded with surrogateescape semantics.
-fn git_staged_paths(_root: &Path) -> Option<Vec<String>> {
-    None
+/// `git diff --cached --name-only --diff-filter=ACMR -z --` split on NUL.
+/// Python decodes with `surrogateescape`; Rust strings cannot hold lone
+/// surrogates, so `from_utf8_lossy` substitutes `U+FFFD` — byte-identical for
+/// all valid UTF-8 paths.
+fn git_staged_paths(root: &Path) -> Option<Vec<String>> {
+    let result = run_git(
+        root,
+        &["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"],
+        GIT_TIMEOUT_SECONDS,
+    )
+    .ok()?;
+    Some(
+        result
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|item| !item.is_empty())
+            .map(|item| String::from_utf8_lossy(item).into_owned())
+            .collect(),
+    )
 }
 
 /// Python `_git_staged_blob`: size check via `git cat-file -s :<path>` then
 /// payload via `git cat-file blob :<path>` bounded by `max_file_bytes`.
 /// Returns `(Option<bytes>, blob_too_large)` — `too_large` only when the
-/// staged object itself exceeds `max_file_bytes`.
-fn git_staged_blob(_root: &Path, _path: &str, _max_file_bytes: usize) -> (Option<Vec<u8>>, bool) {
-    (None, false)
+/// staged object itself exceeds `max_file_bytes`; every other failure
+/// mirrors the Python `except`/`returncode` early exits as `(None, false)`
+/// so the caller records `git_staged_blob_failed`.
+fn git_staged_blob(root: &Path, path: &str, max_file_bytes: usize) -> (Option<Vec<u8>>, bool) {
+    let spec = format!(":{path}");
+    let Ok(size_result) = run_git(root, &["cat-file", "-s", spec.as_str()], GIT_TIMEOUT_SECONDS)
+    else {
+        return (None, false);
+    };
+    // `int(size_result.stdout.strip())`; invalid output mirrors `ValueError`.
+    let Some(size) = std::str::from_utf8(strip_bytes(&size_result.stdout))
+        .ok()
+        .and_then(|text| text.parse::<i64>().ok())
+    else {
+        return (None, false);
+    };
+    if size < 0 || size > max_file_bytes as i64 {
+        return (None, true);
+    }
+    let Ok(blob_result) = run_git(root, &["cat-file", "blob", spec.as_str()], GIT_TIMEOUT_SECONDS)
+    else {
+        return (None, false);
+    };
+    if blob_result.stdout.len() > max_file_bytes {
+        return (None, true);
+    }
+    (Some(blob_result.stdout), false)
 }
 // ---------------------------------------------------------------------------
 
@@ -320,5 +383,47 @@ mod tests {
         // Sorted by (path, line, rule_id): first two lines survive.
         assert_eq!(ordered[0].line, 1);
         assert_eq!(ordered[1].line, 2);
+    }
+
+    /// End-to-end proof that the real `git_read::run_git` path works: init a
+    /// repository, stage a `.env` carrying an AWS-style credential, and scan
+    /// the index. The scanner must traverse `rev-parse` → `diff --cached` →
+    /// `cat-file` and surface at least one finding with no errors.
+    #[test]
+    fn staged_secret_in_real_git_repo_is_detected() {
+        let dir = temp_root("staged-e2e");
+        for args in [
+            &["init", "-q"][..],
+            &["config", "user.email", "t@t"][..],
+            &["config", "user.name", "t"][..],
+            &["config", "core.hooksPath", ""][..],
+        ] {
+            run_git(&dir, args, GIT_TIMEOUT_SECONDS).unwrap();
+        }
+        std::fs::write(
+            dir.join(".env"),
+            "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY\n",
+        )
+        .unwrap();
+        run_git(&dir, &["add", ".env"], GIT_TIMEOUT_SECONDS).unwrap();
+
+        let result = scan_staged_secrets(&dir, &StagedScanOptions::default());
+        assert!(
+            result.errors.is_empty(),
+            "unexpected errors: {:?}",
+            result.errors
+        );
+        assert!(
+            result.findings.iter().any(|f| f.path == ".env"),
+            "expected a finding on .env, got {:?}",
+            result.findings
+        );
+
+        // Sanity: the same content left unstaged after removal must vanish.
+        run_git(&dir, &["reset", "-q"], GIT_TIMEOUT_SECONDS).unwrap();
+        std::fs::remove_file(dir.join(".env")).unwrap();
+        let clean = scan_staged_secrets(&dir, &StagedScanOptions::default());
+        assert!(clean.findings.is_empty(), "unstaged file leaked: {:?}", clean.findings);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

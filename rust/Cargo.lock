@@ -451,6 +451,7 @@ dependencies = [
  "guard-rules",
  "hex",
  "hmac",
+ "nix",
  "regex",
  "serde",
  "serde_json",

@@ -1241,6 +1241,7 @@ def _raw_shebang_for_identity(identity: Mapping[str, object]) -> tuple[str | Non
     digest, hash_status, shebang, shebang_status = _cached_executable_hash(
         path,
         _executable_stat_key(metadata),
+        expected_birthtime_ns=getattr(metadata, "st_birthtime_ns", None),
     )
     if (
         hash_status != "verified"
@@ -1759,12 +1760,17 @@ def _cached_executable_hash(
         path_stat = expected_stat
         descriptor_stat = observed_stat
         opened_birthtime_ns = getattr(opened_stat, "st_birthtime_ns", None)
+        if os.name == "nt":
+            # stat derives executable bits from the filename; fstat cannot.
+            # Keep file type and read/write bits equal across both APIs.
+            path_stat = (*path_stat[:5], path_stat[5] & ~0o111)
+            descriptor_stat = (*descriptor_stat[:5], descriptor_stat[5] & ~0o111)
         if os.name == "nt" and expected_birthtime_ns is not None and opened_birthtime_ns is not None:
             # Windows stat reports creation time in ctime, while fstat may
             # report ChangeTime. Compare birthtime across APIs only; retain
             # the full descriptor ChangeTime check across the actual read.
-            path_stat = (*expected_stat[:4], expected_birthtime_ns, expected_stat[5])
-            descriptor_stat = (*observed_stat[:4], opened_birthtime_ns, observed_stat[5])
+            path_stat = (*path_stat[:4], expected_birthtime_ns, path_stat[5])
+            descriptor_stat = (*descriptor_stat[:4], opened_birthtime_ns, descriptor_stat[5])
         if descriptor_stat != path_stat or not stat.S_ISREG(opened_stat.st_mode):
             return None, "identity_raced", None, "unverified"
         if opened_stat.st_size > _MAX_EXECUTABLE_HASH_BYTES:

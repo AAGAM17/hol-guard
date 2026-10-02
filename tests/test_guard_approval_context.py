@@ -287,7 +287,9 @@ def test_builder_rejects_non_json_context_without_leaking_its_value() -> None:
     assert "very-private-value" not in str(exc_info.value)
 
 
-@pytest.mark.parametrize("mutation", ["none", "missing-birthtime", "birthtime", "inode", "during-read"])
+@pytest.mark.parametrize(
+    "mutation", ["none", "execute-bits", "read-only", "missing-birthtime", "birthtime", "inode", "during-read"]
+)
 def test_windows_executable_hash_keeps_descriptor_race_checks(tmp_path, monkeypatch, mutation) -> None:
     executable = tmp_path / "synthetic-executable"
     executable.write_bytes(b"synthetic executable bytes\n")
@@ -312,7 +314,7 @@ def test_windows_executable_hash_keeps_descriptor_race_checks(tmp_path, monkeypa
                 "st_dev": actual.st_dev,
                 "st_ino": actual.st_ino + (1 if mutation == "inode" else 0),
                 "st_size": actual.st_size,
-                "st_mode": actual.st_mode,
+                "st_mode": actual.st_mode & ~0o222 if mutation == "read-only" else actual.st_mode,
                 "st_mtime_ns": actual.st_mtime_ns,
                 "st_ctime_ns": changed_time,
             }
@@ -321,13 +323,17 @@ def test_windows_executable_hash_keeps_descriptor_race_checks(tmp_path, monkeypa
             return SimpleNamespace(**fields)
 
     monkeypatch.setattr(approval_context, "os", WindowsOs())
+    expected_stat = approval_context._executable_stat_key(metadata)
+    if mutation == "execute-bits":
+        expected_stat = (*expected_stat[:5], expected_stat[5] | 0o111)
     digest, status, _, _ = approval_context._cached_executable_hash(
         str(executable),
-        approval_context._executable_stat_key(metadata),
+        expected_stat,
         expected_birthtime_ns=birthtime,
     )
-    assert status == ("verified" if mutation == "none" else "identity_raced")
-    assert (digest is not None) == (mutation == "none")
+    unchanged = mutation in {"none", "execute-bits"}
+    assert status == ("verified" if unchanged else "identity_raced")
+    assert (digest is not None) == unchanged
 
 
 def test_runtime_executable_identity_changes_after_same_path_byte_replacement(tmp_path) -> None:

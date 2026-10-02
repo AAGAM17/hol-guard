@@ -80,6 +80,34 @@ fn bounded_inspection(arguments: &[String]) -> bool {
             .all(|part| !matches!(part, "" | "." | ".."))
 }
 
+pub(super) fn inspection_arguments(arguments: &[String]) -> Option<&[String]> {
+    let mut index = 0;
+    while let Some(argument) = arguments.get(index) {
+        if matches!(argument.as_str(), "--no-pager" | "--no-optional-locks") {
+            index += 1;
+            continue;
+        }
+        let target = if argument == "-C" {
+            index += 1;
+            arguments.get(index)?.as_str()
+        } else if let Some(target) = argument.strip_prefix("-C") {
+            target
+        } else {
+            break;
+        };
+        if !crate::pretool::safe_directory_target(target) {
+            return None;
+        }
+        index += 1;
+    }
+    let remaining = arguments.get(index..)?;
+    matches!(
+        remaining.first().map(String::as_str),
+        Some("status" | "diff" | "log" | "show" | "rev-parse" | "ls-files" | "remote")
+    )
+    .then_some(remaining)
+}
+
 pub(super) fn observe(
     segment: &CommandSegmentV1,
     index: usize,
@@ -101,13 +129,16 @@ pub(super) fn observe(
         return;
     };
     let command = arguments[command_index].as_str();
-    if command_index == 0 && bounded_inspection(arguments) {
+    let inspection = inspection_arguments(arguments);
+    if (command_index == 0 && bounded_inspection(arguments))
+        || inspection.is_some_and(bounded_inspection)
+    {
         return;
     }
     if let Some((_, rule)) = RULES.iter().find(|(name, _)| *name == command) {
         // Attribution is deliberately stronger than legacy Python's inert
         // matcher=None porcelain entries: disabling a permission must work.
-        result.rule(rule, index, command_index != 0);
+        result.rule(rule, index, command_index != 0 && inspection.is_none());
     } else if !matches!(
         command,
         "switch"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
     home, workspace = root / "home", root / "workspace"
     for directory in (home, workspace / "src", workspace / "__tests__/nested", workspace / "output"):
         directory.mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet", str(workspace)], check=True, capture_output=True)
     source = "ordinary-workflow-fixture\nsecond-line\n"
     for name in ("one.ts", "two.ts", "path with spaces.ts", "move-source.ts"):
         (workspace / "src" / name).write_text(source)
@@ -35,11 +37,15 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
     file = shlex.quote(str(workspace / "src/one.ts"))
     directory = shlex.quote(str(workspace / "__tests__") + "/")
     outside = shlex.quote(str(home / "notes.txt"))
+    repository = shlex.quote(str(workspace))
     positives = [
         ("echo", "echo ordinary-workflow-fixture"),
         ("printf", "printf '%s\\n' ordinary-workflow-fixture"),
         ("pwd", "pwd"),
         ("sleep-compound", "sleep 0.01; echo ordinary-workflow-fixture"),
+        ("git-routed-status", "git -C src status --short; echo done"),
+        ("git-absolute-status", f"git --no-pager -C {repository} status --short"),
+        ("git-routed-root", "git -Csrc rev-parse --show-toplevel"),
         ("list-source", "ls src"),
         ("read-relative", "cat src/one.ts"),
         ("read-absolute", f"cat {file}"),
@@ -92,6 +98,8 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("sleep-secret", "sleep 0.01; cat .env"),
         ("sleep-destructive", "sleep 0.01 && rm -rf src"),
         ("sleep-unbounded", "sleep infinity; echo ordinary-workflow-fixture"),
+        ("git-routed-execution-option", "git -C src -c core.fsmonitor=payload status"),
+        ("git-routed-secret", "git -C src status --short; cat .env"),
         ("overwrite-git-metadata", "cp src/one.ts .git/config"),
         ("github-delete", "gh api -X DELETE repos/owner/repo"),
         ("github-secret-input", "gh api repos/owner/repo/issues --input .env"),

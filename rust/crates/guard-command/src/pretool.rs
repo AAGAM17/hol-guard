@@ -135,6 +135,9 @@ fn safe_git_arguments(arguments: &[String], allow_helper_context: bool) -> bool 
     {
         return false;
     }
+    let Some(arguments) = crate::command_compatibility::git_inspection_arguments(arguments) else {
+        return false;
+    };
     let Some(subcommand) = arguments.first().map(String::as_str) else {
         return false;
     };
@@ -243,7 +246,7 @@ fn safe_gh_arguments(arguments: &[String]) -> bool {
         || crate::command_compatibility::github_arguments_are_read_only(arguments)
 }
 
-fn safe_directory_target(target: &str) -> bool {
+pub(crate) fn safe_directory_target(target: &str) -> bool {
     let tilde_head = target
         .strip_prefix('~')
         .map(|rest| rest.split('/').next().unwrap_or(""));

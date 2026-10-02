@@ -24,6 +24,10 @@ pub(crate) fn github_arguments_are_read_only(arguments: &[String]) -> bool {
     github::arguments_are_read_only(arguments)
 }
 
+pub(crate) fn git_inspection_arguments(arguments: &[String]) -> Option<&[String]> {
+    git::inspection_arguments(arguments)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompatibilityMatch {
     pub rule_id: &'static str,

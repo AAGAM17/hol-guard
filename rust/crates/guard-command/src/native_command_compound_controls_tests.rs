@@ -165,6 +165,22 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
     }
 
     let mut delegated = binding.clone();
+    delegated.layers[0].controls[0].target_id = "command.git.permission.status".into();
+    delegated.layers[0].controls[0].state = "disabled".into();
+    delegated.effective_digest = delegated.compute_effective_digest().unwrap();
+    let controls = CompiledNativeCommandControls::new(&delegated).unwrap();
+    for command in [
+        "git -C project status --short",
+        "pwd; git -Cproject status --short; echo done",
+    ] {
+        assert_eq!(
+            evaluate(&controls, command).minimum_action,
+            "block",
+            "{command}"
+        );
+    }
+
+    let mut delegated = binding.clone();
     delegated.layers[0].controls[0].target_id =
         "command.package.node.permission.package-protection".into();
     delegated.effective_digest = delegated.compute_effective_digest().unwrap();

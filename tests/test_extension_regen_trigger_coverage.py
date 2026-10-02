@@ -48,10 +48,12 @@ def _matches(path: str, pattern: str) -> bool:
     ],
 )
 def test_trigger_matcher_preserves_path_boundaries(path: str, pattern: str, expected: bool) -> None:
+    """Keep single-star matching within one path segment."""
     assert _matches(path, pattern) is expected
 
 
 def test_regen_trigger_covers_every_decision_diff_input() -> None:
+    """Require every bound report input to schedule regeneration."""
     from tests.guard_command_decision_diff import (
         _EVIDENCE_SOURCE_PATHS,
         KNOWN_GAPS_PATH,
@@ -74,6 +76,7 @@ def test_regen_trigger_covers_every_decision_diff_input() -> None:
 
 
 def test_regen_keeps_main_scope_and_reviewed_publication() -> None:
+    """Retain main-only publication through a normally reviewed pull request."""
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     assert _triggers(workflow)["push"]["branches"] == ["main"]
     assert "workflow_dispatch" in _triggers(workflow)
@@ -90,17 +93,20 @@ def test_regen_keeps_main_scope_and_reviewed_publication() -> None:
 
 @pytest.mark.parametrize("key", ["on", True])
 def test_event_keys_support_both_yaml_versions(key: object) -> None:
+    """Accept the event mapping produced by either YAML version."""
     events = {"push": {"branches": ["main"]}}
     assert _triggers({key: events}) == events
 
 
 @pytest.mark.parametrize("workflow", [{}, {"on": None}, {"on": {}, True: {}}])
 def test_invalid_or_ambiguous_event_keys_fail_explicitly(workflow: dict) -> None:
+    """Reject missing, malformed, or ambiguous workflow events."""
     with pytest.raises(AssertionError):
         _triggers(workflow)
 
 
 @pytest.mark.parametrize("pattern", ["!src/**", "tests/test?.py", "tests/[ab].py", "tests/a+.py", "**/test.py"])
 def test_unsupported_glob_syntax_fails_explicitly(pattern: str) -> None:
+    """Refuse glob syntax this deliberately narrow matcher cannot interpret."""
     with pytest.raises(AssertionError, match="Unsupported regeneration trigger pattern"):
         _matches("tests/test.py", pattern)

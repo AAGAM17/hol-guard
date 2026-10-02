@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod secret_detection;
+
 use guard_rules::{CONTEXT_CHARS, MAX_MATCHES, MAX_SCAN_BYTES};
 use regex::{Regex, RegexBuilder};
 use std::collections::BTreeMap;

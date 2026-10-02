@@ -1,6 +1,7 @@
 """Credential-free stdio regressions for fresh OpenCode MCP approval retries."""
 
 import json
+import os
 import sqlite3
 import urllib.error
 import urllib.request
@@ -114,10 +115,19 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
         command[0], launch_cwd=ctx.workspace_dir, launch_args=command[1:]
     )
     entrypoint = launch_identity.get("entrypoint", {})
+    with open(command[0], "rb") as executable:
+        path_stat = os.stat(command[0])
+        descriptor_stat = os.fstat(executable.fileno())
+    differing_stat_fields = [
+        field
+        for field in ("st_dev", "st_ino", "st_size", "st_mode", "st_mtime_ns", "st_ctime_ns", "st_birthtime_ns")
+        if getattr(path_stat, field, None) != getattr(descriptor_stat, field, None)
+    ]
     assert launch_identity.get("status") == "verified", {
         "executable_status": launch_identity.get("status"),
         "file_format": launch_identity.get("file_format"),
         "shebang_status": launch_identity.get("shebang_status"),
+        "differing_stat_fields": differing_stat_fields,
     }
     assert entrypoint.get("status") != "unproven", {
         "entrypoint_status": entrypoint.get("status"),

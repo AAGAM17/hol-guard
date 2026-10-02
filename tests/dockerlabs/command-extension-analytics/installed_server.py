@@ -196,7 +196,12 @@ def _invoke_real_harnesses() -> int:
         "tool_input": {"command": "git diff --stat"},
         "tool_call_id": "codex_lab_0000000000000001",
     }
-    codex_post = {**codex_pre, "hook_event_name": "PostToolUse", "success": True}
+    codex_post = {
+        **codex_pre,
+        "hook_event_name": "PostToolUse",
+        "success": True,
+        "tool_response": {"stdout": "fixture.txt | 1 +\n", "stderr": "", "exit_code": 0},
+    }
     claude_no_post = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Bash",

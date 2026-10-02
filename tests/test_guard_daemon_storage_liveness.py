@@ -317,7 +317,10 @@ def test_store_promotes_rollback_journal_before_bounded_hook_writes(
     try:
         reader.execute("begin")
         assert reader.execute("select count(*) from command_activity").fetchone() == (0,)
-        with sqlite_connect_timeout_override(0.05):
+        # The override is a wall clock from entry, and native review runs before
+        # the write. The reader keeps its transaction until this call returns,
+        # so a lock wait still fails instead of waiting the reader out.
+        with sqlite_connect_timeout_override(5):
             assert record_pre_hook_command_activity_best_effort(
                 store=store,
                 guard_home=guard_home,

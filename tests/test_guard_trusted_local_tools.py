@@ -377,6 +377,7 @@ def test_local_tool_trust_allows_variable_read_queries_and_invalidates_changed_b
     guard_home.mkdir()
     _ = (guard_home / "config.toml").write_text(
         'mode = "enforce"\nsecurity_level = "balanced"\ndefault_action = "require-reapproval"\n'
+        'blocked_request_mode = "ask"\n'
     )
     monkeypatch.setenv("CODEX_MANAGED_BY_BUN", "1")
 

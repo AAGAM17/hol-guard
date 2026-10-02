@@ -1163,15 +1163,24 @@ def run_native_generic_payload(
         and policy_action in {"review", "require-reapproval"}
         and not asks_for_approval(config)
     ):
+        if approval_reuse.status == "rejected":
+            policy_reason = "A saved approval does not cover this action under current protection."
+        elif configured_policy_normalization.action in {"review", "require-reapproval"}:
+            policy_reason = "Current local policy requires review for this action."
+        elif cli_action_normalization is not None and cli_action_normalization.action in {
+            "review",
+            "require-reapproval",
+        }:
+            policy_reason = "The trusted hook invocation requires review for this action."
+        else:
+            policy_reason = "No applicable policy or valid saved approval allows this action."
         policy_action = "block"
         payload_map.update(
             policy_action="block",
             approval_requests=[],
             prompted=False,
         )
-        blocked_request_guidance = safe_alternative_reason(
-            "HOL Guard could not allow this action under current policy."
-        )
+        blocked_request_guidance = safe_alternative_reason(policy_reason)
         payload_map["blocked_request_guidance"] = blocked_request_guidance
     changed_capabilities = _string_list(payload_map.get("changed_capabilities"))
     if not changed_capabilities and isinstance(payload_map.get("event"), str):

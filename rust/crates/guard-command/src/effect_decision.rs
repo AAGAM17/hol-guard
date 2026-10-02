@@ -854,11 +854,27 @@ fn validate_factor(factor: &DecisionFactor) -> Result<(), &'static str> {
             return Err("evidence_digest must be a lowercase SHA-256 digest");
         }
     }
+    // EFFECT-source ⇔ assessment gating (effect_decision.py:121-124).
+    if factor.source == DecisionFactorSource::Effect && factor.assessment.is_none() {
+        return Err("effect factors require an assessment");
+    }
+    if factor.source != DecisionFactorSource::Effect && factor.assessment.is_some() {
+        return Err("only effect factors may carry an assessment");
+    }
     if let Some(assessment) = &factor.assessment {
         validate_assessment(assessment)?;
     }
     if let Some(proof) = &factor.proof {
         validate_proof(proof)?;
+    }
+    // proof_route ⇄ proof exact-match (effect_decision.py:127-131).
+    match (&factor.basis.proof_route, &factor.proof) {
+        (None, Some(_)) => return Err("proof requires a matching proof route"),
+        (Some(route), Some(proof)) if proof.route != *route => {
+            return Err("permissive basis requires proof on the exact route");
+        }
+        (Some(_), None) => return Err("permissive basis requires proof on the exact route"),
+        _ => {}
     }
     if let (Some(proof), Some(assessment)) = (&factor.proof, &factor.assessment) {
         // proof.satisfied_requirements must cover assessment.proof_requirements.

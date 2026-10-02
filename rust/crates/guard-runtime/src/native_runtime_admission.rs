@@ -528,18 +528,37 @@ pub fn native_runtime_status(
             continue;
         };
         // Compatibility is transport-level (protocol + resident feature).
+        // Python then re-checks capabilities against the bundled manifest
+        // (protocol / package_version / rule_digest / source_sha — `native_runtime.py:402-414`);
+        // any divergence marks the runtime incompatible before mode-aware
+        // `compatible` is computed.
+        let manifest_reason: Option<&'static str> = manifest.as_ref().and_then(|m| {
+            if capabilities.protocol_version != m.protocol_version {
+                Some("native_manifest_protocol_mismatch")
+            } else if capabilities.runtime_version != m.package_version {
+                Some("native_manifest_version_mismatch")
+            } else if capabilities.rule_digest != m.rule_digest {
+                Some("native_manifest_rule_mismatch")
+            } else if capabilities.build_sha != m.source_sha {
+                Some("native_manifest_build_mismatch")
+            } else {
+                None
+            }
+        });
         // Package-version equality is advisory: shadow/force downgrade it to
         // a non-blocking `native_version_mismatch`; auto still enforces.
         let version_compatible = package_version
             .map(|v| v == capabilities.runtime_version)
             .unwrap_or(false);
-        let compatible =
-            version_compatible || matches!(mode, NativeMode::Shadow | NativeMode::Force);
+        let compatible = manifest_reason.is_none()
+            && (version_compatible || matches!(mode, NativeMode::Shadow | NativeMode::Force));
         return NativeRuntimeStatusV1 {
             mode,
             available: true,
             compatible,
-            reason: if compatible {
+            reason: if let Some(reason) = manifest_reason {
+                reason.to_string()
+            } else if compatible {
                 "native_ready".to_string()
             } else {
                 "native_version_mismatch".to_string()
@@ -928,8 +947,8 @@ mod tests {
             "package_version": "3.16.5",
             "target": "aarch64-apple-darwin",
             "platform_tag": "macosx_14_0_arm64",
-            "source_sha": "a".repeat(40),
-            "rule_digest": "b".repeat(64),
+            "source_sha": "e".repeat(40),
+            "rule_digest": "d".repeat(64),
             "runtime_sha256": id.sha256,
             "runtime_size": id.size,
         });
@@ -952,6 +971,59 @@ mod tests {
             Some(id.sha256.as_str())
         );
         assert!(status.manifest.is_some());
+    }
+
+    /// Greptile P2 parity: capabilities disagreeing with the bundled manifest
+    /// on protocol / package_version / rule_digest / build_sha must mark the
+    /// runtime incompatible with the matching `native_manifest_*_mismatch`
+    /// reason (`native_runtime.py:402-414`).
+    #[cfg(unix)]
+    #[test]
+    fn status_rejects_manifest_field_mismatch() {
+        CapabilitiesProbe::clear();
+        for (idx, (rule_digest, build_sha, want)) in [
+            ("x".repeat(64), "e".repeat(40), "native_manifest_rule_mismatch"),
+            ("d".repeat(64), "x".repeat(40), "native_manifest_build_mismatch"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let dir = tmp_dir(&format!("status-mismatch-{idx}"));
+            let caps = serde_json::json!({
+                "protocol_version": 1,
+                "runtime_version": "3.16.5",
+                "rule_digest": rule_digest,
+                "build_sha": build_sha,
+                "target": "aarch64-apple-darwin",
+                "features": ["resident-protocol-v2"],
+            });
+            let bin = write_fake_runtime(&dir, &caps.to_string());
+            let id = identity_of(&bin);
+            let manifest = serde_json::json!({
+                "schema": NATIVE_MANIFEST_SCHEMA,
+                "protocol_version": NATIVE_MANIFEST_PROTOCOL_VERSION,
+                "package_version": "3.16.5",
+                "target": "aarch64-apple-darwin",
+                "platform_tag": "macosx_14_0_arm64",
+                "source_sha": "e".repeat(40),
+                "rule_digest": "d".repeat(64),
+                "runtime_sha256": id.sha256,
+                "runtime_size": id.size,
+            });
+            write_readonly(&dir, NATIVE_MANIFEST_NAME, manifest.to_string().as_bytes());
+            let status = native_runtime_status(
+                NativeMode::Auto,
+                &[id],
+                Some("3.16.5"),
+                None,
+                None,
+                &empty_env(),
+                None,
+            );
+            assert!(status.available);
+            assert!(!status.compatible, "expected incompatible for {want}");
+            assert_eq!(status.reason, want);
+        }
     }
 
     #[cfg(unix)]

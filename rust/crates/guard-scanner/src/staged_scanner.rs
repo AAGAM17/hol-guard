@@ -9,16 +9,16 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::git_read::{run_git, GIT_TIMEOUT_SECONDS};
 #[cfg(unix)]
 use crate::git_read::run_git_os;
-#[cfg(unix)]
-use std::os::unix::ffi::OsStringExt;
+use crate::git_read::{run_git, GIT_TIMEOUT_SECONDS};
 use crate::repository_scanner::{
     bounded_positive, expand_tilde, scan_blob, RepositorySecretScanResult, DEFAULT_MAX_FILES,
     DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FINDINGS, DEFAULT_MAX_TOTAL_BYTES,
 };
 use crate::secret_detection::SecretFinding;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
 
 /// Keyword options mirroring `scan_staged_secrets(root, *, max_files=...,
 /// max_file_bytes=..., max_total_bytes=..., max_findings=...)`.
@@ -139,7 +139,10 @@ fn run_git_blob(
     root: &Path,
     args: &[std::ffi::OsString],
 ) -> Result<crate::git_read::CompletedOutput, crate::git_read::GitError> {
-    let str_args: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+    let str_args: Vec<String> = args
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
     let borrowed: Vec<&str> = str_args.iter().map(String::as_str).collect();
     run_git(root, &borrowed, GIT_TIMEOUT_SECONDS)
 }

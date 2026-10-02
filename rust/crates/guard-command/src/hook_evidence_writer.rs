@@ -85,7 +85,10 @@ pub trait EvidenceStoreApi {
     ) -> Result<(), io::Error>;
     /// `store.record_native_decision_receipt(receipt)` — `Ok(false)` =
     /// deduped/rejected result; `Err` = persistence failure.
-    fn record_native_decision_receipt(&self, receipt: &Map<String, Value>) -> Result<bool, io::Error>;
+    fn record_native_decision_receipt(
+        &self,
+        receipt: &Map<String, Value>,
+    ) -> Result<bool, io::Error>;
     /// `persist_deferred_post_hook_command_activity(store, *, ...)`.
     fn persist_deferred_post_hook_command_activity(
         &self,
@@ -101,7 +104,9 @@ pub trait EvidenceStoreApi {
 pub trait CorrelationApi {
     /// `load_or_create_installation_correlation_key(guard_home)` — `Err`
     /// covers `(OSError, ValueError)`; `Ok(None)` = key absent/unusable.
-    fn load_or_create_installation_correlation_key(&self) -> Result<Option<InstallationCorrelationKey>, io::Error>;
+    fn load_or_create_installation_correlation_key(
+        &self,
+    ) -> Result<Option<InstallationCorrelationKey>, io::Error>;
     /// `derive_proven_request_correlation(harness=, event=, payload=, key=)` —
     /// `Err` covers `(OSError, ValueError)` retry-triggering failures.
     fn derive_proven_request_correlation(
@@ -136,7 +141,10 @@ pub trait CorrelationApi {
 /// `native_decision_receipt` / journal validation seam.
 pub trait ReceiptValidationApi {
     /// `validate_native_decision_receipt(value)` — returns the copied receipt.
-    fn validate_native_decision_receipt(&self, value: &Map<String, Value>) -> Option<Map<String, Value>>;
+    fn validate_native_decision_receipt(
+        &self,
+        value: &Map<String, Value>,
+    ) -> Option<Map<String, Value>>;
 }
 
 /// `observed_mcp_tools` / `composio_*` seams.
@@ -165,7 +173,12 @@ pub trait EvidenceJournalApi {
     fn append_journal(&self, path: &Path, record: &EvidenceRecord) -> Result<(), io::Error>;
     /// `rewrite_journal(path, *, remove_record_id=, max_bytes=)` — returns
     /// the count of dropped invalid records; `Err` = `OSError`.
-    fn rewrite_journal(&self, path: &Path, remove_record_id: &str, max_bytes: usize) -> Result<u64, io::Error>;
+    fn rewrite_journal(
+        &self,
+        path: &Path,
+        remove_record_id: &str,
+        max_bytes: usize,
+    ) -> Result<u64, io::Error>;
     /// `recover_journal_records(path, *, max_bytes=)` — raw JSON objects plus
     /// invalid-line count; `Err` = `OSError` (caller handles `NotFound`).
     fn recover_journal_records(
@@ -292,8 +305,7 @@ const MCP_PROVIDER_SCHEMA: &str = "hol-guard-mcp-provider-evidence.v1";
 const RECEIPT_SCHEMA: &str = "hol-native-decision-receipt.v1";
 
 static SAFE_IDENTIFIER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-        .expect("valid _SAFE_IDENTIFIER regex")
+    regex::Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$").expect("valid _SAFE_IDENTIFIER regex")
 });
 
 /// `_safe_identifier` (:40-42).
@@ -389,7 +401,14 @@ impl CommandActivityRecord {
             "approval_reuse_status": self.approval_reuse_status,
         });
         let mut encoded = Vec::new();
-        if write_canonical_json_with_limit(&payload, &mut encoded, MAX_SERIALIZED_RECORD_BYTES, "record too large").is_err() {
+        if write_canonical_json_with_limit(
+            &payload,
+            &mut encoded,
+            MAX_SERIALIZED_RECORD_BYTES,
+            "record too large",
+        )
+        .is_err()
+        {
             // Unreachable for in-memory shapes; fall back to serde parity.
             encoded = serde_json::to_vec(&payload).unwrap_or_default();
         }
@@ -420,13 +439,17 @@ impl NativeDecisionReceiptRecord {
     /// `serialized()` (:194-205) — `ensure_ascii=False` compact sorted JSON.
     /// UTF-8 stays unescaped per the Python contract.
     pub fn serialized(&self) -> Vec<u8> {
-        let mut encoded = serde_json::to_vec(&Value::Object(self.receipt.clone())).unwrap_or_default();
+        let mut encoded =
+            serde_json::to_vec(&Value::Object(self.receipt.clone())).unwrap_or_default();
         encoded.push(b'\n');
         encoded
     }
 
     /// `from_json` (:207-215) — schema gate plus full receipt validation.
-    pub fn from_json(value: &Map<String, Value>, receipts: &dyn ReceiptValidationApi) -> Option<Self> {
+    pub fn from_json(
+        value: &Map<String, Value>,
+        receipts: &dyn ReceiptValidationApi,
+    ) -> Option<Self> {
         if value.get("schema") != Some(&json!(RECEIPT_SCHEMA)) {
             return None;
         }
@@ -503,7 +526,14 @@ impl McpDiscoveryRecord {
             "workflow_proposals": workflow_proposals,
         });
         let mut encoded = Vec::new();
-        if write_canonical_json_with_limit(&payload, &mut encoded, MAX_SERIALIZED_RECORD_BYTES, "record too large").is_err() {
+        if write_canonical_json_with_limit(
+            &payload,
+            &mut encoded,
+            MAX_SERIALIZED_RECORD_BYTES,
+            "record too large",
+        )
+        .is_err()
+        {
             encoded = serde_json::to_vec(&payload).unwrap_or_default();
         }
         encoded.push(b'\n');
@@ -604,7 +634,10 @@ impl McpDiscoveryRecord {
                 },
             }),
         )?;
-        if raw_proposals.as_array().is_some_and(|raw| proposals.len() != raw.len()) {
+        if raw_proposals
+            .as_array()
+            .is_some_and(|raw| proposals.len() != raw.len())
+        {
             return None;
         }
         let record = Self {
@@ -635,9 +668,9 @@ fn _timestamp_is_utc_aware(value: &str) -> bool {
     }
     let tail = value.strip_suffix('Z');
     if tail.is_some() {
-        return value[..value.len() - 1].chars().all(|c| {
-            c.is_ascii_digit() || matches!(c, '-' | ':' | '.' | 'T' | ' ' | '+')
-        });
+        return value[..value.len() - 1]
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '-' | ':' | '.' | 'T' | ' ' | '+'));
     }
     // `+HH:MM` / `-HH:MM` offset at the tail.
     if value.len() >= 6 {
@@ -701,13 +734,14 @@ impl EvidenceRecord {
         composio: &dyn ComposioApi,
     ) -> Option<Self> {
         match value.get("schema").and_then(Value::as_str) {
-            Some(RECEIPT_SCHEMA) => {
-                NativeDecisionReceiptRecord::from_json(value, receipts).map(Self::NativeDecisionReceipt)
-            }
+            Some(RECEIPT_SCHEMA) => NativeDecisionReceiptRecord::from_json(value, receipts)
+                .map(Self::NativeDecisionReceipt),
             Some(MCP_PROVIDER_SCHEMA) => {
                 McpDiscoveryRecord::from_json(value, composio).map(Self::McpDiscovery)
             }
-            Some(EVIDENCE_SCHEMA) => _command_activity_record_from_json(value).map(Self::CommandActivity),
+            Some(EVIDENCE_SCHEMA) => {
+                _command_activity_record_from_json(value).map(Self::CommandActivity)
+            }
             _ => None,
         }
     }
@@ -741,12 +775,17 @@ fn _command_activity_record_from_json(value: &Map<String, Value>) -> Option<Comm
     }
     let policy_action_str = policy_action.and_then(Value::as_str);
     if policy_action_str.is_some()
-        && (event != &json!("PreToolUse") || occurred_at.is_none() || occurred_at == Some(&Value::Null))
+        && (event != &json!("PreToolUse")
+            || occurred_at.is_none()
+            || occurred_at == Some(&Value::Null))
     {
         return None;
     }
     let receipt_id = value.get("receipt_id");
-    let prompted = value.get("interaction_observed").cloned().unwrap_or(json!(false));
+    let prompted = value
+        .get("interaction_observed")
+        .cloned()
+        .unwrap_or(json!(false));
     let reuse = value
         .get("approval_reuse_status")
         .cloned()
@@ -766,11 +805,7 @@ fn _command_activity_record_from_json(value: &Map<String, Value>) -> Option<Comm
     {
         return None;
     }
-    let (record_id, harness, event) = (
-        record_id.as_str()?,
-        harness.as_str()?,
-        event.as_str()?,
-    );
+    let (record_id, harness, event) = (record_id.as_str()?, harness.as_str()?, event.as_str()?);
     let (has_command, succeeded) = (has_command.as_bool()?, succeeded.as_bool()?);
     let correlation = match correlation_value {
         None | Some(Value::Null) => None,
@@ -906,7 +941,8 @@ impl RuntimeHookEvidenceWriter {
             .load_or_create_installation_correlation_key()
             .ok()
             .flatten();
-        let journal_path = journal_path.unwrap_or_else(|| guard_home.join("runtime-hook-evidence.jsonl"));
+        let journal_path =
+            journal_path.unwrap_or_else(|| guard_home.join("runtime-hook-evidence.jsonl"));
         let writer = Self {
             store,
             deps,
@@ -944,8 +980,15 @@ impl RuntimeHookEvidenceWriter {
         let snapshot = payload.clone();
         let mut encoded = Vec::new();
         let Ok(correlation_probe) = (|| -> Result<Option<CorrelationHandle>, io::Error> {
-            write_canonical_json_with_limit(&Value::Object(snapshot.clone()), &mut encoded, self.max_bytes, "payload too large")
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "payload not JSON-encodable"))?;
+            write_canonical_json_with_limit(
+                &Value::Object(snapshot.clone()),
+                &mut encoded,
+                self.max_bytes,
+                "payload too large",
+            )
+            .map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "payload not JSON-encodable")
+            })?;
             let correlation = self._derive_correlation(harness, event, &snapshot)?;
             Ok(correlation)
         })() else {
@@ -999,10 +1042,7 @@ impl RuntimeHookEvidenceWriter {
         let Some(_source) = self.deps.composio.observed_mcp_tool(harness, tool_name) else {
             return false;
         };
-        let tool_response = payload
-            .get("tool_response")
-            .cloned()
-            .unwrap_or(Value::Null);
+        let tool_response = payload.get("tool_response").cloned().unwrap_or(Value::Null);
         let Some(actions) = self
             .deps
             .composio
@@ -1026,10 +1066,12 @@ impl RuntimeHookEvidenceWriter {
             attempts: 0,
         });
         let record = match &record {
-            EvidenceRecord::McpDiscovery(inner) => EvidenceRecord::McpDiscovery(McpDiscoveryRecord {
-                payload_bytes: inner.serialized().len(),
-                ..inner.clone()
-            }),
+            EvidenceRecord::McpDiscovery(inner) => {
+                EvidenceRecord::McpDiscovery(McpDiscoveryRecord {
+                    payload_bytes: inner.serialized().len(),
+                    ..inner.clone()
+                })
+            }
             _ => unreachable!(),
         };
         let mut state = self.lock_state();
@@ -1106,7 +1148,10 @@ impl RuntimeHookEvidenceWriter {
         event: &str,
         payload: &Map<String, Value>,
     ) -> Result<Option<CorrelationHandle>, io::Error> {
-        let mut key_guard = self.correlation_key.lock().unwrap_or_else(|e| e.into_inner());
+        let mut key_guard = self
+            .correlation_key
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if key_guard.is_none() {
             *key_guard = self
                 .deps
@@ -1122,7 +1167,10 @@ impl RuntimeHookEvidenceWriter {
             .derive_proven_request_correlation(harness, event, payload, key_ref)
         {
             Ok(handle) => Ok(handle),
-            Err(err) if err.kind() == io::ErrorKind::InvalidInput || err.kind() == io::ErrorKind::Other => {
+            Err(err)
+                if err.kind() == io::ErrorKind::InvalidInput
+                    || err.kind() == io::ErrorKind::Other =>
+            {
                 *key_guard = self
                     .deps
                     .correlation
@@ -1177,7 +1225,8 @@ impl RuntimeHookEvidenceWriter {
         {
             let mut state = self.lock_state();
             state.stopping = true;
-            state.drain_deadline = Some(Instant::now() + Duration::from_secs_f64(timeout_seconds.max(0.0)));
+            state.drain_deadline =
+                Some(Instant::now() + Duration::from_secs_f64(timeout_seconds.max(0.0)));
             self.condition.1.notify_all();
         }
         let thread = self.thread.lock().unwrap_or_else(|e| e.into_inner()).take();
@@ -1275,7 +1324,12 @@ impl RuntimeHookEvidenceWriter {
                         }
                     }
                     PersistOutcome::Retry => {
-                        let attempt = state.retry_attempts.get(&record.record_id()).copied().unwrap_or(0) + 1;
+                        let attempt = state
+                            .retry_attempts
+                            .get(&record.record_id())
+                            .copied()
+                            .unwrap_or(0)
+                            + 1;
                         state.retry_attempts.insert(record.record_id(), attempt);
                         if attempt >= 3 {
                             let _ = state.durable.remove(&record.record_id());
@@ -1308,7 +1362,11 @@ impl RuntimeHookEvidenceWriter {
             if !state.records.is_empty() || state.stopping {
                 break;
             }
-            state = self.condition.1.wait(state).unwrap_or_else(|e| e.into_inner());
+            state = self
+                .condition
+                .1
+                .wait(state)
+                .unwrap_or_else(|e| e.into_inner());
         }
         if state.records.is_empty() {
             return Vec::new();
@@ -1402,10 +1460,11 @@ impl RuntimeHookEvidenceWriter {
 
     /// `_rewrite_journal` (:496-502).
     fn _rewrite_journal(&self, remove_record_id: &str) -> Result<(), io::Error> {
-        let invalid_records = self
-            .deps
-            .journal
-            .rewrite_journal(&self.journal_path, remove_record_id, self.max_bytes)?;
+        let invalid_records = self.deps.journal.rewrite_journal(
+            &self.journal_path,
+            remove_record_id,
+            self.max_bytes,
+        )?;
         if invalid_records > 0 {
             let mut state = self.lock_state();
             state.degraded = true;
@@ -1458,13 +1517,10 @@ impl RuntimeHookEvidenceWriter {
     /// (:370-406): sqlite-timeout-guarded store write with deferred
     /// PostToolUse fallback.
     fn _persist_command_activity(&self, record: &CommandActivityRecord) -> PersistOutcome {
-        let _timeout_guard = self
-            .deps
-            .sqlite_timeout
-            .sqlite_timeout_override(
-                NonZeroU32::new((self.sqlite_timeout_seconds * 1000.0).ceil().max(1.0) as u32)
-                    .unwrap_or(NonZeroU32::MIN),
-            );
+        let _timeout_guard = self.deps.sqlite_timeout.sqlite_timeout_override(
+            NonZeroU32::new((self.sqlite_timeout_seconds * 1000.0).ceil().max(1.0) as u32)
+                .unwrap_or(NonZeroU32::MIN),
+        );
         let occurred_at = self.deps.journal.now_utc_iso();
         if record.event == "PostToolUse" {
             return match self.store.persist_deferred_post_hook_command_activity(
@@ -1478,7 +1534,10 @@ impl RuntimeHookEvidenceWriter {
             };
         }
         let result = if let Some(correlation) = &record.correlation {
-            match self.store.command_activity_by_request_correlation(correlation) {
+            match self
+                .store
+                .command_activity_by_request_correlation(correlation)
+            {
                 Ok(Some(previous)) => {
                     let previous_event = previous.get("event").and_then(Value::as_str);
                     let previous_succeeded = previous
@@ -1614,12 +1673,14 @@ impl EvidenceWorker {
             }
             for record in batch {
                 self.lock_state().in_flight = true;
-                let already_durable = self
-                    .lock_state()
-                    .durable
-                    .contains_key(&record.record_id());
+                let already_durable = self.lock_state().durable.contains_key(&record.record_id());
                 if !already_durable {
-                    if self.deps.journal.append_journal(&self.journal_path, &record).is_err() {
+                    if self
+                        .deps
+                        .journal
+                        .append_journal(&self.journal_path, &record)
+                        .is_err()
+                    {
                         let mut state = self.lock_state();
                         state.dropped += 1;
                         state.failures += 1;
@@ -1684,8 +1745,12 @@ impl EvidenceWorker {
                         }
                     }
                     PersistOutcome::Retry => {
-                        let attempt =
-                            state.retry_attempts.get(&record.record_id()).copied().unwrap_or(0) + 1;
+                        let attempt = state
+                            .retry_attempts
+                            .get(&record.record_id())
+                            .copied()
+                            .unwrap_or(0)
+                            + 1;
                         state.retry_attempts.insert(record.record_id(), attempt);
                         if attempt >= 3 {
                             let _ = state.durable.remove(&record.record_id());
@@ -1718,7 +1783,11 @@ impl EvidenceWorker {
             if !state.records.is_empty() || state.stopping {
                 break;
             }
-            state = self.condition.1.wait(state).unwrap_or_else(|e| e.into_inner());
+            state = self
+                .condition
+                .1
+                .wait(state)
+                .unwrap_or_else(|e| e.into_inner());
         }
         if state.records.is_empty() {
             return Vec::new();
@@ -1762,7 +1831,10 @@ impl EvidenceWorker {
             };
         }
         if let Some(correlation) = &record.correlation {
-            match self.store.command_activity_by_request_correlation(correlation) {
+            match self
+                .store
+                .command_activity_by_request_correlation(correlation)
+            {
                 Ok(Some(previous)) => {
                     let previous_event = previous.get("event").and_then(Value::as_str);
                     let previous_succeeded = previous
@@ -1847,10 +1919,11 @@ impl EvidenceWorker {
 
     /// `_rewrite_journal` (:496-502).
     fn rewrite_journal(&self, remove_record_id: &str) -> Result<(), io::Error> {
-        let invalid_records = self
-            .deps
-            .journal
-            .rewrite_journal(&self.journal_path, remove_record_id, self.max_bytes)?;
+        let invalid_records = self.deps.journal.rewrite_journal(
+            &self.journal_path,
+            remove_record_id,
+            self.max_bytes,
+        )?;
         if invalid_records > 0 {
             let mut state = self.lock_state();
             state.degraded = true;

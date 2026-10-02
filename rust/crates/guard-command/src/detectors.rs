@@ -29,16 +29,15 @@ use regex::Regex;
 use serde_json::{Map, Value};
 
 use guard_contracts::{
-    confidence_label_from_score, severity_label_from_score, RiskConfidenceLabel, RiskRedactionLevel,
-    RiskSeverityLabel, RiskSignalCategory, RiskSignalV2,
+    confidence_label_from_score, severity_label_from_score, RiskConfidenceLabel,
+    RiskRedactionLevel, RiskSeverityLabel, RiskSignalCategory, RiskSignalV2,
 };
 
 use crate::data_flow_rules::detect_data_flow_exfiltration;
 use crate::data_flow_rules::GuardActionEnvelopeView;
 use crate::false_positive_rules::{
-    classify_docs_example_source, classify_health_endpoint_fetch,
-    classify_package_metadata_access, classify_read_only_http_fetch,
-    classify_source_search_command, classify_version_file_access,
+    classify_docs_example_source, classify_health_endpoint_fetch, classify_package_metadata_access,
+    classify_read_only_http_fetch, classify_source_search_command, classify_version_file_access,
 };
 use crate::shell_secret_read_support::classify_secret_path;
 use crate::shell_secret_read_support::SecretPathMatch;
@@ -114,7 +113,10 @@ fn sensitive_context_boundary_ok(
         if also_allow_pub_suffix && next == '.' {
             if text[end..].starts_with(".pub") {
                 let after = end + 4;
-                if after >= bytes.len() || !(bytes[after] as char).is_ascii_alphanumeric() && (bytes[after] as char) != '_' {
+                if after >= bytes.len()
+                    || !(bytes[after] as char).is_ascii_alphanumeric()
+                        && (bytes[after] as char) != '_'
+                {
                     return true;
                 }
             }
@@ -234,10 +236,7 @@ pub trait SafeDecodeApi {
 pub trait PromptInjectionApi {
     /// `detect_prompt_injection_requests(text)` -> sequence of
     /// `PromptRequest` records.
-    fn detect_prompt_injection_requests<'a>(
-        &self,
-        text: &'a str,
-    ) -> Vec<PromptRequestView<'a>>;
+    fn detect_prompt_injection_requests<'a>(&self, text: &'a str) -> Vec<PromptRequestView<'a>>;
 }
 
 /// `.runtime.skill_protection` seam (:34 import).
@@ -258,10 +257,7 @@ pub trait SupplyChainRiskApi {
 pub trait PersistenceRulesApi {
     /// `detect_persistence_mechanisms(command)` -> `PersistenceMatch`
     /// sequence.
-    fn detect_persistence_mechanisms<'a>(
-        &self,
-        command: &'a str,
-    ) -> Vec<PersistenceMatchView<'a>>;
+    fn detect_persistence_mechanisms<'a>(&self, command: &'a str) -> Vec<PersistenceMatchView<'a>>;
 }
 
 /// `.runtime.cisco_preflight` seam (:14 import) — produces the two
@@ -308,7 +304,10 @@ impl DetectorTelemetry {
     /// `to_dict` (:104-110).
     pub fn to_dict(&self) -> Map<String, Value> {
         let mut out = Map::new();
-        out.insert("detector_id".to_string(), Value::from(self.detector_id.as_str()));
+        out.insert(
+            "detector_id".to_string(),
+            Value::from(self.detector_id.as_str()),
+        );
         out.insert(
             "categories".to_string(),
             Value::Array(
@@ -341,10 +340,7 @@ pub struct DetectorRunResult {
 
 impl DetectorRunResult {
     /// `slow_detectors(threshold_ms=SLOW_DETECTOR_THRESHOLD_MS)` (:120-122).
-    pub fn slow_detectors(
-        &self,
-        threshold_ms: Option<i64>,
-    ) -> Vec<&DetectorTelemetry> {
+    pub fn slow_detectors(&self, threshold_ms: Option<i64>) -> Vec<&DetectorTelemetry> {
         let threshold = threshold_ms.unwrap_or(SLOW_DETECTOR_THRESHOLD_MS);
         self.telemetry
             .iter()
@@ -401,17 +397,9 @@ impl DetectorRegistry {
                 continue;
             }
             if let Some(filter) = &category_filter {
-                let intersects = detector
-                    .categories()
-                    .iter()
-                    .any(|c| filter.contains(c));
+                let intersects = detector.categories().iter().any(|c| filter.contains(c));
                 if !intersects {
-                    telemetry.push(telemetry_entry(
-                        detector.as_ref(),
-                        STATUS_FILTERED,
-                        0,
-                        None,
-                    ));
+                    telemetry.push(telemetry_entry(detector.as_ref(), STATUS_FILTERED, 0, None));
                     continue;
                 }
             }
@@ -830,10 +818,7 @@ impl<A: PersistenceRulesApi> GuardDetector for PersistenceDetector<A> {
                 severity: RiskSeverityLabel::High,
                 confidence: RiskConfidenceLabel::Likely,
                 detector: self.detector_id().to_string(),
-                title: format!(
-                    "Persistence via {}",
-                    m.mechanism.replace('_', " ")
-                ),
+                title: format!("Persistence via {}", m.mechanism.replace('_', " ")),
                 plain_reason: m.plain_reason.to_string(),
                 technical_detail: Some(format!("mechanism: {}", m.mechanism)),
                 evidence_ref: Some("command".to_string()),
@@ -909,7 +894,9 @@ impl GuardDetector for GuardBypassDetector {
                 confidence: RiskConfidenceLabel::Strong,
                 detector: self.detector_id().to_string(),
                 title: "Command uninstalls HOL Guard".to_string(),
-                plain_reason: "This command removes HOL Guard, which would disable all AI harness protection.".to_string(),
+                plain_reason:
+                    "This command removes HOL Guard, which would disable all AI harness protection."
+                        .to_string(),
                 technical_detail: Some("matched guard uninstall pattern".to_string()),
                 evidence_ref: Some("command".to_string()),
                 redaction_level: RiskRedactionLevel::Summary,
@@ -1347,7 +1334,14 @@ fn sensitive_context_hit(text: &str, start: usize, end: usize) -> bool {
     // arm.
     let is_unanchored_word = matches!(
         token.as_str(),
-        "credential" | "credentials" | "secret" | "secrets" | "token" | "tokens" | "password" | "passwords"
+        "credential"
+            | "credentials"
+            | "secret"
+            | "secrets"
+            | "token"
+            | "tokens"
+            | "password"
+            | "passwords"
     );
     if is_unanchored_word && start > 0 {
         let prev = bytes[start - 1] as char;
@@ -1362,10 +1356,8 @@ fn sensitive_context_hit(text: &str, start: usize, end: usize) -> bool {
     if token.starts_with("id_") {
         return sensitive_context_boundary_ok(text, start, end, false, true);
     }
-    let forbid_dash_underscore = token.starts_with(".env")
-        || token == ".npmrc"
-        || token == ".pem"
-        || token == ".key";
+    let forbid_dash_underscore =
+        token.starts_with(".env") || token == ".npmrc" || token == ".pem" || token == ".key";
     sensitive_context_boundary_ok(text, start, end, forbid_dash_underscore, false)
 }
 
@@ -1435,9 +1427,7 @@ pub fn prompt_request_title(request_class: &str) -> String {
 /// The Python iterates `request.remediation` and returns the first
 /// non-blank `remediation.detail`; `remediation_details` is already the
 /// `Option<detail>`-filtered list from `PromptRequestView`.
-pub fn prompt_request_false_positive_hint(
-    request: &PromptRequestView<'_>,
-) -> Option<String> {
+pub fn prompt_request_false_positive_hint(request: &PromptRequestView<'_>) -> Option<String> {
     request
         .remediation_details
         .iter()

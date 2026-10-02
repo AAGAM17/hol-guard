@@ -14,10 +14,8 @@ pub const READ_ONLY_COMMAND_OPERATIONS: &[&str] = &[
 ];
 
 /// `LOCAL_CONFIRMATION_COMMAND_OPERATIONS` (:11-16).
-pub const LOCAL_CONFIRMATION_COMMAND_OPERATIONS: &[&str] = &[
-    "guard.packageShims.remove",
-    "guard.app.remove",
-];
+pub const LOCAL_CONFIRMATION_COMMAND_OPERATIONS: &[&str] =
+    &["guard.packageShims.remove", "guard.app.remove"];
 
 /// `STATE_CHANGING_COMMAND_OPERATIONS` (:17-25).
 pub const STATE_CHANGING_COMMAND_OPERATIONS: &[&str] = &[

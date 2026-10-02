@@ -171,7 +171,10 @@ fn py_str(value: &Value) -> String {
 
 /// `str(mapping.get(key) or fallback)` — truthiness-gated fallback.
 fn py_str_or(value: Option<&Value>, fallback: &str) -> String {
-    value.filter(|v| truthy(v)).map(py_str).unwrap_or_else(|| fallback.to_string())
+    value
+        .filter(|v| truthy(v))
+        .map(py_str)
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 /// `int(str)` accepting Python's whitespace/sign/underscore digit grammar.
@@ -331,7 +334,8 @@ pub fn retry_request_resume(
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
         _ => return Err(ResumeError::Validation("not_resolved".to_string())),
     };
-    let resume = get_request_resume_status(store, request_id, now).ok_or(ResumeError::NotSupported)?;
+    let resume =
+        get_request_resume_status(store, request_id, now).ok_or(ResumeError::NotSupported)?;
     if action == "block" {
         let attempt_count = int_value(resume.get("attempt_count"), 0) + 1;
         return skip_blocked_resume(store, request_id, &resume, attempt_count, now);
@@ -363,8 +367,18 @@ pub fn retry_request_resume(
         sent_at: resume.get("sent_at").and_then(Value::as_str),
         now,
     });
-    let refreshed = store.get_request_resume(request_id).ok_or(ResumeError::NotSupported)?;
-    finalize_resume_attempt(store, deps, request_id, &action, &refreshed, now, timeout_seconds)
+    let refreshed = store
+        .get_request_resume(request_id)
+        .ok_or(ResumeError::NotSupported)?;
+    finalize_resume_attempt(
+        store,
+        deps,
+        request_id,
+        &action,
+        &refreshed,
+        now,
+        timeout_seconds,
+    )
 }
 
 /// `defer_request_resume_to_live_hook` (:137-191).
@@ -394,7 +408,8 @@ pub fn defer_request_resume_to_live_hook(
         .map(py_str)
         .unwrap_or_default();
     if !live_hook_wait_is_active(metadata, now, deps)
-        && !(event_name == "PreToolUse" && pretool_bridge_wait_is_active(store, &operation, now, deps))
+        && !(event_name == "PreToolUse"
+            && pretool_bridge_wait_is_active(store, &operation, now, deps))
     {
         return Ok(None);
     }
@@ -439,7 +454,10 @@ pub fn inspect_codex_resume_capabilities(
         json!("Same-chat continuation requires the Codex app-server remote-control socket. \
              When the socket is missing, HOL Guard cannot visibly continue the open Codex App chat."),
     );
-    out.insert("app_server_socket_available".to_string(), json!(socket_available));
+    out.insert(
+        "app_server_socket_available".to_string(),
+        json!(socket_available),
+    );
     out.insert("headless_resume_support".to_string(), json!(false));
     out.insert(
         "headless_resume_support_reason".to_string(),
@@ -530,10 +548,7 @@ fn finalize_resume_attempt(
     // keys would KeyError; missing here falls back to ""/false.
     let strategy = resume.get("strategy").map(py_str).unwrap_or_default();
     let supported = resume.get("supported").map(truthy).unwrap_or(false);
-    let thread_id = resume
-        .get("thread_id")
-        .filter(|v| !v.is_null())
-        .map(py_str);
+    let thread_id = resume.get("thread_id").filter(|v| !v.is_null()).map(py_str);
     let attempt_count = int_value(resume.get("attempt_count"), 0);
     if strategy == "manual-only" || !supported {
         let message = manual_resume_message(action);
@@ -551,7 +566,9 @@ fn finalize_resume_attempt(
             sent_at: None,
             now,
         });
-        return store.get_request_resume(request_id).ok_or(ResumeError::NotSupported);
+        return store
+            .get_request_resume(request_id)
+            .ok_or(ResumeError::NotSupported);
     }
 
     let raw_result = dispatch_resume_attempt(
@@ -563,29 +580,48 @@ fn finalize_resume_attempt(
         thread_id.as_deref(),
         timeout_seconds,
     );
-    let normalized = normalize_dispatch_result(action, &strategy, thread_id.as_deref(), raw_result.as_ref());
+    let normalized =
+        normalize_dispatch_result(action, &strategy, thread_id.as_deref(), raw_result.as_ref());
     // `now if normalized["status"] == "sent" else str(sent_at) if sent_at else None`
     // — the else branch is truthiness-gated, not `is not None`.
-    let sent_at: Option<String> = if normalized.get("status").and_then(Value::as_str) == Some("sent") {
-        Some(now.to_string())
-    } else {
-        resume.get("sent_at").filter(|v| truthy(v)).map(py_str)
-    };
+    let sent_at: Option<String> =
+        if normalized.get("status").and_then(Value::as_str) == Some("sent") {
+            Some(now.to_string())
+        } else {
+            resume.get("sent_at").filter(|v| truthy(v)).map(py_str)
+        };
     store.update_request_resume(&RequestResumeUpdate {
         request_id,
         resolution_action: action,
         strategy: normalized.get("strategy").and_then(Value::as_str),
         supported: normalized.get("supported").map(truthy),
-        status: normalized.get("status").and_then(Value::as_str).unwrap_or(""),
-        reason: normalized.get("reason").filter(|v| !v.is_null()).map(py_str).as_deref(),
-        message: normalized.get("message").filter(|v| !v.is_null()).map(py_str).as_deref(),
-        last_error: normalized.get("last_error").filter(|v| !v.is_null()).map(py_str).as_deref(),
+        status: normalized
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        reason: normalized
+            .get("reason")
+            .filter(|v| !v.is_null())
+            .map(py_str)
+            .as_deref(),
+        message: normalized
+            .get("message")
+            .filter(|v| !v.is_null())
+            .map(py_str)
+            .as_deref(),
+        last_error: normalized
+            .get("last_error")
+            .filter(|v| !v.is_null())
+            .map(py_str)
+            .as_deref(),
         attempt_count,
         last_attempt_at: Some(now),
         sent_at: sent_at.as_deref(),
         now,
     });
-    store.get_request_resume(request_id).ok_or(ResumeError::NotSupported)
+    store
+        .get_request_resume(request_id)
+        .ok_or(ResumeError::NotSupported)
 }
 
 /// `_skip_blocked_resume` (:328-355).
@@ -611,7 +647,9 @@ fn skip_blocked_resume(
         sent_at: None,
         now,
     });
-    store.get_request_resume(request_id).ok_or(ResumeError::NotSupported)
+    store
+        .get_request_resume(request_id)
+        .ok_or(ResumeError::NotSupported)
 }
 
 /// `_dispatch_resume_attempt` (:356-384).
@@ -625,12 +663,9 @@ fn dispatch_resume_attempt(
     timeout_seconds: Option<f64>,
 ) -> Option<Map<String, Value>> {
     let thread_id = thread_id?;
-    let app_server_result = deps.app_server.resume_codex_thread_for_request(
-        store,
-        request_id,
-        action,
-        timeout_seconds,
-    );
+    let app_server_result =
+        deps.app_server
+            .resume_codex_thread_for_request(store, request_id, action, timeout_seconds);
     app_server_result.or_else(|| {
         let mut out = Map::new();
         out.insert("status".to_string(), json!("skipped"));
@@ -718,15 +753,26 @@ fn normalize_dispatch_result(
     }
     let failed = raw_status == "failed";
     let mut out = Map::new();
-    out.insert("status".to_string(), json!(if failed { "failed" } else { "skipped" }));
+    out.insert(
+        "status".to_string(),
+        json!(if failed { "failed" } else { "skipped" }),
+    );
     out.insert("reason".to_string(), json!(raw_reason));
     out.insert(
         "message".to_string(),
-        json!(if failed { failed_resume_message(action) } else { manual_resume_message(action) }),
+        json!(if failed {
+            failed_resume_message(action)
+        } else {
+            manual_resume_message(action)
+        }),
     );
     out.insert(
         "last_error".to_string(),
-        if failed { json!(last_error_or_message(raw)) } else { Value::Null },
+        if failed {
+            json!(last_error_or_message(raw))
+        } else {
+            Value::Null
+        },
     );
     out.insert(
         "thread_id".to_string(),

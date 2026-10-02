@@ -35,7 +35,11 @@ pub trait HarnessAdapterApi {
 /// `.hook_availability_policy` seam.
 pub trait HookAvailabilityApi {
     /// `hook_action_is_emergency_safe(payload, workspace=)`.
-    fn hook_action_is_emergency_safe(&self, payload: &Map<String, Value>, workspace: Option<&Path>) -> bool;
+    fn hook_action_is_emergency_safe(
+        &self,
+        payload: &Map<String, Value>,
+        workspace: Option<&Path>,
+    ) -> bool;
     /// `availability_harness_response(payload, *, harness, event_name,
     /// reason_code, reason, recording_only)`.
     fn availability_harness_response(
@@ -58,7 +62,11 @@ pub trait HookRequestApi {
 /// `.hook_pretool_rendering` seam — the two deferred `render` delegates.
 pub trait PreToolRenderingApi {
     /// `hook_pretool_rendering.harness_json_from_native_pre_tool`.
-    fn render_native_pre_tool(&self, harness: &str, response: &Map<String, Value>) -> Map<String, Value>;
+    fn render_native_pre_tool(
+        &self,
+        harness: &str,
+        response: &Map<String, Value>,
+    ) -> Map<String, Value>;
     /// `hook_pretool_rendering.harness_json_from_native_pre_tool_review`.
     fn render_native_pre_tool_review(
         &self,
@@ -169,13 +177,19 @@ pub fn prepare_native_hook_policy(
 ) -> bool {
     let harness = _canonical_managed_harness(default_harness, adapters);
     if _hook_harness_is_unmanaged(daemon_server, &harness, adapters) {
-        _write_unmanaged_harness_passthrough(handler, payload, &harness, availability, request_parsing);
+        _write_unmanaged_harness_passthrough(
+            handler,
+            payload,
+            &harness,
+            availability,
+            request_parsing,
+        );
         return false;
     }
     let workspace_path = workspace.map(PathBuf::from);
-    let prepared_policy = daemon_server.hook_worker().map(|worker| {
-        worker.prepare_workspace_policy(workspace_path.as_deref(), deadline)
-    });
+    let prepared_policy = daemon_server
+        .hook_worker()
+        .map(|worker| worker.prepare_workspace_policy(workspace_path.as_deref(), deadline));
     if let Some(Some(_)) = prepared_policy {
         return true;
     }
@@ -371,7 +385,10 @@ pub fn harness_json_from_native_prompt(
         .and_then(Value::as_str)
         .unwrap_or("native_prompt_unavailable")
         .to_string();
-    let classes = response.get("prompt_risk_classes").cloned().unwrap_or(Value::Null);
+    let classes = response
+        .get("prompt_risk_classes")
+        .cloned()
+        .unwrap_or(Value::Null);
     let risk_signals: Vec<Value> = if risk_classes.valid_prompt_risk_classes(&classes) {
         classes
             .as_array()
@@ -387,7 +404,9 @@ pub fn harness_json_from_native_prompt(
     } else {
         Vec::new()
     };
-    if response.get("decision") == Some(&json!("allow")) && matches!(action, Some("allow") | Some("warn")) {
+    if response.get("decision") == Some(&json!("allow"))
+        && matches!(action, Some("allow") | Some("warn"))
+    {
         if canonical == "codex" {
             return json!({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit"}})
                 .as_object()
@@ -413,7 +432,9 @@ pub fn harness_json_from_native_prompt(
         .unwrap_or("HOL Guard could not complete native prompt review safely.")
         .to_string();
     let policy_action = match action {
-        Some("review" | "require-reapproval" | "sandbox-required" | "block") => action.unwrap_or("block"),
+        Some("review" | "require-reapproval" | "sandbox-required" | "block") => {
+            action.unwrap_or("block")
+        }
         _ => "block",
     };
     if canonical == "copilot" {
@@ -495,12 +516,9 @@ pub fn harness_json_from_native_post_tool(
         .cloned()
         .unwrap_or_default();
         if action == "warn" {
-            let reason = response
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or(
-                    "HOL Guard raised a non-blocking warning under the installed native policy.",
-                );
+            let reason = response.get("reason").and_then(Value::as_str).unwrap_or(
+                "HOL Guard raised a non-blocking warning under the installed native policy.",
+            );
             output.insert(
                 "hookSpecificOutput".to_string(),
                 json!({
@@ -546,13 +564,21 @@ pub fn post_tool_native_block_response(reason: &str, reason_code: &str) -> Map<S
 
 /// `post_tool_fail_safe_response` (:316-329). `reason` is intentionally
 /// dropped (`del reason`) — parity with the Python surface.
-pub fn post_tool_fail_safe_response(harness: &str, _reason: &str, reason_code: &str) -> Map<String, Value> {
+pub fn post_tool_fail_safe_response(
+    harness: &str,
+    _reason: &str,
+    reason_code: &str,
+) -> Map<String, Value> {
     observe_lifecycle_fail_safe_response(harness, "PostToolUse", reason_code)
 }
 
 /// `integrity_fail_closed_pre_tool_response` (:330-363). Deny PreToolUse when
 /// hook payload authenticity cannot be proven.
-pub fn integrity_fail_closed_pre_tool_response(harness: &str, reason: &str, reason_code: &str) -> Map<String, Value> {
+pub fn integrity_fail_closed_pre_tool_response(
+    harness: &str,
+    reason: &str,
+    reason_code: &str,
+) -> Map<String, Value> {
     let canonical = _canonical_hook_harness(harness);
     if canonical == "pi" || canonical == "omp" {
         return json!({
@@ -696,7 +722,10 @@ pub fn harness_json_from_review_response(
     if canonical == "pi" || canonical == "omp" {
         return payload;
     }
-    let decision = payload.get("decision").and_then(Value::as_str).unwrap_or("");
+    let decision = payload
+        .get("decision")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let model_output_action = payload
         .get("model_output_action")
         .and_then(Value::as_str)

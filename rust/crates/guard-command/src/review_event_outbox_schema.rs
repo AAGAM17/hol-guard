@@ -51,13 +51,19 @@ impl RowValue {
 }
 
 impl From<i64> for RowValue {
-    fn from(v: i64) -> Self { Self::Integer(v) }
+    fn from(v: i64) -> Self {
+        Self::Integer(v)
+    }
 }
 impl From<String> for RowValue {
-    fn from(v: String) -> Self { Self::Text(v) }
+    fn from(v: String) -> Self {
+        Self::Text(v)
+    }
 }
 impl From<&str> for RowValue {
-    fn from(v: &str) -> Self { Self::Text(v.to_owned()) }
+    fn from(v: &str) -> Self {
+        Self::Text(v.to_owned())
+    }
 }
 
 /// One `sqlite3.Row` keyed by column name. Indexing by name is the Python
@@ -156,7 +162,8 @@ pub fn review_event_payload_digest(
     } else {
         material.clone()
     };
-    key[..material_hash.len().min(BLOCK)].copy_from_slice(&material_hash[..material_hash.len().min(BLOCK)]);
+    key[..material_hash.len().min(BLOCK)]
+        .copy_from_slice(&material_hash[..material_hash.len().min(BLOCK)]);
     let mut ipad = [0x36u8; BLOCK];
     let mut opad = [0x5cu8; BLOCK];
     for i in 0..BLOCK {
@@ -199,7 +206,7 @@ fn update_generation_trigger() -> String {
        set generation = generation + 1
        where singleton = 1;
      end"
-        .to_string()
+    .to_string()
 }
 
 /// `review_event_wake_schema_statements()` — schema objects that count every
@@ -465,21 +472,60 @@ pub fn review_event_payload_json(
     }
     let mut snapshot = Map::with_capacity(REVIEW_REQUEST_SNAPSHOT_COLUMNS.len());
     for column in REVIEW_REQUEST_SNAPSHOT_COLUMNS {
-        snapshot.insert((*column).to_string(), request.get(*column).cloned().unwrap_or(Value::Null));
+        snapshot.insert(
+            (*column).to_string(),
+            request.get(*column).cloned().unwrap_or(Value::Null),
+        );
     }
     let mut payload = Map::new();
-    payload.insert("schema".to_string(), Value::String(REVIEW_EVENT_SCHEMA_NAME.to_string()));
-    payload.insert("localRequestId".to_string(), request.get("request_id").cloned().unwrap_or(Value::Null));
-    payload.insert("eventType".to_string(), Value::String(event_type.to_string()));
-    payload.insert("occurredAt".to_string(), Value::String(occurred_at.to_string()));
-    payload.insert("status".to_string(), request.get("status").cloned().unwrap_or(Value::Null));
-    payload.insert("resolutionAction".to_string(), request.get("resolution_action").cloned().unwrap_or(Value::Null));
-    payload.insert("resolutionScope".to_string(), request.get("resolution_scope").cloned().unwrap_or(Value::Null));
-    payload.insert("reason".to_string(), request.get("reason").cloned().unwrap_or(Value::Null));
-    payload.insert("oauthSource".to_string(), request.get("oauth_source").cloned().unwrap_or(Value::Null));
+    payload.insert(
+        "schema".to_string(),
+        Value::String(REVIEW_EVENT_SCHEMA_NAME.to_string()),
+    );
+    payload.insert(
+        "localRequestId".to_string(),
+        request.get("request_id").cloned().unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "eventType".to_string(),
+        Value::String(event_type.to_string()),
+    );
+    payload.insert(
+        "occurredAt".to_string(),
+        Value::String(occurred_at.to_string()),
+    );
+    payload.insert(
+        "status".to_string(),
+        request.get("status").cloned().unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "resolutionAction".to_string(),
+        request
+            .get("resolution_action")
+            .cloned()
+            .unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "resolutionScope".to_string(),
+        request
+            .get("resolution_scope")
+            .cloned()
+            .unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "reason".to_string(),
+        request.get("reason").cloned().unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "oauthSource".to_string(),
+        request.get("oauth_source").cloned().unwrap_or(Value::Null),
+    );
     payload.insert("requestSnapshot".to_string(), Value::Object(snapshot));
     if let Some(result) = continuation_result {
-        payload.insert("continuationResult".to_string(), Value::Object(result.clone()));
+        payload.insert(
+            "continuationResult".to_string(),
+            Value::Object(result.clone()),
+        );
     }
     if event_type == "review.request.snapshot_requeued" {
         payload.insert("nativeReplay".to_string(), Value::Bool(native_replay));
@@ -626,7 +672,10 @@ fn update_trigger() -> String {
 
 fn retired_outbox_marker_payload(row: &DbRow) -> String {
     let mut payload = Map::new();
-    payload.insert("schema".to_string(), Value::String(REVIEW_EVENT_SCHEMA_NAME.to_string()));
+    payload.insert(
+        "schema".to_string(),
+        Value::String(REVIEW_EVENT_SCHEMA_NAME.to_string()),
+    );
     payload.insert(
         "localRequestId".to_string(),
         Value::String(row_str(row, "local_request_id").to_string()),
@@ -646,7 +695,10 @@ fn retired_outbox_marker_payload(row: &DbRow) -> String {
     serde_json::to_string(&Value::Object(payload)).unwrap_or_default()
 }
 
-fn retired_outbox_payload(connection: &mut dyn Connection, row: &DbRow) -> (String, Option<String>) {
+fn retired_outbox_payload(
+    connection: &mut dyn Connection,
+    row: &DbRow,
+) -> (String, Option<String>) {
     let request = connection
         .query_row(
             "select * from approval_requests where request_id = ?",
@@ -675,8 +727,12 @@ fn retired_outbox_payload(connection: &mut dyn Connection, row: &DbRow) -> (Stri
             );
         }
     };
-    if request_row.get("oauth_source").and_then(Value::as_str) != Some(row_str(row, "oauth_source")) {
-        return (payload, Some("retired_request_source_ambiguous".to_string()));
+    if request_row.get("oauth_source").and_then(Value::as_str) != Some(row_str(row, "oauth_source"))
+    {
+        return (
+            payload,
+            Some("retired_request_source_ambiguous".to_string()),
+        );
     }
     (payload, None)
 }
@@ -685,7 +741,9 @@ fn migrate_retired_outbox(connection: &mut dyn Connection, now: &str) {
     let marker = connection
         .query_row(
             "select 1 from sync_state where state_key = ?",
-            &[Value::String(RETIRED_OUTBOX_MIGRATION_STATE_KEY.to_string())],
+            &[Value::String(
+                RETIRED_OUTBOX_MIGRATION_STATE_KEY.to_string(),
+            )],
         )
         .ok()
         .flatten();
@@ -720,11 +778,16 @@ fn migrate_retired_outbox(connection: &mut dyn Connection, now: &str) {
                 row.get("machine_id"),
                 row.get("machine_installation_id"),
             ];
-            let complete = identity.iter().all(|value| {
-                matches!(value, Some(Value::String(text)) if !text.trim().is_empty())
+            let complete = identity
+                .iter()
+                .all(|value| matches!(value, Some(Value::String(text)) if !text.trim().is_empty()));
+            let quarantine_reason = source_quarantine.or_else(|| {
+                if complete {
+                    None
+                } else {
+                    Some("retired_identity_incomplete".to_string())
+                }
             });
-            let quarantine_reason = source_quarantine
-                .or_else(|| if complete { None } else { Some("retired_identity_incomplete".to_string()) });
             let _ = connection.execute(
                 "
                 insert into guard_review_outbox_events (
@@ -756,7 +819,14 @@ fn migrate_retired_outbox(connection: &mut dyn Connection, now: &str) {
                     row_value(&row, "workspace_id").clone(),
                     row_value(&row, "machine_id").clone(),
                     row_value(&row, "machine_installation_id").clone(),
-                    Value::String(if quarantine_reason.is_none() { "ready" } else { "quarantined" }.to_string()),
+                    Value::String(
+                        if quarantine_reason.is_none() {
+                            "ready"
+                        } else {
+                            "quarantined"
+                        }
+                        .to_string(),
+                    ),
                     quarantine_reason.map(Value::String).unwrap_or(Value::Null),
                     Value::Null,
                     row_value(&row, "attempt_count").clone(),
@@ -805,7 +875,9 @@ pub fn notify_review_event_wake(
     locator: &dyn ReviewEventWakeLocator,
 ) {
     if let Some(generation) = outbox_generation {
-        locator.wake_signal(database_path).notify_if_outbox_changed(generation);
+        locator
+            .wake_signal(database_path)
+            .notify_if_outbox_changed(generation);
     }
 }
 
@@ -849,10 +921,22 @@ pub fn ensure_review_event_outbox_schema(connection: &mut dyn Connection, now: &
     }
     ensure_review_event_outbox_upgrade(connection);
     migrate_retired_outbox(connection, now);
-    let _ = connection.execute("drop trigger if exists guard_live_request_outbox_after_insert", &[]);
-    let _ = connection.execute("drop trigger if exists guard_live_request_outbox_after_update", &[]);
-    let _ = connection.execute("drop trigger if exists guard_review_outbox_after_insert", &[]);
-    let _ = connection.execute("drop trigger if exists guard_review_outbox_after_update", &[]);
+    let _ = connection.execute(
+        "drop trigger if exists guard_live_request_outbox_after_insert",
+        &[],
+    );
+    let _ = connection.execute(
+        "drop trigger if exists guard_live_request_outbox_after_update",
+        &[],
+    );
+    let _ = connection.execute(
+        "drop trigger if exists guard_review_outbox_after_insert",
+        &[],
+    );
+    let _ = connection.execute(
+        "drop trigger if exists guard_review_outbox_after_update",
+        &[],
+    );
     let _ = connection.execute(&insert_trigger(), &[]);
     let _ = connection.execute(&update_trigger(), &[]);
     let migrations = connection

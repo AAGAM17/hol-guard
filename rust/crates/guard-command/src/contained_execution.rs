@@ -31,10 +31,10 @@ use sha2::{Digest, Sha256};
 
 use crate::effect_decision::{
     evaluate_effect_decision, DecisionBasis, DecisionFactor, DecisionFactorSource,
-    EffectAssessment, EffectBlastRadius, EffectConfidence, EffectDecision,
-    EffectDecisionRequest, EffectEvidenceSource, EffectKind, EffectReversibility,
-    EffectTargetScope, GuardAction, PositiveProof, ProofRequirement, ProofRoute,
-    EFFECT_CONTRACT_SCHEMA_VERSION, EFFECT_DECISION_SCHEMA_VERSION,
+    EffectAssessment, EffectBlastRadius, EffectConfidence, EffectDecision, EffectDecisionRequest,
+    EffectEvidenceSource, EffectKind, EffectReversibility, EffectTargetScope, GuardAction,
+    PositiveProof, ProofRequirement, ProofRoute, EFFECT_CONTRACT_SCHEMA_VERSION,
+    EFFECT_DECISION_SCHEMA_VERSION,
 };
 use crate::package_intent_common::LocalPackageExecutionEvidence;
 use crate::package_intent_parser::parse_package_intent;
@@ -154,7 +154,10 @@ fn unique_json_parse(text: &str) -> Option<Value> {
 
 /// `read_json_with_integrity` (package_evidence_common.py :51-67): bounded
 /// file read with a TOCTOU stat check plus sha256 of the exact bytes read.
-fn read_json_with_integrity(path: &Path, allow_jsonc: bool) -> (Option<Map<String, Value>>, Option<String>) {
+fn read_json_with_integrity(
+    path: &Path,
+    allow_jsonc: bool,
+) -> (Option<Map<String, Value>>, Option<String>) {
     let Ok(descriptor) = File::open(path) else {
         return (None, None);
     };
@@ -325,7 +328,10 @@ fn vitest_result_arguments(tail: &[String]) -> (Vec<String>, bool) {
 
 /// `bun_locked_version` (:42-72): bun.lock registry-pinned version for a
 /// package name.
-fn bun_locked_version(payload: Option<&Map<String, Value>>, package: &str) -> (Option<String>, bool) {
+fn bun_locked_version(
+    payload: Option<&Map<String, Value>>,
+    package: &str,
+) -> (Option<String>, bool) {
     let Some(payload) = payload else {
         return (None, false);
     };
@@ -355,7 +361,10 @@ fn bun_locked_version(payload: Option<&Map<String, Value>>, package: &str) -> (O
     let Some(version) = version else {
         return (None, false);
     };
-    let resolved = entry.get("resolved").and_then(|v| v.as_str()).map(str::trim);
+    let resolved = entry
+        .get("resolved")
+        .and_then(|v| v.as_str())
+        .map(str::trim);
     let integrity = entry.get("integrity").and_then(|v| v.as_str());
     let source_ok = resolved
         .map(|r| {
@@ -513,11 +522,12 @@ pub struct ProtectionSignal {
 static STABLE_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{1,63}$").unwrap());
 static DOMAIN_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$")
-        .unwrap()
+    Regex::new(
+        r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$",
+    )
+    .unwrap()
 });
-static SHA256_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^sha256:[0-9a-f]{64}$").unwrap());
+static SHA256_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^sha256:[0-9a-f]{64}$").unwrap());
 static ENV_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$").unwrap());
 
@@ -540,19 +550,31 @@ pub fn validate_containment_policy(policy: &ContainmentPolicy) -> Result<(), Str
         policy.max_processes > 1024 || policy.max_open_files > 65_536,
         "policy_resource_cap",
     )?;
-    _reject(policy.max_file_size_bytes > (u64::MAX / 2), "policy_file_size")?;
+    _reject(
+        policy.max_file_size_bytes > (u64::MAX / 2),
+        "policy_file_size",
+    )?;
     _reject(
         policy.max_write_bytes_total > (u64::MAX / 2),
         "policy_write_total",
     )?;
     _reject(policy.max_output_bytes > (1 << 30), "policy_output")?;
     _reject(policy.memory_mb > (1 << 20), "policy_memory")?;
-    _reject(policy.workspace_read_paths.len() > MAX_PATH_ITEMS, "policy_paths")?;
+    _reject(
+        policy.workspace_read_paths.len() > MAX_PATH_ITEMS,
+        "policy_paths",
+    )?;
     for path in &policy.workspace_read_paths {
         _reject(path.is_empty() || path.len() > MAX_PATH_ITEM, "policy_path")?;
     }
-    _reject(policy.workspace_write_paths.is_empty(), "policy_write_paths")?;
-    _reject(policy.workspace_write_paths.len() > MAX_PATH_ITEMS, "policy_paths")?;
+    _reject(
+        policy.workspace_write_paths.is_empty(),
+        "policy_write_paths",
+    )?;
+    _reject(
+        policy.workspace_write_paths.len() > MAX_PATH_ITEMS,
+        "policy_paths",
+    )?;
     for path in &policy.workspace_write_paths {
         _reject(path.is_empty() || path.len() > MAX_PATH_ITEM, "policy_path")?;
         _reject(!path.starts_with('/'), "policy_write_rooted")?;
@@ -561,14 +583,22 @@ pub fn validate_containment_policy(policy: &ContainmentPolicy) -> Result<(), Str
     for name in &policy.env_allowlist {
         _reject(!ENV_NAME.is_match(name), "policy_env_name")?;
     }
-    _reject(policy.allowed_domains.len() > MAX_PATH_ITEMS, "policy_domains")?;
+    _reject(
+        policy.allowed_domains.len() > MAX_PATH_ITEMS,
+        "policy_domains",
+    )?;
     for domain in &policy.allowed_domains {
         _reject(
-            domain.is_empty() || domain.len() > MAX_DOMAIN || !DOMAIN_RE.is_match(&domain.to_lowercase()),
+            domain.is_empty()
+                || domain.len() > MAX_DOMAIN
+                || !DOMAIN_RE.is_match(&domain.to_lowercase()),
             "policy_domain",
         )?;
     }
-    _reject(policy.additional_read_paths.len() > MAX_PATH_ITEMS, "policy_paths")?;
+    _reject(
+        policy.additional_read_paths.len() > MAX_PATH_ITEMS,
+        "policy_paths",
+    )?;
     for path in &policy.additional_read_paths {
         _reject(path.is_empty() || path.len() > MAX_PATH_ITEM, "policy_path")?;
     }
@@ -581,8 +611,14 @@ pub fn validate_containment_request(request: &ContainmentRequest) -> Result<(), 
         request.schema_version != CONTAINMENT_SCHEMA_VERSION,
         "request_schema",
     )?;
-    _reject(request.kind.is_empty() || !STABLE_ID.is_match(&request.kind), "request_kind")?;
-    _reject(request.argv.is_empty() || request.argv.len() > MAX_TOKENS, "request_argv")?;
+    _reject(
+        request.kind.is_empty() || !STABLE_ID.is_match(&request.kind),
+        "request_kind",
+    )?;
+    _reject(
+        request.argv.is_empty() || request.argv.len() > MAX_TOKENS,
+        "request_argv",
+    )?;
     _reject(
         !request.cwd.starts_with('/') || request.cwd.len() > MAX_PATH_ITEM,
         "request_cwd",
@@ -591,33 +627,59 @@ pub fn validate_containment_request(request: &ContainmentRequest) -> Result<(), 
         _reject(token.is_empty() || token.len() > MAX_TOKEN, "request_arg")?;
         _reject(token.contains('\0'), "request_arg_nul")?;
     }
-    _reject(request.timeout_seconds == 0 || request.timeout_seconds > 3_600, "request_timeout")?;
-    _reject(request.max_output_bytes == 0 || request.max_output_bytes > (1 << 30), "request_output")?;
+    _reject(
+        request.timeout_seconds == 0 || request.timeout_seconds > 3_600,
+        "request_timeout",
+    )?;
+    _reject(
+        request.max_output_bytes == 0 || request.max_output_bytes > (1 << 30),
+        "request_output",
+    )?;
     _reject(request.env_allowlist.len() > MAX_TOKENS, "request_env")?;
     for name in &request.env_allowlist {
         _reject(!ENV_NAME.is_match(name), "request_env_name")?;
     }
-    _reject(request.additional_read_paths.len() > MAX_PATH_ITEMS, "request_paths")?;
+    _reject(
+        request.additional_read_paths.len() > MAX_PATH_ITEMS,
+        "request_paths",
+    )?;
     for path in &request.additional_read_paths {
-        _reject(path.is_empty() || path.len() > MAX_PATH_ITEM, "request_path")?;
+        _reject(
+            path.is_empty() || path.len() > MAX_PATH_ITEM,
+            "request_path",
+        )?;
     }
     Ok(())
 }
 
 /// `validate_containment_attestation` (:222-274).
-pub fn validate_containment_attestation(attestation: &ContainmentAttestation) -> Result<(), String> {
+pub fn validate_containment_attestation(
+    attestation: &ContainmentAttestation,
+) -> Result<(), String> {
     _reject(
         attestation.schema_version != CONTAINMENT_SCHEMA_VERSION,
         "attestation_schema",
     )?;
-    _reject(!STABLE_ID.is_match(&attestation.enforcement), "attestation_enforcement")?;
+    _reject(
+        !STABLE_ID.is_match(&attestation.enforcement),
+        "attestation_enforcement",
+    )?;
     _reject(
         attestation.profile_digest.is_empty() || attestation.profile_digest.len() > MAX_IDENTITY,
         "attestation_digest",
     )?;
-    _reject(attestation.started_epoch_ms > u64::MAX / 2, "attestation_started")?;
-    _reject(attestation.exit_code < -255 || attestation.exit_code > 255, "attestation_exit")?;
-    _reject(attestation.outputs.len() > MAX_INPUTS, "attestation_outputs")?;
+    _reject(
+        attestation.started_epoch_ms > u64::MAX / 2,
+        "attestation_started",
+    )?;
+    _reject(
+        attestation.exit_code < -255 || attestation.exit_code > 255,
+        "attestation_exit",
+    )?;
+    _reject(
+        attestation.outputs.len() > MAX_INPUTS,
+        "attestation_outputs",
+    )?;
     for output in &attestation.outputs {
         _reject(
             output.relative_path.is_empty() || output.relative_path.len() > MAX_PATH_ITEM,
@@ -627,7 +689,10 @@ pub fn validate_containment_attestation(attestation: &ContainmentAttestation) ->
         _reject(output.size_bytes > (1 << 30), "output_size")?;
         _reject(output.media_type.len() > MAX_TOKEN, "output_media")?;
     }
-    _reject(attestation.artifact_manifests.len() > MAX_PATH_ITEMS, "attestation_manifests")?;
+    _reject(
+        attestation.artifact_manifests.len() > MAX_PATH_ITEMS,
+        "attestation_manifests",
+    )?;
     Ok(())
 }
 
@@ -767,11 +832,16 @@ fn captured_file_output(path: &Path) -> Result<(ContainmentCapturedOutput, Vec<u
         return Err("output_too_large".to_owned());
     }
     let mut file = File::open(path).map_err(|_| "output_unreadable".to_owned())?;
-    let before = file.metadata().map_err(|_| "output_unreadable".to_owned())?;
-    let mut content: Vec<u8> = Vec::with_capacity(meta.size().min(MAX_CAPTURED_OUTPUT_BYTES) as usize);
+    let before = file
+        .metadata()
+        .map_err(|_| "output_unreadable".to_owned())?;
+    let mut content: Vec<u8> =
+        Vec::with_capacity(meta.size().min(MAX_CAPTURED_OUTPUT_BYTES) as usize);
     let mut buf = [0u8; 1024 * 1024];
     loop {
-        let read = file.read(&mut buf).map_err(|_| "output_unreadable".to_owned())?;
+        let read = file
+            .read(&mut buf)
+            .map_err(|_| "output_unreadable".to_owned())?;
         if read == 0 {
             break;
         }
@@ -780,7 +850,9 @@ fn captured_file_output(path: &Path) -> Result<(ContainmentCapturedOutput, Vec<u
             return Err("output_too_large".to_owned());
         }
     }
-    let after = file.metadata().map_err(|_| "output_unreadable".to_owned())?;
+    let after = file
+        .metadata()
+        .map_err(|_| "output_unreadable".to_owned())?;
     if content_stat_identity(&before) != content_stat_identity(&after) {
         return Err("output_changed_during_capture".to_owned());
     }
@@ -856,7 +928,8 @@ fn write_manifest_atomically(path: &Path, payload: &Value) -> Result<(), String>
         .map_err(|_| "manifest_serialize".to_owned())?;
     {
         let mut file = File::create(&tmp).map_err(|_| "manifest_write".to_owned())?;
-        file.write_all(&buf).map_err(|_| "manifest_write".to_owned())?;
+        file.write_all(&buf)
+            .map_err(|_| "manifest_write".to_owned())?;
         file.sync_all().map_err(|_| "manifest_write".to_owned())?;
     }
     #[cfg(unix)]
@@ -875,7 +948,16 @@ pub fn execute_contained(
     policy: &ContainmentPolicy,
     guard_home: &Path,
     run_id: &str,
-) -> Result<(i32, Vec<ContainmentCapturedOutput>, u64, String, Vec<String>), String> {
+) -> Result<
+    (
+        i32,
+        Vec<ContainmentCapturedOutput>,
+        u64,
+        String,
+        Vec<String>,
+    ),
+    String,
+> {
     validate_containment_request(request)?;
     validate_containment_policy(policy)?;
 
@@ -994,7 +1076,13 @@ pub fn execute_contained(
     });
     write_manifest_atomically(&manifest_path, &attestation)?;
 
-    Ok((exit_code, outputs, started, enforcement.to_owned(), captured))
+    Ok((
+        exit_code,
+        outputs,
+        started,
+        enforcement.to_owned(),
+        captured,
+    ))
 }
 
 /// `_darwin_seatbelt_argv` (:206-361): build a seatbelt profile argv. The
@@ -1040,7 +1128,10 @@ fn _darwin_seatbelt_argv(
 }
 
 /// `_linux_bwrap_argv` (:364-443): build a bubblewrap argv.
-fn _linux_bwrap_argv(request: &ContainmentRequest, policy: &ContainmentPolicy) -> Result<Vec<String>, String> {
+fn _linux_bwrap_argv(
+    request: &ContainmentRequest,
+    policy: &ContainmentPolicy,
+) -> Result<Vec<String>, String> {
     let workspace = _workspace_path(request);
     let mut argv = vec![BUBBLEWRAP_PATH.to_owned()];
     argv.extend(["--die-with-parent".to_owned(), "--unshare-all".to_owned()]);
@@ -1053,11 +1144,7 @@ fn _linux_bwrap_argv(request: &ContainmentRequest, policy: &ContainmentPolicy) -
         workspace.to_string_lossy().into_owned(),
     ]);
     for path in &policy.workspace_read_paths {
-        argv.extend([
-            "--ro-bind".to_owned(),
-            path.clone(),
-            path.clone(),
-        ]);
+        argv.extend(["--ro-bind".to_owned(), path.clone(), path.clone()]);
     }
     for path in &request.additional_read_paths {
         argv.extend(["--ro-bind".to_owned(), path.clone(), path.clone()]);
@@ -1065,7 +1152,10 @@ fn _linux_bwrap_argv(request: &ContainmentRequest, policy: &ContainmentPolicy) -
     for path in &policy.workspace_write_paths {
         argv.extend(["--bind".to_owned(), path.clone(), path.clone()]);
     }
-    argv.extend(["--chdir".to_owned(), workspace.to_string_lossy().into_owned()]);
+    argv.extend([
+        "--chdir".to_owned(),
+        workspace.to_string_lossy().into_owned(),
+    ]);
     argv.push("--".to_owned());
     argv.extend(request.argv.iter().cloned());
     Ok(argv)
@@ -1193,10 +1283,8 @@ const MAX_BUN_LOCK_PACKAGES: usize = 20_000;
 
 static SCRIPT_VERSION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?:[~^])?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$").unwrap());
-static NAME_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.-]+$").unwrap());
-static SCOPE_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^@[A-Za-z0-9_.-]+$").unwrap());
+static NAME_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.-]+$").unwrap());
+static SCOPE_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^@[A-Za-z0-9_.-]+$").unwrap());
 
 const SCRIPT_SAFE_FLAGS: &[&str] = &["--filter", "--silent", "--if-present", "--bail"];
 
@@ -1271,10 +1359,8 @@ pub fn build_local_package_script_evidence(
     if declared.is_none() {
         reasons.push("manifest_package_manager_missing".to_owned());
     }
-    let (locked_version, lock_source_ok) = bun_locked_version(
-        lock_payload.as_ref().and_then(|v| v.as_object()),
-        "bun",
-    );
+    let (locked_version, lock_source_ok) =
+        bun_locked_version(lock_payload.as_ref().and_then(|v| v.as_object()), "bun");
     if locked_version.is_none() {
         reasons.push("lock_dependency_missing".to_owned());
     }
@@ -1379,7 +1465,9 @@ fn _is_protected_path(relative: &Path) -> bool {
 }
 
 fn _canonical_directory(root: &Path) -> Result<PathBuf, String> {
-    let canonical = root.canonicalize().map_err(|_| "workspace_unreadable".to_owned())?;
+    let canonical = root
+        .canonicalize()
+        .map_err(|_| "workspace_unreadable".to_owned())?;
     if !canonical.is_dir() {
         return Err("workspace_not_directory".to_owned());
     }
@@ -1428,10 +1516,7 @@ fn _snapshot_input(path: &Path, canonical_root: &Path) -> Result<ContainmentInpu
 }
 
 /// `_tree_inputs` (workspace_snapshot_inputs.py :64-120).
-fn _tree_inputs(
-    _workspace: &Path,
-    root: &Path,
-) -> Result<(String, Vec<ContainmentInput>), String> {
+fn _tree_inputs(_workspace: &Path, root: &Path) -> Result<(String, Vec<ContainmentInput>), String> {
     let canonical_root = _canonical_directory(root)?;
     let mut captured: Vec<(String, String, ContainmentInput)> = Vec::new();
     let mut total_bytes: u64 = 0;
@@ -1447,7 +1532,9 @@ fn _tree_inputs(
             if _is_protected_path(relative) {
                 return Err("protected package-tree path".to_owned());
             }
-            let ftype = entry.file_type().map_err(|_| "workspace_unreadable".to_owned())?;
+            let ftype = entry
+                .file_type()
+                .map_err(|_| "workspace_unreadable".to_owned())?;
             if ftype.is_symlink() {
                 return Err("package tree cannot contain symlinks".to_owned());
             }
@@ -1458,7 +1545,10 @@ fn _tree_inputs(
             if !ftype.is_file() {
                 return Err("package tree inputs must be regular files".to_owned());
             }
-            total_bytes += entry.metadata().map_err(|_| "workspace_unreadable".to_owned())?.size();
+            total_bytes += entry
+                .metadata()
+                .map_err(|_| "workspace_unreadable".to_owned())?
+                .size();
             if captured.len() >= MAX_TREE_FILES || total_bytes > MAX_TREE_BYTES {
                 return Err("package tree exceeds containment identity budget".to_owned());
             }
@@ -1473,10 +1563,7 @@ fn _tree_inputs(
         .map(|(rel, digest, _)| json!({"path": rel, "sha256": digest}))
         .collect();
     let digest = _binding_digest(&json!({"files": records}));
-    Ok((
-        digest,
-        captured.into_iter().map(|(_, _, i)| i).collect(),
-    ))
+    Ok((digest, captured.into_iter().map(|(_, _, i)| i).collect()))
 }
 
 /// `_typescript_closure_inputs` (:123-170).
@@ -1530,7 +1617,8 @@ pub fn typescript_snapshot_inputs(
     sources: &[String],
 ) -> Result<(String, Vec<ContainmentInput>, String, Vec<ContainmentInput>), String> {
     let (tree_digest, package_inputs) = _tree_inputs(workspace, package_root)?;
-    let (closure_digest, closure_inputs) = _typescript_closure_inputs(workspace, package_root, sources)?;
+    let (closure_digest, closure_inputs) =
+        _typescript_closure_inputs(workspace, package_root, sources)?;
     Ok((tree_digest, package_inputs, closure_digest, closure_inputs))
 }
 
@@ -1581,8 +1669,14 @@ fn _runner_operation(runner: &str) -> &'static str {
 }
 
 const TEST_SUFFIXES: &[&str] = &[
-    ".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".spec.js", ".spec.jsx",
-    ".spec.ts", ".spec.tsx",
+    ".test.js",
+    ".test.jsx",
+    ".test.ts",
+    ".test.tsx",
+    ".spec.js",
+    ".spec.jsx",
+    ".spec.ts",
+    ".spec.tsx",
 ];
 const LINT_SUFFIXES: &[&str] = &[".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"];
 
@@ -1754,7 +1848,9 @@ pub fn build_local_node_runner_evidence(
             .ok()
             .and_then(|t| crate::jsonc::loads_jsonc(&t).ok())
     } else {
-        fs::read_to_string(&lockfile).ok().and_then(|t| unique_json_parse(&t))
+        fs::read_to_string(&lockfile)
+            .ok()
+            .and_then(|t| unique_json_parse(&t))
     };
     let declared = manifest
         .as_ref()
@@ -1768,18 +1864,15 @@ pub fn build_local_node_runner_evidence(
     if declared.is_none() {
         reasons.push("manifest_dependency_missing".to_owned());
     }
-    let (locked_version, lock_source_ok) = bun_locked_version(
-        lock_payload.as_ref().and_then(|v| v.as_object()),
-        &runner,
-    );
+    let (locked_version, lock_source_ok) =
+        bun_locked_version(lock_payload.as_ref().and_then(|v| v.as_object()), &runner);
     if locked_version.is_none() {
         reasons.push("lock_dependency_missing".to_owned());
     }
     if !lock_source_ok {
         reasons.push("lock_source_drift".to_owned());
     }
-    let installed_manifest =
-        read_package_json(&package_root.join(&runner).join("package.json"));
+    let installed_manifest = read_package_json(&package_root.join(&runner).join("package.json"));
     let installed_version = installed_manifest
         .as_ref()
         .and_then(|m| m.get("version"))
@@ -1916,8 +2009,7 @@ fn _complete_contained_node_command(
     tokens: &[String],
     guard_home: &Path,
 ) -> Result<ContainedNodeResult, String> {
-    let node = _resolve_node(workspace, execution)
-        .ok_or_else(|| "node_unresolved".to_owned())?;
+    let node = _resolve_node(workspace, execution).ok_or_else(|| "node_unresolved".to_owned())?;
     let mut request = ContainmentRequest {
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
         kind: "node-command".to_owned(),
@@ -2029,7 +2121,12 @@ pub fn try_execute_contained_node_command(
     if intent.package_manager != "npx" && intent.package_manager != "bunx" {
         return None;
     }
-    if !intent.local_executions.first().map(|e| e.local_only_requested).unwrap_or(false) {
+    if !intent
+        .local_executions
+        .first()
+        .map(|e| e.local_only_requested)
+        .unwrap_or(false)
+    {
         return None;
     }
     let execution = intent.local_executions.first()?;
@@ -2079,7 +2176,10 @@ fn _compiler_args(tokens: &[String]) -> (Vec<String>, bool) {
     }
 }
 
-fn _resolve_node_ts(workspace: &Path, execution: &LocalPackageExecutionEvidence) -> Option<PathBuf> {
+fn _resolve_node_ts(
+    workspace: &Path,
+    execution: &LocalPackageExecutionEvidence,
+) -> Option<PathBuf> {
     _resolve_node(workspace, execution)
 }
 
@@ -2102,7 +2202,11 @@ pub fn try_execute_contained_typescript(
     let (compiler_args, _explicit_package) = _compiler_args(&tokens);
     let mut sources: Vec<String> = Vec::new();
     for arg in &compiler_args {
-        if arg.ends_with(".ts") || arg.ends_with(".tsx") || arg.ends_with(".cts") || arg.ends_with(".mts") {
+        if arg.ends_with(".ts")
+            || arg.ends_with(".tsx")
+            || arg.ends_with(".cts")
+            || arg.ends_with(".mts")
+        {
             if !arg.starts_with('-') {
                 sources.push(arg.clone());
             }
@@ -2327,7 +2431,13 @@ fn _proof_from_execution(
             .as_bytes(),
         ))
     );
-    contained_positive_proof(health, enforcement, &profile_digest, &attestation_digest, requirements)
+    contained_positive_proof(
+        health,
+        enforcement,
+        &profile_digest,
+        &attestation_digest,
+        requirements,
+    )
 }
 
 fn _result_without_promotion(
@@ -2344,9 +2454,12 @@ fn _result_without_promotion(
     }
 }
 
-fn _promote_output(workspace: &Path, operation: &ContainedWriteOperation) -> Result<String, String> {
-    let target = _safe_relative(workspace, &operation.path)
-        .ok_or_else(|| "target_unsafe".to_owned())?;
+fn _promote_output(
+    workspace: &Path,
+    operation: &ContainedWriteOperation,
+) -> Result<String, String> {
+    let target =
+        _safe_relative(workspace, &operation.path).ok_or_else(|| "target_unsafe".to_owned())?;
     match operation.kind.as_str() {
         "mkdir" => {
             fs::create_dir_all(&target).map_err(|_| "mkdir_failed".to_owned())?;
@@ -2363,7 +2476,8 @@ fn _promote_output(workspace: &Path, operation: &ContainedWriteOperation) -> Res
             let tmp = target.with_extension("contained.tmp");
             {
                 let mut file = File::create(&tmp).map_err(|_| "write_failed".to_owned())?;
-                file.write_all(content).map_err(|_| "write_failed".to_owned())?;
+                file.write_all(content)
+                    .map_err(|_| "write_failed".to_owned())?;
                 file.sync_all().map_err(|_| "write_failed".to_owned())?;
             }
             if let Some(mode) = operation.mode {
@@ -2378,8 +2492,8 @@ fn _promote_output(workspace: &Path, operation: &ContainedWriteOperation) -> Res
                 .source
                 .as_ref()
                 .ok_or_else(|| "copy_missing_source".to_owned())?;
-            let source_path = _safe_relative(workspace, source)
-                .ok_or_else(|| "source_unsafe".to_owned())?;
+            let source_path =
+                _safe_relative(workspace, source).ok_or_else(|| "source_unsafe".to_owned())?;
             let (exists, _) = _target_state(&source_path)?;
             if !exists {
                 return Err("source_missing".to_owned());
@@ -2392,8 +2506,8 @@ fn _promote_output(workspace: &Path, operation: &ContainedWriteOperation) -> Res
                 .source
                 .as_ref()
                 .ok_or_else(|| "move_missing_source".to_owned())?;
-            let source_path = _safe_relative(workspace, source)
-                .ok_or_else(|| "source_unsafe".to_owned())?;
+            let source_path =
+                _safe_relative(workspace, source).ok_or_else(|| "source_unsafe".to_owned())?;
             fs::rename(&source_path, &target).map_err(|_| "move_failed".to_owned())?;
             Ok(operation.path.clone())
         }
@@ -2702,7 +2816,9 @@ pub fn contained_test_hook(
     }
     if let Some((_manager, _script)) = _resolve_package_test(&tokens) {
         // route to the contained package-script execution path
-        if let Some(result) = try_execute_contained_package_script(workspace, command_text, guard_home) {
+        if let Some(result) =
+            try_execute_contained_package_script(workspace, command_text, guard_home)
+        {
             return Some(ContainedTestHookOutcome {
                 kind: "package_script".to_owned(),
                 status: "executed".to_owned(),
@@ -2731,7 +2847,8 @@ pub fn contained_test_hook(
             evidence: None,
         });
     }
-    if let Some(result) = try_execute_contained_workspace_write(workspace, command_text, guard_home) {
+    if let Some(result) = try_execute_contained_workspace_write(workspace, command_text, guard_home)
+    {
         return Some(ContainedTestHookOutcome {
             kind: "workspace_write".to_owned(),
             status: "executed".to_owned(),

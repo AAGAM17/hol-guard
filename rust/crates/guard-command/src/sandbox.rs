@@ -390,7 +390,12 @@ fn static_only_analysis(request: &SandboxRequest) -> Option<SandboxResult> {
     let combined = format!(
         "{}\n{}",
         request.command,
-        request.files.values().cloned().collect::<Vec<_>>().join("\n")
+        request
+            .files
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
     );
     let network_attempts = detect_network_attempts(&combined);
     if network_attempts.is_empty() {
@@ -408,10 +413,7 @@ fn static_only_analysis(request: &SandboxRequest) -> Option<SandboxResult> {
 /// Always returns a `SandboxResult`. If the sandbox itself fails (missing
 /// interpreter, permissions issue), `failure_safe=true` is set and the
 /// result carries the error detail.
-pub fn run_sandbox(
-    request: &SandboxRequest,
-    analysis_mode: SandboxAnalysisMode,
-) -> SandboxResult {
+pub fn run_sandbox(request: &SandboxRequest, analysis_mode: SandboxAnalysisMode) -> SandboxResult {
     if analysis_mode == "off" {
         return SandboxResult::empty();
     }
@@ -435,7 +437,9 @@ pub fn run_sandbox(
             return result;
         }
     };
-    let _tmpdir_guard = TemporarySandboxDir { path: workspace.clone() };
+    let _tmpdir_guard = TemporarySandboxDir {
+        path: workspace.clone(),
+    };
     write_sandbox_files(&workspace, &request.files);
 
     let mut before_files: HashSet<String> = HashSet::new();
@@ -479,8 +483,7 @@ pub fn run_sandbox(
         Ok((exit_code, stdout, stderr, timed_out)) => {
             let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
             let writes = scan_writes(&workspace, &before_files, &before_mtimes);
-            let (mut network_attempts, process_attempts) =
-                audit_combined_output(&stdout, &stderr);
+            let (mut network_attempts, process_attempts) = audit_combined_output(&stdout, &stderr);
             // `dict.fromkeys` dedup preserving first-seen order.
             let mut merged: Vec<String> = Vec::new();
             let mut seen = HashSet::new();
@@ -570,9 +573,7 @@ fn spawn_bounded(
     // skips when `resource` is unavailable, so this port treats rlimits as
     // unavailable and relies on the bounded timeout + process kill as the
     // enforcement backstop. Callsite shape retained for a future cutover.
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("{error}"))?;
+    let mut child = command.spawn().map_err(|error| format!("{error}"))?;
 
     // Poll with bounded sleep — same shape as git_read.rs's timeout loop.
     let deadline = Instant::now() + timeout;
@@ -661,10 +662,8 @@ impl TemporarySandboxDir {
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
-                        let _ = fs::set_permissions(
-                            &candidate,
-                            std::fs::Permissions::from_mode(0o700),
-                        );
+                        let _ =
+                            fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o700));
                     }
                     return Ok(Self { path: candidate });
                 }

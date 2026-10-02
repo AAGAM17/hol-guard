@@ -33,9 +33,8 @@ const MAX_ARG_BYTES: usize = 1_048_576;
 static PYTEST_EXECUTABLE_NAMES: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| HashSet::from(["pytest", "py.test", "pytest.exe", "py.test.exe"]));
 
-static PYTHON_EXECUTABLE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:python|pythonw)(?:\d+(?:\.\d+)*)?(?:\.exe)?$").unwrap()
-});
+static PYTHON_EXECUTABLE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:python|pythonw)(?:\d+(?:\.\d+)*)?(?:\.exe)?$").unwrap());
 
 const PROJECT_WORKSPACE_MARKERS: &[&str] = &[
     ".git",
@@ -49,14 +48,7 @@ const PROJECT_WORKSPACE_MARKERS: &[&str] = &[
 
 static SENSITIVE_HOME_ROOT_NAMES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
-        ".aws",
-        ".azure",
-        ".config",
-        ".docker",
-        ".gnupg",
-        ".kube",
-        ".ssh",
-        "Library",
+        ".aws", ".azure", ".config", ".docker", ".gnupg", ".kube", ".ssh", "Library",
     ])
 });
 
@@ -301,14 +293,12 @@ pub fn normalized_command(command: &[String]) -> Result<Vec<String>, RestrictedP
 
 /// `_resolve_workspace` (:52-77).
 pub fn resolve_workspace(workspace: &Path) -> Result<PathBuf, RestrictedPytestError> {
-    let resolved = expand_user(workspace)
-        .canonicalize()
-        .map_err(|error| {
-            RestrictedPytestError::new(
-                PYTEST_INVALID_WORKSPACE_REASON_CODE,
-                format!("Restricted pytest workspace could not be resolved: {error}"),
-            )
-        })?;
+    let resolved = expand_user(workspace).canonicalize().map_err(|error| {
+        RestrictedPytestError::new(
+            PYTEST_INVALID_WORKSPACE_REASON_CODE,
+            format!("Restricted pytest workspace could not be resolved: {error}"),
+        )
+    })?;
     if !resolved.is_dir() {
         return Err(RestrictedPytestError::new(
             PYTEST_INVALID_WORKSPACE_REASON_CODE,
@@ -366,7 +356,9 @@ fn workspace_is_broad_or_sensitive(workspace: &Path) -> bool {
         Err(_) => return false,
     };
     match relative_to_home.components().next() {
-        Some(component) => SENSITIVE_HOME_ROOT_NAMES.contains(component.as_os_str().to_string_lossy().as_ref()),
+        Some(component) => {
+            SENSITIVE_HOME_ROOT_NAMES.contains(component.as_os_str().to_string_lossy().as_ref())
+        }
         None => false,
     }
 }
@@ -479,7 +471,11 @@ fn python_args_target_pytest(args: &[String]) -> bool {
         if item == "--" {
             return false;
         }
-        if item == "-c" || item == "--command" || item.starts_with("-c") || item.starts_with("--command=") {
+        if item == "-c"
+            || item == "--command"
+            || item.starts_with("-c")
+            || item.starts_with("--command=")
+        {
             return false;
         }
         if item == "-m" {
@@ -495,7 +491,10 @@ fn python_args_target_pytest(args: &[String]) -> bool {
             index += 2;
             continue;
         }
-        if item.starts_with("-W") || item.starts_with("-X") || item.starts_with("--check-hash-based-pycs=") {
+        if item.starts_with("-W")
+            || item.starts_with("-X")
+            || item.starts_with("--check-hash-based-pycs=")
+        {
             index += 1;
             continue;
         }
@@ -647,9 +646,10 @@ pub fn allowed_executables(
         allowed.extend(framework_python_helpers(&allowed_executable));
     }
     let workspace_launcher = path_is_within_lexically(launch_executable, workspace);
-    if allowed.iter().any(|path| {
-        !allowed_executable_path(path, workspace, workspace_launcher)
-    }) {
+    if allowed
+        .iter()
+        .any(|path| !allowed_executable_path(path, workspace, workspace_launcher))
+    {
         return Err(RestrictedPytestError::new(
             PYTEST_INVALID_COMMAND_REASON_CODE,
             "Restricted pytest script resolves to an interpreter outside the workspace and trusted system roots.",
@@ -696,7 +696,10 @@ fn framework_python_helpers(executable: &Path) -> Vec<PathBuf> {
         Some(parent) => parent,
         None => return Vec::new(),
     };
-    if versions_dir.file_name().map(|n| n != "Versions").unwrap_or(true)
+    if versions_dir
+        .file_name()
+        .map(|n| n != "Versions")
+        .unwrap_or(true)
         || framework_dir
             .file_name()
             .map(|n| n != "Python.framework")
@@ -995,7 +998,10 @@ fn first_symlink_expansion(path: &Path) -> Option<PathBuf> {
         let target = if raw_target.is_absolute() {
             raw_target
         } else {
-            current.parent().unwrap_or_else(|| Path::new("/")).join(&raw_target)
+            current
+                .parent()
+                .unwrap_or_else(|| Path::new("/"))
+                .join(&raw_target)
         };
         let mut expanded = target;
         for part in &parts[index + 1..] {
@@ -1068,13 +1074,8 @@ fn dirs_home() -> Option<PathBuf> {
 
 /// `_path_is_within` (:476-483).
 fn path_is_within(path: &Path, root: &Path) -> bool {
-    match (
-        resolve_nonstrict(path).ok(),
-        resolve_nonstrict(root).ok(),
-    ) {
-        (Some(resolved), Some(root_resolved)) => {
-            resolved.strip_prefix(root_resolved).is_ok()
-        }
+    match (resolve_nonstrict(path).ok(), resolve_nonstrict(root).ok()) {
+        (Some(resolved), Some(root_resolved)) => resolved.strip_prefix(root_resolved).is_ok(),
         _ => false,
     }
 }

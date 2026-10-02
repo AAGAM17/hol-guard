@@ -62,7 +62,10 @@ const REQUEST_SNAPSHOT_JSON_FIELDS: [&str; 7] = [
 // ---------------------------------------------------------------------------
 
 fn trimmed_str(value: &Value) -> Option<String> {
-    value.as_str().map(|text| text.trim().to_string()).filter(|text| !text.is_empty())
+    value
+        .as_str()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
 }
 
 fn row_is_present(row: &DbRow, column: &str) -> bool {
@@ -102,9 +105,12 @@ fn sha1(data: &[u8]) -> [u8; 20] {
             words[index] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
         }
         for index in 16..80 {
-            words[index] = (words[index - 3] ^ words[index - 8] ^ words[index - 14] ^ words[index - 16]).rotate_left(1);
+            words[index] =
+                (words[index - 3] ^ words[index - 8] ^ words[index - 14] ^ words[index - 16])
+                    .rotate_left(1);
         }
-        let (mut a, mut b, mut c, mut d, mut e) = (state[0], state[1], state[2], state[3], state[4]);
+        let (mut a, mut b, mut c, mut d, mut e) =
+            (state[0], state[1], state[2], state[3], state[4]);
         for (index, word) in words.iter().enumerate() {
             let (f, k) = match index {
                 0..=19 => ((b & c) | (!b & d), 0x5a827999u32),
@@ -139,7 +145,10 @@ fn sha1(data: &[u8]) -> [u8; 20] {
 
 /// `cloud_review_correlation_id` — `gcr_{uuid5(domain, local_request_id)}`.
 pub fn cloud_review_correlation_id(local_request_id: &str) -> String {
-    assert!(!local_request_id.trim().is_empty(), "local_request_id is required");
+    assert!(
+        !local_request_id.trim().is_empty(),
+        "local_request_id is required"
+    );
     let mut data = Vec::with_capacity(16 + local_request_id.len());
     data.extend_from_slice(&CORRELATION_DOMAIN);
     data.extend_from_slice(local_request_id.as_bytes());
@@ -174,13 +183,12 @@ fn is_valid_correlation(value: &str) -> bool {
     let groups: Vec<&str> = rest.split('-').collect();
     let lengths = [8usize, 4, 4, 4, 12];
     groups.len() == 5
-        && groups
-            .iter()
-            .zip(lengths.iter())
-            .all(|(group, length)| {
-                group.len() == *length
-                    && group.chars().all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-            })
+        && groups.iter().zip(lengths.iter()).all(|(group, length)| {
+            group.len() == *length
+                && group.chars().all(|character| {
+                    character.is_ascii_hexdigit() && !character.is_ascii_uppercase()
+                })
+        })
 }
 
 /// `validated_continuation_snapshot` — `Some` when the decoded snapshot is a
@@ -257,7 +265,10 @@ fn oauth_binding_state_key(source: &str) -> String {
 
 /// `load_review_oauth_binding` — resolve the durable OAuth binding for one
 /// source, or `None` when credentials are absent/malformed/incomplete.
-pub fn load_review_oauth_binding(connection: &mut dyn Connection, source: &str) -> Option<Map<String, Value>> {
+pub fn load_review_oauth_binding(
+    connection: &mut dyn Connection,
+    source: &str,
+) -> Option<Map<String, Value>> {
     let row = connection
         .query_row(
             "select payload_json from sync_state where state_key = ?",
@@ -283,11 +294,20 @@ pub fn load_review_oauth_binding(connection: &mut dyn Connection, source: &str) 
         .and_then(|row| row.get("installation_id"))
         .and_then(trimmed_str)?;
     let mut binding = Map::new();
-    binding.insert("oauth_source".to_string(), Value::String(source.to_string()));
-    binding.insert("oauth_subject_hash".to_string(), Value::String(subject_hash));
+    binding.insert(
+        "oauth_source".to_string(),
+        Value::String(source.to_string()),
+    );
+    binding.insert(
+        "oauth_subject_hash".to_string(),
+        Value::String(subject_hash),
+    );
     binding.insert("workspace_id".to_string(), Value::String(workspace_id));
     binding.insert("machine_id".to_string(), Value::String(machine_id));
-    binding.insert("machine_installation_id".to_string(), Value::String(installation_id));
+    binding.insert(
+        "machine_installation_id".to_string(),
+        Value::String(installation_id),
+    );
     Some(binding)
 }
 
@@ -355,7 +375,9 @@ pub fn bind_review_events_for_request(
         binding.get("oauth_subject_hash").and_then(Value::as_str),
         binding.get("workspace_id").and_then(Value::as_str),
         binding.get("machine_id").and_then(Value::as_str),
-        binding.get("machine_installation_id").and_then(Value::as_str),
+        binding
+            .get("machine_installation_id")
+            .and_then(Value::as_str),
     );
     let _ = connection.execute(
         "
@@ -429,7 +451,9 @@ pub fn bind_new_review_events(connection: &mut dyn Connection, source: &str) -> 
             binding.get("oauth_subject_hash").and_then(Value::as_str),
             binding.get("workspace_id").and_then(Value::as_str),
             binding.get("machine_id").and_then(Value::as_str),
-            binding.get("machine_installation_id").and_then(Value::as_str),
+            binding
+                .get("machine_installation_id")
+                .and_then(Value::as_str),
         );
         let _ = connection.execute(
             "
@@ -528,7 +552,9 @@ pub fn refresh_same_subject_binding(connection: &mut dyn Connection, source: &st
             binding.get("oauth_subject_hash").and_then(Value::as_str),
             binding.get("workspace_id").and_then(Value::as_str),
             binding.get("machine_id").and_then(Value::as_str),
-            binding.get("machine_installation_id").and_then(Value::as_str),
+            binding
+                .get("machine_installation_id")
+                .and_then(Value::as_str),
         );
         let _ = connection.execute(
             "
@@ -579,13 +605,21 @@ fn reassignment_filter(binding: &Map<String, Value>, only_unbound: bool) -> (Str
     if only_unbound {
         query.push_str(" and quarantine_reason = 'identity_incomplete'");
         for column in BINDING_FIELDS {
-            let _ = write_fragment(&mut query, &format!(" and ({column} is null or {column} = ?)"));
+            let _ = write_fragment(
+                &mut query,
+                &format!(" and ({column} is null or {column} = ?)"),
+            );
             parameters.push(binding[column].clone());
         }
-        for table in ["guard_review_outbox_request_sequences", "guard_review_outbox_events"] {
+        for table in [
+            "guard_review_outbox_request_sequences",
+            "guard_review_outbox_events",
+        ] {
             let mut conflicts = Vec::new();
             for column in binding.keys() {
-                conflicts.push(format!("(prior.{column} is not null and prior.{column} != ?)"));
+                conflicts.push(format!(
+                    "(prior.{column} is not null and prior.{column} != ?)"
+                ));
                 parameters.push(binding[column].clone());
             }
             let _ = write_fragment(
@@ -650,7 +684,9 @@ pub fn explicitly_reassign_quarantined_events(
             binding.get("oauth_subject_hash").and_then(Value::as_str),
             binding.get("workspace_id").and_then(Value::as_str),
             binding.get("machine_id").and_then(Value::as_str),
-            binding.get("machine_installation_id").and_then(Value::as_str),
+            binding
+                .get("machine_installation_id")
+                .and_then(Value::as_str),
         );
         let _ = connection.execute(
             "
@@ -748,8 +784,16 @@ fn binding_for_append(
         });
         return (
             values,
-            if current.is_some() { "ready" } else { "quarantined" },
-            if current.is_some() { None } else { Some("identity_incomplete".to_string()) },
+            if current.is_some() {
+                "ready"
+            } else {
+                "quarantined"
+            },
+            if current.is_some() {
+                None
+            } else {
+                Some("identity_incomplete".to_string())
+            },
         );
     };
     let mut prior_values = Map::new();
@@ -760,7 +804,11 @@ fn binding_for_append(
         .iter()
         .all(|key| column_complete(&prior, key));
     if !prior_complete {
-        return (prior_values, "quarantined", Some("identity_incomplete".to_string()));
+        return (
+            prior_values,
+            "quarantined",
+            Some("identity_incomplete".to_string()),
+        );
     }
     let Some(current_binding) = current else {
         return (
@@ -769,7 +817,8 @@ fn binding_for_append(
             Some("identity_changed_requires_confirmation".to_string()),
         );
     };
-    if row_str(&prior, "oauth_subject_hash") != current_binding["oauth_subject_hash"].as_str().unwrap_or("")
+    if row_str(&prior, "oauth_subject_hash")
+        != current_binding["oauth_subject_hash"].as_str().unwrap_or("")
         || row_str(&prior, "workspace_id") != current_binding["workspace_id"].as_str().unwrap_or("")
     {
         return (
@@ -899,14 +948,22 @@ pub fn append_request_snapshot_event(
                     values.get("oauth_subject_hash").and_then(Value::as_str),
                     values.get("workspace_id").and_then(Value::as_str),
                     values.get("machine_id").and_then(Value::as_str),
-                    values.get("machine_installation_id").and_then(Value::as_str),
+                    values
+                        .get("machine_installation_id")
+                        .and_then(Value::as_str),
                 )),
                 Value::String(occurred_at.to_string()),
                 Value::String(source.to_string()),
-                values.get("oauth_subject_hash").cloned().unwrap_or(Value::Null),
+                values
+                    .get("oauth_subject_hash")
+                    .cloned()
+                    .unwrap_or(Value::Null),
                 values.get("workspace_id").cloned().unwrap_or(Value::Null),
                 values.get("machine_id").cloned().unwrap_or(Value::Null),
-                values.get("machine_installation_id").cloned().unwrap_or(Value::Null),
+                values
+                    .get("machine_installation_id")
+                    .cloned()
+                    .unwrap_or(Value::Null),
                 Value::String(binding_status.to_string()),
                 quarantine_reason.map(Value::String).unwrap_or(Value::Null),
             ],
@@ -981,10 +1038,16 @@ pub fn requeue_pending_request_events(
     let current_identity = current_binding.as_ref().map(|binding| {
         (
             source.to_string(),
-            binding["oauth_subject_hash"].as_str().unwrap_or("").to_string(),
+            binding["oauth_subject_hash"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
             binding["workspace_id"].as_str().unwrap_or("").to_string(),
             binding["machine_id"].as_str().unwrap_or("").to_string(),
-            binding["machine_installation_id"].as_str().unwrap_or("").to_string(),
+            binding["machine_installation_id"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
         )
     });
     let mut request_query = "
@@ -1079,7 +1142,8 @@ pub fn requeue_pending_request_events(
             None => snapshot_query.push_str(" and acknowledged_at is null"),
             Some(sequences) => {
                 snapshot_query.push_str(" and request_sequence > ?");
-                snapshot_parameters.push(sequences.get(&request_id).cloned().unwrap_or(Value::Null));
+                snapshot_parameters
+                    .push(sequences.get(&request_id).cloned().unwrap_or(Value::Null));
             }
         }
         let existing_snapshot = connection
@@ -1089,7 +1153,9 @@ pub fn requeue_pending_request_events(
             )
             .ok()
             .flatten();
-        if let (Some(existing), Some(identity)) = (existing_snapshot.as_ref(), current_identity.as_ref()) {
+        if let (Some(existing), Some(identity)) =
+            (existing_snapshot.as_ref(), current_identity.as_ref())
+        {
             let ready = row_str(existing, "binding_status") == "ready";
             let matches_identity = (
                 row_str(existing, "oauth_source").to_string(),
@@ -1146,7 +1212,11 @@ pub fn acknowledge_review_events(
     }
     let placeholders = vec!["?"; acknowledged.len()].join(",");
     let mut params = vec![Value::String(acknowledged_at.to_string())];
-    params.extend(acknowledged.iter().map(|sequence| Value::Number((*sequence).into())));
+    params.extend(
+        acknowledged
+            .iter()
+            .map(|sequence| Value::Number((*sequence).into())),
+    );
     params.push(Value::String(source.to_string()));
     params.extend(binding.iter().cloned().map(Value::String));
     let _ = connection.execute(
@@ -1251,7 +1321,9 @@ impl std::error::Error for StoredReviewEventError {}
 
 /// `decode_stored_review_event` — build the delivery envelope for one stored
 /// row. Returns `Err(StoredReviewEventError)` when the row is undeliverable.
-pub fn decode_stored_review_event(row: &DbRow) -> Result<Map<String, Value>, StoredReviewEventError> {
+pub fn decode_stored_review_event(
+    row: &DbRow,
+) -> Result<Map<String, Value>, StoredReviewEventError> {
     let status = row_str(row, "binding_status");
     if status == "quarantined" {
         let reason = row_str(row, "quarantine_reason");
@@ -1279,19 +1351,37 @@ pub fn decode_stored_review_event(row: &DbRow) -> Result<Map<String, Value>, Sto
         .cloned()
         .ok_or_else(|| StoredReviewEventError("Review event payload is malformed".to_string()))?;
     let mut delivery = Map::new();
-    delivery.insert("requestId".to_string(), row_get(row, "local_request_id").clone());
-    delivery.insert("requestSequence".to_string(), row_get(row, "request_sequence").clone());
+    delivery.insert(
+        "requestId".to_string(),
+        row_get(row, "local_request_id").clone(),
+    );
+    delivery.insert(
+        "requestSequence".to_string(),
+        row_get(row, "request_sequence").clone(),
+    );
     delivery.insert("eventId".to_string(), row_get(row, "event_id").clone());
     delivery.insert("eventType".to_string(), row_get(row, "event_type").clone());
-    delivery.insert("occurredAt".to_string(), row_get(row, "occurred_at").clone());
+    delivery.insert(
+        "occurredAt".to_string(),
+        row_get(row, "occurred_at").clone(),
+    );
     delivery.insert("payload".to_string(), Value::Object(payload_map));
-    delivery.insert("payloadHash".to_string(), row_get(row, "payload_hash").clone());
-    delivery.insert("oauthSource".to_string(), row_get(row, "oauth_source").clone());
+    delivery.insert(
+        "payloadHash".to_string(),
+        row_get(row, "payload_hash").clone(),
+    );
+    delivery.insert(
+        "oauthSource".to_string(),
+        row_get(row, "oauth_source").clone(),
+    );
     delivery.insert(
         "oauthSubjectHash".to_string(),
         row_get(row, "oauth_subject_hash").clone(),
     );
-    delivery.insert("workspaceId".to_string(), row_get(row, "workspace_id").clone());
+    delivery.insert(
+        "workspaceId".to_string(),
+        row_get(row, "workspace_id").clone(),
+    );
     delivery.insert("machineId".to_string(), row_get(row, "machine_id").clone());
     delivery.insert(
         "machineInstallationId".to_string(),
@@ -1466,13 +1556,14 @@ pub fn repair_rejected_review_correlation(
     }) {
         return Ok(0);
     }
-    let snapshot = match serde_json::from_str::<Value>(row_str(&request, "continuation_snapshot_json"))
-        .ok()
-        .and_then(|value| validated_continuation_snapshot(&value))
-    {
-        Some(snapshot) => snapshot,
-        None => return Ok(0),
-    };
+    let snapshot =
+        match serde_json::from_str::<Value>(row_str(&request, "continuation_snapshot_json"))
+            .ok()
+            .and_then(|value| validated_continuation_snapshot(&value))
+        {
+            Some(snapshot) => snapshot,
+            None => return Ok(0),
+        };
     let repaired = {
         let mut snapshot = snapshot;
         snapshot.insert(
@@ -1558,13 +1649,23 @@ mod tests {
     fn payload_digest_matches_python_hmac() {
         assert_eq!(
             crate::review_event_outbox_schema::review_event_payload_digest(
-                "{}", Some("default"), Some("s"), Some("w"), Some("m"), Some("i"),
+                "{}",
+                Some("default"),
+                Some("s"),
+                Some("w"),
+                Some("m"),
+                Some("i"),
             ),
             "741c5a9a30cad81fbe652232c4aabfbdde1d5a52b1a10de49a03d683c1f84d35"
         );
         assert_eq!(
             crate::review_event_outbox_schema::review_event_payload_digest(
-                "{}", Some("default"), None, None, None, None,
+                "{}",
+                Some("default"),
+                None,
+                None,
+                None,
+                None,
             ),
             "9f31eeb9b235c047e183eb7a7ba821ce38b2a91dbb8a1b73e69014571f5c588d"
         );

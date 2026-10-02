@@ -133,12 +133,7 @@ fn v_map(map: Map<String, Value>) -> Value {
 fn dict_items(value: Option<&Value>) -> Vec<Map<String, Value>> {
     value
         .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_object)
-                .cloned()
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(Value::as_object).cloned().collect())
         .unwrap_or_default()
 }
 
@@ -224,7 +219,10 @@ pub fn install_guard_shim(
         .as_ref()
         .map(|p| vec!["--workspace".to_owned(), p.to_string_lossy().into_owned()])
         .unwrap_or_default();
-    let _ = fs::write(&posix_path, build_python_shim(harness, context, &workspace_args));
+    let _ = fs::write(
+        &posix_path,
+        build_python_shim(harness, context, &workspace_args),
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -238,8 +236,19 @@ pub fn install_guard_shim(
     let mut result = obj();
     result.insert("shim_path".into(), v_str(posix_path.to_string_lossy()));
     result.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
-    result.insert("shim_command".into(), v_str(posix_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
-    result.insert("windows_shim_path".into(), v_str(windows_path.to_string_lossy()));
+    result.insert(
+        "shim_command".into(),
+        v_str(
+            posix_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        ),
+    );
+    result.insert(
+        "windows_shim_path".into(),
+        v_str(windows_path.to_string_lossy()),
+    );
     result.insert(
         "notes".into(),
         v_arr(vec![
@@ -290,7 +299,15 @@ pub fn remove_guard_shim(
     result.insert("shim_path".into(), v_str(posix_path.to_string_lossy()));
     result.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
     result.insert("removed_paths".into(), v_str_arr(removed_paths));
-    result.insert("shim_command".into(), v_str(posix_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+    result.insert(
+        "shim_command".into(),
+        v_str(
+            posix_path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        ),
+    );
     result.insert(
         "notes".into(),
         v_arr(vec![v_str(format!(
@@ -301,7 +318,11 @@ pub fn remove_guard_shim(
 }
 
 /// `_build_python_shim` (:187-201) → `durable_harness_launcher.build_harness_shim`.
-pub fn build_python_shim(harness: &str, context: &HarnessContext, workspace_args: &[String]) -> String {
+pub fn build_python_shim(
+    harness: &str,
+    context: &HarnessContext,
+    workspace_args: &[String],
+) -> String {
     build_harness_shim(
         &sys_executable(),
         harness,
@@ -329,7 +350,11 @@ fn build_windows_script_inner(interpreter: &str, posix_path: &Path) -> String {
 }
 
 /// `_write_package_manager_shim_files` (:206-214) → `package_shim_frozen.write_package_manager_shim_files`.
-fn write_package_manager_shim_files(context: &HarnessContext, command: &str, shim_dir: &Path) -> PathBuf {
+fn write_package_manager_shim_files(
+    context: &HarnessContext,
+    command: &str,
+    shim_dir: &Path,
+) -> PathBuf {
     let python_source = build_package_manager_python_shim(context, command);
     let windows_script = build_windows_script(&shim_dir.join(command));
     let posix_path = shim_dir.join(command);
@@ -369,7 +394,12 @@ fn home_override_args(context: &HarnessContext) -> Vec<String> {
     }
     vec![
         "--home".to_owned(),
-        context.home_dir.as_ref().unwrap().to_string_lossy().into_owned(),
+        context
+            .home_dir
+            .as_ref()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned(),
     ]
 }
 
@@ -471,7 +501,10 @@ fn normalized_base_command_repr(line: &str) -> String {
 }
 
 /// `get_real_binary_info` (:234-258).
-pub fn get_real_binary_info(binary_path: &str, redact_path_prefix: Option<&str>) -> Map<String, Value> {
+pub fn get_real_binary_info(
+    binary_path: &str,
+    redact_path_prefix: Option<&str>,
+) -> Map<String, Value> {
     let p = Path::new(binary_path);
     if !p.exists() || !p.is_file() {
         let mut r = obj();
@@ -527,7 +560,8 @@ fn is_trusted_package_shim_binary(candidate: &Path, trusted_shim_dir: &Path) -> 
 
 /// `_is_foreign_package_shim_binary` (:273-279).
 fn is_foreign_package_shim_binary(candidate: &Path, trusted_shim_dir: &Path) -> bool {
-    has_package_shim_layout(candidate) && !is_trusted_package_shim_binary(candidate, trusted_shim_dir)
+    has_package_shim_layout(candidate)
+        && !is_trusted_package_shim_binary(candidate, trusted_shim_dir)
 }
 
 /// `get_path_order_status` (:280-377).
@@ -583,34 +617,56 @@ pub fn get_path_order_status(
             real_binary_path = Some(candidate.to_string_lossy().into_owned());
         }
     }
-    let foreign_shim_precedes_trusted =
-        foreign_shim_index.is_some() && shim_dir_index.is_some() && foreign_shim_index < shim_dir_index;
+    let foreign_shim_precedes_trusted = foreign_shim_index.is_some()
+        && shim_dir_index.is_some()
+        && foreign_shim_index < shim_dir_index;
     let mut r = obj();
     if shim_dir_index.is_none() {
         r.insert("shim_precedes_real".into(), v_bool(false));
         r.insert("real_binary_found".into(), v_bool(real_dir_index.is_some()));
-        r.insert("real_binary_path".into(), v_opt_str(real_binary_path.as_deref()));
+        r.insert(
+            "real_binary_path".into(),
+            v_opt_str(real_binary_path.as_deref()),
+        );
         r.insert("real_binary_path_index".into(), v_opt_usize(real_dir_index));
         r.insert("shim_in_path".into(), v_bool(false));
         r.insert("shim_path_index".into(), Value::Null);
         r.insert("path_broken".into(), v_bool(true));
-        r.insert("foreign_shim_bypass".into(), v_bool(foreign_shim_index.is_some()));
-        r.insert("foreign_shim_path".into(), v_opt_str(foreign_shim_path.as_deref()));
-        r.insert("foreign_shim_path_index".into(), v_opt_usize(foreign_shim_index));
+        r.insert(
+            "foreign_shim_bypass".into(),
+            v_bool(foreign_shim_index.is_some()),
+        );
+        r.insert(
+            "foreign_shim_path".into(),
+            v_opt_str(foreign_shim_path.as_deref()),
+        );
+        r.insert(
+            "foreign_shim_path_index".into(),
+            v_opt_usize(foreign_shim_index),
+        );
         r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
         return r;
     }
     if foreign_shim_precedes_trusted {
         r.insert("shim_precedes_real".into(), v_bool(false));
         r.insert("real_binary_found".into(), v_bool(real_dir_index.is_some()));
-        r.insert("real_binary_path".into(), v_opt_str(real_binary_path.as_deref()));
+        r.insert(
+            "real_binary_path".into(),
+            v_opt_str(real_binary_path.as_deref()),
+        );
         r.insert("real_binary_path_index".into(), v_opt_usize(real_dir_index));
         r.insert("shim_in_path".into(), v_bool(true));
         r.insert("shim_path_index".into(), v_opt_usize(shim_dir_index));
         r.insert("path_broken".into(), v_bool(true));
         r.insert("foreign_shim_bypass".into(), v_bool(true));
-        r.insert("foreign_shim_path".into(), v_opt_str(foreign_shim_path.as_deref()));
-        r.insert("foreign_shim_path_index".into(), v_opt_usize(foreign_shim_index));
+        r.insert(
+            "foreign_shim_path".into(),
+            v_opt_str(foreign_shim_path.as_deref()),
+        );
+        r.insert(
+            "foreign_shim_path_index".into(),
+            v_opt_usize(foreign_shim_index),
+        );
         r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
         return r;
     }
@@ -623,22 +679,37 @@ pub fn get_path_order_status(
         r.insert("shim_path_index".into(), v_opt_usize(shim_dir_index));
         r.insert("path_broken".into(), v_bool(false));
         r.insert("foreign_shim_bypass".into(), v_bool(false));
-        r.insert("foreign_shim_path".into(), v_opt_str(foreign_shim_path.as_deref()));
-        r.insert("foreign_shim_path_index".into(), v_opt_usize(foreign_shim_index));
+        r.insert(
+            "foreign_shim_path".into(),
+            v_opt_str(foreign_shim_path.as_deref()),
+        );
+        r.insert(
+            "foreign_shim_path_index".into(),
+            v_opt_usize(foreign_shim_index),
+        );
         r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
         return r;
     }
     let precedes = shim_dir_index < real_dir_index;
     r.insert("shim_precedes_real".into(), v_bool(precedes));
     r.insert("real_binary_found".into(), v_bool(true));
-    r.insert("real_binary_path".into(), v_opt_str(real_binary_path.as_deref()));
+    r.insert(
+        "real_binary_path".into(),
+        v_opt_str(real_binary_path.as_deref()),
+    );
     r.insert("real_binary_path_index".into(), v_opt_usize(real_dir_index));
     r.insert("shim_in_path".into(), v_bool(true));
     r.insert("shim_path_index".into(), v_opt_usize(shim_dir_index));
     r.insert("path_broken".into(), v_bool(!precedes));
     r.insert("foreign_shim_bypass".into(), v_bool(false));
-    r.insert("foreign_shim_path".into(), v_opt_str(foreign_shim_path.as_deref()));
-    r.insert("foreign_shim_path_index".into(), v_opt_usize(foreign_shim_index));
+    r.insert(
+        "foreign_shim_path".into(),
+        v_opt_str(foreign_shim_path.as_deref()),
+    );
+    r.insert(
+        "foreign_shim_path_index".into(),
+        v_opt_usize(foreign_shim_index),
+    );
     r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
     r
 }
@@ -688,15 +759,23 @@ fn package_shim_profile_status(context: &HarnessContext) -> Map<String, Value> {
             missing_paths.push(profile_path.to_string_lossy().into_owned());
         }
     }
-    let primary_path = targets.first().map(|(p, _)| p.to_string_lossy().into_owned());
+    let primary_path = targets
+        .first()
+        .map(|(p, _)| p.to_string_lossy().into_owned());
     let mut r = obj();
     r.insert(
         "shell_profile_configured".into(),
         v_bool(!targets.is_empty() && missing_paths.is_empty()),
     );
-    r.insert("shell_profile_path".into(), v_opt_str(primary_path.as_deref()));
+    r.insert(
+        "shell_profile_path".into(),
+        v_opt_str(primary_path.as_deref()),
+    );
     r.insert("shell_profile_paths".into(), v_str_arr(configured_paths));
-    r.insert("shell_profile_missing_paths".into(), v_str_arr(missing_paths));
+    r.insert(
+        "shell_profile_missing_paths".into(),
+        v_str_arr(missing_paths),
+    );
     r
 }
 
@@ -746,7 +825,9 @@ pub fn install_package_shims(
         let bytes = fs::read(&posix_path).unwrap_or_default();
         content_hashes.insert(
             manager.clone(),
-            build_shim_content_hash(&installed_package_shim_attestation_bytes(&shim_dir, command, &bytes)),
+            build_shim_content_hash(&installed_package_shim_attestation_bytes(
+                &shim_dir, command, &bytes,
+            )),
         );
         installed.push(manager.clone());
     }
@@ -760,7 +841,10 @@ pub fn install_package_shims(
                 .collect(),
         ),
     );
-    manifest_payload.insert("installed_managers".into(), v_str_arr(tracked_managers.clone()));
+    manifest_payload.insert(
+        "installed_managers".into(),
+        v_str_arr(tracked_managers.clone()),
+    );
     manifest_payload.insert(
         "last_test_at".into(),
         Value::Object(
@@ -785,17 +869,32 @@ pub fn install_package_shims(
         .cloned()
         .collect();
     let mut r = obj();
-    r.insert("installed_managers".into(), v_str_arr(tracked_managers.clone()));
-    r.insert("installed_count".into(), serde_json::json!(tracked_managers.len()));
+    r.insert(
+        "installed_managers".into(),
+        v_str_arr(tracked_managers.clone()),
+    );
+    r.insert(
+        "installed_count".into(),
+        serde_json::json!(tracked_managers.len()),
+    );
     r.insert("installed_now".into(), v_str_arr(installed.clone()));
-    r.insert("installed_now_count".into(), serde_json::json!(installed.len()));
+    r.insert(
+        "installed_now_count".into(),
+        serde_json::json!(installed.len()),
+    );
     r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
     r.insert(
         "manifest_path".into(),
         v_str(package_shim_manifest_path(context).to_string_lossy()),
     );
-    r.insert("path_export_hint".into(), v_str(path_export_hint(&shim_dir)));
-    r.insert("path_repair_required".into(), v_str_arr(path_repair_required));
+    r.insert(
+        "path_export_hint".into(),
+        v_str(path_export_hint(&shim_dir)),
+    );
+    r.insert(
+        "path_repair_required".into(),
+        v_str_arr(path_repair_required),
+    );
     r.insert("program_name".into(), v_str(program_name));
     r.insert("shell_hints".into(), v_map(shell_hints));
     r
@@ -813,10 +912,16 @@ pub fn activate_package_shims(
     let mut r = obj();
     r.insert("install_result".into(), v_map(install_result));
     r.insert("profile_result".into(), v_map(profile_result));
-    r.insert("path_active".into(), status.get("path_active").cloned().unwrap_or(Value::Null));
+    r.insert(
+        "path_active".into(),
+        status.get("path_active").cloned().unwrap_or(Value::Null),
+    );
     r.insert(
         "restart_shell_required".into(),
-        status.get("restart_shell_required").cloned().unwrap_or(Value::Null),
+        status
+            .get("restart_shell_required")
+            .cloned()
+            .unwrap_or(Value::Null),
     );
     r
 }
@@ -832,7 +937,8 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
         Some(Value::Object(_)) => string_map(manifest.get("last_test_at")),
         _ => BTreeMap::new(),
     };
-    let (detected_managers, undetected_managers) = detect_system_package_managers(context, path_env);
+    let (detected_managers, undetected_managers) =
+        detect_system_package_managers(context, path_env);
     let detected_set: BTreeSet<&str> = detected_managers.iter().map(|s| s.as_str()).collect();
     let shim_dir = context.package_shim_bin_dir();
     let stored_hashes = string_map(manifest.get("content_hashes"));
@@ -844,11 +950,14 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
     let effective_path = path_env
         .map(str::to_owned)
         .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
-    let path_entries: Vec<&str> = effective_path.split(':').filter(|e| !e.is_empty()).collect();
+    let path_entries: Vec<&str> = effective_path
+        .split(':')
+        .filter(|e| !e.is_empty())
+        .collect();
     let resolved_shim_dir = resolve_or_self(&shim_dir);
-    let path_contains_shim_dir = path_entries
-        .iter()
-        .any(|entry| resolve_or_self(&PathBuf::from(shellexpand_tilde(entry))) == resolved_shim_dir);
+    let path_contains_shim_dir = path_entries.iter().any(|entry| {
+        resolve_or_self(&PathBuf::from(shellexpand_tilde(entry))) == resolved_shim_dir
+    });
     for manager in &installed_managers {
         let command = package_shim_command(manager).unwrap_or(manager.as_str());
         let shim_path = shim_dir.join(command);
@@ -879,24 +988,43 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
         detail.insert("manager".into(), v_str(manager));
         detail.insert(
             "path_active".into(),
-            v_bool(path_status.get("shim_precedes_real").and_then(Value::as_bool).unwrap_or(false)),
+            v_bool(
+                path_status
+                    .get("shim_precedes_real")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            ),
         );
         detail.insert(
             "path_index".into(),
-            path_status.get("shim_path_index").cloned().unwrap_or(Value::Null),
+            path_status
+                .get("shim_path_index")
+                .cloned()
+                .unwrap_or(Value::Null),
         );
         detail.insert("path_status".into(), v_map(path_status.clone()));
         detail.insert(
             "real_binary_found".into(),
-            v_bool(path_status.get("real_binary_found").and_then(Value::as_bool).unwrap_or(false)),
+            v_bool(
+                path_status
+                    .get("real_binary_found")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            ),
         );
         detail.insert(
             "real_binary_path".into(),
-            path_status.get("real_binary_path").cloned().unwrap_or(Value::Null),
+            path_status
+                .get("real_binary_path")
+                .cloned()
+                .unwrap_or(Value::Null),
         );
         detail.insert(
             "real_binary_path_index".into(),
-            path_status.get("real_binary_path_index").cloned().unwrap_or(Value::Null),
+            path_status
+                .get("real_binary_path_index")
+                .cloned()
+                .unwrap_or(Value::Null),
         );
         detail.insert("shim_path".into(), v_str(shim_path.to_string_lossy()));
         detail.insert(
@@ -904,10 +1032,19 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
             v_bool(detected_set.contains(manager.as_str())),
         );
         manager_details.push(detail);
-        if exists && path_status.get("shim_precedes_real").and_then(Value::as_bool).unwrap_or(false) {
+        if exists
+            && path_status
+                .get("shim_precedes_real")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        {
             protected_managers.push(manager.clone());
         } else if exists {
-            let bypass_reason = if path_status.get("foreign_shim_bypass").and_then(Value::as_bool).unwrap_or(false) {
+            let bypass_reason = if path_status
+                .get("foreign_shim_bypass")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
                 "foreign_shim_bypass"
             } else {
                 "path_inactive"
@@ -919,11 +1056,15 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
         }
     }
     let profile_status = package_shim_profile_status(context);
-    let path_active = !installed_managers.is_empty() && protected_managers.len() == installed_managers.len();
+    let path_active =
+        !installed_managers.is_empty() && protected_managers.len() == installed_managers.len();
     let activation_path_status = package_shim_activation_path_status(
         &installed_managers,
         path_contains_shim_dir,
-        profile_status.get("shell_profile_configured").and_then(Value::as_bool).unwrap_or(false),
+        profile_status
+            .get("shell_profile_configured")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     );
     let process_path_status = if path_contains_shim_dir {
         "active"
@@ -935,7 +1076,10 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
     let mut payload = obj();
     payload.insert("active_managers".into(), v_str_arr(active_managers));
     payload.insert("detected_managers".into(), v_str_arr(detected_managers));
-    payload.insert("installed_managers".into(), v_str_arr(installed_managers.clone()));
+    payload.insert(
+        "installed_managers".into(),
+        v_str_arr(installed_managers.clone()),
+    );
     payload.insert(
         "last_test_at".into(),
         Value::Object(
@@ -947,10 +1091,19 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
     );
     payload.insert("protected_managers".into(), v_str_arr(protected_managers));
     payload.insert("path_active".into(), v_bool(path_active));
-    payload.insert("path_contains_shim_dir".into(), v_bool(path_contains_shim_dir));
+    payload.insert(
+        "path_contains_shim_dir".into(),
+        v_bool(path_contains_shim_dir),
+    );
     payload.insert("path_status".into(), v_str(activation_path_status));
-    payload.insert("bypasses".into(), v_arr(bypasses.into_iter().map(v_map).collect()));
-    payload.insert("manager_details".into(), v_arr(manager_details.into_iter().map(v_map).collect()));
+    payload.insert(
+        "bypasses".into(),
+        v_arr(bypasses.into_iter().map(v_map).collect()),
+    );
+    payload.insert(
+        "manager_details".into(),
+        v_arr(manager_details.into_iter().map(v_map).collect()),
+    );
     payload.insert("manifest_state".into(), v_str(manifest_state));
     payload.insert(
         "manifest_path".into(),
@@ -968,25 +1121,42 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
     );
     payload.insert(
         "shell_profile_configured".into(),
-        profile_status.get("shell_profile_configured").cloned().unwrap_or(v_bool(false)),
+        profile_status
+            .get("shell_profile_configured")
+            .cloned()
+            .unwrap_or(v_bool(false)),
     );
     payload.insert(
         "shell_profile_path".into(),
-        profile_status.get("shell_profile_path").cloned().unwrap_or(Value::Null),
+        profile_status
+            .get("shell_profile_path")
+            .cloned()
+            .unwrap_or(Value::Null),
     );
     payload.insert(
         "shell_profile_paths".into(),
-        profile_status.get("shell_profile_paths").cloned().unwrap_or(v_arr(vec![])),
+        profile_status
+            .get("shell_profile_paths")
+            .cloned()
+            .unwrap_or(v_arr(vec![])),
     );
     payload.insert(
         "shell_profile_missing_paths".into(),
-        profile_status.get("shell_profile_missing_paths").cloned().unwrap_or(v_arr(vec![])),
+        profile_status
+            .get("shell_profile_missing_paths")
+            .cloned()
+            .unwrap_or(v_arr(vec![])),
     );
     payload.insert("shell_hints".into(), v_map(path_export_hints(&shim_dir)));
     payload.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
     payload.insert(
         "supported_managers".into(),
-        v_str_arr(package_shim_supported_managers().iter().map(|s| s.to_string()).collect()),
+        v_str_arr(
+            package_shim_supported_managers()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        ),
     );
     payload.insert("undetected_managers".into(), v_str_arr(undetected_managers));
     payload
@@ -996,14 +1166,15 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
 pub fn package_shim_dashboard_status(context: &HarnessContext) -> Map<String, Value> {
     let status = package_shim_status(context, None);
     if status.get("path_status").and_then(Value::as_str) != Some("restart_required")
-        || !status.get("shell_profile_configured").and_then(Value::as_bool).unwrap_or(false)
+        || !status
+            .get("shell_profile_configured")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
     {
         return status;
     }
     let installed_managers = string_items(status.get("installed_managers"));
-    if installed_managers.is_empty()
-        || !string_items(status.get("missing_managers")).is_empty()
-    {
+    if installed_managers.is_empty() || !string_items(status.get("missing_managers")).is_empty() {
         return status;
     }
     let details = dict_items(status.get("manager_details"));
@@ -1015,16 +1186,13 @@ pub fn package_shim_dashboard_status(context: &HarnessContext) -> Map<String, Va
                 .map(|m| (m.to_owned(), d.clone()))
         })
         .collect();
-    if installed_managers
-        .iter()
-        .any(|m| {
-            detail_by_manager
-                .get(m)
-                .and_then(|d| d.get("integrity"))
-                .and_then(Value::as_str)
-                != Some("ok")
-        })
-    {
+    if installed_managers.iter().any(|m| {
+        detail_by_manager
+            .get(m)
+            .and_then(|d| d.get("integrity"))
+            .and_then(Value::as_str)
+            != Some("ok")
+    }) {
         return status;
     }
     let mut projected_details: Vec<Map<String, Value>> = Vec::new();
@@ -1050,7 +1218,10 @@ pub fn package_shim_dashboard_status(context: &HarnessContext) -> Map<String, Va
         projected_details.push(projected_detail);
     }
     let mut projected = status.clone();
-    projected.insert("manager_details".into(), v_arr(projected_details.into_iter().map(v_map).collect()));
+    projected.insert(
+        "manager_details".into(),
+        v_arr(projected_details.into_iter().map(v_map).collect()),
+    );
     projected.insert("path_active".into(), v_bool(true));
     projected.insert("path_contains_shim_dir".into(), v_bool(true));
     projected.insert("path_status".into(), v_str("in_path"));
@@ -1141,12 +1312,22 @@ pub fn uninstall_package_shims(
         let mut payload = obj();
         payload.insert(
             "content_hashes".into(),
-            Value::Object(content_hashes.iter().map(|(k, v)| (k.clone(), v_str(v.clone()))).collect()),
+            Value::Object(
+                content_hashes
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v_str(v.clone())))
+                    .collect(),
+            ),
         );
         payload.insert("installed_managers".into(), v_str_arr(remaining.clone()));
         payload.insert(
             "last_test_at".into(),
-            Value::Object(last_test_at.iter().map(|(k, v)| (k.clone(), v_str(v.clone()))).collect()),
+            Value::Object(
+                last_test_at
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v_str(v.clone())))
+                    .collect(),
+            ),
         );
         payload.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
         write_package_shim_manifest(context, &payload);
@@ -1157,7 +1338,10 @@ pub fn uninstall_package_shims(
     r.insert("removed_managers".into(), v_str_arr(requested_managers));
     r.insert("removed_paths".into(), v_str_arr(removed_paths));
     r.insert("remaining_managers".into(), v_str_arr(remaining));
-    r.insert("manifest_path".into(), v_str(manifest_path.to_string_lossy()));
+    r.insert(
+        "manifest_path".into(),
+        v_str(manifest_path.to_string_lossy()),
+    );
     r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
     r
 }
@@ -1196,7 +1380,11 @@ pub fn repair_package_shims(
             Some("missing") | Some("stale") | Some("tampered")
         ) {
             managers_to_repair.push(manager);
-        } else if !detail.get("path_active").and_then(Value::as_bool).unwrap_or(false) {
+        } else if !detail
+            .get("path_active")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             path_repair_required.push(manager);
         }
     }
@@ -1206,12 +1394,21 @@ pub fn repair_package_shims(
         r.insert("repaired_count".into(), serde_json::json!(0));
         r.insert(
             "already_ok".into(),
-            status.get("installed_managers").cloned().unwrap_or(v_arr(vec![])),
+            status
+                .get("installed_managers")
+                .cloned()
+                .unwrap_or(v_arr(vec![])),
         );
-        r.insert("path_repair_required".into(), v_str_arr(path_repair_required));
+        r.insert(
+            "path_repair_required".into(),
+            v_str_arr(path_repair_required),
+        );
         r.insert(
             "shell_hints".into(),
-            status.get("shell_hints").cloned().unwrap_or(v_map(Map::new())),
+            status
+                .get("shell_hints")
+                .cloned()
+                .unwrap_or(v_map(Map::new())),
         );
         r.insert("nothing_to_repair".into(), v_bool(true));
         return r;
@@ -1220,11 +1417,20 @@ pub fn repair_package_shims(
     let result = install_package_shims(context, Some(&managers_slice), path_env);
     let mut r = obj();
     r.insert("repaired".into(), v_str_arr(managers_to_repair.clone()));
-    r.insert("repaired_count".into(), serde_json::json!(managers_to_repair.len()));
-    r.insert("path_repair_required".into(), v_str_arr(path_repair_required));
+    r.insert(
+        "repaired_count".into(),
+        serde_json::json!(managers_to_repair.len()),
+    );
+    r.insert(
+        "path_repair_required".into(),
+        v_str_arr(path_repair_required),
+    );
     r.insert(
         "shell_hints".into(),
-        status.get("shell_hints").cloned().unwrap_or(v_map(Map::new())),
+        status
+            .get("shell_hints")
+            .cloned()
+            .unwrap_or(v_map(Map::new())),
     );
     r.insert("install_result".into(), v_map(result));
     r
@@ -1298,8 +1504,13 @@ pub fn ensure_package_shim_path_in_shell_profile(context: &HarnessContext) -> Ma
     let targets = package_shim_profile_targets(&home_dir, &shim_dir);
     let mut changed_paths: Vec<String> = Vec::new();
     for (profile_path, export_line) in &targets {
-        let result = upsert_managed_profile_block(profile_path, export_line, _PACKAGE_PROFILE_MARKER);
-        if result.get("changed").and_then(Value::as_bool).unwrap_or(false) {
+        let result =
+            upsert_managed_profile_block(profile_path, export_line, _PACKAGE_PROFILE_MARKER);
+        if result
+            .get("changed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
             changed_paths.push(profile_path.to_string_lossy().into_owned());
         }
     }
@@ -1308,7 +1519,12 @@ pub fn ensure_package_shim_path_in_shell_profile(context: &HarnessContext) -> Ma
     r.insert("changed_paths".into(), v_str_arr(changed_paths));
     r.insert(
         "profile_path".into(),
-        v_str(targets.first().map(|(p, _)| p.to_string_lossy().into_owned()).unwrap_or_default()),
+        v_str(
+            targets
+                .first()
+                .map(|(p, _)| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        ),
     );
     r.insert(
         "profile_paths".into(),
@@ -1350,7 +1566,10 @@ pub fn remove_guard_profile_blocks(context: &HarnessContext) -> Map<String, Valu
         }
     }
     r.insert("shim_dir".into(), v_str(shim_dir.to_string_lossy()));
-    r.insert("package_shim_dir".into(), v_str(package_shim_dir.to_string_lossy()));
+    r.insert(
+        "package_shim_dir".into(),
+        v_str(package_shim_dir.to_string_lossy()),
+    );
     r
 }
 
@@ -1430,7 +1649,10 @@ fn strip_managed_marker_blocks(content: &str, marker: &str) -> String {
             let prev_kept_blank = keep.last().map(|l| l.trim().is_empty()).unwrap_or(false);
             let prev_dropped = index > 0 && drop_indices.contains(&(index - 1));
             let next_dropped = index + 1 < lines.len() && drop_indices.contains(&(index + 1));
-            if (prev_dropped && next_dropped) || (prev_dropped && keep.is_empty()) || (prev_kept_blank && prev_dropped) {
+            if (prev_dropped && next_dropped)
+                || (prev_dropped && keep.is_empty())
+                || (prev_kept_blank && prev_dropped)
+            {
                 continue;
             }
         }
@@ -1447,7 +1669,11 @@ fn strip_managed_marker_blocks(content: &str, marker: &str) -> String {
 fn guard_shim_profile_target(home_dir: &Path, shim_dir: &Path) -> (PathBuf, String) {
     let shell = std::env::var("SHELL")
         .ok()
-        .and_then(|s| Path::new(&s).file_name().map(|n| n.to_string_lossy().into_owned()))
+        .and_then(|s| {
+            Path::new(&s)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
         .unwrap_or_default();
     let marker = _GUARD_PROFILE_MARKER;
     if shell == "fish" {
@@ -1472,7 +1698,11 @@ fn guard_shim_profile_target(home_dir: &Path, shim_dir: &Path) -> (PathBuf, Stri
 fn package_shim_profile_target(home_dir: &Path, shim_dir: &Path) -> (PathBuf, String) {
     let shell = std::env::var("SHELL")
         .ok()
-        .and_then(|s| Path::new(&s).file_name().map(|n| n.to_string_lossy().into_owned()))
+        .and_then(|s| {
+            Path::new(&s)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
         .unwrap_or_default();
     let marker = _PACKAGE_PROFILE_MARKER;
     if shell == "fish" {
@@ -1588,7 +1818,10 @@ fn build_package_manager_python_shim(context: &HarnessContext, command: &str) ->
     let shim_dir = context.package_shim_bin_dir();
     let command_args = package_protect_command_args(context);
     let local_test_runners: Vec<String> = {
-        let mut v: Vec<String> = _LOCAL_TEST_RUNNER_COMMANDS.iter().map(|s| s.to_string()).collect();
+        let mut v: Vec<String> = _LOCAL_TEST_RUNNER_COMMANDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         v.sort();
         v
     };
@@ -1770,16 +2003,16 @@ fn package_shim_manifest_path(context: &HarnessContext) -> PathBuf {
 /// `_filtered_manager_path` (:1319-1327).
 fn filtered_manager_path(context: &HarnessContext, path_env: Option<&str>) -> String {
     let shim_dir = context.package_shim_bin_dir();
-    let shim_dir_abs = resolve_or_self(&PathBuf::from(shellexpand_tilde(&shim_dir.to_string_lossy())));
+    let shim_dir_abs = resolve_or_self(&PathBuf::from(shellexpand_tilde(
+        &shim_dir.to_string_lossy(),
+    )));
     let effective_path = path_env
         .map(str::to_owned)
         .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
     let filtered: Vec<String> = effective_path
         .split(':')
         .filter(|e| !e.is_empty())
-        .filter(|entry| {
-            resolve_or_self(&PathBuf::from(shellexpand_tilde(entry))) != shim_dir_abs
-        })
+        .filter(|entry| resolve_or_self(&PathBuf::from(shellexpand_tilde(entry))) != shim_dir_abs)
         .map(str::to_owned)
         .collect();
     filtered.join(":")
@@ -1824,7 +2057,9 @@ fn load_package_shim_manifest(context: &HarnessContext) -> Map<String, Value> {
 }
 
 /// `_load_package_shim_manifest_with_state` (:1355-1374).
-fn load_package_shim_manifest_with_state(context: &HarnessContext) -> (Map<String, Value>, &'static str) {
+fn load_package_shim_manifest_with_state(
+    context: &HarnessContext,
+) -> (Map<String, Value>, &'static str) {
     let manifest_path = package_shim_manifest_path(context);
     if !manifest_path.exists() {
         return (Map::new(), "missing");
@@ -1860,7 +2095,10 @@ fn write_package_shim_manifest(context: &HarnessContext, manifest: &Map<String, 
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let _ = fs::write(&path, serde_json::to_string_pretty(&Value::Object(manifest.clone())).unwrap_or_default());
+    let _ = fs::write(
+        &path,
+        serde_json::to_string_pretty(&Value::Object(manifest.clone())).unwrap_or_default(),
+    );
 }
 
 /// `_record_package_shim_test_results` (:1397-1413).
@@ -1877,7 +2115,12 @@ fn record_package_shim_test_results(context: &HarnessContext, results: &[Map<Str
     }
     manifest.insert(
         "last_test_at".into(),
-        Value::Object(last_test_at.iter().map(|(k, v)| (k.clone(), v_str(v.clone()))).collect()),
+        Value::Object(
+            last_test_at
+                .iter()
+                .map(|(k, v)| (k.clone(), v_str(v.clone())))
+                .collect(),
+        ),
     );
     write_package_shim_manifest(context, &manifest);
 }
@@ -1913,7 +2156,10 @@ fn path_export_hints(shim_dir: &Path) -> Map<String, Value> {
     hints.insert("fish".into(), v_str(fish_path_prepend(shim_dir)));
     hints.insert(
         "powershell".into(),
-        v_str(format!("$env:Path = \"{};$env:Path\"", shim_dir.to_string_lossy())),
+        v_str(format!(
+            "$env:Path = \"{};$env:Path\"",
+            shim_dir.to_string_lossy()
+        )),
     );
     hints
 }
@@ -1928,8 +2174,12 @@ pub fn probe_package_shim_intercepts(
 ) -> Map<String, Value> {
     let timeout = timeout_seconds.unwrap_or(_PACKAGE_SHIM_PROBE_TIMEOUT_SECONDS);
     let status = package_shim_status(context, None);
-    let installed: BTreeSet<String> = string_items(status.get("installed_managers")).into_iter().collect();
-    let protected: BTreeSet<String> = string_items(status.get("protected_managers")).into_iter().collect();
+    let installed: BTreeSet<String> = string_items(status.get("installed_managers"))
+        .into_iter()
+        .collect();
+    let protected: BTreeSet<String> = string_items(status.get("protected_managers"))
+        .into_iter()
+        .collect();
     let tested_managers: Vec<String> = match managers {
         Some(m) => m.iter().map(|s| s.to_string()).collect(),
         None => installed.iter().cloned().collect(),
@@ -1939,14 +2189,15 @@ pub fn probe_package_shim_intercepts(
         .filter(|m| installed.contains(*m) && !protected.contains(*m))
         .cloned()
         .collect();
-    let detail_by_manager: BTreeMap<String, Map<String, Value>> = dict_items(status.get("manager_details"))
-        .into_iter()
-        .filter_map(|d| {
-            d.get("manager")
-                .and_then(Value::as_str)
-                .map(|m| (m.to_owned(), d.clone()))
-        })
-        .collect();
+    let detail_by_manager: BTreeMap<String, Map<String, Value>> =
+        dict_items(status.get("manager_details"))
+            .into_iter()
+            .filter_map(|d| {
+                d.get("manager")
+                    .and_then(Value::as_str)
+                    .map(|m| (m.to_owned(), d.clone()))
+            })
+            .collect();
     let target_workspace = workspace_dir
         .map(|p| p.to_path_buf())
         .or_else(|| context.workspace_dir.clone())
@@ -2004,7 +2255,10 @@ pub fn probe_package_shim_intercepts(
         }
         let probe_args = package_shim_probe_args(manager);
         let mut probe_env: Vec<(String, String)> = std::env::vars().collect();
-        probe_env.push((SHIM_PROBE_ENV_VAR.to_owned(), SHIM_PROBE_ENV_VALUE.to_owned()));
+        probe_env.push((
+            SHIM_PROBE_ENV_VAR.to_owned(),
+            SHIM_PROBE_ENV_VALUE.to_owned(),
+        ));
         let mut cmd = std::process::Command::new(&shim_path);
         cmd.args(&probe_args)
             .env(SHIM_PROBE_ENV_VAR, SHIM_PROBE_ENV_VALUE)
@@ -2034,15 +2288,27 @@ pub fn probe_package_shim_intercepts(
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 let truncated = stdout.len() > _MAX_PACKAGE_SHIM_PROBE_OUTPUT_BYTES
                     || stderr.len() > _MAX_PACKAGE_SHIM_PROBE_OUTPUT_BYTES;
-                let stdout_snippet: String = stdout.chars().take(_MAX_PACKAGE_SHIM_PROBE_OUTPUT_BYTES).collect();
-                let stderr_snippet: String = stderr.chars().take(_MAX_PACKAGE_SHIM_PROBE_OUTPUT_BYTES).collect();
+                let stdout_snippet: String = stdout
+                    .chars()
+                    .take(_MAX_PACKAGE_SHIM_PROBE_OUTPUT_BYTES)
+                    .collect();
+                let stderr_snippet: String = stderr
+                    .chars()
+                    .take(_MAX_PACKAGE_SHIM_PROBE_OUTPUT_BYTES)
+                    .collect();
                 let payload = parse_protect_json_stdout(&stdout);
                 let evaluator_evidence = protect_evaluator_evidence(&payload);
                 let mut r = obj();
-                r.insert("evaluator_invoked".into(), v_bool(evaluator_evidence.is_some()));
+                r.insert(
+                    "evaluator_invoked".into(),
+                    v_bool(evaluator_evidence.is_some()),
+                );
                 r.insert("intercept_ran".into(), v_bool(true));
                 r.insert("manager".into(), v_str(manager));
-                r.insert("returncode".into(), serde_json::json!(out.status.code().unwrap_or(-1)));
+                r.insert(
+                    "returncode".into(),
+                    serde_json::json!(out.status.code().unwrap_or(-1)),
+                );
                 r.insert("stdout".into(), v_str(stdout_snippet));
                 r.insert("stderr".into(), v_str(stderr_snippet));
                 r.insert("truncated".into(), v_bool(truncated));
@@ -2062,23 +2328,38 @@ pub fn probe_package_shim_intercepts(
         }
     }
     record_package_shim_test_results(context, &manager_results);
-    let intercept_proved = manager_results
-        .iter()
-        .all(|r| r.get("intercept_ran").and_then(Value::as_bool).unwrap_or(false))
-        && !manager_results.is_empty();
+    let intercept_proved = manager_results.iter().all(|r| {
+        r.get("intercept_ran")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    }) && !manager_results.is_empty();
     let mut r = obj();
     r.insert(
         "blocked_execution".into(),
-        v_bool(!tested_managers.is_empty() && tested_managers.iter().all(|m| protected.contains(m))),
+        v_bool(
+            !tested_managers.is_empty() && tested_managers.iter().all(|m| protected.contains(m)),
+        ),
     );
     r.insert("intercept_proved".into(), v_bool(intercept_proved));
-    r.insert("manager_results".into(), v_arr(manager_results.into_iter().map(v_map).collect()));
+    r.insert(
+        "manager_results".into(),
+        v_arr(manager_results.into_iter().map(v_map).collect()),
+    );
     r.insert(
         "missing_managers".into(),
-        v_str_arr(tested_managers.iter().filter(|m| !installed.contains(*m)).cloned().collect()),
+        v_str_arr(
+            tested_managers
+                .iter()
+                .filter(|m| !installed.contains(*m))
+                .cloned()
+                .collect(),
+        ),
     );
     r.insert("package_shims".into(), v_map(status));
-    r.insert("path_repair_required".into(), v_str_arr(path_repair_required));
+    r.insert(
+        "path_repair_required".into(),
+        v_str_arr(path_repair_required),
+    );
     r.insert("tested_managers".into(), v_str_arr(tested_managers));
     r
 }
@@ -2153,7 +2434,11 @@ fn package_shim_probe_args(manager: &str) -> Vec<String> {
     }
 }
 
-fn installed_package_shim_attestation_bytes(_shim_dir: &Path, _command: &str, content: &[u8]) -> Vec<u8> {
+fn installed_package_shim_attestation_bytes(
+    _shim_dir: &Path,
+    _command: &str,
+    content: &[u8],
+) -> Vec<u8> {
     content.to_vec()
 }
 
@@ -2173,7 +2458,8 @@ fn classify_installed_package_shim_integrity(
         return "ok".to_owned();
     }
     if let Some(hash) = stored_hash {
-        let attestation = installed_package_shim_attestation_bytes(shim_dir, command, installed_wrapper);
+        let attestation =
+            installed_package_shim_attestation_bytes(shim_dir, command, installed_wrapper);
         if build_shim_content_hash(&attestation) == hash {
             return "stale".to_owned();
         }
@@ -2181,7 +2467,11 @@ fn classify_installed_package_shim_integrity(
     "tampered".to_owned()
 }
 
-fn expected_package_shim_executable_bytes(python_source: &str, _shim_dir: &Path, _command: &str) -> Vec<u8> {
+fn expected_package_shim_executable_bytes(
+    python_source: &str,
+    _shim_dir: &Path,
+    _command: &str,
+) -> Vec<u8> {
     python_source.as_bytes().to_vec()
 }
 

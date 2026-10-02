@@ -120,12 +120,8 @@ fn py_rpartition<'a>(value: &'a str, sep: &str) -> (&'a str, bool, &'a str) {
 const PACKAGE_LAUNCHERS: &[&str] = &["bunx", "npm", "npx", "pnpm", "uvx", "yarn", "pipx"];
 
 /// `_PACKAGE_SOURCE_FLAGS` (:201-206).
-const PACKAGE_SOURCE_FLAGS: &[&str] = &[
-    "--registry",
-    "--index-url",
-    "--extra-index-url",
-    "--index",
-];
+const PACKAGE_SOURCE_FLAGS: &[&str] =
+    &["--registry", "--index-url", "--extra-index-url", "--index"];
 
 /// `build_mcp_server_identity` (:41-87) — stable server identity with
 /// secret-safe configured env binding.
@@ -233,11 +229,17 @@ pub fn mcp_server_identity_metadata(identity: &McpServerIdentity) -> Map<String,
     );
     out.insert("args_hash".to_owned(), json!(identity.args_hash));
     out.insert("package_name".to_owned(), json!(identity.package_name));
-    out.insert("package_version".to_owned(), json!(identity.package_version));
+    out.insert(
+        "package_version".to_owned(),
+        json!(identity.package_version),
+    );
     out.insert("package_source".to_owned(), json!(identity.package_source));
     out.insert("transport".to_owned(), json!(identity.transport));
     out.insert("env_keys".to_owned(), json!(identity.env_keys));
-    out.insert("env_values_hash".to_owned(), json!(identity.env_values_hash));
+    out.insert(
+        "env_values_hash".to_owned(),
+        json!(identity.env_values_hash),
+    );
     out.insert("identity_hash".to_owned(), json!(identity.identity_hash));
     out
 }
@@ -276,7 +278,8 @@ pub fn resolved_package_launcher_executable(command: &str) -> Option<PathBuf> {
     let resolved = if candidate.is_absolute() {
         std::fs::canonicalize(&candidate).ok()?
     } else {
-        let found = which_package_launcher(command).or_else(|| which_package_launcher(&launcher))?;
+        let found =
+            which_package_launcher(command).or_else(|| which_package_launcher(&launcher))?;
         std::fs::canonicalize(Path::new(&found)).ok()?
     };
     if !resolved.is_file() {
@@ -753,9 +756,7 @@ fn looks_like_runtime_path(value: &str) -> bool {
     // sits strictly inside the name (`0 < i < len-1`) — dotfiles have none.
     let name = normalized.rsplit('/').next().unwrap_or("");
     let suffix = match name.rfind('.') {
-        Some(index) if index > 0 && index < name.len() - 1 => {
-            name[index..].to_lowercase()
-        }
+        Some(index) if index > 0 && index < name.len() - 1 => name[index..].to_lowercase(),
         _ => String::new(),
     };
     if !matches!(
@@ -1103,19 +1104,16 @@ fn evaluate_tool_call_inner(
     claim_saved_approval: bool,
 ) -> ToolCallEvaluation {
     let current = calls.evaluate_current_tool_call(config, artifact, arguments);
-    let current = calls.apply_temporary_mcp_grant(
-        store,
-        artifact,
-        artifact_hash,
-        arguments,
-        current,
-    );
+    let current =
+        calls.apply_temporary_mcp_grant(store, artifact, artifact_hash, arguments, current);
     // `metadata.get("mcp_provider_catalog_hash")` is `str | None | <other>`;
     // Python `!=` is strict inequality across types — only an equal `str`
     // matches.
     let provider_catalog_hash = artifact.metadata.get("mcp_provider_catalog_hash");
-    let catalog_hash_changed = match (store.read_mcp_provider_authority_hash(), provider_catalog_hash)
-    {
+    let catalog_hash_changed = match (
+        store.read_mcp_provider_authority_hash(),
+        provider_catalog_hash,
+    ) {
         (Some(saved), Some(value)) => value.as_str() != Some(saved.as_str()),
         (Some(_), None) => true,
         (None, Some(_)) => true,

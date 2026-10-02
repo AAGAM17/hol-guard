@@ -26,7 +26,9 @@ use guard_contracts::{
 use regex::Regex;
 
 use crate::command_launcher_floors::shlex_split;
-use crate::data_flow::{extract_command_segments, extract_input_redirects, extract_pipes, ShellPipe};
+use crate::data_flow::{
+    extract_command_segments, extract_input_redirects, extract_pipes, ShellPipe,
+};
 use crate::npm_source_spec::split_url;
 use crate::shell_secret_read_support::{classify_secret_path, SecretPathMatch};
 use crate::shell_structure::extract_command_substitutions;
@@ -77,11 +79,13 @@ static NODE_SECRET_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     .expect("NODE_SECRET_FETCH_PATTERN")
 });
 
-static SCP_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)(?:^|[\s;&|])scp\b(?P<body>[^\r\n;&|]+)").expect("SCP_PATTERN"));
+static SCP_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?is)(?:^|[\s;&|])scp\b(?P<body>[^\r\n;&|]+)").expect("SCP_PATTERN")
+});
 
 static TOKEN_SOURCE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:NODE_AUTH_TOKEN|_authToken|npm[_-]?token)\b").expect("TOKEN_SOURCE_PATTERN")
+    Regex::new(r"(?i)\b(?:NODE_AUTH_TOKEN|_authToken|npm[_-]?token)\b")
+        .expect("TOKEN_SOURCE_PATTERN")
 });
 
 const CLIPBOARD_COMMANDS: &[&str] = &["pbcopy", "xclip", "xsel", "wl-copy", "clip", "clip.exe"];
@@ -107,8 +111,10 @@ static SECRET_VARIABLE_ASSIGNMENT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static SHELL_VARIABLE_EXPANSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\$(?:(?P<name>[A-Za-z_][A-Za-z0-9_]*)|\{(?P<braced_name>[A-Za-z_][A-Za-z0-9_]*)\})")
-        .expect("SHELL_VARIABLE_EXPANSION_PATTERN")
+    Regex::new(
+        r"\$(?:(?P<name>[A-Za-z_][A-Za-z0-9_]*)|\{(?P<braced_name>[A-Za-z_][A-Za-z0-9_]*)\})",
+    )
+    .expect("SHELL_VARIABLE_EXPANSION_PATTERN")
 });
 
 static SECRET_PATH_TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -119,8 +125,10 @@ static SECRET_PATH_TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static TEMP_SECRET_WRITE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?is)(?:(?:^|[^\d>])>{1,2}\s*(?P<redirect>/tmp/[^\s;&|]+)|tee\b(?P<tee>[^\r\n;&|]+))")
-        .expect("TEMP_SECRET_WRITE_PATTERN")
+    Regex::new(
+        r"(?is)(?:(?:^|[^\d>])>{1,2}\s*(?P<redirect>/tmp/[^\s;&|]+)|tee\b(?P<tee>[^\r\n;&|]+))",
+    )
+    .expect("TEMP_SECRET_WRITE_PATTERN")
 });
 
 const SECRET_READ_COMMANDS: &[&str] = &[
@@ -128,13 +136,28 @@ const SECRET_READ_COMMANDS: &[&str] = &[
     "tail", "xxd", "yq",
 ];
 
-const SCP_OPTIONS_WITH_VALUES: &[&str] = &["-c", "-D", "-F", "-i", "-J", "-l", "-o", "-P", "-S", "-X"];
+const SCP_OPTIONS_WITH_VALUES: &[&str] =
+    &["-c", "-D", "-F", "-i", "-J", "-l", "-o", "-P", "-S", "-X"];
 
-const GIT_OPTIONS_WITH_VALUES: &[&str] =
-    &["-C", "-c", "--config-env", "--exec-path", "--git-dir", "--work-tree"];
+const GIT_OPTIONS_WITH_VALUES: &[&str] = &[
+    "-C",
+    "-c",
+    "--config-env",
+    "--exec-path",
+    "--git-dir",
+    "--work-tree",
+];
 
-const NPM_OPTIONS_WITH_VALUES: &[&str] =
-    &["-w", "--access", "--cache", "--otp", "--prefix", "--registry", "--tag", "--userconfig"];
+const NPM_OPTIONS_WITH_VALUES: &[&str] = &[
+    "-w",
+    "--access",
+    "--cache",
+    "--otp",
+    "--prefix",
+    "--registry",
+    "--tag",
+    "--userconfig",
+];
 
 // ---------------------------------------------------------------------------
 // data_flow.py URL helpers (:211-252).
@@ -277,7 +300,11 @@ fn strip_env_assignment_prefix(command: &str) -> String {
         index = skip_spaces(&chars, index);
         let name_start = index;
         if index >= chars.len() || !(char_isalpha(chars[index]) || chars[index] == '_') {
-            return chars[index..].iter().collect::<String>().trim_start().to_owned();
+            return chars[index..]
+                .iter()
+                .collect::<String>()
+                .trim_start()
+                .to_owned();
         }
         index += 1;
         while index < chars.len() && (chars[index].is_alphanumeric() || chars[index] == '_') {
@@ -354,7 +381,9 @@ fn is_scp_remote_target(value: &str) -> bool {
 
 fn advance_option(tokens: &[String], index: usize, options_with_values: &[&str]) -> usize {
     let token = &tokens[index];
-    if !token.contains('=') && options_with_values.contains(&token.as_str()) && index + 1 < tokens.len()
+    if !token.contains('=')
+        && options_with_values.contains(&token.as_str())
+        && index + 1 < tokens.len()
     {
         return index + 2;
     }
@@ -528,12 +557,13 @@ fn value_uses_variable(value: &str, names: &HashSet<String>) -> bool {
 }
 
 fn curl_segment_uses_variable(segment: &str, names: &HashSet<String>) -> bool {
-    if !segment_executes_command(segment, &["curl", "curl.exe"]) || extract_urls(segment).is_empty() {
+    if !segment_executes_command(segment, &["curl", "curl.exe"]) || extract_urls(segment).is_empty()
+    {
         return false;
     }
-    CURL_DATA_VALUE_PATTERN.captures_iter(segment).any(|m| {
-        value_uses_variable(m.name("value").map(|g| g.as_str()).unwrap_or(""), names)
-    })
+    CURL_DATA_VALUE_PATTERN
+        .captures_iter(segment)
+        .any(|m| value_uses_variable(m.name("value").map(|g| g.as_str()).unwrap_or(""), names))
 }
 
 fn segment_secret_variable_assignments(
@@ -588,7 +618,9 @@ fn curl_data_uses_secret_variable(command: &str, workspace: Option<&Path>) -> bo
         return false;
     }
     let names: HashSet<String> = variables.iter().map(|a| a.name.clone()).collect();
-    command_execution_segments(command).iter().any(|segment| curl_segment_uses_variable(segment, &names))
+    command_execution_segments(command)
+        .iter()
+        .any(|segment| curl_segment_uses_variable(segment, &names))
 }
 
 fn curl_data_uses_encoded_secret_variable(command: &str, workspace: Option<&Path>) -> bool {
@@ -941,7 +973,13 @@ fn curl_option_data_path(flag: &str, value: &str) -> Option<String> {
         if !field_value.is_empty() && (fv_chars[0] == '@' || fv_chars[0] == '<') {
             let rest: String = fv_chars[1..].iter().collect();
             return Some(
-                rest.split(';').next().unwrap_or("").split(',').next().unwrap_or("").to_owned(),
+                rest.split(';')
+                    .next()
+                    .unwrap_or("")
+                    .split(',')
+                    .next()
+                    .unwrap_or("")
+                    .to_owned(),
             );
         }
         return None;
@@ -1035,16 +1073,14 @@ fn python_posts_secret(command: &str, workspace: Option<&Path>) -> bool {
     for segment in extract_command_segments(command) {
         if segment_executes_command(&segment, &["python", "python3"])
             && !extract_urls(&segment).is_empty()
-            && PYTHON_SECRET_POST_PATTERN
-                .captures_iter(&segment)
-                .any(|m| {
-                    classify_secret_path(
-                        m.name("path").map(|g| g.as_str()).unwrap_or(""),
-                        workspace,
-                        None,
-                    )
-                    .is_some()
-                })
+            && PYTHON_SECRET_POST_PATTERN.captures_iter(&segment).any(|m| {
+                classify_secret_path(
+                    m.name("path").map(|g| g.as_str()).unwrap_or(""),
+                    workspace,
+                    None,
+                )
+                .is_some()
+            })
         {
             return true;
         }
@@ -1057,16 +1093,14 @@ fn node_fetches_secret(command: &str, workspace: Option<&Path>) -> bool {
     for segment in extract_command_segments(command) {
         if segment_executes_command(&segment, &["node"])
             && !extract_urls(&segment).is_empty()
-            && NODE_SECRET_FETCH_PATTERN
-                .captures_iter(&segment)
-                .any(|m| {
-                    classify_secret_path(
-                        m.name("path").map(|g| g.as_str()).unwrap_or(""),
-                        workspace,
-                        None,
-                    )
-                    .is_some()
-                })
+            && NODE_SECRET_FETCH_PATTERN.captures_iter(&segment).any(|m| {
+                classify_secret_path(
+                    m.name("path").map(|g| g.as_str()).unwrap_or(""),
+                    workspace,
+                    None,
+                )
+                .is_some()
+            })
         {
             return true;
         }
@@ -1174,8 +1208,7 @@ fn scp_sends_secret(command: &str, workspace: Option<&Path>) -> bool {
             continue;
         }
         if sources.iter().any(|source| {
-            !is_scp_remote_target(source)
-                && classify_secret_path(source, workspace, None).is_some()
+            !is_scp_remote_target(source) && classify_secret_path(source, workspace, None).is_some()
         }) {
             return true;
         }
@@ -1227,7 +1260,9 @@ fn npm_publish_with_token_source(command: &str, workspace: Option<&Path>) -> boo
         if TOKEN_SOURCE_PATTERN.is_match(segment) {
             return true;
         }
-        has_npm_secret_match(&data_flow_secret_path_matches_in_command(segment, workspace))
+        has_npm_secret_match(&data_flow_secret_path_matches_in_command(
+            segment, workspace,
+        ))
     })
 }
 
@@ -1240,11 +1275,7 @@ fn has_npm_secret_match(secret_matches: &[SecretPathMatch]) -> bool {
 }
 
 /// `_clipboard_receives_secret` (:537-547).
-fn clipboard_receives_secret(
-    pipes: &[ShellPipe],
-    command: &str,
-    workspace: Option<&Path>,
-) -> bool {
+fn clipboard_receives_secret(pipes: &[ShellPipe], command: &str, workspace: Option<&Path>) -> bool {
     if pipes.is_empty() {
         return false;
     }

@@ -20,16 +20,34 @@ const SOURCE_SEARCH_TOOLS: &[&str] = &[
 const READ_ONLY_INLINE_TOOLS: &[&str] = &["jq", "yq", "awk", "sed"];
 
 pub const SOURCE_INSPECTION_PARTS: &[&str] = &[
-    "__tests__", "app", "constants", "dashboard", "docs", "lib", "packages", "scripts", "src",
-    "test", "tests", "workers",
+    "__tests__",
+    "app",
+    "constants",
+    "dashboard",
+    "docs",
+    "lib",
+    "packages",
+    "scripts",
+    "src",
+    "test",
+    "tests",
+    "workers",
 ];
 pub const SOURCE_INSPECTION_EXTENSIONS: &[&str] = &[
     ".c", ".cc", ".cpp", ".css", ".go", ".h", ".hpp", ".html", ".java", ".js", ".jsx", ".json",
     ".md", ".mjs", ".py", ".rs", ".sh", ".toml", ".ts", ".tsx", ".yaml", ".yml",
 ];
 pub const SOURCE_INSPECTION_SENSITIVE_PARTS: &[&str] = &[
-    ".aws", ".docker", ".env", ".git-credentials", ".kube", ".netrc", ".npmrc", ".pypirc",
-    ".ssh", "credentials",
+    ".aws",
+    ".docker",
+    ".env",
+    ".git-credentials",
+    ".kube",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".ssh",
+    "credentials",
 ];
 pub const SOURCE_INSPECTION_BENIGN_DOTFILES: &[&str] = &[".nvmrc"];
 const KNOWN_SKILL_DOC_ROOT_SUFFIXES: &[&str] = &[
@@ -43,8 +61,23 @@ pub const KNOWN_AGENT_DOC_SUFFIXES: &[&str] = &[
     ".codex/docs/token-discipline.md",
 ];
 const FD_OPTION_VALUE_FLAGS: &[&str] = &[
-    "-d", "--max-depth", "-E", "--exclude", "-e", "--extension", "-t", "--type", "-S", "--size",
-    "-o", "--owner", "--changed-before", "--changed-within", "--changed-after", "-j", "--threads",
+    "-d",
+    "--max-depth",
+    "-E",
+    "--exclude",
+    "-e",
+    "--extension",
+    "-t",
+    "--type",
+    "-S",
+    "--size",
+    "-o",
+    "--owner",
+    "--changed-before",
+    "--changed-within",
+    "--changed-after",
+    "-j",
+    "--threads",
     "--path-separator",
 ];
 
@@ -97,15 +130,15 @@ static CURL_READ_ONLY_HTTP_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static WGET_READ_ONLY_HTTP_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?:^|[\s;&|])(?P<tool>wget)\b(?=[^\r\n;&|]*(?<!\S)--spider\b)[^\r\n;&|]*https?://")
-        .expect("WGET_READ_ONLY_HTTP_FETCH_PATTERN")
+    Regex::new(
+        r"(?i)(?:^|[\s;&|])(?P<tool>wget)\b(?=[^\r\n;&|]*(?<!\S)--spider\b)[^\r\n;&|]*https?://",
+    )
+    .expect("WGET_READ_ONLY_HTTP_FETCH_PATTERN")
 });
 
 static NODE_READ_ONLY_HTTP_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:^|[\s;&|])(?P<tool>node)\b(?s:.*?)(?:\bfetch\s*\(|\bhttps?\.get\s*\()",
-    )
-    .expect("NODE_READ_ONLY_HTTP_FETCH_PATTERN")
+    Regex::new(r"(?i)(?:^|[\s;&|])(?P<tool>node)\b(?s:.*?)(?:\bfetch\s*\(|\bhttps?\.get\s*\()")
+        .expect("NODE_READ_ONLY_HTTP_FETCH_PATTERN")
 });
 
 static PYTHON_READ_ONLY_HTTP_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -139,8 +172,19 @@ static HTTP_FETCH_FILE_WRITE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 const CURL_LONG_AUTH_FLAGS: &[&str] = &[
-    "--anyauth", "--aws-sigv4", "--basic", "--digest", "--negotiate", "--netrc", "--netrc-file",
-    "--netrc-optional", "--ntlm", "--ntlm-wb", "--oauth2-bearer", "--proxy-user", "--user",
+    "--anyauth",
+    "--aws-sigv4",
+    "--basic",
+    "--digest",
+    "--negotiate",
+    "--netrc",
+    "--netrc-file",
+    "--netrc-optional",
+    "--ntlm",
+    "--ntlm-wb",
+    "--oauth2-bearer",
+    "--proxy-user",
+    "--user",
 ];
 
 static LOCAL_FILE_READ_IN_HTTP_SCRIPT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -175,13 +219,40 @@ static ENV_ASSIGNMENT_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*=").expect("ENV_ASSIGNMENT_PATTERN"));
 
 const EXECUTION_TOOLS: &[&str] = &[
-    ".", "bash", "chmod", "cmd", "csh", "dash", "fish", "install", "ksh", "mksh", "node", "perl",
-    "php", "powershell", "pwsh", "python", "python3", "ruby", "sh", "source", "tcsh", "zsh",
+    ".",
+    "bash",
+    "chmod",
+    "cmd",
+    "csh",
+    "dash",
+    "fish",
+    "install",
+    "ksh",
+    "mksh",
+    "node",
+    "perl",
+    "php",
+    "powershell",
+    "pwsh",
+    "python",
+    "python3",
+    "ruby",
+    "sh",
+    "source",
+    "tcsh",
+    "zsh",
 ];
 
 const SUDO_ARG_FLAGS: &[&str] = &["-u", "-g", "-h", "-p", "-C", "-T"];
 const SUDO_ARG_LONG_FLAGS: &[&str] = &[
-    "--chdir", "--group", "--host", "--login-class", "--prompt", "--role", "--type", "--user",
+    "--chdir",
+    "--group",
+    "--host",
+    "--login-class",
+    "--prompt",
+    "--role",
+    "--type",
+    "--user",
 ];
 
 static FAKE_CREDENTIAL_PATTERN_A: LazyLock<Regex> = LazyLock::new(|| {
@@ -227,8 +298,7 @@ static HEREDOC_SCRIPT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 static NEWLINE_COMMAND_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\n\s*\S+").expect("NEWLINE_COMMAND_PATTERN"));
 static HEREDOC_DELIMITER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"#)
-        .expect("HEREDOC_DELIMITER_PATTERN")
+    Regex::new(r#"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?"#).expect("HEREDOC_DELIMITER_PATTERN")
 });
 
 /// `SourceSearchClassification` (:487-494).
@@ -416,7 +486,10 @@ pub fn fd_args_follow_symlinks(args: &[String]) -> bool {
         }
         let cluster = &arg[1..];
         for flag in cluster.chars() {
-            if matches!(flag, 'c' | 'd' | 'E' | 'e' | 'j' | 'o' | 'S' | 't' | 'x' | 'X') {
+            if matches!(
+                flag,
+                'c' | 'd' | 'E' | 'e' | 'j' | 'o' | 'S' | 't' | 'x' | 'X'
+            ) {
                 break;
             }
             if flag == 'L' {
@@ -764,7 +837,13 @@ fn leading_tool(parts: &[String]) -> Option<String> {
 
 /// `_strip_path_prefix` (:677-680).
 fn strip_path_prefix(token: &str) -> &str {
-    token.rsplit('/').next().unwrap_or(token).rsplit('\\').next().unwrap_or(token)
+    token
+        .rsplit('/')
+        .next()
+        .unwrap_or(token)
+        .rsplit('\\')
+        .next()
+        .unwrap_or(token)
 }
 
 /// `_pipes_to_execution` (:681-694).
@@ -856,7 +935,9 @@ fn has_heredoc_follow_on_command(command: &str) -> bool {
     let lines: Vec<&str> = command.lines().skip(1).collect();
     for (index, line) in lines.iter().enumerate() {
         if line.trim() == delimiter {
-            return lines[index + 1..].iter().any(|rest| !rest.trim().is_empty());
+            return lines[index + 1..]
+                .iter()
+                .any(|rest| !rest.trim().is_empty());
         }
     }
     true

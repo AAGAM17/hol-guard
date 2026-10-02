@@ -171,7 +171,14 @@ fn action_envelope_action_fields() -> std::collections::HashSet<&'static str> {
 
 /// `_ACTION_MESSAGES[guard_action]` -> `(action, user_title, harness_message,
 /// retry_instruction)`.
-fn action_messages(a: GuardAction) -> (GuardDecisionAction, &'static str, &'static str, &'static str) {
+fn action_messages(
+    a: GuardAction,
+) -> (
+    GuardDecisionAction,
+    &'static str,
+    &'static str,
+    &'static str,
+) {
     match a {
         GuardAction::Allow => (
             GuardDecisionAction::Allow,
@@ -305,10 +312,8 @@ fn require_exact_fields(
     expected: &std::collections::HashSet<&'static str>,
     context: &str,
 ) -> Res<()> {
-    let actual: std::collections::HashSet<&str> =
-        payload.keys().map(|k| k.as_str()).collect();
-    let expected_set: std::collections::HashSet<&str> =
-        expected.iter().copied().collect();
+    let actual: std::collections::HashSet<&str> = payload.keys().map(|k| k.as_str()).collect();
+    let expected_set: std::collections::HashSet<&str> = expected.iter().copied().collect();
     if actual == expected_set {
         return Ok(());
     }
@@ -518,7 +523,11 @@ impl AuthoritativeGuardDecision {
             Value::Object(m) => m,
             _ => return err("authoritative_decision must be an object"),
         };
-        require_exact_fields(p, &authoritative_decision_fields(), "authoritative_decision")?;
+        require_exact_fields(
+            p,
+            &authoritative_decision_fields(),
+            "authoritative_decision",
+        )?;
         let schema_version = match p.get("schema_version").and_then(Value::as_i64) {
             Some(v) => v,
             None => return err("schema_version must be an integer"),
@@ -535,7 +544,9 @@ impl AuthoritativeGuardDecision {
         };
         let signals = parse_signals(p.get("signals").unwrap_or(&Value::Null))?;
         let enforcement = match p.get("enforcement") {
-            Some(Value::Object(m)) => GuardDecisionEnforcementState::decode(&Value::Object(m.clone()))?,
+            Some(Value::Object(m)) => {
+                GuardDecisionEnforcementState::decode(&Value::Object(m.clone()))?
+            }
             _ => return err("enforcement must be an object"),
         };
         let decision_v2 = match p.get("decision_v2") {
@@ -669,7 +680,10 @@ pub fn decision_from_legacy_policy_action(
         harness_message: harness_detail,
         dashboard_primary_detail: dashboard_detail,
         approval_scopes: approval_scopes_for_action(policy_action),
-        retry_instruction: if matches!(action, GuardDecisionAction::Allow | GuardDecisionAction::Warn) {
+        retry_instruction: if matches!(
+            action,
+            GuardDecisionAction::Allow | GuardDecisionAction::Warn
+        ) {
             None
         } else {
             Some(retry_instruction.to_string())
@@ -890,8 +904,7 @@ pub fn validate_composition_trace(action: GuardAction, trace: &Map<String, Value
     let explicit_approval_override = (trusted_override
         && matches!(action, GuardAction::Allow | GuardAction::Warn))
         || saved_allow_override;
-    if runtime_action == Some(GuardAction::Warn)
-        && action.severity() < GuardAction::Warn.severity()
+    if runtime_action == Some(GuardAction::Warn) && action.severity() < GuardAction::Warn.severity()
     {
         return err("runtime detector warning cannot be erased by the final action");
     }
@@ -1009,7 +1022,11 @@ fn validate_artifact_projection(
     payload: &Map<String, Value>,
     decision: &AuthoritativeGuardDecision,
 ) -> Res<()> {
-    reject_unknown_action_bearing_fields(payload, &artifact_action_fields(), "artifact projection")?;
+    reject_unknown_action_bearing_fields(
+        payload,
+        &artifact_action_fields(),
+        "artifact projection",
+    )?;
     let policy_action = payload.get("policy_action");
     if policy_action.and_then(Value::as_str) != Some(decision.action.as_str()) {
         return err("policy_action must match authoritative action");
@@ -1045,8 +1062,7 @@ fn validate_artifact_projection(
                 return err("decision_v2_json.guard_action must match authoritative action");
             }
         }
-        if payload.contains_key("authoritative_decision")
-            && *raw != decision.decision_v2.to_value()
+        if payload.contains_key("authoritative_decision") && *raw != decision.decision_v2.to_value()
         {
             return err("decision_v2_json must match authoritative decision_v2");
         }
@@ -1080,7 +1096,9 @@ fn validate_artifact_projection(
                 continue;
             }
             if !is_guard_action(ea) {
-                return err(&format!("action_envelope_json.{key} must be a known Guard action"));
+                return err(&format!(
+                    "action_envelope_json.{key} must be a known Guard action"
+                ));
             }
             if ea.as_str() != Some(decision.action.as_str()) {
                 return err(&format!(
@@ -1107,7 +1125,11 @@ fn validate_artifact_approval_projection(
     ]
     .iter()
     .any(|k| payload.contains_key(*k));
-    let trace_keys = ["saved_state_present", "trusted_request_override", "saved_approval_claim"];
+    let trace_keys = [
+        "saved_state_present",
+        "trusted_request_override",
+        "saved_approval_claim",
+    ];
     if !approval_fields_present && !trace_keys.iter().any(|k| trace.contains_key(*k)) {
         return Ok(());
     }
@@ -1124,7 +1146,10 @@ fn validate_artifact_approval_projection(
         Some(v) => Some(parse_guard_action(v)?),
     };
     let reuse_status = raw_reuse.get("status").and_then(Value::as_str);
-    if !matches!(reuse_status, Some("accepted") | Some("rejected") | Some("not-applicable")) {
+    if !matches!(
+        reuse_status,
+        Some("accepted") | Some("rejected") | Some("not-applicable")
+    ) {
         return err("approval_reuse.status must be a known status");
     }
     let reuse_reason = required_string(raw_reuse, "reason_code")?;
@@ -1135,14 +1160,14 @@ fn validate_artifact_approval_projection(
     if payload.get("approval_reuse_status").and_then(Value::as_str) != reuse_status {
         return err("approval_reuse_status must match approval_reuse.status");
     }
-    if payload.get("approval_reuse_reason_code").and_then(Value::as_str)
+    if payload
+        .get("approval_reuse_reason_code")
+        .and_then(Value::as_str)
         != Some(reuse_reason.as_str())
     {
         return err("approval_reuse_reason_code must match approval_reuse.reason_code");
     }
-    if trace.get("current_action").and_then(Value::as_str)
-        != Some(current_action.as_str())
-    {
+    if trace.get("current_action").and_then(Value::as_str) != Some(current_action.as_str()) {
         return err("composition_trace.current_action must match approval_reuse.current_action");
     }
     let trace_saved = trace.get("saved_action").and_then(Value::as_str);
@@ -1174,7 +1199,11 @@ fn validate_artifact_approval_projection(
     if !matches {
         return err("trusted_request_override.reason_code must match applied state");
     }
-    if trace.get("trusted_request_override").and_then(Value::as_bool) != Some(trusted_applied) {
+    if trace
+        .get("trusted_request_override")
+        .and_then(Value::as_bool)
+        != Some(trusted_applied)
+    {
         return err("composition_trace.trusted_request_override must match outer evidence");
     }
 
@@ -1237,7 +1266,10 @@ fn validate_artifact_approval_projection(
         if claim.is_some() {
             return err("trusted request and saved approval claim cannot both finalize authority");
         }
-        if !matches!(reuse_action, GuardAction::Review | GuardAction::RequireReapproval) {
+        if !matches!(
+            reuse_action,
+            GuardAction::Review | GuardAction::RequireReapproval
+        ) {
             return err("trusted request override must satisfy a review action");
         }
         if !decision.enforcement.authority_finalized {
@@ -1330,7 +1362,9 @@ fn require_scanner_evidence(
             return Ok(());
         }
     }
-    err(&format!("scanner_evidence must contain matching {source} evidence"))
+    err(&format!(
+        "scanner_evidence must contain matching {source} evidence"
+    ))
 }
 
 /// `_is_disabled_codex_skill_inventory` — only a disabled Codex skill inventory
@@ -1345,7 +1379,9 @@ fn is_disabled_codex_skill_inventory(
     let artifact_id = m.get("artifact_id").and_then(Value::as_str);
     m.get("inventory_only") == Some(&Value::Bool(true))
         && m.get("artifact_type").and_then(Value::as_str) == Some("skill")
-        && artifact_id.map(|s| s.starts_with("codex:")).unwrap_or(false)
+        && artifact_id
+            .map(|s| s.starts_with("codex:"))
+            .unwrap_or(false)
         && decision.action == GuardAction::Allow
         && decision.reason == "inventory_only"
         && decision.composition_trace.get("inventory_only") == Some(&Value::Bool(true))
@@ -1433,9 +1469,7 @@ fn inner_eval(evaluation: &Value, require_launch_permitted: bool) -> Res<()> {
                 return err("artifact authority must include every runtime detector signal");
             }
         }
-        if artifact_decisions.is_empty()
-            && eval_map.get("run_authoritative_decision").is_none()
-        {
+        if artifact_decisions.is_empty() && eval_map.get("run_authoritative_decision").is_none() {
             return err("zero-artifact detector results require run authority");
         }
     }

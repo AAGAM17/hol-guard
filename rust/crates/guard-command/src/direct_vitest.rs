@@ -105,7 +105,10 @@ pub fn direct_local_vitest_execution_context(
     if !workspace_vitest_version_is_bound(&workspace, &installed_version) {
         return None;
     }
-    let no_coverage_count = args.iter().filter(|a| a.as_str() == "--no-coverage").count();
+    let no_coverage_count = args
+        .iter()
+        .filter(|a| a.as_str() == "--no-coverage")
+        .count();
     if args.is_empty()
         || args[0] != "run"
         || no_coverage_count > 1
@@ -150,8 +153,7 @@ pub fn direct_local_typescript_execution_context(
         Some(initial_root),
         Some(home_dir),
     );
-    let workspace =
-        literal_leading_cd_target(&initial_context, initial_root, home_dir)?;
+    let workspace = literal_leading_cd_target(&initial_context, initial_root, home_dir)?;
     let context = model_shell_execution_context(
         command_text,
         Some(&workspace),
@@ -369,7 +371,9 @@ fn workspace_typescript_is_bound(workspace: &Path) -> bool {
         return false;
     }
     let locked_identity = locked_bun_package_identity(&lockfile, "typescript");
-    let installed_version = installed_version.and_then(Value::as_str).unwrap_or_default();
+    let installed_version = installed_version
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     match locked_identity {
         Some((locked_version, integrity)) => {
             locked_version == installed_version
@@ -385,14 +389,8 @@ fn workspace_typescript_is_bound(workspace: &Path) -> bool {
 }
 
 /// `_locked_bun_package_identity` (:271-293).
-fn locked_bun_package_identity(
-    path: &Path,
-    package_name: &str,
-) -> Option<(String, String)> {
-    if path.is_symlink()
-        || !path.is_file()
-        || path.metadata().ok()?.size() > MAX_METADATA_BYTES
-    {
+fn locked_bun_package_identity(path: &Path, package_name: &str) -> Option<(String, String)> {
+    if path.is_symlink() || !path.is_file() || path.metadata().ok()?.size() > MAX_METADATA_BYTES {
         return None;
     }
     let lock_text = fs::read_to_string(path).ok()?;
@@ -517,7 +515,11 @@ fn vitest_runner_invocation(
     let executable = &runner_tokens[0];
     let runner_path = Path::new(executable);
     if runner_path.is_absolute() {
-        return (Some(runner_path.to_path_buf()), runner_tokens[1..].to_vec(), true);
+        return (
+            Some(runner_path.to_path_buf()),
+            runner_tokens[1..].to_vec(),
+            true,
+        );
     }
     if executable != "npx" || !trusted_path_command("npx", workspace, home_dir) {
         return (None, Vec::new(), false);
@@ -572,9 +574,7 @@ fn literal_leading_cd_target(
         return None;
     }
     let operand = &segment.tokens[1];
-    if has_shell_dynamics(operand)
-        || (operand.starts_with('~') && !operand.starts_with("~/"))
-    {
+    if has_shell_dynamics(operand) || (operand.starts_with('~') && !operand.starts_with("~/")) {
         return None;
     }
     let mut candidate = if let Some(rest) = operand.strip_prefix("~/") {
@@ -594,11 +594,7 @@ fn literal_leading_cd_target(
 }
 
 /// `_verified_vitest_runner` (:415-448).
-fn verified_vitest_runner(
-    runner: &Path,
-    cwd: &Path,
-    home_dir: &Path,
-) -> Option<String> {
+fn verified_vitest_runner(runner: &Path, cwd: &Path, home_dir: &Path) -> Option<String> {
     let package_dir = runner.parent()?;
     let node_modules = package_dir.parent()?;
     let project = node_modules.parent()?;
@@ -714,8 +710,13 @@ fn locked_package_version(path: &Path, package_name: &str) -> Option<String> {
         }
         return Some(first[prefix.len()..].to_owned());
     }
-    let entry = packages.get(&format!("node_modules/{package_name}"))?.as_object()?;
-    entry.get("version").and_then(Value::as_str).map(str::to_owned)
+    let entry = packages
+        .get(&format!("node_modules/{package_name}"))?
+        .as_object()?;
+    entry
+        .get("version")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 /// `_contained_test_target` (:527-539).
@@ -749,9 +750,7 @@ fn bounded_output_filter(
     cwd: &Path,
     home_dir: &Path,
 ) -> bool {
-    if control_before != ["|"]
-        || tokens.len() != 2
-        || (tokens[0] != "head" && tokens[0] != "tail")
+    if control_before != ["|"] || tokens.len() != 2 || (tokens[0] != "head" && tokens[0] != "tail")
     {
         return false;
     }
@@ -955,8 +954,7 @@ fn executable_file(candidate: &Path) -> bool {
 /// `base64.b64decode(value, validate=True)` — strict alphabet, correct
 /// padding; any deviation returns `None` (Python raises `binascii.Error`).
 fn strict_base64_decode(value: &str) -> Option<Vec<u8>> {
-    const TABLE: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut decode = [0xFFu8; 256];
     for (index, byte) in TABLE.iter().enumerate() {
         decode[*byte as usize] = index as u8;
@@ -1113,7 +1111,12 @@ fn semver_partial_bounds(text: &str) -> Option<(u64, u64, u64, usize)> {
         return None;
     }
     parts.resize(3, 0);
-    Some((parts[0], parts[1], parts[2], parts.len() - parts.iter().skip(seen.max(3)).count()))
+    Some((
+        parts[0],
+        parts[1],
+        parts[2],
+        parts.len() - parts.iter().skip(seen.max(3)).count(),
+    ))
 }
 
 fn semver_tuple_cmp(a: (u64, u64, u64), b: (u64, u64, u64)) -> std::cmp::Ordering {
@@ -1136,7 +1139,9 @@ fn semver_spec_matches(specifier: &str, version_text: &str) -> bool {
         return false;
     }
     for specifier in specifiers {
-        if specifier.chars().any(|ch| matches!(ch, ' ' | '\t' | '|' | '-'))
+        if specifier
+            .chars()
+            .any(|ch| matches!(ch, ' ' | '\t' | '|' | '-'))
             && !specifier
                 .chars()
                 .next()
@@ -1163,7 +1168,11 @@ fn semver_spec_matches(specifier: &str, version_text: &str) -> bool {
         let major = caps.get(2).unwrap().as_str();
         let minor = caps.get(3).map(|m| m.as_str()).unwrap_or("0");
         let patch = caps.get(4).map(|m| m.as_str()).unwrap_or("0");
-        let resolved = match (semver_wildcard(major), semver_wildcard(minor), semver_wildcard(patch)) {
+        let resolved = match (
+            semver_wildcard(major),
+            semver_wildcard(minor),
+            semver_wildcard(patch),
+        ) {
             (true, _, _) => {
                 if !matches!(operator, "=" | "^" | "~" | ">=" | ">") {
                     return false;
@@ -1237,13 +1246,11 @@ fn semver_spec_matches(specifier: &str, version_text: &str) -> bool {
             "<" => semver_tuple_cmp(version, base) == std::cmp::Ordering::Less,
             "^" => {
                 semver_tuple_cmp(version, base) != std::cmp::Ordering::Less
-                    && semver_tuple_cmp(version, (major + 1, 0, 0))
-                        == std::cmp::Ordering::Less
+                    && semver_tuple_cmp(version, (major + 1, 0, 0)) == std::cmp::Ordering::Less
             }
             "~" => {
                 semver_tuple_cmp(version, base) != std::cmp::Ordering::Less
-                    && semver_tuple_cmp(version, (major, minor + 1, 0))
-                        == std::cmp::Ordering::Less
+                    && semver_tuple_cmp(version, (major, minor + 1, 0)) == std::cmp::Ordering::Less
             }
             _ => return false,
         };
@@ -1334,13 +1341,13 @@ fn shell_read_execution_environment_is_safe(cwd: &Path) -> bool {
     }
     for (key, value) in env::vars() {
         if value.is_empty()
-            || !(key.starts_with("BASH_FUNC_") || key.starts_with("DYLD_") || key.starts_with("LD_"))
+            || !(key.starts_with("BASH_FUNC_")
+                || key.starts_with("DYLD_")
+                || key.starts_with("LD_"))
         {
             continue;
         }
-        if !LOADER_PATH_ENVIRONMENT.contains(&key.as_str())
-            || !trusted_loader_paths(&value, cwd)
-        {
+        if !LOADER_PATH_ENVIRONMENT.contains(&key.as_str()) || !trusted_loader_paths(&value, cwd) {
             return false;
         }
     }
@@ -1361,8 +1368,7 @@ fn trusted_loader_paths(value: &str, cwd: &Path) -> bool {
             Ok(resolved) => resolved,
             Err(_) => return false,
         };
-        if resolved.strip_prefix(temp_dir()).is_ok()
-            || !git_binary_path_is_trusted(&resolved, cwd)
+        if resolved.strip_prefix(temp_dir()).is_ok() || !git_binary_path_is_trusted(&resolved, cwd)
         {
             return false;
         }
@@ -1620,21 +1626,27 @@ fn safe_typecheck_node_options(token: &str) -> bool {
     };
     let options = &caps[1];
     let allowed: HashSet<&str> = [
-        "--max-old-space-size=256", "--max-old-space-size=512",
-        "--max-old-space-size=1024", "--max-old-space-size=2048",
-        "--max-old-space-size=4096", "--max-old-space-size=8192",
-        "--max-semi-space-size=2", "--max-semi-space-size=4",
-        "--max-semi-space-size=8", "--max-semi-space-size=16",
-        "--max-semi-space-size=32", "--max-semi-space-size=64",
-        "--stack-size=984", "--stack-size=1968",
-        "--stack-size=3936", "--stack-size=7872",
+        "--max-old-space-size=256",
+        "--max-old-space-size=512",
+        "--max-old-space-size=1024",
+        "--max-old-space-size=2048",
+        "--max-old-space-size=4096",
+        "--max-old-space-size=8192",
+        "--max-semi-space-size=2",
+        "--max-semi-space-size=4",
+        "--max-semi-space-size=8",
+        "--max-semi-space-size=16",
+        "--max-semi-space-size=32",
+        "--max-semi-space-size=64",
+        "--stack-size=984",
+        "--stack-size=1968",
+        "--stack-size=3936",
+        "--stack-size=7872",
     ]
     .into_iter()
     .collect();
     let flags: Vec<&str> = options.split_whitespace().collect();
-    !flags.is_empty()
-        && flags.len() <= 4
-        && flags.iter().all(|flag| allowed.contains(flag))
+    !flags.is_empty() && flags.len() <= 4 && flags.iter().all(|flag| allowed.contains(flag))
 }
 
 /// `_typescript_no_emit_args_are_safe` (:151-226).
@@ -1652,7 +1664,9 @@ fn typescript_no_emit_args_are_safe(args: &[String], workspace: &Path) -> bool {
             return false;
         }
         if TSC_NO_VALUE_FLAGS.contains(arg.as_str())
-            || (arg.starts_with("--") && arg.contains('=') && !TSC_VALUE_FLAGS.contains(arg.split('=').next().unwrap_or_default()))
+            || (arg.starts_with("--")
+                && arg.contains('=')
+                && !TSC_VALUE_FLAGS.contains(arg.split('=').next().unwrap_or_default()))
         {
             if arg.contains('=') && TSC_NO_VALUE_FLAGS.contains(arg.as_str()) {
                 return false;
@@ -1697,7 +1711,11 @@ fn typescript_path_is_contained(value: &str, workspace: &Path) -> bool {
     }
     match candidate.canonicalize() {
         Ok(resolved) => resolved
-            .strip_prefix(workspace.canonicalize().unwrap_or_else(|_| workspace.to_path_buf()))
+            .strip_prefix(
+                workspace
+                    .canonicalize()
+                    .unwrap_or_else(|_| workspace.to_path_buf()),
+            )
             .is_ok(),
         Err(_) => false,
     }

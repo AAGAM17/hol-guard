@@ -14,17 +14,14 @@
 //!   * strict enum parsers raise `ValueError`-equivalent `SignalContractError`
 //!     with the same reason strings.
 
-use guard_contracts::{
-    self, GuardSignalRef,
-};
+use guard_contracts::{self, GuardSignalRef};
 use serde_json::Value;
 
 // Re-export the value types + label enums so `crate::signals::RiskSignalV2`
 // mirrors `signals.RiskSignalV2`.
 pub use guard_contracts::{
-    GuardRiskSignalV3, RiskConfidenceLabel, RiskRedactionLevel, RiskSignalCategory,
-    RiskSignalSource, RiskSignalV2, RiskSeverityLabel, ScannerStatusLabel,
-    SignalContractError,
+    GuardRiskSignalV3, RiskConfidenceLabel, RiskRedactionLevel, RiskSeverityLabel,
+    RiskSignalCategory, RiskSignalSource, RiskSignalV2, ScannerStatusLabel, SignalContractError,
 };
 
 /// `GuardSignal` (types.py:56) — the legacy Guard signal shape consumed by the
@@ -141,11 +138,12 @@ pub fn optional_int(
 ) -> Result<Option<i64>, SignalContractError> {
     match payload.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Number(n)) => n
-            .as_i64()
-            .map(Some)
-            .ok_or(SignalContractError("source_line must be an integer or null")),
-        _ => Err(SignalContractError("source_line must be an integer or null")),
+        Some(Value::Number(n)) => n.as_i64().map(Some).ok_or(SignalContractError(
+            "source_line must be an integer or null",
+        )),
+        _ => Err(SignalContractError(
+            "source_line must be an integer or null",
+        )),
     }
 }
 
@@ -166,9 +164,7 @@ pub fn parse_severity(value: &Value) -> Result<RiskSeverityLabel, SignalContract
 
 /// `parse_risk_confidence` — strict `RiskConfidenceLabel` parser (public; the
 /// `_parse_confidence` alias points at this same fn).
-pub fn parse_risk_confidence(
-    value: &Value,
-) -> Result<RiskConfidenceLabel, SignalContractError> {
+pub fn parse_risk_confidence(value: &Value) -> Result<RiskConfidenceLabel, SignalContractError> {
     guard_contracts::parse_risk_confidence(value)
 }
 

@@ -8509,8 +8509,8 @@ fn cloud_audit_workspace_context(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let codebase = read_git_origin_codebase_untracked(workspace_dir)
-        .unwrap_or_else(|| workspace_name.clone());
+    let codebase =
+        read_git_origin_codebase_untracked(workspace_dir).unwrap_or_else(|| workspace_name.clone());
     let mut out = Map::new();
     out.insert("agent".into(), json!(LOCAL_SUPPLY_CHAIN_HARNESS));
     out.insert("codebase".into(), json!(codebase));
@@ -8520,10 +8520,7 @@ fn cloud_audit_workspace_context(
     );
     out.insert(
         "lockfilePaths".into(),
-        json!(lockfile_paths
-            .iter()
-            .cloned()
-            .collect::<Vec<String>>()),
+        json!(lockfile_paths.iter().cloned().collect::<Vec<String>>()),
     );
     out.insert(
         "machine".into(),
@@ -8531,10 +8528,7 @@ fn cloud_audit_workspace_context(
     );
     out.insert(
         "manifestPaths".into(),
-        json!(manifest_paths
-            .iter()
-            .cloned()
-            .collect::<Vec<String>>()),
+        json!(manifest_paths.iter().cloned().collect::<Vec<String>>()),
     );
     out.insert(
         "packageManager".into(),
@@ -8664,10 +8658,7 @@ fn build_cloud_audit_job_payload(
             lockfile_paths,
         )),
     );
-    payload.insert(
-        "workspaceFingerprint".into(),
-        json!(workspace_fingerprint),
-    );
+    payload.insert("workspaceFingerprint".into(), json!(workspace_fingerprint));
     payload
 }
 
@@ -8734,13 +8725,8 @@ fn run_managed_workspace_audit_job(
         .map(str::trim)
         .unwrap_or("")
         .to_string();
-    let final_response = poll_cloud_workspace_audit_job(
-        resolved_auth_context,
-        &job_id,
-        workspace_id,
-        runner,
-        http,
-    )?;
+    let final_response =
+        poll_cloud_workspace_audit_job(resolved_auth_context, &job_id, workspace_id, runner, http)?;
     let final_status = final_response
         .get("status")
         .and_then(Value::as_str)
@@ -8782,10 +8768,7 @@ fn run_managed_workspace_audit_job(
     );
     row.insert("job_id".into(), json!(job_id));
     row.insert("status".into(), json!(workspace_status));
-    row.insert(
-        "package_count".into(),
-        json!(inventory.package_items.len()),
-    );
+    row.insert("package_count".into(), json!(inventory.package_items.len()));
     row.insert(
         "cloud_processed_count".into(),
         cloud_processed_count.map_or(Value::Null, |v| json!(v)),
@@ -8866,9 +8849,11 @@ pub fn sync_managed_workspace_audits(
             paths,
             manifest_parser,
         ) {
-            Err(error @ (LocalSupplyChainError::AuthorizationExpired(_)
-            | LocalSupplyChainError::NotAvailable { .. }
-            | LocalSupplyChainError::NotConfigured(_))) => {
+            Err(
+                error @ (LocalSupplyChainError::AuthorizationExpired(_)
+                | LocalSupplyChainError::NotAvailable { .. }
+                | LocalSupplyChainError::NotConfigured(_)),
+            ) => {
                 return Err(error);
             }
             Err(error) => {
@@ -8892,23 +8877,20 @@ pub fn sync_managed_workspace_audits(
             }
         }
     }
-    let status = if failed_jobs > 0 && completed_jobs == 0 && queued_jobs == 0 && incomplete_jobs == 0
-    {
-        "failed"
-    } else if failed_jobs > 0 || incomplete_jobs > 0 {
-        "partial"
-    } else if completed_jobs > 0 || queued_jobs > 0 {
-        "synced"
-    } else {
-        "idle"
-    };
+    let status =
+        if failed_jobs > 0 && completed_jobs == 0 && queued_jobs == 0 && incomplete_jobs == 0 {
+            "failed"
+        } else if failed_jobs > 0 || incomplete_jobs > 0 {
+            "partial"
+        } else if completed_jobs > 0 || queued_jobs > 0 {
+            "synced"
+        } else {
+            "idle"
+        };
     let mut summary = Map::new();
     summary.insert("synced_at".into(), json!(synced_at));
     summary.insert("status".into(), json!(status));
-    summary.insert(
-        "workspace_count".into(),
-        json!(workspaces_payload.len()),
-    );
+    summary.insert("workspace_count".into(), json!(workspaces_payload.len()));
     summary.insert("completed_jobs".into(), json!(completed_jobs));
     summary.insert("queued_jobs".into(), json!(queued_jobs));
     summary.insert("failed_jobs".into(), json!(failed_jobs));
@@ -8941,11 +8923,9 @@ pub fn sync_supply_chain_cloud_state(
             .cloned()
             .unwrap_or_default(),
     };
-    let bundle_summary = call_sync_with_optional_auth_context(
-        store,
-        runner,
-        &|store, ctx| runner.sync_supply_chain_bundle(store, ctx),
-    )?;
+    let bundle_summary = call_sync_with_optional_auth_context(store, runner, &|store, ctx| {
+        runner.sync_supply_chain_bundle(store, ctx)
+    })?;
     let mut payload = match bundle_summary {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
@@ -8960,10 +8940,7 @@ pub fn sync_supply_chain_cloud_state(
         manifest_parser,
     )?;
     let synced_at = workspace_audits.get("synced_at").cloned();
-    payload.insert(
-        "workspace_audits".into(),
-        Value::Object(workspace_audits),
-    );
+    payload.insert("workspace_audits".into(), Value::Object(workspace_audits));
     if let Some(synced_at) = synced_at {
         payload.entry("synced_at".to_string()).or_insert(synced_at);
     }

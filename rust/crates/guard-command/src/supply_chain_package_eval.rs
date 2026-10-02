@@ -2329,7 +2329,11 @@ fn cloud_fail_closed_evaluation_full(
     } else {
         "ask"
     };
-    let severity = if decision == "block" { "critical" } else { "high" };
+    let severity = if decision == "block" {
+        "critical"
+    } else {
+        "high"
+    };
     let mut packages: Vec<Map<String, Value>> = targets
         .iter()
         .map(|target| heuristic_package_result(target, decision, code, message, severity))
@@ -5872,28 +5876,28 @@ fn own_package_name(deps: &SupplyChainEvalDeps<'_>, target: &Map<String, Value>)
     {
         return None;
     }
-    let normalized_name = optional_string(target.get("normalized_name"))
-        .unwrap_or_else(|| {
-            normalize_package_name(
-                deps,
-                "pypi",
-                &optional_string(target.get("name")).unwrap_or_default(),
-            )
-        });
+    let normalized_name = optional_string(target.get("normalized_name")).unwrap_or_else(|| {
+        normalize_package_name(
+            deps,
+            "pypi",
+            &optional_string(target.get("name")).unwrap_or_default(),
+        )
+    });
     if !FIRST_PARTY_PYPI_PACKAGES.contains(normalized_name.as_str()) {
         return None;
     }
-    Some(
-        optional_string(target.get("name")).unwrap_or(normalized_name),
-    )
+    Some(optional_string(target.get("name")).unwrap_or(normalized_name))
 }
 
 /// `_manifest_package_name` (:3469-3475).
 // supply_chain_package_eval.py:3469-3475
 fn manifest_package_name(manifest_text: &str) -> Option<String> {
-    let payload: Value =
-        serde_json::from_str(if manifest_text.is_empty() { "{}" } else { manifest_text })
-            .ok()?;
+    let payload: Value = serde_json::from_str(if manifest_text.is_empty() {
+        "{}"
+    } else {
+        manifest_text
+    })
+    .ok()?;
     payload
         .get("name")
         .and_then(Value::as_str)
@@ -5952,10 +5956,7 @@ fn looks_like_explicit_local_python_path(raw_spec: &str) -> bool {
 
 /// `_local_python_project_path` (:3438-3462).
 // supply_chain_package_eval.py:3438-3462
-fn local_python_project_path(
-    target: &Map<String, Value>,
-    workspace_dir: &Path,
-) -> Option<PathBuf> {
+fn local_python_project_path(target: &Map<String, Value>, workspace_dir: &Path) -> Option<PathBuf> {
     let mut raw_spec = optional_string(target.get("raw_spec"));
     let source_url = optional_string(target.get("source_url"));
     let editable = target
@@ -6007,13 +6008,15 @@ fn local_python_project_path(
         return None;
     }
     let parent = disk_path.parent().map(Path::to_path_buf);
-    if matches!(disk_path.file_name().and_then(|n| n.to_str()), Some("pyproject.toml") | Some("setup.py"))
-        && disk_path.exists()
+    if matches!(
+        disk_path.file_name().and_then(|n| n.to_str()),
+        Some("pyproject.toml") | Some("setup.py")
+    ) && disk_path.exists()
     {
         return parent;
     }
-    let has_py = workspace_dir.join("pyproject.toml").exists()
-        || workspace_dir.join("setup.py").exists();
+    let has_py =
+        workspace_dir.join("pyproject.toml").exists() || workspace_dir.join("setup.py").exists();
     if editable && has_py {
         Some(workspace_dir.to_path_buf())
     } else {
@@ -6064,10 +6067,7 @@ fn own_package_review_message(package_name: &str) -> String {
 /// installed value we can resolve (via `CARGO_PKG_VERSION`), validated to a
 /// canonical PEP-440 release (no local segment).
 // supply_chain_package_eval.py:3075-3088
-fn installed_project_version(
-    deps: &SupplyChainEvalDeps<'_>,
-    project_name: &str,
-) -> Option<String> {
+fn installed_project_version(deps: &SupplyChainEvalDeps<'_>, project_name: &str) -> Option<String> {
     // Only the guard's own distribution can be resolved without a Python
     // interpreter; anything else reports not-found.
     let normalized = normalize_package_name(deps, "pypi", project_name);
@@ -6120,13 +6120,11 @@ fn unknown_package_result(
     identity_resolved: bool,
 ) -> Map<String, Value> {
     let ecosystem = optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".to_string());
-    let decision = unidentified_package_decision(
-        &ecosystem,
-        fail_closed_unidentified,
-        identity_resolved,
-    );
+    let decision =
+        unidentified_package_decision(&ecosystem, fail_closed_unidentified, identity_resolved);
     let requires_review = decision == "ask" || decision == "block";
-    let package_name = optional_string(target.get("name")).unwrap_or_else(|| "this package".to_string());
+    let package_name =
+        optional_string(target.get("name")).unwrap_or_else(|| "this package".to_string());
     let own_package = own_package_name(deps, target);
     let no_match_message = if requires_review && own_package.is_some() {
         own_package_review_message(own_package.as_deref().unwrap())
@@ -6136,11 +6134,15 @@ fn unknown_package_result(
              Review this install now. Guard Cloud is optional and can add live package reputation."
         )
     } else {
-        "Guard recorded this package request and will keep watching for new intelligence.".to_string()
+        "Guard recorded this package request and will keep watching for new intelligence."
+            .to_string()
     };
     let mut reasons: Vec<Map<String, Value>> = Vec::new();
     let mut first = Map::new();
-    first.insert("code".to_string(), Value::String("no_cached_match".to_string()));
+    first.insert(
+        "code".to_string(),
+        Value::String("no_cached_match".to_string()),
+    );
     first.insert("message".to_string(), Value::String(no_match_message));
     first.insert(
         "severity".to_string(),
@@ -6155,11 +6157,17 @@ fn unknown_package_result(
             .to_string(),
         ),
     );
-    first.insert("source".to_string(), Value::String("guard-local".to_string()));
+    first.insert(
+        "source".to_string(),
+        Value::String("guard-local".to_string()),
+    );
     reasons.push(first);
     if requires_review {
         let mut extra = Map::new();
-        extra.insert("code".to_string(), Value::String("unidentified_package".to_string()));
+        extra.insert(
+            "code".to_string(),
+            Value::String("unidentified_package".to_string()),
+        );
         extra.insert(
             "message".to_string(),
             Value::String(format!(
@@ -6169,7 +6177,10 @@ fn unknown_package_result(
             )),
         );
         extra.insert("severity".to_string(), Value::String("medium".to_string()));
-        extra.insert("source".to_string(), Value::String("guard-local".to_string()));
+        extra.insert(
+            "source".to_string(),
+            Value::String("guard-local".to_string()),
+        );
         reasons.push(extra);
     }
     package_target_result(target, &decision, reasons, None)
@@ -6204,7 +6215,9 @@ fn homebrew_package_monitor_result(
             .iter()
             .max_by_key(|s| {
                 severity_rank_value(
-                    optional_string(s.get("severity")).as_deref().unwrap_or("unknown"),
+                    optional_string(s.get("severity"))
+                        .as_deref()
+                        .unwrap_or("unknown"),
                 )
             })
             .cloned()
@@ -6243,13 +6256,15 @@ fn unsupported_ecosystem_result(
             .iter()
             .max_by_key(|s| {
                 severity_rank_value(
-                    optional_string(s.get("severity")).as_deref().unwrap_or("unknown"),
+                    optional_string(s.get("severity"))
+                        .as_deref()
+                        .unwrap_or("unknown"),
                 )
             })
             .cloned()
             .unwrap_or_default();
-        let severity = optional_string(strongest.get("severity"))
-            .unwrap_or_else(|| "medium".to_string());
+        let severity =
+            optional_string(strongest.get("severity")).unwrap_or_else(|| "medium".to_string());
         let decision = if severity == "critical" || severity == "high" {
             "block"
         } else {
@@ -6296,7 +6311,8 @@ fn package_from_cloud_result(item: &Map<String, Value>) -> Map<String, Value> {
         Some(b) => b,
         None => dependency_path.is_none(),
     };
-    let decision_raw = optional_string(item.get("decision")).unwrap_or_else(|| "monitor".to_string());
+    let decision_raw =
+        optional_string(item.get("decision")).unwrap_or_else(|| "monitor".to_string());
     let mut result = Map::new();
     result.insert(
         "decision".to_string(),
@@ -6312,19 +6328,27 @@ fn package_from_cloud_result(item: &Map<String, Value>) -> Map<String, Value> {
     );
     result.insert(
         "namespace".to_string(),
-        optional_string(item.get("namespace")).map(Value::String).unwrap_or(Value::Null),
+        optional_string(item.get("namespace"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     result.insert(
         "requestedVersion".to_string(),
-        optional_string(item.get("requestedVersion")).map(Value::String).unwrap_or(Value::Null),
+        optional_string(item.get("requestedVersion"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     result.insert(
         "resolvedVersion".to_string(),
-        optional_string(item.get("resolvedVersion")).map(Value::String).unwrap_or(Value::Null),
+        optional_string(item.get("resolvedVersion"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     result.insert(
         "recommendedFixVersion".to_string(),
-        optional_string(item.get("recommendedFixVersion")).map(Value::String).unwrap_or(Value::Null),
+        optional_string(item.get("recommendedFixVersion"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     result.insert(
         "riskScore".to_string(),
@@ -6337,7 +6361,12 @@ fn package_from_cloud_result(item: &Map<String, Value>) -> Map<String, Value> {
     );
     result.insert(
         "reasons".to_string(),
-        Value::Array(dict_items(item.get("reasons")).into_iter().map(Value::Object).collect()),
+        Value::Array(
+            dict_items(item.get("reasons"))
+                .into_iter()
+                .map(Value::Object)
+                .collect(),
+        ),
     );
     result
 }
@@ -6383,7 +6412,10 @@ fn command_uses_alternate_package_index(artifact: &GuardArtifact) -> bool {
     let flags: BTreeSet<String> = string_tuple(artifact.metadata.get("flags"))
         .into_iter()
         .collect();
-    if flags.iter().any(|f| ALTERNATE_PACKAGE_INDEX_FLAGS.contains(f.as_str())) {
+    if flags
+        .iter()
+        .any(|f| ALTERNATE_PACKAGE_INDEX_FLAGS.contains(f.as_str()))
+    {
         return true;
     }
     let redacted = optional_string(artifact.metadata.get("redacted_command")).unwrap_or_default();
@@ -6391,10 +6423,9 @@ fn command_uses_alternate_package_index(artifact: &GuardArtifact) -> bool {
         Ok(t) => t,
         Err(_) => return true,
     };
-    if tokens
-        .iter()
-        .any(|token| PACKAGE_SOURCE_ENV_NAMES.contains(py_partition(token, "=").0.to_uppercase().as_str()))
-    {
+    if tokens.iter().any(|token| {
+        PACKAGE_SOURCE_ENV_NAMES.contains(py_partition(token, "=").0.to_uppercase().as_str())
+    }) {
         return true;
     }
     PACKAGE_SOURCE_ENV_NAMES.iter().any(|name| {
@@ -6415,7 +6446,9 @@ fn bun_lockfile_binary_fallback_packages(
     let Some(ws) = workspace_dir else {
         return Vec::new();
     };
-    let Some(Value::Array(lockfile_paths)) = artifact.metadata.get("lockfile_paths").cloned().into() else {
+    let Some(Value::Array(lockfile_paths)) =
+        artifact.metadata.get("lockfile_paths").cloned().into()
+    else {
         return Vec::new();
     };
     let mut bun_lock_found = false;
@@ -6442,13 +6475,18 @@ fn bun_lockfile_binary_fallback_packages(
         return targets
             .iter()
             .map(|target| {
-                let eco = optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".to_string());
+                let eco =
+                    optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".to_string());
                 heuristic_package_result(
                     target,
                     &unidentified_package_decision(&eco, fail_closed_unidentified, false),
                     "bun_lockfile_binary_fallback",
                     &format!("{message} Approval is required before install."),
-                    if fail_closed_unidentified { "high" } else { "medium" },
+                    if fail_closed_unidentified {
+                        "high"
+                    } else {
+                        "medium"
+                    },
                 )
             })
             .collect();
@@ -6458,13 +6496,20 @@ fn bun_lockfile_binary_fallback_packages(
     workspace_target.insert("ecosystem".to_string(), Value::String("npm".to_string()));
     workspace_target.insert("name".to_string(), Value::String("workspace".to_string()));
     workspace_target.insert("namespace".to_string(), Value::Null);
-    workspace_target.insert("package_manager".to_string(), Value::String("bun".to_string()));
+    workspace_target.insert(
+        "package_manager".to_string(),
+        Value::String("bun".to_string()),
+    );
     vec![heuristic_package_result(
         &workspace_target,
         &decision,
         "bun_lockfile_binary_fallback",
         &format!("{message} Approval is required before install."),
-        if decision == "block" { "high" } else { "medium" },
+        if decision == "block" {
+            "high"
+        } else {
+            "medium"
+        },
     )]
 }
 
@@ -6484,7 +6529,9 @@ fn local_package_manifest_path(
     }
     let source_spec = npm_source_spec(raw_spec.as_deref(), "npm");
     if raw_spec.is_none()
-        || (source_spec.is_some() && source_spec.as_ref().unwrap().source_kind != crate::npm_source_spec::SourceKind::Local)
+        || (source_spec.is_some()
+            && source_spec.as_ref().unwrap().source_kind
+                != crate::npm_source_spec::SourceKind::Local)
     {
         return None;
     }
@@ -6506,7 +6553,8 @@ fn local_package_manifest_path(
             None
         };
     }
-    if disk_path.file_name().and_then(|n| n.to_str()) == Some("package.json") && disk_path.exists() {
+    if disk_path.file_name().and_then(|n| n.to_str()) == Some("package.json") && disk_path.exists()
+    {
         return Some(disk_path);
     }
     None
@@ -6557,7 +6605,11 @@ fn local_package_manifest_result(
     let strongest = signals
         .iter()
         .max_by_key(|s| {
-            severity_rank_value(optional_string(s.get("severity")).as_deref().unwrap_or("unknown"))
+            severity_rank_value(
+                optional_string(s.get("severity"))
+                    .as_deref()
+                    .unwrap_or("unknown"),
+            )
         })
         .cloned()
         .unwrap_or_default();
@@ -6577,10 +6629,7 @@ fn local_python_build_result(
     workspace_dir: Option<&Path>,
 ) -> Option<Map<String, Value>> {
     let ws = workspace_dir?;
-    if optional_string(target.get("ecosystem"))
-        .unwrap_or_else(|| "npm".to_string())
-        != "pypi"
-    {
+    if optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".to_string()) != "pypi" {
         return None;
     }
     let project_path = local_python_project_path(target, ws)?;
@@ -6646,11 +6695,7 @@ fn go_mod_replace_map(deps: &SupplyChainEvalDeps<'_>, text: &str) -> BTreeMap<St
             continue;
         }
         let (original, _sep, replacement) = py_partition(&line, "=>");
-        let normalized_original = original
-            .split_whitespace()
-            .next()
-            .unwrap_or("")
-            .to_string();
+        let normalized_original = original.split_whitespace().next().unwrap_or("").to_string();
         let normalized_replacement = replacement
             .trim()
             .split_whitespace()
@@ -6676,10 +6721,7 @@ fn go_replace_result(
     workspace_dir: Option<&Path>,
 ) -> Option<Map<String, Value>> {
     let ws = workspace_dir?;
-    if optional_string(target.get("ecosystem"))
-        .unwrap_or_else(|| "npm".to_string())
-        != "go"
-    {
+    if optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".to_string()) != "go" {
         return None;
     }
     let manifest_paths = match artifact.metadata.get("manifest_paths") {
@@ -6737,7 +6779,10 @@ fn go_replace_result(
 /// `_target_requires_npm_source_review` (:3691-3693).
 // supply_chain_package_eval.py:3691-3693
 fn target_requires_npm_source_review(target: &Map<String, Value>) -> bool {
-    (optional_string(target.get("ecosystem")).unwrap_or_default().to_lowercase() == "npm")
+    (optional_string(target.get("ecosystem"))
+        .unwrap_or_default()
+        .to_lowercase()
+        == "npm")
         && ["git", "invalid", "local", "url"].contains(
             &optional_string(target.get("source_kind"))
                 .unwrap_or_default()
@@ -6756,7 +6801,9 @@ fn external_archive_request_timeout_result() -> Map<String, Value> {
     );
     r.insert(
         "message".to_string(),
-        Value::String("External archive request exceeded Guard's aggregate time limit.".to_string()),
+        Value::String(
+            "External archive request exceeded Guard's aggregate time limit.".to_string(),
+        ),
     );
     r.insert("severity".to_string(), Value::String("high".to_string()));
     r
@@ -6793,7 +6840,10 @@ fn scan_external_tarball(
     retain_download: bool,
     request_deadline: Option<f64>,
     guard_home: &Path,
-) -> (Option<Map<String, Value>>, Option<RestrictedArchiveDownload>) {
+) -> (
+    Option<Map<String, Value>>,
+    Option<RestrictedArchiveDownload>,
+) {
     let mut download_timeout = TARBALL_SCAN_TIMEOUT_SECONDS as f64;
     if let Some(deadline) = request_deadline {
         let remaining = deadline - monotonic_seconds();
@@ -6802,7 +6852,8 @@ fn scan_external_tarball(
         }
         download_timeout = download_timeout.min(remaining);
     }
-    let downloaded = match download_external_tarball(deps, source_url, download_timeout, guard_home) {
+    let downloaded = match download_external_tarball(deps, source_url, download_timeout, guard_home)
+    {
         Some(d) => d,
         None => return (None, None),
     };
@@ -6882,10 +6933,7 @@ fn scan_external_tarball(
             ),
         );
         r.insert("severity".to_string(), Value::String("medium".to_string()));
-        (
-            Some(r),
-            if retain_blob { Some(downloaded) } else { None },
-        )
+        (Some(r), if retain_blob { Some(downloaded) } else { None })
     })();
     // Drop `downloaded` when not retained (mirrors `downloaded.cleanup()`).
     outcome
@@ -6923,7 +6971,8 @@ fn fallback_package_results(
                 continue;
             }
         }
-        let identity_resolved = (optional_string(target.get("ecosystem")).as_deref() == Some("npm")
+        let identity_resolved = (optional_string(target.get("ecosystem")).as_deref()
+            == Some("npm")
             && flags.contains("--ignore-scripts")
             && lockfile_target_key(target)
                 .map(|k| lockfile_versions.contains_key(&k))
@@ -6941,9 +6990,6 @@ fn fallback_package_results(
     results
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Batch F ports — `_evaluate_with_cloud` (:1092-1505) and supporting helpers.
 // ---------------------------------------------------------------------------
@@ -6953,8 +6999,7 @@ fn fallback_package_results(
 /// re-normalizes it against the current policy action.
 fn with_cloud_auth_reconnect_copy_result(mut evaluation: PackageEvalResult) -> PackageEvalResult {
     let reconnect_command = "hol-guard connect";
-    let reconnect_summary =
-        "Guard Cloud needs a fresh sign-in before shared review can resume.";
+    let reconnect_summary = "Guard Cloud needs a fresh sign-in before shared review can resume.";
     let mut summary = evaluation.user_copy.summary.clone();
     if !summary
         .to_ascii_lowercase()
@@ -7151,9 +7196,10 @@ fn evaluate_with_cloud(
     let workspace_id = workspace_id.unwrap();
 
     // `resolve_fail_closed_decision` — resolve on demand (:1128-1133).
-    let resolve_fail_closed = |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> String {
-        cloud_fail_closed_decision(deps, store, workspace_dir)
-    };
+    let resolve_fail_closed =
+        |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> String {
+            cloud_fail_closed_decision(deps, store, workspace_dir)
+        };
 
     // `resolve_cloud_entitlement` (:1124-1150) — "unknown state is protected
     // state" fallback when the entitlement seam errors.
@@ -7177,20 +7223,22 @@ fn evaluate_with_cloud(
     };
 
     // `can_fallback_from_cloud_failure` (:1136-1150).
-    let can_fallback_from_cloud_failure = |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> bool {
-        if bundle_meta.is_some() && bundle_defer_eligible && bundle_decision == Some("block") {
-            return true;
-        }
-        cloud_protection_is_explicitly_unpaid(&cloud_entitlement)
-            && resolve_fail_closed(deps, store) != "block"
-    };
+    let can_fallback_from_cloud_failure =
+        |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> bool {
+            if bundle_meta.is_some() && bundle_defer_eligible && bundle_decision == Some("block") {
+                return true;
+            }
+            cloud_protection_is_explicitly_unpaid(&cloud_entitlement)
+                && resolve_fail_closed(deps, store) != "block"
+        };
 
-    let resolve_cloud_failure_decision = |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> String {
-        if can_fallback_from_cloud_failure(deps, store) {
-            return "allow".to_string();
-        }
-        resolve_fail_closed(deps, store)
-    };
+    let resolve_cloud_failure_decision =
+        |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> String {
+            if can_fallback_from_cloud_failure(deps, store) {
+                return "allow".to_string();
+            }
+            resolve_fail_closed(deps, store)
+        };
 
     // Resolve auth context + evaluate URL + request payload (:1318-1336).
     let (auth_context, sync_url) = match resolve_guard_sync_context(deps, store, workspace_dir) {
@@ -7210,9 +7258,8 @@ fn evaluate_with_cloud(
             .as_str(),
     );
     let request_data = serde_json::to_vec(&request_payload).unwrap_or_default();
-    let response = fetch_package_evaluation_response(
-        deps, store, &auth_context, &evaluate_url, &request_data,
-    );
+    let response =
+        fetch_package_evaluation_response(deps, store, &auth_context, &evaluate_url, &request_data);
 
     match response {
         Ok(response_payload) => {
@@ -7295,24 +7342,22 @@ fn evaluate_with_cloud(
                 .map(str::to_string)
                 .unwrap_or_else(|| artifact.artifact_id.clone());
             let mut evaluation = finalize_evaluation(
-                deps, &draft, &package_intent_hash, Some(workspace_fingerprint),
+                deps,
+                &draft,
+                &package_intent_hash,
+                Some(workspace_fingerprint),
             );
-            if let Some(user_copy) =
-                response_payload.get("user_copy").and_then(Value::as_object)
-            {
+            if let Some(user_copy) = response_payload.get("user_copy").and_then(Value::as_object) {
                 let title = optional_string(user_copy.get("title"));
                 let summary = optional_string(user_copy.get("summary"));
                 let updated_summary =
                     summary.unwrap_or_else(|| evaluation.user_copy.summary.clone());
-                let mut harness_parts = vec![
-                    evaluation.risk_summary.clone(),
-                    updated_summary.clone(),
-                ];
+                let mut harness_parts =
+                    vec![evaluation.risk_summary.clone(), updated_summary.clone()];
                 if let Some(next_step) = evaluation.user_copy.next_step.clone() {
                     harness_parts.push(format!("Fix: run `{next_step}`."));
                 }
-                let policy_action =
-                    decision_to_guard_action_variant(&evaluation.policy_action);
+                let policy_action = decision_to_guard_action_variant(&evaluation.policy_action);
                 let candidate = SupplyChainUserCopy {
                     title: title.unwrap_or_else(|| evaluation.user_copy.title.clone()),
                     summary: updated_summary,
@@ -7320,13 +7365,15 @@ fn evaluate_with_cloud(
                     dashboard_url: evaluation.user_copy.dashboard_url.clone(),
                     harness_message: harness_parts.join(" "),
                 };
-                evaluation.user_copy =
-                    normalize_package_user_copy(&candidate, policy_action);
+                evaluation.user_copy = normalize_package_user_copy(&candidate, policy_action);
             }
             if let Some(bundle_draft) = bundle_evaluation {
                 if cloud_result_should_defer_to_bundle(&draft, bundle_draft) {
                     let mut merged = finalize_evaluation(
-                        deps, bundle_draft, &package_intent_hash, Some(workspace_fingerprint),
+                        deps,
+                        bundle_draft,
+                        &package_intent_hash,
+                        Some(workspace_fingerprint),
                     );
                     merged.reasons.extend(draft.reasons.clone());
                     return (Some(merged), None);
@@ -7524,7 +7571,10 @@ fn evaluate_package_request_artifact_uncached(
                     ),
                 );
                 r.insert("severity".to_string(), Value::String("high".to_string()));
-                r.insert("source".to_string(), Value::String("guard-local".to_string()));
+                r.insert(
+                    "source".to_string(),
+                    Value::String("guard-local".to_string()),
+                );
                 r
             }],
             matched_rule_id: None,
@@ -7538,16 +7588,15 @@ fn evaluate_package_request_artifact_uncached(
         // Ensure source hashes are carried even when heuristic_result produced
         // its own (or none).
         let mut external_archive_draft = external_archive_draft;
-        if external_archive_draft.external_archive_source_hashes.is_empty() {
+        if external_archive_draft
+            .external_archive_source_hashes
+            .is_empty()
+        {
             external_archive_draft.external_archive_source_hashes =
                 external_archive_source_hashes.clone();
         }
-        let external_archive_result = finalize_evaluation(
-            deps,
-            &external_archive_draft,
-            &package_intent_hash,
-            None,
-        );
+        let external_archive_result =
+            finalize_evaluation(deps, &external_archive_draft, &package_intent_hash, None);
         persist_evidence(deps, store, artifact, &external_archive_result, &now_value);
         return (Some(external_archive_result), None);
     }
@@ -7614,7 +7663,10 @@ fn evaluate_package_request_artifact_uncached(
                     ),
                 );
                 r.insert("severity".to_string(), Value::String("high".to_string()));
-                r.insert("source".to_string(), Value::String("guard-local".to_string()));
+                r.insert(
+                    "source".to_string(),
+                    Value::String("guard-local".to_string()),
+                );
                 r
             }],
             matched_rule_id: None,
@@ -7625,12 +7677,8 @@ fn evaluate_package_request_artifact_uncached(
             policy_version: "local:none".to_string(),
             ..Default::default()
         });
-        let source_review_result = finalize_evaluation(
-            deps,
-            &source_review_draft,
-            &package_intent_hash,
-            None,
-        );
+        let source_review_result =
+            finalize_evaluation(deps, &source_review_draft, &package_intent_hash, None);
         persist_evidence(deps, store, artifact, &source_review_result, &now_value);
         return (Some(source_review_result), None);
     }
@@ -7644,15 +7692,17 @@ fn evaluate_package_request_artifact_uncached(
     let bundle_response = if bundle_payload.is_null() {
         None
     } else {
-        deps.bundle.load_supply_chain_bundle_response(&bundle_payload).ok()
+        deps.bundle
+            .load_supply_chain_bundle_response(&bundle_payload)
+            .ok()
     };
     let bundle_meta_map = bundle_response
         .as_ref()
         .map(|r| bundle_meta(&r.to_dict().as_object().cloned().unwrap_or_default()));
     let bundle_meta: Option<BTreeMap<String, String>> = bundle_meta_map;
-    let workspace_fingerprint = workspace_id.as_deref().map(|id| {
-        workspace_fingerprint(deps, id, workspace_dir, artifact, bundle_meta.as_ref())
-    });
+    let workspace_fingerprint = workspace_id
+        .as_deref()
+        .map(|id| workspace_fingerprint(deps, id, workspace_dir, artifact, bundle_meta.as_ref()));
     let workspace_fingerprint = workspace_fingerprint.as_deref();
 
     // Bundle evaluation (:526-536).
@@ -7768,7 +7818,11 @@ fn evaluate_package_request_artifact_uncached(
             workspace_id.as_deref(),
             bundle_meta
                 .as_ref()
-                .map(|m| m.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect::<Map<String, Value>>())
+                .map(|m| {
+                    m.iter()
+                        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                        .collect::<Map<String, Value>>()
+                })
                 .as_ref(),
             &package_intent_hash,
             &cloud_result,
@@ -7781,7 +7835,8 @@ fn evaluate_package_request_artifact_uncached(
     // `refresh_required` + no OAuth → fall back to bundle (:597-621).
     if let Some(ref bundle_draft) = bundle_evaluation {
         if bundle_draft.refresh_required
-            && !deps.store_extras
+            && !deps
+                .store_extras
                 .get_oauth_local_credential_health()
                 .get("configured")
                 .and_then(Value::as_bool)
@@ -7795,10 +7850,23 @@ fn evaluate_package_request_artifact_uncached(
             );
             persist_evidence(deps, store, artifact, &fallback, &now_value);
             let mut event = Map::new();
-            event.insert("artifact_id".to_string(), Value::String(artifact.artifact_id.clone()));
-            event.insert("artifact_name".to_string(), Value::String(artifact.name.clone()));
-            event.insert("reason".to_string(), Value::String("feed_stale".to_string()));
-            store.add_event("supply_chain_bundle_refresh_requested", &Value::Object(event), &now_value);
+            event.insert(
+                "artifact_id".to_string(),
+                Value::String(artifact.artifact_id.clone()),
+            );
+            event.insert(
+                "artifact_name".to_string(),
+                Value::String(artifact.name.clone()),
+            );
+            event.insert(
+                "reason".to_string(),
+                Value::String("feed_stale".to_string()),
+            );
+            store.add_event(
+                "supply_chain_bundle_refresh_requested",
+                &Value::Object(event),
+                &now_value,
+            );
             return (Some(fallback), None);
         }
     }
@@ -7821,7 +7889,9 @@ fn evaluate_package_request_artifact_uncached(
             if bundle_draft.decision != "monitor" && fallback.cache_status != "cloud-error" {
                 let mut cache_workspace_id = workspace_id.clone();
                 if cache_workspace_id.is_none() {
-                    if let Some(bundle_section) = bundle_payload.get("bundle").and_then(Value::as_object) {
+                    if let Some(bundle_section) =
+                        bundle_payload.get("bundle").and_then(Value::as_object)
+                    {
                         if let Some(id) = optional_string(bundle_section.get("workspaceId")) {
                             cache_workspace_id = Some(id);
                         }
@@ -7831,11 +7901,27 @@ fn evaluate_package_request_artifact_uncached(
                     deps.store_extras.cache_supply_chain_evaluation(
                         cache_workspace_id,
                         &package_intent_hash,
-                        bundle_meta.get("feed_snapshot_hash").map(String::as_str).unwrap_or(""),
-                        bundle_meta.get("policy_hash").map(String::as_str).unwrap_or(""),
-                        bundle_meta.get("scoring_version").map(String::as_str).unwrap_or(""),
-                        bundle_meta.get("bundle_version").map(String::as_str).unwrap_or(""),
-                        &fallback.to_cache_dict().as_object().cloned().unwrap_or_default(),
+                        bundle_meta
+                            .get("feed_snapshot_hash")
+                            .map(String::as_str)
+                            .unwrap_or(""),
+                        bundle_meta
+                            .get("policy_hash")
+                            .map(String::as_str)
+                            .unwrap_or(""),
+                        bundle_meta
+                            .get("scoring_version")
+                            .map(String::as_str)
+                            .unwrap_or(""),
+                        bundle_meta
+                            .get("bundle_version")
+                            .map(String::as_str)
+                            .unwrap_or(""),
+                        &fallback
+                            .to_cache_dict()
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default(),
                         &now_value,
                     );
                 }
@@ -7844,10 +7930,23 @@ fn evaluate_package_request_artifact_uncached(
         persist_evidence(deps, store, artifact, &fallback, &now_value);
         if fallback.refresh_required {
             let mut event = Map::new();
-            event.insert("artifact_id".to_string(), Value::String(artifact.artifact_id.clone()));
-            event.insert("artifact_name".to_string(), Value::String(artifact.name.clone()));
-            event.insert("reason".to_string(), Value::String("feed_stale".to_string()));
-            store.add_event("supply_chain_bundle_refresh_requested", &Value::Object(event), &now_value);
+            event.insert(
+                "artifact_id".to_string(),
+                Value::String(artifact.artifact_id.clone()),
+            );
+            event.insert(
+                "artifact_name".to_string(),
+                Value::String(artifact.name.clone()),
+            );
+            event.insert(
+                "reason".to_string(),
+                Value::String("feed_stale".to_string()),
+            );
+            store.add_event(
+                "supply_chain_bundle_refresh_requested",
+                &Value::Object(event),
+                &now_value,
+            );
         }
         return (Some(fallback), None);
     }
@@ -7883,7 +7982,9 @@ fn evaluate_package_request_artifact_uncached(
             );
             let fallback_decision = fallback_packages
                 .iter()
-                .map(|p| optional_string(p.get("decision")).unwrap_or_else(|| "monitor".to_string()))
+                .map(|p| {
+                    optional_string(p.get("decision")).unwrap_or_else(|| "monitor".to_string())
+                })
                 .max_by_key(|d| decision_rank(d))
                 .unwrap_or_else(|| "monitor".to_string());
             let fallback_reasons: Vec<Map<String, Value>> = fallback_packages
@@ -7918,7 +8019,12 @@ fn evaluate_package_request_artifact_uncached(
             }
         }
     };
-    let mut result = finalize_evaluation(deps, &heuristic, &package_intent_hash, workspace_fingerprint);
+    let mut result = finalize_evaluation(
+        deps,
+        &heuristic,
+        &package_intent_hash,
+        workspace_fingerprint,
+    );
     if let Some(reason) = cloud_fallback_reason.as_ref() {
         result.reasons.push(reason.clone());
         if cloud_fallback_requires_reconnect_copy(reason) {

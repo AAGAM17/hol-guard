@@ -549,7 +549,7 @@ def test_daemon_refresh_script_retries_a_retirement_timeout(
     context.guard_home.mkdir(parents=True)
     (context.guard_home / "daemon-state.json").write_text('{"port":5474}', encoding="utf-8")
     retirement_checks = iter([False, True])
-    monotonic_values = iter([0.0, 6.0, 10.0])
+    monotonic_values = iter([0.0, 6.0, 10.0, 10.0])
     retire_calls: list[Path] = []
 
     def fake_retire(guard_home: Path) -> list[int]:

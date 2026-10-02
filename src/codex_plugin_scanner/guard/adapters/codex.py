@@ -1680,9 +1680,15 @@ class CodexHarnessAdapter(HarnessAdapter):
         its complete authenticated identity has been durably committed.
         """
 
-        original_config_identity = rollback_file_identity(config_path)
         if config_path.exists() or config_path.is_symlink():
             validate_regular_file(config_path, role="config_target", executable_required=False)
+        try:
+            original_config_identity = rollback_file_identity(config_path)
+        except RuntimeError as error:
+            raise RuntimeError(
+                "codex_hook_config_invalid: Codex configuration must be a single-link regular file."
+            ) from error
+        if config_path.exists() or config_path.is_symlink():
             original_config = config_path.read_bytes()
             try:
                 _ = original_config.decode("utf-8")

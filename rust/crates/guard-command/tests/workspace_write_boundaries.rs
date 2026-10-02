@@ -10,6 +10,8 @@ fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
     let home = std::fs::canonicalize(root).unwrap();
     let workspace = home.join("project");
     let linked = home.join("linked");
+    let linked_path = linked.to_str().unwrap();
+    let linked_path = linked_path.strip_prefix(r"\\?\").unwrap_or(linked_path);
     let hooks = home.join("empty-fixture-hooks");
     std::fs::create_dir_all(&hooks).unwrap();
     std::fs::create_dir_all(&workspace).unwrap();
@@ -44,7 +46,7 @@ fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
         "add",
         "--quiet",
         "--detach",
-        linked.to_str().unwrap(),
+        linked_path,
     ]);
     for directory in [&workspace, &linked, &home.join("unrelated")] {
         std::fs::create_dir_all(directory.join("src")).unwrap();

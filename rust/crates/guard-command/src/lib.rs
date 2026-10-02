@@ -994,8 +994,11 @@ pub mod signals;
 pub mod decisions;
 pub mod hook_responses;
 pub mod hook_evidence_writer;
+#[cfg(unix)]
 pub mod contained_execution;
+#[cfg(unix)]
 pub mod sandbox;
 #[cfg(unix)]
 pub mod restricted_pytest;
+#[cfg(unix)]
 pub mod direct_vitest;

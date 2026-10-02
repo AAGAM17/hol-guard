@@ -133,6 +133,7 @@ def _install_fake_package_manager(
     ],
 )
 @pytest.mark.parametrize("package_manager", ["npm", "bun"])
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_attributes_package_requests_to_invoking_harness(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -208,6 +209,7 @@ def test_guard_protect_attributes_package_requests_to_invoking_harness(
     assert all(event["payload"].get("harness") == harness for event in install_events)
 
 
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_attributes_package_requests_from_grok_env(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -247,6 +249,7 @@ def test_guard_protect_attributes_package_requests_from_grok_env(
     assert rc == 2
 
 
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_attributes_package_requests_from_origin_stamp(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -286,6 +289,7 @@ def test_guard_protect_attributes_package_requests_from_origin_stamp(
     assert rc == 2
 
 
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_keeps_guard_cli_attribution_outside_harness_env(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

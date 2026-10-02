@@ -1736,16 +1736,19 @@ class CodexHarnessAdapter(HarnessAdapter):
                     f"{_AUTHORITATIVE_HOOK_UNAVAILABLE_REASON}: Codex hook authentication readback failed: {reason}"
                 )
             return state
-        except BaseException:
+        except BaseException as transaction_error:
             # An unknown config cannot safely be paired with the old manifest.
             # Preserve participant files and report the unresolved transaction.
-            require_unchanged_config_for_rollback(
-                config_path,
-                original_config,
-                rendered_config.encode("utf-8"),
-                original_identity=original_config_identity,
-                written_identity=written_config_identity,
-            )
+            try:
+                require_unchanged_config_for_rollback(
+                    config_path,
+                    original_config,
+                    rendered_config.encode("utf-8"),
+                    original_identity=original_config_identity,
+                    written_identity=written_config_identity,
+                )
+            except BaseException as conflict:
+                raise conflict from transaction_error
             rollback_error: BaseException | None = None
             try:
                 if original_config is None:
@@ -1761,7 +1764,7 @@ class CodexHarnessAdapter(HarnessAdapter):
             if rollback_error is not None:
                 raise RuntimeError(
                     "Codex hook transaction failed and rollback could not be completed."
-                ) from rollback_error
+                ) from transaction_error
             raise
 
     @staticmethod

@@ -976,3 +976,26 @@ mod tests {
         assert!(parsed.segments.is_empty());
     }
 }
+
+// RTM-019 pending modules — compile signal only until legs complete
+pub mod local_supply_chain;
+pub mod supply_chain_package_eval;
+
+// RTM-014/017/020/023 pending modules — compile signal only until legs complete.
+pub mod command_operation_classification;
+pub mod composition_rules;
+pub mod data_flow_rules;
+pub mod detectors;
+pub mod false_positive_rules;
+pub mod mcp_decision;
+pub mod resume_template;
+pub mod shims;
+pub mod signals;
+pub mod decisions;
+pub mod hook_responses;
+pub mod hook_evidence_writer;
+pub mod contained_execution;
+pub mod sandbox;
+#[cfg(unix)]
+pub mod restricted_pytest;
+pub mod direct_vitest;

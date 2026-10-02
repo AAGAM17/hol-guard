@@ -191,6 +191,8 @@ def _codex_hook_response(response: Mapping[str, object], *, event_name: str) -> 
         if isinstance(hook_output, Mapping):
             decision = hook_output.get("permissionDecision")
             normalized = decision.strip().lower() if isinstance(decision, str) else ""
+            if response.get("policy_action") == "deny":
+                normalized = "deny"
             reason = hook_output.get("permissionDecisionReason")
             if normalized in {"deny", "ask"}:
                 cleaned["permissionDecision"] = normalized

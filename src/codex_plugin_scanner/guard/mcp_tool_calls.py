@@ -16,6 +16,7 @@ from .approval_gate import ApprovalGateGrant
 from .collections_support import dedupe_preserving_order
 from .config import DEFAULT_SECURITY_LEVEL, GuardConfig, resolve_risk_action
 from .local_cli_trust import apply_local_mcp_extension_decision
+from .mcp_fresh_approval import fresh_local_tool_approval_matches, fresh_lookup_preserves_claim
 from .models import GuardAction, GuardArtifact, GuardReceipt, PolicyDecision
 from .native_context import context_opaque_digest, context_sha256_digest
 from .receipts import build_receipt
@@ -110,36 +111,6 @@ def approval_reuse_decisions_match(
     )
     return same_identifier and all(
         expected.get(key) == current.get(key) for key in _APPROVAL_REUSE_DECISION_IDENTITY_KEYS
-    )
-
-
-def fresh_local_tool_approval_matches(
-    decision: Mapping[str, object] | None,
-    *,
-    artifact: GuardArtifact,
-    artifact_hash: str,
-) -> bool:
-    """Identify exact local-once proof after validated lookup or atomic claim.
-
-    This shape check is not integrity validation or launch authority by itself.
-    Retained policy rules cannot satisfy a fresh-approval requirement.
-    """
-    return (
-        decision is not None
-        and (
-            (
-                decision.get("source") == "approval-gate-once"
-                and isinstance(decision.get("approval_id"), str)
-                and bool(decision.get("approval_id"))
-            )
-            or (decision.get("source") == "approval-gate" and type(decision.get("decision_id")) is int)
-        )
-        and decision.get("action") == "allow"
-        and decision.get("scope") == "artifact"
-        and decision.get("harness") == artifact.harness
-        and decision.get("artifact_id") == artifact.artifact_id
-        and decision.get("artifact_hash") == artifact_hash
-        and isinstance(decision.get("expires_at"), str)
     )
 
 
@@ -657,10 +628,9 @@ def _revalidate_claimed_tool_call_approval(
         validation_reason = APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM if context_changed is not None else None
     if fresh_decision.approval_reuse_reason_code == "approval_reuse_integrity_failure":
         validation_reason = "approval_reuse_integrity_failure"
-    elif fresh_decision.approval_reuse_status == "rejected" and fresh_decision.approval_reuse_reason_code not in {
-        None,
-        APPROVAL_REUSE_NO_SAVED_DECISION,
-    }:
+    elif fresh_decision.approval_reuse_status == "rejected" and not fresh_lookup_preserves_claim(
+        fresh_decision.approval_reuse_reason_code
+    ):
         validation_reason = APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM
 
     # A fresh unclaimed allow is not launch authority. Reuse the freshly

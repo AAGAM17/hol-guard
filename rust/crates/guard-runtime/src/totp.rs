@@ -22,8 +22,12 @@ pub const TOTP_DIGITS: u32 = 6;
 pub const TOTP_ALGORITHM: &str = "SHA1";
 pub const TOTP_ISSUER: &str = "HOL Guard";
 
-/// `APPROVAL_GATE_HASH_ITERATIONS` (`approval_gate.py:71`).
-pub const APPROVAL_GATE_HASH_ITERATIONS: u32 = 260_000;
+/// `APPROVAL_GATE_*` constants (`approval_gate.py:69-73`).
+pub const APPROVAL_GATE_GRANT_TTL_SECONDS: u64 = 30;
+pub const APPROVAL_GATE_HASH_ITERATIONS: u32 = 310_000;
+pub const APPROVAL_GATE_TOTP_SKEW_STEPS: i64 = 1;
+pub const APPROVAL_GATE_TOTP_PENDING_TTL_SECONDS: u64 = 600;
+pub const APPROVAL_GATE_TOTP_RECENT_TTL_SECONDS: u64 = 60;
 pub const APPROVAL_GATE_HASH_ALGORITHM: &str = "pbkdf2_sha256";
 pub const APPROVAL_GATE_MIN_PASSWORD_LENGTH: usize = 8;
 

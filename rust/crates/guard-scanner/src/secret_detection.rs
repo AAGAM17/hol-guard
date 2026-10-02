@@ -46,27 +46,27 @@ const ASSIGNMENT_PATTERN_SOURCE: &str =
     r#"(?im)(?P<name>[A-Za-z_][A-Za-z0-9_.-]{1,80})\s*[:=]\s*(?P<quote>[\"']?)(?P<secret>[^\s\"',}{]{12,256})(?P=quote)"#;
 
 static SAMPLE_WORDS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:example|sample|dummy|fake|fixture|placeholder|changeme|replace[_-]?me|\
-          redacted|synthetic|mock(?:ed)?|canary|not[_-]?real|invalid[_-]?\
-          (?:key|token|secret|password)?|your[_-]?(?:api[_-]?)?\
-          (?:key|token|secret|password)|test[_-]?(?:key|token|secret|password))",
-    )
+    Regex::new(concat!(
+        r"(?i)(?:example|sample|dummy|fake|fixture|placeholder|changeme|replace[_-]?me|",
+        r"redacted|synthetic|mock(?:ed)?|canary|not[_-]?real|invalid[_-]?",
+        r"(?:key|token|secret|password)?|your[_-]?(?:api[_-]?)?",
+        r"(?:key|token|secret|password)|test[_-]?(?:key|token|secret|password))",
+    ))
     .expect("SAMPLE_WORDS is a static literal")
 });
 static COMMON_PLACEHOLDER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)^(?:p@?ssw0rd(?:1234?|[!@#$%^&*]+)?|password(?:1234?|[!@#$%^&*]+)?|\
-          (?:super|my|your|replace|change|invalid|fake|dummy|sample|test|fixture|not[_-]?real)\
-          [_-](?:api[_-]?)?(?:secret|token|password|key)(?:[_-].*)?)$",
-    )
+    Regex::new(concat!(
+        r"(?i)^(?:p@?ssw0rd(?:1234?|[!@#$%^&*]+)?|password(?:1234?|[!@#$%^&*]+)?|",
+        r"(?:super|my|your|replace|change|invalid|fake|dummy|sample|test|fixture|not[_-]?real)",
+        r"[_-](?:api[_-]?)?(?:secret|token|password|key)(?:[_-].*)?)$",
+    ))
     .expect("COMMON_PLACEHOLDER is a static literal")
 });
 static CREDENTIAL_KEYWORDS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:api[_-]?key|access[_-]?key|auth[_-]?token|bearer|credential|password|passwd|\
-          private[_-]?key|secret|token|webhook|client[_-]?secret)",
-    )
+    Regex::new(concat!(
+        r"(?i)(?:api[_-]?key|access[_-]?key|auth[_-]?token|bearer|credential|password|passwd|",
+        r"private[_-]?key|secret|token|webhook|client[_-]?secret)",
+    ))
     .expect("CREDENTIAL_KEYWORDS is a static literal")
 });
 static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
@@ -133,19 +133,19 @@ static CODE_COORDINATE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("CODE_COORDINATE is a static literal")
 });
 static TEST_FIXTURE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:\bdescribe\s*\(|\bit\s*\(|\btest\s*\(|\bexpect\s*\(|\bassert\b|\
-          \bmock(?:ed)?\b|\bfixture\b|\bsample\b|\bfake\b|\bsynthetic\b|\bcanary\b|\
-          \bredact(?:ed|ion)?\b|\bsanitiz(?:e|ed|ation)\b|\bmask(?:ed|ing)?\b|\
-          \bscrub(?:bed|bing)?\b|\bnot[_ -]?real\b|\binvalid\b)",
-    )
+    Regex::new(concat!(
+        r"(?i)(?:\bdescribe\s*\(|\bit\s*\(|\btest\s*\(|\bexpect\s*\(|\bassert\b|",
+        r"\bmock(?:ed)?\b|\bfixture\b|\bsample\b|\bfake\b|\bsynthetic\b|\bcanary\b|",
+        r"\bredact(?:ed|ion)?\b|\bsanitiz(?:e|ed|ation)\b|\bmask(?:ed|ing)?\b|",
+        r"\bscrub(?:bed|bing)?\b|\bnot[_ -]?real\b|\binvalid\b)",
+    ))
     .expect("TEST_FIXTURE_CONTEXT is a static literal")
 });
 static SAMPLE_PATH_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)(?:^|[._-])(?:test|tests|spec|fixture|fixtures|example|examples|sample|samples|\
-          mock|mocks|demo|benchmark|scenario|scenarios|proof|canary)(?:[._-]|$)",
-    )
+    Regex::new(concat!(
+        r"(?i)(?:^|[._-])(?:test|tests|spec|fixture|fixtures|example|examples|sample|samples|",
+        r"mock|mocks|demo|benchmark|scenario|scenarios|proof|canary)(?:[._-]|$)",
+    ))
     .expect("SAMPLE_PATH_TOKEN is a static literal")
 });
 

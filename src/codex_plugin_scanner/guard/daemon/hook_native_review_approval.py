@@ -159,7 +159,11 @@ def pause_native_pre_tool_for_approval(
     from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
     from ..config import load_guard_config
 
-    if not asks_for_approval(load_guard_config(guard_home, workspace=workspace)):
+    try:
+        ask = asks_for_approval(load_guard_config(guard_home, workspace=workspace))
+    except (OSError, RuntimeError, TypeError, ValueError):
+        ask = False
+    if not ask:
         blocked = dict(native_result)
         blocked.update(
             decision="deny",

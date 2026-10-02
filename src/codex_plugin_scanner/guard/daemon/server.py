@@ -2213,8 +2213,8 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
     server: _GuardDaemonHttpServer  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def parse_request(self) -> bool:
-        parsed = super().parse_request()
         self._daemon_server().classify_connection(self.request)
+        parsed = super().parse_request()
         if not parsed:
             return False
         if self._daemon_server().claim_request_capacity(self.request, self.path):

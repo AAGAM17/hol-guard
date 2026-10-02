@@ -158,8 +158,10 @@ def _regular_file_set(root: Path, installation_root: Path, *, label: str) -> set
             raise InstalledCanaryError(f"Installed {label} contains a symbolic link")
         if path.is_file():
             relative_path = path.relative_to(installation_root).as_posix()
-            if "__pycache__" in relative_path or relative_path.endswith(".pyc"):
-                continue
+            if path.parent.name == "__pycache__" and path.suffix == ".pyc":
+                source_stem = path.name.split(".", 1)[0]
+                if (path.parent.parent / f"{source_stem}.py").is_file():
+                    continue
             files.add(relative_path)
         elif not path.is_dir():
             raise InstalledCanaryError(f"Installed {label} contains a non-regular filesystem node")

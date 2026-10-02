@@ -341,7 +341,10 @@ fn absent_move_destination(value: &str, context: (Option<&str>, Option<&str>)) -
     let target = if supplied.is_absolute() {
         supplied.to_path_buf()
     } else if let Some(cwd) = context.1 {
-        std::path::Path::new(cwd).join(supplied)
+        std::path::Path::new(
+            &expand_home_read_path(cwd, context.0).unwrap_or_else(|| cwd.to_owned()),
+        )
+        .join(supplied)
     } else {
         return false;
     };

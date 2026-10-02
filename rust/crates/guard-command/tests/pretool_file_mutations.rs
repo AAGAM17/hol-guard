@@ -47,5 +47,18 @@ fn routine_file_mutations_do_not_inherit_sensitive_or_directory_delete_access() 
                 "{harness}: {command}"
             );
         }
+        let result = evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &json!({"toolName":"Bash","toolInput":{"command":"mv src/example.ts src/existing.ts"}}),
+            None,
+            None,
+            root.to_str(),
+            Some("~"),
+        );
+        assert_ne!(
+            result.minimum_action, "allow",
+            "{harness}: home-relative cwd overwrite"
+        );
     }
 }

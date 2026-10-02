@@ -1735,7 +1735,7 @@ class CodexHarnessAdapter(HarnessAdapter):
                     "Codex hook transaction failed and rollback could not be completed."
                 ) from rollback_error
             if conflict is not None:
-                raise conflict
+                raise conflict from None
             raise
 
     @staticmethod

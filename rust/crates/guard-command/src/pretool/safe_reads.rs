@@ -146,6 +146,15 @@ fn resolved_path_allowed(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
+    resolved_path_allowed_in_scope(canonical, home_dir, cwd, false)
+}
+
+fn resolved_path_allowed_in_scope(
+    canonical: &std::path::Path,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    verified_temporary: bool,
+) -> bool {
     let rendered = canonical.to_string_lossy().replace('\\', "/");
     let lowered = rendered.to_ascii_lowercase();
     const ROOTS: [&str; 7] = [
@@ -157,9 +166,10 @@ fn resolved_path_allowed(
         "/private/etc",
         "/private/var",
     ];
-    if ROOTS
-        .iter()
-        .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/")))
+    if (!verified_temporary
+        && ROOTS
+            .iter()
+            .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/"))))
         || foreign_user_home(canonical, home_dir, cwd)
         || guard_secure_fs::sensitive_path_family(canonical).is_some()
         || guard_secure_fs::credential_named_path(canonical)
@@ -221,13 +231,97 @@ pub(super) fn safe_copy_arguments(
         [separator, source, destination] if separator == "--" => (source, destination),
         _ => return false,
     };
+    let expanded = expand_home_read_path(paths.1, context.0).unwrap_or_else(|| paths.1.clone());
+    let destination = std::path::Path::new(&expanded);
+    let destination = if destination.is_absolute() {
+        destination.to_path_buf()
+    } else if let Some(cwd) = context.1 {
+        std::path::Path::new(
+            &expand_home_read_path(cwd, context.0).unwrap_or_else(|| cwd.to_owned()),
+        )
+        .join(destination)
+    } else {
+        return false;
+    };
+    if destination
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return false;
+    }
     // Only a single file-to-file copy. Flags, directory destinations and
     // recursive copies need separate evaluation; cp follows destination links.
     !paths.0.starts_with('-')
         && !paths.1.starts_with('-')
         && paths.0.trim() == paths.0
         && bounded_file_read_target(paths.0, context.0, context.1)
-        && bounded_file_write_target(paths.1, context.0, context.1)
+        && (bounded_file_write_target(paths.1, context.0, context.1)
+            || bounded_temporary_copy_target(paths.1, context))
+}
+
+#[cfg(unix)]
+fn bounded_temporary_copy_target(value: &str, context: (Option<&str>, Option<&str>)) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    use std::path::Path;
+
+    let Some(owner) = context
+        .0
+        .and_then(|home| std::fs::metadata(home).ok())
+        .map(|m| m.uid())
+    else {
+        return false;
+    };
+    let path = Path::new(value);
+    if !path.is_absolute()
+        || value.len() > 4096
+        || value.contains([
+            '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '*', '?', '[', ']', '{', '}',
+        ])
+        || path
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return false;
+    }
+    let Some(parent) = path.parent().and_then(|p| std::fs::canonicalize(p).ok()) else {
+        return false;
+    };
+    let Ok(parent_metadata) = parent.metadata() else {
+        return false;
+    };
+    let roots = [Path::new("/tmp"), Path::new("/var/tmp")];
+    let in_scope = roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .any(|root| {
+            parent.starts_with(&root)
+                && (parent == root
+                    || (parent_metadata.uid() == owner && parent_metadata.mode() & 0o022 == 0))
+        });
+    if !in_scope || !parent_metadata.is_dir() {
+        return false;
+    }
+    // Do not follow a pre-existing leaf symlink or overwrite another user's
+    // file (including a hard-link alias) in a shared temporary directory.
+    match path.symlink_metadata() {
+        Ok(metadata) if !metadata.is_file() || metadata.uid() != owner || metadata.nlink() != 1 => {
+            return false
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return false,
+    }
+    let Some(target) = path.file_name().map(|name| parent.join(name)) else {
+        return false;
+    };
+    resolved_path_allowed_in_scope(&target, context.0, context.1, true)
+        && guard_secure_fs::hidden_read_parts_allowed(&target)
+        && !autostart_write_target(&target)
+}
+
+#[cfg(not(unix))]
+fn bounded_temporary_copy_target(_value: &str, _context: (Option<&str>, Option<&str>)) -> bool {
+    false
 }
 
 fn autostart_write_target(path: &std::path::Path) -> bool {

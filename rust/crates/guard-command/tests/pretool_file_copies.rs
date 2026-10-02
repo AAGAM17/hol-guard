@@ -6,17 +6,21 @@ use std::path::Path;
 use std::process::Command;
 
 fn permitted(command: &str, home: &Path, workspace: &Path) -> bool {
-    evaluate_pre_tool_envelope_with_context(
-        "zcode",
-        "PreToolUse",
-        &json!({"toolName": "Bash", "toolInput": {"command": command}}),
-        None,
-        None,
-        home.to_str(),
-        workspace.to_str(),
-    )
-    .minimum_action
-        == "allow"
+    let evaluate = |harness| {
+        evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &json!({"toolName": "Bash", "toolInput": {"command": command}}),
+            None,
+            None,
+            home.to_str(),
+            workspace.to_str(),
+        )
+        .minimum_action
+    };
+    let zcode = evaluate("zcode");
+    assert_eq!(zcode, evaluate("omp"), "host policy drift: {command}");
+    zcode == "allow"
 }
 
 #[test]
@@ -73,6 +77,11 @@ fn ordinary_copies_keep_source_and_destination_risk_boundaries() {
     let home = std::fs::canonicalize(&home).unwrap();
     let project = std::fs::canonicalize(&project).unwrap();
     let linked = std::fs::canonicalize(&linked).unwrap();
+    let temporary = Path::new("/tmp").join(format!("guard-copy-{}", std::process::id()));
+    std::fs::create_dir(&temporary).unwrap();
+    std::fs::write(temporary.join("existing.ts"), "synthetic previous copy").unwrap();
+    std::os::unix::fs::symlink(project.join("source.ts"), temporary.join("link.ts")).unwrap();
+    std::fs::hard_link(project.join("source.ts"), temporary.join("hardlink.ts")).unwrap();
     for command in [
         "cp source.ts copied.ts".to_owned(),
         "cp -- auth.ts copied.ts".to_owned(),
@@ -82,6 +91,8 @@ fn ordinary_copies_keep_source_and_destination_risk_boundaries() {
             project.display(),
             linked.display()
         ),
+        format!("cp source.ts {}/new.ts", temporary.display()),
+        format!("cp source.ts {}/existing.ts", temporary.display()),
     ] {
         assert!(permitted(&command, &home, &project), "{command}");
     }
@@ -103,4 +114,15 @@ fn ordinary_copies_keep_source_and_destination_risk_boundaries() {
     ] {
         assert!(!permitted(command, &home, &project), "{command}");
     }
+    for name in [
+        ".env",
+        "link.ts",
+        "hardlink.ts",
+        ".git/config",
+        "credentials.txt",
+    ] {
+        let command = format!("cp source.ts {}/{name}", temporary.display());
+        assert!(!permitted(&command, &home, &project), "{command}");
+    }
+    std::fs::remove_dir_all(temporary).unwrap();
 }

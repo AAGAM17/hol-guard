@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import queue
 import threading
@@ -48,7 +49,7 @@ def _hook_process_ready_timeout_seconds() -> float:
         parsed = float(raw.strip())
     except ValueError:
         return _HOOK_PROCESS_READY_TIMEOUT_SECONDS
-    if not (parsed == parsed and parsed != float("inf")):
+    if not math.isfinite(parsed) or parsed <= 0:
         return _HOOK_PROCESS_READY_TIMEOUT_SECONDS
     return min(_HOOK_PROCESS_READY_TIMEOUT_MAX_SECONDS, max(_HOOK_PROCESS_READY_TIMEOUT_SECONDS, parsed))
 

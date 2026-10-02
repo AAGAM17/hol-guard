@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import math
 import multiprocessing
 import os
 import signal
@@ -55,9 +56,7 @@ def _parse_timeout_env(raw: str | None, default: float) -> float | None:
         parsed = float(raw.strip())
     except ValueError:
         return None
-    if not (parsed == parsed and parsed != float("inf") and parsed != float("-inf")):
-        return None
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         return None
     return parsed
 

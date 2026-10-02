@@ -16,6 +16,7 @@ mod context_digest;
 mod context_digest_json;
 mod edge;
 mod hardening;
+mod hook_process_spawn;
 mod managed_resident;
 mod claim_reuse;
 mod claim_approval_reuse_op;

@@ -545,7 +545,7 @@ fn b64_std_decode(s: &str) -> Option<Vec<u8>> {
     Base64::decode_vec(s).ok()
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }

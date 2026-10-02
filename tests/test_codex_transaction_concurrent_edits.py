@@ -313,3 +313,4 @@ def test_substituted_target_during_snapshot_is_reported_as_invalid_not_conflict(
         )
     assert config_path.stat().st_ino == target.stat().st_ino
     assert config_path.stat().st_nlink == 2
+    assert target.read_bytes() == b'owner = "other-writer"\n'

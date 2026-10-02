@@ -4,8 +4,8 @@ use guard_contracts::{
     ApprovalConsumeRequestV4, ApprovalGateRequestV1, ApprovalReuseRequestV1,
     ApprovalValidateRequestV3, ApprovalValidateRequestV4, ClaimApprovalReuseDecisionsRequestV1,
     CommandEffectRequestV1, ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1,
-    PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, SupplyChainEvalRequestV1,
-    RuntimeCapabilitiesV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES,
+    PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, RuntimeCapabilitiesV1,
+    SupplyChainEvalRequestV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES,
     NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION,
     NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };

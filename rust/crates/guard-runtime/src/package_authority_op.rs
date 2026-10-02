@@ -14,30 +14,25 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use guard_command::local_supply_chain::{
-    GuardConfig, PolicyDecisionLookup, SupplyChainStore,
-};
+use guard_command::local_supply_chain::{GuardConfig, PolicyDecisionLookup, SupplyChainStore};
 use guard_command::package_intent_common::{
     build_package_request_artifact, resolve_path_within_workspace, GuardArtifact,
 };
 use guard_command::package_intent_parser::parse_package_intent;
 use guard_command::supply_chain_bundle;
 use guard_command::supply_chain_package_eval::{
-    evaluate_package_request_artifact, EvalError, EvalResult, GuardSyncRequest,
-    GuardSyncRunnerApi, JsSemverApi, LockfileParseApi, LockfileParseResult,
-    ManifestDepsApi, NativeArchiveApi, PackageIdentityApi, RestrictedArchiveApi,
-    RestrictedArchiveDownloadResult, RestrictedArchiveFailure, RiskDetectApi, SpecifierSet,
-    StoreExtrasApi, SupplyChainBundleApi, SupplyChainEvalDeps, Version, WorkspaceIoApi,
-    EntitlementRefreshApi, ConfigLoaderApi,
-    SupplyChainBundleResponse as EvalBundleResponse,
-    CanonicalPackageIdentity as EvalCanonicalPackageIdentity,
+    evaluate_package_request_artifact, CanonicalPackageIdentity as EvalCanonicalPackageIdentity,
+    ConfigLoaderApi, EntitlementRefreshApi, EvalError, EvalResult, GuardSyncRequest,
+    GuardSyncRunnerApi, JsSemverApi, LockfileParseApi, LockfileParseResult, ManifestDepsApi,
+    NativeArchiveApi, PackageIdentityApi, RestrictedArchiveApi, RestrictedArchiveDownloadResult,
+    RestrictedArchiveFailure, RiskDetectApi, SpecifierSet, StoreExtrasApi, SupplyChainBundleApi,
+    SupplyChainBundleResponse as EvalBundleResponse, SupplyChainEvalDeps, Version, WorkspaceIoApi,
 };
 use guard_command::supply_chain_package_identity;
 use guard_contracts::{
-    PackageAuthorityDecideRequestV1, PackageAuthorityDecideResultV1,
-    PackageIntentParseRequestV1, PackageIntentParseResultV1, SupplyChainEvalRequestV1,
-    SupplyChainEvalResultV1, PACKAGE_AUTHORITY_REQUEST_SCHEMA,
-    PACKAGE_AUTHORITY_RESULT_SCHEMA,
+    PackageAuthorityDecideRequestV1, PackageAuthorityDecideResultV1, PackageIntentParseRequestV1,
+    PackageIntentParseResultV1, SupplyChainEvalRequestV1, SupplyChainEvalResultV1,
+    PACKAGE_AUTHORITY_REQUEST_SCHEMA, PACKAGE_AUTHORITY_RESULT_SCHEMA,
 };
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -164,12 +159,11 @@ impl SupplyChainStore for ResidentSupplyChainStore {
             Ok(c) => c,
             Err(_) => return Vec::new(),
         };
-        let mut stmt = match conn
-            .prepare("SELECT advisory_json FROM guard_advisories ORDER BY advisory_id")
-        {
-            Ok(s) => s,
-            Err(_) => return Vec::new(),
-        };
+        let mut stmt =
+            match conn.prepare("SELECT advisory_json FROM guard_advisories ORDER BY advisory_id") {
+                Ok(s) => s,
+                Err(_) => return Vec::new(),
+            };
         let rows = match stmt.query_map([], |row| row.get::<_, String>(0)) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
@@ -184,9 +178,9 @@ impl SupplyChainStore for ResidentSupplyChainStore {
             Ok(c) => c,
             Err(_) => return Vec::new(),
         };
-        let mut stmt = match conn.prepare(
-            "SELECT install_json FROM guard_managed_installs ORDER BY install_id",
-        ) {
+        let mut stmt = match conn
+            .prepare("SELECT install_json FROM guard_managed_installs ORDER BY install_id")
+        {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
@@ -493,16 +487,14 @@ impl LockfileParseApi for ResidentLockfileParse {
         }
         let entries = map
             .into_iter()
-            .map(
-                |(dependency_path, version)| {
-                    guard_command::supply_chain_package_eval::LockfileDependencyEntry {
-                        dependency_path,
-                        package_name: String::new(),
-                        version,
-                        direct: false,
-                    }
-                },
-            )
+            .map(|(dependency_path, version)| {
+                guard_command::supply_chain_package_eval::LockfileDependencyEntry {
+                    dependency_path,
+                    package_name: String::new(),
+                    version,
+                    direct: false,
+                }
+            })
             .collect();
         LockfileParseResult {
             entries,
@@ -562,7 +554,12 @@ impl SupplyChainBundleApi for ResidentBundle {
         let resp = supply_chain_bundle::load_supply_chain_bundle_response(raw_json)
             .map_err(|e| EvalError::Validation(e.to_string()))?;
         Ok(EvalBundleResponse {
-            bundle: resp.bundle.to_dict().as_object().cloned().unwrap_or_default(),
+            bundle: resp
+                .bundle
+                .to_dict()
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
             signed_bundle: resp.signed_bundle,
             payload_hash: resp.payload_hash,
             signature: resp.signature,
@@ -658,7 +655,10 @@ impl ResidentSemver {
         if normalized.is_empty() {
             return Err(EvalError::Validation("empty version".into()));
         }
-        let release_part = normalized.split(['-', '+']).next().unwrap_or(normalized.as_str());
+        let release_part = normalized
+            .split(['-', '+'])
+            .next()
+            .unwrap_or(normalized.as_str());
         let mut release: Vec<u64> = Vec::new();
         for seg in release_part.split('.') {
             if seg.is_empty() {
@@ -669,13 +669,21 @@ impl ResidentSemver {
         if release.is_empty() {
             release.push(0);
         }
-        Ok(Version { normalized, release })
+        Ok(Version {
+            normalized,
+            release,
+        })
     }
 
     fn compare_release(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
         let len = a.len().max(b.len());
         for i in 0..len {
-            match a.get(i).copied().unwrap_or(0).cmp(&b.get(i).copied().unwrap_or(0)) {
+            match a
+                .get(i)
+                .copied()
+                .unwrap_or(0)
+                .cmp(&b.get(i).copied().unwrap_or(0))
+            {
                 std::cmp::Ordering::Equal => continue,
                 ord => return ord,
             }
@@ -729,9 +737,7 @@ impl ResidentSemver {
                         false
                     } else {
                         let mut upper = rhs_v.release.clone();
-                        if op == "^"
-                            && upper.first().copied().unwrap_or(0) == 0
-                            && upper.len() > 1
+                        if op == "^" && upper.first().copied().unwrap_or(0) == 0 && upper.len() > 1
                         {
                             upper[1] += 1;
                             upper.truncate(2);
@@ -739,8 +745,7 @@ impl ResidentSemver {
                             upper[0] = upper.first().copied().unwrap_or(0) + 1;
                             upper.truncate(1);
                         }
-                        Self::compare_release(&version.release, &upper)
-                            == std::cmp::Ordering::Less
+                        Self::compare_release(&version.release, &upper) == std::cmp::Ordering::Less
                     }
                 }
                 _ => false,
@@ -785,8 +790,7 @@ impl JsSemverApi for ResidentSemver {
             let better = match &best {
                 None => true,
                 Some(b) => {
-                    Self::compare_release(&v.release, &b.release)
-                        == std::cmp::Ordering::Greater
+                    Self::compare_release(&v.release, &b.release) == std::cmp::Ordering::Greater
                 }
             };
             if better {
@@ -885,12 +889,14 @@ impl ManifestDepsApi for ResidentManifestDeps {
         text: &str,
         _deadline: f64,
     ) -> EvalResult<BTreeMap<String, String>> {
-        Ok(guard_command::package_manifest_diff::parse_manifest_dependencies(
-            path,
-            text,
-            text.len(),
-            4000,
-        ))
+        Ok(
+            guard_command::package_manifest_diff::parse_manifest_dependencies(
+                path,
+                text,
+                text.len(),
+                4000,
+            ),
+        )
     }
 
     fn parse_manifest_dependencies(
@@ -915,10 +921,15 @@ fn ecosystem_for_path(path: &str) -> &'static str {
         .and_then(|n| n.to_str())
         .unwrap_or("");
     match name {
-        "package.json" | "package-lock.json" | "npm-shrinkwrap.json" | "yarn.lock"
-        | "pnpm-lock.yaml" | "bun.lock" | "bun.lockb" => "npm",
-        "requirements.txt" | "Pipfile" | "Pipfile.lock" | "poetry.lock"
-        | "pyproject.toml" | "uv.lock" | "setup.py" => "pypi",
+        "package.json"
+        | "package-lock.json"
+        | "npm-shrinkwrap.json"
+        | "yarn.lock"
+        | "pnpm-lock.yaml"
+        | "bun.lock"
+        | "bun.lockb" => "npm",
+        "requirements.txt" | "Pipfile" | "Pipfile.lock" | "poetry.lock" | "pyproject.toml"
+        | "uv.lock" | "setup.py" => "pypi",
         "Cargo.toml" | "Cargo.lock" => "cargo",
         "Gemfile" | "Gemfile.lock" => "rubygems",
         "composer.json" | "composer.lock" => "packagist",

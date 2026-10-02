@@ -309,6 +309,10 @@ fn exact_safe_command_with_context(
             "date" => safe_reads::safe_date_arguments(&segment.arguments),
             "ls" => safe_reads::safe_listing_arguments(&segment.arguments, context),
             "cat" => safe_reads::safe_plain_file_arguments(&segment.arguments, context),
+            "cp" => {
+                model.segments.len() == 1
+                    && safe_reads::safe_copy_arguments(&segment.arguments, context)
+            }
             // Admit stdin only when every producer in the pipeline is also proven safe.
             "head" | "tail" => {
                 safe_reads::safe_head_tail_arguments(&segment.arguments, segment.pipeline_index > 0, context)

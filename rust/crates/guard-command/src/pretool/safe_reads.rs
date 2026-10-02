@@ -212,6 +212,24 @@ pub(super) fn bounded_file_write_target(
         && !autostart_write_target(&canonical)
 }
 
+pub(super) fn safe_copy_arguments(
+    arguments: &[String],
+    context: (Option<&str>, Option<&str>),
+) -> bool {
+    let paths = match arguments {
+        [source, destination] => (source, destination),
+        [separator, source, destination] if separator == "--" => (source, destination),
+        _ => return false,
+    };
+    // Only a single file-to-file copy. Flags, directory destinations and
+    // recursive copies need separate evaluation; cp follows destination links.
+    !paths.0.starts_with('-')
+        && !paths.1.starts_with('-')
+        && paths.0.trim() == paths.0
+        && bounded_file_read_target(paths.0, context.0, context.1)
+        && bounded_file_write_target(paths.1, context.0, context.1)
+}
+
 fn autostart_write_target(path: &std::path::Path) -> bool {
     let rendered = path
         .to_string_lossy()

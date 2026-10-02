@@ -158,4 +158,42 @@ def test_daemon_load_failure_records_category_on_fallback(
         {"artifacts": [{"artifact_id": "art-1", "policy_action": "require-reapproval"}]},
     )
 
-    assert result["daemon_queue_unavailable"] == "FailingLoadError"
+    assert result["daemon_queue_unavailable"] == "FailingLoadError: daemon transport refused"
+
+
+def test_daemon_plain_runtime_error_preserves_startup_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plain RuntimeError from ensure_guard_daemon keeps its specific message."""
+    guard_home = tmp_path / "guard"
+    store = GuardStore(guard_home)
+    config = GuardConfig(guard_home=guard_home, workspace=None)
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=guard_home)
+    args = argparse.Namespace(harness="claude-code", json=True)
+
+    monkeypatch.setattr(payload_module, "queue_blocked_approvals", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        payload_module, "schedule_guard_daemon_ensure", lambda *_a, **_k: "http://127.0.0.1:4455"
+    )
+    monkeypatch.setattr(payload_module, "_managed_install_for", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        payload_module,
+        "approval_prompt_flow",
+        lambda *_a, **_k: {"tier": "local"},
+    )
+
+    def unsafe_daemon(*_a, **_k):
+        raise RuntimeError("This Guard daemon is quarantined after unconfirmed containment.")
+
+    monkeypatch.setattr(payload_module, "load_guard_surface_daemon_client", unsafe_daemon)
+
+    resolver = payload_module._headless_approval_resolver(
+        args=args, context=context, store=store, config=config
+    )
+    result = resolver(
+        _detection(),
+        {"artifacts": [{"artifact_id": "art-1", "policy_action": "require-reapproval"}]},
+    )
+
+    assert result["daemon_queue_unavailable"].startswith("RuntimeError: ")
+    assert "quarantined" in result["daemon_queue_unavailable"]

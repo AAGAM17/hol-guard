@@ -424,3 +424,33 @@ def policy_readiness_diagnostic(publisher: object) -> dict[str, object]:
         "closed": closed if type(closed) is bool else None,
         "thread_alive": thread.is_alive() if isinstance(thread, threading.Thread) else None,
     }
+
+
+def policy_request_phase_diagnostic(publisher: object, phase: str) -> dict[str, object]:
+    """Capture admission readiness without serializing any policy binding."""
+    reader = getattr(publisher, "current_snapshot_binding", None)
+    available: bool | None = None
+    if callable(reader):
+        try:
+            available = isinstance(reader(), Mapping)
+        except Exception:
+            available = None
+    return {
+        "schema": "guard.installed-native-extension-request-phase.v1",
+        "phase": phase if phase in {"before_raw", "before_http", "after_http"} else "unknown",
+        "binding_available": available,
+        "publisher": policy_readiness_diagnostic(publisher),
+    }
+
+
+def require_native_http_admission(response: Mapping[str, object]) -> None:
+    """A late receipt cannot turn a failed HTTP admission into native proof."""
+    if response.get("reason_code") in (
+        "native_policy_not_ready",
+        "daemon_hook_deadline_exhausted",
+        "daemon_hook_worker_unavailable",
+        "native_runtime_unavailable",
+        "native_decision_budget_exhausted",
+        "native_review_unavailable",
+    ):
+        raise RuntimeError("installed_native_extensions_failed:http_native_admission_failed")

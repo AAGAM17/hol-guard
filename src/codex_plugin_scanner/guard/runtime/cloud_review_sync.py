@@ -17,7 +17,7 @@ from .cloud_review_batching import (
 )
 from .cloud_review_event_delivery import CLOUD_REVIEW_EVENT_PROTOCOL_VERSION, post_review_events
 from .cloud_review_event_projection import build_cloud_review_event, project_cloud_review_event
-from .cloud_review_retry_recovery import quarantine_terminal_binding_failures, repair_retry_identity_failures
+from .cloud_review_retry_recovery import recover_rejected_review_events, retry_result_message
 from .cloud_review_sync_auth import resolve_cloud_review_sync_auth_context as _resolve_cloud_review_sync_auth_context
 from .local_request_snapshots import _cloud_scrub_text, _resolve_cloud_receipt_redaction_level
 from .native_workspace_review_context import NativeWorkspaceReviewContextProbeState
@@ -193,22 +193,6 @@ def _is_terminally_superseded_result(item: dict[str, object]) -> bool:
     return isinstance(error, str) and error.startswith("stale event sequence ")
 
 
-def _retry_result_message(items: list[dict[str, object]]) -> str:
-    details: list[str] = []
-    for item in items:
-        code = item.get("code")
-        error = item.get("error")
-        detail = ": ".join(
-            _cloud_scrub_text(value) for value in (code, error) if isinstance(value, str) and value.strip()
-        )
-        if detail and detail not in details:
-            details.append(detail)
-    message = f"{len(items)} Cloud Review events require retry."
-    if details:
-        return f"{message} Cloud reported: {'; '.join(details[:3])}."
-    return message
-
-
 def _post_events_with_oauth_refresh(
     store: GuardStore,
     auth_context: dict[str, object],
@@ -224,7 +208,7 @@ def _post_events_with_oauth_refresh(
 
 
 def _retry_review_events(store: GuardStore, sequences: list[int], *, error: str, binding: dict[str, str]) -> None:
-    store.retry_review_events(sequences, now=_now(), error=error, **binding)
+    store.retry_review_events(sequences, now=_now(), error=_cloud_scrub_text(error), **binding)
 
 
 def sync_cloud_review_events_once(
@@ -373,18 +357,16 @@ def sync_cloud_review_events_once(
                         _retry_review_events(store, sequences, error=message, binding=delivery_binding)
                         continue
                     store.acknowledge_review_events(acknowledged_sequences, **delivery_binding)
-                    retry_sequences, retry_results = repair_retry_identity_failures(
-                        store, sequences=retry_sequences, results=retry_results, binding=delivery_binding
-                    )
-                    retry_sequences, retry_results = quarantine_terminal_binding_failures(
+                    retry_sequences, retry_results = recover_rejected_review_events(
                         store,
                         sequences=retry_sequences,
                         results=retry_results,
                         events=dict(zip(sequences, events, strict=True)),
                         binding=delivery_binding,
+                        acknowledged_through=response.get("acknowledgedThrough"),
                     )
                     if retry_sequences:
-                        message = _retry_result_message(retry_results)
+                        message = retry_result_message(retry_results)
                         all_errors.append(message)
                         store.retry_review_events(
                             retry_sequences,

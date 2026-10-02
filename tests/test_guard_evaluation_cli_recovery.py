@@ -46,6 +46,7 @@ def test_pre_marker_failure_stays_blocked_without_recovery_authority(
     assert report["reason"] == "setup_recovery_unavailable"
     assert payload["cleanup"]["removed"] is False
     assert payload["cleanup"]["recoveryTokenRetained"] is False
+    assert payload["cleanup"]["reason"] == "setup_recovery_unavailable"
     assert len(allocated_roots) == 1
     assert allocated_roots[0].is_dir()
     assert not (allocated_roots[0] / ".hol-guard-evaluation-owned").exists()
@@ -53,8 +54,9 @@ def test_pre_marker_failure_stays_blocked_without_recovery_authority(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="CLI recovery storage requires POSIX ownership checks")
-def test_partial_run_keeps_owned_path_when_token_storage_and_cleanup_fail(
-    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("command", ["preflight", "run"])
+def test_partial_setup_keeps_owned_path_when_token_storage_and_cleanup_fail(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch, command: str
 ) -> None:
     profile_path, _, _ = _write_profile(tmp_path)
     original_mkdir = Path.mkdir
@@ -72,11 +74,18 @@ def test_partial_run_keeps_owned_path_when_token_storage_and_cleanup_fail(
     def unavailable_token(*args, **kwargs) -> None:
         raise _CliError("cleanup_token_unavailable", "synthetic storage failure")
 
+    argv = [command, "--profile", str(profile_path)]
+    if command == "preflight":
+        argv.extend(
+            ["--artifact", f"core-fixture={tmp_path / 'core-fixture.bin'}", "--allow-host-execution", "--setup"]
+        )
     with monkeypatch.context() as patch:
+        patch.setattr(preflight_module, "check_host_version", lambda *_args, **_kwargs: (True, "host_version_match"))
         patch.setattr(Path, "mkdir", fail_workspace)
         patch.setattr(preflight_module._cleanup, "remove_owned_root", unavailable_cleanup)
+        patch.setattr(cli_module, "_write_recovery_token", unavailable_token)
         patch.setattr(cli_run_module, "_write_recovery_token", unavailable_token)
-        assert main(["run", "--profile", str(profile_path)]) != 0
+        assert main(argv) != 0
     payload = _payload(capsys)
     assert payload["status"] == "blocked_environment"
     assert payload["error"]["code"] == "cleanup_token_unavailable"

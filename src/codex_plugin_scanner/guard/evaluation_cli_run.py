@@ -83,7 +83,7 @@ def run_synthetic_command(
         cleanup: dict[str, object] = {"removed": cleanup_removed, "recoveryTokenRetained": token_retained}
         if setup.root_path is not None and not cleanup_removed:
             cleanup["ownedRoot"] = str(setup.root_path)
-            cleanup["reason"] = "cleanup_incomplete"
+            cleanup["reason"] = setup.report.reason if setup.marker_token is None else "cleanup_incomplete"
         return SyntheticCommandResult(
             status=setup.report.status,
             run=_empty_report(setup.report.status, reason=setup.report.reason),

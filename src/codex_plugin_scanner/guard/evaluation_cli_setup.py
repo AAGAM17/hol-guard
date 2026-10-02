@@ -50,19 +50,26 @@ def run_preflight(args: argparse.Namespace) -> int:
                     removed = False
                     with contextlib.suppress(_cli.EvaluationContractError):
                         removed = setup.cleanup()
+                    failed_cleanup: dict[str, object] = {
+                        "removed": removed,
+                        "recoveryTokenRetained": False,
+                        "available": False,
+                    }
+                    if not removed:
+                        failed_cleanup.update(ownedRoot=str(setup.root_path), reason="cleanup_incomplete")
                     _cli._emit(
                         _cli._result(
                             "preflight",
                             setup.report.status if setup.report.status != "passed" else "blocked_environment",
                             report=report,
                             error=error,
-                            cleanup={"removed": removed, "recoveryTokenRetained": False, "available": False},
+                            cleanup=failed_cleanup,
                         )
                     )
                     return _cli._exit_code(
                         setup.report.status if setup.report.status != "passed" else "blocked_environment"
                     )
-                cleanup = {"available": True, "tokenLocation": "declared_parent"}
+                cleanup = {"available": True, "tokenLocation": "declared_parent", "recoveryTokenRetained": True}
                 if setup.report.status != "passed":
                     cleanup.update(removed=False, recoveryTokenRetained=True)
             _cli._emit(_cli._result("preflight", setup.report.status, report=report, cleanup=cleanup))

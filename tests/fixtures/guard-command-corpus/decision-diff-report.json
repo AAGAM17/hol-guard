@@ -8,7 +8,7 @@
     "fixtures_sha256": {
       "known-gaps.json": "5574b48b2a274aaf43d964b4bf4ff75ac337ff86c3c3d25b23dcbcf63de13513",
       "minimal-delta-pairs.json": "f8a972f4924ad015753659cd0a987e5d077f2c9981b42187184ad689231c459f",
-      "native-contract.json": "e66772dd56b8aec83bc4b9a5b7939aa35640d2fb2e9d0bce060ac5e827ad1995",
+      "native-contract.json": "bf14cdc9da53c0af2d5d1179fdee3f4d25473ee299d890d78fefc07469ce5a7a",
       "seed-manifest.json": "9cb33472d122058e8ede6ede57d55d0ebf29b832f8b4eb5321a2309862cf3728"
     },
     "sources_sha256": {

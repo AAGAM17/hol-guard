@@ -1,6 +1,6 @@
 import pytest
 
-from ci.native_runtime.probe_workflow_matrix import assert_admission, assert_execution
+from ci.native_runtime.probe_workflow_matrix import assert_admission, assert_execution, decode_events
 from ci.native_runtime.workflow_matrix_cases import WorkflowCase
 
 
@@ -27,3 +27,18 @@ def test_live_execution_requires_every_exact_command_and_success():
         assert_execution([case], events)
     events[1]["isError"] = False
     assert_execution([case], events)
+
+
+@pytest.mark.parametrize("value", [None, [], "invalid"])
+def test_malformed_tool_arguments_fail_as_assertions(value):
+    events = [
+        {"type": "tool_execution_start", "args": value},
+        {"type": "tool_execution_end", "isError": False},
+    ]
+    with pytest.raises(AssertionError, match="malformed"):
+        assert_execution([WorkflowCase("read", "cat ordinary.ts")], events)
+
+
+def test_malformed_json_fails_as_an_assertion():
+    with pytest.raises(AssertionError, match="malformed Pi event JSON"):
+        decode_events('{"type":')

@@ -22,17 +22,22 @@ fn explicit_github_read_permission_deny_still_wins() {
     })).unwrap();
     binding.effective_digest = binding.compute_effective_digest().unwrap();
     let controls = CompiledNativeCommandControls::new(&binding).unwrap();
-    let result = evaluate_pre_tool_envelope_with_context(
-        "zcode",
-        "PreToolUse",
-        &json!({"tool_name":"bash","tool_input":{"command":"gh api repos/owner/repo/compare/base...main"}}),
-        Some(&controls),
-        None,
-        None,
-        None,
-    );
-    assert_eq!(result.minimum_action, "block");
-    assert_eq!(result.decision, "deny");
+    for command in [
+        "gh api repos/owner/repo/compare/base...main",
+        "gh auth status",
+    ] {
+        let result = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"tool_name":"bash","tool_input":{"command":command}}),
+            Some(&controls),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(result.minimum_action, "block");
+        assert_eq!(result.decision, "deny");
+    }
 }
 
 #[test]
@@ -48,6 +53,8 @@ fn github_read_capabilities_have_a_benign_floor_but_mutations_do_not() {
             ("gh auth status", true),
             ("gh auth token", false),
             ("gh auth status --show-token", false),
+            ("gh pr view 1 --web", false),
+            ("gh pr view 1 -w", false),
             ("gh api repos/owner/repo/issues -f title=changed", false),
             ("gh api -X DELETE repos/owner/repo", false),
             ("gh api -X PATCH repos/owner/repo -f private=false", false),

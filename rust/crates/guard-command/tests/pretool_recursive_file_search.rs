@@ -24,6 +24,23 @@ fn recursive_search_checks_every_reachable_path() {
     std::os::unix::fs::symlink(root.join(".env"), root.join("src/alias.ts")).unwrap();
     std::os::unix::fs::symlink(root.join("__tests__"), root.join("test-alias")).unwrap();
     for harness in ["omp", "zcode"] {
+        for cwd in ["~", "~/__tests__"] {
+            let command = if cwd == "~" {
+                "grep -rn ordinary __tests__/"
+            } else {
+                "grep -rn ordinary nested/"
+            };
+            let result = evaluate_pre_tool_envelope_with_context(
+                harness,
+                "PreToolUse",
+                &json!({"toolName":"Bash", "toolInput":{"command":command}}),
+                None,
+                None,
+                root.to_str(),
+                Some(cwd),
+            );
+            assert_eq!(result.minimum_action, "allow", "{harness}: {cwd}");
+        }
         for (command, expected) in [
             ("grep -rn ordinary src/one.ts src/two.ts".to_owned(), true),
             (

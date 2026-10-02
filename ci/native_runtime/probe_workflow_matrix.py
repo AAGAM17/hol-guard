@@ -55,22 +55,40 @@ def _review(worker, case, *, session, home, guard_home, workspace):
     return result
 
 
+def _event_object(value: object, label: str) -> dict:
+    if not isinstance(value, dict):
+        raise AssertionError(f"malformed Pi event object: {label}")
+    return value
+
+
+def decode_events(output: str) -> list[dict[str, object]]:
+    try:
+        return [_event_object(json.loads(line), "event") for line in output.splitlines() if line.startswith("{")]
+    except json.JSONDecodeError as error:
+        raise AssertionError("malformed Pi event JSON") from error
+
+
 def assert_execution(cases: list[WorkflowCase], events: list[dict[str, object]]) -> None:
+    events = [_event_object(event, "event") for event in events]
     starts = [event for event in events if event.get("type") == "tool_execution_start"]
     ends = [event for event in events if event.get("type") == "tool_execution_end"]
     if len(starts) != len(cases) or len(ends) != len(cases):
         raise AssertionError("Pi omitted or duplicated a workflow command")
     commands = []
     for case, start, end in zip(cases, starts, ends, strict=True):
+        args = _event_object(start.get("args"), f"{case.name}.args")
         if case.protected_reason:
-            proof = end.get("result", {}).get("details", {}).get("holGuardContainedTest", {})
-            if "execute-contained-test" not in start.get("args", {}).get("command", ""):
+            result = _event_object(end.get("result"), f"{case.name}.result")
+            details = _event_object(result.get("details"), f"{case.name}.details")
+            proof = _event_object(details.get("holGuardContainedTest"), f"{case.name}.proof")
+            original = _event_object(proof.get("input"), f"{case.name}.input")
+            if not isinstance(args.get("command"), str) or "execute-contained-test" not in args["command"]:
                 raise AssertionError("protected workflow did not use the execution sink")
-            commands.append(proof.get("input", {}).get("command"))
+            commands.append(original.get("command"))
             if "passed" not in json.dumps(end.get("result", {})):
                 raise AssertionError("protected tests produced no passing test output")
         else:
-            commands.append(start.get("args", {}).get("command"))
+            commands.append(args.get("command"))
     if commands != [case.command for case in cases]:
         raise AssertionError("Pi omitted, duplicated, reordered, or changed a workflow command")
     if len(ends) != len(cases) or any(event.get("isError") is not False for event in ends):
@@ -136,7 +154,7 @@ def run_live(
         (output / f"pi-batch-{offset // 8}.log").write_text(result.stdout + "\n" + result.stderr)
         if result.returncode != 0:
             raise AssertionError(f"Pi batch failed: {offset // 8}")
-        events = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+        events = decode_events(result.stdout)
         assert_execution(batch, events)
         if worker.store.count_approval_requests(status=None) != before:
             raise AssertionError("quiet workflow unexpectedly created an approval")

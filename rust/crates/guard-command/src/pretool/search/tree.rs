@@ -12,7 +12,13 @@ pub(super) fn safe_recursive_target(value: &str, context: ReadContext<'_>) -> bo
         PathBuf::from(value)
     } else {
         let Some(cwd) = context.1 else { return false };
-        Path::new(cwd).join(value)
+        let expanded_cwd = if cwd == "~" || cwd.starts_with("~/") {
+            let Some(home) = context.0 else { return false };
+            Path::new(home).join(cwd.strip_prefix("~/").unwrap_or(""))
+        } else {
+            PathBuf::from(cwd)
+        };
+        expanded_cwd.join(value)
     };
     // Remove trailing separators so symlink_metadata cannot follow a directory link.
     let expanded: PathBuf = expanded.components().collect();

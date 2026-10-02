@@ -795,14 +795,18 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         reserved_normal = False
         if not control:
             reserved_normal = self._reserve_normal_connection(request_socket)
-            if path is None and not reserved_normal and self._normal_admission_full():
-                # Park only while a connection permit remains. That permit is
-                # reserved for control, so an in-flight line must not take it.
-                # A full pool still goes through admission and can evict.
-                if self.connection_capacity.acquire(blocking=False):
-                    self.connection_capacity.release()
-                    self._park_saturation_probe(request_socket, client_address, accepted_at)
-                    return
+            # Park only while a connection permit remains. That permit is
+            # reserved for control, so an in-flight line must not take it.
+            # A full pool still goes through admission and can evict.
+            if (
+                path is None
+                and not reserved_normal
+                and self._normal_admission_full()
+                and self.connection_capacity.acquire(blocking=False)
+            ):
+                self.connection_capacity.release()
+                self._park_saturation_probe(request_socket, client_address, accepted_at)
+                return
         pending = not control and not reserved_normal
         self._accept_classified_request(
             request_socket,

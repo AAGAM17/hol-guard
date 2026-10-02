@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import multiprocessing
+import traceback
 
 import pytest
 
@@ -66,9 +67,9 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
     report = outcome.get_result()
     if not report.failed or call.excinfo is None or call.excinfo.type is not AssertionError:
         return
-    for entry in call.excinfo.traceback:
-        if entry.frame.raw.f_code is item.function.__code__:
-            output = entry.frame.f_locals.get("output")
+    for frame, _lineno in traceback.walk_tb(call.excinfo.tb):
+        if frame.f_code is item.function.__code__:
+            output = frame.f_locals.get("output")
             if isinstance(output, dict):
                 diagnostic = _guard_post_tool_failure_diagnostic(output)
                 if diagnostic:

@@ -42,7 +42,7 @@ def _queue_local_protect_approvals(
         config = load_guard_config(guard_home)
     except (OSError, RuntimeError, TypeError, ValueError):
         config = None
-    if not asks_for_approval(config):
+    if config is None or not asks_for_approval(config):
         verdict = response_payload.get("verdict")
         reason = verdict.get("reason") if isinstance(verdict, dict) else None
         guidance = safe_alternative_reason(str(reason or "HOL Guard blocked this package request."))

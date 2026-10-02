@@ -50,7 +50,7 @@ from .runtime.mcp_skill_firewall import enrich_artifact_with_mcp_skill_firewall,
 from .store import GuardStore, browser_mcp_exact_match_context
 from .temporary_mcp_approvals import runtime_grant_selectors
 
-_MCP_TOOL_CALL_EVALUATOR_POLICY_VERSION = "mcp-tool-call-evaluation-v4"  # bump with risk/action semantics
+_MCP_TOOL_CALL_EVALUATOR_POLICY_VERSION = "mcp-tool-call-evaluation-v5"  # bump with risk/action semantics
 
 _NON_EXECUTED_TOOL_CALL_TAXONOMY: Mapping[GuardAction, tuple[str, str]] = {
     "review": ("runtime_tool_call_review_required", "runtime tool call awaiting review"),
@@ -110,6 +110,36 @@ def approval_reuse_decisions_match(
     )
     return same_identifier and all(
         expected.get(key) == current.get(key) for key in _APPROVAL_REUSE_DECISION_IDENTITY_KEYS
+    )
+
+
+def fresh_local_tool_approval_matches(
+    decision: Mapping[str, object] | None,
+    *,
+    artifact: GuardArtifact,
+    artifact_hash: str,
+) -> bool:
+    """Identify exact local-once proof after validated lookup or atomic claim.
+
+    This shape check is not integrity validation or launch authority by itself.
+    Retained policy rules cannot satisfy a fresh-approval requirement.
+    """
+    return (
+        decision is not None
+        and (
+            (
+                decision.get("source") == "approval-gate-once"
+                and isinstance(decision.get("approval_id"), str)
+                and bool(decision.get("approval_id"))
+            )
+            or (decision.get("source") == "approval-gate" and type(decision.get("decision_id")) is int)
+        )
+        and decision.get("action") == "allow"
+        and decision.get("scope") == "artifact"
+        and decision.get("harness") == artifact.harness
+        and decision.get("artifact_id") == artifact.artifact_id
+        and decision.get("artifact_hash") == artifact_hash
+        and isinstance(decision.get("expires_at"), str)
     )
 
 
@@ -627,6 +657,11 @@ def _revalidate_claimed_tool_call_approval(
         validation_reason = APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM if context_changed is not None else None
     if fresh_decision.approval_reuse_reason_code == "approval_reuse_integrity_failure":
         validation_reason = "approval_reuse_integrity_failure"
+    elif (
+        fresh_decision.approval_reuse_status == "rejected"
+        and fresh_decision.approval_reuse_reason_code not in {None, APPROVAL_REUSE_NO_SAVED_DECISION}
+    ):
+        validation_reason = APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM
 
     # A fresh unclaimed allow is not launch authority. Reuse the freshly
     # computed current action, while preserving a newly observed saved block or
@@ -659,6 +694,12 @@ def _revalidate_claimed_tool_call_approval(
         "allow",
         saved_decision_present=True,
         validation_reason=validation_reason,
+        fresh_local_approval=(
+            claim_disposition == "consumed"
+            and fresh_local_tool_approval_matches(
+                claimed_decision, artifact=fresh_artifact, artifact_hash=fresh_artifact_hash
+            )
+        ),
     )
     return replace(
         _tool_call_decision_with_reuse(post_claim_current, reuse),

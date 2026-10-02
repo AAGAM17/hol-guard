@@ -11,6 +11,7 @@ mod edge;
 mod hardening;
 mod managed_resident;
 mod claim_reuse;
+mod claim_approval_reuse_op;
 mod encrypted_secret_store;
 mod local_once_store;
 mod policy_integrity_resolver;

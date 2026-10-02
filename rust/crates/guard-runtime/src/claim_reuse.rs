@@ -109,7 +109,7 @@ pub fn materialized_policy_bundle_row_identity(row: &Value) -> Vec<Value> {
 /// Column order for the `policy_decisions` SELECT in
 /// `claim_approval_reuse_decision_locked`. Integer columns read as i64; the
 /// rest read as optional text, matching `_row_mapping` (sqlite3.Row → dict).
-fn policy_row_to_value(row: &rusqlite::Row) -> rusqlite::Result<Value> {
+pub(crate) fn policy_row_to_value(row: &rusqlite::Row) -> rusqlite::Result<Value> {
     let text = |i: usize| -> rusqlite::Result<Value> {
         Ok(row.get::<_, Option<String>>(i)?.map_or(Value::Null, Value::String))
     };
@@ -141,7 +141,7 @@ fn policy_row_to_value(row: &rusqlite::Row) -> rusqlite::Result<Value> {
 
 /// `_policy_row_payload` (`store_secret_policy_integrity.py:1143-1186`) —
 /// the merged decision dict compared key-for-key against the selected allow.
-fn policy_row_payload(
+pub(crate) fn policy_row_payload(
     row: &Value,
     integrity_result: Option<&PolicyIntegrityVerification>,
     state: Option<&Value>,

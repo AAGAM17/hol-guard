@@ -50,6 +50,60 @@ def _destructive_shell_tool_action_request(
     raw_execution_context: ShellExecutionContext | None = None,
     native_evaluation: CompositeCommandEvaluation | None = None,
 ) -> ToolActionRequestMatch | None:
+    result = _classify_shell_tool_action_request(
+        tool_name=tool_name,
+        normalized_tool_name=normalized_tool_name,
+        command_text=command_text,
+        cwd=cwd,
+        home_dir=home_dir,
+        canonical_command=canonical_command,
+        raw_command_text=raw_command_text,
+        execution_context=execution_context,
+        raw_execution_context=raw_execution_context,
+        native_evaluation=native_evaluation,
+    )
+    if result is not None or normalized_tool_name not in _SHELL_TOOL_NAMES or os.name != "nt":
+        return result
+    canonical_command = canonical_command or parse_shell_command(command_text, cwd=cwd, home_dir=home_dir)
+    # Hash binding is not a Windows host ACL proof. Add this floor only after
+    # normal classification so it never hides a deny or sandbox requirement.
+    if (
+        len(canonical_command.segments) > 1
+        and any(_is_python_interpreter_command(segment.executable or "") for segment in canonical_command.segments)
+        and (native_evaluation is None or native_evaluation.minimum_action == "allow")
+    ):
+        return ToolActionRequestMatch(
+            tool_name=tool_name,
+            normalized_tool_name=normalized_tool_name,
+            command_text=command_text,
+            action_class="unverified compound interpreter host",
+            reason="Guard requires review because this compound Python launch has no Windows host ACL proof.",
+            canonical_command=canonical_command,
+            guard_default_action="require-reapproval",
+            reason_code="interpreter_host_binding_unverified",
+            interpreter_executable_identities=_python_interpreter_executable_identities(
+                raw_command_text or command_text,
+                cwd=cwd,
+                home_dir=home_dir,
+                execution_context=raw_execution_context or execution_context,
+            ),
+        )
+    return None
+
+
+def _classify_shell_tool_action_request(
+    *,
+    tool_name: str,
+    normalized_tool_name: str,
+    command_text: str,
+    cwd: Path | None,
+    home_dir: Path | None,
+    canonical_command: CanonicalCommand | None = None,
+    raw_command_text: str | None = None,
+    execution_context: ShellExecutionContext | None = None,
+    raw_execution_context: ShellExecutionContext | None = None,
+    native_evaluation: CompositeCommandEvaluation | None = None,
+) -> ToolActionRequestMatch | None:
     if normalized_tool_name not in _SHELL_TOOL_NAMES:
         return None
     canonical_command = canonical_command or parse_shell_command(command_text, cwd=cwd, home_dir=home_dir)
@@ -89,25 +143,6 @@ def _destructive_shell_tool_action_request(
         or native_evaluation.command.security_identity != canonical_command.security_identity
     ):
         raise ValueError("native command evaluation does not match the classified command")
-    # Content binding does not establish Windows host ACL trust. Keep this
-    # floor independent of native benign syntax and Guard's own interpreter.
-    if (
-        os.name == "nt"
-        and len(canonical_command.segments) > 1
-        and any(_is_python_interpreter_command(segment.executable or "") for segment in canonical_command.segments)
-        and (native_evaluation is None or native_evaluation.minimum_action == "allow")
-    ):
-        return ToolActionRequestMatch(
-            tool_name=tool_name,
-            normalized_tool_name=normalized_tool_name,
-            command_text=command_text,
-            action_class="unverified compound interpreter host",
-            reason="Guard requires review because this compound Python launch has no Windows host ACL proof.",
-            canonical_command=canonical_command,
-            guard_default_action="require-reapproval",
-            reason_code="interpreter_host_binding_unverified",
-            interpreter_executable_identities=interpreter_executable_identities,
-        )
     if native_evaluation is not None:
         native_explicitly_benign = any(
             reason.reason_code == "native.explicit-benign" for reason in native_evaluation.decision_plane.reasons

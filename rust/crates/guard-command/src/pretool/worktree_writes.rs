@@ -1,5 +1,36 @@
 use std::path::{Path, PathBuf};
 
+pub(super) fn canonical_write_target(target: &Path) -> Option<PathBuf> {
+    let mut existing = target;
+    let mut missing = Vec::new();
+    loop {
+        match existing.symlink_metadata() {
+            Ok(_) => {
+                // Resolve existing links, including the ancestor of a new subtree.
+                // Dangling links and non-directory ancestors are not new paths.
+                let canonical = std::fs::canonicalize(existing).ok()?;
+                if missing.is_empty() {
+                    return canonical.is_file().then_some(canonical);
+                }
+                if !canonical.is_dir() {
+                    return None;
+                }
+                return Some(
+                    missing
+                        .iter()
+                        .rev()
+                        .fold(canonical, |path, name| path.join(name)),
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing.push(existing.file_name()?.to_os_string());
+                existing = existing.parent()?;
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
 // A matching repository name is not proof. Git's common directory and the
 // registered worktree backlink must agree after resolving every symlink.
 pub(super) fn same_repository_worktree(workspace: &Path, target: &Path) -> bool {

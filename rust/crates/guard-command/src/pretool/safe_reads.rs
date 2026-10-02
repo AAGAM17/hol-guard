@@ -213,26 +213,8 @@ pub(super) fn bounded_file_write_target(
     } else {
         workspace.join(supplied)
     };
-    let canonical = match std::fs::canonicalize(&target) {
-        Ok(path) if path.is_file() => path,
-        Ok(_) => return false,
-        Err(_) => {
-            // A dangling symlink is not a new file. Only a missing leaf in
-            // an existing canonical parent can receive routine-write proof.
-            if target.symlink_metadata().is_ok() {
-                return false;
-            }
-            let Some(parent) = target
-                .parent()
-                .and_then(|parent| std::fs::canonicalize(parent).ok())
-            else {
-                return false;
-            };
-            let Some(name) = target.file_name() else {
-                return false;
-            };
-            parent.join(name)
-        }
+    let Some(canonical) = super::worktree_writes::canonical_write_target(&target) else {
+        return false;
     };
     (canonical.starts_with(&workspace)
         || super::worktree_writes::same_repository_worktree(&workspace, &canonical))

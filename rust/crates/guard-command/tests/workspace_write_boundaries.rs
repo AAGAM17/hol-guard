@@ -41,13 +41,7 @@ fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
         "-m",
         "fixture",
     ]);
-    git(&[
-        "worktree",
-        "add",
-        "--quiet",
-        "--detach",
-        linked_path,
-    ]);
+    git(&["worktree", "add", "--quiet", "--detach", linked_path]);
     for directory in [&workspace, &linked, &home.join("unrelated")] {
         std::fs::create_dir_all(directory.join("src")).unwrap();
         std::fs::write(directory.join("src/example.ts"), "fixture").unwrap();
@@ -56,6 +50,9 @@ fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
         ("~/project/src/example.ts", true),
         ("~/linked/src/example.ts", true),
         ("~/linked/src/new.ts", true),
+        ("~/linked/app/api/backfill/route.ts", true),
+        ("~/linked/app/api/backfill/.env", false),
+        ("~/linked/.ssh/new/id_rsa", false),
         ("~/linked/.env", false),
         ("~/linked/.git", false),
         ("~/unrelated/src/example.ts", false),
@@ -113,6 +110,9 @@ fn routine_workspace_writes_keep_sensitive_and_destructive_boundaries() {
     for (tool, path, allowed) in [
         ("edit", "src/example.py".to_owned(), true),
         ("write", "src/new.py".to_owned(), true),
+        ("write", "app/api/backfill/route.ts".to_owned(), true),
+        ("write", "src/example.py/nested/new.py".to_owned(), false),
+        ("write", "app/api/backfill/.env".to_owned(), false),
         ("write", ".env".to_owned(), false),
         ("write", ".ssh/id_rsa".to_owned(), false),
         ("write", ".git/config".to_owned(), false),
@@ -145,6 +145,21 @@ fn routine_workspace_writes_keep_sensitive_and_destructive_boundaries() {
     }
     #[cfg(unix)]
     {
+        std::os::unix::fs::symlink(
+            root.join("missing-directory"),
+            workspace.join("dangling-parent"),
+        )
+        .unwrap();
+        let dangling = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"toolName":"Write", "toolInput":{"file_path":"dangling-parent/nested/new.py", "content":"fixture"}}),
+            None,
+            None,
+            workspace.to_str(),
+            workspace.to_str(),
+        );
+        assert_ne!(dangling.minimum_action, "allow");
         let link = workspace.join("src/escape.py");
         if link.symlink_metadata().is_err() {
             std::os::unix::fs::symlink(root.join("outside.py"), &link).unwrap();

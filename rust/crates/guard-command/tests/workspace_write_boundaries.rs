@@ -32,6 +32,84 @@ impl Drop for TestRoot {
 }
 
 #[test]
+fn shell_read_commands_share_the_structured_file_risk_boundary() {
+    let fixture = TestRoot::new("shell-read-fixtures");
+    let home = &fixture.0;
+    let workspace = home.join("project");
+    let outside = home.join("other");
+    for directory in [&workspace, &outside] {
+        std::fs::create_dir_all(directory).unwrap();
+        std::fs::write(directory.join("source.ts"), "protection-graph/ fixture").unwrap();
+        std::fs::write(directory.join(".env"), "SYNTHETIC=fixture").unwrap();
+    }
+    let commands = [
+        "grep -n 'protection-graph/'",
+        "grep -nE 'password|api_key|token'",
+        "rg -n 'protection-graph/'",
+        "cat",
+        "head -n 10",
+        "tail -n 10",
+        "sed -n '1,10p'",
+    ];
+    for prefix in commands {
+        for target in [
+            workspace.join("source.ts").display().to_string(),
+            outside.join("source.ts").display().to_string(),
+            "~/other/source.ts".to_owned(),
+            "source.ts".to_owned(),
+        ] {
+            let command = format!("{prefix} '{target}'");
+            let result = evaluate_pre_tool_envelope_with_context(
+                "zcode",
+                "PreToolUse",
+                &json!({"toolName":"Bash", "toolInput":{"command":command}}),
+                None,
+                None,
+                home.to_str(),
+                workspace.to_str(),
+            );
+            assert_eq!(
+                result.minimum_action, "allow",
+                "{command}: {}",
+                result.reason_code
+            );
+        }
+        let command = format!("{prefix} '{}'", outside.join(".env").display());
+        let result = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"toolName":"Bash", "toolInput":{"command":command}}),
+            None,
+            None,
+            home.to_str(),
+            workspace.to_str(),
+        );
+        assert_ne!(result.minimum_action, "allow", "{command}");
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(outside.join(".env"), workspace.join("source-link.ts")).unwrap();
+        let command = format!(
+            "grep -n fixture '{}'",
+            workspace.join("source-link.ts").display()
+        );
+        let result = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"toolName":"Bash", "toolInput":{"command":command}}),
+            None,
+            None,
+            home.to_str(),
+            workspace.to_str(),
+        );
+        assert_ne!(
+            result.minimum_action, "allow",
+            "secret symlink must remain guarded"
+        );
+    }
+}
+
+#[test]
 fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
     let fixture = TestRoot::new("worktree-write-fixtures");
     let home = &fixture.0;

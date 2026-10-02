@@ -10,7 +10,7 @@ use guard_contracts::{
 };
 use serde_json::Value;
 
-use super::{evaluate_pre_tool, PreToolDecisionV1};
+use super::{evaluate_pre_tool_with_context, PreToolDecisionV1};
 use extract::{extract_generic_signals, GenericSignals};
 use result::{generic_action, generic_error_result, generic_result, review_reason};
 use std::time::Instant;
@@ -48,18 +48,31 @@ pub fn evaluate_pre_tool_envelope_with_context(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> PreToolResultV1 {
-    let signals = match extract_generic_signals(payload) {
+    let mut signals = match extract_generic_signals(payload) {
         Ok(value) => value,
         Err(error) => return generic_error_result(harness, event, error),
     };
     let command_decision = signals.command.as_deref().map(|command| {
-        evaluate_pre_tool(&CommandModelRequestV1 {
-            command: command.to_owned(),
-            dialect: "posix".to_owned(),
-            transport: "shell_string".to_owned(),
-            extraction_provenance: "pre-tool-generic".to_owned(),
-        })
+        evaluate_pre_tool_with_context(
+            &CommandModelRequestV1 {
+                command: command.to_owned(),
+                dialect: "posix".to_owned(),
+                transport: "shell_string".to_owned(),
+                extraction_provenance: "pre-tool-generic".to_owned(),
+            },
+            home_dir,
+            cwd,
+        )
     });
+    // Parsed benign commands may contain credential words as search patterns.
+    // Preserve independent structured-path/content risk, not the raw-text hint.
+    if command_decision.as_ref().is_some_and(|decision| {
+        decision
+            .as_ref()
+            .is_ok_and(|decision| decision.explicitly_benign)
+    }) {
+        signals.sensitive_target = signals.independent_sensitive_target;
+    }
     let mut result = evaluate_signals(
         harness,
         event,

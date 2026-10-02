@@ -83,19 +83,22 @@ pub(super) fn safe_read_target(argument: &str) -> bool {
     true
 }
 
-/// Structured file-tool read floor. `home_dir`/`cwd` are the envelope's
-/// verified roots; `~` expands against `home_dir`. Absolute and anchored
-/// candidates must canonicalize to an existing regular file — symlinks
-/// resolve to their real target — and stay
-/// outside the sensitive roots, credential families, sensitive filenames,
-/// and hidden directories. Workspace-relative paths keep the legacy
-/// lexical allowance, but when `cwd` is known and the file resolves, the
-/// canonical check applies to them as well. Directories and unresolvable
-/// absolute/`~` targets are not provable here and stay under review.
+/// Share canonical path-risk checks between structured reads and shell reads.
+/// Absolute/home-relative targets must resolve; sensitive symlink destinations
+/// stay guarded. Unresolved relative targets retain the legacy lexical floor.
 pub(super) fn bounded_file_read_target(
     value: &str,
     home_dir: Option<&str>,
     cwd: Option<&str>,
+) -> bool {
+    bounded_read_target(value, home_dir, cwd, false)
+}
+
+pub(super) fn bounded_read_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    allow_directory: bool,
 ) -> bool {
     let path = value.trim();
     if path.is_empty() || path.len() > 4096 {
@@ -116,17 +119,21 @@ pub(super) fn bounded_file_read_target(
     let expanded_path = std::path::Path::new(&expanded);
     let candidate = if expanded_path.is_absolute() {
         expanded_path.to_path_buf()
-    } else if let Some(root) = cwd.map(str::trim).filter(|root| root.starts_with('/')) {
-        std::path::Path::new(root).join(expanded_path)
+    } else if let Some(root) = cwd
+        .and_then(|root| expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned())))
+        .filter(|root| std::path::Path::new(root).is_absolute())
+    {
+        std::path::Path::new(&root).join(expanded_path)
     } else {
         return safe_read_target(path);
     };
     if let Ok(canonical) = std::fs::canonicalize(&candidate) {
-        return resolved_file_read_allowed(&canonical, home_dir, cwd);
+        return (canonical.is_file() || (allow_directory && canonical.is_dir()))
+            && resolved_path_allowed(&canonical, home_dir, cwd);
     }
     // An unresolvable absolute or `~` target cannot prove a bounded file;
     // a workspace-relative spelling keeps the pre-existing lexical floor.
-    if expanded.starts_with('/') {
+    if expanded_path.is_absolute() {
         return false;
     }
     safe_read_target(path)
@@ -134,17 +141,6 @@ pub(super) fn bounded_file_read_target(
 
 /// Location outside the workspace is not itself a risk. The resolved regular
 /// file must still clear every sensitive-path screen.
-fn resolved_file_read_allowed(
-    canonical: &std::path::Path,
-    home_dir: Option<&str>,
-    cwd: Option<&str>,
-) -> bool {
-    if !canonical.is_file() {
-        return false;
-    }
-    resolved_path_allowed(canonical, home_dir, cwd)
-}
-
 fn resolved_path_allowed(
     canonical: &std::path::Path,
     home_dir: Option<&str>,
@@ -328,7 +324,10 @@ fn lexical_read_path(value: &str) -> Option<String> {
     Some(normalized)
 }
 
-pub(super) fn safe_listing_arguments(arguments: &[String]) -> bool {
+pub(super) fn safe_listing_arguments(
+    arguments: &[String],
+    context: (Option<&str>, Option<&str>),
+) -> bool {
     arguments.iter().all(|argument| {
         if argument == "-" || argument == "-R" || argument == "--recursive" {
             return false;
@@ -336,11 +335,27 @@ pub(super) fn safe_listing_arguments(arguments: &[String]) -> bool {
         if argument.starts_with('-') {
             return !argument.contains('R');
         }
-        safe_read_target(argument)
+        command_read_target(argument, context, true)
     })
 }
 
-pub(super) fn safe_sed_arguments(arguments: &[String], piped_input: bool) -> bool {
+fn command_read_target(
+    value: &str,
+    context: (Option<&str>, Option<&str>),
+    allow_directory: bool,
+) -> bool {
+    if context.0.is_some() || context.1.is_some() {
+        bounded_read_target(value, context.0, context.1, allow_directory)
+    } else {
+        safe_read_target(value)
+    }
+}
+
+pub(super) fn safe_sed_arguments(
+    arguments: &[String],
+    piped_input: bool,
+    context: (Option<&str>, Option<&str>),
+) -> bool {
     let (quiet, rest) = if arguments.first().is_some_and(|arg| arg == "-n") {
         (true, &arguments[1..])
     } else {
@@ -371,16 +386,19 @@ pub(super) fn safe_sed_arguments(arguments: &[String], piped_input: bool) -> boo
             parts.len() == 3 && matches!(parts[2], "" | "g")
         });
     (bounded_print || substitution)
-        && (matches!(targets, [target] if !target.starts_with('-') && safe_read_target(target))
+        && (matches!(targets, [target] if !target.starts_with('-') && command_read_target(target, context, false))
             || (targets.is_empty() && piped_input))
 }
 
-pub(super) fn safe_plain_file_arguments(arguments: &[String]) -> bool {
+pub(super) fn safe_plain_file_arguments(
+    arguments: &[String],
+    context: (Option<&str>, Option<&str>),
+) -> bool {
     let mut saw_target = false;
     let mut after_options = false;
     for argument in arguments {
         if after_options {
-            if argument == "-" || !safe_read_target(argument) || saw_target {
+            if argument == "-" || !command_read_target(argument, context, false) || saw_target {
                 return false;
             }
             saw_target = true;
@@ -403,7 +421,7 @@ pub(super) fn safe_plain_file_arguments(arguments: &[String]) -> bool {
             }
             return false;
         }
-        if !safe_read_target(argument) {
+        if !command_read_target(argument, context, false) {
             return false;
         }
         if saw_target {
@@ -414,7 +432,11 @@ pub(super) fn safe_plain_file_arguments(arguments: &[String]) -> bool {
     saw_target
 }
 
-pub(super) fn safe_head_tail_arguments(arguments: &[String], piped_input: bool) -> bool {
+pub(super) fn safe_head_tail_arguments(
+    arguments: &[String],
+    piped_input: bool,
+    context: (Option<&str>, Option<&str>),
+) -> bool {
     let mut saw_target = false;
     let mut expect_count = false;
     let mut after_options = false;
@@ -430,7 +452,7 @@ pub(super) fn safe_head_tail_arguments(arguments: &[String], piped_input: bool) 
             continue;
         }
         if after_options {
-            if argument == "-" || !safe_read_target(argument) || saw_target {
+            if argument == "-" || !command_read_target(argument, context, false) || saw_target {
                 return false;
             }
             saw_target = true;
@@ -466,7 +488,7 @@ pub(super) fn safe_head_tail_arguments(arguments: &[String], piped_input: bool) 
         if argument.starts_with('-') {
             return false;
         }
-        if !safe_read_target(argument) {
+        if !command_read_target(argument, context, false) {
             return false;
         }
         if saw_target {

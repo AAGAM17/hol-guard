@@ -254,7 +254,10 @@ def test_subject_rejects_extra_untrusted_fields(tmp_path: Path) -> None:
         _ = load_subject(output, version=VERSION, source_sha=SOURCE_SHA)
 
 
-def test_verified_wheel_detects_payload_tamper_even_when_installed_record_is_rewritten(tmp_path: Path) -> None:
+@pytest.mark.parametrize("alternate_cache_prefix", [False, True])
+def test_verified_wheel_detects_payload_tamper_even_when_installed_record_is_rewritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alternate_cache_prefix: bool,
+) -> None:
     root = tmp_path / "site-packages"
     package = root / "codex_plugin_scanner"
     dist_info = root / f"hol_guard-{VERSION}.dist-info"
@@ -291,6 +294,8 @@ def test_verified_wheel_detects_payload_tamper_even_when_installed_record_is_rew
     import py_compile
 
     py_compile.compile(str(module), cfile=str(malicious_cache), doraise=True)
+    if alternate_cache_prefix:
+        monkeypatch.setattr(sys, "pycache_prefix", str(tmp_path / "alternate-cache"))
     assert verify_wheel_payloads(distribution, wheel) == 2
     source_stat = module.stat()
     malicious_code = compile("INJECTED = True\n", str(module), "exec")

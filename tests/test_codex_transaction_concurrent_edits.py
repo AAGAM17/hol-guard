@@ -280,3 +280,36 @@ def test_matching_bytes_and_inode_with_changed_timestamp_are_not_original_state(
             path, b"original", b"candidate", original_identity=original_identity, written_identity=None
         )
     assert path.read_bytes() == b"original"
+
+
+def test_substituted_target_during_snapshot_is_reported_as_invalid_not_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = tmp_path / "account-profile"
+    profile.mkdir(mode=0o700)
+    monkeypatch.setattr(locks, "_account_home", lambda: profile)
+    context = HarnessContext(home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard-home")
+    adapter = CodexHarnessAdapter()
+    adapter.install(context)
+    config_path = adapter._hook_config_path(context)
+    target = config_path.parent / "other-owner.toml"
+    target.write_bytes(b'owner = "other-writer"\n')
+    original_identity = rollback.rollback_file_identity
+    captured = False
+
+    def first_then_substitute(path: Path):
+        nonlocal captured
+        result = original_identity(path)
+        if path == config_path and not captured:
+            captured = True
+            path.unlink()
+            os.link(target, path)
+        return result
+
+    monkeypatch.setattr(adapter_module, "rollback_file_identity", first_then_substitute)
+    with pytest.raises(RuntimeError, match="codex_hook_config_invalid"):
+        adapter._write_authenticated_hook_config(
+            context, config_path=config_path, payload={}, previous_manifest=None
+        )
+    assert config_path.stat().st_ino == target.stat().st_ino
+    assert config_path.stat().st_nlink == 2

@@ -1696,7 +1696,13 @@ class CodexHarnessAdapter(HarnessAdapter):
                 raise RuntimeError("codex_hook_config_invalid: Codex configuration is not valid UTF-8.") from error
         else:
             original_config = None
-        if rollback_file_identity(config_path) != original_config_identity:
+        try:
+            second_snapshot_identity = rollback_file_identity(config_path)
+        except RuntimeError as error:
+            raise RuntimeError(
+                "codex_hook_config_invalid: Codex configuration became an invalid target during its snapshot."
+            ) from error
+        if second_snapshot_identity != original_config_identity:
             raise RuntimeError("codex_hook_config_invalid: Codex configuration changed during its snapshot.")
         manifest_path = hook_manifest_path(context.guard_home, config_path)
         secret_path = hook_secret_path(context.guard_home)

@@ -169,11 +169,11 @@ def _owned_adapter_mutation(method: Callable[..., _MutationResult]) -> Callable[
         from ..runtime_transition import assert_transition_mutation_allowed
 
         with ExitStack() as ownership:
-            ownership.enter_context(_home_owner_lock(context.guard_home))
             if self.harness == "codex":
                 from .codex_lifecycle_lock import codex_lifecycle_locks
 
                 ownership.enter_context(codex_lifecycle_locks(context))
+            ownership.enter_context(_home_owner_lock(context.guard_home))
             assert_transition_mutation_allowed(context.guard_home)
             self.preflight_management(context, operation=method.__name__)
             with codex_install_transaction(

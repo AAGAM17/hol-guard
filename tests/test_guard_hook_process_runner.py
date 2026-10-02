@@ -100,10 +100,12 @@ def test_daemon_start_budget_contains_initial_worker_readiness() -> None:
 def test_daemon_start_timeout_scales_with_worker_ready_floor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("HOL_GUARD_DESKTOP", raising=False)
-    # Default: the fixed client deadline already contains the 14 s worker floor.
-    assert (
-        daemon_manager_module._default_guard_daemon_start_timeout()  # pyright: ignore[reportPrivateUsage]
-        == daemon_manager_module.GUARD_DAEMON_START_TIMEOUT_SECONDS
+    margin = daemon_manager_module.GUARD_DAEMON_START_TIMEOUT_MARGIN_SECONDS
+    # The client deadline always carries a margin over the worker floor so the
+    # daemon can finish binding and writing state before the poll gives up.
+    assert daemon_manager_module._default_guard_daemon_start_timeout() == max(  # pyright: ignore[reportPrivateUsage]
+        daemon_manager_module.GUARD_DAEMON_START_TIMEOUT_SECONDS,
+        14.0 + margin,
     )
 
     # Raised worker floor (QEMU / cold host): the client poll must outlast it
@@ -111,7 +113,7 @@ def test_daemon_start_timeout_scales_with_worker_ready_floor(monkeypatch: pytest
     monkeypatch.setenv("HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS", "45")
     scaled = daemon_manager_module._default_guard_daemon_start_timeout()  # pyright: ignore[reportPrivateUsage]
     assert scaled > 45.0
-    assert scaled == 45.0 + daemon_manager_module.GUARD_DAEMON_START_TIMEOUT_MARGIN_SECONDS
+    assert scaled == 45.0 + margin
 
 
 def test_hook_worker_ready_timeout_honors_environment_floor(monkeypatch: pytest.MonkeyPatch) -> None:

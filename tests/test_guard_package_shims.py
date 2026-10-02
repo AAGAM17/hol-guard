@@ -47,6 +47,8 @@ from tests.shim_execution_helpers import write_fake_manager_script
 from tests.test_guard_protect import _seed_bundle_cache_only, _SyncAndEvaluateHandler
 from tests.test_guard_supply_chain_evaluator import _cloud_response, _EvaluateHandler, _force_unpaid_entitlement
 
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
+
 PACKAGE_SHIM_GUARD_CASES = (
     ("bun", ("add", "minimist@1.2.9"), True),
     ("bun", ("run", "build"), True),

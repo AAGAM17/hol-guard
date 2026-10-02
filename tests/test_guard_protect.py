@@ -11,12 +11,16 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from typing import ClassVar
 
+import pytest
+
 from codex_plugin_scanner.cli import main
 from codex_plugin_scanner.guard import protect
 from codex_plugin_scanner.guard.advisory_model import ProtectTargetIdentity, advisory_matches_target
 from codex_plugin_scanner.guard.models import GuardReceipt
 from codex_plugin_scanner.guard.redaction import redact_text
 from codex_plugin_scanner.guard.store import GuardStore
+
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
 
 
 def _seed_guard_cloud(store, *, workspace_id=None, sync_url=None, token="demo-token", now="2026-05-19T00:00:00Z"):

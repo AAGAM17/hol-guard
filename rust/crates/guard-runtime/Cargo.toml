@@ -25,6 +25,10 @@ rusqlite.workspace = true
 guard-secure-fs = { path = "../guard-secure-fs" }
 serde.workspace = true
 serde_json.workspace = true
+aes.workspace = true
+base64ct.workspace = true
+cbc.workspace = true
+hmac.workspace = true
 sha2.workspace = true
 sysinfo.workspace = true
 guard-archive = { version = "0.1.0", path = "../guard-archive" }

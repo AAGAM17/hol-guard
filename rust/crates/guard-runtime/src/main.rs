@@ -11,6 +11,7 @@ mod edge;
 mod hardening;
 mod managed_resident;
 mod claim_reuse;
+mod encrypted_secret_store;
 mod local_once_store;
 mod native_hook_receipt;
 mod oneshot;

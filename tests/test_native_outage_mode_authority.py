@@ -145,6 +145,4 @@ def test_outage_mode_requires_authenticated_unexpired_snapshot(
         response = responses[0]
     hook_output = response["hookSpecificOutput"]
     assert isinstance(hook_output, dict)
-    assert hook_output["permissionDecision"] == (
-        "allow" if state == "observe" and failure not in {"disabled_legacy_path", "cli_disabled"} else "deny"
-    )
+    assert hook_output["permissionDecision"] == "deny"

@@ -1002,3 +1002,7 @@ pub mod sandbox;
 pub mod restricted_pytest;
 #[cfg(unix)]
 pub mod direct_vitest;
+pub mod restricted_archive;
+pub mod archive_inspection;
+pub mod review_event_outbox;
+pub mod review_event_outbox_schema;

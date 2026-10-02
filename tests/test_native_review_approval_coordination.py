@@ -63,7 +63,9 @@ def _test_request_digest(harness: str, payload: object, workspace: object) -> st
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edge: dict[str, object]) -> tuple[HookWorker, GuardStore]:
+def _worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edge: dict[str, object], *, ask: bool = True
+) -> tuple[HookWorker, GuardStore]:
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.hook_worker.native_mode",
         lambda: "auto",
@@ -110,6 +112,10 @@ def _worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edge: dict[str, obj
         review_raw_hook_native,
     )
     store = GuardStore(tmp_path / "guard-home")
+    if ask:
+        from codex_plugin_scanner.guard.config import update_guard_settings
+
+        update_guard_settings(store.guard_home, {"blocked_request_mode": "ask"})
     store.upsert_runtime_state(
         session_id="native-review",
         daemon_host="127.0.0.1",
@@ -118,6 +124,54 @@ def _worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, edge: dict[str, obj
         last_heartbeat_at="2026-09-05T00:00:00+00:00",
     )
     return HookWorker(store=store), store
+
+
+@pytest.mark.parametrize(
+    "harness",
+    [
+        "cursor",
+        "zcode",
+        "codex",
+        "claude-code",
+        "copilot",
+        "gemini",
+        "grok",
+        "hermes",
+        "pi",
+        "omp",
+        "opencode",
+        "kimi",
+        "devin",
+    ],
+)
+@pytest.mark.parametrize("action", ["review", "require-reapproval"])
+def test_native_review_defaults_to_safe_alternative(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, harness: str, action: str
+) -> None:
+    edge = _edge(harness)
+    edge["result"].update(policy_action=action, minimum_action=action)
+    worker, store = _worker(tmp_path, monkeypatch, edge, ask=False)
+    response = worker.review_http_payload(
+        payload={
+            "hook_event_name": "PreToolUse",
+            "tool_name": "WebFetch",
+            "tool_input": {"url": "https://example.test"},
+        },
+        params={},
+        default_harness=harness,
+        home_dir=tmp_path / "home",
+        guard_home=store.guard_home,
+        workspace=tmp_path / "workspace",
+    )
+    assert response["policy_action"] == "block"
+    assert response["prompted"] is False
+    assert store.list_approval_requests(status="pending") == []
+    reason = response.get("reason") or response["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "safe, permitted alternative" in reason
+    assert "bypass Guard" in reason
+    if "hookSpecificOutput" in response:
+        assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+    worker.close()
 
 
 def test_cursor_native_review_asks_and_queues_approval(

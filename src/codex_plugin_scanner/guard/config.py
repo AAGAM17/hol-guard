@@ -282,6 +282,7 @@ EDITABLE_GUARD_SETTING_KEYS = frozenset(
         "harness_risk_actions",
         "approval_wait_timeout_seconds",
         "approval_surface_policy",
+        "blocked_request_mode",
         "approval_browser_delay_seconds",
         "approval_browser_immediate_severity",
         "desktop_notifications",
@@ -299,6 +300,7 @@ VALID_APPROVAL_BROWSER_SEVERITIES = frozenset({"info", "low", "medium", "high", 
 BARE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 WORKSPACE_BLOCKED_POLICY_KEYS = frozenset(
     {
+        "blocked_request_mode",
         "mode",
         "presentation_mode",
         "presentation_mode_explicit",
@@ -402,6 +404,7 @@ class GuardConfig:
     subprocess_action: GuardAction = "warn"
     approval_wait_timeout_seconds: int = 120
     approval_surface_policy: str = "attention-aware"
+    blocked_request_mode: str = "safe-alternative"
     approval_browser_delay_seconds: int = 20
     approval_browser_immediate_severity: str = "critical"
     desktop_notifications: bool = True
@@ -580,6 +583,7 @@ def load_guard_config(
             120,
         ),
         approval_surface_policy=_coerce_loaded_approval_surface_policy(merged.get("approval_surface_policy")),
+        blocked_request_mode=("ask" if merged.get("blocked_request_mode") == "ask" else "safe-alternative"),
         approval_browser_delay_seconds=_coerce_loaded_bounded_int(
             merged.get("approval_browser_delay_seconds"),
             default=20,
@@ -663,6 +667,7 @@ def editable_guard_settings(config: GuardConfig) -> dict[str, object]:
         "harness_risk_actions": dict(config.harness_risk_actions or {}),
         "approval_wait_timeout_seconds": config.approval_wait_timeout_seconds,
         "approval_surface_policy": config.approval_surface_policy,
+        "blocked_request_mode": config.blocked_request_mode,
         "approval_browser_delay_seconds": config.approval_browser_delay_seconds,
         "approval_browser_immediate_severity": config.approval_browser_immediate_severity,
         "desktop_notifications": config.desktop_notifications,
@@ -895,6 +900,10 @@ def _coerce_editable_setting(key: str, value: object) -> object:
         if isinstance(value, str) and value in VALID_APPROVAL_SURFACE_POLICIES:
             return "attention-aware" if value == "auto-open-once" else value
         raise ValueError("Invalid approval surface policy.")
+    if key == "blocked_request_mode":
+        if isinstance(value, str) and value in {"safe-alternative", "ask"}:
+            return value
+        raise ValueError("Choose safe-alternative or ask for blocked requests.")
     if key == "approval_browser_delay_seconds":
         if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 300:
             return value

@@ -202,6 +202,22 @@ def review_native_artifact_hook(
         guard_payload=response_payload,
     )
     observe_mode = config.mode == "observe"
+    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+    if (
+        not observe_mode
+        and not asks_for_approval(config)
+        and (policy_action in {"review", "require-reapproval"} or cursor_native_queue)
+    ):
+        set_native_artifact_hook_final_action(state, "block")
+        state.response_payload.update(
+            approval_requests=[],
+            prompted=False,
+            operation_status="blocked",
+            terminal=True,
+            review_hint=safe_alternative_reason("HOL Guard blocked this action."),
+        )
+        return None
     terminal_action = policy_action in {
         "block",
         "sandbox-required",

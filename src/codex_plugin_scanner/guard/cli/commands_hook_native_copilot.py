@@ -173,6 +173,11 @@ def run_native_copilot_pretool(
             scanner_evidence=decision_scanner_evidence,
             store=store,
         )
+    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+    safe_alternative = policy_action in {"review", "require-reapproval"} and not asks_for_approval(config)
+    if safe_alternative:
+        policy_action = "block"
     # Copilot review/reapproval continues to PermissionRequest, which owns that
     # activity. PreToolUse records only decisions that terminate at this stage.
     if policy_action in {"allow", "warn"}:
@@ -251,7 +256,9 @@ def run_native_copilot_pretool(
                 args,
                 policy_action=policy_action,
                 reason=(
-                    f"HOL Guard blocked {runtime_artifact.name}. {decision.summary}"
+                    safe_alternative_reason(decision.summary)
+                    if safe_alternative
+                    else f"HOL Guard blocked {runtime_artifact.name}. {decision.summary}"
                     if saved_policy_blocks
                     else _copilot_hook_reason(decision.summary, runtime_artifact.name)
                 ),
@@ -337,6 +344,13 @@ def run_native_copilot_permission_request(
     policy_action = resolve_tool_call_policy_action(decision)
     approval_reuse = _copilot_approval_reuse_evidence(decision)
     decision_scanner_evidence = _copilot_tool_decision_scanner_evidence(decision)
+    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+    safe_alternative = (
+        config.mode != "observe" and policy_action in {"review", "require-reapproval"} and not asks_for_approval(config)
+    )
+    if safe_alternative:
+        policy_action = "block"
     terminal_action = policy_action in {"block", "sandbox-required"}
     runtime_detection = _runtime_detection(args.harness, runtime_artifact)
     evaluation_payload: dict[str, object] = {
@@ -476,7 +490,11 @@ def run_native_copilot_permission_request(
         )
         _emit_copilot_permission_request_response(
             behavior="deny",
-            message=f"HOL Guard blocked {artifact_name}. {decision.summary}",
+            message=(
+                safe_alternative_reason(decision.summary)
+                if safe_alternative
+                else f"HOL Guard blocked {artifact_name}. {decision.summary}"
+            ),
             interrupt=True,
             approval_reuse=approval_reuse,
             scanner_evidence=decision_scanner_evidence,

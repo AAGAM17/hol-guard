@@ -840,10 +840,15 @@ class StdioGuardProxy:
                         "guardPolicyAction": policy_action,
                         "transportOutcome": "not-forwarded",
                     }
+                    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+                    if not asks_for_approval(self.guard_config):
+                        non_forward_message = safe_alternative_reason(non_forward_message)
                     if (
                         self.guard_store is not None
                         and self.approval_center_url is not None
                         and not terminal_policy_action
+                        and asks_for_approval(self.guard_config)
                     ):
                         event["approval_requests"] = queue_blocked_approvals(
                             redaction_level=getattr(self.guard_config, "receipt_redaction_level", "full"),

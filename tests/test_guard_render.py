@@ -1063,3 +1063,26 @@ def test_sync_render_shows_ecosystem_support_table(capsys) -> None:
     assert "Protected" in output
     assert "Beta" in output
     assert "Monitor-only" in output
+
+
+def test_command_inspection_render_includes_recovery(capsys, monkeypatch) -> None:
+    payload = {
+        "status": "native_unavailable",
+        "command": "git status",
+        "classification": {
+            "action_class": "read",
+            "reason": "Native inspection is unavailable.",
+            "recovery": "Verify the native runtime is installed and retry.",
+        },
+    }
+
+    monkeypatch.setattr(render, "_RICH_AVAILABLE", False)
+    emit_guard_payload("command-inspection", payload, False)
+    plain_output = capsys.readouterr().out
+    assert "Recovery: Verify the native runtime is installed and retry." in plain_output
+
+    monkeypatch.setattr(render, "_RICH_AVAILABLE", True)
+    emit_guard_payload("command-inspection", payload, False)
+    rich_output = capsys.readouterr().out
+    assert "Next step" in rich_output
+    assert "Verify the native runtime is installed and retry." in rich_output

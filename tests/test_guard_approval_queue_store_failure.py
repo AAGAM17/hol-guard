@@ -243,3 +243,7 @@ def test_daemon_operation_failure_records_category_on_fallback(
     )
 
     assert result["daemon_queue_unavailable"] == "OperationError: blocked operation rejected"
+
+
+def test_daemon_failure_reason_without_message_uses_category() -> None:
+    assert payload_module._daemon_failure_reason(RuntimeError()) == "RuntimeError"

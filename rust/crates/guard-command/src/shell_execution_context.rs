@@ -135,12 +135,11 @@ pub fn model_shell_execution_context(
         workspace_identity: root_identity.clone(),
         segments: Vec::new(),
         complete: reason.is_none() && !directory_change_present,
-        reason_code: reason
-            .or(if directory_change_present {
-                Some(SHELL_CWD_UNRESOLVED_SYNTAX.to_owned())
-            } else {
-                None
-            }),
+        reason_code: reason.or(if directory_change_present {
+            Some(SHELL_CWD_UNRESOLVED_SYNTAX.to_owned())
+        } else {
+            None
+        }),
         directory_change_present,
     };
     let tokens = match split_shell_tokens(command_text) {
@@ -159,8 +158,7 @@ pub fn model_shell_execution_context(
     };
 
     let (raw_segments, trailing_controls) = ordered_segments(&tokens);
-    let parent_shell_reason =
-        parent_shell_cwd_construct_reason(&raw_segments, &trailing_controls);
+    let parent_shell_reason = parent_shell_cwd_construct_reason(&raw_segments, &trailing_controls);
     let mut directory_change_present = directory_change_present;
     if let Some(psr) = parent_shell_reason {
         if reason_code.is_none() {
@@ -271,11 +269,7 @@ pub fn model_shell_execution_context(
     let mut trailing_reason = trailing_boundary_reason
         .map(str::to_owned)
         .or_else(|| control_sequence_reason(&trailing_controls, true).map(str::to_owned));
-    if trailing_reason.is_none()
-        && trailing_controls
-            .iter()
-            .any(|t| t == "(" || t == "{")
-    {
+    if trailing_reason.is_none() && trailing_controls.iter().any(|t| t == "(" || t == "{") {
         trailing_reason = Some(SHELL_CWD_UNRESOLVED_SYNTAX.to_owned());
     }
     if !group_states.is_empty() && trailing_reason.is_none() {
@@ -541,7 +535,10 @@ fn apply_directory_operation(
         next_state.cwd = None;
         next_state.cwd_identity = None;
         next_state.reason_code = Some(SHELL_CWD_UNRESOLVED_CONTROL_FLOW.to_owned());
-        return (next_state, Some(SHELL_CWD_UNRESOLVED_CONTROL_FLOW.to_owned()));
+        return (
+            next_state,
+            Some(SHELL_CWD_UNRESOLVED_CONTROL_FLOW.to_owned()),
+        );
     }
     (next_state, None)
 }

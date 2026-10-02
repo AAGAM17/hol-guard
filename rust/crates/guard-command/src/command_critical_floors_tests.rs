@@ -131,7 +131,10 @@ fn critical_floor_factors_match_python_oracle() {
             })
             .collect();
         if got != expected {
-            mismatches.push(format!("{}:\n  rust={:?}\n  py  ={:?}", row.command, got, expected));
+            mismatches.push(format!(
+                "{}:\n  rust={:?}\n  py  ={:?}",
+                row.command, got, expected
+            ));
         }
     }
     assert!(
@@ -192,7 +195,9 @@ fn explicitly_allowed_github_capabilities_pass_through() {
         &[GitHubCommandCapability::AdminMergeRemote],
     );
     assert!(
-        suppressed.iter().all(|f| f.reason_code != "critical.github-cli"),
+        suppressed
+            .iter()
+            .all(|f| f.reason_code != "critical.github-cli"),
         "allowed capability must suppress the github-cli floor: {suppressed:?}"
     );
     // Without the allow, it fires.

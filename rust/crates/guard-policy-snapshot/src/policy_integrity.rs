@@ -284,44 +284,82 @@ mod tests {
             let signed_at = case["signature"]["signed_at"].as_str().unwrap();
 
             // sign parity
-            let sig = sign_local_policy_row(row, &key, key_id, signed_at, generation)
-                .expect("sign");
+            let sig =
+                sign_local_policy_row(row, &key, key_id, signed_at, generation).expect("sign");
             let want = &case["signature"];
-            assert_eq!(sig["integrity_version"].as_i64().unwrap(), POLICY_INTEGRITY_VERSION);
-            assert_eq!(sig["integrity_generation"].as_i64().unwrap(), want["integrity_generation"].as_i64().unwrap());
-            assert_eq!(sig["payload_hash"].as_str().unwrap(), want["payload_hash"].as_str().unwrap());
-            assert_eq!(sig["payload_mac"].as_str().unwrap(), want["payload_mac"].as_str().unwrap());
-            assert_eq!(sig["integrity_key_id"].as_str().unwrap(), want["integrity_key_id"].as_str().unwrap());
-            assert_eq!(sig["signed_at"].as_str().unwrap(), want["signed_at"].as_str().unwrap());
+            assert_eq!(
+                sig["integrity_version"].as_i64().unwrap(),
+                POLICY_INTEGRITY_VERSION
+            );
+            assert_eq!(
+                sig["integrity_generation"].as_i64().unwrap(),
+                want["integrity_generation"].as_i64().unwrap()
+            );
+            assert_eq!(
+                sig["payload_hash"].as_str().unwrap(),
+                want["payload_hash"].as_str().unwrap()
+            );
+            assert_eq!(
+                sig["payload_mac"].as_str().unwrap(),
+                want["payload_mac"].as_str().unwrap()
+            );
+            assert_eq!(
+                sig["integrity_key_id"].as_str().unwrap(),
+                want["integrity_key_id"].as_str().unwrap()
+            );
+            assert_eq!(
+                sig["signed_at"].as_str().unwrap(),
+                want["signed_at"].as_str().unwrap()
+            );
 
             // canonical byte parity
             let signed = &case["signed"];
             let canonical = canonical_policy_payload(signed, Some(POLICY_INTEGRITY_VERSION))
                 .expect("canonical");
-            assert_eq!(hex::encode(&canonical), case["canonical_b64"].as_str().unwrap());
+            assert_eq!(
+                hex::encode(&canonical),
+                case["canonical_b64"].as_str().unwrap()
+            );
 
             // verify branches
             let branches = &case["branches"];
             assert_eq!(
-                verify_local_policy_row(signed, Some(&key), Some(key_id), false, Some(generation)).status,
+                verify_local_policy_row(signed, Some(&key), Some(key_id), false, Some(generation))
+                    .status,
                 branches["valid"].as_str().unwrap()
             );
             assert_eq!(
-                verify_local_policy_row(signed, Some(&key), Some(key_id), true, Some(generation)).status,
+                verify_local_policy_row(signed, Some(&key), Some(key_id), true, Some(generation))
+                    .status,
                 branches["degraded"].as_str().unwrap()
             );
             assert_eq!(
-                verify_local_policy_row(signed, Some(&key), Some(key_id), false, Some(generation + 1)).status,
+                verify_local_policy_row(
+                    signed,
+                    Some(&key),
+                    Some(key_id),
+                    false,
+                    Some(generation + 1)
+                )
+                .status,
                 branches["wrong_gen"].as_str().unwrap()
             );
             assert_eq!(
-                verify_local_policy_row(signed, Some(&key), Some("other"), false, Some(generation)).status,
+                verify_local_policy_row(signed, Some(&key), Some("other"), false, Some(generation))
+                    .status,
                 branches["wrong_key_id"].as_str().unwrap()
             );
             let mut tampered = signed.clone();
             tampered["payload_mac"] = json!("0".repeat(64));
             assert_eq!(
-                verify_local_policy_row(&tampered, Some(&key), Some(key_id), false, Some(generation)).status,
+                verify_local_policy_row(
+                    &tampered,
+                    Some(&key),
+                    Some(key_id),
+                    false,
+                    Some(generation)
+                )
+                .status,
                 branches["tampered"].as_str().unwrap()
             );
         }

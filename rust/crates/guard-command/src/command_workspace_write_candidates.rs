@@ -88,7 +88,10 @@ pub fn workspace_write_candidate_operation(command: &CanonicalCommand) -> Option
     };
     let op_name = name(operation);
     let args = operation.arguments.as_slice();
-    if op_name == "git" && args.len() == 3 && &args[..2] == ["apply", "--check"] && plain_value(&args[2])
+    if op_name == "git"
+        && args.len() == 3
+        && &args[..2] == ["apply", "--check"]
+        && plain_value(&args[2])
     {
         return Some("patch-check");
     }

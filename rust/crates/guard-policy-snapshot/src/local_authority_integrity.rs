@@ -13,8 +13,7 @@ use crate::crypto::{constant_time_eq, digest_bytes, hmac_sha256_raw};
 
 pub const LOCAL_AUTHORITY_INTEGRITY_VERSION: u32 = 1;
 pub const LOCAL_AUTHORITY_INTEGRITY_MAC_ALGORITHM: &str = "hmac-sha256";
-pub const LOCAL_AUTHORITY_INTEGRITY_DOMAIN: &[u8] =
-    b"hol-guard.local-authority-integrity.v1";
+pub const LOCAL_AUTHORITY_INTEGRITY_DOMAIN: &[u8] = b"hol-guard.local-authority-integrity.v1";
 const LOCAL_AUTHORITY_CANONICAL_MAX_BYTES: usize = 256 * 1024;
 
 /// `PolicyIntegrityVerificationResult` (:31-35) projected to the local
@@ -107,7 +106,9 @@ pub fn verify_local_authority_payload(
         };
     }
     let (key, key_id) = match (key, key_id) {
-        (Some(k), Some(kid)) if constant_time_text_equal(stored_key_id.as_deref().unwrap_or(""), kid) => {
+        (Some(k), Some(kid))
+            if constant_time_text_equal(stored_key_id.as_deref().unwrap_or(""), kid) =>
+        {
             (k, kid)
         }
         _ => {
@@ -250,7 +251,10 @@ mod tests {
             assert_eq!(signed.integrity_version, 1);
             assert_eq!(signed.payload_hash, want["payload_hash"].as_str().unwrap());
             assert_eq!(signed.payload_mac, want["payload_mac"].as_str().unwrap());
-            assert_eq!(signed.integrity_key_id, want["integrity_key_id"].as_str().unwrap());
+            assert_eq!(
+                signed.integrity_key_id,
+                want["integrity_key_id"].as_str().unwrap()
+            );
             assert_eq!(signed.signed_at, want["signed_at"].as_str().unwrap());
 
             let integrity = json!({
@@ -261,27 +265,54 @@ mod tests {
                 "signed_at": signed.signed_at,
             });
 
-            let v_ok = verify_local_authority_payload(payload, &integrity, Some(&key), Some(key_id), purpose);
+            let v_ok = verify_local_authority_payload(
+                payload,
+                &integrity,
+                Some(&key),
+                Some(key_id),
+                purpose,
+            );
             assert_eq!(v_ok.status, row["v_ok"].as_str().unwrap());
-            assert_eq!(v_ok.payload_hash.as_deref(), Some(signed.payload_hash.as_str()));
+            assert_eq!(
+                v_ok.payload_hash.as_deref(),
+                Some(signed.payload_hash.as_str())
+            );
             assert_eq!(v_ok.key_id.as_deref(), Some(key_id));
 
             // Tampered payload → tampered + hash-mismatch message.
             let mut tampered = payload.clone();
             tampered["action"] = json!("block");
-            let v_tamper =
-                verify_local_authority_payload(&tampered, &integrity, Some(&key), Some(key_id), purpose);
+            let v_tamper = verify_local_authority_payload(
+                &tampered,
+                &integrity,
+                Some(&key),
+                Some(key_id),
+                purpose,
+            );
             assert_eq!(v_tamper.status, row["v_tamper"].as_str().unwrap());
-            assert_eq!(v_tamper.message, Some(row["v_tamper_msg"].as_str().unwrap()));
+            assert_eq!(
+                v_tamper.message,
+                Some(row["v_tamper_msg"].as_str().unwrap())
+            );
 
             // Wrong key bytes, same key_id → MAC mismatch → tampered.
             let v_wrongkey = verify_local_authority_payload(
-                payload, &integrity, Some(&wrong_key), Some(key_id), purpose);
+                payload,
+                &integrity,
+                Some(&wrong_key),
+                Some(key_id),
+                purpose,
+            );
             assert_eq!(v_wrongkey.status, row["v_wrongkey"].as_str().unwrap());
 
             // Wrong key_id → unknown_key before any crypto.
             let v_wrongkeyid = verify_local_authority_payload(
-                payload, &integrity, Some(&key), Some("other"), purpose);
+                payload,
+                &integrity,
+                Some(&key),
+                Some("other"),
+                purpose,
+            );
             assert_eq!(v_wrongkeyid.status, row["v_wrongkeyid"].as_str().unwrap());
 
             // No resolver output → unknown_key.
@@ -307,6 +338,9 @@ mod tests {
         });
         let v = verify_local_authority_payload(&payload, &bad, Some(&key), Some("k"), "p");
         assert_eq!(v.status, "tampered");
-        assert_eq!(v.message, Some("local_authority_integrity_version_unsupported"));
+        assert_eq!(
+            v.message,
+            Some("local_authority_integrity_version_unsupported")
+        );
     }
 }

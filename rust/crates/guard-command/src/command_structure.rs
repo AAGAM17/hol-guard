@@ -119,10 +119,7 @@ pub fn build_command_security_identity(
 }
 
 /// `extract_command_redirects` (:106-146). Char-offset based.
-pub fn extract_command_redirects(
-    command: &str,
-    heredocs: &[ShellHeredoc],
-) -> Vec<CommandRedirect> {
+pub fn extract_command_redirects(command: &str, heredocs: &[ShellHeredoc]) -> Vec<CommandRedirect> {
     let chars: Vec<char> = command.chars().collect();
     let n = chars.len();
     let mut redirects: Vec<CommandRedirect> = Vec::new();
@@ -142,8 +139,7 @@ pub fn extract_command_redirects(
         }
         // Emulate `pattern.match(command, index)`: lookbehind char check, then
         // anchored regex on the char-sliced tail. Match span bytes → chars.
-        let lookbehind_ok =
-            index == 0 || (chars[index - 1] != '<' && chars[index - 1] != '>');
+        let lookbehind_ok = index == 0 || (chars[index - 1] != '<' && chars[index - 1] != '>');
         let tail: String = chars[index..].iter().collect();
         let caps = if lookbehind_ok {
             redirect_pattern().captures(&tail)

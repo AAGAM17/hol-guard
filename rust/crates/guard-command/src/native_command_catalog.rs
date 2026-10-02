@@ -116,7 +116,6 @@ pub struct CommandCatalog {
     permission_by_capability: BTreeMap<String, usize>,
 }
 
-
 impl CommandCatalog {
     fn from_embedded() -> Result<Self, &'static str> {
         #[derive(Deserialize)]
@@ -125,8 +124,8 @@ impl CommandCatalog {
             catalog_digest: String,
             program_digest: String,
         }
-        let wrapper: Wrapper =
-            serde_json::from_slice(EMBEDDED_CATALOG).map_err(|_| "command_catalog_decode_failed")?;
+        let wrapper: Wrapper = serde_json::from_slice(EMBEDDED_CATALOG)
+            .map_err(|_| "command_catalog_decode_failed")?;
         let mut extensions = wrapper.catalog;
         extensions.sort_by(|a, b| a.extension_id.cmp(&b.extension_id));
 
@@ -171,7 +170,10 @@ impl CommandCatalog {
             .flat_map(|ext| ext.permissions.iter())
             .enumerate()
         {
-            by_permission_id.insert(permission.permission_id.trim().to_lowercase(), permission_index);
+            by_permission_id.insert(
+                permission.permission_id.trim().to_lowercase(),
+                permission_index,
+            );
             for rule_id in &permission.rule_ids {
                 permission_by_rule_id.insert(rule_id.trim().to_lowercase(), permission_index);
             }
@@ -213,7 +215,10 @@ impl CommandCatalog {
     pub fn get_rule(&self, rule_id: &str) -> Option<(&CatalogExtension, &CatalogRule)> {
         let flat = *self.by_rule_id.get(&rule_id.trim().to_lowercase())?;
         let (extension_index, rule_index) = self.flat_rule_ref(flat)?;
-        Some((&self.extensions[extension_index], &self.extensions[extension_index].rules[rule_index]))
+        Some((
+            &self.extensions[extension_index],
+            &self.extensions[extension_index].rules[rule_index],
+        ))
     }
 
     /// Permission lookup by normalized permission_id (GeneratedCommandCatalog.permission).
@@ -233,12 +238,18 @@ impl CommandCatalog {
     }
 
     /// First non-fallback rule for an action_class (rule_for_action_class).
-    pub fn rule_for_action_class(&self, action_class: &str) -> Option<(&CatalogExtension, &CatalogRule)> {
+    pub fn rule_for_action_class(
+        &self,
+        action_class: &str,
+    ) -> Option<(&CatalogExtension, &CatalogRule)> {
         let flat = *self
             .rule_by_action_class
             .get(&action_class.trim().to_lowercase())?;
         let (extension_index, rule_index) = self.flat_rule_ref(flat)?;
-        Some((&self.extensions[extension_index], &self.extensions[extension_index].rules[rule_index]))
+        Some((
+            &self.extensions[extension_index],
+            &self.extensions[extension_index].rules[rule_index],
+        ))
     }
 
     /// Permission for an action_class (permission_for_action_class).

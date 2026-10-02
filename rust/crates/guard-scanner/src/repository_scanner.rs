@@ -35,7 +35,6 @@ pub const DEFAULT_MAX_FINDINGS: usize = 500;
 /// `DEFAULT_MAX_COMMITS` from the Python module.
 pub const DEFAULT_MAX_COMMITS: usize = 500;
 
-
 /// Python `_TRUNCATION_REASON_ORDER`.
 const TRUNCATION_REASON_ORDER: [&str; 4] = [
     "max_files",
@@ -48,8 +47,8 @@ const TRUNCATION_REASON_ORDER: [&str; 4] = [
 /// `Path::extension` output; membership is compared case-insensitively.
 const BINARY_SUFFIXES: &[&str] = &[
     "7z", "a", "avi", "bin", "bmp", "class", "dll", "dmg", "doc", "docx", "eot", "exe", "gif",
-    "gz", "ico", "jar", "jpeg", "jpg", "mov", "mp3", "mp4", "o", "otf", "pdf", "png", "pyc",
-    "so", "tar", "tiff", "ttf", "wav", "webm", "woff", "woff2", "xz", "zip",
+    "gz", "ico", "jar", "jpeg", "jpg", "mov", "mp3", "mp4", "o", "otf", "pdf", "png", "pyc", "so",
+    "tar", "tiff", "ttf", "wav", "webm", "woff", "woff2", "xz", "zip",
 ];
 
 /// Python `_SKIP_DIR_NAMES`.
@@ -314,8 +313,11 @@ fn strip_bytes(data: &[u8]) -> &[u8] {
 /// `_is_git_repository`: `git rev-parse --is-inside-work-tree` must exit 0
 /// and print exactly `true`.
 fn is_git_repository(root: &Path) -> bool {
-    let Ok(result) = run_git(root, &["rev-parse", "--is-inside-work-tree"], GIT_TIMEOUT_SECONDS)
-    else {
+    let Ok(result) = run_git(
+        root,
+        &["rev-parse", "--is-inside-work-tree"],
+        GIT_TIMEOUT_SECONDS,
+    ) else {
         return false;
     };
     strip_bytes(&result.stdout) == b"true"
@@ -388,7 +390,12 @@ fn git_changed_paths(root: &Path, commit: &str) -> Option<Vec<String>> {
 /// re-applied to the streamed payload.
 fn git_blob(root: &Path, commit: &str, path: &str, max_file_bytes: usize) -> Option<Vec<u8>> {
     let spec = format!("{commit}:{path}");
-    let size_result = run_git(root, &["cat-file", "-s", spec.as_str()], GIT_TIMEOUT_SECONDS).ok()?;
+    let size_result = run_git(
+        root,
+        &["cat-file", "-s", spec.as_str()],
+        GIT_TIMEOUT_SECONDS,
+    )
+    .ok()?;
     // Python `int(strip_bytes(&size_result.stdout))`; `from_utf8` covers any byte
     // garbage the way `ValueError` catches non-numeric output.
     let size_text = std::str::from_utf8(strip_bytes(&size_result.stdout)).ok()?;
@@ -396,8 +403,12 @@ fn git_blob(root: &Path, commit: &str, path: &str, max_file_bytes: usize) -> Opt
     if size < 0 || size > max_file_bytes as i64 {
         return None;
     }
-    let blob_result =
-        run_git(root, &["cat-file", "blob", spec.as_str()], GIT_TIMEOUT_SECONDS).ok()?;
+    let blob_result = run_git(
+        root,
+        &["cat-file", "blob", spec.as_str()],
+        GIT_TIMEOUT_SECONDS,
+    )
+    .ok()?;
     if blob_result.stdout.len() > max_file_bytes {
         return None;
     }
@@ -477,8 +488,11 @@ pub fn scan_repository_secrets(
 
     let max_commits = bounded_positive(options.max_commits, DEFAULT_MAX_COMMITS, 50_000);
     let max_files = bounded_positive(options.max_files, DEFAULT_MAX_FILES, 100_000);
-    let max_file_bytes =
-        bounded_positive(options.max_file_bytes, DEFAULT_MAX_FILE_BYTES, 32 * 1024 * 1024);
+    let max_file_bytes = bounded_positive(
+        options.max_file_bytes,
+        DEFAULT_MAX_FILE_BYTES,
+        32 * 1024 * 1024,
+    );
     let max_total_bytes = bounded_positive(
         options.max_total_bytes,
         DEFAULT_MAX_TOTAL_BYTES,
@@ -533,7 +547,8 @@ pub fn scan_repository_secrets(
             truncated = true;
             break;
         }
-        let Some(data) = read_working_file(&scan_root, &canonical_root, relative_path, max_file_bytes)
+        let Some(data) =
+            read_working_file(&scan_root, &canonical_root, relative_path, max_file_bytes)
         else {
             continue;
         };
@@ -793,7 +808,10 @@ mod tests {
             Path::new("/nonexistent/rtm032-scan-target"),
             &RepositoryScanOptions::default(),
         );
-        assert_eq!(result.unwrap_err().to_string(), "secret scan target does not exist");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "secret scan target does not exist"
+        );
     }
 
     #[test]
@@ -870,7 +888,9 @@ mod tests {
         assert_eq!(json["findings"][0]["path"], "app.env");
         assert_eq!(json["findings"][0]["source"], "working_tree");
         // The public payload never carries the raw candidate.
-        assert!(!json.to_string().contains("ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345"));
+        assert!(!json
+            .to_string()
+            .contains("ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345"));
         let _ = fs::remove_dir_all(&dir);
     }
 }

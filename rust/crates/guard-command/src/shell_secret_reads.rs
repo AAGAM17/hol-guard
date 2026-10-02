@@ -18,9 +18,7 @@ use crate::home_path_text::{expand_home, normalize_path};
 use crate::runtime_read_paths::{
     read_small_runtime_text_file, resolved_runtime_path, runtime_read_roots,
 };
-use crate::shell_execution_context::{
-    model_shell_execution_context, ShellExecutionContext,
-};
+use crate::shell_execution_context::{model_shell_execution_context, ShellExecutionContext};
 use crate::shell_execution_context_support::{
     SHELL_CWD_UNRESOLVED_PARENT_SHELL, SHELL_CWD_WORKSPACE_ESCAPE,
 };
@@ -30,13 +28,11 @@ use crate::shell_secret_read_flow::{
     segment_may_touch_local_data,
 };
 use crate::shell_secret_read_support::{
-    command_may_need_read_assessment, command_name_for,
-    cwd_shadowed_executable, direct_secret_read_paths,
-    direct_secret_read_paths_from_tokens, interpreter_inline_launch,
+    command_may_need_read_assessment, command_name_for, cwd_shadowed_executable,
+    direct_secret_read_paths, direct_secret_read_paths_from_tokens, interpreter_inline_launch,
     interpreter_stdin_launch, known_python_module_launch, literal_read_paths,
-    local_executable_operand, python_executable, python_module_launch,
-    script_operand, sensitive_path, shell_command_string,
-    unresolved_local_script_launch, unwrap_execution_builtin,
+    local_executable_operand, python_executable, python_module_launch, script_operand,
+    sensitive_path, shell_command_string, unresolved_local_script_launch, unwrap_execution_builtin,
     MAX_DEPTH, MAX_INLINE_SCRIPT_BYTES, MAX_SCRIPTS, MAX_TOTAL_BYTES, SHELLS,
 };
 use crate::shell_structure::extract_heredocs;
@@ -130,8 +126,7 @@ pub fn assess_shell_reads(
             }
             continue;
         }
-        if context.reason_code.as_deref() == Some(SHELL_CWD_WORKSPACE_ESCAPE)
-            && home_dir.is_some()
+        if context.reason_code.as_deref() == Some(SHELL_CWD_WORKSPACE_ESCAPE) && home_dir.is_some()
         {
             // Inspection may follow a proven directory inside the same home
             // even when execution policy has a narrower workspace boundary.
@@ -254,9 +249,7 @@ pub fn assess_shell_reads(
                     execution.effective_cwd.as_deref(),
                     home_dir,
                 ));
-                if segment_may_touch_local_data(&execution)
-                    || !owned_substitutions.is_empty()
-                {
+                if segment_may_touch_local_data(&execution) || !owned_substitutions.is_empty() {
                     requested = true;
                     incomplete = true;
                 }
@@ -270,11 +263,7 @@ pub fn assess_shell_reads(
                     requested = true;
                     incomplete = true;
                 } else {
-                    pending.push((
-                        substitution.text.clone(),
-                        effective_cwd.clone(),
-                        depth + 1,
-                    ));
+                    pending.push((substitution.text.clone(), effective_cwd.clone(), depth + 1));
                 }
             }
             sensitive.extend(direct_secret_read_paths(
@@ -307,23 +296,17 @@ pub fn assess_shell_reads(
             let owned_heredocs: Vec<_> = heredocs
                 .iter()
                 .filter(|item| {
-                    primary.start <= item.operator_start
-                        && item.operator_start < primary.end
+                    primary.start <= item.operator_start && item.operator_start < primary.end
                 })
                 .collect();
             for heredoc in &owned_heredocs {
                 if SHELLS.contains(&name.as_str()) {
                     requested = true;
-                    if depth >= MAX_DEPTH
-                        || heredoc.body.as_bytes().len() > MAX_INLINE_SCRIPT_BYTES
+                    if depth >= MAX_DEPTH || heredoc.body.as_bytes().len() > MAX_INLINE_SCRIPT_BYTES
                     {
                         incomplete = true;
                     } else {
-                        pending.push((
-                            heredoc.body.clone(),
-                            effective_cwd.clone(),
-                            depth + 1,
-                        ));
+                        pending.push((heredoc.body.clone(), effective_cwd.clone(), depth + 1));
                     }
                 } else if ["node", "bun", "ruby", "perl"].contains(&name.as_str())
                     || python_executable(&name)
@@ -337,8 +320,7 @@ pub fn assess_shell_reads(
                     }
                 }
             }
-            let (payload, command_string_requested) =
-                shell_command_string(&executable, &arguments);
+            let (payload, command_string_requested) = shell_command_string(&executable, &arguments);
             let shell_stdin_mode =
                 SHELLS.contains(&name.as_str()) && arguments.iter().any(|a| a == "-s");
             let input_redirect = model.redirects.iter().any(|r| {
@@ -356,8 +338,7 @@ pub fn assess_shell_reads(
                 requested = true;
                 match payload {
                     Some(p)
-                        if p.as_bytes().len() <= MAX_INLINE_SCRIPT_BYTES
-                            && depth < MAX_DEPTH =>
+                        if p.as_bytes().len() <= MAX_INLINE_SCRIPT_BYTES && depth < MAX_DEPTH =>
                     {
                         pending.push((p, effective_cwd.clone(), depth + 1));
                     }
@@ -369,8 +350,7 @@ pub fn assess_shell_reads(
                 incomplete = true;
                 continue;
             }
-            if known_python_module_launch(&executable, &arguments, effective_cwd.as_deref())
-            {
+            if known_python_module_launch(&executable, &arguments, effective_cwd.as_deref()) {
                 continue;
             }
             if interpreter_stdin_launch(&executable, &arguments) {
@@ -393,9 +373,7 @@ pub fn assess_shell_reads(
                 // Syntax checking reads this file but does not execute its
                 // body.
                 let inv = invocation.as_ref().unwrap();
-                if let Some(direct) =
-                    sensitive_path(&inv.0, effective_cwd.as_deref(), home_dir)
-                {
+                if let Some(direct) = sensitive_path(&inv.0, effective_cwd.as_deref(), home_dir) {
                     sensitive.push(direct);
                 }
                 continue;
@@ -416,15 +394,10 @@ pub fn assess_shell_reads(
                         home_dir,
                         &roots,
                     );
-                    if local_executable.is_none()
-                        || !unresolved_local_script_launch(&executable)
-                    {
+                    if local_executable.is_none() || !unresolved_local_script_launch(&executable) {
                         if local_executable.is_none()
                             && (unresolved_local_script_launch(&executable)
-                                || cwd_shadowed_executable(
-                                    &executable,
-                                    effective_cwd.as_deref(),
-                                ))
+                                || cwd_shadowed_executable(&executable, effective_cwd.as_deref()))
                         {
                             requested = true;
                             incomplete = true;
@@ -436,9 +409,7 @@ pub fn assess_shell_reads(
             };
             requested = true;
             let (operand, is_shell) = invocation;
-            if let Some(direct) =
-                sensitive_path(&operand, effective_cwd.as_deref(), home_dir)
-            {
+            if let Some(direct) = sensitive_path(&operand, effective_cwd.as_deref(), home_dir) {
                 sensitive.push(direct);
                 continue;
             }
@@ -452,12 +423,9 @@ pub fn assess_shell_reads(
                 incomplete = true;
                 continue;
             }
-            let Some(source) = resolved_runtime_path(
-                &operand,
-                effective_cwd.as_deref(),
-                home_dir,
-                Some(&roots),
-            ) else {
+            let Some(source) =
+                resolved_runtime_path(&operand, effective_cwd.as_deref(), home_dir, Some(&roots))
+            else {
                 incomplete = true;
                 continue;
             };
@@ -493,8 +461,7 @@ pub fn assess_shell_reads(
                 pending.push((payload, effective_cwd.clone(), depth + 1));
             } else {
                 for literal in literal_read_paths(&payload) {
-                    if let Some(path) =
-                        sensitive_path(&literal, effective_cwd.as_deref(), home_dir)
+                    if let Some(path) = sensitive_path(&literal, effective_cwd.as_deref(), home_dir)
                     {
                         sensitive.push(path);
                     }

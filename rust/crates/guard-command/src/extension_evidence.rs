@@ -96,10 +96,7 @@ impl ExtensionRuleIdentity {
         require_stable_id(&self.rule_id, "rule_id")?;
         require_stable_version(&self.extension_version, "extension_version")?;
         require_stable_version(&self.rule_version, "rule_version")?;
-        if !self
-            .rule_id
-            .starts_with(&format!("{}.", self.extension_id))
-        {
+        if !self.rule_id.starts_with(&format!("{}.", self.extension_id)) {
             return Err("rule_id must be owned by extension_id");
         }
         Ok(())

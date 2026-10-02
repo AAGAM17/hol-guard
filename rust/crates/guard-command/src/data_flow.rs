@@ -19,10 +19,8 @@ pub struct ShellPipe {
 fn input_redirect_pattern() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(
-            r#"(?<!<)(?:\d*)<\s*(?![<&])(?P<target>"[^"]+"|'[^']+'|[^ \t\r\n;&|<>]+)"#,
-        )
-        .expect("input redirect pattern")
+        Regex::new(r#"(?<!<)(?:\d*)<\s*(?![<&])(?P<target>"[^"]+"|'[^']+'|[^ \t\r\n;&|<>]+)"#)
+            .expect("input redirect pattern")
     })
 }
 
@@ -110,9 +108,7 @@ fn split_top_level_commands(command: &str) -> Vec<String> {
         if state.is_top_level() && (chars[index] == ';' || chars[index] == '\n') {
             append_segment(&mut parts, &chars[start..index]);
             start = index + 1;
-        } else if state.is_top_level()
-            && (at(&chars, index, "&&") || at(&chars, index, "||"))
-        {
+        } else if state.is_top_level() && (at(&chars, index, "&&") || at(&chars, index, "||")) {
             append_segment(&mut parts, &chars[start..index]);
             start = index + 2;
             index += 1;
@@ -188,7 +184,6 @@ fn at(chars: &[char], index: usize, pat: &str) -> bool {
 
 // Re-exported shell-structure surface used by consumers (:11-31).
 pub use shell_structure::{
-    extract_command_substitution_spans,
-    extract_expanded_heredoc_substitution_spans, extract_heredocs,
-    mask_heredoc_bodies, ShellHeredoc,
+    extract_command_substitution_spans, extract_expanded_heredoc_substitution_spans,
+    extract_heredocs, mask_heredoc_bodies, ShellHeredoc,
 };

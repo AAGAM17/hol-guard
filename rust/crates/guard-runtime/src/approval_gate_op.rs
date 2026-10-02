@@ -10,9 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use guard_contracts::{
-    ApprovalGateGrantWireV1, ApprovalGateInputWireV1, ApprovalGateMethodV1,
-    ApprovalGateRequestV1, ApprovalGateResultV1,
-    APPROVAL_GATE_REQUEST_SCHEMA, APPROVAL_GATE_RESULT_SCHEMA,
+    ApprovalGateGrantWireV1, ApprovalGateInputWireV1, ApprovalGateMethodV1, ApprovalGateRequestV1,
+    ApprovalGateResultV1, APPROVAL_GATE_REQUEST_SCHEMA, APPROVAL_GATE_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 
@@ -21,7 +20,7 @@ use crate::approval_gate_enrollment as enrollment;
 use crate::approval_gate_grants::{ApprovalGateErrorV1, ApprovalGateGrantV1, ApprovalGateGrants};
 use crate::approval_gate_settings as settings;
 use crate::approval_gate_state::{epoch, optional_int, optional_string};
-use crate::approval_gate_verify::{ApprovalGateInputV1, verify_or_raise_locked};
+use crate::approval_gate_verify::{verify_or_raise_locked, ApprovalGateInputV1};
 use crate::totp::TotpSecretStore;
 
 /// `totp_enabled` — `approval_gate_state.py` predicate; private in each arm so
@@ -32,7 +31,9 @@ fn gate_totp_enabled(state: &Value) -> bool {
 
 /// `factor_generation` — `approval_gate_state.py` accessor; private in each arm.
 fn gate_factor_generation(state: &Value) -> i64 {
-    optional_int(state.get("factor_generation")).unwrap_or(0).max(0)
+    optional_int(state.get("factor_generation"))
+        .unwrap_or(0)
+        .max(0)
 }
 
 /// One-resident grant table — mirrors Python's module-global `_ACTIVE_GRANTS`.
@@ -108,7 +109,11 @@ fn totp_state_valid(guard_home: &Path, state: &Value) -> bool {
 }
 
 fn err(code: &str, message: &str, status: u16) -> ApprovalGateErrorV1 {
-    ApprovalGateErrorV1 { code: code.to_owned(), message: message.to_owned(), status }
+    ApprovalGateErrorV1 {
+        code: code.to_owned(),
+        message: message.to_owned(),
+        status,
+    }
 }
 
 fn missing(field: &str) -> ApprovalGateErrorV1 {
@@ -124,13 +129,7 @@ pub(crate) fn evaluate_approval_gate_request(
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest(request).map_err(str::to_owned)?;
     let (status, code, error_status, message, payload) = match evaluate(request) {
-        Ok(payload) => (
-            "ok".to_owned(),
-            "ok".to_owned(),
-            None,
-            None,
-            Some(payload),
-        ),
+        Ok(payload) => ("ok".to_owned(), "ok".to_owned(), None, None, Some(payload)),
         Err(e) => (
             "error".to_owned(),
             e.code,
@@ -157,12 +156,19 @@ fn request_digest(request: &ApprovalGateRequestV1) -> Result<String, &'static st
     let mut bytes = Vec::new();
     super::context_digest_json::write_canonical_json_with_limit(&material, &mut bytes, usize::MAX)
         .map_err(|_| "native_approval_gate_invalid")?;
-    Ok(format!("sha256:{}", guard_policy_snapshot::digest_bytes(&bytes)))
+    Ok(format!(
+        "sha256:{}",
+        guard_policy_snapshot::digest_bytes(&bytes)
+    ))
 }
 
 fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV1> {
     if request.schema != APPROVAL_GATE_REQUEST_SCHEMA {
-        return Err(err("native_approval_gate_schema_mismatch", "Approval-gate request schema mismatch.", 400));
+        return Err(err(
+            "native_approval_gate_schema_mismatch",
+            "Approval-gate request schema mismatch.",
+            400,
+        ));
     }
     let guard_home = PathBuf::from(&request.guard_home);
     let now = request.now.as_deref();
@@ -183,24 +189,37 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
         ApprovalGateMethodV1::Verify => {
             let mut state = crate::approval_gate_state::load_state(&guard_home);
             let g = verify_or_raise_locked(
-                &guard_home, &mut state, grants,
+                &guard_home,
+                &mut state,
+                grants,
                 request.purpose.as_deref().unwrap_or("generic"),
-                input_ref, request.strict,
-                pstr(params, "action"), pstr(params, "scope"),
-                pstr(params, "subject"), pstr(params, "session_nonce"), now,
+                input_ref,
+                request.strict,
+                pstr(params, "action"),
+                pstr(params, "scope"),
+                pstr(params, "subject"),
+                pstr(params, "session_nonce"),
+                now,
             )?;
             Ok(json!({"grant": grant_to_value(&g)}))
         }
         ApprovalGateMethodV1::ValidateGrant => {
             let state = crate::approval_gate_state::load_state(&guard_home);
             grants.validate(
-                &request.guard_home, grant_ref,
-                grant_ref.map(|g| epoch(Some(g.expires_at.as_str()))).unwrap_or(0.0),
-                request.purpose.as_deref(), request.strict,
-                pstr(params, "action"), pstr(params, "scope"),
-                pstr(params, "subject"), pstr(params, "session_nonce"),
+                &request.guard_home,
+                grant_ref,
+                grant_ref
+                    .map(|g| epoch(Some(g.expires_at.as_str())))
+                    .unwrap_or(0.0),
+                request.purpose.as_deref(),
+                request.strict,
+                pstr(params, "action"),
+                pstr(params, "scope"),
+                pstr(params, "subject"),
+                pstr(params, "session_nonce"),
                 gate_factor_generation(&state),
-                gate_totp_enabled(&state), totp_state_valid(&guard_home, &state),
+                gate_totp_enabled(&state),
+                totp_state_valid(&guard_home, &state),
                 epoch(now),
             )?;
             Ok(json!({"validated": true}))
@@ -217,17 +236,19 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
             Ok(settings::revoke_cooldown(&guard_home, now)?.to_dict())
         }
         ApprovalGateMethodV1::UnlockCooldown => {
-            let duration = request.duration_seconds.ok_or_else(|| missing("duration_seconds"))?;
+            let duration = request
+                .duration_seconds
+                .ok_or_else(|| missing("duration_seconds"))?;
             Ok(settings::unlock_cooldown_locked(&guard_home, duration, input_ref, now)?.to_dict())
         }
         ApprovalGateMethodV1::BeginTotpEnrollment => {
             let label = request.device_label.as_deref().unwrap_or("local-device");
             enrollment::begin_totp_enrollment_locked(&guard_home, grants, input_ref, label, now)
         }
-        ApprovalGateMethodV1::ConfirmTotpEnrollment => {
-            Ok(enrollment::confirm_totp_enrollment_locked(&guard_home, grants, input_ref, now)?
-                .to_dict())
-        }
+        ApprovalGateMethodV1::ConfirmTotpEnrollment => Ok(
+            enrollment::confirm_totp_enrollment_locked(&guard_home, grants, input_ref, now)?
+                .to_dict(),
+        ),
         ApprovalGateMethodV1::DisableTotp => {
             Ok(enrollment::disable_totp_locked(&guard_home, grants, input_ref, now)?.to_dict())
         }
@@ -235,23 +256,42 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
             let action = pstr(params, "action").ok_or_else(|| missing("action"))?;
             let scope = pstr(params, "scope").ok_or_else(|| missing("scope"))?;
             let g = consumers::require_approval_decision(
-                &guard_home, grants, action, scope, input_ref, grant_ref,
-                pstr(params, "subject"), pstr(params, "session_nonce"), now,
+                &guard_home,
+                grants,
+                action,
+                scope,
+                input_ref,
+                grant_ref,
+                pstr(params, "subject"),
+                pstr(params, "session_nonce"),
+                now,
             )?;
             Ok(json!({"grant": g.as_ref().map(grant_to_value)}))
         }
         ApprovalGateMethodV1::RequireHighRisk => {
-            let purpose = request.purpose.as_deref().ok_or_else(|| missing("purpose"))?;
+            let purpose = request
+                .purpose
+                .as_deref()
+                .ok_or_else(|| missing("purpose"))?;
             let g = consumers::require_high_risk(
-                &guard_home, grants, purpose, input_ref, grant_ref,
-                pstr(params, "action"), pstr(params, "scope"),
-                pstr(params, "subject"), pstr(params, "session_nonce"), now,
+                &guard_home,
+                grants,
+                purpose,
+                input_ref,
+                grant_ref,
+                pstr(params, "action"),
+                pstr(params, "scope"),
+                pstr(params, "subject"),
+                pstr(params, "session_nonce"),
+                now,
             )?;
             Ok(json!({"grant": g.as_ref().map(grant_to_value)}))
         }
         ApprovalGateMethodV1::RequireExtensionControl => {
             let g = consumers::require_extension_control(
-                &guard_home, grants, input_ref,
+                &guard_home,
+                grants,
+                input_ref,
                 pstr(params, "action").ok_or_else(|| missing("action"))?,
                 pstr(params, "subject").ok_or_else(|| missing("subject"))?,
                 pstr(params, "session_nonce").ok_or_else(|| missing("session_nonce"))?,
@@ -261,7 +301,8 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
         }
         ApprovalGateMethodV1::ConsumeExtensionControlGrant => {
             consumers::consume_extension_control_grant(
-                &guard_home, grants,
+                &guard_home,
+                grants,
                 grant_ref.ok_or_else(|| missing("approval_gate_grant"))?,
                 pstr(params, "action").ok_or_else(|| missing("action"))?,
                 pstr(params, "subject").ok_or_else(|| missing("subject"))?,
@@ -272,7 +313,9 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
         }
         ApprovalGateMethodV1::RequireLocalCliTrust => {
             let g = consumers::require_local_cli_trust(
-                &guard_home, grants, input_ref,
+                &guard_home,
+                grants,
+                input_ref,
                 pstr(params, "action").ok_or_else(|| missing("action"))?,
                 pstr(params, "subject").ok_or_else(|| missing("subject"))?,
                 pstr(params, "session_nonce").ok_or_else(|| missing("session_nonce"))?,
@@ -282,7 +325,8 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
         }
         ApprovalGateMethodV1::ConsumeLocalCliTrustGrant => {
             consumers::consume_local_cli_trust_grant(
-                &guard_home, grants,
+                &guard_home,
+                grants,
                 grant_ref.ok_or_else(|| missing("approval_gate_grant"))?,
                 pstr(params, "action").ok_or_else(|| missing("action"))?,
                 pstr(params, "subject").ok_or_else(|| missing("subject"))?,
@@ -309,26 +353,30 @@ fn evaluate(request: &ApprovalGateRequestV1) -> Result<Value, ApprovalGateErrorV
             let action = pstr(params, "action").ok_or_else(|| missing("action"))?;
             let scope = pstr(params, "scope").ok_or_else(|| missing("scope"))?;
             consumers::require_request_resolution(
-                &guard_home, grants, action, scope, grant_ref, now,
+                &guard_home,
+                grants,
+                action,
+                scope,
+                grant_ref,
+                now,
             )?;
             Ok(json!({"ok": true}))
         }
         ApprovalGateMethodV1::CreateVerifier => {
-            let password = input_ref.and_then(|i| i.password.as_deref())
+            let password = input_ref
+                .and_then(|i| i.password.as_deref())
                 .or_else(|| pstr(params, "password"))
                 .ok_or_else(|| missing("password"))?;
             Ok(settings::create_verifier(password)?)
         }
-        ApprovalGateMethodV1::AuditPayload => {
-            Ok(json!({"approval_gate": {
-                "purpose": request.purpose,
-                "satisfied": grant_ref.is_some(),
-                "used_cooldown": grant_ref.map(|g| g.used_cooldown).unwrap_or(false),
-                "cooldown_expires_at": grant_ref.and_then(|g| g.cooldown_expires_at.clone()),
-                "action": pstr(params, "action"),
-                "scope": pstr(params, "scope"),
-            }}))
-        }
+        ApprovalGateMethodV1::AuditPayload => Ok(json!({"approval_gate": {
+            "purpose": request.purpose,
+            "satisfied": grant_ref.is_some(),
+            "used_cooldown": grant_ref.map(|g| g.used_cooldown).unwrap_or(false),
+            "cooldown_expires_at": grant_ref.and_then(|g| g.cooldown_expires_at.clone()),
+            "action": pstr(params, "action"),
+            "scope": pstr(params, "scope"),
+        }})),
     }
 }
 
@@ -372,9 +420,11 @@ mod tests {
     #[test]
     fn public_config_round_trip() {
         let home = temp_home("cfg");
-        let bytes =
-            evaluate_approval_gate_request(&base_request(ApprovalGateMethodV1::PublicConfig, &home))
-                .unwrap();
+        let bytes = evaluate_approval_gate_request(&base_request(
+            ApprovalGateMethodV1::PublicConfig,
+            &home,
+        ))
+        .unwrap();
         let r: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "ok");
         assert_eq!(r["schema"].as_str().unwrap(), APPROVAL_GATE_RESULT_SCHEMA);
@@ -393,8 +443,8 @@ mod tests {
             password: Some("correct-horse-battery".to_owned()),
             ..Default::default()
         });
-        let r: Value = serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap())
-            .unwrap();
+        let r: Value =
+            serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap()).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "ok");
         assert_eq!(r["payload"]["algorithm"].as_str().unwrap(), "pbkdf2_sha256");
         assert_eq!(r["payload"]["iterations"].as_i64().unwrap(), 310_000);
@@ -411,8 +461,8 @@ mod tests {
             password: Some("short".to_owned()),
             ..Default::default()
         });
-        let r: Value = serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap())
-            .unwrap();
+        let r: Value =
+            serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap()).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "error");
         assert_eq!(r["code"].as_str().unwrap(), "approval_gate_weak_password");
         assert_eq!(r["error_status"].as_i64().unwrap(), 400);
@@ -443,8 +493,8 @@ mod tests {
             password_verified: true,
             totp_verified: false,
         });
-        let r: Value = serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap())
-            .unwrap();
+        let r: Value =
+            serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap()).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "error");
         assert_eq!(r["code"].as_str().unwrap(), "approval_gate_required");
         let _ = std::fs::remove_dir_all(&home);
@@ -456,8 +506,8 @@ mod tests {
         let home = temp_home("audit");
         let mut req = base_request(ApprovalGateMethodV1::AuditPayload, &home);
         req.purpose = Some("policy_write".to_owned());
-        let r: Value = serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap())
-            .unwrap();
+        let r: Value =
+            serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap()).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "ok");
         let gate = &r["payload"]["approval_gate"];
         assert_eq!(gate["purpose"].as_str().unwrap(), "policy_write");
@@ -472,8 +522,8 @@ mod tests {
         let home = temp_home("schema");
         let mut req = base_request(ApprovalGateMethodV1::PublicConfig, &home);
         req.schema = "wrong".to_owned();
-        let r: Value = serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap())
-            .unwrap();
+        let r: Value =
+            serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap()).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "error");
         assert_eq!(
             r["code"].as_str().unwrap(),
@@ -489,8 +539,8 @@ mod tests {
         let home = temp_home("mp");
         let mut req = base_request(ApprovalGateMethodV1::RequirePolicyWrite, &home);
         req.params = Some(json!({"scope": "local"})); // no action
-        let r: Value = serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap())
-            .unwrap();
+        let r: Value =
+            serde_json::from_slice(&evaluate_approval_gate_request(&req).unwrap()).unwrap();
         assert_eq!(r["status"].as_str().unwrap(), "error");
         assert_eq!(r["code"].as_str().unwrap(), "native_approval_gate_invalid");
         let _ = std::fs::remove_dir_all(&home);

@@ -21,8 +21,7 @@ use sha2::{Digest, Sha256};
 use crate::canonical_json::write_canonical_json;
 
 pub const WORKFLOW_CAPABILITY_SCHEMA: &str = "hol-guard.workflow-capability.v1";
-pub const WORKFLOW_CAPABILITY_ENVELOPE_SCHEMA: &str =
-    "hol-guard.workflow-capability-envelope.v1";
+pub const WORKFLOW_CAPABILITY_ENVELOPE_SCHEMA: &str = "hol-guard.workflow-capability-envelope.v1";
 pub const WORKFLOW_CAPABILITY_RECEIPT_SCHEMA: &str = "hol-guard.workflow-capability-receipt.v1";
 pub const WORKFLOW_CAPABILITY_RECEIPT_ENVELOPE_SCHEMA: &str =
     "hol-guard.workflow-capability-receipt-envelope.v1";
@@ -52,7 +51,9 @@ fn err<T>(reason: &'static str) -> WfResult<T> {
 // ─── validators ──────────────────────────────────────────────────────────
 
 fn is_sha256(v: &str) -> bool {
-    v.len() == 64 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    v.len() == 64
+        && v.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn validate_sha256(v: &str) -> WfResult<()> {
@@ -68,10 +69,11 @@ fn validate_identifier(v: &str) -> WfResult<()> {
     let valid = !v.is_empty()
         && v.len() <= 256
         && !v.contains('*')
-        && v.chars().next().map_or(false, |c| c.is_ascii_alphanumeric())
+        && v.chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_alphanumeric())
         && v.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
+            c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
         });
     if valid {
         Ok(())
@@ -83,17 +85,15 @@ fn validate_identifier(v: &str) -> WfResult<()> {
 /// `validate_workflow_capability_identifier(name, value)` — the named-export
 /// validator used across the authority-state/transition modules; rejects with
 /// `invalid_{name}` (a per-field reason), not `invalid_identifier`.
-pub fn validate_workflow_capability_identifier(
-    name: &'static str,
-    v: &str,
-) -> WfResult<()> {
+pub fn validate_workflow_capability_identifier(name: &'static str, v: &str) -> WfResult<()> {
     let valid = !v.is_empty()
         && v.len() <= 256
         && !v.contains('*')
-        && v.chars().next().map_or(false, |c| c.is_ascii_alphanumeric())
+        && v.chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_alphanumeric())
         && v.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
+            c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
         });
     if valid {
         Ok(())
@@ -267,19 +267,52 @@ impl WorkflowCapabilityBinding {
     /// `to_value` — canonical binding `Value` for canonical-JSON persistence.
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("operation_id".into(), Value::String(self.operation_id.clone()));
-        m.insert("resource_type".into(), Value::String(self.resource_type.clone()));
-        m.insert("resource_sha256".into(), Value::String(self.resource_sha256.clone()));
-        m.insert("repository_sha256".into(), Value::String(self.repository_sha256.clone()));
-        m.insert("workspace_sha256".into(), Value::String(self.workspace_sha256.clone()));
-        m.insert("executable_sha256".into(), Value::String(self.executable_sha256.clone()));
-        m.insert("launch_sha256".into(), Value::String(self.launch_sha256.clone()));
+        m.insert(
+            "operation_id".into(),
+            Value::String(self.operation_id.clone()),
+        );
+        m.insert(
+            "resource_type".into(),
+            Value::String(self.resource_type.clone()),
+        );
+        m.insert(
+            "resource_sha256".into(),
+            Value::String(self.resource_sha256.clone()),
+        );
+        m.insert(
+            "repository_sha256".into(),
+            Value::String(self.repository_sha256.clone()),
+        );
+        m.insert(
+            "workspace_sha256".into(),
+            Value::String(self.workspace_sha256.clone()),
+        );
+        m.insert(
+            "executable_sha256".into(),
+            Value::String(self.executable_sha256.clone()),
+        );
+        m.insert(
+            "launch_sha256".into(),
+            Value::String(self.launch_sha256.clone()),
+        );
         m.insert("policy_id".into(), Value::String(self.policy_id.clone()));
-        m.insert("policy_version".into(), Value::String(self.policy_version.clone()));
+        m.insert(
+            "policy_version".into(),
+            Value::String(self.policy_version.clone()),
+        );
         m.insert("effect_id".into(), Value::String(self.effect_id.clone()));
-        m.insert("effect_version".into(), Value::String(self.effect_version.clone()));
-        m.insert("decision_id".into(), Value::String(self.decision_id.clone()));
-        m.insert("decision_version".into(), Value::String(self.decision_version.clone()));
+        m.insert(
+            "effect_version".into(),
+            Value::String(self.effect_version.clone()),
+        );
+        m.insert(
+            "decision_id".into(),
+            Value::String(self.decision_id.clone()),
+        );
+        m.insert(
+            "decision_version".into(),
+            Value::String(self.decision_version.clone()),
+        );
         let rules: Vec<Value> = self
             .rules
             .iter()
@@ -296,10 +329,20 @@ impl WorkflowCapabilityBinding {
 }
 
 const BINDING_KEYS: &[&str] = &[
-    "operation_id", "resource_type", "resource_sha256", "repository_sha256",
-    "workspace_sha256", "executable_sha256", "launch_sha256", "policy_id",
-    "policy_version", "effect_id", "effect_version", "decision_id",
-    "decision_version", "rules",
+    "operation_id",
+    "resource_type",
+    "resource_sha256",
+    "repository_sha256",
+    "workspace_sha256",
+    "executable_sha256",
+    "launch_sha256",
+    "policy_id",
+    "policy_version",
+    "effect_id",
+    "effect_version",
+    "decision_id",
+    "decision_version",
+    "rules",
 ];
 const RULE_KEYS: &[&str] = &["rule_id", "rule_version"];
 
@@ -325,9 +368,19 @@ pub struct WorkflowCapabilityClaim {
 }
 
 const CLAIM_KEYS: &[&str] = &[
-    "schema_version", "algorithm", "capability_id", "approval_provenance_id",
-    "task_id", "nonce", "issuer_id", "subject_id", "binding", "issued_at",
-    "not_before", "expires_at", "max_uses",
+    "schema_version",
+    "algorithm",
+    "capability_id",
+    "approval_provenance_id",
+    "task_id",
+    "nonce",
+    "issuer_id",
+    "subject_id",
+    "binding",
+    "issued_at",
+    "not_before",
+    "expires_at",
+    "max_uses",
 ];
 
 impl WorkflowCapabilityClaim {
@@ -370,7 +423,9 @@ impl WorkflowCapabilityClaim {
         if self.algorithm != WORKFLOW_CAPABILITY_ALGORITHM {
             return err("unsupported_capability_algorithm");
         }
-        self.binding.validate().map_err(|_| WorkflowCapabilityError("invalid_capability_binding"))?;
+        self.binding
+            .validate()
+            .map_err(|_| WorkflowCapabilityError("invalid_capability_binding"))?;
         for id in [
             &self.capability_id,
             &self.approval_provenance_id,
@@ -437,9 +492,15 @@ impl WorkflowCapabilityClaim {
     /// framing sorts keys. Emit the Python field set.
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
+        m.insert(
+            "schema_version".into(),
+            Value::String(self.schema_version.clone()),
+        );
         m.insert("algorithm".into(), Value::String(self.algorithm.clone()));
-        m.insert("capability_id".into(), Value::String(self.capability_id.clone()));
+        m.insert(
+            "capability_id".into(),
+            Value::String(self.capability_id.clone()),
+        );
         m.insert(
             "approval_provenance_id".into(),
             Value::String(self.approval_provenance_id.clone()),
@@ -499,8 +560,13 @@ pub struct SignedWorkflowCapability {
     pub signature: String,
 }
 
-const SIGNED_KEYS: &[&str] =
-    &["envelope_schema", "algorithm", "claim", "key_id", "signature"];
+const SIGNED_KEYS: &[&str] = &[
+    "envelope_schema",
+    "algorithm",
+    "claim",
+    "key_id",
+    "signature",
+];
 
 impl SignedWorkflowCapability {
     /// `from_dict` strict-key decode + post-init validation (no signature
@@ -522,8 +588,7 @@ impl SignedWorkflowCapability {
         if self.envelope_schema != WORKFLOW_CAPABILITY_ENVELOPE_SCHEMA {
             return err("unsupported_capability_envelope");
         }
-        if self.algorithm != WORKFLOW_CAPABILITY_ALGORITHM
-            || self.algorithm != self.claim.algorithm
+        if self.algorithm != WORKFLOW_CAPABILITY_ALGORITHM || self.algorithm != self.claim.algorithm
         {
             return err("unsupported_capability_algorithm");
         }
@@ -533,7 +598,10 @@ impl SignedWorkflowCapability {
 
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("envelope_schema".into(), Value::String(self.envelope_schema.clone()));
+        m.insert(
+            "envelope_schema".into(),
+            Value::String(self.envelope_schema.clone()),
+        );
         m.insert("algorithm".into(), Value::String(self.algorithm.clone()));
         m.insert("claim".into(), self.claim.to_value());
         m.insert("key_id".into(), Value::String(self.key_id.clone()));
@@ -561,9 +629,17 @@ pub struct WorkflowCapabilityReceipt {
 }
 
 const RECEIPT_KEYS: &[&str] = &[
-    "schema_version", "receipt_id", "capability_id", "task_id",
-    "invocation_id", "approval_provenance_id", "claim_sha256", "binding",
-    "use_number", "event_id", "claimed_at",
+    "schema_version",
+    "receipt_id",
+    "capability_id",
+    "task_id",
+    "invocation_id",
+    "approval_provenance_id",
+    "claim_sha256",
+    "binding",
+    "use_number",
+    "event_id",
+    "claimed_at",
 ];
 
 impl WorkflowCapabilityReceipt {
@@ -621,16 +697,28 @@ impl WorkflowCapabilityReceipt {
     /// `to_value` — canonical receipt `Value`.
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
+        m.insert(
+            "schema_version".into(),
+            Value::String(self.schema_version.clone()),
+        );
         m.insert("receipt_id".into(), Value::String(self.receipt_id.clone()));
-        m.insert("capability_id".into(), Value::String(self.capability_id.clone()));
+        m.insert(
+            "capability_id".into(),
+            Value::String(self.capability_id.clone()),
+        );
         m.insert("task_id".into(), Value::String(self.task_id.clone()));
-        m.insert("invocation_id".into(), Value::String(self.invocation_id.clone()));
+        m.insert(
+            "invocation_id".into(),
+            Value::String(self.invocation_id.clone()),
+        );
         m.insert(
             "approval_provenance_id".into(),
             Value::String(self.approval_provenance_id.clone()),
         );
-        m.insert("claim_sha256".into(), Value::String(self.claim_sha256.clone()));
+        m.insert(
+            "claim_sha256".into(),
+            Value::String(self.claim_sha256.clone()),
+        );
         m.insert("binding".into(), self.binding.to_value());
         m.insert("use_number".into(), Value::from(self.use_number));
         m.insert("event_id".into(), Value::from(self.event_id));
@@ -661,9 +749,8 @@ pub fn canonical_framed_payload(purpose: &str, payload: &Value) -> WfResult<Vec<
     let mut canonical = Vec::new();
     write_canonical_json(payload, &mut canonical)
         .map_err(|_| WorkflowCapabilityError("invalid_canonical_payload"))?;
-    let mut out = Vec::with_capacity(
-        FRAME_MAGIC.len() + 4 + purpose_bytes.len() + 8 + canonical.len(),
-    );
+    let mut out =
+        Vec::with_capacity(FRAME_MAGIC.len() + 4 + purpose_bytes.len() + 8 + canonical.len());
     out.extend_from_slice(FRAME_MAGIC);
     out.extend_from_slice(&(purpose_bytes.len() as u32).to_be_bytes());
     out.extend_from_slice(purpose_bytes);
@@ -740,8 +827,13 @@ impl SignedWorkflowCapabilityReceipt {
     }
 }
 
-const SIGNED_RECEIPT_KEYS: &[&str] =
-    &["envelope_schema", "algorithm", "receipt", "key_id", "signature"];
+const SIGNED_RECEIPT_KEYS: &[&str] = &[
+    "envelope_schema",
+    "algorithm",
+    "receipt",
+    "key_id",
+    "signature",
+];
 
 fn hmac_hex(key: &[u8], message: &[u8]) -> String {
     let mut mac = <HmacSha256 as Mac>::new_from_slice(key).expect("hmac accepts any key length");
@@ -863,8 +955,7 @@ pub fn verify_workflow_capability_receipt(
     if signed.key_id != key_id {
         return err("receipt_key_mismatch");
     }
-    let expected =
-        sign_workflow_capability_receipt(signed.receipt.clone(), key, key_id)?.signature;
+    let expected = sign_workflow_capability_receipt(signed.receipt.clone(), key, key_id)?.signature;
     if !constant_time_eq(expected.as_bytes(), signed.signature.as_bytes()) {
         return err("receipt_signature_invalid");
     }
@@ -882,10 +973,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// `_strict_object` — payload must be an object with exactly `expected`
 /// keys, no more, no fewer.
-fn strict_object<'v>(
-    payload: &'v Value,
-    expected: &[&str],
-) -> WfResult<&'v Map<String, Value>> {
+fn strict_object<'v>(payload: &'v Value, expected: &[&str]) -> WfResult<&'v Map<String, Value>> {
     let m = payload
         .as_object()
         .ok_or(WorkflowCapabilityError("invalid_contract_keys"))?;
@@ -978,11 +1066,15 @@ mod tests {
         let signed = sign_workflow_capability(claim(), &key(), "key-1").unwrap();
         let bad: Vec<u8> = (0u8..32).map(|x| x ^ 0xff).collect();
         assert_eq!(
-            verify_workflow_capability(&signed, &bad, "key-1").unwrap_err().0,
+            verify_workflow_capability(&signed, &bad, "key-1")
+                .unwrap_err()
+                .0,
             "capability_signature_invalid"
         );
         assert_eq!(
-            verify_workflow_capability(&signed, &key(), "key-2").unwrap_err().0,
+            verify_workflow_capability(&signed, &key(), "key-2")
+                .unwrap_err()
+                .0,
             "capability_key_mismatch"
         );
     }
@@ -991,13 +1083,17 @@ mod tests {
     fn verify_rejects_short_key_and_tampered_signature() {
         let signed = sign_workflow_capability(claim(), &key(), "key-1").unwrap();
         assert_eq!(
-            sign_workflow_capability(claim(), &[1u8; 8], "key-1").unwrap_err().0,
+            sign_workflow_capability(claim(), &[1u8; 8], "key-1")
+                .unwrap_err()
+                .0,
             "invalid_capability_key"
         );
         let mut tampered = signed.clone();
         tampered.signature = sha('9');
         assert_eq!(
-            verify_workflow_capability(&tampered, &key(), "key-1").unwrap_err().0,
+            verify_workflow_capability(&tampered, &key(), "key-1")
+                .unwrap_err()
+                .0,
             "capability_signature_invalid"
         );
     }
@@ -1006,7 +1102,13 @@ mod tests {
     fn claim_validates_window_and_nonce() {
         // not_before after expires → invalid window.
         let r = WorkflowCapabilityClaim::new(
-            "cap-1", "p", "t", &"f".repeat(32), "i", "s", binding(),
+            "cap-1",
+            "p",
+            "t",
+            &"f".repeat(32),
+            "i",
+            "s",
+            binding(),
             "2026-01-01T00:00:00.000000Z",
             "2026-01-02T00:00:00.000000Z",
             "2026-01-01T00:00:00.000000Z",
@@ -1015,7 +1117,13 @@ mod tests {
         assert_eq!(r.unwrap_err().0, "invalid_capability_time_window");
         // bad nonce chars.
         let r = WorkflowCapabilityClaim::new(
-            "cap-1", "p", "t", "xyz", "i", "s", binding(),
+            "cap-1",
+            "p",
+            "t",
+            "xyz",
+            "i",
+            "s",
+            binding(),
             "2026-01-01T00:00:00.000000Z",
             "2026-01-01T00:00:00.000000Z",
             "2026-01-01T01:00:00.000000Z",
@@ -1024,7 +1132,13 @@ mod tests {
         assert_eq!(r.unwrap_err().0, "invalid_nonce");
         // TTL > 86400 s.
         let r = WorkflowCapabilityClaim::new(
-            "cap-1", "p", "t", &"f".repeat(32), "i", "s", binding(),
+            "cap-1",
+            "p",
+            "t",
+            &"f".repeat(32),
+            "i",
+            "s",
+            binding(),
             "2026-01-01T00:00:00.000000Z",
             "2026-01-01T00:00:00.000000Z",
             "2026-01-03T00:00:00.000000Z",
@@ -1039,7 +1153,9 @@ mod tests {
         let mut v = claim.to_value().as_object().unwrap().clone();
         v.insert("extra".into(), json!(1));
         assert_eq!(
-            WorkflowCapabilityClaim::decode(&Value::Object(v)).unwrap_err().0,
+            WorkflowCapabilityClaim::decode(&Value::Object(v))
+                .unwrap_err()
+                .0,
             "invalid_contract_keys"
         );
     }
@@ -1051,10 +1167,18 @@ mod tests {
         assert_eq!(a, b); // canonical key order
         assert!(a.starts_with(FRAME_MAGIC));
         // purpose length + bytes then 8-byte canonical length
-        let plen = u32::from_be_bytes([a[FRAME_MAGIC.len()], a[FRAME_MAGIC.len()+1], a[FRAME_MAGIC.len()+2], a[FRAME_MAGIC.len()+3]]) as usize;
-        assert_eq!(&a[FRAME_MAGIC.len()+4..FRAME_MAGIC.len()+4+plen], b"claim-envelope");
+        let plen = u32::from_be_bytes([
+            a[FRAME_MAGIC.len()],
+            a[FRAME_MAGIC.len() + 1],
+            a[FRAME_MAGIC.len() + 2],
+            a[FRAME_MAGIC.len() + 3],
+        ]) as usize;
+        assert_eq!(
+            &a[FRAME_MAGIC.len() + 4..FRAME_MAGIC.len() + 4 + plen],
+            b"claim-envelope"
+        );
         let off = FRAME_MAGIC.len() + 4 + plen;
-        let clen = u64::from_be_bytes(a[off..off+8].try_into().unwrap()) as usize;
+        let clen = u64::from_be_bytes(a[off..off + 8].try_into().unwrap()) as usize;
         assert_eq!(clen, a.len() - off - 8);
     }
 
@@ -1070,11 +1194,20 @@ mod tests {
     #[test]
     fn identifier_rejects_wildcard_and_bad_shape() {
         assert!(validate_identifier("good.id-1").is_ok());
-        assert_eq!(validate_identifier("wild*card").unwrap_err().0, "invalid_identifier");
+        assert_eq!(
+            validate_identifier("wild*card").unwrap_err().0,
+            "invalid_identifier"
+        );
         assert_eq!(validate_identifier("").unwrap_err().0, "invalid_identifier");
-        assert_eq!(validate_identifier("no spaces").unwrap_err().0, "invalid_identifier");
+        assert_eq!(
+            validate_identifier("no spaces").unwrap_err().0,
+            "invalid_identifier"
+        );
         assert!(validate_identifier(&"x".repeat(256)).is_ok());
-        assert_eq!(validate_identifier(&"x".repeat(257)).unwrap_err().0, "invalid_identifier");
+        assert_eq!(
+            validate_identifier(&"x".repeat(257)).unwrap_err().0,
+            "invalid_identifier"
+        );
     }
 
     /// Cross-implementation parity oracle: signature + claim-sha256 of the

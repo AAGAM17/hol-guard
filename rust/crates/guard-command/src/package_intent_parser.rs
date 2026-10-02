@@ -120,9 +120,17 @@ const JS_LOCKFILE_NAMES: &[&str] = &[
 
 // package_intent_parser.py :108  `_PYTHON_EXECUTABLES`
 static PYTHON_EXECUTABLES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    ["py", "python", "python3", "python3.11", "python3.12", "python3.13", "python3.14"]
-        .into_iter()
-        .collect()
+    [
+        "py",
+        "python",
+        "python3",
+        "python3.11",
+        "python3.12",
+        "python3.13",
+        "python3.14",
+    ]
+    .into_iter()
+    .collect()
 });
 
 // package_intent_parser.py :109-131  `_PACKAGE_SOURCE_ENV_NAMES`
@@ -234,11 +242,7 @@ pub fn parse_package_intent(
         };
         if let Some(mut i) = intent.take() {
             if segment.context_complete && segment_workspace.is_some() {
-                i = rebase_intent_paths(
-                    i,
-                    segment_workspace.as_deref().unwrap(),
-                    workspace,
-                );
+                i = rebase_intent_paths(i, segment_workspace.as_deref().unwrap(), workspace);
             } else if let Some(reason) = &segment.context_reason_code {
                 i.notes.push(reason.clone());
             }
@@ -332,7 +336,10 @@ fn parse_npm_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Packa
     if working_tokens.len() < 2 {
         return None;
     }
-    if matches!(working_tokens[1].as_str(), "install" | "i" | "add" | "update") {
+    if matches!(
+        working_tokens[1].as_str(),
+        "install" | "i" | "add" | "update"
+    ) {
         return Some(build_intent(
             "npm",
             "install",
@@ -349,9 +356,7 @@ fn parse_npm_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Packa
         ));
     }
     if working_tokens[1] == "ci"
-        || (working_tokens.len() >= 3
-            && working_tokens[1] == "audit"
-            && working_tokens[2] == "fix")
+        || (working_tokens.len() >= 3 && working_tokens[1] == "audit" && working_tokens[2] == "fix")
     {
         return Some(build_intent(
             "npm",
@@ -527,16 +532,15 @@ fn parse_exec_intent(
         local_execution.typescript_launch = Some(launch.to_dict());
     }
     intent.local_executions = vec![local_execution];
-    intent.notes.push("local-execution-requires-review".to_owned());
+    intent
+        .notes
+        .push("local-execution-requires-review".to_owned());
     Some(intent)
 }
 
 /// `_parse_exec_intent` called from non-local manager paths with Python's
 /// default context arguments.
-fn parse_exec_intent_default(
-    tokens: &[String],
-    workspace: Option<&Path>,
-) -> Option<PackageIntent> {
+fn parse_exec_intent_default(tokens: &[String], workspace: Option<&Path>) -> Option<PackageIntent> {
     parse_exec_intent(
         tokens,
         workspace,
@@ -608,15 +612,23 @@ fn parse_pip_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Packa
     let mut index = 2usize;
     while index < working_tokens.len() {
         let token = &working_tokens[index];
-        if matches!(token.as_str(), "-r" | "--requirement" | "-c" | "--constraint")
-            && index + 1 < working_tokens.len()
+        if matches!(
+            token.as_str(),
+            "-r" | "--requirement" | "-c" | "--constraint"
+        ) && index + 1 < working_tokens.len()
         {
             manifest_paths.push(working_tokens[index + 1].clone());
             index += 2;
             continue;
         }
         if token.starts_with("--requirement=") || token.starts_with("--constraint=") {
-            manifest_paths.push(token.split_once('=').map(|(_, v)| v).unwrap_or("").to_owned());
+            manifest_paths.push(
+                token
+                    .split_once('=')
+                    .map(|(_, v)| v)
+                    .unwrap_or("")
+                    .to_owned(),
+            );
             index += 1;
             continue;
         }
@@ -631,12 +643,19 @@ fn parse_pip_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Packa
             continue;
         }
         if matches!(token.as_str(), "-e" | "--editable") && index + 1 < working_tokens.len() {
-            targets.push(python_target(&working_tokens[index + 1], true, None, Vec::new()));
+            targets.push(python_target(
+                &working_tokens[index + 1],
+                true,
+                None,
+                Vec::new(),
+            ));
             index += 2;
             continue;
         }
-        if matches!(token.as_str(), "--index-url" | "--extra-index-url" | "--hash")
-            && index + 1 < tokens.len()
+        if matches!(
+            token.as_str(),
+            "--index-url" | "--extra-index-url" | "--hash"
+        ) && index + 1 < tokens.len()
         {
             index += 2;
             continue;
@@ -707,10 +726,7 @@ fn parse_uv_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Packag
             &[],
         ));
     }
-    if working_tokens.len() >= 3
-        && working_tokens[1] == "pip"
-        && working_tokens[2] == "install"
-    {
+    if working_tokens.len() >= 3 && working_tokens[1] == "pip" && working_tokens[2] == "install" {
         return Some(build_intent(
             "uv",
             "install",
@@ -764,8 +780,8 @@ fn parse_poetry_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Pa
     if working_tokens[1] != "add" {
         return None;
     }
-    let group = option_value(&working_tokens, "--group")
-        .or_else(|| option_value(&working_tokens, "-G"));
+    let group =
+        option_value(&working_tokens, "--group").or_else(|| option_value(&working_tokens, "-G"));
     let extras_value = option_value(&working_tokens, "--extras");
     let extras: Vec<String> = extras_value
         .as_deref()
@@ -841,7 +857,13 @@ fn parse_cargo_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Pac
     let targets = collect_specs(
         &tokens[2..],
         &[
-            "--branch", "--git", "--index", "--path", "--registry", "--rev", "--tag",
+            "--branch",
+            "--git",
+            "--index",
+            "--path",
+            "--registry",
+            "--rev",
+            "--tag",
         ],
     )
     .iter()
@@ -1057,11 +1079,8 @@ fn parse_helm_intent(tokens: &[String], workspace: Option<&Path>) -> Option<Pack
     if tokens.len() < 4 || tokens[1] != "install" {
         return None;
     }
-    let chart = first_positional(
-        &tokens[3..],
-        &["--version", "--repo", "-n", "--namespace"],
-    )
-    .unwrap_or_else(|| tokens[3].clone());
+    let chart = first_positional(&tokens[3..], &["--version", "--repo", "-n", "--namespace"])
+        .unwrap_or_else(|| tokens[3].clone());
     let version = option_value(tokens, "--version");
     let target = PackageIntentTarget {
         ecosystem: "unsupported".to_owned(),
@@ -1160,19 +1179,11 @@ fn normalized_command_segments(
             &default_environment
         }
     };
-    let mut execution_context = model_shell_execution_context(
-        command_text,
-        workspace,
-        workspace,
-        home_dir,
-    );
+    let mut execution_context =
+        model_shell_execution_context(command_text, workspace, workspace, home_dir);
     if !execution_context.complete && home_dir.is_some() {
-        let home_context = model_shell_execution_context(
-            command_text,
-            home_dir,
-            home_dir,
-            home_dir,
-        );
+        let home_context =
+            model_shell_execution_context(command_text, home_dir, home_dir, home_dir);
         if home_context.complete
             && !home_context.segments.is_empty()
             && home_context.segments[0].directory_operation.as_deref() == Some("cd")
@@ -1229,7 +1240,8 @@ fn normalized_command_segments(
             ),
         };
         let context_complete = validation_reason.is_none() && context_segment.complete;
-        let opaque_binding = opaque_unresolved_context_binding(&raw_segment, &path_source, &cwd_source);
+        let opaque_binding =
+            opaque_unresolved_context_binding(&raw_segment, &path_source, &cwd_source);
         let context_hash = execution_context_hash(
             &execution_context,
             context_segment,
@@ -1284,7 +1296,12 @@ fn effective_execution_context(
     let mut index = 0usize;
     let mut name = command_name(&raw_segment[index]);
     if name == "sudo" {
-        return (None, "sudo_unresolved".to_owned(), effective_cwd, cwd_source);
+        return (
+            None,
+            "sudo_unresolved".to_owned(),
+            effective_cwd,
+            cwd_source,
+        );
     }
     while matches!(name.as_str(), "command" | "time") {
         index += 1;
@@ -1355,7 +1372,10 @@ fn effective_execution_context(
     if !parsed_env.complete {
         return (
             None,
-            format!("env_{}", parsed_env.error.as_deref().unwrap_or("unresolved")),
+            format!(
+                "env_{}",
+                parsed_env.error.as_deref().unwrap_or("unresolved")
+            ),
             effective_cwd,
             cwd_source,
         );
@@ -1373,14 +1393,22 @@ fn effective_execution_context(
         .find(|(n, _)| n == "PATH")
         .map(|(_, v)| v.clone());
     if let Some(search_path) = &parsed_env.option_effects.search_path {
-        effective_path = expanded_path_assignment(search_path, effective_path.as_deref(), &inherited_environment);
+        effective_path = expanded_path_assignment(
+            search_path,
+            effective_path.as_deref(),
+            &inherited_environment,
+        );
         path_source = if effective_path.is_some() {
             "env_search_path".to_owned()
         } else {
             "env_search_path_unresolved".to_owned()
         };
     } else if let Some(assignment) = &path_assignment {
-        effective_path = expanded_path_assignment(assignment, effective_path.as_deref(), &inherited_environment);
+        effective_path = expanded_path_assignment(
+            assignment,
+            effective_path.as_deref(),
+            &inherited_environment,
+        );
         path_source = if effective_path.is_some() {
             "env".to_owned()
         } else {
@@ -1427,7 +1455,10 @@ fn execution_context_hash(
     opaque_context_binding: Option<&str>,
 ) -> String {
     let mut payload = Map::new();
-    payload.insert("schema".to_owned(), json!("local-package-execution-context-v2"));
+    payload.insert(
+        "schema".to_owned(),
+        json!("local-package-execution-context-v2"),
+    );
     payload.insert("control_shape".to_owned(), json!(control_shape));
     payload.insert("segment_index".to_owned(), json!(segment.segment_index));
     payload.insert("control_before".to_owned(), json!(segment.control_before));
@@ -1462,7 +1493,10 @@ fn execution_context_hash(
                 .iter()
                 .map(|proof| {
                     let mut p = Map::new();
-                    p.insert("lexical_path".to_owned(), json!(proof.lexical_path.to_string_lossy()));
+                    p.insert(
+                        "lexical_path".to_owned(),
+                        json!(proof.lexical_path.to_string_lossy()),
+                    );
                     p.insert(
                         "resolved_path".to_owned(),
                         json!(proof.resolved_path.to_string_lossy()),
@@ -1490,13 +1524,18 @@ fn execution_context_hash(
     payload.insert("path_source".to_owned(), json!(path_source));
     payload.insert(
         "opaque_context_binding".to_owned(),
-        opaque_context_binding.map(|s| json!(s)).unwrap_or(Value::Null),
+        opaque_context_binding
+            .map(|s| json!(s))
+            .unwrap_or(Value::Null),
     );
     // Python `json.dumps(payload, sort_keys=True, separators=(",", ":"))` —
     // `serde_json::to_string` emits compact JSON; `Value::Object` keys are
     // already BTreeMap-sorted.
     let payload_str = serde_json::to_string(&Value::Object(payload)).unwrap_or_default();
-    format!("sha256:{}", hex::encode(Sha256::digest(payload_str.as_bytes())))
+    format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(payload_str.as_bytes()))
+    )
 }
 
 // package_intent_parser.py `_raw_command_segments`
@@ -1593,10 +1632,11 @@ fn expanded_path_assignment(
                 .or_else(|| caps.name("plain"))
                 .map(|m| m.as_str())
                 .unwrap_or("");
-            expansion_environment
-                .get(name)
-                .cloned()
-                .unwrap_or_else(|| caps.get(0).map(|m| m.as_str().to_owned()).unwrap_or_default())
+            expansion_environment.get(name).cloned().unwrap_or_else(|| {
+                caps.get(0)
+                    .map(|m| m.as_str().to_owned())
+                    .unwrap_or_default()
+            })
         })
         .into_owned();
     if expanded.contains('$') || expanded.contains('\0') {
@@ -1611,7 +1651,9 @@ fn package_source_env_assignment(token: &str) -> bool {
     let name = parts.next().unwrap_or("");
     let value = parts.next();
     match value {
-        Some(value) => !value.is_empty() && PACKAGE_SOURCE_ENV_NAMES.contains(&*name.to_uppercase()),
+        Some(value) => {
+            !value.is_empty() && PACKAGE_SOURCE_ENV_NAMES.contains(&*name.to_uppercase())
+        }
         None => false,
     }
 }
@@ -1652,7 +1694,8 @@ fn expand_env_vars(value: &str) -> String {
 fn expand_user(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix('~') {
         if rest.is_empty() || rest.starts_with('/') {
-            if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+            if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
+            {
                 return PathBuf::from(home).join(rest.trim_start_matches('/'));
             }
         }
@@ -1794,8 +1837,10 @@ fn strip_sudo_prefix(tokens: &[String]) -> Vec<String> {
         if !token.starts_with('-') {
             break;
         }
-        if matches!(token.as_str(), "-u" | "-g" | "-h" | "-p" | "-r" | "-t" | "-C")
-            && index + 1 < tokens.len()
+        if matches!(
+            token.as_str(),
+            "-u" | "-g" | "-h" | "-p" | "-r" | "-t" | "-C"
+        ) && index + 1 < tokens.len()
         {
             index += 2;
             continue;
@@ -1880,7 +1925,8 @@ fn redacted_segment(raw_segment: &[String]) -> Vec<String> {
     if command_builtin_is_lookup(&strip_command_lookup_prefixes(raw_segment.to_vec())) {
         return Vec::new();
     }
-    let mut segment = without_fd_merge_redirections(&strip_redaction_wrappers(raw_segment.to_vec()));
+    let mut segment =
+        without_fd_merge_redirections(&strip_redaction_wrappers(raw_segment.to_vec()));
     if segment.len() >= 3
         && PYTHON_EXECUTABLES.contains(command_name(&segment[0]).as_str())
         && segment[1] == "-m"
@@ -2105,7 +2151,9 @@ fn stat_identity(result: &std::fs::Metadata) -> String {
 
 // package_intent_parser.py `_path_identity`
 fn path_identity(path: &Path) -> Option<String> {
-    std::fs::metadata(path).ok().map(|metadata| stat_identity(&metadata))
+    std::fs::metadata(path)
+        .ok()
+        .map(|metadata| stat_identity(&metadata))
 }
 
 // package_intent_parser.py `_execution_display_path`
@@ -2145,14 +2193,18 @@ fn typescript_launch_inputs(
         .manifests
         .iter()
         .filter(|item| {
-            item.status == "available" && item.resolved_path.is_some() && item.content_hash.is_some()
+            item.status == "available"
+                && item.resolved_path.is_some()
+                && item.content_hash.is_some()
         })
         .collect();
     let available_lockfiles: Vec<&PackageExecutionFileEvidence> = evidence
         .lockfiles
         .iter()
         .filter(|item| {
-            item.status == "available" && item.resolved_path.is_some() && item.content_hash.is_some()
+            item.status == "available"
+                && item.resolved_path.is_some()
+                && item.content_hash.is_some()
         })
         .collect();
     TypeScriptLaunchInputs {
@@ -2285,7 +2337,12 @@ fn workspace_js_dependency_version(
         let Some(map) = payload.as_object() else {
             continue;
         };
-        for key in ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] {
+        for key in [
+            "dependencies",
+            "devDependencies",
+            "optionalDependencies",
+            "peerDependencies",
+        ] {
             if let Some(dependencies) = map.get(key).and_then(Value::as_object) {
                 if let Some(version) = dependencies.get(dependency_name).and_then(Value::as_str) {
                     let version = version.trim();
@@ -2338,16 +2395,23 @@ fn local_package_execution_evidence(
             typescript_launch: None,
         };
     };
-    let executable_name = local_executable_name(tokens, package_name.as_deref(), workspace, effective_cwd_path);
+    let executable_name = local_executable_name(
+        tokens,
+        package_name.as_deref(),
+        workspace,
+        effective_cwd_path,
+    );
     let manager_path = effective_path.and_then(|path| which_on_path(command, path));
     let manager = manager_path
         .as_ref()
         .map(|path| execution_file_evidence(Path::new(path), path));
     let manager_is_guard_shim = manager_evidence_is_guard_shim(command, manager.as_ref());
     let local_executable = match (workspace, executable_name.as_deref()) {
-        (Some(workspace), Some(name)) => {
-            Some(local_executable_evidence(workspace, effective_cwd_path, name))
-        }
+        (Some(workspace), Some(name)) => Some(local_executable_evidence(
+            workspace,
+            effective_cwd_path,
+            name,
+        )),
         _ => None,
     };
     let declared_version = match (workspace, package_name.as_deref()) {
@@ -2449,7 +2513,11 @@ fn local_executable_evidence(
     effective_cwd: &Path,
     executable_name: &str,
 ) -> PackageExecutionFileEvidence {
-    let suffixes: &[&str] = if cfg!(windows) { &["", ".cmd", ".ps1"] } else { &[""] };
+    let suffixes: &[&str] = if cfg!(windows) {
+        &["", ".cmd", ".ps1"]
+    } else {
+        &[""]
+    };
     for root in node_resolution_roots(workspace, effective_cwd) {
         let executable_dir = root.join("node_modules").join(".bin");
         for suffix in suffixes {
@@ -2508,7 +2576,10 @@ fn installed_package_bin_name(
             let names: Vec<String> = bin_map
                 .iter()
                 .filter(|(_, value)| {
-                    value.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false)
+                    value
+                        .as_str()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false)
                 })
                 .map(|(name, _)| name.clone())
                 .collect();
@@ -2538,11 +2609,19 @@ fn node_resolution_roots(workspace: &Path, effective_cwd: &Path) -> Vec<PathBuf>
     let workspace_root = expand_resolve(workspace);
     let mut current = expand_resolve(effective_cwd);
     let boundary = if current == workspace_root
-        || current.ancestors().any(|ancestor| ancestor == workspace_root)
+        || current
+            .ancestors()
+            .any(|ancestor| ancestor == workspace_root)
     {
         workspace_root.clone()
     } else {
-        PathBuf::from(current.components().next().map(|c| c.as_os_str()).unwrap_or_default())
+        PathBuf::from(
+            current
+                .components()
+                .next()
+                .map(|c| c.as_os_str())
+                .unwrap_or_default(),
+        )
     };
     let mut roots: Vec<PathBuf> = Vec::new();
     loop {
@@ -2574,7 +2653,10 @@ fn local_context_file_evidence(
         let candidate = effective_cwd.join(relative_path);
         let normalized = absolute(&candidate);
         if seen.insert(normalized) {
-            candidates.push((candidate.clone(), execution_display_path(workspace, &candidate)));
+            candidates.push((
+                candidate.clone(),
+                execution_display_path(workspace, &candidate),
+            ));
         }
     }
     for root in node_resolution_roots(workspace, effective_cwd) {
@@ -2585,7 +2667,10 @@ fn local_context_file_evidence(
                 continue;
             }
             seen.insert(normalized);
-            candidates.push((candidate.clone(), execution_display_path(workspace, &candidate)));
+            candidates.push((
+                candidate.clone(),
+                execution_display_path(workspace, &candidate),
+            ));
         }
     }
     candidates

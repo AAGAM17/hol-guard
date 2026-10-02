@@ -18,8 +18,7 @@ fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let era = if year >= 0 { year } else { year - 399 } / 400;
     let year_of_era = year - era * 400;
     let month_p = (month + 9) % 12;
-    let day_of_year =
-        (153 * month_p as i64 + 2) / 5 + day as i64 - 1;
+    let day_of_year = (153 * month_p as i64 + 2) / 5 + day as i64 - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     era * 146097 + day_of_era - 719468
 }
@@ -138,9 +137,7 @@ fn parse_iso8601(raw: &str) -> Option<Parsed> {
                 if s.get(at) == Some(&b':') {
                     at += 1;
                     mm = take_digits(s, &mut at, 2)? as i64;
-                } else if at + 2 <= s.len()
-                    && s[at].is_ascii_digit()
-                    && s[at + 1].is_ascii_digit()
+                } else if at + 2 <= s.len() && s[at].is_ascii_digit() && s[at + 1].is_ascii_digit()
                 {
                     mm = take_digits(s, &mut at, 2)? as i64;
                 }
@@ -177,8 +174,7 @@ fn parse_iso8601(raw: &str) -> Option<Parsed> {
 pub fn sqlite_julianday(value: &str) -> Option<f64> {
     let parsed = parse_iso8601(value)?;
     let days = days_from_civil(parsed.year, parsed.month, parsed.day);
-    let mut day_fraction =
-        (parsed.hour as f64 - 12.0) / 24.0 + parsed.minute as f64 / 1440.0;
+    let mut day_fraction = (parsed.hour as f64 - 12.0) / 24.0 + parsed.minute as f64 / 1440.0;
     day_fraction += (parsed.second as f64 + parsed.fraction_ns as f64 / 1e9) / 86400.0;
     let jdn = days as f64 + JDN_UNIX_EPOCH + day_fraction;
     if parsed.aware {
@@ -195,7 +191,9 @@ pub fn utc_timestamp_micros(value: &str) -> Option<i64> {
     let days = days_from_civil(parsed.year, parsed.month, parsed.day);
     let mut micros = days
         .checked_mul(86_400)?
-        .checked_add((parsed.hour as i64) * 3600 + (parsed.minute as i64) * 60 + parsed.second as i64)?
+        .checked_add(
+            (parsed.hour as i64) * 3600 + (parsed.minute as i64) * 60 + parsed.second as i64,
+        )?
         .checked_mul(1_000_000)?
         .checked_add(i64::from(parsed.fraction_ns / 1_000))?;
     if parsed.aware {
@@ -230,7 +228,11 @@ fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let month_p = (5 * day_of_year + 2) / 153;
     let day = (day_of_year - (153 * month_p + 2) / 5 + 1) as u32;
-    let month = (if month_p < 10 { month_p + 3 } else { month_p - 9 }) as u32;
+    let month = (if month_p < 10 {
+        month_p + 3
+    } else {
+        month_p - 9
+    }) as u32;
     // March-start calendar: Jan/Feb belong to the following civil year.
     let year = year + i64::from(month <= 2);
     (year, month, day)
@@ -258,34 +260,111 @@ mod tests {
     fn python_sqlite_oracle_parity() {
         // (input, canonical, julianday_or_null, expired_vs_now)
         let rows: &[(&str, Option<&str>, Option<f64>, bool)] = &[
-            ("2026-10-02T00:00:00+00:00", Some("2026-10-02T00:00:00.000000+00:00"), Some(2461315.5), true),
-            ("2026-10-02T00:00:00Z", Some("2026-10-02T00:00:00.000000+00:00"), Some(2461315.5), true),
-            ("2026-10-02 04:30:00+04:30", Some("2026-10-02T00:00:00.000000+00:00"), Some(2461315.5), true),
-            ("2026-10-02", Some("2026-10-02T00:00:00.000000+00:00"), Some(2461315.5), true),
-            ("2026-10-02T12:34:56.123456+00:00", Some("2026-10-02T12:34:56.123456+00:00"), Some(2461316.024260683), false),
-            ("2026-10-02T12:34:56.999999Z", Some("2026-10-02T12:34:56.999999+00:00"), Some(2461316.024270822), false),
-            ("1970-01-01T00:00:00+00:00", Some("1970-01-01T00:00:00.000000+00:00"), Some(2440587.5), true),
-            ("2026-02-28T23:59:59+00:00", Some("2026-02-28T23:59:59.000000+00:00"), Some(2461100.499988426), true),
-            ("2024-02-29T12:00:00+00:00", Some("2024-02-29T12:00:00.000000+00:00"), Some(2460370.0), true),
-            ("2026-10-02T00:00:00-05:00", Some("2026-10-02T05:00:00.000000+00:00"), Some(2461315.7083333335), false),
-            ("2026-10-02 12:00:00", Some("2026-10-02T12:00:00.000000+00:00"), Some(2461316.0), false),
+            (
+                "2026-10-02T00:00:00+00:00",
+                Some("2026-10-02T00:00:00.000000+00:00"),
+                Some(2461315.5),
+                true,
+            ),
+            (
+                "2026-10-02T00:00:00Z",
+                Some("2026-10-02T00:00:00.000000+00:00"),
+                Some(2461315.5),
+                true,
+            ),
+            (
+                "2026-10-02 04:30:00+04:30",
+                Some("2026-10-02T00:00:00.000000+00:00"),
+                Some(2461315.5),
+                true,
+            ),
+            (
+                "2026-10-02",
+                Some("2026-10-02T00:00:00.000000+00:00"),
+                Some(2461315.5),
+                true,
+            ),
+            (
+                "2026-10-02T12:34:56.123456+00:00",
+                Some("2026-10-02T12:34:56.123456+00:00"),
+                Some(2461316.024260683),
+                false,
+            ),
+            (
+                "2026-10-02T12:34:56.999999Z",
+                Some("2026-10-02T12:34:56.999999+00:00"),
+                Some(2461316.024270822),
+                false,
+            ),
+            (
+                "1970-01-01T00:00:00+00:00",
+                Some("1970-01-01T00:00:00.000000+00:00"),
+                Some(2440587.5),
+                true,
+            ),
+            (
+                "2026-02-28T23:59:59+00:00",
+                Some("2026-02-28T23:59:59.000000+00:00"),
+                Some(2461100.499988426),
+                true,
+            ),
+            (
+                "2024-02-29T12:00:00+00:00",
+                Some("2024-02-29T12:00:00.000000+00:00"),
+                Some(2460370.0),
+                true,
+            ),
+            (
+                "2026-10-02T00:00:00-05:00",
+                Some("2026-10-02T05:00:00.000000+00:00"),
+                Some(2461315.7083333335),
+                false,
+            ),
+            (
+                "2026-10-02 12:00:00",
+                Some("2026-10-02T12:00:00.000000+00:00"),
+                Some(2461316.0),
+                false,
+            ),
             ("not-a-date", None, None, true),
             ("", None, None, true),
             ("2026-13-01T00:00:00+00:00", None, None, true),
-            ("2026-10-02T12:00:00.5Z", Some("2026-10-02T12:00:00.500000+00:00"), Some(2461316.0000057872), false),
-            ("2026-10-02T12:00:00.123+00:00", Some("2026-10-02T12:00:00.123000+00:00"), Some(2461316.0000014235), false),
+            (
+                "2026-10-02T12:00:00.5Z",
+                Some("2026-10-02T12:00:00.500000+00:00"),
+                Some(2461316.0000057872),
+                false,
+            ),
+            (
+                "2026-10-02T12:00:00.123+00:00",
+                Some("2026-10-02T12:00:00.123000+00:00"),
+                Some(2461316.0000014235),
+                false,
+            ),
         ];
         let now = "2026-10-02T00:00:00+00:00";
         for (input, canonical, jd, expired) in rows {
-            assert_eq!(canonical_utc_timestamp(input).as_deref(), *canonical, "canonical {input:?}");
+            assert_eq!(
+                canonical_utc_timestamp(input).as_deref(),
+                *canonical,
+                "canonical {input:?}"
+            );
             match jd {
                 Some(want) => {
-                    let got = sqlite_julianday(input).unwrap_or_else(|| panic!("julianday {input:?}"));
-                    assert!((got - want).abs() < 1e-6, "julianday {input:?}: {got} vs {want}");
+                    let got =
+                        sqlite_julianday(input).unwrap_or_else(|| panic!("julianday {input:?}"));
+                    assert!(
+                        (got - want).abs() < 1e-6,
+                        "julianday {input:?}: {got} vs {want}"
+                    );
                 }
                 None => assert_eq!(sqlite_julianday(input), None, "julianday {input:?}"),
             }
-            assert_eq!(timestamp_has_expired(input, now), *expired, "expired {input:?}");
+            assert_eq!(
+                timestamp_has_expired(input, now),
+                *expired,
+                "expired {input:?}"
+            );
         }
     }
 
@@ -307,11 +386,23 @@ mod tests {
 
     #[test]
     fn expired_semantics_match_python() {
-        assert!(timestamp_has_expired("2026-10-02T00:00:00+00:00", "2026-10-02T00:00:00+00:00"));
-        assert!(timestamp_has_expired("2026-10-01T00:00:00+00:00", "2026-10-02T00:00:00+00:00"));
-        assert!(!timestamp_has_expired("2026-10-03T00:00:00+00:00", "2026-10-02T00:00:00+00:00"));
+        assert!(timestamp_has_expired(
+            "2026-10-02T00:00:00+00:00",
+            "2026-10-02T00:00:00+00:00"
+        ));
+        assert!(timestamp_has_expired(
+            "2026-10-01T00:00:00+00:00",
+            "2026-10-02T00:00:00+00:00"
+        ));
+        assert!(!timestamp_has_expired(
+            "2026-10-03T00:00:00+00:00",
+            "2026-10-02T00:00:00+00:00"
+        ));
         // Malformed → expired.
-        assert!(timestamp_has_expired("not-a-date", "2026-10-02T00:00:00+00:00"));
+        assert!(timestamp_has_expired(
+            "not-a-date",
+            "2026-10-02T00:00:00+00:00"
+        ));
         assert!(timestamp_has_expired("", "2026-10-02T00:00:00+00:00"));
     }
 

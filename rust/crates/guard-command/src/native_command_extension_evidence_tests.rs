@@ -59,18 +59,22 @@ fn snapshot_for(fixture: &Value) -> NativeCommandControlBindingV1 {
 /// matcher_evidence_len).
 fn summarize(
     fixture_name: &str,
-) -> Vec<(String, String, String, String, Vec<String>, Vec<String>, usize)> {
+) -> Vec<(
+    String,
+    String,
+    String,
+    String,
+    Vec<String>,
+    Vec<String>,
+    usize,
+)> {
     let fixture = fixture(fixture_name);
     let catalog = packaged_command_catalog().expect("catalog");
     let command = command_for(&fixture);
     let snapshot = snapshot_for(&fixture);
-    let observations = observations_from_native_evidence(
-        &fixture["payload"],
-        &catalog,
-        &command,
-        &snapshot,
-    )
-    .expect("materialize");
+    let observations =
+        observations_from_native_evidence(&fixture["payload"], &catalog, &command, &snapshot)
+            .expect("materialize");
     observations
         .iter()
         .map(|obs| {
@@ -211,12 +215,8 @@ fn binding_catalog_digest_mismatch_rejected() {
     let catalog = packaged_command_catalog().expect("catalog");
     let command = command_for(&fixture);
     let snapshot = snapshot_for(&fixture);
-    let result = observations_from_native_evidence(
-        &fixture["payload"],
-        &catalog,
-        &command,
-        &snapshot,
-    );
+    let result =
+        observations_from_native_evidence(&fixture["payload"], &catalog, &command, &snapshot);
     assert_eq!(
         result.unwrap_err(),
         "native_command_extension_evidence_binding_mismatch"
@@ -231,12 +231,8 @@ fn binding_control_revision_mismatch_rejected() {
     let catalog = packaged_command_catalog().expect("catalog");
     let command = command_for(&fixture);
     let snapshot = snapshot_for(&fixture);
-    let result = observations_from_native_evidence(
-        &fixture["payload"],
-        &catalog,
-        &command,
-        &snapshot,
-    );
+    let result =
+        observations_from_native_evidence(&fixture["payload"], &catalog, &command, &snapshot);
     assert_eq!(
         result.unwrap_err(),
         "native_command_extension_evidence_binding_mismatch"
@@ -253,12 +249,8 @@ fn command_model_mismatch_rejected() {
         Value::String("git push --force".to_owned());
     let catalog = packaged_command_catalog().expect("catalog");
     let snapshot = snapshot_for(&fixture);
-    let result = observations_from_native_evidence(
-        &fixture["payload"],
-        &catalog,
-        &command,
-        &snapshot,
-    );
+    let result =
+        observations_from_native_evidence(&fixture["payload"], &catalog, &command, &snapshot);
     assert_eq!(
         result.unwrap_err(),
         "native_command_extension_evidence_command_mismatch"
@@ -282,9 +274,11 @@ fn tampered_observations_digest_rejected() {
 fn invalid_executable_rejected() {
     let mut fixture = fixture("nce_3994296943931012676.json");
     // Executable violating the regex must fail `_evidence_indexes`.
-    fixture["payload"]["command_extensions"]["observations"][0]["matcher_evidence"][0]["executable"] =
-        Value::String("bad exec!".to_owned());
-    assert!(validate_native_command_observations(&fixture["payload"]["command_extensions"]).is_none());
+    fixture["payload"]["command_extensions"]["observations"][0]["matcher_evidence"][0]
+        ["executable"] = Value::String("bad exec!".to_owned());
+    assert!(
+        validate_native_command_observations(&fixture["payload"]["command_extensions"]).is_none()
+    );
 }
 
 #[test]
@@ -292,7 +286,9 @@ fn non_string_executable_rejected() {
     let mut fixture = fixture("nce_3994296943931012676.json");
     // `executable: 1` (non-null non-string) must fail — Option<String>
     // deserialization would collapse this; the Value-level check does not.
-    fixture["payload"]["command_extensions"]["observations"][0]["matcher_evidence"][0]["executable"] =
-        Value::from(1);
-    assert!(validate_native_command_observations(&fixture["payload"]["command_extensions"]).is_none());
+    fixture["payload"]["command_extensions"]["observations"][0]["matcher_evidence"][0]
+        ["executable"] = Value::from(1);
+    assert!(
+        validate_native_command_observations(&fixture["payload"]["command_extensions"]).is_none()
+    );
 }

@@ -24,15 +24,17 @@ use sha2::{Digest, Sha256};
 
 use crate::command_model::CanonicalCommand;
 use crate::command_tokens::shell_tokens;
-use crate::effect_decision::{maximum_action_floor, GuardAction, ProofRequirement, UncertaintyKind};
+use crate::effect_decision::{
+    maximum_action_floor, GuardAction, ProofRequirement, UncertaintyKind,
+};
 use crate::launch_identity::{
     build_runtime_executable_identity, build_runtime_launch_identity,
     runtime_launch_identity_is_reusable,
 };
 use crate::launch_identity_environment::{
     environment_observation_material, inherited_launch_environment,
-    launch_environment_scope_is_ambiguous, launch_search_path,
-    plan_command_segment_environment, plan_launch_environment, unresolved_launch_observation,
+    launch_environment_scope_is_ambiguous, launch_search_path, plan_command_segment_environment,
+    plan_launch_environment, unresolved_launch_observation,
 };
 use crate::package_execution_context::{
     package_execution_context_from_evidence, PackageExecutionContext,
@@ -214,7 +216,9 @@ impl LaunchIdentityBindingObservation {
         }
         let names: BTreeSet<_> = self.dimensions.iter().map(|d| d.dimension).collect();
         if names.len() != LaunchBindingDimension::ALL.len()
-            || !names.iter().all(|d| LaunchBindingDimension::ALL.contains(d))
+            || !names
+                .iter()
+                .all(|d| LaunchBindingDimension::ALL.contains(d))
         {
             return Err("all launch binding dimensions are required".to_string());
         }
@@ -227,9 +231,7 @@ impl LaunchIdentityBindingObservation {
         // `required_requirements != unresolved_requirements` → frozenset eq.
         let unresolved: BTreeSet<_> = self.unresolved_requirements.iter().copied().collect();
         if required != unresolved {
-            return Err(
-                "observation-only bindings cannot satisfy proof requirements".to_string()
-            );
+            return Err("observation-only bindings cannot satisfy proof requirements".to_string());
         }
         // uncertainties unique + ordered by value, ⊇ _MANDATORY_UNCERTAINTIES.
         let mut sorted_u = self.uncertainties.clone();
@@ -246,14 +248,10 @@ impl LaunchIdentityBindingObservation {
         let set_u: BTreeSet<_> = self.uncertainties.iter().copied().collect();
         if !MANDATORY_UNCERTAINTIES.iter().all(|u| set_u.contains(u)) {
             return Err(
-                "observation-only bindings require launch and effect uncertainty".to_string()
+                "observation-only bindings require launch and effect uncertainty".to_string(),
             );
         }
-        let expected = binding_digest(
-            &self.dimensions,
-            &required,
-            &self.uncertainties,
-        );
+        let expected = binding_digest(&self.dimensions, &required, &self.uncertainties);
         if self.binding_digest != expected {
             return Err("binding digest does not match launch binding material".to_string());
         }
@@ -267,8 +265,7 @@ impl LaunchIdentityBindingObservation {
 
     /// `action_floor` (:174) — `maximum_action_floor(UNCERTAINTY_FLOOR[u])`.
     pub fn action_floor(&self) -> GuardAction {
-        let floors: Vec<GuardAction> =
-            self.uncertainties.iter().map(|u| u.floor()).collect();
+        let floors: Vec<GuardAction> = self.uncertainties.iter().map(|u| u.floor()).collect();
         maximum_action_floor(floors.iter())
     }
 
@@ -358,10 +355,7 @@ pub fn binding_digest(
     required_requirements: &BTreeSet<ProofRequirement>,
     uncertainties: &[UncertaintyKind],
 ) -> String {
-    let mut sorted_req: Vec<&str> = required_requirements
-        .iter()
-        .map(|r| r.as_str())
-        .collect();
+    let mut sorted_req: Vec<&str> = required_requirements.iter().map(|r| r.as_str()).collect();
     sorted_req.sort_unstable();
     let mut sorted_unc: Vec<&str> = uncertainties.iter().map(|u| u.as_str()).collect();
     sorted_unc.sort_unstable();
@@ -467,13 +461,21 @@ mod digest_parity {
         // material with dims [[command-structure,a*64],[executable-observation,b*64]],
         // required [operation-and-targets, workspace-identity], uncertainties [unresolved-launch-identity, unknown-effect]
         let dims = vec![
-            LaunchBindingDimensionDigest { dimension: LaunchBindingDimension::CommandStructure, digest: "a".repeat(64) },
-            LaunchBindingDimensionDigest { dimension: LaunchBindingDimension::ExecutableObservation, digest: "b".repeat(64) },
+            LaunchBindingDimensionDigest {
+                dimension: LaunchBindingDimension::CommandStructure,
+                digest: "a".repeat(64),
+            },
+            LaunchBindingDimensionDigest {
+                dimension: LaunchBindingDimension::ExecutableObservation,
+                digest: "b".repeat(64),
+            },
         ];
         let required: BTreeSet<ProofRequirement> = [
             ProofRequirement::OperationAndTargets,
             ProofRequirement::WorkspaceIdentity,
-        ].into_iter().collect();
+        ]
+        .into_iter()
+        .collect();
         let uncertainties = vec![
             UncertaintyKind::UnresolvedLaunchIdentity,
             UncertaintyKind::UnknownEffect,
@@ -551,7 +553,11 @@ fn normalize_lexical(path: &std::path::Path) -> PathBuf {
             std::path::Component::Prefix(_) => {}
         }
     }
-    let mut result = if absolute { PathBuf::from("/") } else { PathBuf::new() };
+    let mut result = if absolute {
+        PathBuf::from("/")
+    } else {
+        PathBuf::new()
+    };
     for part in out {
         result.push(part);
     }
@@ -614,8 +620,11 @@ fn resolved(path: &std::path::Path) -> PathBuf {
 /// own evidence; any mismatch or wrong component set is `{"status":"invalid"}`.
 fn validated_package_observation(context: &PackageExecutionContext) -> Value {
     let validated = package_execution_context_from_evidence(&context.to_evidence());
-    let component_names: BTreeSet<&str> =
-        context.components.iter().map(|item| item.name.as_str()).collect();
+    let component_names: BTreeSet<&str> = context
+        .components
+        .iter()
+        .map(|item| item.name.as_str())
+        .collect();
     let expected_names: BTreeSet<&str> = if context.portable {
         PACKAGE_CONTEXT_COMPONENTS.iter().copied().collect()
     } else {
@@ -717,7 +726,10 @@ fn redirection_target_material(command: &CanonicalCommand, cwd: &std::path::Path
         let canonical = match weak_canonicalize(&lexical) {
             Some(p) => p,
             None => {
-                base.insert("status".to_string(), Value::String("unresolved".to_string()));
+                base.insert(
+                    "status".to_string(),
+                    Value::String("unresolved".to_string()),
+                );
                 base.insert("reuse_nonce".to_string(), Value::String(token_hex_16()));
                 material.push(Value::Object(base));
                 continue;
@@ -847,11 +859,13 @@ pub fn observe_launch_identity_binding(
     let segment_plans: Vec<crate::launch_identity_environment::LaunchEnvironmentPlan> =
         planned_segments
             .into_iter()
-            .map(|plan| crate::launch_identity_environment::LaunchEnvironmentPlan {
-                executable_environment: plan.executable_environment,
-                wrapper_environments: plan.wrapper_environments,
-                complete: inherited_plan.complete && plan.complete && !script_scope_ambiguous,
-            })
+            .map(
+                |plan| crate::launch_identity_environment::LaunchEnvironmentPlan {
+                    executable_environment: plan.executable_environment,
+                    wrapper_environments: plan.wrapper_environments,
+                    complete: inherited_plan.complete && plan.complete && !script_scope_ambiguous,
+                },
+            )
             .collect();
 
     let runtime_identities: Vec<Value> = command
@@ -901,8 +915,9 @@ pub fn observe_launch_identity_binding(
         executable_material.push(unresolved_launch_observation("unresolved-wrapper-chain"));
     }
     if script_scope_ambiguous {
-        executable_material
-            .push(unresolved_launch_observation("unresolved-script-environment-scope"));
+        executable_material.push(unresolved_launch_observation(
+            "unresolved-script-environment-scope",
+        ));
     }
 
     // `raw_wrapper_environments` is consumed by `del` inside the match loop
@@ -972,13 +987,11 @@ pub fn observe_launch_identity_binding(
         segment_plans.clone();
     for plan in std::iter::once(&raw_plan).chain(segment_plans.iter()) {
         for wrapper in &plan.wrapper_environments {
-            environment_plans.push(
-                crate::launch_identity_environment::LaunchEnvironmentPlan {
-                    executable_environment: wrapper.environment.clone(),
-                    wrapper_environments: Vec::new(),
-                    complete: plan.complete,
-                },
-            );
+            environment_plans.push(crate::launch_identity_environment::LaunchEnvironmentPlan {
+                executable_environment: wrapper.environment.clone(),
+                wrapper_environments: Vec::new(),
+                complete: plan.complete,
+            });
         }
     }
     if environment_plans.is_empty() {

@@ -139,7 +139,15 @@ pub fn parse_env_wrapper(
         if !options {
             if token == "--" {
                 index += 1;
-                return result!(true, None::<String>, if index < working.len() { Some(index) } else { None });
+                return result!(
+                    true,
+                    None::<String>,
+                    if index < working.len() {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                );
             }
             if let Some((name, value)) = assignment {
                 assignments.push((name.clone(), value.clone()));
@@ -211,7 +219,11 @@ pub fn parse_env_wrapper(
                 if index + 1 >= working.len() {
                     return fail!(missing_operand_error(&option_name));
                 }
-                (working[index + 1].value.clone(), 2usize, working[index + 1].source_index)
+                (
+                    working[index + 1].value.clone(),
+                    2usize,
+                    working[index + 1].source_index,
+                )
             };
             if option_name == "--unset" {
                 if operand.is_empty() || operand.contains('=') || operand.contains('\0') {
@@ -286,7 +298,11 @@ pub fn parse_env_wrapper(
                 if index + 1 >= working.len() {
                     return fail!(missing_operand_error(&format!("-{}", flag)));
                 }
-                (working[index + 1].value.clone(), 2usize, working[index + 1].source_index)
+                (
+                    working[index + 1].value.clone(),
+                    2usize,
+                    working[index + 1].source_index,
+                )
             };
             tokens_consumed = consumed;
             if flag == 'u' {

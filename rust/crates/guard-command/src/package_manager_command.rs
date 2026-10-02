@@ -46,12 +46,7 @@ static MANAGER_GLOBAL_OPTIONS: LazyLock<Vec<(&'static str, GlobalOptionConfig)>>
                 "yarn",
                 GlobalOptionConfig {
                     subcommands: &["add", "dlx", "install", "up", "workspace"],
-                    value_options: &[
-                        "--cache-folder",
-                        "--cwd",
-                        "--modules-folder",
-                        "--registry",
-                    ],
+                    value_options: &["--cache-folder", "--cwd", "--modules-folder", "--registry"],
                 },
             ),
             (
@@ -86,7 +81,13 @@ static MANAGER_GLOBAL_OPTIONS: LazyLock<Vec<(&'static str, GlobalOptionConfig)>>
                 "uv",
                 GlobalOptionConfig {
                     subcommands: &["add", "pip", "sync"],
-                    value_options: &["--cache-dir", "--directory", "--index", "--python", "--project"],
+                    value_options: &[
+                        "--cache-dir",
+                        "--directory",
+                        "--index",
+                        "--python",
+                        "--project",
+                    ],
                 },
             ),
             (
@@ -207,7 +208,11 @@ fn matches_inline_value_option(token: &str, value_options: &[&str]) -> bool {
         if option.starts_with("--") && token.starts_with(&format!("{option}=")) {
             return true;
         }
-        if option.starts_with('-') && !option.starts_with("--") && token.starts_with(option) && token != *option {
+        if option.starts_with('-')
+            && !option.starts_with("--")
+            && token.starts_with(option)
+            && token != *option
+        {
             return true;
         }
     }
@@ -224,13 +229,25 @@ mod tests {
 
     #[test]
     fn npm_global_registry_stripped() {
-        let got = strip_package_manager_global_options(&t(&["npm", "--registry", "https://r", "install", "lodash"]));
+        let got = strip_package_manager_global_options(&t(&[
+            "npm",
+            "--registry",
+            "https://r",
+            "install",
+            "lodash",
+        ]));
         assert_eq!(got, t(&["npm", "install", "lodash"]));
     }
 
     #[test]
     fn pip3_alias_maps_to_pip() {
-        let got = strip_package_manager_global_options(&t(&["pip3", "-i", "https://i", "install", "flask"]));
+        let got = strip_package_manager_global_options(&t(&[
+            "pip3",
+            "-i",
+            "https://i",
+            "install",
+            "flask",
+        ]));
         assert_eq!(got, t(&["pip3", "install", "flask"]));
     }
 
@@ -248,7 +265,12 @@ mod tests {
 
     #[test]
     fn inline_value_option_consumed() {
-        let got = strip_package_manager_global_options(&t(&["npm", "--registry=https://r", "install", "x"]));
+        let got = strip_package_manager_global_options(&t(&[
+            "npm",
+            "--registry=https://r",
+            "install",
+            "x",
+        ]));
         assert_eq!(got, t(&["npm", "install", "x"]));
     }
 }

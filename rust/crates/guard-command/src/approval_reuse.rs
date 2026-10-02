@@ -263,7 +263,6 @@ fn decision(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{evaluate_approval_reuse, ApprovalReuseDecision};
@@ -300,11 +299,7 @@ mod tests {
             let want_reason = expect["reason_code"].as_str().unwrap();
             let want_claim = expect["should_claim"].as_bool().unwrap();
             let want_saved = expect["saved_action_out"].as_str();
-            assert_eq!(
-                d.action.as_str(),
-                want_action,
-                "row {i} action: {row}"
-            );
+            assert_eq!(d.action.as_str(), want_action, "row {i} action: {row}");
             assert_eq!(d.status, want_status, "row {i} status: {row}");
             assert_eq!(d.reason_code, want_reason, "row {i} reason: {row}");
             assert_eq!(d.should_claim, want_claim, "row {i} claim: {row}");

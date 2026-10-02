@@ -59,8 +59,14 @@ pub fn contained_routine_candidate_operation(command: &CanonicalCommand) -> Opti
         return Some("build");
     }
     for s in [
-        vec![("bun", vec!["run", "typecheck", "2>&1"]), ("head", vec!["-40"])],
-        vec![("npx", vec!["tsc", "--noEmit", "--pretty", "2>&1"]), ("head", vec!["-40"])],
+        vec![
+            ("bun", vec!["run", "typecheck", "2>&1"]),
+            ("head", vec!["-40"]),
+        ],
+        vec![
+            ("npx", vec!["tsc", "--noEmit", "--pretty", "2>&1"]),
+            ("head", vec!["-40"]),
+        ],
     ] {
         if eq(&actual, &s) {
             return Some("typecheck");
@@ -70,7 +76,17 @@ pub fn contained_routine_candidate_operation(command: &CanonicalCommand) -> Opti
         &actual,
         &vec![(
             "find",
-            vec!["src", "-name", "*.py", "-exec", "python", "-m", "py_compile", "{}", "+"],
+            vec![
+                "src",
+                "-name",
+                "*.py",
+                "-exec",
+                "python",
+                "-m",
+                "py_compile",
+                "{}",
+                "+",
+            ],
         )],
     ) {
         return Some("compile-check");
@@ -86,7 +102,10 @@ pub fn contained_routine_candidate_operation(command: &CanonicalCommand) -> Opti
     }
     for s in [
         vec![("rg", vec!["-n", "error", "logs"]), ("head", vec!["-40"])],
-        vec![("git", vec!["status", "--porcelain=v1"]), ("wc", vec!["-l"])],
+        vec![
+            ("git", vec!["status", "--porcelain=v1"]),
+            ("wc", vec!["-l"]),
+        ],
     ] {
         if eq(&actual, &s) {
             return Some("workspace-check");

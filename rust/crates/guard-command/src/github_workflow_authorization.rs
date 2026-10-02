@@ -115,12 +115,11 @@ pub fn github_repository_sha256(repository: &str) -> WfResult<String> {
         .unwrap()
         .is_match(&normalized);
     if normalized != repository || !repository_ok {
-        return Err(WorkflowCapabilityError("invalid_github_workflow_repository"));
+        return Err(WorkflowCapabilityError(
+            "invalid_github_workflow_repository",
+        ));
     }
-    framed_sha256(
-        "github-workflow-repository",
-        &Value::String(normalized),
-    )
+    framed_sha256("github-workflow-repository", &Value::String(normalized))
 }
 
 /// `build_github_workflow_binding` (:120). Validation ordering preserved:
@@ -134,7 +133,9 @@ pub fn build_github_workflow_binding(
     validate_github_workflow_binding_context(context)?;
     let expected_repository_sha256 = github_repository_sha256(&operation.repository)?;
     if !hmac_compare_digest(&context.repository_sha256, &expected_repository_sha256) {
-        return Err(WorkflowCapabilityError("github_workflow_repository_mismatch"));
+        return Err(WorkflowCapabilityError(
+            "github_workflow_repository_mismatch",
+        ));
     }
     let launch_sha256 = framed_sha256(
         "github-workflow-launch",

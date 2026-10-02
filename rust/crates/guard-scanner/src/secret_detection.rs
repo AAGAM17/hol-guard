@@ -42,8 +42,7 @@ const FLAG_IGNORECASE_MULTILINE_UNICODE: u32 = 42;
 /// Python source of `_ASSIGNMENT`, used verbatim in `detector_version` material.
 /// The compiled Rust equivalent cannot reuse `(?P=quote)` backreferences, so the
 /// compiled pattern below expands the quoted/unquoted arms explicitly.
-const ASSIGNMENT_PATTERN_SOURCE: &str =
-    r#"(?im)(?P<name>[A-Za-z_][A-Za-z0-9_.-]{1,80})\s*[:=]\s*(?P<quote>[\"']?)(?P<secret>[^\s\"',}{]{12,256})(?P=quote)"#;
+const ASSIGNMENT_PATTERN_SOURCE: &str = r#"(?im)(?P<name>[A-Za-z_][A-Za-z0-9_.-]{1,80})\s*[:=]\s*(?P<quote>[\"']?)(?P<secret>[^\s\"',}{]{12,256})(?P=quote)"#;
 
 static SAMPLE_WORDS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
@@ -116,7 +115,8 @@ static CODE_CALL_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("CODE_CALL_REFERENCE is a static literal")
 });
 static CODE_IDENTIFIER_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[A-Za-z_$][A-Za-z0-9_$]*$").expect("CODE_IDENTIFIER_REFERENCE is a static literal")
+    Regex::new(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+        .expect("CODE_IDENTIFIER_REFERENCE is a static literal")
 });
 static INTERPOLATED_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:\$\{|\$\(|\{\{|<%|%\{|@\{)")
@@ -153,13 +153,65 @@ const PUBLIC_CLIENT_CONFIG_BASENAMES: &[&str] =
     &["google-services.json", "googleservice-info.plist"];
 
 const NON_SECRET_NAME_TERMINALS: &[&str] = &[
-    "config", "configs", "count", "counts", "endpoint", "endpoints", "event", "events", "field",
-    "fields", "header", "headers", "id", "ids", "input", "inputs", "kind", "label", "labels",
-    "limit", "limits", "mode", "name", "names", "options", "output", "outputs", "path", "paths",
-    "pattern", "payload", "prefix", "provider", "record", "records", "regex", "request",
-    "response", "result", "results", "row", "rows", "schema", "schemas", "scope", "scopes", "size",
-    "sizes", "state", "status", "suffix", "table", "tables", "type", "types", "uri", "url",
-    "version", "versions",
+    "config",
+    "configs",
+    "count",
+    "counts",
+    "endpoint",
+    "endpoints",
+    "event",
+    "events",
+    "field",
+    "fields",
+    "header",
+    "headers",
+    "id",
+    "ids",
+    "input",
+    "inputs",
+    "kind",
+    "label",
+    "labels",
+    "limit",
+    "limits",
+    "mode",
+    "name",
+    "names",
+    "options",
+    "output",
+    "outputs",
+    "path",
+    "paths",
+    "pattern",
+    "payload",
+    "prefix",
+    "provider",
+    "record",
+    "records",
+    "regex",
+    "request",
+    "response",
+    "result",
+    "results",
+    "row",
+    "rows",
+    "schema",
+    "schemas",
+    "scope",
+    "scopes",
+    "size",
+    "sizes",
+    "state",
+    "status",
+    "suffix",
+    "table",
+    "tables",
+    "type",
+    "types",
+    "uri",
+    "url",
+    "version",
+    "versions",
 ];
 
 const SECRET_ASSIGNMENT_SUFFIXES: &[&str] = &[
@@ -736,8 +788,7 @@ pub fn secret_rule_catalog() -> Vec<SecretRuleCatalogEntry> {
         severity: "high",
         validation: "none",
         strong_format: false,
-        description:
-            "High-entropy credential assignment accepted only with contextual evidence.",
+        description: "High-entropy credential assignment accepted only with contextual evidence.",
     });
     entries
 }
@@ -793,8 +844,7 @@ fn rarity_score(value: &str) -> f64 {
         + usize::from(value.chars().any(|c| c.is_ascii_digit()))
         + usize::from(value.chars().any(|c| !c.is_ascii_alphanumeric()));
     let class_component = (classes as f64 / 3.0).min(1.0);
-    let length_component =
-        (value.chars().count().saturating_sub(12) as f64 / 36.0).min(1.0);
+    let length_component = (value.chars().count().saturating_sub(12) as f64 / 36.0).min(1.0);
     ((entropy_component * 0.55) + (class_component * 0.2) + (length_component * 0.25)).min(1.0)
 }
 
@@ -1069,11 +1119,9 @@ fn provider_match_is_fixture(
         return true;
     }
     let context = surrounding_context(text, match_start);
-    let unwrapped = candidate
-        .trim()
-        .trim_matches(|c| "<>[]{}()".contains(c));
-    let explicit_placeholder = COMMON_PLACEHOLDER.is_match(unwrapped)
-        || SAMPLE_WORDS.is_match(candidate);
+    let unwrapped = candidate.trim().trim_matches(|c| "<>[]{}()".contains(c));
+    let explicit_placeholder =
+        COMMON_PLACEHOLDER.is_match(unwrapped) || SAMPLE_WORDS.is_match(candidate);
     if explicit_placeholder && (path_is_sample_fixture(path) || SAMPLE_WORDS.is_match(context)) {
         return true;
     }
@@ -1100,8 +1148,11 @@ fn context_score(
     strong_format: bool,
 ) -> (f64, Vec<&'static str>) {
     let mut score = if strong_format { 0.9 } else { 0.3 };
-    let mut reasons: Vec<&'static str> =
-        vec![if strong_format { "provider-format" } else { "contextual-candidate" }];
+    let mut reasons: Vec<&'static str> = vec![if strong_format {
+        "provider-format"
+    } else {
+        "contextual-candidate"
+    }];
     let rarity = rarity_score(candidate);
     score += rarity * if strong_format { 0.08 } else { 0.34 };
     if rarity >= 0.72 {
@@ -1217,11 +1268,13 @@ pub fn scan_secret_text(
             let candidate = captures
                 .name("secret")
                 .map(|m| m.as_str())
-                .unwrap_or_else(|| captures.get(0).expect("whole match always present").as_str());
-            let match_start = captures
-                .get(0)
-                .expect("whole match always present")
-                .start();
+                .unwrap_or_else(|| {
+                    captures
+                        .get(0)
+                        .expect("whole match always present")
+                        .as_str()
+                });
+            let match_start = captures.get(0).expect("whole match always present").start();
             let finding = finding_from_match(
                 &RuleMeta::of(rule),
                 candidate,
@@ -1249,8 +1302,10 @@ pub fn scan_secret_text(
 
     // Generic assignments are intentionally evaluated after provider formats so
     // the structured detector wins when both identify the same token.
-    let provider_candidates: HashSet<String> =
-        findings.iter().map(|finding| finding.candidate.clone()).collect();
+    let provider_candidates: HashSet<String> = findings
+        .iter()
+        .map(|finding| finding.candidate.clone())
+        .collect();
     for captures in ASSIGNMENT.captures_iter(text) {
         let candidate = captures
             .name("secret")
@@ -1265,13 +1320,12 @@ pub fn scan_secret_text(
         if !assignment_name_likely_holds_secret(name) {
             continue;
         }
-        let quoted =
-            captures.name("quote").is_some() || captures.name("quote1").is_some();
-        let match_start = captures
+        let quoted = captures.name("quote").is_some() || captures.name("quote1").is_some();
+        let match_start = captures.get(0).expect("whole match always present").start();
+        let whole_match = captures
             .get(0)
             .expect("whole match always present")
-            .start();
-        let whole_match = captures.get(0).expect("whole match always present").as_str();
+            .as_str();
         if candidate_is_indirect_reference(candidate, quoted, path) {
             continue;
         }
@@ -1347,7 +1401,10 @@ mod tests {
             shannon_entropy("sk-test-abc123XYZ").to_bits(),
             3.7345216647797512f64.to_bits()
         );
-        assert_eq!(shannon_entropy("ABCDEFGHIJKLMNOP").to_bits(), 4.0f64.to_bits());
+        assert_eq!(
+            shannon_entropy("ABCDEFGHIJKLMNOP").to_bits(),
+            4.0f64.to_bits()
+        );
     }
 
     #[test]
@@ -1412,10 +1469,18 @@ mod tests {
 
     #[test]
     fn scan_fixture_matches_python_findings() {
-        let summary =
-            scan_secret_text(&fixture_text(), "config/prod.env", "working_tree", None, 200);
+        let summary = scan_secret_text(
+            &fixture_text(),
+            "config/prod.env",
+            "working_tree",
+            None,
+            200,
+        );
         assert_eq!(summary.findings.len(), 4);
-        assert_eq!(summary.detector_version, "guard-secrets-v1:1d8dc93ef4fc2a04");
+        assert_eq!(
+            summary.detector_version,
+            "guard-secrets-v1:1d8dc93ef4fc2a04"
+        );
 
         let github = &summary.findings[0];
         assert_eq!(github.rule_id, "github-token");
@@ -1425,7 +1490,11 @@ mod tests {
         assert_eq!(github.entropy.to_bits(), 5.0588138903312005f64.to_bits());
         assert_eq!(
             github.context_reasons,
-            ["provider-format", "high-token-rarity", "credential-name-context"]
+            [
+                "provider-format",
+                "high-token-rarity",
+                "credential-name-context"
+            ]
         );
         assert_eq!(
             github.fingerprint(b"oracle-key").unwrap(),
@@ -1447,21 +1516,32 @@ mod tests {
         assert_eq!(db.rule_id, "database-url-password");
         assert_eq!(db.line, 4);
         assert_eq!(db.confidence, "medium");
-        assert_eq!(db.confidence_score.to_bits(), 0.7453623311020845f64.to_bits());
+        assert_eq!(
+            db.confidence_score.to_bits(),
+            0.7453623311020845f64.to_bits()
+        );
         assert_eq!(db.entropy.to_bits(), 3.7849418274376427f64.to_bits());
 
         let generic = &summary.findings[3];
         assert_eq!(generic.rule_id, "credential-assignment");
         assert_eq!(generic.line, 5);
         assert_eq!(generic.confidence, "medium");
-        assert_eq!(generic.confidence_score.to_bits(), 0.8127823183760684f64.to_bits());
+        assert_eq!(
+            generic.confidence_score.to_bits(),
+            0.8127823183760684f64.to_bits()
+        );
         assert_eq!(generic.entropy.to_bits(), 4.9375f64.to_bits());
     }
 
     #[test]
     fn public_dict_matches_python_key_order_and_rounding() {
-        let summary =
-            scan_secret_text(&fixture_text(), "config/prod.env", "working_tree", None, 200);
+        let summary = scan_secret_text(
+            &fixture_text(),
+            "config/prod.env",
+            "working_tree",
+            None,
+            200,
+        );
         let public = summary.to_public_dict(Some(b"oracle-key")).unwrap();
         let json = serde_json::to_string(&public).unwrap();
         let expected = concat!(
@@ -1512,7 +1592,11 @@ mod tests {
 
     #[test]
     fn obvious_sample_matches_python() {
-        assert!(obvious_sample("example_token_abc", "token = example_token_abc", ""));
+        assert!(obvious_sample(
+            "example_token_abc",
+            "token = example_token_abc",
+            ""
+        ));
         assert!(obvious_sample("p@ssw0rd", "password=p@ssw0rd", ""));
         assert!(!obvious_sample(
             "xK9mQ2vL8nP4wR7tY1uI6oP3aS5dFgHj",
@@ -1542,10 +1626,17 @@ mod tests {
         let kept = scan_secret_text(token_line, ".env", "working_tree", None, 200);
         assert_eq!(kept.findings.len(), 1);
         assert_eq!(kept.findings[0].rule_id, "github-token");
-        assert_eq!(kept.findings[0].confidence_score.to_bits(), 1.0f64.to_bits());
+        assert_eq!(
+            kept.findings[0].confidence_score.to_bits(),
+            1.0f64.to_bits()
+        );
         assert_eq!(
             kept.findings[0].context_reasons,
-            ["provider-format", "high-token-rarity", "sensitive-file-context"]
+            [
+                "provider-format",
+                "high-token-rarity",
+                "sensitive-file-context"
+            ]
         );
 
         // Generic assignment in a high-signal path survives with oracle score.
@@ -1587,8 +1678,13 @@ mod tests {
         assert!(doc.findings.is_empty());
 
         // Indirect environment-variable references never produce findings.
-        let env_var =
-            scan_secret_text("api_key = ${MY_API_KEY_FROM_ENV}", ".env", "working_tree", None, 200);
+        let env_var = scan_secret_text(
+            "api_key = ${MY_API_KEY_FROM_ENV}",
+            ".env",
+            "working_tree",
+            None,
+            200,
+        );
         assert!(env_var.findings.is_empty());
 
         // max_findings bounds the result even mid-scan.
@@ -1604,7 +1700,8 @@ mod tests {
     fn empty_text_and_dedup_match_python() {
         let empty = scan_secret_text("", "x.env", "text", None, 200);
         assert!(empty.findings.is_empty());
-        let dup = "key1 ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345\nkey2 ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345";
+        let dup =
+            "key1 ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345\nkey2 ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345";
         let summary = scan_secret_text(dup, "a.env", "text", None, 200);
         assert_eq!(summary.findings.len(), 2);
         assert_eq!(summary.findings[0].line, 1);

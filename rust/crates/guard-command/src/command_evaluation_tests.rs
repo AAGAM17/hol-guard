@@ -206,7 +206,10 @@ fn evaluate_command_matches_python_oracle() {
         let payload = match evaluation {
             Ok(evaluation) => evaluation.to_payload(),
             Err(error) => {
-                mismatches.push(format!("{} -> evaluate_command Err: {}", row.command, error));
+                mismatches.push(format!(
+                    "{} -> evaluate_command Err: {}",
+                    row.command, error
+                ));
                 continue;
             }
         };

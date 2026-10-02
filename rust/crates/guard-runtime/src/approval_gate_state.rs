@@ -368,7 +368,9 @@ pub fn record_failed_attempt(
     {
         obj.insert(
             "locked_until".to_owned(),
-            json!(iso_from_epoch(now_epoch + APPROVAL_GATE_LOCKOUT_SECONDS as f64)),
+            json!(iso_from_epoch(
+                now_epoch + APPROVAL_GATE_LOCKOUT_SECONDS as f64
+            )),
         );
         obj.insert("failed_attempts".to_owned(), json!(0));
         obj.insert("password_failed_attempts".to_owned(), json!(0));
@@ -392,7 +394,10 @@ pub fn reset_failed_attempts(state: &mut Value) {
 
 /// `cooldown_active` (`approval_gate_state.py:138-139`).
 pub fn cooldown_active(state: &Value, now_epoch: f64) -> bool {
-    is_future(optional_string(state.get("cooldown_expires_at")).as_deref(), now_epoch)
+    is_future(
+        optional_string(state.get("cooldown_expires_at")).as_deref(),
+        now_epoch,
+    )
 }
 
 /// `is_future` (`approval_gate_state.py:142-145`) — `epoch(value) > now_epoch`.
@@ -472,7 +477,11 @@ fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let month_p = (5 * day_of_year + 2) / 153;
     let day = (day_of_year - (153 * month_p + 2) / 5 + 1) as u32;
-    let month = if month_p < 10 { month_p + 3 } else { month_p - 9 } as u32;
+    let month = if month_p < 10 {
+        month_p + 3
+    } else {
+        month_p - 9
+    } as u32;
     let year = year + i64::from(month <= 2);
     (year, month, day)
 }

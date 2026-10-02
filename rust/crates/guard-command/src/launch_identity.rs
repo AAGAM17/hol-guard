@@ -68,8 +68,6 @@ fn is_regular(mode: u32) -> bool {
     mode & S_IFMT == S_IFREG
 }
 
-
-
 fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -144,7 +142,9 @@ fn launch_argv_digest(argv: &[String]) -> String {
 fn is_sha256_hex(value: &Value) -> bool {
     match value.as_str() {
         Some(s) => {
-            s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         }
         None => false,
     }
@@ -155,7 +155,10 @@ fn unreusable_executable_identity(command: &Value, status: &str, path: Option<&P
     let mut map = Map::new();
     map.insert(
         "command".to_string(),
-        command.as_str().map(|s| Value::String(s.to_string())).unwrap_or(Value::Null),
+        command
+            .as_str()
+            .map(|s| Value::String(s.to_string()))
+            .unwrap_or(Value::Null),
     );
     map.insert(
         "path".to_string(),
@@ -184,17 +187,15 @@ fn normalized_launch_cwd(cwd: Option<&Path>) -> PathBuf {
     let candidate = cwd
         .map(|p| expand_user(p))
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    candidate
-        .canonicalize()
-        .unwrap_or_else(|_| {
-            if candidate.is_absolute() {
-                candidate
-            } else {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| PathBuf::from("."))
-                    .join(candidate)
-            }
-        })
+    candidate.canonicalize().unwrap_or_else(|_| {
+        if candidate.is_absolute() {
+            candidate
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(candidate)
+        }
+    })
 }
 
 fn expand_user(path: &Path) -> PathBuf {
@@ -288,7 +289,10 @@ fn executable_path_chain_snapshot(path: &Path) -> Option<Vec<Value>> {
             snapshot.insert("change_time_ns".to_string(), json!(metadata.ctime_nsec()));
             snapshot.insert("device".to_string(), json!(metadata.dev()));
             snapshot.insert("inode".to_string(), json!(metadata.ino()));
-            snapshot.insert("mode".to_string(), json!(metadata.permissions().mode() & 0o7777));
+            snapshot.insert(
+                "mode".to_string(),
+                json!(metadata.permissions().mode() & 0o7777),
+            );
             snapshot.insert("modified_time_ns".to_string(), json!(metadata.mtime_nsec()));
             snapshot.insert("path".to_string(), Value::String(current_text));
             snapshot.insert(
@@ -311,7 +315,10 @@ fn executable_path_chain_snapshot(path: &Path) -> Option<Vec<Value>> {
 // `_cached_executable_hash` (:1743-1782) — ported uncached; the Python
 // `lru_cache` is a pure optimization (output identical for same stat key).
 // Returns (digest, hash_status, shebang, shebang_status).
-fn cached_executable_hash(path: &Path, expected_stat: StatKey) -> (Option<String>, &'static str, Option<String>, &'static str) {
+fn cached_executable_hash(
+    path: &Path,
+    expected_stat: StatKey,
+) -> (Option<String>, &'static str, Option<String>, &'static str) {
     let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return (None, "open_failed", None, "unverified"),
@@ -359,7 +366,12 @@ fn cached_executable_hash(path: &Path, expected_stat: StatKey) -> (Option<String
         return (None, "identity_raced", None, "unverified");
     }
     let (shebang, shebang_status) = parse_executable_shebang(&prefix);
-    (Some(hex::encode(digest.finalize())), "verified", shebang, shebang_status)
+    (
+        Some(hex::encode(digest.finalize())),
+        "verified",
+        shebang,
+        shebang_status,
+    )
 }
 
 // `_parse_executable_shebang` (:1785-1795).
@@ -394,7 +406,11 @@ fn which(command: &str, search_path: &str) -> Option<PathBuf> {
     // before `which` is reached; `shutil.which` itself also checks the
     // basename form, but the caller contract keeps `command` bare here.
     for entry in search_path.split(':') {
-        let dir = if entry.is_empty() { Path::new(".") } else { Path::new(entry) };
+        let dir = if entry.is_empty() {
+            Path::new(".")
+        } else {
+            Path::new(entry)
+        };
         let candidate = dir.join(command);
         if let Ok(m) = fs::metadata(&candidate) {
             if m.is_file() && m.permissions().mode() & 0o111 != 0 {
@@ -569,17 +585,32 @@ pub fn build_runtime_executable_identity(
     };
     let mut identity = Map::new();
     identity.insert("command".to_string(), command.clone());
-    identity.insert("launch_path".to_string(), Value::String(launch_path.to_string_lossy().into_owned()));
-    identity.insert("file_format".to_string(), Value::String(file_format.to_string()));
-    identity.insert("path".to_string(), Value::String(canonical.to_string_lossy().into_owned()));
+    identity.insert(
+        "launch_path".to_string(),
+        Value::String(launch_path.to_string_lossy().into_owned()),
+    );
+    identity.insert(
+        "file_format".to_string(),
+        Value::String(file_format.to_string()),
+    );
+    identity.insert(
+        "path".to_string(),
+        Value::String(canonical.to_string_lossy().into_owned()),
+    );
     identity.insert("path_chain".to_string(), Value::Array(initial_path_chain));
-    identity.insert("shebang_status".to_string(), Value::String(shebang_status.to_string()));
+    identity.insert(
+        "shebang_status".to_string(),
+        Value::String(shebang_status.to_string()),
+    );
     identity.insert("device".to_string(), json!(metadata.dev()));
     identity.insert("inode".to_string(), json!(metadata.ino()));
     identity.insert("modified_time_ns".to_string(), json!(metadata.mtime_nsec()));
     identity.insert("change_time_ns".to_string(), json!(metadata.ctime_nsec()));
     identity.insert("size".to_string(), json!(metadata.size()));
-    identity.insert("mode".to_string(), json!(metadata.permissions().mode() & 0o7777));
+    identity.insert(
+        "mode".to_string(),
+        json!(metadata.permissions().mode() & 0o7777),
+    );
     identity.insert("status".to_string(), Value::String(hash_status.to_string()));
     let mut identity = Value::Object(identity);
     match &digest {
@@ -616,7 +647,11 @@ fn normalize_lexical(path: &Path) -> PathBuf {
             std::path::Component::Prefix(_) => {}
         }
     }
-    let mut result = if absolute { PathBuf::from("/") } else { PathBuf::new() };
+    let mut result = if absolute {
+        PathBuf::from("/")
+    } else {
+        PathBuf::new()
+    };
     for part in out {
         result.push(part);
     }
@@ -629,7 +664,12 @@ fn identity_shebang_status(identity: &Value) -> &'static str {
         return "unverified";
     }
     let status = identity.get("shebang_status").and_then(|v| v.as_str());
-    if identity.get("shebang_sha256").and_then(|v| v.as_str()).is_some() && status == Some("verified") {
+    if identity
+        .get("shebang_sha256")
+        .and_then(|v| v.as_str())
+        .is_some()
+        && status == Some("verified")
+    {
         return "script";
     }
     if status == Some("not_script") {
@@ -741,7 +781,10 @@ pub fn resolved_runtime_launch_argv(identity: &Value, args: &[String]) -> Option
     let launcher_name = executable_name(shebang_tokens.first().map(|s| s.as_str()))?;
     let shebang_args: Vec<String> = shebang_tokens[1..].to_vec();
     if launch_argv_digest(&shebang_args)
-        != entrypoint.get("shebang_args_sha256").and_then(|v| v.as_str()).unwrap_or("")
+        != entrypoint
+            .get("shebang_args_sha256")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
     {
         return None;
     }
@@ -812,7 +855,10 @@ fn runtime_launch_verification_digest(identity: &Value) -> Option<String> {
     if write_canonical_json(&material, &mut bytes).is_err() {
         return None;
     }
-    Some(context_sha256_digest_strict(&material, "launch-verification"))
+    Some(context_sha256_digest_strict(
+        &material,
+        "launch-verification",
+    ))
 }
 
 // `_verified_identity_path` (:1720-1727).
@@ -884,7 +930,9 @@ pub fn build_runtime_launch_identity(
             // `os.environ` surrogate — build once per call; the caller passes
             // an explicit env in every production path.
             Box::leak(Box::new(
-                std::env::vars().map(|(k, v)| (k, Value::String(v))).collect(),
+                std::env::vars()
+                    .map(|(k, v)| (k, Value::String(v)))
+                    .collect(),
             ))
         });
     let _ = environment; // kept for parity with the Python signature
@@ -949,8 +997,11 @@ pub fn build_runtime_launch_identity(
     let raw_current_user_tilde = raw_command.starts_with("~/");
     let executable_identity: Value;
     if !structured_command && executable.starts_with('~') && !raw_current_user_tilde {
-        executable_identity =
-            unreusable_executable_identity(&Value::String(executable.clone()), "ambiguous_tilde_syntax", None);
+        executable_identity = unreusable_executable_identity(
+            &Value::String(executable.clone()),
+            "ambiguous_tilde_syntax",
+            None,
+        );
     } else {
         executable_identity = build_runtime_executable_identity(
             &Value::String(executable.clone()),
@@ -960,7 +1011,8 @@ pub fn build_runtime_launch_identity(
             true,
         );
     }
-    let (executable_shebang, executable_shebang_status) = raw_shebang_for_identity(&executable_identity);
+    let (executable_shebang, executable_shebang_status) =
+        raw_shebang_for_identity(&executable_identity);
     let entrypoint = runtime_entrypoint_identity(
         &executable_identity,
         executable_shebang.as_deref(),
@@ -990,12 +1042,8 @@ fn runtime_entrypoint_identity(
     launch_cwd: &Path,
     launch_env: Option<&Value>,
 ) -> Value {
-    let command_name = executable_name(
-        executable_identity
-            .get("command")
-            .and_then(|v| v.as_str()),
-    )
-    .unwrap_or_default();
+    let command_name = executable_name(executable_identity.get("command").and_then(|v| v.as_str()))
+        .unwrap_or_default();
     let resolved_path = executable_identity.get("path");
     let executable_name_str = executable_name(
         resolved_path
@@ -1056,8 +1104,15 @@ fn runtime_entrypoint_identity(
     if SIMPLE_SCRIPT_LAUNCHER_NAMES.contains(&executable_name_str.as_str()) {
         return simple_runtime_entrypoint_identity(&executable_name_str, launch_args, launch_cwd);
     }
-    if matches!(executable_name_str.as_str(), "bun" | "bun.exe" | "deno" | "deno.exe") {
-        return javascript_runtime_entrypoint_identity(&executable_name_str, launch_args, launch_cwd);
+    if matches!(
+        executable_name_str.as_str(),
+        "bun" | "bun.exe" | "deno" | "deno.exe"
+    ) {
+        return javascript_runtime_entrypoint_identity(
+            &executable_name_str,
+            launch_args,
+            launch_cwd,
+        );
     }
     if matches!(executable_name_str.as_str(), "java" | "java.exe") {
         return java_runtime_entrypoint_identity(launch_args, launch_cwd);
@@ -1088,8 +1143,18 @@ fn known_runtime_launcher_name(executable_name: &str) -> bool {
         || SIMPLE_SCRIPT_LAUNCHER_NAMES.contains(&executable_name)
         || matches!(
             executable_name,
-            "bun" | "bun.exe" | "deno" | "deno.exe" | "dotnet" | "dotnet.exe" | "java"
-                | "java.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+            "bun"
+                | "bun.exe"
+                | "deno"
+                | "deno.exe"
+                | "dotnet"
+                | "dotnet.exe"
+                | "java"
+                | "java.exe"
+                | "powershell"
+                | "powershell.exe"
+                | "pwsh"
+                | "pwsh.exe"
         )
 }
 
@@ -1098,7 +1163,10 @@ fn known_runtime_launcher_name(executable_name: &str) -> bool {
 fn python_launcher_pattern_match(name: &str) -> bool {
     let lower = name.to_lowercase();
     let base = lower.strip_suffix(".exe").unwrap_or(&lower);
-    let rest = match base.strip_prefix("python").or_else(|| base.strip_prefix("pypy")) {
+    let rest = match base
+        .strip_prefix("python")
+        .or_else(|| base.strip_prefix("pypy"))
+    {
         Some(r) => r,
         None => return false,
     };
@@ -1131,7 +1199,11 @@ fn direct_executable_runtime_entrypoint_identity(
     launch_cwd: &Path,
     launch_env: Option<&Value>,
 ) -> Value {
-    if executable_identity.get("sha256").and_then(|v| v.as_str()).is_none() {
+    if executable_identity
+        .get("sha256")
+        .and_then(|v| v.as_str())
+        .is_none()
+    {
         return json!({"kind": "direct-executable", "status": "bound-by-executable"});
     }
     if executable_shebang_status == "not_script" {
@@ -1152,7 +1224,11 @@ fn direct_executable_runtime_entrypoint_identity(
         Err(_) => Vec::new(),
     };
     if shebang_tokens.is_empty() {
-        return unproven_runtime_entrypoint("direct-script", "shebang_interpreter_unparseable", None);
+        return unproven_runtime_entrypoint(
+            "direct-script",
+            "shebang_interpreter_unparseable",
+            None,
+        );
     }
     let shebang_launcher = shebang_tokens[0].clone();
     let shebang_args: Vec<String> = shebang_tokens[1..].to_vec();
@@ -1175,14 +1251,16 @@ fn direct_executable_runtime_entrypoint_identity(
 
     if launcher_name != "env" && launcher_name != "env.exe" {
         if shebang_args.len() > 1 {
-            result
-                .as_object_mut()
-                .unwrap()
-                .extend(unproven_runtime_entrypoint(
+            result.as_object_mut().unwrap().extend(
+                unproven_runtime_entrypoint(
                     "direct-script",
                     "nonportable_shebang_arguments",
                     Some(&shebang_args),
-                ).as_object().unwrap().clone());
+                )
+                .as_object()
+                .unwrap()
+                .clone(),
+            );
             result["launcher"] = launcher_identity;
             return result;
         }
@@ -1190,16 +1268,28 @@ fn direct_executable_runtime_entrypoint_identity(
             || launcher_identity.get("status").and_then(|v| v.as_str()) != Some("verified")
         {
             result.as_object_mut().unwrap().extend(
-                unproven_runtime_entrypoint("direct-script", "shebang_interpreter_unresolved", None)
-                    .as_object().unwrap().clone(),
+                unproven_runtime_entrypoint(
+                    "direct-script",
+                    "shebang_interpreter_unresolved",
+                    None,
+                )
+                .as_object()
+                .unwrap()
+                .clone(),
             );
             result["launcher"] = launcher_identity;
             return result;
         }
         if identity_shebang_status(&launcher_identity) != "native" {
             result.as_object_mut().unwrap().extend(
-                unproven_runtime_entrypoint("direct-script", "nested_shebang_interpreter_unresolved", None)
-                    .as_object().unwrap().clone(),
+                unproven_runtime_entrypoint(
+                    "direct-script",
+                    "nested_shebang_interpreter_unresolved",
+                    None,
+                )
+                .as_object()
+                .unwrap()
+                .clone(),
             );
             result["launcher"] = launcher_identity;
             return result;
@@ -1223,7 +1313,9 @@ fn direct_executable_runtime_entrypoint_identity(
                     "shebang_interpreter_options_unresolved",
                     Some(&shebang_args),
                 )
-                .as_object().unwrap().clone(),
+                .as_object()
+                .unwrap()
+                .clone(),
             );
             result["launcher"] = launcher_identity;
         }
@@ -1245,7 +1337,9 @@ fn direct_executable_runtime_entrypoint_identity(
                     "env_shebang_command_unresolved",
                     Some(&shebang_args),
                 )
-                .as_object().unwrap().clone(),
+                .as_object()
+                .unwrap()
+                .clone(),
             );
             result["launcher"] = launcher_identity;
             return result;
@@ -1266,7 +1360,9 @@ fn direct_executable_runtime_entrypoint_identity(
     {
         result.as_object_mut().unwrap().extend(
             unproven_runtime_entrypoint("direct-env-script", "env_interpreter_unresolved", None)
-                .as_object().unwrap().clone(),
+                .as_object()
+                .unwrap()
+                .clone(),
         );
         result["interpreter"] = interpreter_identity;
         result["launcher"] = launcher_identity;
@@ -1275,7 +1371,9 @@ fn direct_executable_runtime_entrypoint_identity(
     if identity_shebang_status(&interpreter_identity) != "native" {
         result.as_object_mut().unwrap().extend(
             unproven_runtime_entrypoint("direct-env-script", "env_interpreter_nested_script", None)
-                .as_object().unwrap().clone(),
+                .as_object()
+                .unwrap()
+                .clone(),
         );
         result["interpreter"] = interpreter_identity;
         result["launcher"] = launcher_identity;
@@ -1304,7 +1402,9 @@ fn direct_executable_runtime_entrypoint_identity(
                         .collect::<Vec<_>>(),
                 ),
             )
-            .as_object().unwrap().clone(),
+            .as_object()
+            .unwrap()
+            .clone(),
         );
         result["interpreter"] = interpreter_identity;
         result["launcher"] = launcher_identity;
@@ -1358,7 +1458,9 @@ fn python_runtime_entrypoint_identity(
     let mut index = 0usize;
     let mut ignore_environment = false;
     let mut isolated = false;
-    const NO_VALUE_FLAGS: &[&str] = &["-b", "-B", "-d", "-O", "-OO", "-q", "-s", "-S", "-u", "-v", "-x"];
+    const NO_VALUE_FLAGS: &[&str] = &[
+        "-b", "-B", "-d", "-O", "-OO", "-q", "-s", "-S", "-u", "-v", "-x",
+    ];
     while index < args.len() {
         let argument = args[index].as_str();
         if argument == "--" {
@@ -1377,7 +1479,8 @@ fn python_runtime_entrypoint_identity(
             continue;
         }
         if argument == "-c" {
-            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment) {
+            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment)
+            {
                 return i;
             }
             if index + 1 >= args.len() {
@@ -1386,13 +1489,15 @@ fn python_runtime_entrypoint_identity(
             return inline_runtime_entrypoint("python-inline", &args[index + 1]);
         }
         if argument.starts_with("-c") && argument != "-c" {
-            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment) {
+            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment)
+            {
                 return i;
             }
             return inline_runtime_entrypoint("python-inline", &argument[2..]);
         }
         if argument == "-m" {
-            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment) {
+            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment)
+            {
                 return i;
             }
             if index + 1 >= args.len() {
@@ -1407,7 +1512,8 @@ fn python_runtime_entrypoint_identity(
             );
         }
         if argument.starts_with("-m") && argument != "-m" {
-            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment) {
+            if let Some(i) = python_interactive_environment_identity(launch_env, ignore_environment)
+            {
                 return i;
             }
             return python_module_runtime_entrypoint_identity(
@@ -1463,14 +1569,15 @@ fn python_module_runtime_entrypoint_identity(
     include_python_path: bool,
 ) -> Value {
     // `[A-Za-z_]\w*(\.[A-Za-z_]\w*)*` fullmatch.
-    if !module
-        .split('.')
-        .all(|seg| {
-            !seg.is_empty()
-                && seg.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_').unwrap_or(false)
-                && seg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        })
-    {
+    if !module.split('.').all(|seg| {
+        !seg.is_empty()
+            && seg
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_alphabetic() || c == '_')
+                .unwrap_or(false)
+            && seg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }) {
         return unproven_runtime_entrypoint(
             "python-module",
             "invalid_module_name",
@@ -1504,9 +1611,18 @@ fn python_module_runtime_entrypoint_identity(
     let relative_module: PathBuf = module.split('.').collect();
     for root in unique_normalized_paths(&roots) {
         let candidates: [(&str, PathBuf); 4] = [
-            ("python-module", root.join(&relative_module).with_extension("py")),
-            ("python-module-bytecode", root.join(&relative_module).with_extension("pyc")),
-            ("python-package-main", root.join(&relative_module).join("__main__.py")),
+            (
+                "python-module",
+                root.join(&relative_module).with_extension("py"),
+            ),
+            (
+                "python-module-bytecode",
+                root.join(&relative_module).with_extension("pyc"),
+            ),
+            (
+                "python-package-main",
+                root.join(&relative_module).join("__main__.py"),
+            ),
             (
                 "python-package-main-bytecode",
                 root.join(&relative_module).join("__main__.pyc"),
@@ -1528,11 +1644,8 @@ fn python_module_runtime_entrypoint_identity(
             );
         }
         let (kind, entrypoint_path) = existing[0];
-        let mut identity = file_runtime_entrypoint(
-            kind,
-            &entrypoint_path.to_string_lossy(),
-            launch_cwd,
-        );
+        let mut identity =
+            file_runtime_entrypoint(kind, &entrypoint_path.to_string_lossy(), launch_cwd);
         identity["module_sha256"] = Value::String(opaque_identity_digest(module));
         identity["package_initializers"] = Value::Array(python_package_initializer_identities(
             &root,
@@ -1632,13 +1745,22 @@ fn node_runtime_entrypoint_identity(
 ) -> Value {
     #[allow(clippy::all)]
     const HARMLESS_FLAGS: &[&str] = &[
-        "--no-deprecation", "--pending-deprecation", "--throw-deprecation",
-        "--trace-deprecation", "--trace-warnings", "--no-warnings",
-        "--abort-on-uncaught-exception", "--max-old-space-size",
-        "--max-semi-space-size", "--max-http-header-size",
-        "--enable-source-maps", "--experimental-vm-modules",
-        "--experimental-json-modules", "--experimental-modules",
-        "--experimental-specifier-resolution", "--preserve-symlinks",
+        "--no-deprecation",
+        "--pending-deprecation",
+        "--throw-deprecation",
+        "--trace-deprecation",
+        "--trace-warnings",
+        "--no-warnings",
+        "--abort-on-uncaught-exception",
+        "--max-old-space-size",
+        "--max-semi-space-size",
+        "--max-http-header-size",
+        "--enable-source-maps",
+        "--experimental-vm-modules",
+        "--experimental-json-modules",
+        "--experimental-modules",
+        "--experimental-specifier-resolution",
+        "--preserve-symlinks",
         "--preserve-symlinks-main",
     ];
     let mut index = 0usize;
@@ -1651,9 +1773,15 @@ fn node_runtime_entrypoint_identity(
             return inline_runtime_entrypoint("node-inline", &args[index + 1]);
         }
         if argument.starts_with("--eval=") || argument.starts_with("--print=") {
-            return inline_runtime_entrypoint("node-inline", argument.split_once('=').map(|(_, v)| v).unwrap_or(""));
+            return inline_runtime_entrypoint(
+                "node-inline",
+                argument.split_once('=').map(|(_, v)| v).unwrap_or(""),
+            );
         }
-        if HARMLESS_FLAGS.iter().any(|f| argument == *f || argument.starts_with(&format!("{}=", f))) {
+        if HARMLESS_FLAGS
+            .iter()
+            .any(|f| argument == *f || argument.starts_with(&format!("{}=", f)))
+        {
             index += 1;
             continue;
         }
@@ -1733,11 +1861,7 @@ fn shell_runtime_entrypoint_identity(
 }
 
 // `_simple_runtime_entrypoint_identity` (:1557-1569).
-fn simple_runtime_entrypoint_identity(
-    launcher: &str,
-    args: &[String],
-    launch_cwd: &Path,
-) -> Value {
+fn simple_runtime_entrypoint_identity(launcher: &str, args: &[String], launch_cwd: &Path) -> Value {
     if args.is_empty() || args[0].starts_with('-') {
         return unproven_runtime_entrypoint(
             &format!("{}-script", launcher),
@@ -1893,13 +2017,44 @@ const SHELL_LAUNCHER_NAMES: &[&str] = &[
     "zsh", "zsh.exe",
 ];
 const SIMPLE_SCRIPT_LAUNCHER_NAMES: &[&str] = &[
-    "lua", "lua.exe", "perl", "perl.exe", "php", "php.exe", "rscript", "rscript.exe", "ruby",
-    "ruby.exe", "ts-node", "ts-node.cmd", "tsx", "tsx.cmd",
+    "lua",
+    "lua.exe",
+    "perl",
+    "perl.exe",
+    "php",
+    "php.exe",
+    "rscript",
+    "rscript.exe",
+    "ruby",
+    "ruby.exe",
+    "ts-node",
+    "ts-node.cmd",
+    "tsx",
+    "tsx.cmd",
 ];
 const UNRESOLVED_CODE_LAUNCHER_NAMES: &[&str] = &[
-    "bunx", "bunx.exe", "docker", "docker.exe", "go", "go.exe", "npm", "npm.cmd", "npx", "npx.cmd",
-    "pipx", "pipx.exe", "pnpm", "pnpm.cmd", "podman", "podman.exe", "uv", "uv.exe", "uvx",
-    "uvx.exe", "yarn", "yarn.cmd",
+    "bunx",
+    "bunx.exe",
+    "docker",
+    "docker.exe",
+    "go",
+    "go.exe",
+    "npm",
+    "npm.cmd",
+    "npx",
+    "npx.cmd",
+    "pipx",
+    "pipx.exe",
+    "pnpm",
+    "pnpm.cmd",
+    "podman",
+    "podman.exe",
+    "uv",
+    "uv.exe",
+    "uvx",
+    "uvx.exe",
+    "yarn",
+    "yarn.cmd",
 ];
 
 #[cfg(test)]
@@ -1956,7 +2111,9 @@ mod tests {
         assert_eq!(identity["status"], "verified");
         let sha = identity["sha256"].as_str().unwrap();
         assert_eq!(sha.len(), 64);
-        assert!(sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+        assert!(sha
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
         assert_eq!(identity["file_format"], "script");
         assert_eq!(identity["shebang_status"], "verified");
     }

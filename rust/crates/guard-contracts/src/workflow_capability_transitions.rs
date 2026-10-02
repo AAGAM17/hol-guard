@@ -18,8 +18,7 @@ use sha2::{Digest, Sha256};
 
 use crate::canonical_json::write_canonical_json;
 use crate::workflow_capability::{
-    canonical_framed_payload, validate_workflow_capability_identifier,
-    WorkflowCapabilityError,
+    canonical_framed_payload, validate_workflow_capability_identifier, WorkflowCapabilityError,
 };
 
 pub const AUTHORITY_TRANSITION_SCHEMA: &str =
@@ -35,7 +34,9 @@ fn err<T>(reason: &'static str) -> WfResult<T> {
 }
 
 fn is_sha256(v: &str) -> bool {
-    v.len() == 64 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    v.len() == 64
+        && v.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// `_KINDS` — the three terminal transition kinds.
@@ -195,13 +196,25 @@ impl WorkflowCapabilityAuthorityTransition {
     /// `asdict` order → `to_value` for canonical framing.
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
+        m.insert(
+            "schema_version".into(),
+            Value::String(self.schema_version.clone()),
+        );
         m.insert("algorithm".into(), Value::String(self.algorithm.clone()));
         m.insert("sequence".into(), Value::from(self.sequence));
-        m.insert("capability_id".into(), Value::String(self.capability_id.clone()));
-        m.insert("claim_sha256".into(), Value::String(self.claim_sha256.clone()));
+        m.insert(
+            "capability_id".into(),
+            Value::String(self.capability_id.clone()),
+        );
+        m.insert(
+            "claim_sha256".into(),
+            Value::String(self.claim_sha256.clone()),
+        );
         m.insert("revision".into(), Value::from(self.revision));
-        m.insert("transition_kind".into(), Value::String(self.transition_kind.clone()));
+        m.insert(
+            "transition_kind".into(),
+            Value::String(self.transition_kind.clone()),
+        );
         m.insert(
             "previous_transition_sha256".into(),
             Value::String(self.previous_transition_sha256.clone()),
@@ -216,24 +229,39 @@ impl WorkflowCapabilityAuthorityTransition {
         );
         m.insert(
             "event_name".into(),
-            self.event_name.clone().map(Value::String).unwrap_or(Value::Null),
+            self.event_name
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
         m.insert(
             "event_payload_sha256".into(),
-            self.event_payload_sha256.clone().map(Value::String).unwrap_or(Value::Null),
+            self.event_payload_sha256
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
-        m.insert("occurred_at".into(), Value::String(self.occurred_at.clone()));
+        m.insert(
+            "occurred_at".into(),
+            Value::String(self.occurred_at.clone()),
+        );
         m.insert(
             "use_number".into(),
             self.use_number.map(Value::from).unwrap_or(Value::Null),
         );
         m.insert(
             "receipt_id".into(),
-            self.receipt_id.clone().map(Value::String).unwrap_or(Value::Null),
+            self.receipt_id
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
         m.insert(
             "revocation_id".into(),
-            self.revocation_id.clone().map(Value::String).unwrap_or(Value::Null),
+            self.revocation_id
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
         Value::Object(m)
     }
@@ -311,8 +339,8 @@ pub fn encode_signed_authority_transition(signed: &SignedAuthorityTransition) ->
 
 /// `decode_signed_authority_transition` — strict decode + canonical round-trip.
 pub fn decode_signed_authority_transition(encoded: &str) -> WfResult<SignedAuthorityTransition> {
-    let payload: Value =
-        serde_json::from_str(encoded).map_err(|_| WorkflowCapabilityError("authority_transition_payload_invalid"))?;
+    let payload: Value = serde_json::from_str(encoded)
+        .map_err(|_| WorkflowCapabilityError("authority_transition_payload_invalid"))?;
     let m = strict_object(&payload, &["key_id", "signature", "transition"])
         .map_err(|_| WorkflowCapabilityError("authority_transition_payload_invalid"))?;
     let transition = WorkflowCapabilityAuthorityTransition::decode(require(m, "transition")?)?;
@@ -519,9 +547,20 @@ mod tests {
     #[test]
     fn invalid_kind_rejected() {
         let res = WorkflowCapabilityAuthorityTransition::new(
-            0, "cap-1", &"a".repeat(64), 0, "bogus",
-            ZERO_TRANSITION_SHA256, &"b".repeat(64),
-            None, None, None, "2026-10-02T00:00:00.000000Z", None, None, None,
+            0,
+            "cap-1",
+            &"a".repeat(64),
+            0,
+            "bogus",
+            ZERO_TRANSITION_SHA256,
+            &"b".repeat(64),
+            None,
+            None,
+            None,
+            "2026-10-02T00:00:00.000000Z",
+            None,
+            None,
+            None,
         );
         assert_eq!(
             res.unwrap_err(),

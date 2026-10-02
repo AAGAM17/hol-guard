@@ -20,7 +20,9 @@ use crate::shell_execution_context_support::{
 
 // `_SHELLS` (:17), `_SCRIPT_SUFFIXES` (:18-31), `_OTHER_READERS` (:32-48),
 // limits (:49-52).
-pub(crate) const SHELLS: &[&str] = &["sh", "bash", "dash", "ash", "zsh", "ksh", "fish", "source", "."];
+pub(crate) const SHELLS: &[&str] = &[
+    "sh", "bash", "dash", "ash", "zsh", "ksh", "fish", "source", ".",
+];
 pub(crate) const SCRIPT_SUFFIXES: &[&str] = &[
     ".sh", ".bash", ".zsh", ".ksh", ".fish", ".py", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl",
 ];
@@ -142,10 +144,7 @@ fn sensitive_suffix_labels() -> &'static BTreeMap<&'static [&'static str], &'sta
     static M: OnceLock<BTreeMap<&'static [&'static str], &'static str>> = OnceLock::new();
     M.get_or_init(|| {
         [
-            (
-                &[".aws", "credentials"][..],
-                "AWS shared credentials file",
-            ),
+            (&[".aws", "credentials"][..], "AWS shared credentials file"),
             (&[".aws", "config"][..], "AWS shared config file"),
             (&[".docker", "config.json"][..], "Docker client config"),
             (&[".kube", "config"][..], "Kubernetes config"),
@@ -266,7 +265,12 @@ pub(crate) fn classify_secret_path(
         } else {
             "high"
         };
-        return Some(make_match(requested_path, &normalized_path, family, sensitivity));
+        return Some(make_match(
+            requested_path,
+            &normalized_path,
+            family,
+            sensitivity,
+        ));
     }
     if sensitive_basename_keywords()
         .iter()
@@ -288,7 +292,12 @@ pub(crate) fn classify_secret_path(
         } else {
             "high"
         };
-        return Some(make_match(requested_path, &normalized_path, family, sensitivity));
+        return Some(make_match(
+            requested_path,
+            &normalized_path,
+            family,
+            sensitivity,
+        ));
     }
     for (directory, family) in sensitive_directory_labels() {
         if lowered_segments.iter().any(|s| s == directory) {
@@ -308,7 +317,12 @@ pub(crate) fn classify_secret_path(
             } else {
                 "high"
             };
-            return Some(make_match(requested_path, &normalized_path, family, sensitivity));
+            return Some(make_match(
+                requested_path,
+                &normalized_path,
+                family,
+                sensitivity,
+            ));
         }
     }
     None
@@ -417,8 +431,21 @@ pub(crate) const SOURCE_INSPECTION_SENSITIVE_PARTS: &[&str] = &[
 ];
 pub(crate) const SOURCE_INSPECTION_BENIGN_DOTFILES: &[&str] = &[".nvmrc"];
 const SOURCE_INSPECTION_PARTS: &[&str] = &[
-    "docs", "doc", "documentation", "readme", "changelog", "examples", "example", "test", "tests",
-    "spec", "specs", "fixtures", "fixture", "samples", "sample",
+    "docs",
+    "doc",
+    "documentation",
+    "readme",
+    "changelog",
+    "examples",
+    "example",
+    "test",
+    "tests",
+    "spec",
+    "specs",
+    "fixtures",
+    "fixture",
+    "samples",
+    "sample",
 ];
 const SOURCE_INSPECTION_EXTENSIONS: &[&str] = &[
     ".c", ".cc", ".cpp", ".css", ".go", ".h", ".hpp", ".html", ".java", ".js", ".jsx", ".json",
@@ -734,15 +761,15 @@ pub(crate) fn local_read_operands_resolve_safely(
     }
     let mut all_args: Vec<String> = vec![command_name.to_owned()];
     all_args.extend(args.iter().cloned());
-    let operand_roles: Vec<(String, bool)> = if ["grep", "egrep", "fgrep", "rg"].contains(&command_name)
-    {
-        search_file_operand_roles(command_name, args)
-    } else {
-        shell_segment_file_operand_tokens(&all_args)
-            .into_iter()
-            .map(|o| (o, false))
-            .collect()
-    };
+    let operand_roles: Vec<(String, bool)> =
+        if ["grep", "egrep", "fgrep", "rg"].contains(&command_name) {
+            search_file_operand_roles(command_name, args)
+        } else {
+            shell_segment_file_operand_tokens(&all_args)
+                .into_iter()
+                .map(|o| (o, false))
+                .collect()
+        };
     for (operand, is_search_glob) in operand_roles {
         let stripped = operand.trim().trim_matches('\'').trim_matches('"');
         if stripped.is_empty() || stripped == "-" {
@@ -765,10 +792,7 @@ pub(crate) fn local_read_operands_resolve_safely(
             }
             continue;
         }
-        let lexical = PathBuf::from(normalize_path(
-            &candidate.to_string_lossy(),
-            None,
-        ));
+        let lexical = PathBuf::from(normalize_path(&candidate.to_string_lossy(), None));
         let resolved = match candidate.canonicalize() {
             Ok(r) => r,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
@@ -853,9 +877,7 @@ fn fnmatchcase(pattern: &str, name: &str) -> bool {
             return text.is_empty();
         }
         match pat[0] {
-            '*' => {
-                (0..=text.len()).any(|i| rec(&pat[1..], &text[i..]))
-            }
+            '*' => (0..=text.len()).any(|i| rec(&pat[1..], &text[i..])),
             '?' => !text.is_empty() && rec(&pat[1..], &text[1..]),
             '[' => {
                 if text.is_empty() {
@@ -1162,14 +1184,12 @@ fn search_glob_pattern_is_safe(pattern: &str, root: Option<&Path>) -> bool {
             .chars()
             .any(|c| matches!(c, '{') || effective_pattern.contains("**") || c == '!')
         || Path::new(effective_pattern).is_absolute()
-        || Path::new(effective_pattern)
-            .components()
-            .any(|c| {
-                matches!(
-                    c,
-                    std::path::Component::CurDir | std::path::Component::ParentDir
-                )
-            })
+        || Path::new(effective_pattern).components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )
+        })
     {
         return false;
     }
@@ -1182,13 +1202,17 @@ fn search_glob_pattern_is_safe(pattern: &str, root: Option<&Path>) -> bool {
             return false;
         };
         let folded = raw.to_string_lossy().to_lowercase();
-        if folded.starts_with('.') && !SOURCE_INSPECTION_BENIGN_DOTFILES.contains(&folded.as_str()) {
+        if folded.starts_with('.') && !SOURCE_INSPECTION_BENIGN_DOTFILES.contains(&folded.as_str())
+        {
             return false;
         }
         for sensitive in SOURCE_INSPECTION_SENSITIVE_PARTS {
             let sensitive_folded = sensitive.to_lowercase();
             if fnmatchcase(&sensitive_folded, &folded)
-                || fnmatchcase(&format!("{sensitive_folded}.guard-sensitive-probe"), &folded)
+                || fnmatchcase(
+                    &format!("{sensitive_folded}.guard-sensitive-probe"),
+                    &folded,
+                )
             {
                 return false;
             }
@@ -1203,8 +1227,7 @@ fn search_glob_pattern_is_safe(pattern: &str, root: Option<&Path>) -> bool {
 // ---------------------------------------------------------------------------
 
 const SAFE_PYTHON_MODULE_COMMANDS: &[&str] = &["pytest", "ruff"];
-const PYTHON_INTERPRETER_OPTIONS_WITH_VALUES: &[&str] =
-    &["--check-hash-based-pycs", "-W", "-X"];
+const PYTHON_INTERPRETER_OPTIONS_WITH_VALUES: &[&str] = &["--check-hash-based-pycs", "-W", "-X"];
 
 fn safe_python_module_shadow_paths(module_root: &str) -> &'static [&'static str] {
     match module_root {
@@ -1567,8 +1590,7 @@ pub(crate) fn direct_secret_read_paths(
         if name == "source" || name == "." {
             candidates.extend(args.iter().take(1).cloned());
         }
-        if ["node", "bun", "ruby", "perl"].contains(&name.as_str()) || python_executable(&name)
-        {
+        if ["node", "bun", "ruby", "perl"].contains(&name.as_str()) || python_executable(&name) {
             // `args_list[:-1]` — the scan needs a following operand or `=`.
             let last = args.len().saturating_sub(1);
             for index in 0..last {
@@ -1576,8 +1598,7 @@ pub(crate) fn direct_secret_read_paths(
                 if ["-c", "-e", "--eval", "-p", "--print"].contains(&arg.as_str()) {
                     candidates.extend(literal_read_paths(&args[index + 1]));
                 } else if arg.starts_with("--eval=") || arg.starts_with("--print=") {
-                    candidates
-                        .extend(literal_read_paths(arg.splitn(2, '=').nth(1).unwrap_or("")));
+                    candidates.extend(literal_read_paths(arg.splitn(2, '=').nth(1).unwrap_or("")));
                 }
             }
             // `--eval=`/`--print=` on the final arg are missed by `[:-1]`? No —
@@ -1585,8 +1606,11 @@ pub(crate) fn direct_secret_read_paths(
         }
     }
     for redirect in &command.redirects {
-        if ["<", "<>"].contains(&redirect.operator.trim_start_matches(|c: char| c.is_ascii_digit()))
-        {
+        if ["<", "<>"].contains(
+            &redirect
+                .operator
+                .trim_start_matches(|c: char| c.is_ascii_digit()),
+        ) {
             candidates.push(redirect.target.clone());
         }
     }
@@ -1602,10 +1626,7 @@ pub(crate) fn direct_secret_read_paths(
 }
 
 /// `_shell_command_string` (:277-305). `(script, requested)`.
-pub(crate) fn shell_command_string(
-    executable: &str,
-    args: &[String],
-) -> (Option<String>, bool) {
+pub(crate) fn shell_command_string(executable: &str, args: &[String]) -> (Option<String>, bool) {
     let name = if executable == "." {
         ".".to_owned()
     } else {
@@ -1648,10 +1669,7 @@ pub(crate) fn shell_command_string(
 }
 
 /// `_script_operand` (:308-356). `(operand, is_path)`.
-pub(crate) fn script_operand(
-    executable: &str,
-    args: &[String],
-) -> Option<(String, bool)> {
+pub(crate) fn script_operand(executable: &str, args: &[String]) -> Option<(String, bool)> {
     let name = if executable == "." {
         ".".to_owned()
     } else {
@@ -1680,9 +1698,7 @@ pub(crate) fn script_operand(
                 index += 2;
                 continue;
             }
-            if is_interpreter
-                && ["-c", "-e", "--eval", "-p", "--print"].contains(&arg.as_str())
-            {
+            if is_interpreter && ["-c", "-e", "--eval", "-p", "--print"].contains(&arg.as_str()) {
                 index += 2;
                 continue;
             }
@@ -1771,10 +1787,9 @@ pub(crate) fn interpreter_stdin_launch(executable: &str, args: &[String]) -> boo
         return false;
     }
     let inline_flags = ["-c", "-e", "--eval", "-p", "--print"];
-    if args
-        .iter()
-        .any(|a| inline_flags.contains(&a.as_str()) || a.starts_with("--eval=") || a.starts_with("--print="))
-    {
+    if args.iter().any(|a| {
+        inline_flags.contains(&a.as_str()) || a.starts_with("--eval=") || a.starts_with("--print=")
+    }) {
         return false;
     }
     args.iter().any(|a| a == "-")
@@ -1827,9 +1842,7 @@ pub(crate) fn unresolved_local_script_launch(executable: &str) -> bool {
     if path_qualified(executable) {
         return true;
     }
-    executable
-        .to_lowercase()
-        .ends_with_any(SCRIPT_SUFFIXES)
+    executable.to_lowercase().ends_with_any(SCRIPT_SUFFIXES)
 }
 
 trait EndsWithAny {

@@ -8,10 +8,10 @@
 //! Error strings match Python `WorkflowCapabilityError` reasons verbatim.
 
 use guard_command::effect_decision::{PositiveProof, ProofRequirement, ProofRoute};
+use guard_command::github_workflow_authorization::GitHubWorkflowAuthorizationV1;
 use guard_command::github_workflow_authorization::{
     build_github_workflow_binding, GitHubWorkflowBindingContext,
 };
-use guard_command::github_workflow_authorization::GitHubWorkflowAuthorizationV1;
 use guard_command::github_workflow_operations::GitHubWorkflowOperation;
 use guard_contracts::{
     canonical_framed_payload, sign_workflow_capability, SignedWorkflowCapability,
@@ -108,16 +108,10 @@ pub fn issue_github_workflow_capability_binding(
         max_uses,
     };
     // `sign_workflow_capability` runs `claim.validate()` internally (:760).
-    let signed = sign_workflow_capability(claim, key, key_id)
+    let signed =
+        sign_workflow_capability(claim, key, key_id).map_err(|e| WorkflowCapabilityError(e.0))?;
+    issue_workflow_capability(hooks, connection, &signed, approval_provenance_id, now)
         .map_err(|e| WorkflowCapabilityError(e.0))?;
-    issue_workflow_capability(
-        hooks,
-        connection,
-        &signed,
-        approval_provenance_id,
-        now,
-    )
-    .map_err(|e| WorkflowCapabilityError(e.0))?;
     Ok(signed)
 }
 

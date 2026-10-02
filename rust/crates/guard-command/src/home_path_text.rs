@@ -43,7 +43,9 @@ fn is_abs(value: &str) -> bool {
     }
     #[cfg(windows)]
     {
-        value.len() >= 3 && value.as_bytes()[1] == b':' && (value.as_bytes()[2] == b'\\' || value.as_bytes()[2] == b'/')
+        value.len() >= 3
+            && value.as_bytes()[1] == b':'
+            && (value.as_bytes()[2] == b'\\' || value.as_bytes()[2] == b'/')
             || value.starts_with("\\\\")
     }
 }

@@ -27,8 +27,7 @@ use crate::effect_decision::{
 };
 use crate::extension_evidence::{
     EvidenceSeverity, ExtensionEvidence, ExtensionEvidenceBatch, ExtensionMatchClass,
-    ExtensionRuleIdentity, OwnedSafeVariant, SafeVariantOutcome,
-    EXTENSION_EVIDENCE_SCHEMA_VERSION,
+    ExtensionRuleIdentity, OwnedSafeVariant, SafeVariantOutcome, EXTENSION_EVIDENCE_SCHEMA_VERSION,
 };
 
 /// Python `tuple[extension, rule]` compat-rule — only the fields the adapter
@@ -115,9 +114,7 @@ fn command_risk_effects(risk_class: &str) -> Option<EffectKind> {
 fn effect_claims(risk_classes: &[String]) -> Vec<EffectKind> {
     let mut effects: BTreeSet<EffectKind> = BTreeSet::new();
     for risk_class in risk_classes {
-        effects.insert(
-            command_risk_effects(risk_class).unwrap_or(EffectKind::ProcessExecution),
-        );
+        effects.insert(command_risk_effects(risk_class).unwrap_or(EffectKind::ProcessExecution));
     }
     if effects.is_empty() {
         effects.insert(EffectKind::ProcessExecution);
@@ -294,8 +291,7 @@ pub fn decision_factors(
                 .ok_or("unsupported rule default_mode")?,
             )
             .ok_or("unsupported legacy command floor")?;
-            compatibility_floor =
-                maximum_action_floor([GuardAction::Review, rule_floor].iter());
+            compatibility_floor = maximum_action_floor([GuardAction::Review, rule_floor].iter());
             producer_ref = Some(format!("rule:{}", rule.rule_id));
         }
         if producer_ref.is_none() {
@@ -530,11 +526,22 @@ mod tests {
         assert_eq!(
             key,
             json!([
-                "ext", "1.0.0", "ext.rule", "1.0.0",
-                "segment:0", "operation:abc123",
-                "unsafe", "high", "review", "rule-match",
+                "ext",
+                "1.0.0",
+                "ext.rule",
+                "1.0.0",
+                "segment:0",
+                "operation:abc123",
+                "unsafe",
+                "high",
+                "review",
+                "rule-match",
                 ["process-execution"],
-                ["expected-effects", "operation-and-targets", "parser-confidence"],
+                [
+                    "expected-effects",
+                    "operation-and-targets",
+                    "parser-confidence"
+                ],
                 [],
                 ["0", "", "", "", "", "", ""],
                 "1.0.0"
@@ -608,23 +615,19 @@ mod tests {
             safe_variants: vec![
                 crate::command_evaluation::NativeSafeVariantObservation {
                     variant_id: "va".to_owned(),
-                    matcher_evidence: vec![
-                        crate::command_evaluation::NativeMatcherEvidence {
-                            segment_index: 0,
-                            executable: None,
-                            detail: "d".to_owned(),
-                        },
-                    ],
+                    matcher_evidence: vec![crate::command_evaluation::NativeMatcherEvidence {
+                        segment_index: 0,
+                        executable: None,
+                        detail: "d".to_owned(),
+                    }],
                 },
                 crate::command_evaluation::NativeSafeVariantObservation {
                     variant_id: "vb".to_owned(),
-                    matcher_evidence: vec![
-                        crate::command_evaluation::NativeMatcherEvidence {
-                            segment_index: 0,
-                            executable: None,
-                            detail: "d".to_owned(),
-                        },
-                    ],
+                    matcher_evidence: vec![crate::command_evaluation::NativeMatcherEvidence {
+                        segment_index: 0,
+                        executable: None,
+                        detail: "d".to_owned(),
+                    }],
                 },
             ],
             uncertainty_reasons: Vec::new(),

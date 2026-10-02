@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 
 use crate::git_read::{run_git, GIT_TIMEOUT_SECONDS};
 use crate::repository_scanner::{
-    bounded_positive, expand_tilde, scan_blob, RepositorySecretScanResult, DEFAULT_MAX_FILE_BYTES,
-    DEFAULT_MAX_FILES, DEFAULT_MAX_FINDINGS, DEFAULT_MAX_TOTAL_BYTES,
+    bounded_positive, expand_tilde, scan_blob, RepositorySecretScanResult, DEFAULT_MAX_FILES,
+    DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FINDINGS, DEFAULT_MAX_TOTAL_BYTES,
 };
 use crate::secret_detection::SecretFinding;
 
@@ -82,7 +82,14 @@ fn git_repository_root(root: &Path) -> Option<PathBuf> {
 fn git_staged_paths(root: &Path) -> Option<Vec<String>> {
     let result = run_git(
         root,
-        &["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"],
+        &[
+            "diff",
+            "--cached",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "-z",
+            "--",
+        ],
         GIT_TIMEOUT_SECONDS,
     )
     .ok()?;
@@ -104,8 +111,11 @@ fn git_staged_paths(root: &Path) -> Option<Vec<String>> {
 /// so the caller records `git_staged_blob_failed`.
 fn git_staged_blob(root: &Path, path: &str, max_file_bytes: usize) -> (Option<Vec<u8>>, bool) {
     let spec = format!(":{path}");
-    let Ok(size_result) = run_git(root, &["cat-file", "-s", spec.as_str()], GIT_TIMEOUT_SECONDS)
-    else {
+    let Ok(size_result) = run_git(
+        root,
+        &["cat-file", "-s", spec.as_str()],
+        GIT_TIMEOUT_SECONDS,
+    ) else {
         return (None, false);
     };
     // `int(size_result.stdout.strip())`; invalid output mirrors `ValueError`.
@@ -118,8 +128,11 @@ fn git_staged_blob(root: &Path, path: &str, max_file_bytes: usize) -> (Option<Ve
     if size < 0 || size > max_file_bytes as i64 {
         return (None, true);
     }
-    let Ok(blob_result) = run_git(root, &["cat-file", "blob", spec.as_str()], GIT_TIMEOUT_SECONDS)
-    else {
+    let Ok(blob_result) = run_git(
+        root,
+        &["cat-file", "blob", spec.as_str()],
+        GIT_TIMEOUT_SECONDS,
+    ) else {
         return (None, false);
     };
     if blob_result.stdout.len() > max_file_bytes {
@@ -170,7 +183,9 @@ fn dedup_findings(findings: Vec<SecretFinding>, max_findings: usize) -> (Vec<Sec
         }
     }
     let mut ordered: Vec<SecretFinding> = deduped.into_values().collect();
-    ordered.sort_by(|a, b| (a.path.as_str(), a.line, a.rule_id).cmp(&(b.path.as_str(), b.line, b.rule_id)));
+    ordered.sort_by(|a, b| {
+        (a.path.as_str(), a.line, a.rule_id).cmp(&(b.path.as_str(), b.line, b.rule_id))
+    });
     let deduped_len = ordered.len();
     ordered.truncate(max_findings);
     let dropped = deduped_len > ordered.len();
@@ -196,8 +211,11 @@ pub fn scan_staged_secrets(root: &Path, options: &StagedScanOptions) -> Reposito
     };
 
     let max_files = bounded_positive(options.max_files, DEFAULT_MAX_FILES, 100_000);
-    let max_file_bytes =
-        bounded_positive(options.max_file_bytes, DEFAULT_MAX_FILE_BYTES, 32 * 1024 * 1024);
+    let max_file_bytes = bounded_positive(
+        options.max_file_bytes,
+        DEFAULT_MAX_FILE_BYTES,
+        32 * 1024 * 1024,
+    );
     let max_total_bytes = bounded_positive(
         options.max_total_bytes,
         DEFAULT_MAX_TOTAL_BYTES,
@@ -365,7 +383,11 @@ mod tests {
             .collect();
         assert_eq!(
             keys,
-            [("a.env", 7, "tok-a"), ("b.env", 2, "tok-b"), ("b.env", 4, "tok-c")]
+            [
+                ("a.env", 7, "tok-a"),
+                ("b.env", 2, "tok-b"),
+                ("b.env", 4, "tok-c")
+            ]
         );
         assert_eq!(ordered[0].confidence_score.to_bits(), 0.9f64.to_bits());
     }
@@ -400,11 +422,7 @@ mod tests {
         ] {
             run_git(&dir, args, GIT_TIMEOUT_SECONDS).unwrap();
         }
-        std::fs::write(
-            dir.join(".env"),
-            "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY\n",
-        )
-        .unwrap();
+        std::fs::write(dir.join(".env"), "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY\n").unwrap();
         run_git(&dir, &["add", ".env"], GIT_TIMEOUT_SECONDS).unwrap();
 
         let result = scan_staged_secrets(&dir, &StagedScanOptions::default());
@@ -423,7 +441,11 @@ mod tests {
         run_git(&dir, &["reset", "-q"], GIT_TIMEOUT_SECONDS).unwrap();
         std::fs::remove_file(dir.join(".env")).unwrap();
         let clean = scan_staged_secrets(&dir, &StagedScanOptions::default());
-        assert!(clean.findings.is_empty(), "unstaged file leaked: {:?}", clean.findings);
+        assert!(
+            clean.findings.is_empty(),
+            "unstaged file leaked: {:?}",
+            clean.findings
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

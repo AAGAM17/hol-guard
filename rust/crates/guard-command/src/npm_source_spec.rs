@@ -178,9 +178,7 @@ pub fn parse_npm_source_spec(value: Option<&str>) -> Option<NpmSourceSpec> {
     let mut parts = source.splitn(2, '#');
     let path = parts.next().unwrap_or("");
     let fragment = parts.next();
-    if path.matches('/').count() == 1
-        && path.split('/').all(|part| !part.trim().is_empty())
-    {
+    if path.matches('/').count() == 1 && path.split('/').all(|part| !part.trim().is_empty()) {
         return Some(git_from_host_path("github.com", path, fragment));
     }
     None
@@ -203,9 +201,7 @@ fn url_source(source: &str) -> NpmSourceSpec {
         Some(h) => h,
         None => return invalid(source, "npm_source_host_missing"),
     };
-    if !parsed.password.is_empty()
-        || !(parsed.username.is_empty() || parsed.username == "git")
-    {
+    if !parsed.password.is_empty() || !(parsed.username.is_empty() || parsed.username == "git") {
         return invalid(source, "npm_source_ambiguous_userinfo");
     }
     if parsed.username == "git" && !["ssh", "git+ssh"].contains(&scheme.as_str()) {
@@ -310,7 +306,12 @@ fn git_from_host_path(host_value: &str, path_value: &str, fragment: Option<&str>
         _ => archive_revision,
     };
     let (revision, revision_kind, revision_identity, revision_display) = match revision {
-        None => (None, RevisionKind::Missing, "missing".to_string(), String::new()),
+        None => (
+            None,
+            RevisionKind::Missing,
+            "missing".to_string(),
+            String::new(),
+        ),
         Some(rev) => match canonical_revision(&rev) {
             None => return invalid(&source_label, "npm_source_revision_invalid"),
             Some(rev) if COMMIT_RE.is_match(&rev) => {
@@ -705,7 +706,9 @@ mod tests {
             Some("git:github.com/owner/repo")
         );
         assert_eq!(spec.redacted, "git:github.com/owner/repo");
-        assert!(spec.identity.starts_with("git:github.com/owner/repo#missing"));
+        assert!(spec
+            .identity
+            .starts_with("git:github.com/owner/repo#missing"));
     }
 
     #[test]

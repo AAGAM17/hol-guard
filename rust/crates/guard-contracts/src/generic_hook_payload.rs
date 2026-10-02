@@ -130,9 +130,10 @@ pub fn artifact_id_from_event(
     canonical_harness: &str,
     payload: &Map<String, Value>,
 ) -> String {
-    let source_scope = coalesce_string(&[payload
-        .get("source_scope")
-        .and_then(Value::as_str), Some("project")]);
+    let source_scope = coalesce_string(&[
+        payload.get("source_scope").and_then(Value::as_str),
+        Some("project"),
+    ]);
     if let Some(tool_name) = payload.get("tool_name").and_then(Value::as_str) {
         let normalized_tool = tool_name.trim();
         if !normalized_tool.is_empty() {
@@ -297,8 +298,7 @@ pub fn command_text_from_tool_payload(
     command_from_payload(tool_input)
 }
 
-const EXPLICIT_COMMAND_KEYS: &[&str] =
-    &["command", "cmd", "shell_command", "shellCommand"];
+const EXPLICIT_COMMAND_KEYS: &[&str] = &["command", "cmd", "shell_command", "shellCommand"];
 const COMMAND_KEYS: &[&str] = &[
     "command",
     "cmd",
@@ -444,15 +444,27 @@ mod tests {
 
     #[test]
     fn hook_event_name_canonical_map() {
-        let payload = json!({"hookEventName": "pretooluse"}).as_object().unwrap().clone();
+        let payload = json!({"hookEventName": "pretooluse"})
+            .as_object()
+            .unwrap()
+            .clone();
         assert_eq!(hook_event_name(&payload).as_deref(), Some("PreToolUse"));
-        let payload = json!({"event": "permissionrequestv2"}).as_object().unwrap().clone();
-        assert_eq!(hook_event_name(&payload).as_deref(), Some("PermissionRequest"));
+        let payload = json!({"event": "permissionrequestv2"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            hook_event_name(&payload).as_deref(),
+            Some("PermissionRequest")
+        );
         // Unmapped value passes through unchanged.
         let payload = json!({"event": "CustomEvent"}).as_object().unwrap().clone();
         assert_eq!(hook_event_name(&payload).as_deref(), Some("CustomEvent"));
         // First non-empty key wins.
-        let payload = json!({"event": "  ", "hook_name": "posttooluse"}).as_object().unwrap().clone();
+        let payload = json!({"event": "  ", "hook_name": "posttooluse"})
+            .as_object()
+            .unwrap()
+            .clone();
         assert_eq!(hook_event_name(&payload).as_deref(), Some("PostToolUse"));
         let empty = Map::new();
         assert!(hook_event_name(&empty).is_none());
@@ -461,26 +473,50 @@ mod tests {
     #[test]
     fn artifact_id_tool_and_event_paths() {
         // Non-claude harness + tool → harness:scope:tool.
-        let payload = json!({"tool_name": "Bash", "source_scope": "user"}).as_object().unwrap().clone();
-        assert_eq!(artifact_id_from_event("codex", "codex", &payload), "codex:user:Bash");
+        let payload = json!({"tool_name": "Bash", "source_scope": "user"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            artifact_id_from_event("codex", "codex", &payload),
+            "codex:user:Bash"
+        );
         // Claude builtin → claude-code:scope:tool.
         let payload = json!({"tool_name": "bash"}).as_object().unwrap().clone();
-        assert_eq!(artifact_id_from_event("claude", "claude-code", &payload), "claude-code:project:bash");
+        assert_eq!(
+            artifact_id_from_event("claude", "claude-code", &payload),
+            "claude-code:project:bash"
+        );
         // Claude MCP tool → mcp slug.
-        let payload = json!({"tool_name": "github-mcp"}).as_object().unwrap().clone();
-        assert_eq!(artifact_id_from_event("claude", "claude-code", &payload), "claude-code:project:mcp:github-mcp");
+        let payload = json!({"tool_name": "github-mcp"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            artifact_id_from_event("claude", "claude-code", &payload),
+            "claude-code:project:mcp:github-mcp"
+        );
         // No tool → event-scoped fallback.
         let payload = json!({"event": "posttooluse"}).as_object().unwrap().clone();
-        assert_eq!(artifact_id_from_event("codex", "codex", &payload), "codex:project:posttooluse");
+        assert_eq!(
+            artifact_id_from_event("codex", "codex", &payload),
+            "codex:project:posttooluse"
+        );
         // Neither → :hook.
         let payload = Map::new();
-        assert_eq!(artifact_id_from_event("codex", "codex", &payload), "codex:project:hook");
+        assert_eq!(
+            artifact_id_from_event("codex", "codex", &payload),
+            "codex:project:hook"
+        );
     }
 
     #[test]
     fn content_key_normalization() {
         assert_eq!(generic_hook_content_key("toolName"), "tool_name");
-        assert_eq!(generic_hook_content_key("hook-event-name"), "hook_event_name");
+        assert_eq!(
+            generic_hook_content_key("hook-event-name"),
+            "hook_event_name"
+        );
         assert_eq!(generic_hook_content_key("session_id"), "session_id");
         // Leading uppercase does NOT get a leading underscore.
         assert_eq!(generic_hook_content_key("ToolName"), "tool_name");
@@ -497,50 +533,94 @@ mod tests {
             "timestamp": "2026-01-01",
             "artifact_hash": "should-drop",
             "toolUseId": "tu1",
-        }).as_object().unwrap().clone();
+        })
+        .as_object()
+        .unwrap()
+        .clone();
         let stripped = json!({
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
-        }).as_object().unwrap().clone();
-        assert_eq!(generic_hook_payload_digest(&with_meta), generic_hook_payload_digest(&stripped));
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        assert_eq!(
+            generic_hook_payload_digest(&with_meta),
+            generic_hook_payload_digest(&stripped)
+        );
         // Nested request_id survives (content field, not delivery).
         let nested = json!({
             "tool_name": "Bash",
             "tool_input": {"command": "ls", "request_id": "nested-keep"},
-        }).as_object().unwrap().clone();
-        assert_ne!(generic_hook_payload_digest(&nested), generic_hook_payload_digest(&with_meta));
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        assert_ne!(
+            generic_hook_payload_digest(&nested),
+            generic_hook_payload_digest(&with_meta)
+        );
         // Digest is a 64-char lowercase hex.
         let d = generic_hook_payload_digest(&stripped);
         assert_eq!(d.len(), 64);
-        assert!(d.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+        assert!(d
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
     }
 
     #[test]
     fn workspace_identity_normalizes() {
         assert_eq!(generic_hook_workspace_identity(None), "");
         assert_eq!(generic_hook_workspace_identity(Some("  ")), "");
-        assert_eq!(generic_hook_workspace_identity(Some("C:\\proj\\x")), "C:/proj/x");
+        assert_eq!(
+            generic_hook_workspace_identity(Some("C:\\proj\\x")),
+            "C:/proj/x"
+        );
         assert_eq!(generic_hook_workspace_identity(Some("/a/b/")), "/a/b");
     }
 
     #[test]
     fn memory_command_resolves_command_key() {
-        let tool_input = json!({"command": "git status"}).as_object().unwrap().clone();
-        assert_eq!(generic_hook_memory_command(Some("Bash"), Some(&tool_input)), "git status");
+        let tool_input = json!({"command": "git status"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            generic_hook_memory_command(Some("Bash"), Some(&tool_input)),
+            "git status"
+        );
         // MCP-namespaced tool with only a query → empty (not shell source).
         let tool_input = json!({"query": "foo"}).as_object().unwrap().clone();
-        assert_eq!(generic_hook_memory_command(Some("mcp__github__search"), Some(&tool_input)), "");
+        assert_eq!(
+            generic_hook_memory_command(Some("mcp__github__search"), Some(&tool_input)),
+            ""
+        );
         // Non-MCP tool falls through to the broader command keys.
-        assert_eq!(generic_hook_memory_command(Some("Bash"), Some(&tool_input)), "foo");
+        assert_eq!(
+            generic_hook_memory_command(Some("Bash"), Some(&tool_input)),
+            "foo"
+        );
         assert_eq!(generic_hook_memory_command(None, None), "");
     }
 
     #[test]
     fn grep_command_synthesis() {
-        let tool_input = json!({"pattern": "TODO", "path": "src/"}).as_object().unwrap().clone();
-        assert_eq!(command_text_from_tool_payload(Some("rg"), Some(&tool_input)).as_deref(), Some("rg TODO src/"));
-        let tool_input = json!({"pattern": "a b", "-n": true}).as_object().unwrap().clone();
-        assert_eq!(command_text_from_tool_payload(Some("grep"), Some(&tool_input)).as_deref(), Some("grep -n 'a b'"));
+        let tool_input = json!({"pattern": "TODO", "path": "src/"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            command_text_from_tool_payload(Some("rg"), Some(&tool_input)).as_deref(),
+            Some("rg TODO src/")
+        );
+        let tool_input = json!({"pattern": "a b", "-n": true})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            command_text_from_tool_payload(Some("grep"), Some(&tool_input)).as_deref(),
+            Some("grep -n 'a b'")
+        );
     }
 
     #[test]

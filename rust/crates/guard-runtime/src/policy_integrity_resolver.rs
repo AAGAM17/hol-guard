@@ -136,7 +136,9 @@ pub fn resolve_integrity_state(
             "protected",
             c.get("generation").and_then(Value::as_i64).unwrap_or(0),
             Value::from(m.key_id.clone()),
-            c.get("cutover_complete").and_then(Value::as_bool).unwrap_or(false),
+            c.get("cutover_complete")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         ),
         _ => ("degraded", 0, Value::Null, false),
     };
@@ -216,7 +218,9 @@ mod tests {
         // Scope under THIS test home's resolved path.
         let key_ref = build_scoped_secret_ref(POLICY_INTEGRITY_KEY_REF, &resolved);
         let control_ref = build_scoped_secret_ref(POLICY_INTEGRITY_CONTROL_REF, &resolved);
-        store.set_secret(&key_ref, oracle["raw_key_b64"].as_str().unwrap()).unwrap();
+        store
+            .set_secret(&key_ref, oracle["raw_key_b64"].as_str().unwrap())
+            .unwrap();
         let control_json = serde_json::to_string(&oracle["control"]).unwrap();
         store.set_secret(&control_ref, &control_json).unwrap();
 

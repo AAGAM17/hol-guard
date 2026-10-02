@@ -27,18 +27,17 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use guard_contracts::{
-    authority_transition_sha256, capability_canonical_json, canonical_framed_payload,
-    decode_signed_authority_state, decode_signed_authority_transition,
-    decode_signed_revocation, encode_signed_authority_state,
-    encode_signed_authority_transition, encode_signed_revocation, sign_authority_state,
-    sign_authority_transition, sign_revocation, sign_workflow_capability_receipt,
-    utc_timestamp_micros, validate_workflow_capability_identifier, verify_authority_state,
-    verify_authority_transition, verify_revocation, verify_workflow_capability_receipt,
-    workflow_capability_claim_sha256, SignedAuthorityState, SignedAuthorityTransition,
-    SignedRevocation, SignedWorkflowCapability, SignedWorkflowCapabilityReceipt,
-    WorkflowCapabilityAuthorityState, WorkflowCapabilityAuthorityTransition,
-    WorkflowCapabilityBinding, WorkflowCapabilityError, WorkflowCapabilityReceipt,
-    WorkflowCapabilityRevocation,
+    authority_transition_sha256, canonical_framed_payload, capability_canonical_json,
+    decode_signed_authority_state, decode_signed_authority_transition, decode_signed_revocation,
+    encode_signed_authority_state, encode_signed_authority_transition, encode_signed_revocation,
+    sign_authority_state, sign_authority_transition, sign_revocation,
+    sign_workflow_capability_receipt, utc_timestamp_micros,
+    validate_workflow_capability_identifier, verify_authority_state, verify_authority_transition,
+    verify_revocation, verify_workflow_capability_receipt, workflow_capability_claim_sha256,
+    SignedAuthorityState, SignedAuthorityTransition, SignedRevocation, SignedWorkflowCapability,
+    SignedWorkflowCapabilityReceipt, WorkflowCapabilityAuthorityState,
+    WorkflowCapabilityAuthorityTransition, WorkflowCapabilityBinding, WorkflowCapabilityError,
+    WorkflowCapabilityReceipt, WorkflowCapabilityRevocation,
 };
 
 const ZERO_TRANSITION_SHA256: &str =
@@ -52,14 +51,15 @@ fn err<T>(reason: &'static str) -> StoreResult<T> {
     Err(WorkflowCapabilityError(reason))
 }
 
-
 /// `CapabilityStoreHooks` — the `_ControlStore` host callbacks plus the
 /// policy-integrity key material the Python mixins pulled from `self`.
 pub trait CapabilityStoreHooks {
     /// `_policy_integrity_secret_material(create)` → `(key, key_id)`;
     /// `Ok(None)` = unavailable (maps to `capability_key_unavailable`).
-    fn policy_integrity_secret_material(&self, create: bool)
-        -> StoreResult<Option<(Vec<u8>, String)>>;
+    fn policy_integrity_secret_material(
+        &self,
+        create: bool,
+    ) -> StoreResult<Option<(Vec<u8>, String)>>;
     /// `_load_workflow_capability_control` → persisted control blob or `None`.
     fn load_workflow_capability_control(&self) -> StoreResult<Option<String>>;
     /// `_store_workflow_capability_control` → `true` on success.
@@ -67,7 +67,10 @@ pub trait CapabilityStoreHooks {
 }
 
 /// `_require_store_key`.
-fn require_store_key(hooks: &dyn CapabilityStoreHooks, create: bool) -> StoreResult<(Vec<u8>, String)> {
+fn require_store_key(
+    hooks: &dyn CapabilityStoreHooks,
+    create: bool,
+) -> StoreResult<(Vec<u8>, String)> {
     hooks
         .policy_integrity_secret_material(create)?
         .ok_or(WorkflowCapabilityError("capability_key_unavailable"))
@@ -293,7 +296,10 @@ fn validate_schema_objects(connection: &Connection) -> StoreResult<()> {
 
 /// `ensure_workflow_capability_schema` — apply migrations, drop the retired
 /// receipt-event index, validate owned objects, record migration version.
-pub fn ensure_workflow_capability_schema(connection: &Connection, applied_at: &str) -> StoreResult<()> {
+pub fn ensure_workflow_capability_schema(
+    connection: &Connection,
+    applied_at: &str,
+) -> StoreResult<()> {
     // Drop retired index first (outside the savepoint) so a validation
     // rollback can't resurrect it.
     connection
@@ -360,8 +366,11 @@ pub fn ensure_workflow_capability_schema(connection: &Connection, applied_at: &s
 
 /// `_private_reference` — sha256 of the framed `audit-{purpose}` value.
 fn private_reference(purpose: &str, value: &str) -> StoreResult<String> {
-    let framed = canonical_framed_payload(&format!("audit-{}", purpose), &Value::String(value.to_string()))
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let framed = canonical_framed_payload(
+        &format!("audit-{}", purpose),
+        &Value::String(value.to_string()),
+    )
+    .map_err(|e| WorkflowCapabilityError(e.0))?;
     Ok(hex_lower(&Sha256::digest(&framed)))
 }
 
@@ -402,8 +411,7 @@ fn insert_workflow_capability_event(
     extra: Map<String, Value>,
 ) -> StoreResult<i64> {
     let payload = workflow_capability_event_payload(capability_id, invocation_id, extra)?;
-    let encoded = capability_canonical_json(&payload)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let encoded = capability_canonical_json(&payload).map_err(|e| WorkflowCapabilityError(e.0))?;
     let cursor = connection
         .execute(
             "insert into guard_events (event_name, payload_json, occurred_at) values (?, ?, ?)",
@@ -419,7 +427,8 @@ fn insert_workflow_capability_event(
 // ─── transitions / ledger ────────────────────────────────────────────────
 
 fn sha256_of_json(signed: &SignedAuthorityState) -> StoreResult<String> {
-    let encoded = encode_signed_authority_state(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
+    let encoded =
+        encode_signed_authority_state(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
     let framed = canonical_framed_payload("authority-state-digest", &Value::String(encoded))
         .map_err(|e| WorkflowCapabilityError(e.0))?;
     Ok(hex_lower(&Sha256::digest(&framed)))
@@ -475,7 +484,8 @@ pub fn append_authority_transition(
     signed: &SignedAuthorityTransition,
 ) -> StoreResult<()> {
     let t = &signed.transition;
-    let encoded = encode_signed_authority_transition(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
+    let encoded =
+        encode_signed_authority_transition(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
     connection
         .execute(
             "insert into guard_workflow_capability_authority_transitions
@@ -501,9 +511,9 @@ fn validate_transition_event(
     connection: &Connection,
     transition: &WorkflowCapabilityAuthorityTransition,
 ) -> StoreResult<()> {
-    let event_id = transition
-        .event_id
-        .ok_or(WorkflowCapabilityError("capability_authority_transition_chain_invalid"))?;
+    let event_id = transition.event_id.ok_or(WorkflowCapabilityError(
+        "capability_authority_transition_chain_invalid",
+    ))?;
     let row: Option<(String, String, String)> = connection
         .query_row(
             "select event_name, payload_json, occurred_at from guard_events where event_id = ?",
@@ -512,8 +522,9 @@ fn validate_transition_event(
         )
         .optional()
         .map_err(|_| WorkflowCapabilityError("capability_authority_event_link_invalid"))?;
-    let (name, payload, occurred_at) =
-        row.ok_or(WorkflowCapabilityError("capability_authority_event_link_invalid"))?;
+    let (name, payload, occurred_at) = row.ok_or(WorkflowCapabilityError(
+        "capability_authority_event_link_invalid",
+    ))?;
     if name != transition.event_name.as_deref().unwrap_or("")
         || occurred_at != transition.occurred_at
     {
@@ -522,10 +533,7 @@ fn validate_transition_event(
     let decoded: Value = serde_json::from_str(&payload)
         .map_err(|_| WorkflowCapabilityError("capability_authority_event_link_invalid"))?;
     if event_payload_sha256(&decoded)?
-        != transition
-            .event_payload_sha256
-            .clone()
-            .unwrap_or_default()
+        != transition.event_payload_sha256.clone().unwrap_or_default()
     {
         return err("capability_authority_event_link_invalid");
     }
@@ -548,7 +556,14 @@ pub fn validate_global_authority_ledger(
     let rows: Vec<(i64, String, i64, String, String, String, String, i64)> = stmt
         .query_map([], |r| {
             Ok((
-                r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
             ))
         })
         .map_err(|_| WorkflowCapabilityError("capability_authority_transition_chain_invalid"))?
@@ -559,16 +574,24 @@ pub fn validate_global_authority_ledger(
     let mut transition_event_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
     for (idx, row) in rows.iter().enumerate() {
         let expected_sequence = (idx + 1) as i64;
-        let signed = decode_signed_authority_transition(&row.5)
-            .map_err(|_| WorkflowCapabilityError("capability_authority_transition_chain_invalid"))?;
-        verify_authority_transition(&signed, key, key_id)
-            .map_err(|_| WorkflowCapabilityError("capability_authority_transition_chain_invalid"))?;
+        let signed = decode_signed_authority_transition(&row.5).map_err(|_| {
+            WorkflowCapabilityError("capability_authority_transition_chain_invalid")
+        })?;
+        verify_authority_transition(&signed, key, key_id).map_err(|_| {
+            WorkflowCapabilityError("capability_authority_transition_chain_invalid")
+        })?;
         let t = &signed.transition;
-        let event_id = t
-            .event_id
-            .ok_or(WorkflowCapabilityError("capability_authority_transition_chain_invalid"))?;
+        let event_id = t.event_id.ok_or(WorkflowCapabilityError(
+            "capability_authority_transition_chain_invalid",
+        ))?;
         let duplicated = (
-            row.0, row.1.clone(), row.2, row.3.clone(), row.4.clone(), row.6.clone(), row.7,
+            row.0,
+            row.1.clone(),
+            row.2,
+            row.3.clone(),
+            row.4.clone(),
+            row.6.clone(),
+            row.7,
         );
         let authenticated = (
             t.sequence,
@@ -587,8 +610,9 @@ pub fn validate_global_authority_ledger(
         }
         validate_transition_event(connection, t)?;
         transition_event_ids.insert(event_id);
-        previous = authority_transition_sha256(&signed)
-            .map_err(|_| WorkflowCapabilityError("capability_authority_transition_chain_invalid"))?;
+        previous = authority_transition_sha256(&signed).map_err(|_| {
+            WorkflowCapabilityError("capability_authority_transition_chain_invalid")
+        })?;
     }
     let mut estmt = connection
         .prepare(
@@ -611,9 +635,14 @@ pub fn validate_global_authority_ledger(
 // ─── authority state ─────────────────────────────────────────────────────
 
 /// `_write_state` — insert or update the authority-state row.
-fn write_state(connection: &Connection, signed: &SignedAuthorityState, insert: bool) -> StoreResult<()> {
+fn write_state(
+    connection: &Connection,
+    signed: &SignedAuthorityState,
+    insert: bool,
+) -> StoreResult<()> {
     let s = &signed.state;
-    let encoded = encode_signed_authority_state(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
+    let encoded =
+        encode_signed_authority_state(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
     if insert {
         connection
             .execute(
@@ -634,8 +663,14 @@ fn write_state(connection: &Connection, signed: &SignedAuthorityState, insert: b
                      observed_at = ?, revocation_id = ?
                  where capability_id = ? and revision = ?",
                 params![
-                    encoded, signed.key_id, s.revision, s.use_high_water,
-                    s.observed_at, s.revocation_id, s.capability_id, s.revision - 1,
+                    encoded,
+                    signed.key_id,
+                    s.revision,
+                    s.use_high_water,
+                    s.observed_at,
+                    s.revocation_id,
+                    s.capability_id,
+                    s.revision - 1,
                 ],
             )
             .map_err(|_| WorkflowCapabilityError("capability_authority_state_conflict"))?;
@@ -696,7 +731,13 @@ pub fn append_revocation(
             "insert into guard_workflow_capability_revocations
               (revocation_id, capability_id, signed_revocation_json, key_id, revoked_at)
              values (?, ?, ?, ?, ?)",
-            params![revocation_id, revocation.capability_id, encoded, key_id, revoked_at],
+            params![
+                revocation_id,
+                revocation.capability_id,
+                encoded,
+                key_id,
+                revoked_at
+            ],
         )
         .map_err(|_| WorkflowCapabilityError("capability_revocation_conflict"))?;
     Ok(revocation)
@@ -713,7 +754,6 @@ fn hex_lower(bytes: &[u8]) -> String {
     }
     out
 }
-
 
 // ═══ control plane (store_workflow_capability_control.py) ═════════════════
 
@@ -775,7 +815,10 @@ impl WorkflowCapabilityControl {
 
 /// `_digest` — 64-char lowercase-hex field validator for the control blob.
 fn control_digest(name: &'static str, value: &str) -> StoreResult<()> {
-    let ok = value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+    let ok = value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
     let _ = name;
     if !ok {
         return err(if name == "committed_head_sha256" {
@@ -850,7 +893,10 @@ fn decode_control(encoded: &str) -> StoreResult<WorkflowCapabilityControl> {
     let optional_integer = |k: &str| -> StoreResult<Option<i64>> {
         match m.get(k) {
             Some(Value::Null) => Ok(None),
-            Some(v) => v.as_i64().map(Some).ok_or(WorkflowCapabilityError("capability_control_invalid")),
+            Some(v) => v
+                .as_i64()
+                .map(Some)
+                .ok_or(WorkflowCapabilityError("capability_control_invalid")),
             None => err("capability_control_invalid"),
         }
     };
@@ -953,8 +999,8 @@ pub fn prepare_control_transition(
     if transition.previous_transition_sha256 != control.committed_head_sha256 {
         return err("capability_control_head_conflict");
     }
-    let head = authority_transition_sha256(signed_transition)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let head =
+        authority_transition_sha256(signed_transition).map_err(|e| WorkflowCapabilityError(e.0))?;
     if control.pending_sequence.is_some() {
         return err("capability_control_pending");
     }
@@ -996,8 +1042,8 @@ pub fn finalize_control_transition(
 /// `validate_monotonic_workflow_capability_time` — reject rollback, report
 /// whether the external high-water must advance.
 fn validate_monotonic_workflow_capability_time(now: &str, observed_at: &str) -> StoreResult<bool> {
-    let current = utc_timestamp_micros(now)
-        .ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
+    let current =
+        utc_timestamp_micros(now).ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
     let observed = utc_timestamp_micros(observed_at)
         .ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
     if current < observed {
@@ -1051,7 +1097,9 @@ fn load_revocation(
         || row_key_id != &signed.key_id
         || row_revoked_at != &revocation.revoked_at
         || revocation.capability_id != signed_claim.claim.capability_id
-        || revocation.claim_sha256 != workflow_capability_claim_sha256(signed_claim).map_err(|e| WorkflowCapabilityError(e.0))?
+        || revocation.claim_sha256
+            != workflow_capability_claim_sha256(signed_claim)
+                .map_err(|e| WorkflowCapabilityError(e.0))?
     {
         return err("capability_revocation_binding_invalid");
     }
@@ -1069,7 +1117,10 @@ fn claim_event_extra(
     let mut m = Map::new();
     m.insert(
         "approval_provenance_ref".into(),
-        Value::String(private_reference("approval-provenance", approval_provenance_id)?),
+        Value::String(private_reference(
+            "approval-provenance",
+            approval_provenance_id,
+        )?),
     );
     m.insert(
         "receipt_ref".into(),
@@ -1144,8 +1195,8 @@ fn validate_receipt_history(
         .map_err(|_| WorkflowCapabilityError("capability_receipt_history_invalid"))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| WorkflowCapabilityError("capability_receipt_history_invalid"))?;
-    let claim_sha = workflow_capability_claim_sha256(signed_claim)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let claim_sha =
+        workflow_capability_claim_sha256(signed_claim).map_err(|e| WorkflowCapabilityError(e.0))?;
     for (
         row_receipt_id,
         row_task_id,
@@ -1181,9 +1232,8 @@ fn validate_receipt_history(
         {
             return err("capability_receipt_event_history_invalid");
         }
-        let expected_payload =
-            capability_canonical_json(&claim_event_payload(receipt)?)
-                .map_err(|e| WorkflowCapabilityError(e.0))?;
+        let expected_payload = capability_canonical_json(&claim_event_payload(receipt)?)
+            .map_err(|e| WorkflowCapabilityError(e.0))?;
         if payload_json.as_deref() != Some(expected_payload.as_str()) {
             return err("capability_receipt_event_history_invalid");
         }
@@ -1309,8 +1359,8 @@ pub fn validate_capability_transition_projection(
     key: &[u8],
     key_id: &str,
 ) -> StoreResult<()> {
-    let claim_sha = workflow_capability_claim_sha256(signed_claim)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let claim_sha =
+        workflow_capability_claim_sha256(signed_claim).map_err(|e| WorkflowCapabilityError(e.0))?;
     let rows = connection
         .prepare(
             "select signed_transition_json from \
@@ -1329,8 +1379,8 @@ pub fn validate_capability_transition_projection(
     }
     let mut transitions = Vec::with_capacity(rows.len());
     for (expected_revision, row) in rows.iter().enumerate() {
-        let signed = decode_signed_authority_transition(row)
-            .map_err(|e| WorkflowCapabilityError(e.0))?;
+        let signed =
+            decode_signed_authority_transition(row).map_err(|e| WorkflowCapabilityError(e.0))?;
         verify_authority_transition(&signed, key, key_id)
             .map_err(|e| WorkflowCapabilityError(e.0))?;
         let t = &signed.transition;
@@ -1365,8 +1415,7 @@ pub fn validate_capability_transition_projection(
     }
     let last = transitions.last().unwrap();
     if last.revision != signed_state.state.revision
-        || last.signed_state_sha256
-            != sha256_of_json(signed_state)?
+        || last.signed_state_sha256 != sha256_of_json(signed_state)?
     {
         return err("capability_authority_transition_projection_invalid");
     }
@@ -1404,11 +1453,12 @@ pub fn load_and_validate_authority(
         )
         .optional()
         .map_err(|_| WorkflowCapabilityError("capability_authority_state_missing"))?
-        .ok_or(WorkflowCapabilityError("capability_authority_state_missing"))?;
-    let signed_state = decode_signed_authority_state(&row.0)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
-    verify_authority_state(&signed_state, key, key_id)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+        .ok_or(WorkflowCapabilityError(
+            "capability_authority_state_missing",
+        ))?;
+    let signed_state =
+        decode_signed_authority_state(&row.0).map_err(|e| WorkflowCapabilityError(e.0))?;
+    verify_authority_state(&signed_state, key, key_id).map_err(|e| WorkflowCapabilityError(e.0))?;
     let state = &signed_state.state;
     let duplicated = (
         capability_id.clone(),
@@ -1477,8 +1527,8 @@ pub fn advance_authority_state(
     revocation_id: Option<String>,
     revoked_at: Option<String>,
 ) -> StoreResult<SignedAuthorityState> {
-    let current = utc_timestamp_micros(now)
-        .ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
+    let current =
+        utc_timestamp_micros(now).ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
     let observed = utc_timestamp_micros(&state.observed_at)
         .ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
     if current < observed {
@@ -1579,10 +1629,21 @@ struct ClaimRowRef {
     max_uses: i64,
 }
 
-fn row_ref_for_claim(row: &(
-    String, String, String, String, String, String, String, i64, i64,
-    Option<String>, Option<String>,
-)) -> ClaimRowRef {
+fn row_ref_for_claim(
+    row: &(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        i64,
+        Option<String>,
+        Option<String>,
+    ),
+) -> ClaimRowRef {
     ClaimRowRef {
         approval_provenance_id: row.1.clone(),
         nonce: row.2.clone(),
@@ -1646,8 +1707,8 @@ pub fn issue_workflow_capability(
     // binding) runs inline: persisted claims always validate against their own
     // binding.
     verify_workflow_capability_signature_only(signed, &key, &key_id)?;
-    let current = utc_timestamp_micros(now)
-        .ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
+    let current =
+        utc_timestamp_micros(now).ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
     if current < utc_timestamp_micros(&signed.claim.not_before).unwrap_or(i64::MIN) {
         return err("capability_not_yet_valid");
     }
@@ -1657,10 +1718,11 @@ pub fn issue_workflow_capability(
     if signed.claim.binding != signed.claim.binding {
         return err("capability_context_mismatch");
     }
-    let encoded = signed.to_canonical_json().map_err(|e| WorkflowCapabilityError(e.0))?;
+    let encoded = signed
+        .to_canonical_json()
+        .map_err(|e| WorkflowCapabilityError(e.0))?;
     ensure_workflow_capability_schema(connection, now)?;
-    let control =
-        load_validate_and_observe_control(hooks, connection, &key, &key_id, now, true)?;
+    let control = load_validate_and_observe_control(hooks, connection, &key, &key_id, now, true)?;
     let claim = &signed.claim;
     connection
         .execute(
@@ -1685,12 +1747,12 @@ pub fn issue_workflow_capability(
     let mut event_extra = Map::new();
     event_extra.insert(
         "approval_provenance_ref".into(),
-        Value::String(private_reference("approval-provenance", approval_provenance_id)?),
+        Value::String(private_reference(
+            "approval-provenance",
+            approval_provenance_id,
+        )?),
     );
-    event_extra.insert(
-        "max_uses".into(),
-        Value::Number(claim.max_uses.into()),
-    );
+    event_extra.insert("max_uses".into(), Value::Number(claim.max_uses.into()));
     event_extra.insert(
         "task_ref".into(),
         Value::String(private_reference("task", &claim.task_id)?),
@@ -1749,15 +1811,17 @@ pub fn claim_workflow_capability(
         ("expected_subject_id", expected_subject_id),
         ("expected_task_id", expected_task_id),
         ("expected_issuer_id", expected_issuer_id),
-        ("expected_approval_provenance_id", expected_approval_provenance_id),
+        (
+            "expected_approval_provenance_id",
+            expected_approval_provenance_id,
+        ),
     ] {
         validate_workflow_capability_identifier(name, value)
             .map_err(|e| WorkflowCapabilityError(e.0))?;
     }
     let (key, key_id) = require_store_key(hooks, false)?;
     ensure_workflow_capability_schema(connection, now)?;
-    let control =
-        load_validate_and_observe_control(hooks, connection, &key, &key_id, now, false)?;
+    let control = load_validate_and_observe_control(hooks, connection, &key, &key_id, now, false)?;
     let row = connection
         .query_row(
             "select signed_claim_json, key_id, issued_at, not_before, expires_at, \
@@ -1807,8 +1871,8 @@ pub fn claim_workflow_capability(
     )?;
     // `verify_workflow_capability` — signature + window + binding.
     verify_workflow_capability_signature_only(&signed, &key, &key_id)?;
-    let current = utc_timestamp_micros(now)
-        .ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
+    let current =
+        utc_timestamp_micros(now).ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
     if current < utc_timestamp_micros(&signed.claim.not_before).unwrap_or(i64::MIN) {
         return err("capability_not_yet_valid");
     }
@@ -1870,8 +1934,8 @@ pub fn claim_workflow_capability(
         now,
         event_extra.clone(),
     )?;
-    let claim_sha = workflow_capability_claim_sha256(&signed)
-        .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let claim_sha =
+        workflow_capability_claim_sha256(&signed).map_err(|e| WorkflowCapabilityError(e.0))?;
     let receipt = WorkflowCapabilityReceipt {
         schema_version: "hol-guard.workflow-capability-receipt.v1".to_string(),
         receipt_id: receipt_id.clone(),
@@ -1956,8 +2020,7 @@ pub fn revoke_workflow_capability(
     validate_reason_code(reason_code)?;
     let (key, key_id) = require_store_key(hooks, false)?;
     ensure_workflow_capability_schema(connection, now)?;
-    let control =
-        load_validate_and_observe_control(hooks, connection, &key, &key_id, now, false)?;
+    let control = load_validate_and_observe_control(hooks, connection, &key, &key_id, now, false)?;
     let row = connection
         .query_row(
             "select signed_claim_json, key_id, issued_at, not_before, expires_at, \
@@ -2186,9 +2249,8 @@ pub fn lookup_workflow_capability_receipt(
     {
         return err("receipt_event_binding_invalid");
     }
-    let expected_payload =
-        capability_canonical_json(&claim_event_payload(receipt)?)
-            .map_err(|e| WorkflowCapabilityError(e.0))?;
+    let expected_payload = capability_canonical_json(&claim_event_payload(receipt)?)
+        .map_err(|e| WorkflowCapabilityError(e.0))?;
     if row.10.as_deref() != Some(expected_payload.as_str()) {
         return err("receipt_event_binding_invalid");
     }
@@ -2218,9 +2280,9 @@ fn validate_reason_code(value: &str) -> StoreResult<()> {
     let ok = !value.is_empty()
         && value.len() <= 64
         && value.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.' || b == b'-');
+        && value.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.' || b == b'-'
+        });
     if !ok {
         return err("invalid_reason_code");
     }

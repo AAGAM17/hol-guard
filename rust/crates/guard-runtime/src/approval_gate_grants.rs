@@ -206,9 +206,7 @@ impl ApprovalGateGrants {
             factor_generation: fields.factor_generation,
             owner_pid: std::process::id(),
         };
-        state
-            .entries
-            .insert(fields.grant_id.clone(), metadata);
+        state.entries.insert(fields.grant_id.clone(), metadata);
         Ok(ApprovalGateGrantV1 {
             grant_id: fields.grant_id,
             purpose: fields.purpose.to_owned(),
@@ -345,7 +343,9 @@ impl ApprovalGateGrants {
         }
         // (10) strict ⇒ grant.strict
         if strict && !grant.strict {
-            return Err(ApprovalGateErrorV1::required("A fresh approval proof is required."));
+            return Err(ApprovalGateErrorV1::required(
+                "A fresh approval proof is required.",
+            ));
         }
         // (11) TOTP-enabled path vs strict-password path
         if totp_enabled {
@@ -504,14 +504,38 @@ mod tests {
     const GRANT_EPOCH: f64 = ISSUE_EPOCH + APPROVAL_GATE_GRANT_TTL_SECONDS; // 130
 
     fn val(
-        t: &ApprovalGateGrants, g: Option<&ApprovalGateGrantV1>, now: f64,
+        t: &ApprovalGateGrants,
+        g: Option<&ApprovalGateGrantV1>,
+        now: f64,
     ) -> Result<(), ApprovalGateErrorV1> {
-        t.validate(HOME, g, GRANT_EPOCH, None, false, None, None, None, None, 1, false, true, now)
+        t.validate(
+            HOME,
+            g,
+            GRANT_EPOCH,
+            None,
+            false,
+            None,
+            None,
+            None,
+            None,
+            1,
+            false,
+            true,
+            now,
+        )
     }
 
     fn reg(t: &ApprovalGateGrants, purpose: &str, now: f64) -> ApprovalGateGrantV1 {
         let exp_epoch = now + APPROVAL_GATE_GRANT_TTL_SECONDS;
-        t.register(HOME, fields(purpose), now, "issued-iso", "expires-iso", exp_epoch).unwrap()
+        t.register(
+            HOME,
+            fields(purpose),
+            now,
+            "issued-iso",
+            "expires-iso",
+            exp_epoch,
+        )
+        .unwrap()
     }
 
     // 1. register then validate within TTL
@@ -552,7 +576,23 @@ mod tests {
     fn foreign_home_is_invalid() {
         let t = ApprovalGateGrants::new();
         let g = reg(&t, "policy_write", ISSUE_EPOCH);
-        let e = t.validate("/other", Some(&g), 999.0, None, false, None, None, None, None, 1, false, true, 110.0).unwrap_err();
+        let e = t
+            .validate(
+                "/other",
+                Some(&g),
+                999.0,
+                None,
+                false,
+                None,
+                None,
+                None,
+                None,
+                1,
+                false,
+                true,
+                110.0,
+            )
+            .unwrap_err();
         assert_eq!(e.code, "approval_gate_required");
         assert_eq!(e.message, "Approval proof is invalid.");
         assert_eq!(t.len(), 1); // not popped
@@ -583,7 +623,23 @@ mod tests {
     fn generation_advance_revokes() {
         let t = ApprovalGateGrants::new();
         let g = reg(&t, "policy_write", ISSUE_EPOCH); // gen 1
-        let e = t.validate(HOME, Some(&g), 130.0, None, false, None, None, None, None, 2, false, true, 110.0).unwrap_err();
+        let e = t
+            .validate(
+                HOME,
+                Some(&g),
+                130.0,
+                None,
+                false,
+                None,
+                None,
+                None,
+                None,
+                2,
+                false,
+                true,
+                110.0,
+            )
+            .unwrap_err();
         assert_eq!(e.code, "approval_gate_required");
         assert!(e.message.contains("revoked"));
         assert_eq!(t.len(), 0);
@@ -595,8 +651,16 @@ mod tests {
         let t = ApprovalGateGrants::new();
         let g = reg(&t, "extension_control_mutation", ISSUE_EPOCH);
         let epoch = 130.0;
-        assert!(t.validate_and_consume(HOME, &g, epoch, None, false, None, None, None, None, 1, false, true, 110.0).is_ok());
-        let e = t.validate_and_consume(HOME, &g, epoch, None, false, None, None, None, None, 1, false, true, 111.0).unwrap_err();
+        assert!(t
+            .validate_and_consume(
+                HOME, &g, epoch, None, false, None, None, None, None, 1, false, true, 110.0
+            )
+            .is_ok());
+        let e = t
+            .validate_and_consume(
+                HOME, &g, epoch, None, false, None, None, None, None, 1, false, true, 111.0,
+            )
+            .unwrap_err();
         assert_eq!(e.code, "approval_gate_required");
     }
 
@@ -669,13 +733,25 @@ mod tests {
         let _a = reg(&t, "policy_write", ISSUE_EPOCH);
         {
             let mut s = t.state.lock().unwrap();
-            s.entries.insert("other-home".into(), GrantMetadata {
-                guard_home: "/other".into(), expires_epoch: 130.0, purpose: "p".into(),
-                strict: false, used_cooldown: false, password_verified: true,
-                totp_verified: false, action: "p".into(), scope: "local".into(),
-                subject: "s".into(), session_nonce: "n".into(),
-                factor_set: vec![], factor_generation: 1, owner_pid: std::process::id(),
-            });
+            s.entries.insert(
+                "other-home".into(),
+                GrantMetadata {
+                    guard_home: "/other".into(),
+                    expires_epoch: 130.0,
+                    purpose: "p".into(),
+                    strict: false,
+                    used_cooldown: false,
+                    password_verified: true,
+                    totp_verified: false,
+                    action: "p".into(),
+                    scope: "local".into(),
+                    subject: "s".into(),
+                    session_nonce: "n".into(),
+                    factor_set: vec![],
+                    factor_generation: 1,
+                    owner_pid: std::process::id(),
+                },
+            );
         }
         assert_eq!(t.len(), 2);
         t.invalidate_for_home(HOME);

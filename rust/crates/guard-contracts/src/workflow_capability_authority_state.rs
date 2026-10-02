@@ -19,8 +19,7 @@ use sha2::Sha256;
 
 use crate::canonical_json::write_canonical_json;
 use crate::workflow_capability::{
-    canonical_framed_payload, validate_workflow_capability_identifier,
-    WorkflowCapabilityError,
+    canonical_framed_payload, validate_workflow_capability_identifier, WorkflowCapabilityError,
 };
 
 pub const AUTHORITY_STATE_SCHEMA: &str = "hol-guard.workflow-capability-authority-state.v1";
@@ -33,7 +32,9 @@ fn err<T>(reason: &'static str) -> WfResult<T> {
 }
 
 fn is_sha256(v: &str) -> bool {
-    v.len() == 64 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    v.len() == 64
+        && v.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// `_SHA256.fullmatch` + `_digest`.
@@ -59,9 +60,11 @@ fn validate_timestamp(v: &str) -> WfResult<()> {
             && b[16] == b':'
             && b[19] == b'.'
             && b[26] == b'Z'
-            && [0usize,1,2,3,5,6,8,9,11,12,14,15,17,18,20,21,22,23,24,25]
-                .iter()
-                .all(|&i| b[i].is_ascii_digit())
+            && [
+                0usize, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25,
+            ]
+            .iter()
+            .all(|&i| b[i].is_ascii_digit())
     };
     if ok {
         Ok(())
@@ -75,9 +78,8 @@ fn validate_reason_code(v: &str) -> WfResult<()> {
     let ok = !v.is_empty()
         && v.len() <= 64
         && v.chars().next().map_or(false, |c| c.is_ascii_lowercase())
-        && v.chars().all(|c| {
-            c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-')
-        });
+        && v.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-'));
     if ok {
         Ok(())
     } else {
@@ -180,19 +182,37 @@ impl WorkflowCapabilityAuthorityState {
 
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
-        m.insert("capability_id".into(), Value::String(self.capability_id.clone()));
-        m.insert("claim_sha256".into(), Value::String(self.claim_sha256.clone()));
+        m.insert(
+            "schema_version".into(),
+            Value::String(self.schema_version.clone()),
+        );
+        m.insert(
+            "capability_id".into(),
+            Value::String(self.capability_id.clone()),
+        );
+        m.insert(
+            "claim_sha256".into(),
+            Value::String(self.claim_sha256.clone()),
+        );
         m.insert("use_high_water".into(), Value::from(self.use_high_water));
-        m.insert("observed_at".into(), Value::String(self.observed_at.clone()));
+        m.insert(
+            "observed_at".into(),
+            Value::String(self.observed_at.clone()),
+        );
         m.insert("revision".into(), Value::from(self.revision));
         m.insert(
             "revocation_id".into(),
-            self.revocation_id.clone().map(Value::String).unwrap_or(Value::Null),
+            self.revocation_id
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
         m.insert(
             "revoked_at".into(),
-            self.revoked_at.clone().map(Value::String).unwrap_or(Value::Null),
+            self.revoked_at
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         );
         Value::Object(m)
     }
@@ -269,11 +289,26 @@ impl WorkflowCapabilityRevocation {
 
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
-        m.insert("revocation_id".into(), Value::String(self.revocation_id.clone()));
-        m.insert("capability_id".into(), Value::String(self.capability_id.clone()));
-        m.insert("claim_sha256".into(), Value::String(self.claim_sha256.clone()));
-        m.insert("reason_code".into(), Value::String(self.reason_code.clone()));
+        m.insert(
+            "schema_version".into(),
+            Value::String(self.schema_version.clone()),
+        );
+        m.insert(
+            "revocation_id".into(),
+            Value::String(self.revocation_id.clone()),
+        );
+        m.insert(
+            "capability_id".into(),
+            Value::String(self.capability_id.clone()),
+        );
+        m.insert(
+            "claim_sha256".into(),
+            Value::String(self.claim_sha256.clone()),
+        );
+        m.insert(
+            "reason_code".into(),
+            Value::String(self.reason_code.clone()),
+        );
         m.insert("revoked_at".into(), Value::String(self.revoked_at.clone()));
         Value::Object(m)
     }
@@ -315,7 +350,14 @@ fn mac_hex(purpose: &str, payload: &Value, key: &[u8], key_id: &str) -> WfResult
     Ok(hex_lower(&mac.finalize().into_bytes()))
 }
 
-fn verify_envelope(actual_key: &str, actual: &str, expected: &str, key_id: &str, mismatch: &'static str, invalid: &'static str) -> WfResult<()> {
+fn verify_envelope(
+    actual_key: &str,
+    actual: &str,
+    expected: &str,
+    key_id: &str,
+    mismatch: &'static str,
+    invalid: &'static str,
+) -> WfResult<()> {
     if actual_key != key_id {
         return err(mismatch);
     }
@@ -334,7 +376,11 @@ pub fn sign_authority_state(
     key_id: &str,
 ) -> WfResult<SignedAuthorityState> {
     let signature = mac_hex("authority-state", &state.to_value(), key, key_id)?;
-    Ok(SignedAuthorityState { state, key_id: key_id.to_string(), signature })
+    Ok(SignedAuthorityState {
+        state,
+        key_id: key_id.to_string(),
+        signature,
+    })
 }
 
 pub fn verify_authority_state(
@@ -344,8 +390,12 @@ pub fn verify_authority_state(
 ) -> WfResult<()> {
     let expected = sign_authority_state(signed.state.clone(), key, key_id)?.signature;
     verify_envelope(
-        &signed.key_id, &signed.signature, &expected, key_id,
-        "authority_state_key_mismatch", "authority_state_signature_invalid",
+        &signed.key_id,
+        &signed.signature,
+        &expected,
+        key_id,
+        "authority_state_key_mismatch",
+        "authority_state_signature_invalid",
     )
 }
 
@@ -355,14 +405,22 @@ pub fn sign_revocation(
     key_id: &str,
 ) -> WfResult<SignedRevocation> {
     let signature = mac_hex("revocation", &revocation.to_value(), key, key_id)?;
-    Ok(SignedRevocation { revocation, key_id: key_id.to_string(), signature })
+    Ok(SignedRevocation {
+        revocation,
+        key_id: key_id.to_string(),
+        signature,
+    })
 }
 
 pub fn verify_revocation(signed: &SignedRevocation, key: &[u8], key_id: &str) -> WfResult<()> {
     let expected = sign_revocation(signed.revocation.clone(), key, key_id)?.signature;
     verify_envelope(
-        &signed.key_id, &signed.signature, &expected, key_id,
-        "revocation_key_mismatch", "revocation_signature_invalid",
+        &signed.key_id,
+        &signed.signature,
+        &expected,
+        key_id,
+        "revocation_key_mismatch",
+        "revocation_signature_invalid",
     )
 }
 
@@ -456,11 +514,16 @@ fn string_field(name: &'static str, m: &Map<String, Value>) -> WfResult<String> 
 fn optional_string_field(name: &'static str, m: &Map<String, Value>) -> WfResult<Option<String>> {
     match require(m, name)? {
         Value::Null => Ok(None),
-        v => v.as_str().map(|s| Some(s.to_string())).ok_or(WorkflowCapabilityError(name_err(name))),
+        v => v
+            .as_str()
+            .map(|s| Some(s.to_string()))
+            .ok_or(WorkflowCapabilityError(name_err(name))),
     }
 }
 fn integer_field(name: &'static str, m: &Map<String, Value>) -> WfResult<i64> {
-    require(m, name)?.as_i64().ok_or(WorkflowCapabilityError(name_err(name)))
+    require(m, name)?
+        .as_i64()
+        .ok_or(WorkflowCapabilityError(name_err(name)))
 }
 
 fn name_err(name: &'static str) -> &'static str {
@@ -512,10 +575,8 @@ mod tests {
     const TS: &str = "2026-10-02T00:00:00.000000Z";
 
     fn state() -> WorkflowCapabilityAuthorityState {
-        WorkflowCapabilityAuthorityState::new(
-            "cap-1", &"a".repeat(64), 0, TS, 0, None, None,
-        )
-        .unwrap()
+        WorkflowCapabilityAuthorityState::new("cap-1", &"a".repeat(64), 0, TS, 0, None, None)
+            .unwrap()
     }
 
     #[test]
@@ -535,7 +596,13 @@ mod tests {
     #[test]
     fn authority_state_revocation_incomplete_rejected() {
         let res = WorkflowCapabilityAuthorityState::new(
-            "cap-1", &"a".repeat(64), 0, TS, 0, Some("rev-1".into()), None,
+            "cap-1",
+            &"a".repeat(64),
+            0,
+            TS,
+            0,
+            Some("rev-1".into()),
+            None,
         );
         assert_eq!(
             res.unwrap_err(),
@@ -545,20 +612,18 @@ mod tests {
 
     #[test]
     fn revocation_sign_verify_round_trip() {
-        let r = WorkflowCapabilityRevocation::new(
-            "rev-1", "cap-1", &"a".repeat(64), "consumed", TS,
-        )
-        .unwrap();
+        let r =
+            WorkflowCapabilityRevocation::new("rev-1", "cap-1", &"a".repeat(64), "consumed", TS)
+                .unwrap();
         let s = sign_revocation(r, &key(), KEY_ID).unwrap();
         verify_revocation(&s, &key(), KEY_ID).unwrap();
     }
 
     #[test]
     fn revocation_encode_decode_canonical() {
-        let r = WorkflowCapabilityRevocation::new(
-            "rev-1", "cap-1", &"a".repeat(64), "consumed", TS,
-        )
-        .unwrap();
+        let r =
+            WorkflowCapabilityRevocation::new("rev-1", "cap-1", &"a".repeat(64), "consumed", TS)
+                .unwrap();
         let s = sign_revocation(r, &key(), KEY_ID).unwrap();
         let enc = encode_signed_revocation(&s).unwrap();
         let back = decode_signed_revocation(&enc).unwrap();
@@ -567,9 +632,8 @@ mod tests {
 
     #[test]
     fn revocation_bad_reason_code_rejected() {
-        let res = WorkflowCapabilityRevocation::new(
-            "rev-1", "cap-1", &"a".repeat(64), "BAD CODE", TS,
-        );
+        let res =
+            WorkflowCapabilityRevocation::new("rev-1", "cap-1", &"a".repeat(64), "BAD CODE", TS);
         assert_eq!(
             res.unwrap_err(),
             WorkflowCapabilityError("invalid_reason_code")

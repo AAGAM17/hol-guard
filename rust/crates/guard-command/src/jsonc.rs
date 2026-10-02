@@ -43,7 +43,10 @@ pub fn loads_jsonc_pairs(text: &str) -> Result<JsoncPairs, JsoncError> {
 
 /// `loads_jsonc_pairs` with `deadline_check` — same periodic-check cadence as
 /// `loads_jsonc_with_deadline` during normalization, preserving object pairs.
-pub fn loads_jsonc_pairs_checked<F>(text: &str, deadline_check: &mut F) -> Result<JsoncPairs, JsoncError>
+pub fn loads_jsonc_pairs_checked<F>(
+    text: &str,
+    deadline_check: &mut F,
+) -> Result<JsoncPairs, JsoncError>
 where
     F: FnMut() -> Result<(), JsoncError>,
 {
@@ -62,9 +65,7 @@ pub enum JsoncError {
 impl std::fmt::Display for JsoncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            JsoncError::Decode(message) | JsoncError::Deadline(message) => {
-                f.write_str(message)
-            }
+            JsoncError::Decode(message) | JsoncError::Deadline(message) => f.write_str(message),
         }
     }
 }
@@ -89,7 +90,6 @@ pub fn normalize_jsonc(text: &str) -> Result<String, JsoncError> {
     Ok(strip_trailing_commas(&strip_comments(text)?))
 }
 
-
 fn normalize_jsonc_checked<F>(text: &str, deadline_check: &mut F) -> Result<String, JsoncError>
 where
     F: FnMut() -> Result<(), JsoncError>,
@@ -97,7 +97,6 @@ where
     let stripped = strip_comments_checked(text, deadline_check)?;
     strip_trailing_commas_checked(&stripped, deadline_check)
 }
-
 
 /// `_strip_comments` (:27-81).
 fn strip_comments(text: &str) -> Result<String, JsoncError> {
@@ -272,7 +271,10 @@ fn python_isspace(character: char) -> bool {
 /// trailing commas are already whitespace.
 fn parse_pairs(text: &str) -> Result<JsoncPairs, JsoncError> {
     let chars: Vec<char> = text.chars().collect();
-    let mut parser = PairParser { chars: &chars, index: 0 };
+    let mut parser = PairParser {
+        chars: &chars,
+        index: 0,
+    };
     parser.skip_ws();
     let value = parser.value()?;
     parser.skip_ws();

@@ -24,14 +24,12 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use guard_contracts::{
-    decode_native_capabilities, decode_runtime_manifest, NativeMode,
-    NativeRuntimeCapabilitiesV1, NativeRuntimeManifestV1, NativeRuntimeStatusV1,
-    RuntimeIdentityV1,
+    decode_native_capabilities, decode_runtime_manifest, NativeMode, NativeRuntimeCapabilitiesV1,
+    NativeRuntimeManifestV1, NativeRuntimeStatusV1, RuntimeIdentityV1,
 };
 use guard_secure_fs::{read_bounded, SecureReadError};
 
 use crate::hook_process_spawn::{isolated_hook_environment, run_isolated_hook_process};
-
 
 /// `_NATIVE_MANIFEST_NAME` (`native_runtime.py:57`).
 pub const NATIVE_MANIFEST_NAME: &str = "runtime-manifest.json";
@@ -97,8 +95,7 @@ pub fn manifest_for_bundled_identity(
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::symlink_metadata(&manifest_path)
-            .map_err(|e| map_err(&e))?;
+        let meta = std::fs::symlink_metadata(&manifest_path).map_err(|e| map_err(&e))?;
         let mode = meta.mode();
         if meta.file_type().is_symlink() || !meta.file_type().is_file() {
             return Err(ManifestReject::Invalid);
@@ -171,8 +168,12 @@ fn map_err(e: &std::io::Error) -> ManifestReject {
 /// resolving `__file__` is a Python-packaging detail that stays host-side.
 pub fn is_bundled_candidate(candidate: &Path, bundled: &Path) -> bool {
     match (
-        candidate.canonicalize().or_else(|_| Ok::<PathBuf, std::io::Error>(expanduser(candidate))),
-        bundled.canonicalize().or_else(|_| Ok::<PathBuf, std::io::Error>(bundled.to_path_buf())),
+        candidate
+            .canonicalize()
+            .or_else(|_| Ok::<PathBuf, std::io::Error>(expanduser(candidate))),
+        bundled
+            .canonicalize()
+            .or_else(|_| Ok::<PathBuf, std::io::Error>(bundled.to_path_buf())),
     ) {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
@@ -210,10 +211,7 @@ pub fn restore_bundled_runtime_execute_bit(path: &Path, bundled: &Path) {
     if meta.uid() != 0 && meta.uid() != uid {
         return;
     }
-    let _ = std::fs::set_permissions(
-        path,
-        std::fs::Permissions::from_mode(mode | 0o111),
-    );
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode | 0o111));
 }
 #[cfg(not(unix))]
 pub fn restore_bundled_runtime_execute_bit(_path: &Path, _bundled: &Path) {}
@@ -230,7 +228,12 @@ pub fn windows_native_dll_directories(base_prefix: Option<&Path>, bundled: &Path
         .or_else(|| std::env::var("WINDIR").ok());
     if let Some(sr) = system_root {
         if !sr.is_empty() {
-            roots.push(Path::new(&sr).join("System32").to_string_lossy().into_owned());
+            roots.push(
+                Path::new(&sr)
+                    .join("System32")
+                    .to_string_lossy()
+                    .into_owned(),
+            );
         }
     }
     if let Some(bp) = base_prefix {
@@ -450,8 +453,7 @@ pub fn capabilities_for_identity(
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .and_then(|payload| decode_native_capabilities(&payload));
     if capabilities.is_none() {
-        CapabilitiesProbe::lock(&probe.retry_after)
-            .insert(key, now + CAPABILITIES_RETRY_BACKOFF);
+        CapabilitiesProbe::lock(&probe.retry_after).insert(key, now + CAPABILITIES_RETRY_BACKOFF);
         return Ok(None);
     }
     let capabilities = capabilities.unwrap();
@@ -514,27 +516,25 @@ pub fn native_runtime_status(
         } else {
             None
         };
-        let capabilities = match capabilities_for_identity(
-            identity,
-            deadline,
-            base_env,
-            base_prefix,
-        ) {
-            Ok(c) => c,
-            // Probe gave a permanent reject (protocol mismatch / missing
-            // resident feature): still walk to the next candidate — this
-            // identity is not compatible.
-            Err(_) => continue,
-        };
+        let capabilities =
+            match capabilities_for_identity(identity, deadline, base_env, base_prefix) {
+                Ok(c) => c,
+                // Probe gave a permanent reject (protocol mismatch / missing
+                // resident feature): still walk to the next candidate — this
+                // identity is not compatible.
+                Err(_) => continue,
+            };
         let Some(capabilities) = capabilities else {
             continue;
         };
         // Compatibility is transport-level (protocol + resident feature).
         // Package-version equality is advisory: shadow/force downgrade it to
         // a non-blocking `native_version_mismatch`; auto still enforces.
-        let version_compatible =
-            package_version.map(|v| v == capabilities.runtime_version).unwrap_or(false);
-        let compatible = version_compatible || matches!(mode, NativeMode::Shadow | NativeMode::Force);
+        let version_compatible = package_version
+            .map(|v| v == capabilities.runtime_version)
+            .unwrap_or(false);
+        let compatible =
+            version_compatible || matches!(mode, NativeMode::Shadow | NativeMode::Force);
         return NativeRuntimeStatusV1 {
             mode,
             available: true,
@@ -571,7 +571,6 @@ pub fn native_runtime_status(
 #[allow(unused_imports)]
 use isolated_hook_environment as _isolated_hook_environment;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -582,12 +581,7 @@ mod tests {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     fn tmp_dir(tag: &str) -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let p = std::env::temp_dir().join(format!(
-            "nra-{}-{}-{}",
-            std::process::id(),
-            tag,
-            n
-        ));
+        let p = std::env::temp_dir().join(format!("nra-{}-{}-{}", std::process::id(), tag, n));
         fs::create_dir_all(&p).expect("create tmp dir");
         // `/var` is a symlink on macOS; read_bounded walks every component, so
         // hand the caller the canonical (symlink-free) path.
@@ -732,7 +726,11 @@ mod tests {
         let dir = tmp_dir("writable_manifest");
         let bin = write(&dir, "hol-guard-runtime", b"binary");
         let id = identity_of(&bin);
-        let mp = write_readonly(&dir, NATIVE_MANIFEST_NAME, valid_manifest(id.size, &id.sha256).to_string().as_bytes());
+        let mp = write_readonly(
+            &dir,
+            NATIVE_MANIFEST_NAME,
+            valid_manifest(id.size, &id.sha256).to_string().as_bytes(),
+        );
         let mut perm = fs::metadata(&mp).unwrap().permissions();
         perm.set_mode(0o666);
         fs::set_permissions(&mp, perm).unwrap();
@@ -762,8 +760,14 @@ mod tests {
     fn reject_reason_strings_stable() {
         assert_eq!(ManifestReject::Missing.reason(), "native_manifest_missing");
         assert_eq!(ManifestReject::Invalid.reason(), "native_manifest_invalid");
-        assert_eq!(ManifestReject::RuntimeMismatch.reason(), "native_manifest_runtime_mismatch");
-        assert_eq!(ManifestReject::VersionMismatch.reason(), "native_manifest_version_mismatch");
+        assert_eq!(
+            ManifestReject::RuntimeMismatch.reason(),
+            "native_manifest_runtime_mismatch"
+        );
+        assert_eq!(
+            ManifestReject::VersionMismatch.reason(),
+            "native_manifest_version_mismatch"
+        );
     }
 
     // ─── capabilities probe + status walker ─────────────────────────────
@@ -802,14 +806,12 @@ mod tests {
         });
         let bin = write_fake_runtime(&dir, &caps.to_string());
         let id = identity_of(&bin);
-        let first =
-            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe");
+        let first = capabilities_for_identity(&id, None, &empty_env(), None).expect("probe");
         let caps = first.expect("capabilities");
         assert_eq!(caps.protocol_version, 1);
         assert!(caps.features.iter().any(|f| f == "resident-protocol-v2"));
         // Second call hits the cache: no spawn, same object.
-        let second =
-            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe2");
+        let second = capabilities_for_identity(&id, None, &empty_env(), None).expect("probe2");
         assert_eq!(second, Some(caps));
     }
 
@@ -828,8 +830,7 @@ mod tests {
         });
         let bin = write_fake_runtime(&dir, &caps.to_string());
         let id = identity_of(&bin);
-        let err =
-            capabilities_for_identity(&id, None, &empty_env(), None).unwrap_err();
+        let err = capabilities_for_identity(&id, None, &empty_env(), None).unwrap_err();
         assert_eq!(err, "native_capabilities_protocol_version_mismatch");
     }
 
@@ -848,8 +849,7 @@ mod tests {
         });
         let bin = write_fake_runtime(&dir, &caps.to_string());
         let id = identity_of(&bin);
-        let err =
-            capabilities_for_identity(&id, None, &empty_env(), None).unwrap_err();
+        let err = capabilities_for_identity(&id, None, &empty_env(), None).unwrap_err();
         assert_eq!(err, "native_capabilities_missing_resident_protocol");
     }
 
@@ -866,13 +866,11 @@ mod tests {
         perm.set_mode(0o555);
         fs::set_permissions(&bin, perm).unwrap();
         let id = identity_of(&bin);
-        let first =
-            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe");
+        let first = capabilities_for_identity(&id, None, &empty_env(), None).expect("probe");
         assert!(first.is_none());
         // Immediate second call is inside the retry backoff — returns None
         // without respawning.
-        let second =
-            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe2");
+        let second = capabilities_for_identity(&id, None, &empty_env(), None).expect("probe2");
         assert!(second.is_none());
     }
 

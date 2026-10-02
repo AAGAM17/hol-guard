@@ -123,7 +123,13 @@ impl OrderedStates {
             let candidate = self
                 .order
                 .iter()
-                .find(|k| !self.map.get(*k).map(|s| s.oneshot_in_flight).unwrap_or(false))
+                .find(|k| {
+                    !self
+                        .map
+                        .get(*k)
+                        .map(|s| s.oneshot_in_flight)
+                        .unwrap_or(false)
+                })
                 .cloned();
             match candidate {
                 Some(k) => {
@@ -492,7 +498,10 @@ mod tests {
         assert_eq!(public_reason("ok-reason.1", "fb"), "ok-reason.1");
         assert_eq!(public_reason("bad reason with space", "fb"), "fb");
         assert_eq!(public_reason("", "fb"), "fb");
-        assert_eq!(public_reason(&"x".repeat(200), "fb").len(), REASON_MAX_LENGTH);
+        assert_eq!(
+            public_reason(&"x".repeat(200), "fb").len(),
+            REASON_MAX_LENGTH
+        );
     }
 
     #[test]
@@ -548,8 +557,8 @@ mod tests {
             let lease = native_oneshot_lease_acquire(id, &h);
             assert!(lease.granted());
         } // drop releases both slots
-        // Acquiring set next_oneshot_allowed_at = now + 50ms; a retry inside
-        // the cooldown is denied, so wait it out like a real caller.
+          // Acquiring set next_oneshot_allowed_at = now + 50ms; a retry inside
+          // the cooldown is denied, so wait it out like a real caller.
         std::thread::sleep(std::time::Duration::from_millis(60));
         let lease2 = native_oneshot_lease_acquire(id, &h);
         assert!(lease2.granted());

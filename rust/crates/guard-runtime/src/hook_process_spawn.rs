@@ -12,7 +12,6 @@
 //! are `cfg(windows)`-gated; the unix path uses `process_group(0)` +
 //! `killpg(SIGKILL)` for containment.
 
-
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -170,7 +169,9 @@ pub fn private_hook_runtime_cwd(manifest_path: &Path) -> Result<PathBuf, String>
     {
         use std::os::unix::fs::MetadataExt;
         if (parent_meta.dev(), parent_meta.ino()) != (resolved_meta.dev(), resolved_meta.ino()) {
-            return Err("managed Codex hook runtime directory changed during validation".to_string());
+            return Err(
+                "managed Codex hook runtime directory changed during validation".to_string(),
+            );
         }
         let current_uid = nix::unistd::getuid().as_raw();
         if parent_meta.uid() != current_uid {
@@ -223,7 +224,10 @@ fn retry_quarantined() -> bool {
                 contained = false;
             }
         }
-        if contained && entry.child.try_wait().ok().flatten().is_some() && entry.readers_done.load(Ordering::SeqCst) {
+        if contained
+            && entry.child.try_wait().ok().flatten().is_some()
+            && entry.readers_done.load(Ordering::SeqCst)
+        {
             // contained: drop the handle
         } else {
             survivors.push(entry);
@@ -237,7 +241,10 @@ fn retry_quarantined() -> bool {
 
 fn quarantine_child(child: Child, readers_done: Arc<AtomicBool>) {
     let mut q = quarantine_lock();
-    q.push(Quarantined { child, readers_done });
+    q.push(Quarantined {
+        child,
+        readers_done,
+    });
     containment_failed_flag().store(true, Ordering::SeqCst);
 }
 
@@ -480,7 +487,10 @@ pub fn run_isolated_hook_process(
         if child.try_wait().ok().flatten().is_some() {
             break;
         }
-        if stop_event.as_ref().is_some_and(|e| e.load(Ordering::SeqCst)) {
+        if stop_event
+            .as_ref()
+            .is_some_and(|e| e.load(Ordering::SeqCst))
+        {
             termination_requested = true;
             containment_confirmed = kill_process_group(&mut child);
             break;
@@ -519,7 +529,9 @@ pub fn run_isolated_hook_process(
         || returncode != Some(0)
         || bound.exceeded.load(Ordering::SeqCst)
         || timed_out
-        || stop_event.as_ref().is_some_and(|e| e.load(Ordering::SeqCst));
+        || stop_event
+            .as_ref()
+            .is_some_and(|e| e.load(Ordering::SeqCst));
     if result_failed && (!termination_requested || !containment_confirmed) {
         termination_requested = true;
         containment_confirmed = kill_process_group(&mut child) && containment_confirmed;
@@ -564,7 +576,11 @@ pub fn run_isolated_hook_process(
     drop(stderr_lock);
 
     BoundedHookProcessResult {
-        returncode: if containment_confirmed { returncode } else { None },
+        returncode: if containment_confirmed {
+            returncode
+        } else {
+            None
+        },
         stdout: stdout_decoded,
         stderr: stderr_decoded,
         output_limit_exceeded: bound.exceeded.load(Ordering::SeqCst),
@@ -592,7 +608,10 @@ mod tests {
 
     fn env() -> BTreeMap<String, String> {
         let mut e = BTreeMap::new();
-        e.insert("PATH".to_string(), std::env::var("PATH").unwrap_or_default());
+        e.insert(
+            "PATH".to_string(),
+            std::env::var("PATH").unwrap_or_default(),
+        );
         e
     }
 

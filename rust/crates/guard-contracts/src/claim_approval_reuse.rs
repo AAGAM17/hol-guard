@@ -12,11 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Schema discriminator for the request.
-pub const CLAIM_APPROVAL_REUSE_REQUEST_SCHEMA: &str =
-    "guard-claim-approval-reuse-request.v1";
+pub const CLAIM_APPROVAL_REUSE_REQUEST_SCHEMA: &str = "guard-claim-approval-reuse-request.v1";
 /// Schema discriminator for the result.
-pub const CLAIM_APPROVAL_REUSE_RESULT_SCHEMA: &str =
-    "guard-claim-approval-reuse-result.v1";
+pub const CLAIM_APPROVAL_REUSE_RESULT_SCHEMA: &str = "guard-claim-approval-reuse-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const CLAIM_APPROVAL_REUSE_FEATURE: &str = "claim-approval-reuse-v1";
 

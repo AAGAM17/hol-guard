@@ -27,7 +27,9 @@ fn totp_enabled(state: &serde_json::Value) -> bool {
 }
 
 fn factor_generation(state: &serde_json::Value) -> i64 {
-    optional_int(state.get("factor_generation")).unwrap_or(0).max(0)
+    optional_int(state.get("factor_generation"))
+        .unwrap_or(0)
+        .max(0)
 }
 
 /// `_is_high_risk_action` (:1331-1333): `action=="allow" or scope=="global"`.
@@ -119,14 +121,31 @@ pub(crate) fn require_approval_decision(
     let strict = is_strict_approval_action(action, scope);
     if let Some(g) = approval_gate_grant {
         validate_grant_locked(
-            guard_home, grants, Some(g), Some("approval_decision"), strict,
-            Some(action), Some(scope), subject, session_nonce, now,
+            guard_home,
+            grants,
+            Some(g),
+            Some("approval_decision"),
+            strict,
+            Some(action),
+            Some(scope),
+            subject,
+            session_nonce,
+            now,
         )?;
         return Ok(Some(g.clone()));
     }
     verify_or_raise_locked(
-        guard_home, &mut state.clone(), grants, "approval_decision",
-        approval_gate_input, strict, Some(action), Some(scope), subject, session_nonce, now,
+        guard_home,
+        &mut state.clone(),
+        grants,
+        "approval_decision",
+        approval_gate_input,
+        strict,
+        Some(action),
+        Some(scope),
+        subject,
+        session_nonce,
+        now,
     )
     .map(Some)
 }
@@ -145,8 +164,16 @@ pub(crate) fn require_policy_write(
         return Ok(());
     }
     validate_grant_locked(
-        guard_home, grants, approval_gate_grant, None,
-        is_strict_approval_action(action, scope), None, None, None, None, now,
+        guard_home,
+        grants,
+        approval_gate_grant,
+        None,
+        is_strict_approval_action(action, scope),
+        None,
+        None,
+        None,
+        None,
+        now,
     )
 }
 
@@ -164,8 +191,16 @@ pub(crate) fn require_request_resolution(
         return Ok(());
     }
     validate_grant_locked(
-        guard_home, grants, approval_gate_grant, None,
-        is_strict_approval_action(resolution_action, resolution_scope), None, None, None, None, now,
+        guard_home,
+        grants,
+        approval_gate_grant,
+        None,
+        is_strict_approval_action(resolution_action, resolution_scope),
+        None,
+        None,
+        None,
+        None,
+        now,
     )
 }
 
@@ -179,7 +214,18 @@ pub(crate) fn require_policy_clear(
     if !enabled(&load_state(guard_home)) {
         return Ok(());
     }
-    validate_grant_locked(guard_home, grants, approval_gate_grant, Some("policy_clear"), true, None, None, None, None, now)
+    validate_grant_locked(
+        guard_home,
+        grants,
+        approval_gate_grant,
+        Some("policy_clear"),
+        true,
+        None,
+        None,
+        None,
+        None,
+        now,
+    )
 }
 
 /// `require_settings_write` (:630-637).
@@ -192,7 +238,18 @@ pub(crate) fn require_settings_write(
     if !enabled(&load_state(guard_home)) {
         return Ok(());
     }
-    validate_grant_locked(guard_home, grants, approval_gate_grant, Some("settings_write"), true, None, None, None, None, now)
+    validate_grant_locked(
+        guard_home,
+        grants,
+        approval_gate_grant,
+        Some("settings_write"),
+        true,
+        None,
+        None,
+        None,
+        None,
+        now,
+    )
 }
 
 /// `require_high_risk` (:639-677).
@@ -215,14 +272,31 @@ pub(crate) fn require_high_risk(
     }
     if let Some(g) = approval_gate_grant {
         validate_grant_locked(
-            guard_home, grants, Some(g), Some(purpose), true,
-            action, scope, subject, session_nonce, now,
+            guard_home,
+            grants,
+            Some(g),
+            Some(purpose),
+            true,
+            action,
+            scope,
+            subject,
+            session_nonce,
+            now,
         )?;
         return Ok(Some(g.clone()));
     }
     verify_or_raise_locked(
-        guard_home, &mut state.clone(), grants, purpose,
-        approval_gate_input, true, action, scope, subject, session_nonce, now,
+        guard_home,
+        &mut state.clone(),
+        grants,
+        purpose,
+        approval_gate_input,
+        true,
+        action,
+        scope,
+        subject,
+        session_nonce,
+        now,
     )
     .map(Some)
 }
@@ -246,9 +320,17 @@ pub(crate) fn require_extension_control(
         ));
     }
     verify_or_raise_locked(
-        guard_home, &mut state, grants, "extension_control_mutation",
-        approval_gate_input, true, Some(action), Some("extension-control-authority"),
-        Some(subject), Some(session_nonce), now,
+        guard_home,
+        &mut state,
+        grants,
+        "extension_control_mutation",
+        approval_gate_input,
+        true,
+        Some(action),
+        Some("extension-control-authority"),
+        Some(subject),
+        Some(session_nonce),
+        now,
     )
 }
 
@@ -264,11 +346,19 @@ pub(crate) fn consume_extension_control_grant(
 ) -> Result<(), ApprovalGateErrorV1> {
     let state = load_state(guard_home);
     grants.validate_and_consume(
-        &guard_home.to_string_lossy(), grant, epoch(Some(grant.expires_at.as_str())),
-        Some("extension_control_mutation"), true, Some(action),
-        Some("extension-control-authority"), Some(subject), Some(session_nonce),
-        factor_generation(&state), totp_enabled(&state),
-        totp_state_valid(guard_home, &state), epoch(now),
+        &guard_home.to_string_lossy(),
+        grant,
+        epoch(Some(grant.expires_at.as_str())),
+        Some("extension_control_mutation"),
+        true,
+        Some(action),
+        Some("extension-control-authority"),
+        Some(subject),
+        Some(session_nonce),
+        factor_generation(&state),
+        totp_enabled(&state),
+        totp_state_valid(guard_home, &state),
+        epoch(now),
     )
 }
 
@@ -291,9 +381,17 @@ pub(crate) fn require_local_cli_trust(
         ));
     }
     verify_or_raise_locked(
-        guard_home, &mut state, grants, "local_cli_trust_mutation",
-        approval_gate_input, true, Some(action), Some("local-cli-allowlist"),
-        Some(subject), Some(session_nonce), now,
+        guard_home,
+        &mut state,
+        grants,
+        "local_cli_trust_mutation",
+        approval_gate_input,
+        true,
+        Some(action),
+        Some("local-cli-allowlist"),
+        Some(subject),
+        Some(session_nonce),
+        now,
     )
 }
 
@@ -309,10 +407,18 @@ pub(crate) fn consume_local_cli_trust_grant(
 ) -> Result<(), ApprovalGateErrorV1> {
     let state = load_state(guard_home);
     grants.validate_and_consume(
-        &guard_home.to_string_lossy(), grant, epoch(Some(grant.expires_at.as_str())),
-        Some("local_cli_trust_mutation"), true, Some(action),
-        Some("local-cli-allowlist"), Some(subject), Some(session_nonce),
-        factor_generation(&state), totp_enabled(&state),
-        totp_state_valid(guard_home, &state), epoch(now),
+        &guard_home.to_string_lossy(),
+        grant,
+        epoch(Some(grant.expires_at.as_str())),
+        Some("local_cli_trust_mutation"),
+        true,
+        Some(action),
+        Some("local-cli-allowlist"),
+        Some(subject),
+        Some(session_nonce),
+        factor_generation(&state),
+        totp_enabled(&state),
+        totp_state_valid(guard_home, &state),
+        epoch(now),
     )
 }

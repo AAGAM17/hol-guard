@@ -132,11 +132,9 @@ mod tests {
     fn approval_reuse_op_rejects_bad_schema() {
         let mut req = request_json("review", json!("allow"), None, None);
         req["request"]["schema"] = json!("bogus");
-        let out = crate::resident_protocol::evaluate_resident_bytes(
-            req.to_string().as_bytes(),
-            None,
-        )
-        .unwrap();
+        let out =
+            crate::resident_protocol::evaluate_resident_bytes(req.to_string().as_bytes(), None)
+                .unwrap();
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(v["status"], "error");
         assert_eq!(v["code"], "native_approval_reuse_schema_mismatch");

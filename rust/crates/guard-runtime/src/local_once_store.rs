@@ -220,10 +220,7 @@ pub fn claim_local_once_approval_by_id_locked(
     // `julianday` NULL (malformed expires_at) already filtered the row; belt-
     // and-suspenders re-check keeps the port honest if the SELECT list ever
     // drifts to include a claimed/expired row.
-    if timestamp_has_expired(
-        row_value(&row, "expires_at").as_str().unwrap_or(""),
-        now,
-    ) {
+    if timestamp_has_expired(row_value(&row, "expires_at").as_str().unwrap_or(""), now) {
         return Ok(None);
     }
     let integrity_result = verify_local_once_approval(&row, integrity_key, integrity_key_id);
@@ -292,8 +289,7 @@ pub fn peek_local_once_approval_lookup_locked(
     integrity_key: Option<&[u8]>,
     integrity_key_id: Option<&str>,
 ) -> rusqlite::Result<(Option<Value>, Option<Value>)> {
-    let now = guard_contracts::canonical_utc_timestamp(now)
-        .unwrap_or_else(|| now.to_owned());
+    let now = guard_contracts::canonical_utc_timestamp(now).unwrap_or_else(|| now.to_owned());
     let artist = artifact_id.map(str::to_owned);
     let artist_hash = artifact_hash.map(str::to_owned);
     let ws_key = workspace.and_then(workspace_policy_key);
@@ -334,14 +330,27 @@ pub fn peek_local_once_approval_lookup_locked(
         if val.is_none() {
             continue;
         }
-        let row = run_query(col, val, if publisher.is_some() { Some(" and publisher = ?4") } else { None })?;
+        let row = run_query(
+            col,
+            val,
+            if publisher.is_some() {
+                Some(" and publisher = ?4")
+            } else {
+                None
+            },
+        )?;
         let Some(row) = row else { continue };
-        let integrity_result =
-            verify_local_once_approval(&row, integrity_key, integrity_key_id);
+        let integrity_result = verify_local_once_approval(&row, integrity_key, integrity_key_id);
         if integrity_result.status == "valid" {
             return Ok((Some(local_once_approval_payload(&row)), None));
         }
-        return Ok((None, Some(local_once_approval_integrity_failure(&row, &integrity_result))));
+        return Ok((
+            None,
+            Some(local_once_approval_integrity_failure(
+                &row,
+                &integrity_result,
+            )),
+        ));
     }
     Ok((None, None))
 }
@@ -397,7 +406,9 @@ pub fn claim_local_once_approval_locked(
         integrity_key,
         integrity_key_id,
     )?;
-    let Some(decision) = decision else { return Ok(None) };
+    let Some(decision) = decision else {
+        return Ok(None);
+    };
     if let Some(decision_artifact_id) = decision.get("artifact_id").and_then(Value::as_str) {
         if local_once_approval_is_reusable(decision_artifact_id) {
             return Ok(Some(decision));
@@ -405,7 +416,10 @@ pub fn claim_local_once_approval_locked(
     }
     claim_local_once_approval_by_id_locked(
         connection,
-        decision.get("approval_id").and_then(Value::as_str).unwrap_or(""),
+        decision
+            .get("approval_id")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
         now,
         None,
         integrity_key,
@@ -440,18 +454,27 @@ mod tests {
             let gs = |k: &str| -> Option<String> {
                 row.get(k).and_then(|v| v.as_str().map(str::to_owned))
             };
-            let gi = |k: &str| -> Option<i64> {
-                row.get(k).and_then(|v| v.as_i64())
-            };
+            let gi = |k: &str| -> Option<i64> { row.get(k).and_then(|v| v.as_i64()) };
             conn.execute(
                 "insert into guard_local_once_approvals values
                  (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
                 params![
-                    gs("approval_id"), gs("request_id"), gs("harness"), gs("artifact_id"),
-                    gs("artifact_hash"), gs("workspace"), gs("publisher"), gs("action"),
-                    gs("created_at"), gs("expires_at"), gs("claimed_at"),
-                    gi("integrity_version"), gs("payload_hash"), gs("payload_mac"),
-                    gs("integrity_key_id"), gs("signed_at"),
+                    gs("approval_id"),
+                    gs("request_id"),
+                    gs("harness"),
+                    gs("artifact_id"),
+                    gs("artifact_hash"),
+                    gs("workspace"),
+                    gs("publisher"),
+                    gs("action"),
+                    gs("created_at"),
+                    gs("expires_at"),
+                    gs("claimed_at"),
+                    gi("integrity_version"),
+                    gs("payload_hash"),
+                    gs("payload_mac"),
+                    gs("integrity_key_id"),
+                    gs("signed_at"),
                 ],
             )
             .unwrap();
@@ -471,9 +494,16 @@ mod tests {
 
         // a-1: valid unclaimed → decision + consume.
         let decision = claim_local_once_approval_by_id_locked(
-            &conn, "a-1", now, None, Some(&key), Some(key_id), true)
-            .unwrap()
-            .expect("a-1 claim");
+            &conn,
+            "a-1",
+            now,
+            None,
+            Some(&key),
+            Some(key_id),
+            true,
+        )
+        .unwrap()
+        .expect("a-1 claim");
         assert_eq!(decision["action"].as_str().unwrap(), "allow");
         assert_eq!(decision["approval_id"].as_str().unwrap(), "a-1");
         assert_eq!(decision["source"].as_str().unwrap(), "approval-gate-once");
@@ -490,12 +520,28 @@ mod tests {
 
         // a-2: expired (julianday filter) → None.
         assert!(claim_local_once_approval_by_id_locked(
-            &conn, "a-2", now, None, Some(&key), Some(key_id), true)
-            .unwrap().is_none());
+            &conn,
+            "a-2",
+            now,
+            None,
+            Some(&key),
+            Some(key_id),
+            true
+        )
+        .unwrap()
+        .is_none());
         // a-3: already claimed → None.
         assert!(claim_local_once_approval_by_id_locked(
-            &conn, "a-3", now, None, Some(&key), Some(key_id), true)
-            .unwrap().is_none());
+            &conn,
+            "a-3",
+            now,
+            None,
+            Some(&key),
+            Some(key_id),
+            true
+        )
+        .unwrap()
+        .is_none());
     }
 
     /// `expected_decision` gate: matching → claim; any of the 15 identity
@@ -510,12 +556,27 @@ mod tests {
         // Peek (consume=false) to obtain the decision shape, then claim-by-id
         // with it as expected_decision.
         let peek = claim_local_once_approval_by_id_locked(
-            &conn, "a-1", now, None, Some(&key), Some(key_id), false)
-            .unwrap().expect("peek");
+            &conn,
+            "a-1",
+            now,
+            None,
+            Some(&key),
+            Some(key_id),
+            false,
+        )
+        .unwrap()
+        .expect("peek");
         // matching expected → claim succeeds.
         let claimed = claim_local_once_approval_by_id_locked(
-            &conn, "a-1", now, Some(&peek), Some(&key), Some(key_id), true)
-            .unwrap();
+            &conn,
+            "a-1",
+            now,
+            Some(&peek),
+            Some(&key),
+            Some(key_id),
+            true,
+        )
+        .unwrap();
         assert!(claimed.is_some());
 
         // Re-seed a-1 (unclaim) and test a mismatching expected action → None.
@@ -523,8 +584,16 @@ mod tests {
         let mut bad = peek.clone();
         bad["action"] = Value::String("block".into());
         assert!(claim_local_once_approval_by_id_locked(
-            &conn, "a-1", now, Some(&bad), Some(&key), Some(key_id), true)
-            .unwrap().is_none());
+            &conn,
+            "a-1",
+            now,
+            Some(&bad),
+            Some(&key),
+            Some(key_id),
+            true
+        )
+        .unwrap()
+        .is_none());
     }
 
     /// Wrong integrity key → None (verify fails before consume).
@@ -535,11 +604,21 @@ mod tests {
         let key_id = seed["key_id"].as_str().unwrap();
         let now = seed["now"].as_str().unwrap();
         assert!(claim_local_once_approval_by_id_locked(
-            &conn, "a-1", now, None, Some(&wrong), Some(key_id), true)
-            .unwrap().is_none());
+            &conn,
+            "a-1",
+            now,
+            None,
+            Some(&wrong),
+            Some(key_id),
+            true
+        )
+        .unwrap()
+        .is_none());
         // Missing key → None.
-        assert!(claim_local_once_approval_by_id_locked(
-            &conn, "a-1", now, None, None, None, true)
-            .unwrap().is_none());
+        assert!(
+            claim_local_once_approval_by_id_locked(&conn, "a-1", now, None, None, None, true)
+                .unwrap()
+                .is_none()
+        );
     }
 }

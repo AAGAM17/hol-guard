@@ -8,7 +8,6 @@ use regex::Regex;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
-
 static VERSION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?:[~^])?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$").unwrap());
 
@@ -148,7 +147,11 @@ pub fn build_typescript_launch_evidence(
     }
 
     let mut reasons: Vec<String> = Vec::new();
-    require(inputs.manager_name == "npx", "manager_mismatch", &mut reasons);
+    require(
+        inputs.manager_name == "npx",
+        "manager_mismatch",
+        &mut reasons,
+    );
     require(
         inputs.local_only_requested,
         "remote_install_not_disabled",
@@ -199,7 +202,11 @@ pub fn build_typescript_launch_evidence(
         &mut reasons,
     );
     require(manifest_source_ok, "manifest_source_drift", &mut reasons);
-    require(manifest_identity_ok, "manifest_identity_drift", &mut reasons);
+    require(
+        manifest_identity_ok,
+        "manifest_identity_drift",
+        &mut reasons,
+    );
     require(
         locked_version.is_some(),
         "lock_dependency_missing",
@@ -395,11 +402,7 @@ fn manifest_typescript_version(
 ) -> (Option<String>, bool, bool) {
     let mut identity_ok = paths.len() == hashes.len();
     for (raw_path, expected_hash) in paths.iter().zip(hashes.iter()) {
-        if Path::new(raw_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            != Some("package.json")
-        {
+        if Path::new(raw_path).file_name().and_then(|n| n.to_str()) != Some("package.json") {
             continue;
         }
         let (payload, observed_hash) = read_json(Path::new(raw_path));
@@ -420,9 +423,7 @@ fn manifest_typescript_version(
                 let normalized = value.trim();
                 if !normalized.is_empty() {
                     let lower = normalized.to_lowercase();
-                    let source_ok = !UNSAFE_SOURCE_PREFIXES
-                        .iter()
-                        .any(|p| lower.starts_with(p));
+                    let source_ok = !UNSAFE_SOURCE_PREFIXES.iter().any(|p| lower.starts_with(p));
                     return (Some(normalized.to_owned()), source_ok, identity_ok);
                 }
             }
@@ -432,17 +433,10 @@ fn manifest_typescript_version(
 }
 
 /// `_locked_typescript_version` (:203-226).
-fn locked_typescript_version(
-    paths: &[String],
-    hashes: &[String],
-) -> (Option<String>, bool, bool) {
+fn locked_typescript_version(paths: &[String], hashes: &[String]) -> (Option<String>, bool, bool) {
     let mut identity_ok = paths.len() == hashes.len();
     for (raw_path, expected_hash) in paths.iter().zip(hashes.iter()) {
-        if Path::new(raw_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            != Some("package-lock.json")
-        {
+        if Path::new(raw_path).file_name().and_then(|n| n.to_str()) != Some("package-lock.json") {
             continue;
         }
         let (payload, observed_hash) = read_json(Path::new(raw_path));
@@ -564,21 +558,56 @@ mod tests {
 
     #[test]
     fn version_spec_caret_matches_major() {
-        assert!(version_spec_matches(Some("^5.4.0"), Some("5.4.0"), &VERSION_RE, false));
-        assert!(version_spec_matches(Some("^5.4.0"), Some("5.7.1"), &VERSION_RE, false));
-        assert!(!version_spec_matches(Some("^5.4.0"), Some("6.0.0"), &VERSION_RE, false));
+        assert!(version_spec_matches(
+            Some("^5.4.0"),
+            Some("5.4.0"),
+            &VERSION_RE,
+            false
+        ));
+        assert!(version_spec_matches(
+            Some("^5.4.0"),
+            Some("5.7.1"),
+            &VERSION_RE,
+            false
+        ));
+        assert!(!version_spec_matches(
+            Some("^5.4.0"),
+            Some("6.0.0"),
+            &VERSION_RE,
+            false
+        ));
     }
 
     #[test]
     fn version_spec_tilde_pins_minor() {
-        assert!(version_spec_matches(Some("~5.4.0"), Some("5.4.9"), &VERSION_RE, false));
-        assert!(!version_spec_matches(Some("~5.4.0"), Some("5.5.0"), &VERSION_RE, false));
+        assert!(version_spec_matches(
+            Some("~5.4.0"),
+            Some("5.4.9"),
+            &VERSION_RE,
+            false
+        ));
+        assert!(!version_spec_matches(
+            Some("~5.4.0"),
+            Some("5.5.0"),
+            &VERSION_RE,
+            false
+        ));
     }
 
     #[test]
     fn version_spec_exact() {
-        assert!(version_spec_matches(Some("5.4.0"), Some("5.4.0"), &VERSION_RE, false));
-        assert!(!version_spec_matches(Some("5.4.0"), Some("5.4.1"), &VERSION_RE, false));
+        assert!(version_spec_matches(
+            Some("5.4.0"),
+            Some("5.4.0"),
+            &VERSION_RE,
+            false
+        ));
+        assert!(!version_spec_matches(
+            Some("5.4.0"),
+            Some("5.4.1"),
+            &VERSION_RE,
+            false
+        ));
     }
 
     #[test]

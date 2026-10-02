@@ -100,7 +100,11 @@ impl CanonicalCommand {
             &self.dialect,
             &self.transport,
             &self.wrapper_chain,
-            &self.segments.iter().map(|s| s.identity_segment()).collect::<Vec<_>>(),
+            &self
+                .segments
+                .iter()
+                .map(|s| s.identity_segment())
+                .collect::<Vec<_>>(),
             &self.redirects,
             &self.embedded_commands,
         )
@@ -167,7 +171,10 @@ pub fn parse_shell_command(
 
     let (normalized_text, wrapper_chain): (String, Vec<String>) = if normalize_wrappers {
         let normalization = normalize_transparent_shell_command(&raw_text, cwd, home_dir);
-        (normalization.normalized_command, normalization.wrapper_chain)
+        (
+            normalization.normalized_command,
+            normalization.wrapper_chain,
+        )
     } else {
         (raw_text.clone(), Vec::new())
     };
@@ -231,11 +238,7 @@ pub fn parse_shell_command(
             }
             -1
         };
-        let mut start = find_from(
-            &normalized_chars,
-            segment_text,
-            cursor.max(*source_offset),
-        );
+        let mut start = find_from(&normalized_chars, segment_text, cursor.max(*source_offset));
         if start < 0 {
             start = find_from(&normalized_chars, segment_text, 0);
         }
@@ -247,11 +250,8 @@ pub fn parse_shell_command(
         let seg_chars = segment_text.chars().count();
         let end = (start + seg_chars).min(normalized_chars.len());
         cursor = end;
-        let command_tokens = shell_tokens_without_redirects(
-            segment_text,
-            start,
-            &command_redirects,
-        );
+        let command_tokens =
+            shell_tokens_without_redirects(segment_text, start, &command_redirects);
         let (environment_names, executable_index, wrappers) = leading_environment(&command_tokens);
         for wrapper in &wrappers {
             if !segment_wrappers.contains(wrapper) {
@@ -283,13 +283,8 @@ pub fn parse_shell_command(
         });
     }
 
-    let (embedded_commands, embedded_segments) = embedded_execution(
-        &normalized_text,
-        &heredocs,
-        &segments,
-        cwd,
-        home_dir,
-    );
+    let (embedded_commands, embedded_segments) =
+        embedded_execution(&normalized_text, &heredocs, &segments, cwd, home_dir);
     segments.extend(embedded_segments);
     if segments.len() > MAX_COMMAND_SEGMENTS
         || segments.iter().map(|s| s.tokens.len()).sum::<usize>() > MAX_COMMAND_TOKENS
@@ -364,7 +359,12 @@ fn execution_segment_texts(
                 part_offset = part_cursor as isize;
             }
             let part_offset = part_offset as usize;
-            segments.push((execution_context.clone(), index, stripped.to_owned(), part_offset));
+            segments.push((
+                execution_context.clone(),
+                index,
+                stripped.to_owned(),
+                part_offset,
+            ));
             part_cursor = part_offset + stripped.chars().count();
         }
     }
@@ -381,10 +381,7 @@ fn embedded_execution(
 ) -> (Vec<EmbeddedCommand>, Vec<CommandSegment>) {
     let mut embedded: Vec<EmbeddedCommand> = Vec::new();
     let mut segments: Vec<CommandSegment> = Vec::new();
-    let excluded: Vec<(usize, usize)> = heredocs
-        .iter()
-        .map(|h| (h.body_start, h.end))
-        .collect();
+    let excluded: Vec<(usize, usize)> = heredocs.iter().map(|h| (h.body_start, h.end)).collect();
     append_substitution_execution(
         command,
         0,

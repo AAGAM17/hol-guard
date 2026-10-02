@@ -20,13 +20,13 @@ use serde_json::Value;
 
 use crate::approval_gate_grants::{ApprovalGateErrorV1, ApprovalGateGrantV1, ApprovalGateGrants};
 use crate::approval_gate_state::{
-    constant_time_eq, cooldown_active, enabled, epoch, iso_from_epoch, is_future, load_state,
+    constant_time_eq, cooldown_active, enabled, epoch, is_future, iso_from_epoch, load_state,
     optional_bool, optional_int, optional_string, reset_failed_attempts, verifier, verify_password,
     write_state, ApprovalGatePublicConfig,
 };
 use crate::approval_gate_verify::{
-    invalidate_active_grants, input_from_mapping,
-    recent_totp_satisfied_locked, rotate_authentication_state, ApprovalGateInputV1,
+    input_from_mapping, invalidate_active_grants, recent_totp_satisfied_locked,
+    rotate_authentication_state, ApprovalGateInputV1,
 };
 use crate::encrypted_secret_store::random_bytes;
 use crate::totp::APPROVAL_GATE_HASH_ITERATIONS;
@@ -44,7 +44,9 @@ fn totp_enabled(state: &Value) -> bool {
 }
 
 fn factor_generation(state: &Value) -> i64 {
-    optional_int(state.get("factor_generation")).unwrap_or(0).max(0)
+    optional_int(state.get("factor_generation"))
+        .unwrap_or(0)
+        .max(0)
 }
 
 fn cooldown_seconds_of(state: &Value) -> i64 {
@@ -90,7 +92,10 @@ fn b64_std_encode(b: &[u8]) -> String {
 }
 
 /// `_require_password_confirmation` (:1341-1347) — constant-time match.
-fn require_password_confirmation(password: &str, confirmation: Option<&str>) -> Result<(), ApprovalGateErrorV1> {
+fn require_password_confirmation(
+    password: &str,
+    confirmation: Option<&str>,
+) -> Result<(), ApprovalGateErrorV1> {
     match confirmation {
         Some(c) if constant_time_eq(password.as_bytes(), c.as_bytes()) => Ok(()),
         _ => Err(err(
@@ -189,7 +194,10 @@ pub(crate) fn next_settings_state(
     // Python: input_from_mapping({"approval_gate": payload})
     let wrapped = serde_json::json!({ "approval_gate": payload });
     let gate_input = input_from_mapping(Some(&wrapped)).unwrap_or_default();
-    let requested_enabled = optional_bool(payload.get("enabled"), state.get("enabled").and_then(|v| v.as_bool()));
+    let requested_enabled = optional_bool(
+        payload.get("enabled"),
+        state.get("enabled").and_then(|v| v.as_bool()),
+    );
     let mut next_state = state.clone();
     if gate_input.revoke_cooldown {
         if let Some(o) = next_state.as_object_mut() {
@@ -253,7 +261,10 @@ pub(crate) fn next_settings_state(
             .unwrap()
             .insert("fail_closed".into(), Value::Bool(fc));
     }
-    if let Some(sad) = payload.get("strict_all_decisions").and_then(|v| v.as_bool()) {
+    if let Some(sad) = payload
+        .get("strict_all_decisions")
+        .and_then(|v| v.as_bool())
+    {
         next_state
             .as_object_mut()
             .unwrap()
@@ -274,8 +285,13 @@ pub(crate) fn update_settings(
     let previous_generation = factor_generation(&load_state(guard_home));
     let next_state = next_settings_state(guard_home, grants, payload, approval_gate_grant, now)?;
     if let Some(ns) = next_state {
-        write_state(guard_home, &ns, now)
-            .map_err(|_| err("approval_gate_state_io", "Could not persist approval gate state.", 500))?;
+        write_state(guard_home, &ns, now).map_err(|_| {
+            err(
+                "approval_gate_state_io",
+                "Could not persist approval gate state.",
+                500,
+            )
+        })?;
         if factor_generation(&ns) != previous_generation {
             invalidate_active_grants(grants, guard_home);
         }
@@ -304,8 +320,13 @@ pub(crate) fn revoke_cooldown(
     if let Some(o) = state.as_object_mut() {
         o.remove("cooldown_expires_at");
     }
-    write_state(guard_home, &state, now)
-        .map_err(|_| err("approval_gate_state_io", "Could not persist approval gate state.", 500))?;
+    write_state(guard_home, &state, now).map_err(|_| {
+        err(
+            "approval_gate_state_io",
+            "Could not persist approval gate state.",
+            500,
+        )
+    })?;
     Ok(public_config_locked(guard_home, now))
 }
 
@@ -365,8 +386,13 @@ pub(crate) fn unlock_cooldown_locked(
         .as_object_mut()
         .unwrap()
         .insert("cooldown_expires_at".into(), Value::String(expires));
-    write_state(guard_home, &state, now)
-        .map_err(|_| err("approval_gate_state_io", "Could not persist approval gate state.", 500))?;
+    write_state(guard_home, &state, now).map_err(|_| {
+        err(
+            "approval_gate_state_io",
+            "Could not persist approval gate state.",
+            500,
+        )
+    })?;
     Ok(public_config_locked(guard_home, now))
 }
 
@@ -408,10 +434,13 @@ mod tests {
         let grants = ApprovalGateGrants::new();
         // No password -> required error.
         let err = update_settings(
-            &h, &grants,
+            &h,
+            &grants,
             Some(&json!({"enabled": true})),
-            None, Some(NOW),
-        ).unwrap_err();
+            None,
+            Some(NOW),
+        )
+        .unwrap_err();
         assert_eq!(err.code, "approval_gate_password_required");
         // Mismatched confirm -> mismatch.
         let err = update_settings(
@@ -434,7 +463,9 @@ mod tests {
     fn public_config_reflects_state() {
         let h = home("pc");
         let mut st = default_state();
-        st.as_object_mut().unwrap().insert("enabled".into(), json!(true));
+        st.as_object_mut()
+            .unwrap()
+            .insert("enabled".into(), json!(true));
         write_state(&h, &st, Some(NOW)).unwrap();
         let cfg = public_config_locked(&h, Some(NOW));
         assert!(cfg.enabled);
@@ -454,13 +485,15 @@ mod tests {
             None, Some(NOW),
         ).unwrap();
         let cfg = unlock_cooldown_locked(
-            &h, 900,
+            &h,
+            900,
             Some(&crate::approval_gate_verify::ApprovalGateInputV1 {
                 password: Some("correct horse battery".into()),
                 ..Default::default()
             }),
             Some(NOW),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(cfg.cooldown_expires_at.is_some());
         assert!(cfg.cooldown_active);
         let _ = std::fs::remove_dir_all(&h);
@@ -470,8 +503,13 @@ mod tests {
     fn revoke_cooldown_clears_expiry() {
         let h = home("rc");
         let mut st = default_state();
-        st.as_object_mut().unwrap().insert("enabled".into(), json!(true));
-        st.as_object_mut().unwrap().insert("cooldown_expires_at".into(), json!("2030-01-01T00:00:00+00:00"));
+        st.as_object_mut()
+            .unwrap()
+            .insert("enabled".into(), json!(true));
+        st.as_object_mut().unwrap().insert(
+            "cooldown_expires_at".into(),
+            json!("2030-01-01T00:00:00+00:00"),
+        );
         write_state(&h, &st, Some(NOW)).unwrap();
         let cfg = revoke_cooldown(&h, Some(NOW)).unwrap();
         assert!(cfg.cooldown_expires_at.is_none());
@@ -484,7 +522,7 @@ mod tests {
     fn non_dict_payload_returns_none() {
         let h = home("nd");
         let grants = ApprovalGateGrants::new();
-        let out = next_settings_state(&h, &grants, Some(&json!([1,2])), None, Some(NOW)).unwrap();
+        let out = next_settings_state(&h, &grants, Some(&json!([1, 2])), None, Some(NOW)).unwrap();
         assert!(out.is_none());
         let _ = std::fs::remove_dir_all(&h);
     }

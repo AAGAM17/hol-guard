@@ -16,26 +16,23 @@
 
 use std::path::PathBuf;
 
-use guard_command::{
-    canonical_command::CanonicalCommand,
-    command_shell_read_factors::shell_read_floor_factors,
-    github_workflow_authorization::GitHubWorkflowAuthorizationV1,
-    native_command_catalog::packaged_command_catalog, parse_shell_command,
-    CommandModelRequestV1, CanonicalCommandV1,
-};
+use super::context_digest_json::write_canonical_json_with_limit;
 use guard_command::extension_control::{
-    ControlLayerKind, ControlState, ControlTarget, ControlTargetKind,
-    ExtensionControl, ExtensionControlLayer,
+    ControlLayerKind, ControlState, ControlTarget, ControlTargetKind, ExtensionControl,
+    ExtensionControlLayer,
+};
+use guard_command::{
+    canonical_command::CanonicalCommand, command_shell_read_factors::shell_read_floor_factors,
+    github_workflow_authorization::GitHubWorkflowAuthorizationV1,
+    native_command_catalog::packaged_command_catalog, parse_shell_command, CanonicalCommandV1,
+    CommandModelRequestV1,
 };
 use guard_contracts::{
     CommandEffectRequestV1, CommandEffectResultV1, NativeCommandControlBindingV1,
-    COMMAND_EFFECT_REQUEST_SCHEMA,
-    COMMAND_EFFECT_RESULT_SCHEMA,
+    COMMAND_EFFECT_REQUEST_SCHEMA, COMMAND_EFFECT_RESULT_SCHEMA,
 };
 use guard_policy_snapshot::digest_bytes;
 use serde::Deserialize;
-use super::context_digest_json::write_canonical_json_with_limit;
-
 
 fn request_digest(request: &CommandEffectRequestV1) -> Result<String, &'static str> {
     let material = serde_json::to_value(request).map_err(|_| "native_command_effect_invalid")?;
@@ -64,16 +61,21 @@ struct WireControlLayer {
     controls: Vec<WireControl>,
 }
 
-fn control_layers_from_value(value: &serde_json::Value) -> Result<Vec<ExtensionControlLayer>, String> {
-    let wire: Vec<WireControlLayer> =
-        serde_json::from_value(value.clone()).map_err(|_| "native_command_effect_invalid_control_layers".to_owned())?;
+fn control_layers_from_value(
+    value: &serde_json::Value,
+) -> Result<Vec<ExtensionControlLayer>, String> {
+    let wire: Vec<WireControlLayer> = serde_json::from_value(value.clone())
+        .map_err(|_| "native_command_effect_invalid_control_layers".to_owned())?;
     let mut layers = Vec::with_capacity(wire.len());
     for layer in wire {
         let mut controls = Vec::with_capacity(layer.controls.len());
         for control in layer.controls {
             let target = ControlTarget::new(control.target_kind, control.target_id)
                 .map_err(|_| "native_command_effect_invalid_control_target".to_owned())?;
-            controls.push(ExtensionControl { target, state: control.state });
+            controls.push(ExtensionControl {
+                target,
+                state: control.state,
+            });
         }
         let layer = ExtensionControlLayer {
             schema_version: layer.schema_version,
@@ -96,7 +98,11 @@ pub(crate) fn evaluate_command_effect_request(
     let request_sha256 = request_digest(request).map_err(str::to_owned)?;
     let result = evaluate(request);
     let (status, code, payload) = match result {
-        Ok(evaluation) => ("ok".to_owned(), "ok".to_owned(), Some(evaluation.to_payload())),
+        Ok(evaluation) => (
+            "ok".to_owned(),
+            "ok".to_owned(),
+            Some(evaluation.to_payload()),
+        ),
         Err(code) => ("error".to_owned(), code, None),
     };
     let result = CommandEffectResultV1 {
@@ -110,7 +116,9 @@ pub(crate) fn evaluate_command_effect_request(
     crate::encode_response(&result)
 }
 
-fn evaluate(request: &CommandEffectRequestV1) -> Result<guard_command::CompositeCommandEvaluation, String> {
+fn evaluate(
+    request: &CommandEffectRequestV1,
+) -> Result<guard_command::CompositeCommandEvaluation, String> {
     if request.schema != COMMAND_EFFECT_REQUEST_SCHEMA {
         return Err("native_command_effect_schema_mismatch".to_owned());
     }
@@ -196,14 +204,10 @@ pub(crate) fn evaluate_command_effect_bytes(bytes: &[u8]) -> Result<Vec<u8>, Str
     evaluate_command_effect_request(&request)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use guard_contracts::{
-        NativeCommandControlBindingV1, NativeExtensionControlLayerV1,
-    };
+    use guard_contracts::{NativeCommandControlBindingV1, NativeExtensionControlLayerV1};
     use serde_json::{json, Value};
 
     fn digest64(seed: u8) -> String {
@@ -320,8 +324,7 @@ mod tests {
         let payload = v["payload"].as_object().expect("payload object");
         let text = serde_json::to_string(payload).unwrap();
         assert!(
-            text.contains("critical.local-secret-read")
-                || text.contains("shell-read-floors"),
+            text.contains("critical.local-secret-read") || text.contains("shell-read-floors"),
             "expected shell-read factor in payload: {text}"
         );
     }
@@ -331,11 +334,9 @@ mod tests {
         let snapshot = valid_control_snapshot();
         let mut req = request_json("ls", &snapshot);
         req["request"]["schema"] = json!("bogus");
-        let out = crate::resident_protocol::evaluate_resident_bytes(
-            req.to_string().as_bytes(),
-            None,
-        )
-        .expect("bad-schema op should still return bytes");
+        let out =
+            crate::resident_protocol::evaluate_resident_bytes(req.to_string().as_bytes(), None)
+                .expect("bad-schema op should still return bytes");
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(v["status"], "error");
         assert_eq!(v["code"], "native_command_effect_schema_mismatch");

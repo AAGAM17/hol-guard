@@ -173,9 +173,8 @@ impl EncryptedFileSecretStore {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let token = fernet_encrypt(key, value.as_bytes(), now).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let token = fernet_encrypt(key, value.as_bytes(), now)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Ok(serde_json::json!({"version":"fernet-v1","ciphertext":token}))
     }
 
@@ -342,7 +341,11 @@ fn expand_keystream(key: &[u8], nonce: &[u8], length: usize) -> Vec<u8> {
 }
 
 /// `Fernet._encrypt_from_parts` — 0x80 | ts8be | iv | AES-128-CBC-PKCS7 | HMAC.
-pub(crate) fn fernet_encrypt(key: &[u8], data: &[u8], current_time: u64) -> Result<String, &'static str> {
+pub(crate) fn fernet_encrypt(
+    key: &[u8],
+    data: &[u8],
+    current_time: u64,
+) -> Result<String, &'static str> {
     if key.len() != FERNET_KEY_LEN {
         return Err("fernet key must be 32 bytes");
     }
@@ -372,7 +375,11 @@ pub(crate) fn fernet_encrypt(key: &[u8], data: &[u8], current_time: u64) -> Resu
 
 /// `Fernet._decrypt_data` — HMAC-verify then AES-128-CBC-PKCS7 decrypt.
 /// `ttl` enforces the `timestamp + ttl >= now` freshness window.
-pub(crate) fn fernet_decrypt(key: &[u8], token: &[u8], ttl: Option<u64>) -> Result<Vec<u8>, &'static str> {
+pub(crate) fn fernet_decrypt(
+    key: &[u8],
+    token: &[u8],
+    ttl: Option<u64>,
+) -> Result<Vec<u8>, &'static str> {
     if key.len() != FERNET_KEY_LEN {
         return Err("fernet key must be 32 bytes");
     }
@@ -488,10 +495,17 @@ mod tests {
             "nonce": b64url_encode(&nonce),
             "ciphertext": b64url_encode(&ct),
         });
-        fs::write(secrets.join("svc_legacy.enc"), serde_json::to_string(&payload).unwrap()).unwrap();
+        fs::write(
+            secrets.join("svc_legacy.enc"),
+            serde_json::to_string(&payload).unwrap(),
+        )
+        .unwrap();
 
         let mut store = EncryptedFileSecretStore::new(&dir);
-        assert_eq!(store.get_secret("svc:legacy").as_deref(), Some("legacy-secret"));
+        assert_eq!(
+            store.get_secret("svc:legacy").as_deref(),
+            Some("legacy-secret")
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 }

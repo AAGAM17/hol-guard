@@ -318,10 +318,10 @@ mod tests {
     #[test]
     fn manifest_decode_rejects_bad_hex_and_blank() {
         for (key, val) in [
-            ("source_sha", "Z".repeat(40)),       // uppercase
-            ("rule_digest", "x".repeat(64)),      // non-hex
-            ("runtime_sha256", "d".repeat(63)),   // wrong len
-            ("package_version", "   ".to_string()),// blank
+            ("source_sha", "Z".repeat(40)),         // uppercase
+            ("rule_digest", "x".repeat(64)),        // non-hex
+            ("runtime_sha256", "d".repeat(63)),     // wrong len
+            ("package_version", "   ".to_string()), // blank
         ] {
             let mut m = good_manifest();
             m[key] = serde_json::Value::String(val);
@@ -403,21 +403,42 @@ mod tests {
         // None excerpt -> null
         let mut no = input.clone();
         no.reviewed_excerpt = None;
-        assert_eq!(parity_signature(&no).as_array().unwrap()[7], serde_json::Value::Null);
+        assert_eq!(
+            parity_signature(&no).as_array().unwrap()[7],
+            serde_json::Value::Null
+        );
     }
 
     #[test]
     fn resolve_native_mode_defaults_and_parses() {
-        assert_eq!(resolve_native_mode(None, NativeMode::Auto), NativeMode::Auto);
-        assert_eq!(resolve_native_mode(Some(" FORCE "), NativeMode::Auto), NativeMode::Force);
-        assert_eq!(resolve_native_mode(Some("shadow"), NativeMode::Force), NativeMode::Shadow);
-        assert_eq!(resolve_native_mode(Some("bogus"), NativeMode::Off), NativeMode::Off);
-        assert_eq!(resolve_native_mode(Some(""), NativeMode::Shadow), NativeMode::Shadow);
+        assert_eq!(
+            resolve_native_mode(None, NativeMode::Auto),
+            NativeMode::Auto
+        );
+        assert_eq!(
+            resolve_native_mode(Some(" FORCE "), NativeMode::Auto),
+            NativeMode::Force
+        );
+        assert_eq!(
+            resolve_native_mode(Some("shadow"), NativeMode::Force),
+            NativeMode::Shadow
+        );
+        assert_eq!(
+            resolve_native_mode(Some("bogus"), NativeMode::Off),
+            NativeMode::Off
+        );
+        assert_eq!(
+            resolve_native_mode(Some(""), NativeMode::Shadow),
+            NativeMode::Shadow
+        );
     }
 
     #[test]
     fn native_mode_serde_lowercase() {
-        assert_eq!(serde_json::to_string(&NativeMode::Force).unwrap(), "\"force\"");
+        assert_eq!(
+            serde_json::to_string(&NativeMode::Force).unwrap(),
+            "\"force\""
+        );
         assert_eq!(
             serde_json::from_str::<NativeMode>("\"shadow\"").unwrap(),
             NativeMode::Shadow

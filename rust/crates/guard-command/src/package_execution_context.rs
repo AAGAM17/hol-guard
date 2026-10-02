@@ -49,8 +49,8 @@ pub const NON_PORTABLE_PACKAGE_CONTEXT_COMPONENTS: &[&str] = &[
 
 /// `_PACKAGE_LAUNCHERS` (:41-58 of launch_identity_binding.py).
 pub const PACKAGE_LAUNCHERS: &[&str] = &[
-    "bun", "bunx", "corepack", "npm", "npx", "pip", "pip3", "pipenv", "pipx",
-    "pnpm", "poetry", "uv", "uvx", "yarn",
+    "bun", "bunx", "corepack", "npm", "npx", "pip", "pip3", "pipenv", "pipx", "pnpm", "poetry",
+    "uv", "uvx", "yarn",
 ];
 
 /// `PackageExecutionContextComponent` (:75-79).
@@ -100,9 +100,7 @@ impl PackageExecutionContext {
             Value::Array(
                 self.components
                     .iter()
-                    .map(|component| {
-                        json!({"name": component.name, "digest": component.digest})
-                    })
+                    .map(|component| json!({"name": component.name, "digest": component.digest}))
                     .collect(),
             ),
         );
@@ -224,7 +222,8 @@ pub fn changed_package_execution_context_components(
         .collect();
     let mut names: BTreeSet<&str> = previous.keys().copied().collect();
     names.extend(current.keys().copied());
-    names.into_iter()
+    names
+        .into_iter()
         .filter(|name| previous.get(name) != current.get(name))
         .map(|name| name.to_string())
         .collect()
@@ -248,7 +247,10 @@ pub fn digest_json(value: &Value) -> String {
     // material is digests/strings/bools — treat encode failure as a distinct
     // label instead of panicking.
     if write_canonical_json(value, &mut bytes).is_err() {
-        return format!("guard-context-unbound:package-context-component:{}", hex::encode(Sha256::digest(b"")));
+        return format!(
+            "guard-context-unbound:package-context-component:{}",
+            hex::encode(Sha256::digest(b""))
+        );
     }
     hex::encode(Sha256::digest(&bytes))
 }
@@ -266,7 +268,11 @@ fn string_value(value: Option<&Value>) -> Option<String> {
 /// `_sha256_value` (:296-299): lowercase-hex-64 fullmatch.
 fn sha256_value(value: Option<&Value>) -> Option<String> {
     let text = value?.as_str()?;
-    if text.len() == 64 && text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+    if text.len() == 64
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
         Some(text.to_string())
     } else {
         None

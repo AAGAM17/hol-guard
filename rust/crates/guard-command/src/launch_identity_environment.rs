@@ -9,7 +9,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::command_structure::EmbeddedCommand;
-use crate::command_tokens::{env_assignment_name, executable_name, leading_environment, shell_tokens};
+use crate::command_tokens::{
+    env_assignment_name, executable_name, leading_environment, shell_tokens,
+};
 use crate::CommandSegmentV1;
 
 /// `_SCRIPT_SCOPE_WRAPPERS` (:19).
@@ -39,7 +41,9 @@ pub struct LaunchEnvironmentPlan {
 /// `complete=True`); `vars_os` drops non-UTF-8 entries here, so the plan loses
 /// the entry AND reports `complete=false`. That divergence is conservative —
 /// an incomplete plan forces a fresh `reuse_nonce`, never stale reuse.
-pub fn inherited_launch_environment(launch_env: Option<&BTreeMap<String, String>>) -> LaunchEnvironmentPlan {
+pub fn inherited_launch_environment(
+    launch_env: Option<&BTreeMap<String, String>>,
+) -> LaunchEnvironmentPlan {
     match launch_env {
         Some(environment) => LaunchEnvironmentPlan {
             executable_environment: environment.clone(),
@@ -93,7 +97,9 @@ pub fn plan_launch_environment(
             continue;
         }
         let command_name = executable_name(Some(token));
-        if wrapper_index < wrappers.len() && command_name.as_deref() == Some(wrappers[wrapper_index].as_str()) {
+        if wrapper_index < wrappers.len()
+            && command_name.as_deref() == Some(wrappers[wrapper_index].as_str())
+        {
             wrapper_environments.push(WrapperLaunchEnvironment {
                 name: wrappers[wrapper_index].clone(),
                 environment: environment.clone(),
@@ -251,7 +257,10 @@ fn os_defpath() -> &'static str {
 
 /// `launch_environment_scope_is_ambiguous` (:142-143).
 pub fn launch_environment_scope_is_ambiguous(wrappers: &[String], segment_count: usize) -> bool {
-    segment_count > 1 && wrappers.iter().any(|w| SCRIPT_SCOPE_WRAPPERS.contains(&w.as_str()))
+    segment_count > 1
+        && wrappers
+            .iter()
+            .any(|w| SCRIPT_SCOPE_WRAPPERS.contains(&w.as_str()))
 }
 
 /// `unresolved_launch_observation` (:146-151). Returns the Python dict shape
@@ -312,7 +321,10 @@ mod tests {
     use super::*;
 
     fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
@@ -357,18 +369,19 @@ mod tests {
         // `FOO=1 env -i -u HOME BAR=2 prog` — wait, assignments after `env`
         // land in the env-options region; mirror Python: leading assignments
         // apply first, then `env` controls in shell order.
-        let tokens: Vec<String> = [
-            "FOO=1", "env", "-i", "--unset=PATH", "BAR=2", "prog",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+        let tokens: Vec<String> = ["FOO=1", "env", "-i", "--unset=PATH", "BAR=2", "prog"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let inherited = env(&[("PATH", "/bin"), ("HOME", "/root"), ("KEEP", "1")]);
         let plan = plan_launch_environment(&tokens, &inherited, true);
         // leading_environment treats `env` as a wrapper consuming up to
         // `prog`; the plan applies FOO=1, snapshots env, then `-i` clears and
         // `--unset=PATH` is a no-op on the cleared map, `BAR=2` sets.
-        assert_eq!(plan.executable_environment.get("BAR"), Some(&"2".to_string()));
+        assert_eq!(
+            plan.executable_environment.get("BAR"),
+            Some(&"2".to_string())
+        );
         assert!(plan.executable_environment.get("HOME").is_none());
         assert_eq!(
             plan.wrapper_environments.first().map(|w| w.name.as_str()),
@@ -381,7 +394,10 @@ mod tests {
         let wrappers = vec!["bash".to_string()];
         assert!(launch_environment_scope_is_ambiguous(&wrappers, 2));
         assert!(!launch_environment_scope_is_ambiguous(&wrappers, 1));
-        assert!(!launch_environment_scope_is_ambiguous(&["env".to_string()], 3));
+        assert!(!launch_environment_scope_is_ambiguous(
+            &["env".to_string()],
+            3
+        ));
     }
 
     #[test]

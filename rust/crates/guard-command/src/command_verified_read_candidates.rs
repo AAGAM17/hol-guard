@@ -120,9 +120,9 @@ fn local_segment_is_candidate(segment: &CommandSegmentV1) -> bool {
 /// `_fd_candidate` (:95).
 fn fd_candidate(args: &[String]) -> bool {
     if args.len() < 2
-        || args
-            .iter()
-            .any(|arg| ["-x", "-X", "--exec", "--exec-batch", "-L", "--follow"].contains(&arg.as_str()))
+        || args.iter().any(|arg| {
+            ["-x", "-X", "--exec", "--exec-batch", "-L", "--follow"].contains(&arg.as_str())
+        })
     {
         return false;
     }
@@ -166,8 +166,7 @@ fn git_candidate(args: &[String]) -> bool {
         &["branch", "--show-current"],
     ];
     SETS.iter().any(|expected| {
-        expected.len() == args.len()
-            && expected.iter().zip(args.iter()).all(|(e, a)| e == a)
+        expected.len() == args.len() && expected.iter().zip(args.iter()).all(|(e, a)| e == a)
     })
 }
 
@@ -190,7 +189,12 @@ fn github_operation(segment: &CommandSegmentV1) -> Option<&'static str> {
         return None;
     }
     let args = &segment.arguments;
-    if args.len() < 5 || !matches!((args[0].as_str(), args[1].as_str()), ("pr", "view") | ("pr", "checks")) {
+    if args.len() < 5
+        || !matches!(
+            (args[0].as_str(), args[1].as_str()),
+            ("pr", "view") | ("pr", "checks")
+        )
+    {
         return None;
     }
     // `args[2].isdigit()` — Python digit property (Nd + numeric digits).
@@ -223,7 +227,7 @@ fn source_target(value: &str) -> bool {
 
 /// `_dynamic` (:158).
 fn dynamic(value: &str) -> bool {
-    value.chars().any(|c| {
-        matches!(c, '$' | '`' | '<' | '>' | '|' | ';' | '&' | '\x00')
-    })
+    value
+        .chars()
+        .any(|c| matches!(c, '$' | '`' | '<' | '>' | '|' | ';' | '&' | '\x00'))
 }

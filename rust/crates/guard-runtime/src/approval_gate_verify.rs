@@ -28,9 +28,9 @@ use crate::approval_gate_grants::{
     ApprovalGateErrorV1, ApprovalGateGrantV1, ApprovalGateGrants, GrantFields,
 };
 use crate::approval_gate_state::{
-    coerce_cooldown_seconds, constant_time_eq, cooldown_active, epoch, iso_from_epoch,
-    is_future, optional_int, optional_string, record_failed_attempt, reset_failed_attempts,
-    verifier, verify_password, ApprovalGateFactor,
+    coerce_cooldown_seconds, constant_time_eq, cooldown_active, epoch, is_future, iso_from_epoch,
+    optional_int, optional_string, record_failed_attempt, reset_failed_attempts, verifier,
+    verify_password, ApprovalGateFactor,
 };
 use crate::encrypted_secret_store::{b64url_encode, random_bytes};
 use crate::totp::{verify_totp_code, TotpSecretStore, APPROVAL_GATE_TOTP_SKEW_STEPS};
@@ -83,7 +83,9 @@ fn totp_enabled(state: &Value) -> bool {
 
 /// `_factor_generation` (:1125-1126).
 fn factor_generation(state: &Value) -> i64 {
-    optional_int(state.get("factor_generation")).unwrap_or(0).max(0)
+    optional_int(state.get("factor_generation"))
+        .unwrap_or(0)
+        .max(0)
 }
 
 /// `_cooldown_seconds` (:1374-1375) → `coerce_cooldown_seconds`.
@@ -114,8 +116,14 @@ fn proc_self_ppid_sid() -> (i64, i64) {
     // after `)`: " S ppid pgrp session ..."
     let fields: Vec<&str> = after.split_whitespace().collect();
     // fields[0]=state, [1]=ppid, [2]=pgrp, [3]=session(sid)
-    let ppid = fields.get(1).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
-    let sid = fields.get(3).and_then(|v| v.parse::<i64>().ok()).unwrap_or(-1);
+    let ppid = fields
+        .get(1)
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(0);
+    let sid = fields
+        .get(3)
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(-1);
     (ppid, sid)
 }
 
@@ -167,7 +175,10 @@ fn current_totp_session_binding() -> Option<String> {
 }
 
 /// `_validate_totp_state_or_raise` (:1204-1218).
-fn validate_totp_state_or_raise(guard_home: &Path, state: &Value) -> Result<String, ApprovalGateErrorV1> {
+fn validate_totp_state_or_raise(
+    guard_home: &Path,
+    state: &Value,
+) -> Result<String, ApprovalGateErrorV1> {
     let secret_id = optional_string(state.get("totp_secret_id")).ok_or_else(|| {
         err(
             "approval_gate_recovery_required",
@@ -301,10 +312,7 @@ pub(crate) fn recent_totp_satisfied_locked(
         Some(b) => b,
         None => return false,
     };
-    if !constant_time_eq(
-        stored_binding.as_bytes(),
-        session_binding.as_bytes(),
-    ) {
+    if !constant_time_eq(stored_binding.as_bytes(), session_binding.as_bytes()) {
         return false;
     }
     if payload
@@ -392,8 +400,8 @@ fn verify_totp_or_raise(
     allow_reused_counter: bool,
 ) -> Result<i64, ApprovalGateErrorV1> {
     let secret = validate_totp_state_or_raise(guard_home, state)?;
-    let allow_last = allow_reused_counter
-        && recent_totp_satisfied_locked(guard_home, state, now_epoch);
+    let allow_last =
+        allow_reused_counter && recent_totp_satisfied_locked(guard_home, state, now_epoch);
     let accepted = verify_totp_code(
         &secret,
         code,
@@ -406,7 +414,8 @@ fn verify_totp_or_raise(
         Some(c) => Ok(c),
         None => {
             let now_iso = iso_from_epoch(now_epoch);
-            let _ = record_failed_attempt(guard_home, state, ApprovalGateFactor::Totp, Some(&now_iso));
+            let _ =
+                record_failed_attempt(guard_home, state, ApprovalGateFactor::Totp, Some(&now_iso));
             Err(err(
                 "approval_gate_totp_invalid",
                 "That authenticator code is wrong. Open your authenticator app and enter the current six-digit code.",
@@ -461,8 +470,7 @@ pub fn input_from_mapping(payload: Option<&Value>) -> Option<ApprovalGateInputV1
     let opt_str = |m: &Map<String, Value>, k: &str| optional_string(m.get(k));
     let password = opt_str(payload, "approval_password").or_else(|| opt_str(&gate, "password"));
     let current_password = opt_str(&gate, "current_password");
-    let totp_code =
-        opt_str(payload, "approval_totp_code").or_else(|| opt_str(&gate, "totp_code"));
+    let totp_code = opt_str(payload, "approval_totp_code").or_else(|| opt_str(&gate, "totp_code"));
     let use_cooldown = payload
         .get("approval_gate_use_cooldown")
         .and_then(|v| v.as_bool())
@@ -552,11 +560,7 @@ pub(crate) fn verify_or_raise_locked(
             }
         } else if let Some(code) = gate_input.totp_code.as_deref() {
             accepted_counter = Some(verify_totp_or_raise(
-                guard_home,
-                state,
-                code,
-                now_epoch,
-                true,
+                guard_home, state, code, now_epoch, true,
             )?);
             if let Some(obj) = state.as_object_mut() {
                 obj.insert(
@@ -564,23 +568,18 @@ pub(crate) fn verify_or_raise_locked(
                     Value::Number(accepted_counter.unwrap().into()),
                 );
             }
-            record_recent_totp_satisfaction(guard_home, state, accepted_counter.unwrap(), now_epoch);
-        }
-        if gate_input.password.is_some() {
-            verify_password_stage(
+            record_recent_totp_satisfaction(
                 guard_home,
                 state,
-                gate_input.password.as_deref(),
-                now,
-            )?;
+                accepted_counter.unwrap(),
+                now_epoch,
+            );
+        }
+        if gate_input.password.is_some() {
+            verify_password_stage(guard_home, state, gate_input.password.as_deref(), now)?;
         }
     } else {
-        verify_password_stage(
-            guard_home,
-            state,
-            gate_input.password.as_deref(),
-            now,
-        )?;
+        verify_password_stage(guard_home, state, gate_input.password.as_deref(), now)?;
     }
     reset_failed_attempts(state);
     let cooldown_seconds_val = cooldown_seconds(state)?;
@@ -684,8 +683,11 @@ mod tests {
     const TOTP_SECRET: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
     fn home(tag: &str) -> std::path::PathBuf {
-        let h = std::env::temp_dir()
-            .join(format!("gate-verify-{tag}-{}-{}", std::process::id(), nanos()));
+        let h = std::env::temp_dir().join(format!(
+            "gate-verify-{tag}-{}-{}",
+            std::process::id(),
+            nanos()
+        ));
         std::fs::create_dir_all(&h).unwrap();
         h
     }
@@ -698,11 +700,15 @@ mod tests {
 
     fn enabled_state() -> Value {
         let mut st = crate::approval_gate_state::default_state();
-        st.as_object_mut().unwrap().insert("enabled".into(), json!(true));
+        st.as_object_mut()
+            .unwrap()
+            .insert("enabled".into(), json!(true));
         st.as_object_mut()
             .unwrap()
             .insert("verifier".into(), serde_json::from_str(VERIFIER).unwrap());
-        st.as_object_mut().unwrap().insert("fail_closed".into(), json!(false));
+        st.as_object_mut()
+            .unwrap()
+            .insert("fail_closed".into(), json!(false));
         st
     }
 
@@ -778,10 +784,7 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, "approval_gate_invalid_password");
-        assert_eq!(
-            optional_int(st.get("password_failed_attempts")),
-            Some(1)
-        );
+        assert_eq!(optional_int(st.get("password_failed_attempts")), Some(1));
         assert_eq!(grants.len(), 0);
         let _ = std::fs::remove_dir_all(&h);
     }
@@ -791,8 +794,12 @@ mod tests {
         let h = home("nov");
         let grants = ApprovalGateGrants::new();
         let mut st = crate::approval_gate_state::default_state();
-        st.as_object_mut().unwrap().insert("enabled".into(), json!(true));
-        st.as_object_mut().unwrap().insert("fail_closed".into(), json!(false));
+        st.as_object_mut()
+            .unwrap()
+            .insert("enabled".into(), json!(true));
+        st.as_object_mut()
+            .unwrap()
+            .insert("fail_closed".into(), json!(false));
         let err = verify_or_raise_locked(
             &h,
             &mut st,
@@ -868,7 +875,11 @@ mod tests {
         }
         rotate_authentication_state(&mut st);
         assert_eq!(optional_int(st.get("factor_generation")), Some(4));
-        for k in ["cooldown_expires_at", "session_nonces", TOTP_RECENT_STATE_KEY] {
+        for k in [
+            "cooldown_expires_at",
+            "session_nonces",
+            TOTP_RECENT_STATE_KEY,
+        ] {
             assert!(st.get(k).is_none(), "dropped {k}");
         }
         assert_eq!(st.get("enabled"), Some(&json!(true)));

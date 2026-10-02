@@ -11,11 +11,8 @@
 ///
 /// `_grok_prompt_hook_is_observe` (`native_install_checks.py:148`): the
 /// `required` tuple. Order matches Python for stable iteration.
-pub const GROK_OBSERVE_REQUIRED_EVENTS: [&str; 3] = [
-    "UserPromptSubmit",
-    "SubagentStart",
-    "SessionStart",
-];
+pub const GROK_OBSERVE_REQUIRED_EVENTS: [&str; 3] =
+    ["UserPromptSubmit", "SubagentStart", "SessionStart"];
 
 /// `hook_entry["type"]` discriminator for a managed command hook.
 /// `_grok_event_has_command_hook` (`native_install_checks.py:163`).

@@ -210,7 +210,13 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 fn sanitize_secret_id(secret_id: &str) -> String {
     secret_id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -379,7 +385,6 @@ mod tests {
         assert!(uri.contains("digits=6"));
         assert!(uri.contains("period=30"));
     }
-
 
     #[test]
     fn totp_secret_store_round_trip() {

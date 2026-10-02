@@ -48,8 +48,16 @@ static READ_ONLY_SUBCOMMANDS: &[(&str, &[&str])] = &[
 ];
 
 static CONTENT_SUBCOMMANDS: &[(&str, &[&str])] = &[
-    ("issue", &["close", "comment", "create", "develop", "edit", "reopen", "transfer"]),
-    ("pr", &["close", "comment", "create", "edit", "reopen", "review"]),
+    (
+        "issue",
+        &[
+            "close", "comment", "create", "develop", "edit", "reopen", "transfer",
+        ],
+    ),
+    (
+        "pr",
+        &["close", "comment", "create", "edit", "reopen", "review"],
+    ),
     ("repo", &["create", "fork", "rename", "sync"]),
 ];
 
@@ -64,8 +72,17 @@ static WORKFLOW_SUBCOMMANDS: &[(&str, &[&str])] = &[
 ];
 
 const PUBLISH_SUBCOMMANDS: &[&str] = &["create", "edit", "upload"];
-const DELETE_GROUPS: &[&str] =
-    &["cache", "codespace", "issue", "label", "pr", "release", "repo", "run", "variable"];
+const DELETE_GROUPS: &[&str] = &[
+    "cache",
+    "codespace",
+    "issue",
+    "label",
+    "pr",
+    "release",
+    "repo",
+    "run",
+    "variable",
+];
 const SECRET_GROUPS: &[&str] = &["secret"];
 const ACCESS_GROUPS: &[&str] = &["gpg-key", "ssh-key"];
 const OTHER_MUTATING_GROUPS: &[&str] = &["cache", "codespace", "label", "variable"];
@@ -116,7 +133,11 @@ static READ_SHORT_VALUE_FLAGS: &[(&str, &str, &str)] = &[
 
 const INHERITED_READ_SHORT_VALUE_FLAGS: &str = "qt";
 
-fn short_flags(table: &[(&'static str, &'static str, &'static str)], g: &str, s: &str) -> &'static str {
+fn short_flags(
+    table: &[(&'static str, &'static str, &'static str)],
+    g: &str,
+    s: &str,
+) -> &'static str {
     table
         .iter()
         .find(|(a, b, _)| *a == g && *b == s)
@@ -132,7 +153,11 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
     let normalized: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     let original: Vec<String> = normalized.clone();
     if normalized.is_empty() {
-        return assessment(Cap::Unknown, "github.command.missing", "The GitHub CLI subcommand is missing.");
+        return assessment(
+            Cap::Unknown,
+            "github.command.missing",
+            "The GitHub CLI subcommand is missing.",
+        );
     }
     if alternate_hostname_requested(&original) {
         return assessment(
@@ -158,16 +183,28 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
     }
     let top_level = normalized[0].to_lowercase();
     if top_level == "--version" || top_level == "-v" {
-        return assessment(Cap::ReadLocal, "github.command.local-metadata", "The command reads local CLI metadata.");
+        return assessment(
+            Cap::ReadLocal,
+            "github.command.local-metadata",
+            "The command reads local CLI metadata.",
+        );
     }
     if github_cli_invocation_is_help(&normalized) {
-        return assessment(Cap::ReadLocal, "github.command.local-help", "The command displays local CLI help.");
+        return assessment(
+            Cap::ReadLocal,
+            "github.command.local-help",
+            "The command displays local CLI help.",
+        );
     }
     if top_level == "api" {
         return classify_github_api(&normalized[1..]);
     }
     if LOCAL_TOP_LEVEL.contains(&top_level.as_str()) {
-        return assessment(Cap::ReadLocal, "github.command.local-metadata", "The command reads local CLI metadata.");
+        return assessment(
+            Cap::ReadLocal,
+            "github.command.local-metadata",
+            "The command reads local CLI metadata.",
+        );
     }
     if let Some(auth) = classify_github_auth(&normalized) {
         return auth;
@@ -180,12 +217,20 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
         );
     }
     if SECRET_GROUPS.contains(&top_level.as_str()) {
-        return assessment(Cap::SecretRemote, "github.command.secret-mutation", "The command changes GitHub secrets.");
+        return assessment(
+            Cap::SecretRemote,
+            "github.command.secret-mutation",
+            "The command changes GitHub secrets.",
+        );
     }
     if ACCESS_GROUPS.contains(&top_level.as_str()) {
         let subcommand = group_subcommand(&normalized[1..]);
         if subcommand.as_deref() == Some("help") {
-            return assessment(Cap::ReadLocal, "github.command.local-help", "The command displays local CLI help.");
+            return assessment(
+                Cap::ReadLocal,
+                "github.command.local-help",
+                "The command displays local CLI help.",
+            );
         }
         if subcommand.as_deref() == Some("list") {
             return assessment(
@@ -208,7 +253,11 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
     if OTHER_MUTATING_GROUPS.contains(&top_level.as_str()) {
         let subcommand = group_subcommand(&normalized[1..]);
         if subcommand.as_deref() == Some("delete") {
-            return assessment(Cap::DeleteRemote, "github.command.delete-mutation", "The command deletes GitHub-hosted state.");
+            return assessment(
+                Cap::DeleteRemote,
+                "github.command.delete-mutation",
+                "The command deletes GitHub-hosted state.",
+            );
         }
         let capability = if top_level == "label" {
             Cap::ContentRemote
@@ -217,7 +266,11 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
         } else {
             Cap::MutateRemote
         };
-        return assessment(capability, "github.command.remote-mutation", "The command changes GitHub-hosted state.");
+        return assessment(
+            capability,
+            "github.command.remote-mutation",
+            "The command changes GitHub-hosted state.",
+        );
     }
     if lookup(READ_ONLY_SUBCOMMANDS, &top_level).is_none() {
         return assessment(
@@ -237,9 +290,16 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
         }
     };
     if subcommand == "help" {
-        return assessment(Cap::ReadLocal, "github.command.local-help", "The command displays local CLI help.");
+        return assessment(
+            Cap::ReadLocal,
+            "github.command.local-help",
+            "The command displays local CLI help.",
+        );
     }
-    if lookup(READ_ONLY_SUBCOMMANDS, &top_level).unwrap().contains(&subcommand.as_str()) {
+    if lookup(READ_ONLY_SUBCOMMANDS, &top_level)
+        .unwrap()
+        .contains(&subcommand.as_str())
+    {
         return assessment(
             Cap::ReadRemote,
             "github.command.proven-read",
@@ -248,7 +308,11 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
     }
     let tail: Vec<String> = normalized[2.min(normalized.len())..].to_vec();
     if subcommand == "delete" && DELETE_GROUPS.contains(&top_level.as_str()) {
-        return assessment(Cap::DeleteRemote, "github.command.delete-mutation", "The command deletes GitHub-hosted state.");
+        return assessment(
+            Cap::DeleteRemote,
+            "github.command.delete-mutation",
+            "The command deletes GitHub-hosted state.",
+        );
     }
     if top_level == "pr" && subcommand == "merge" {
         return classify_pr_merge(&tail);
@@ -264,7 +328,10 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
         .map(|t| t.contains(&subcommand.as_str()))
         .unwrap_or(false)
     {
-        if top_level == "run" && subcommand == "rerun" && is_routine_failed_run_rerun(&original, &tail) {
+        if top_level == "run"
+            && subcommand == "rerun"
+            && is_routine_failed_run_rerun(&original, &tail)
+        {
             return assessment(
                 Cap::RoutineWorkflowRemote,
                 "github.command.routine-failed-run-rerun",
@@ -345,34 +412,52 @@ pub fn classify_github_cli(args: &[String]) -> GitHubCommandAssessment {
 
 /// `_has_option` (:288).
 pub fn has_option(args: &[String], option: &str) -> bool {
-    args.iter().any(|token| token == option || token.starts_with(&format!("{option}=")))
+    args.iter()
+        .any(|token| token == option || token.starts_with(&format!("{option}=")))
 }
 
 fn has_short_option(args: &[String], option: &str) -> bool {
-    args.iter().any(|token| token == option || (token.starts_with(option) && token.len() > option.len()))
+    args.iter()
+        .any(|token| token == option || (token.starts_with(option) && token.len() > option.len()))
 }
 
 fn has_short_boolean_option(args: &[String], option: &str) -> bool {
     const LONG_VALUE_OPTIONS: &[&str] = &[
-        "--assignee", "--base", "--body", "--body-file", "--head", "--label",
-        "--milestone", "--project", "--recover", "--repo", "--reviewer",
-        "--template", "--title",
+        "--assignee",
+        "--base",
+        "--body",
+        "--body-file",
+        "--head",
+        "--label",
+        "--milestone",
+        "--project",
+        "--recover",
+        "--repo",
+        "--reviewer",
+        "--template",
+        "--title",
     ];
-    const SHORT_VALUE_OPTIONS: &[char] = &[
-        'a', 'B', 'b', 'F', 'H', 'l', 'm', 'p', 'r', 'R', 'T', 't',
-    ];
+    const SHORT_VALUE_OPTIONS: &[char] =
+        &['a', 'B', 'b', 'F', 'H', 'l', 'm', 'p', 'r', 'R', 'T', 't'];
     let option_name = option.trim_start_matches('-');
     let mut index = 0;
     while index < args.len() {
         let token = &args[index];
         let is_short_value_option = token.len() == 2
             && token.starts_with('-')
-            && token.chars().nth(1).map(|c| SHORT_VALUE_OPTIONS.contains(&c)).unwrap_or(false);
+            && token
+                .chars()
+                .nth(1)
+                .map(|c| SHORT_VALUE_OPTIONS.contains(&c))
+                .unwrap_or(false);
         if LONG_VALUE_OPTIONS.contains(&token.as_str()) || is_short_value_option {
             index += 2;
             continue;
         }
-        if LONG_VALUE_OPTIONS.iter().any(|vo| token.starts_with(&format!("{vo}="))) {
+        if LONG_VALUE_OPTIONS
+            .iter()
+            .any(|vo| token.starts_with(&format!("{vo}=")))
+        {
             index += 1;
             continue;
         }
@@ -407,14 +492,22 @@ fn has_explicit_option_value(args: &[String], long_option: &str, short_option: &
 
 /// `_has_dynamic_value` (:436).
 fn has_dynamic_value(args: &[String]) -> bool {
-    args.iter().any(|token| token.contains('$') || token.contains('`') || token.starts_with('@'))
+    args.iter()
+        .any(|token| token.contains('$') || token.contains('`') || token.starts_with('@'))
 }
 
 /// `_pr_create_has_static_inline_content` (:296).
 fn pr_create_has_static_inline_content(args: &[String]) -> bool {
     const CONTENT_DERIVED: &[&str] = &[
-        "--body-file", "--template", "--fill", "--fill-first", "--fill-verbose",
-        "--recover", "--web", "--editor", "--dry-run",
+        "--body-file",
+        "--template",
+        "--fill",
+        "--fill-first",
+        "--fill-verbose",
+        "--recover",
+        "--web",
+        "--editor",
+        "--dry-run",
     ];
     if CONTENT_DERIVED.iter().any(|o| has_option(args, o)) {
         return false;
@@ -422,17 +515,28 @@ fn pr_create_has_static_inline_content(args: &[String]) -> bool {
     if ["-F", "-T"].iter().any(|o| has_short_option(args, o)) {
         return false;
     }
-    if ["-e", "-f", "-w"].iter().any(|o| has_short_boolean_option(args, o)) {
+    if ["-e", "-f", "-w"]
+        .iter()
+        .any(|o| has_short_boolean_option(args, o))
+    {
         return false;
     }
-    has_explicit_option_value(args, "--title", "-t") && has_explicit_option_value(args, "--body", "-b")
+    has_explicit_option_value(args, "--title", "-t")
+        && has_explicit_option_value(args, "--body", "-b")
 }
 
 /// `static_markdown_pr_body_file_operand` (:321).
 pub fn static_markdown_pr_body_file_operand(args: &[String]) -> Option<String> {
     const INCOMPATIBLE: &[&str] = &[
-        "--body", "--template", "--fill", "--fill-first", "--fill-verbose",
-        "--recover", "--web", "--editor", "--dry-run",
+        "--body",
+        "--template",
+        "--fill",
+        "--fill-first",
+        "--fill-verbose",
+        "--recover",
+        "--web",
+        "--editor",
+        "--dry-run",
     ];
     if INCOMPATIBLE.iter().any(|o| has_option(args, o)) {
         return None;
@@ -440,7 +544,10 @@ pub fn static_markdown_pr_body_file_operand(args: &[String]) -> Option<String> {
     if ["-T", "-b"].iter().any(|o| has_short_option(args, o)) {
         return None;
     }
-    if ["-e", "-f", "-w"].iter().any(|o| has_short_boolean_option(args, o)) {
+    if ["-e", "-f", "-w"]
+        .iter()
+        .any(|o| has_short_boolean_option(args, o))
+    {
         return None;
     }
     if !has_explicit_option_value(args, "--title", "-t") {
@@ -469,7 +576,9 @@ pub fn static_markdown_pr_body_file_operand(args: &[String]) -> Option<String> {
         return None;
     }
     let body_file = &body_files[0];
-    const MARKERS: &[char] = &['$', '`', '*', '?', '[', ']', '{', '}', '(', ')', '<', '>', '^', '#'];
+    const MARKERS: &[char] = &[
+        '$', '`', '*', '?', '[', ']', '{', '}', '(', ')', '<', '>', '^', '#',
+    ];
     if body_file.is_empty()
         || body_file == "-"
         || body_file.starts_with('=')
@@ -492,7 +601,10 @@ pub fn static_markdown_pr_body_file_operand(args: &[String]) -> Option<String> {
 
 fn is_routine_failed_run_rerun(original: &[String], args: &[String]) -> bool {
     if !original.iter().any(|t| {
-        t == "--repo" || t == "-R" || t.starts_with("--repo=") || t.starts_with("-R=")
+        t == "--repo"
+            || t == "-R"
+            || t.starts_with("--repo=")
+            || t.starts_with("-R=")
             || (t.starts_with("-R") && t.len() > 2)
     }) {
         return false;
@@ -512,7 +624,8 @@ fn is_routine_failed_run_rerun(original: &[String], args: &[String]) -> bool {
                 return false;
             }
             index += 1;
-        } else if token.starts_with("--repo=") || token.starts_with("-R=")
+        } else if token.starts_with("--repo=")
+            || token.starts_with("-R=")
             || (token.starts_with("-R") && token.len() > 2)
         {
             // repo selector consumed inline
@@ -585,8 +698,13 @@ fn unsafe_repository_selector_requested(args: &[String]) -> bool {
         } else if token == "--repo" || token == "-R" {
             selectors.push(args.get(index + 1).cloned().unwrap_or_default());
             index += 1;
-        } else if token.len() > 2 && token.starts_with('-')
-            && token.chars().nth(1).map(|c| value_flags.contains(c)).unwrap_or(false)
+        } else if token.len() > 2
+            && token.starts_with('-')
+            && token
+                .chars()
+                .nth(1)
+                .map(|c| value_flags.contains(c))
+                .unwrap_or(false)
         {
             // value flag absorbs selector
         } else if token.starts_with('-') && !token.starts_with("--") && token[1..].contains('R') {
@@ -609,12 +727,17 @@ fn unsafe_repository_selector_requested(args: &[String]) -> bool {
         }
         index += 1;
     }
-    malformed_cluster || selectors.len() > 1
+    malformed_cluster
+        || selectors.len() > 1
         || selectors.iter().any(|s| !repository_selector_is_safe(s))
 }
 
 fn repository_selector_is_safe(selector: &str) -> bool {
-    if selector.contains('$') || selector.contains('`') || selector.contains("$(") || selector.contains("${") {
+    if selector.contains('$')
+        || selector.contains('`')
+        || selector.contains("$(")
+        || selector.contains("${")
+    {
         return false;
     }
     let mut parts: Vec<&str> = selector.split('/').collect();
@@ -738,7 +861,9 @@ const MAX_REPO_LEN: usize = 255;
 
 fn static_repository_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\A(?:[A-Za-z0-9.-]+/)?[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(r"\A(?:[A-Za-z0-9.-]+/)?[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z").unwrap()
+    })
 }
 
 /// `_is_positive_pull_request` (:54). `isascii()` + `isdigit()` ⇒ ASCII digits only.
@@ -832,14 +957,22 @@ fn classify_pr_merge(tail: &[String]) -> GitHubCommandAssessment {
         );
     }
     let admin_merge = admin_state == "true";
-    let merge_capability = if admin_merge { Cap::AdminMergeRemote } else { Cap::MergeRemote };
+    let merge_capability = if admin_merge {
+        Cap::AdminMergeRemote
+    } else {
+        Cap::MergeRemote
+    };
     let mut capabilities = vec![merge_capability];
     if delete_state == "true" {
         capabilities.push(Cap::DeleteRemote);
     }
     github_assessment(
         &capabilities,
-        if admin_merge { "github.command.pr-admin-merge" } else { "github.command.pr-merge" },
+        if admin_merge {
+            "github.command.pr-admin-merge"
+        } else {
+            "github.command.pr-merge"
+        },
         if admin_merge {
             "The command uses administrator privileges to merge a pull request."
         } else {
@@ -858,14 +991,28 @@ pub fn classify_github_auth(normalized: &[String]) -> Option<GitHubCommandAssess
     }
     let sub = normalized[1].to_lowercase();
     let tail = &normalized[2.min(normalized.len())..];
-    if sub == "token" || (sub == "status" && (has_option(tail, "--show-token") || has_option(tail, "-t"))) {
-        return Some(assessment(Cap::SecretRemote, "github.command.auth-token-read", "The command reads a GitHub authentication token."));
+    if sub == "token"
+        || (sub == "status" && (has_option(tail, "--show-token") || has_option(tail, "-t")))
+    {
+        return Some(assessment(
+            Cap::SecretRemote,
+            "github.command.auth-token-read",
+            "The command reads a GitHub authentication token.",
+        ));
     }
     if sub == "status" {
-        return Some(assessment(Cap::ReadLocal, "github.command.local-auth-read", "The command reads local CLI auth state."));
+        return Some(assessment(
+            Cap::ReadLocal,
+            "github.command.local-auth-read",
+            "The command reads local CLI auth state.",
+        ));
     }
     if ["login", "logout", "switch", "refresh", "setup-git"].contains(&sub.as_str()) {
-        return Some(assessment(Cap::WriteLocal, "github.command.local-auth-write", "The command changes local GitHub CLI authentication."));
+        return Some(assessment(
+            Cap::WriteLocal,
+            "github.command.local-auth-write",
+            "The command changes local GitHub CLI authentication.",
+        ));
     }
     None
 }
@@ -875,11 +1022,31 @@ pub fn classify_github_auth(normalized: &[String]) -> Option<GitHubCommandAssess
 // ---------------------------------------------------------------------------
 
 const API_OPTIONS_WITH_VALUES: &[&str] = &[
-    "--cache", "--field", "--header", "--hostname", "--input", "--jq", "--method",
-    "--preview", "--raw-field", "--template", "-F", "-H", "-X", "-f", "-h", "-p",
+    "--cache",
+    "--field",
+    "--header",
+    "--hostname",
+    "--input",
+    "--jq",
+    "--method",
+    "--preview",
+    "--raw-field",
+    "--template",
+    "-F",
+    "-H",
+    "-X",
+    "-f",
+    "-h",
+    "-p",
 ];
-const API_BOOLEAN_OPTIONS: &[&str] =
-    &["--include", "--paginate", "--silent", "--slurp", "--verbose", "-i"];
+const API_BOOLEAN_OPTIONS: &[&str] = &[
+    "--include",
+    "--paginate",
+    "--silent",
+    "--slurp",
+    "--verbose",
+    "-i",
+];
 const API_VALUE_PREFIXES: &[&str] = &["-f", "-F", "-H", "-X", "-h", "-p"];
 
 fn method_override_header_re() -> &'static Regex {
@@ -888,11 +1055,16 @@ fn method_override_header_re() -> &'static Regex {
 }
 fn safe_accept_header_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)\Aaccept\s*:\s*application/vnd\.github(?:\+[a-z0-9.+-]+|\.[a-z0-9.+-]+)\z").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)\Aaccept\s*:\s*application/vnd\.github(?:\+[a-z0-9.+-]+|\.[a-z0-9.+-]+)\z")
+            .unwrap()
+    })
 }
 fn safe_api_version_header_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)\Ax-github-api-version\s*:\s*[0-9]{4}-[0-9]{2}-[0-9]{2}\z").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)\Ax-github-api-version\s*:\s*[0-9]{4}-[0-9]{2}-[0-9]{2}\z").unwrap()
+    })
 }
 fn static_endpoint_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -1029,7 +1201,14 @@ fn parse_api_arguments(args: &[String]) -> Result<ApiArgs, GitHubCommandAssessme
     if endpoint.is_none() {
         return Err(api_parse_failure());
     }
-    Ok(ApiArgs { endpoint, method, fields, headers, has_input, has_dynamic_option_value })
+    Ok(ApiArgs {
+        endpoint,
+        method,
+        fields,
+        headers,
+        has_input,
+        has_dynamic_option_value,
+    })
 }
 
 fn segments_of(endpoint: &str) -> Vec<String> {
@@ -1069,8 +1248,15 @@ fn is_workflow_endpoint(segments: &[String]) -> bool {
     }
     if contains_segment(segments, "actions") || contains_segment(segments, "workflows") {
         return segments.iter().any(|s| {
-            ["cancel", "disable", "dispatches", "enable", "rerun", "rerun-failed-jobs"]
-                .contains(&s.as_str())
+            [
+                "cancel",
+                "disable",
+                "dispatches",
+                "enable",
+                "rerun",
+                "rerun-failed-jobs",
+            ]
+            .contains(&s.as_str())
         });
     }
     segments.len() >= 4 && segments[0] == "repos" && segments[3] == "dispatches"
@@ -1084,14 +1270,21 @@ fn is_publish_endpoint(segments: &[String]) -> bool {
 /// `_is_runner_token_endpoint` (:178).
 fn is_runner_token_endpoint(segments: &[String]) -> bool {
     contains_segment(segments, "runners")
-        && (last_segment_is(segments, "registration-token") || last_segment_is(segments, "remove-token"))
+        && (last_segment_is(segments, "registration-token")
+            || last_segment_is(segments, "remove-token"))
 }
 
 /// `_is_access_endpoint` (:182).
 fn is_access_endpoint(segments: &[String]) -> bool {
-    ["collaborators", "memberships", "permissions", "protection", "rulesets"]
-        .iter()
-        .any(|m| contains_segment(segments, m))
+    [
+        "collaborators",
+        "memberships",
+        "permissions",
+        "protection",
+        "rulesets",
+    ]
+    .iter()
+    .any(|m| contains_segment(segments, m))
         || segments
             .iter()
             .any(|s| ["deployments", "hooks", "keys", "transfer"].contains(&s.as_str()))
@@ -1105,9 +1298,9 @@ fn is_repository_endpoint(segments: &[String]) -> bool {
 /// `_is_force_request` (:193).
 fn is_force_request(segments: &[String], fields: &[(String, String)]) -> bool {
     contains_segment(segments, "refs")
-        && fields
-            .iter()
-            .any(|(name, value)| name.eq_ignore_ascii_case("force") && value.eq_ignore_ascii_case("true"))
+        && fields.iter().any(|(name, value)| {
+            name.eq_ignore_ascii_case("force") && value.eq_ignore_ascii_case("true")
+        })
 }
 
 /// `_is_content_endpoint` (:197).
@@ -1116,14 +1309,25 @@ fn is_content_endpoint(segments: &[String]) -> bool {
         let end = (ci + 3).min(segments.len());
         return segments[ci + 1..end] != [".github", "workflows"];
     }
-    ["comments", "discussions", "gists", "issues", "labels", "milestones", "pulls"]
-        .iter()
-        .any(|m| contains_segment(segments, m))
+    [
+        "comments",
+        "discussions",
+        "gists",
+        "issues",
+        "labels",
+        "milestones",
+        "pulls",
+    ]
+    .iter()
+    .any(|m| contains_segment(segments, m))
 }
 
 /// `_is_issue_lock_endpoint` (:204).
 fn is_issue_lock_endpoint(segments: &[String]) -> bool {
-    segments.len() == 6 && segments[0] == "repos" && segments[3] == "issues" && segments[5] == "lock"
+    segments.len() == 6
+        && segments[0] == "repos"
+        && segments[3] == "issues"
+        && segments[5] == "lock"
 }
 
 /// `_mutation_capabilities` (:124).
@@ -1170,7 +1374,13 @@ fn mutation_reason(capabilities: &[Cap]) -> String {
     if capabilities.len() != 1 {
         return "github.api.mixed-mutation".to_string();
     }
-    format!("github.api.{}", capabilities[0].as_str().replace("_remote", "").replace('_', "-"))
+    format!(
+        "github.api.{}",
+        capabilities[0]
+            .as_str()
+            .replace("_remote", "")
+            .replace('_', "-")
+    )
 }
 
 /// `classify_github_api` (:60-121).
@@ -1203,7 +1413,11 @@ pub fn classify_github_api(args: &[String]) -> GitHubCommandAssessment {
             "A GitHub API option value cannot be resolved statically.",
         );
     }
-    if parsed.headers.iter().any(|h| method_override_header_re().is_match(h)) {
+    if parsed
+        .headers
+        .iter()
+        .any(|h| method_override_header_re().is_match(h))
+    {
         return assessment(
             Cap::Unknown,
             "github.api.method-override",
@@ -1237,7 +1451,11 @@ pub fn classify_github_api(args: &[String]) -> GitHubCommandAssessment {
         );
     }
     let method = method.unwrap_or_else(|| {
-        if parsed.fields.is_empty() { "GET".to_string() } else { "POST".to_string() }
+        if parsed.fields.is_empty() {
+            "GET".to_string()
+        } else {
+            "POST".to_string()
+        }
     });
     if method == "GET" || method == "HEAD" {
         return assessment(
@@ -1361,27 +1579,55 @@ fn routine_review_thread_arguments_are_static(args: &[String]) -> bool {
         field_names.push(name);
     }
     field_names.iter().filter(|n| n.as_str() == "query").count() == 1
-        && field_names.iter().filter(|n| n.as_str() == "threadId").count() <= 1
+        && field_names
+            .iter()
+            .filter(|n| n.as_str() == "threadId")
+            .count()
+            <= 1
 }
 
 // ---------------------------------------------------------------------------
 // github_graphql_capabilities.py
 // ---------------------------------------------------------------------------
 
-const MAINTENANCE_MUTATIONS: &[&str] =
-    &["minimizeComment", "resolveReviewThread", "unminimizeComment", "unresolveReviewThread"];
+const MAINTENANCE_MUTATIONS: &[&str] = &[
+    "minimizeComment",
+    "resolveReviewThread",
+    "unminimizeComment",
+    "unresolveReviewThread",
+];
 const MERGE_MUTATIONS: &[&str] = &[
-    "disablePullRequestAutoMerge", "enablePullRequestAutoMerge", "mergePullRequest",
+    "disablePullRequestAutoMerge",
+    "enablePullRequestAutoMerge",
+    "mergePullRequest",
     "updatePullRequestBranch",
 ];
 const CONTENT_MUTATIONS: &[&str] = &[
-    "addComment", "addProjectV2DraftIssue", "addProjectV2ItemById", "addPullRequestReview",
-    "addPullRequestReviewComment", "addPullRequestReviewThread", "closeDiscussion", "closeIssue",
-    "convertPullRequestToDraft", "createDiscussion", "createIssue", "createPullRequest",
-    "markDiscussionCommentAsAnswer", "markPullRequestReadyForReview", "reopenDiscussion",
-    "reopenIssue", "submitPullRequestReview", "unmarkDiscussionCommentAsAnswer",
-    "updateDiscussion", "updateDiscussionComment", "updateIssue", "updateIssueComment",
-    "updateProjectV2ItemFieldValue", "updatePullRequest", "updatePullRequestReview",
+    "addComment",
+    "addProjectV2DraftIssue",
+    "addProjectV2ItemById",
+    "addPullRequestReview",
+    "addPullRequestReviewComment",
+    "addPullRequestReviewThread",
+    "closeDiscussion",
+    "closeIssue",
+    "convertPullRequestToDraft",
+    "createDiscussion",
+    "createIssue",
+    "createPullRequest",
+    "markDiscussionCommentAsAnswer",
+    "markPullRequestReadyForReview",
+    "reopenDiscussion",
+    "reopenIssue",
+    "submitPullRequestReview",
+    "unmarkDiscussionCommentAsAnswer",
+    "updateDiscussion",
+    "updateDiscussionComment",
+    "updateIssue",
+    "updateIssueComment",
+    "updateProjectV2ItemFieldValue",
+    "updatePullRequest",
+    "updatePullRequestReview",
     "updatePullRequestReviewComment",
 ];
 
@@ -1418,7 +1664,11 @@ fn graphql_alias_re() -> &'static Regex {
 fn word_re(word: &'static str) -> &'static Regex {
     static FRAGMENT: OnceLock<Regex> = OnceLock::new();
     static MUTATION: OnceLock<Regex> = OnceLock::new();
-    let slot = if word == "fragment" { &FRAGMENT } else { &MUTATION };
+    let slot = if word == "fragment" {
+        &FRAGMENT
+    } else {
+        &MUTATION
+    };
     slot.get_or_init(|| Regex::new(&format!(r"\b{}\b", word)).unwrap())
 }
 
@@ -1595,7 +1845,10 @@ pub fn is_routine_review_thread_resolution(document: &str, fields: &[(String, St
 
 /// `_graphql_reason` (:179).
 fn graphql_reason(capability: Cap) -> String {
-    format!("github.graphql.{}", capability.as_str().replace("_remote", "").replace('_', "-"))
+    format!(
+        "github.graphql.{}",
+        capability.as_str().replace("_remote", "").replace('_', "-")
+    )
 }
 
 /// `_root_fields` (:183).

@@ -138,8 +138,9 @@ const fn capability_floor(capability: GitHubCommandCapability) -> GuardAction {
         | GitHubCommandCapability::AccessRemote
         | GitHubCommandCapability::MutateRemote
         | GitHubCommandCapability::Unknown => GuardAction::RequireReapproval,
-        GitHubCommandCapability::ForceRemote
-        | GitHubCommandCapability::SecretRemote => GuardAction::Block,
+        GitHubCommandCapability::ForceRemote | GitHubCommandCapability::SecretRemote => {
+            GuardAction::Block
+        }
     }
 }
 
@@ -174,25 +175,196 @@ const fn contract(
 // oracle `_CONTRACTS` dump.
 use GitHubCommandCapability as C;
 static CONTRACTS: &[GitHubCapabilityContract] = &[
-    contract(C::ReadLocal, "read-local", None, None, "local GitHub state", false, "gh auth status", None),
-    contract(C::ReadRemote, "read-remote", None, None, "remote GitHub state", false, "gh pr view 123", None),
-    contract(C::ProposeRemote, "propose-remote", None, None, "pull-request proposal", false, "gh pr create --title \"Fix login\" --body \"Summary\"", None),
-    contract(C::RoutineMergeRemote, "routine-merge-remote", Some("GitHub routine pull-request merge command"), Some("routine-merge"), "routine squash pull-request merge", false, "gh pr merge 123 --squash", Some("gh-pr-merge")),
-    contract(C::RoutineReviewThreadRemote, "routine-review-thread-remote", None, None, "routine review-thread resolution", false, "gh api graphql -F query='mutation { resolveReviewThread...}'", None),
-    contract(C::RoutineWorkflowRemote, "routine-workflow-remote", Some("GitHub workflow rerun"), Some("workflow-mutation"), "routine failed-run retry", false, "gh run rerun 123 --failed", None),
-    contract(C::WriteLocal, "write-local", Some("GitHub local configuration write"), Some("local-write"), "local repository configuration", true, "gh auth login", None),
-    contract(C::MaintainRemote, "maintain-remote", Some("GitHub bounded maintenance command"), Some("maintenance"), "remote maintenance", false, "gh pr ready 123", None),
-    contract(C::ContentRemote, "content-remote", Some("GitHub content mutation command"), Some("content"), "remote content", false, "gh pr create --title \"Fix\" --body \"Body\"", None),
-    contract(C::MergeRemote, "merge-remote", Some("GitHub merge command"), Some("merge"), "remote merge", false, "gh pr merge 123 --merge", Some("gh-pr-merge")),
-    contract(C::AdminMergeRemote, "merge-admin", Some("GitHub administrator pull-request merge command"), Some("admin-merge"), "administrator merge", false, "gh pr merge 123 --admin", Some("gh-pr-merge")),
-    contract(C::PublishRemote, "publish-remote", Some("GitHub release publication command"), Some("publish"), "remote release publication", false, "gh release create v1.2.3", None),
-    contract(C::WorkflowRemote, "workflow-remote", Some("GitHub workflow mutation command"), Some("workflow"), "remote workflow control", false, "gh run rerun 123", None),
-    contract(C::ForceRemote, "force-remote", Some("GitHub force mutation command"), Some("force"), "remote force operation", false, "gh pr merge 123 --force", None),
-    contract(C::DeleteRemote, "delete-remote", Some("GitHub delete command"), Some("delete"), "remote deletion", false, "gh repo delete owner/repo", None),
-    contract(C::SecretRemote, "secret-remote", Some("GitHub secret mutation command"), Some("secret"), "remote secret access", false, "gh secret list", None),
-    contract(C::AccessRemote, "access-remote", Some("GitHub access mutation command"), Some("access"), "remote access grant", false, "gh ssh-key add key.pub", None),
-    contract(C::MutateRemote, "mutate-remote", Some("GitHub remote mutation command"), Some("mutation"), "remote mutation", false, "gh issue close 123", None),
-    contract(C::Unknown, "unknown", Some("Unverified GitHub command capability"), Some("unknown"), "unknown", false, "gh", None),
+    contract(
+        C::ReadLocal,
+        "read-local",
+        None,
+        None,
+        "local GitHub state",
+        false,
+        "gh auth status",
+        None,
+    ),
+    contract(
+        C::ReadRemote,
+        "read-remote",
+        None,
+        None,
+        "remote GitHub state",
+        false,
+        "gh pr view 123",
+        None,
+    ),
+    contract(
+        C::ProposeRemote,
+        "propose-remote",
+        None,
+        None,
+        "pull-request proposal",
+        false,
+        "gh pr create --title \"Fix login\" --body \"Summary\"",
+        None,
+    ),
+    contract(
+        C::RoutineMergeRemote,
+        "routine-merge-remote",
+        Some("GitHub routine pull-request merge command"),
+        Some("routine-merge"),
+        "routine squash pull-request merge",
+        false,
+        "gh pr merge 123 --squash",
+        Some("gh-pr-merge"),
+    ),
+    contract(
+        C::RoutineReviewThreadRemote,
+        "routine-review-thread-remote",
+        None,
+        None,
+        "routine review-thread resolution",
+        false,
+        "gh api graphql -F query='mutation { resolveReviewThread...}'",
+        None,
+    ),
+    contract(
+        C::RoutineWorkflowRemote,
+        "routine-workflow-remote",
+        Some("GitHub workflow rerun"),
+        Some("workflow-mutation"),
+        "routine failed-run retry",
+        false,
+        "gh run rerun 123 --failed",
+        None,
+    ),
+    contract(
+        C::WriteLocal,
+        "write-local",
+        Some("GitHub local configuration write"),
+        Some("local-write"),
+        "local repository configuration",
+        true,
+        "gh auth login",
+        None,
+    ),
+    contract(
+        C::MaintainRemote,
+        "maintain-remote",
+        Some("GitHub bounded maintenance command"),
+        Some("maintenance"),
+        "remote maintenance",
+        false,
+        "gh pr ready 123",
+        None,
+    ),
+    contract(
+        C::ContentRemote,
+        "content-remote",
+        Some("GitHub content mutation command"),
+        Some("content"),
+        "remote content",
+        false,
+        "gh pr create --title \"Fix\" --body \"Body\"",
+        None,
+    ),
+    contract(
+        C::MergeRemote,
+        "merge-remote",
+        Some("GitHub merge command"),
+        Some("merge"),
+        "remote merge",
+        false,
+        "gh pr merge 123 --merge",
+        Some("gh-pr-merge"),
+    ),
+    contract(
+        C::AdminMergeRemote,
+        "merge-admin",
+        Some("GitHub administrator pull-request merge command"),
+        Some("admin-merge"),
+        "administrator merge",
+        false,
+        "gh pr merge 123 --admin",
+        Some("gh-pr-merge"),
+    ),
+    contract(
+        C::PublishRemote,
+        "publish-remote",
+        Some("GitHub release publication command"),
+        Some("publish"),
+        "remote release publication",
+        false,
+        "gh release create v1.2.3",
+        None,
+    ),
+    contract(
+        C::WorkflowRemote,
+        "workflow-remote",
+        Some("GitHub workflow mutation command"),
+        Some("workflow"),
+        "remote workflow control",
+        false,
+        "gh run rerun 123",
+        None,
+    ),
+    contract(
+        C::ForceRemote,
+        "force-remote",
+        Some("GitHub force mutation command"),
+        Some("force"),
+        "remote force operation",
+        false,
+        "gh pr merge 123 --force",
+        None,
+    ),
+    contract(
+        C::DeleteRemote,
+        "delete-remote",
+        Some("GitHub delete command"),
+        Some("delete"),
+        "remote deletion",
+        false,
+        "gh repo delete owner/repo",
+        None,
+    ),
+    contract(
+        C::SecretRemote,
+        "secret-remote",
+        Some("GitHub secret mutation command"),
+        Some("secret"),
+        "remote secret access",
+        false,
+        "gh secret list",
+        None,
+    ),
+    contract(
+        C::AccessRemote,
+        "access-remote",
+        Some("GitHub access mutation command"),
+        Some("access"),
+        "remote access grant",
+        false,
+        "gh ssh-key add key.pub",
+        None,
+    ),
+    contract(
+        C::MutateRemote,
+        "mutate-remote",
+        Some("GitHub remote mutation command"),
+        Some("mutation"),
+        "remote mutation",
+        false,
+        "gh issue close 123",
+        None,
+    ),
+    contract(
+        C::Unknown,
+        "unknown",
+        Some("Unverified GitHub command capability"),
+        Some("unknown"),
+        "unknown",
+        false,
+        "gh",
+        None,
+    ),
 ];
 
 fn contract_entry(capability: GitHubCommandCapability) -> &'static GitHubCapabilityContract {
@@ -299,8 +471,10 @@ pub fn github_assessment(
 
 /// `github_cli_invocation_is_help` (:381).
 pub fn github_cli_invocation_is_help(normalized: &[String]) -> bool {
-    (matches!(normalized.first().map(String::as_str), Some("--help") | Some("-h")))
-        || normalized == ["auth", "switch", "--help"]
+    (matches!(
+        normalized.first().map(String::as_str),
+        Some("--help") | Some("-h")
+    )) || normalized == ["auth", "switch", "--help"]
 }
 
 /// `combine_github_assessments` (:387).

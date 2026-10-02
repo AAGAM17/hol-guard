@@ -15,8 +15,7 @@ pub const SHELL_CWD_STACK_LIMIT: &str = "shell_cwd_stack_limit";
 pub const SHELL_CWD_WORKSPACE_ESCAPE: &str = "shell_cwd_workspace_escape";
 pub const SHELL_CWD_SYMLINK_ESCAPE: &str = "shell_cwd_symlink_escape";
 pub const SHELL_CWD_UNRESOLVED_CONTROL_FLOW: &str = "shell_cwd_unresolved_control_flow";
-pub const SHELL_CWD_UNRESOLVED_PARENT_SHELL: &str =
-    "shell_cwd_unresolved_parent_shell_effect";
+pub const SHELL_CWD_UNRESOLVED_PARENT_SHELL: &str = "shell_cwd_unresolved_parent_shell_effect";
 pub const SHELL_CWD_UNRESOLVED_SYNTAX: &str = "shell_cwd_unresolved_syntax";
 pub const SHELL_CWD_PATH_CHANGED: &str = "shell_cwd_path_changed";
 
@@ -104,7 +103,9 @@ impl ShellPathIdentity {
 }
 
 /// `shell_path_identity_payload` (:69-80) → JSON or None.
-pub fn shell_path_identity_payload(identity: Option<&ShellPathIdentity>) -> Option<serde_json::Value> {
+pub fn shell_path_identity_payload(
+    identity: Option<&ShellPathIdentity>,
+) -> Option<serde_json::Value> {
     identity.map(|i| {
         serde_json::json!({
             "change_time_ns": i.change_time_ns,
@@ -321,10 +322,7 @@ fn protect_fd_redirection_ampersands(command_text: &str) -> Result<String, Strin
         }
         if quote.is_none() && character == '|' && index > 0 && chars[index - 1] == '>' {
             result.extend(NOCLOBBER_PIPE_SENTINEL.chars());
-        } else if quote.is_none()
-            && character == '&'
-            && is_adjacent_fd_duplication(&chars, index)
-        {
+        } else if quote.is_none() && character == '&' && is_adjacent_fd_duplication(&chars, index) {
             result.extend(FD_AMPERSAND_SENTINEL.chars());
         } else {
             result.push(character);
@@ -544,9 +542,7 @@ fn punctuation_shlex(command: &str) -> Result<Vec<String>, String> {
 
 /// `ordered_segments` (:313-335) → `(segments, pending_controls)` where each
 /// segment is `(tokens, controls_before)`.
-pub fn ordered_segments(
-    tokens: &[String],
-) -> (Vec<(Vec<String>, Vec<String>)>, Vec<String>) {
+pub fn ordered_segments(tokens: &[String]) -> (Vec<(Vec<String>, Vec<String>)>, Vec<String>) {
     let mut segments: Vec<(Vec<String>, Vec<String>)> = Vec::new();
     let mut current: Vec<String> = Vec::new();
     let mut pending_controls: Vec<String> = Vec::new();
@@ -554,7 +550,10 @@ pub fn ordered_segments(
     for token in tokens {
         if token != "{}" && (is_control_token(token) || is_unknown_control_token(token)) {
             if !current.is_empty() {
-                segments.push((std::mem::take(&mut current), std::mem::take(&mut controls_before)));
+                segments.push((
+                    std::mem::take(&mut current),
+                    std::mem::take(&mut controls_before),
+                ));
             }
             pending_controls.push(token.clone());
             continue;
@@ -599,7 +598,10 @@ pub fn parent_shell_cwd_construct_reason(
 fn is_function_definition(tokens: &[String], controls_after: &[String]) -> bool {
     let ident = |s: &str| {
         !s.is_empty()
-            && s.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_').unwrap_or(false)
+            && s.chars()
+                .next()
+                .map(|c| c.is_ascii_alphabetic() || c == '_')
+                .unwrap_or(false)
             && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     };
     if !controls_after.iter().any(|c| c == "{") {
@@ -631,8 +633,7 @@ fn function_body_may_change_cwd(
         if brace_depth <= 0 {
             return false;
         }
-        if directory_operation(tokens).is_some()
-            || segment_has_unmodeled_parent_cwd_effect(tokens)
+        if directory_operation(tokens).is_some() || segment_has_unmodeled_parent_cwd_effect(tokens)
         {
             return true;
         }
@@ -708,13 +709,12 @@ pub fn control_sequence_reason(controls: &[String], trailing: bool) -> Option<&'
 
 /// `directory_operation` (:431-471).
 pub fn directory_operation(tokens: &[String]) -> Option<DirectoryOperation> {
-    let op = |name: &str, operand: Option<String>, reason: Option<&'static str>| {
-        DirectoryOperation {
+    let op =
+        |name: &str, operand: Option<String>, reason: Option<&'static str>| DirectoryOperation {
             name: name.to_owned(),
             operand,
             reason_code: reason,
-        }
-    };
+        };
     let mut index = 0;
     while index < tokens.len() && shell_assignment(&tokens[index]) {
         index += 1;
@@ -731,9 +731,14 @@ pub fn directory_operation(tokens: &[String]) -> Option<DirectoryOperation> {
             return Some(op(embedded, None, Some(SHELL_CWD_UNRESOLVED_CONTROL_FLOW)));
         }
     }
-    if command == "!" || command == "builtin" || command == "command" || command == "function" || command == "time" {
-        let wrapped_index = (index + 1..tokens.len())
-            .find(|&i| directory_commands().contains(&tokens[i].as_str()));
+    if command == "!"
+        || command == "builtin"
+        || command == "command"
+        || command == "function"
+        || command == "time"
+    {
+        let wrapped_index =
+            (index + 1..tokens.len()).find(|&i| directory_commands().contains(&tokens[i].as_str()));
         match wrapped_index {
             None => return None,
             Some(wi) => {
@@ -761,7 +766,11 @@ pub fn directory_operation(tokens: &[String]) -> Option<DirectoryOperation> {
     }
     if command == "cd" && arguments.first().map(|a| a == "--").unwrap_or(false) {
         arguments.remove(0);
-    } else if arguments.first().map(|a| a.starts_with('-')).unwrap_or(false) {
+    } else if arguments
+        .first()
+        .map(|a| a.starts_with('-'))
+        .unwrap_or(false)
+    {
         return Some(op(&command, None, Some(SHELL_CWD_UNRESOLVED_EXPRESSION)));
     }
     if arguments.len() != 1 || operand_is_dynamic(&arguments[0]) {
@@ -776,7 +785,8 @@ pub fn directory_operation(tokens: &[String]) -> Option<DirectoryOperation> {
 /// `re.fullmatch(r"[+-]\d+", arg)` for the `pushd` stack-offset check.
 fn pushd_stack_offset(arg: &str) -> bool {
     let t = arg.strip_prefix(['+', '-']).unwrap_or(arg);
-    !t.is_empty() && t.len() == t.chars().filter(|c| c.is_ascii_digit()).count()
+    !t.is_empty()
+        && t.len() == t.chars().filter(|c| c.is_ascii_digit()).count()
         && (arg.starts_with('+') || arg.starts_with('-'))
 }
 
@@ -897,7 +907,11 @@ fn abspath(p: &Path) -> PathBuf {
 /// `existing_directory` (:541-556) → `(resolved, identity, reason)`.
 pub fn existing_directory(
     path: &Path,
-) -> (Option<PathBuf>, Option<ShellPathIdentity>, Option<&'static str>) {
+) -> (
+    Option<PathBuf>,
+    Option<ShellPathIdentity>,
+    Option<&'static str>,
+) {
     // `path.expanduser()` — Rust Path doesn't expand ~; callers pass expanded.
     let resolved = match std::fs::canonicalize(path) {
         Ok(r) => r,
@@ -920,7 +934,11 @@ pub fn existing_directory(
     if !directory_is_readable(&resolved, value_stat.mode()) {
         return (None, None, Some(SHELL_CWD_UNREADABLE_DIRECTORY));
     }
-    (Some(resolved), Some(ShellPathIdentity::from_stat(&value_stat)), None)
+    (
+        Some(resolved),
+        Some(ShellPathIdentity::from_stat(&value_stat)),
+        None,
+    )
 }
 
 /// `_directory_is_readable` (:559-565).

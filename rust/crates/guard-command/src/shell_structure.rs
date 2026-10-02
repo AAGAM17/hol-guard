@@ -414,5 +414,8 @@ fn starts_with(chars: &[char], index: usize, pat: &str) -> bool {
 }
 
 fn find_newline(chars: &[char], from: usize) -> Option<usize> {
-    chars[from..].iter().position(|&c| c == '\n').map(|p| from + p)
+    chars[from..]
+        .iter()
+        .position(|&c| c == '\n')
+        .map(|p| from + p)
 }

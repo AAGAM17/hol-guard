@@ -231,8 +231,7 @@ mod tests {
         match error {
             GitError::NonZero { code, stderr } => {
                 assert_ne!(code, 0);
-                assert!(String::from_utf8_lossy(&stderr)
-                    .contains("nonexistent-subcommand-xyz"));
+                assert!(String::from_utf8_lossy(&stderr).contains("nonexistent-subcommand-xyz"));
             }
             other => panic!("expected GitError::NonZero, got {other:?}"),
         }

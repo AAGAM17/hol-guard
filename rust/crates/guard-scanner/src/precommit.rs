@@ -386,13 +386,8 @@ pub fn install_precommit_hook(root: &Path) -> Result<SecretsHookResult, Precommi
         fsync(&file).map_err(|error| PrecommitError::Io(errno_io(error)))?;
         drop(file);
         // `os.replace(temp, hook, src_dir_fd=..., dst_dir_fd=...)`
-        renameat(
-            directory.as_fd(),
-            temp.as_str(),
-            directory.as_fd(),
-            hook,
-        )
-        .map_err(|error| PrecommitError::Io(errno_io(error)))?;
+        renameat(directory.as_fd(), temp.as_str(), directory.as_fd(), hook)
+            .map_err(|error| PrecommitError::Io(errno_io(error)))?;
         Ok(SecretsHookResult {
             status: "installed",
             hook: display,
@@ -409,32 +404,23 @@ pub fn install_precommit_hook(root: &Path) -> Result<SecretsHookResult, Precommi
                 // sequence stops at the first cleanup failure like Python.
                 let _ = (|| -> Result<(), PrecommitError> {
                     if entry_stat(&directory, temp.as_str())?.is_some() {
-                        unlinkat(
-                            directory.as_fd(),
-                            temp.as_str(),
-                            UnlinkatFlags::NoRemoveDir,
-                        )
-                        .map_err(|error| PrecommitError::Io(errno_io(error)))?;
+                        unlinkat(directory.as_fd(), temp.as_str(), UnlinkatFlags::NoRemoveDir)
+                            .map_err(|error| PrecommitError::Io(errno_io(error)))?;
                     }
                     if moved_existing
                         && entry_stat(&directory, backup)?.is_some()
                         && entry_stat(&directory, hook)?.is_none()
                     {
-                        renameat(
-                            directory.as_fd(),
-                            backup,
-                            directory.as_fd(),
-                            hook,
-                        )
-                        .map_err(|error| PrecommitError::Io(errno_io(error)))?;
+                        renameat(directory.as_fd(), backup, directory.as_fd(), hook)
+                            .map_err(|error| PrecommitError::Io(errno_io(error)))?;
                     }
                     Ok(())
                 })();
             }
             Err(match error {
-                PrecommitError::Io(_) => PrecommitError::value(
-                    "could not install HOL Guard Secrets pre-commit hook",
-                ),
+                PrecommitError::Io(_) => {
+                    PrecommitError::value("could not install HOL Guard Secrets pre-commit hook")
+                }
                 other => other,
             })
         }
@@ -481,13 +467,8 @@ pub fn uninstall_precommit_hook(root: &Path) -> Result<SecretsHookResult, Precom
         let restored = entry_stat(&directory, backup)?.is_some();
         if restored {
             // `os.replace(backup, hook, src_dir_fd=..., dst_dir_fd=...)`
-            renameat(
-                directory.as_fd(),
-                backup,
-                directory.as_fd(),
-                hook,
-            )
-            .map_err(|error| PrecommitError::Io(errno_io(error)))?;
+            renameat(directory.as_fd(), backup, directory.as_fd(), hook)
+                .map_err(|error| PrecommitError::Io(errno_io(error)))?;
         }
         Ok(SecretsHookResult {
             status: if restored { "restored" } else { "uninstalled" },
@@ -497,9 +478,9 @@ pub fn uninstall_precommit_hook(root: &Path) -> Result<SecretsHookResult, Precom
     })();
 
     outcome.map_err(|error| match error {
-        PrecommitError::Io(_) => PrecommitError::value(
-            "could not uninstall HOL Guard Secrets pre-commit hook",
-        ),
+        PrecommitError::Io(_) => {
+            PrecommitError::value("could not uninstall HOL Guard Secrets pre-commit hook")
+        }
         other => other,
     })
 }

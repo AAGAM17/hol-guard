@@ -33,7 +33,10 @@ fn github_cli_classification_matches_python_oracle() {
     let mut mismatches = Vec::new();
     for (i, row) in rows.iter().enumerate() {
         let Some(expected_cap) = row.capability.as_deref().and_then(cap_from_str) else {
-            mismatches.push(format!("#{i} {:?}: oracle had no capability (error row)", row.argv));
+            mismatches.push(format!(
+                "#{i} {:?}: oracle had no capability (error row)",
+                row.argv
+            ));
             continue;
         };
         let got = classify_github_cli(&row.argv);
@@ -59,6 +62,13 @@ fn github_cli_classification_matches_python_oracle() {
         }
     }
     let mut by_reason = BTreeMap::new();
-    for m in &mismatches { *by_reason.entry(m.clone()).or_insert(0u32) += 1; }
-    assert!(mismatches.is_empty(), "{} mismatches:\n{}", mismatches.len(), mismatches.join("\n"));
+    for m in &mismatches {
+        *by_reason.entry(m.clone()).or_insert(0u32) += 1;
+    }
+    assert!(
+        mismatches.is_empty(),
+        "{} mismatches:\n{}",
+        mismatches.len(),
+        mismatches.join("\n")
+    );
 }

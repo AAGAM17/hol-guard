@@ -11,9 +11,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use crate::CanonicalCommandV1;
 use crate::github_capability_contract::GitHubCommandCapability;
 use crate::github_command_capabilities::classify_github_cli;
+use crate::CanonicalCommandV1;
 
 /// `GitHubWorkflowOperationKind` — the ten authorization-eligible operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -148,9 +148,7 @@ pub fn parse_github_workflow_operation(
     }
     let normalized_repository = normalized_repository(repository?);
     let operation = graphql_operation(&segment.arguments, normalized_repository.as_deref())
-        .or_else(|| {
-            cli_operation(&segment.arguments, normalized_repository.as_deref())
-        })?;
+        .or_else(|| cli_operation(&segment.arguments, normalized_repository.as_deref()))?;
     let (kind, resource_type, resource_id, repo) = operation;
     let assessment = classify_github_cli(&segment.arguments);
     if assessment.capabilities != [GitHubCommandCapability::MaintainRemote]
@@ -197,8 +195,14 @@ fn graphql_operations() -> &'static HashMap<&'static str, GitHubWorkflowOperatio
     static MAP: OnceLock<HashMap<&'static str, GitHubWorkflowOperationKind>> = OnceLock::new();
     MAP.get_or_init(|| {
         HashMap::from([
-            ("resolveReviewThread", GitHubWorkflowOperationKind::ResolveReviewThread),
-            ("unresolveReviewThread", GitHubWorkflowOperationKind::UnresolveReviewThread),
+            (
+                "resolveReviewThread",
+                GitHubWorkflowOperationKind::ResolveReviewThread,
+            ),
+            (
+                "unresolveReviewThread",
+                GitHubWorkflowOperationKind::UnresolveReviewThread,
+            ),
         ])
     })
 }
@@ -228,9 +232,7 @@ fn graphql_thread_definition_re() -> &'static Regex {
 
 fn graphql_thread_input_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"\binput\s*:\s*\{\s*threadId\s*:\s*\$threadId\s*\}").unwrap()
-    })
+    RE.get_or_init(|| Regex::new(r"\binput\s*:\s*\{\s*threadId\s*:\s*\$threadId\s*\}").unwrap())
 }
 
 fn graphql_operation(
@@ -257,7 +259,9 @@ fn graphql_operation(
         || graphql_thread_input_re().find_iter(query).count() != 1
         || query.matches("$threadId").count() != 2
         || Regex::new(r"\$(?!threadId\b)").unwrap().is_match(query)
-        || ["$(`", "${", "`", "\"", "#"].iter().any(|m| query.contains(m))
+        || ["$(`", "${", "`", "\"", "#"]
+            .iter()
+            .any(|m| query.contains(m))
     {
         return None;
     }
@@ -409,8 +413,8 @@ fn compute_operation_digest(
         "resource_id": resource_id,
         "resource_type": resource_type,
     });
-    let framed = canonical_framed_payload("github-workflow-operation", &payload)
-        .unwrap_or_default();
+    let framed =
+        canonical_framed_payload("github-workflow-operation", &payload).unwrap_or_default();
     let mut hasher = Sha256::new();
     hasher.update(&framed);
     hex_lower(&hasher.finalize())
@@ -425,7 +429,10 @@ fn hmac_compare_digest(a: &str, b: &str) -> bool {
     if x.len() != y.len() {
         return false;
     }
-    x.iter().zip(y.iter()).fold(0u8, |acc, (p, q)| acc | (p ^ q)) == 0
+    x.iter()
+        .zip(y.iter())
+        .fold(0u8, |acc, (p, q)| acc | (p ^ q))
+        == 0
 }
 
 fn hex_lower(bytes: &[u8]) -> String {

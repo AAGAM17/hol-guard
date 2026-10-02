@@ -20,7 +20,8 @@ use serde_json::Value;
 use super::context_digest_json::write_canonical_json_with_limit;
 
 fn request_digest(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<String, &'static str> {
-    let material = serde_json::to_value(request).map_err(|_| "native_claim_approval_reuse_invalid")?;
+    let material =
+        serde_json::to_value(request).map_err(|_| "native_claim_approval_reuse_invalid")?;
     let mut bytes = Vec::new();
     write_canonical_json_with_limit(&material, &mut bytes, usize::MAX)
         .map_err(|_| "native_claim_approval_reuse_invalid")?;
@@ -57,9 +58,12 @@ fn evaluate(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<Value, Str
     // material (purpose-derived inside local_authority_integrity).
     let guard_home = PathBuf::from(&request.guard_home);
     let resolved_home = std::fs::canonicalize(&guard_home).unwrap_or_else(|_| guard_home.clone());
-    let mut secret_store = crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
-    let (material, integrity_state) =
-        crate::policy_integrity_resolver::resolve_integrity_state(&mut secret_store, &resolved_home);
+    let mut secret_store =
+        crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
+    let (material, integrity_state) = crate::policy_integrity_resolver::resolve_integrity_state(
+        &mut secret_store,
+        &resolved_home,
+    );
     let (local_integrity_key, local_integrity_key_id) = match material.as_ref() {
         Some(m) => (Some(m.raw_key.as_slice()), Some(m.key_id.as_str())),
         None => (None, None),
@@ -71,8 +75,10 @@ fn evaluate(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<Value, Str
         .busy_timeout(std::time::Duration::from_millis(5000))
         .map_err(|_| "native_claim_approval_reuse_store_unavailable".to_owned())?;
 
-    let identities: Option<std::collections::BTreeSet<String>> =
-        request.policy_bundle_decision_identities.as_ref().map(|list| {
+    let identities: Option<std::collections::BTreeSet<String>> = request
+        .policy_bundle_decision_identities
+        .as_ref()
+        .map(|list| {
             list.iter()
                 .map(|v| serde_json::to_string(&Value::Array(v.clone())).unwrap_or_default())
                 .collect()
@@ -134,12 +140,26 @@ mod tests {
                 "insert into policy_decisions values
                  (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
                 params![
-                    gi("decision_id"), gs("harness"), gs("scope"), gs("artifact_id"),
-                    gs("action"), gs("artifact_hash"), gs("workspace"), gs("publisher"),
-                    gs("source"), gs("reason"), gs("owner"), gs("created_at"),
-                    gs("updated_at"), gs("expires_at"), gi("integrity_version"),
-                    gi("integrity_generation"), gs("payload_hash"), gs("payload_mac"),
-                    gs("integrity_key_id"), gs("signed_at"),
+                    gi("decision_id"),
+                    gs("harness"),
+                    gs("scope"),
+                    gs("artifact_id"),
+                    gs("action"),
+                    gs("artifact_hash"),
+                    gs("workspace"),
+                    gs("publisher"),
+                    gs("source"),
+                    gs("reason"),
+                    gs("owner"),
+                    gs("created_at"),
+                    gs("updated_at"),
+                    gs("expires_at"),
+                    gi("integrity_version"),
+                    gi("integrity_generation"),
+                    gs("payload_hash"),
+                    gs("payload_mac"),
+                    gs("integrity_key_id"),
+                    gs("signed_at"),
                 ],
             )
             .unwrap();
@@ -153,15 +173,23 @@ mod tests {
         let key = hex::decode(seed["key"].as_str().unwrap()).unwrap();
         let key_id = seed["key_id"].as_str().unwrap();
         let state = &seed["policy_integrity_state"];
-        let row: Value = conn.query_row(
-            "select decision_id, harness, scope, artifact_id, action, artifact_hash, \
+        let row: Value = conn
+            .query_row(
+                "select decision_id, harness, scope, artifact_id, action, artifact_hash, \
              workspace, publisher, source, reason, owner, expires_at, updated_at, \
              integrity_version, integrity_generation, payload_hash, payload_mac, \
              integrity_key_id, signed_at from policy_decisions where decision_id=?1",
-            params![did], crate::claim_reuse::policy_row_to_value).unwrap();
+                params![did],
+                crate::claim_reuse::policy_row_to_value,
+            )
+            .unwrap();
         let res = guard_policy_snapshot::policy_integrity::verify_local_policy_row(
-            &row, Some(&key), Some(key_id), false,
-            state.get("generation").and_then(Value::as_i64));
+            &row,
+            Some(&key),
+            Some(key_id),
+            false,
+            state.get("generation").and_then(Value::as_i64),
+        );
         let mut d = crate::claim_reuse::policy_row_payload(&row, Some(&res), Some(state));
         d["_approval_authority_revision"] = json!(9);
         d
@@ -186,24 +214,34 @@ mod tests {
         let mut secret_store =
             crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
         let key_ref = crate::policy_integrity_resolver::build_scoped_secret_ref(
-            crate::policy_integrity_resolver::POLICY_INTEGRITY_KEY_REF, &resolved_home);
+            crate::policy_integrity_resolver::POLICY_INTEGRITY_KEY_REF,
+            &resolved_home,
+        );
         let control_ref = crate::policy_integrity_resolver::build_scoped_secret_ref(
-            crate::policy_integrity_resolver::POLICY_INTEGRITY_CONTROL_REF, &resolved_home);
+            crate::policy_integrity_resolver::POLICY_INTEGRITY_CONTROL_REF,
+            &resolved_home,
+        );
         // The seed `key` is a human label, not 32 bytes — the op derives a real
         // 32-byte signing key; we sign under whatever material resolves.
         let raw = [7u8; 32];
         secret_store.set_secret(&key_ref, &b64url(&raw)).unwrap();
         secret_store
-            .set_secret(&control_ref, &serde_json::json!({
-                "version": 1, "generation": 3,
-                "pending_generation": null, "cutover_complete": true,
-            }).to_string())
+            .set_secret(
+                &control_ref,
+                &serde_json::json!({
+                    "version": 1, "generation": 3,
+                    "pending_generation": null, "cutover_complete": true,
+                })
+                .to_string(),
+            )
             .unwrap();
 
         // Resolve the material exactly as the op does, then sign a fresh
         // local row under the resolved key_id so verify succeeds.
         let (material, _state) = crate::policy_integrity_resolver::resolve_integrity_state(
-            &mut secret_store, &resolved_home);
+            &mut secret_store,
+            &resolved_home,
+        );
         let material = material.unwrap();
         let conn = rusqlite::Connection::open(&store_path).unwrap();
         let base = json!({
@@ -215,8 +253,13 @@ mod tests {
             "updated_at":"2026-01-01T00:00:00+00:00",
         });
         let overlay = guard_policy_snapshot::policy_integrity::sign_local_policy_row(
-            &base, &material.raw_key, &material.key_id, &now, 3)
-            .unwrap();
+            &base,
+            &material.raw_key,
+            &material.key_id,
+            &now,
+            3,
+        )
+        .unwrap();
         let mut signed = base.clone();
         for (k, v) in overlay.as_object().unwrap() {
             signed[k] = v.clone();
@@ -227,14 +270,25 @@ mod tests {
              (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
             params![
                 9i64,
-                gs("harness"), gs("scope"), gs("artifact_id"), gs("action"),
-                gs("artifact_hash"), gs("workspace"), gs("publisher"), gs("source"),
-                gs("reason"), gs("owner"), gs("created_at"), gs("updated_at"),
+                gs("harness"),
+                gs("scope"),
+                gs("artifact_id"),
+                gs("action"),
+                gs("artifact_hash"),
+                gs("workspace"),
+                gs("publisher"),
+                gs("source"),
+                gs("reason"),
+                gs("owner"),
+                gs("created_at"),
+                gs("updated_at"),
                 None::<String>,
                 signed["integrity_version"].as_i64(),
                 signed["integrity_generation"].as_i64(),
-                gs("payload_hash"), gs("payload_mac"),
-                gs("integrity_key_id"), gs("signed_at"),
+                gs("payload_hash"),
+                gs("payload_mac"),
+                gs("integrity_key_id"),
+                gs("signed_at"),
             ],
         )
         .unwrap();
@@ -255,7 +309,12 @@ mod tests {
                     [], crate::claim_reuse::policy_row_to_value).unwrap();
                 drop(conn3);
                 let res = guard_policy_snapshot::policy_integrity::verify_local_policy_row(
-                    &row, Some(&material.raw_key), Some(&material.key_id), false, Some(3));
+                    &row,
+                    Some(&material.raw_key),
+                    Some(&material.key_id),
+                    false,
+                    Some(3),
+                );
                 let mut d = crate::claim_reuse::policy_row_payload(&row, Some(&res), Some(&_state));
                 d["_approval_authority_revision"] = json!(9);
                 d
@@ -268,13 +327,20 @@ mod tests {
         assert_eq!(result["status"].as_str().unwrap(), "ok");
         assert_eq!(result["code"].as_str().unwrap(), "ok");
         assert_eq!(result["request_id"].as_str().unwrap(), "req-claim");
-        assert_eq!(result["schema"].as_str().unwrap(), CLAIM_APPROVAL_REUSE_RESULT_SCHEMA);
+        assert_eq!(
+            result["schema"].as_str().unwrap(),
+            CLAIM_APPROVAL_REUSE_RESULT_SCHEMA
+        );
         assert_eq!(result["payload"]["claimed"].as_bool().unwrap(), true);
         // source="local", expires_at=null -> disposition "retained": the row is
         // NOT deleted (retained rows stay for re-claim); the applied event fires.
         let conn2 = rusqlite::Connection::open(&store_path).unwrap();
         let remaining: i64 = conn2
-            .query_row("select count(*) from policy_decisions where decision_id=9", [], |r| r.get(0))
+            .query_row(
+                "select count(*) from policy_decisions where decision_id=9",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(remaining, 1, "retained decision row remains");
         let events: i64 = conn2
@@ -299,6 +365,9 @@ mod tests {
         let bytes = evaluate_claim_approval_reuse_request(&request).unwrap();
         let result: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(result["status"].as_str().unwrap(), "error");
-        assert_eq!(result["code"].as_str().unwrap(), "native_claim_approval_reuse_schema_mismatch");
+        assert_eq!(
+            result["code"].as_str().unwrap(),
+            "native_claim_approval_reuse_schema_mismatch"
+        );
     }
 }

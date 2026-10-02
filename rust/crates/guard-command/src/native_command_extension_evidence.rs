@@ -22,9 +22,9 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 use guard_contracts::{
-    NativeCommandControlBindingV1, NativeCommandObservationsV1,
-    NATIVE_COMMAND_OBSERVATIONS_SCHEMA, NATIVE_COMMAND_RECEIPT_BINDING_SCHEMA,
-    MAX_NATIVE_COMMAND_EVIDENCE_ITEMS, MAX_NATIVE_COMMAND_OBSERVATIONS,
+    NativeCommandControlBindingV1, NativeCommandObservationsV1, MAX_NATIVE_COMMAND_EVIDENCE_ITEMS,
+    MAX_NATIVE_COMMAND_OBSERVATIONS, NATIVE_COMMAND_OBSERVATIONS_SCHEMA,
+    NATIVE_COMMAND_RECEIPT_BINDING_SCHEMA,
 };
 
 use crate::canonical_command::CanonicalCommand;
@@ -76,7 +76,10 @@ fn matches(value: &Value, pattern: &Regex, maximum: usize) -> bool {
         Value::String(text) => {
             // Python `len` counts code points, not bytes.
             text.chars().count() <= maximum
-                && pattern.find(text).map(|m| m.start() == 0 && m.end() == text.len()).unwrap_or(false)
+                && pattern
+                    .find(text)
+                    .map(|m| m.start() == 0 && m.end() == text.len())
+                    .unwrap_or(false)
         }
         _ => false,
     }
@@ -86,10 +89,7 @@ fn matches(value: &Value, pattern: &Regex, maximum: usize) -> bool {
 /// `serde_json` has no bool/int confusion) + `0 <= value <= maximum`.
 fn integer(value: &Value, maximum: u64) -> bool {
     match value {
-        Value::Number(number) => number
-            .as_u64()
-            .map(|v| v <= maximum)
-            .unwrap_or(false),
+        Value::Number(number) => number.as_u64().map(|v| v <= maximum).unwrap_or(false),
         _ => false,
     }
 }
@@ -111,8 +111,7 @@ const BINDING_FIELDS: &[&str] = &[
 fn exact_fields(value: &Value, fields: &[&str]) -> bool {
     match value {
         Value::Object(map) => {
-            map.len() == fields.len()
-                && fields.iter().all(|field| map.contains_key(*field))
+            map.len() == fields.len() && fields.iter().all(|field| map.contains_key(*field))
         }
         _ => false,
     }
@@ -139,7 +138,10 @@ pub fn valid_native_command_receipt_binding(value: &Value) -> bool {
     }
     integer(&value["control_revision"], u64::MAX)
         && integer(&value["managed_control_revision"], u64::MAX)
-        && integer(&value["observation_count"], MAX_NATIVE_COMMAND_OBSERVATIONS as u64)
+        && integer(
+            &value["observation_count"],
+            MAX_NATIVE_COMMAND_OBSERVATIONS as u64,
+        )
         && integer(
             &value["uncertainty_count"],
             (MAX_NATIVE_COMMAND_OBSERVATIONS + 1) as u64,
@@ -233,11 +235,19 @@ fn valid_observation(value: &Value, budget: &mut usize) -> bool {
         return false;
     }
     let has_uncertainty = matches!(uncertainty, Value::Array(items) if !items.is_empty());
-    let mut expected_classes: Vec<&str> = if base.is_empty() { Vec::new() } else { vec!["unsafe"] };
+    let mut expected_classes: Vec<&str> = if base.is_empty() {
+        Vec::new()
+    } else {
+        vec!["unsafe"]
+    };
     if has_uncertainty {
         expected_classes.push("uncertainty");
     }
-    let expected_match_class = if has_uncertainty { "uncertainty" } else { "unsafe" };
+    let expected_match_class = if has_uncertainty {
+        "uncertainty"
+    } else {
+        "unsafe"
+    };
     if value["match_class"] != Value::String(expected_match_class.to_owned()) {
         return false;
     }
@@ -247,7 +257,8 @@ fn valid_observation(value: &Value, budget: &mut usize) -> bool {
                 && classes
                     .iter()
                     .zip(expected_classes.iter())
-                    .all(|(actual, expected)| *actual == Value::String((*expected).to_owned())) => {}
+                    .all(|(actual, expected)| *actual == Value::String((*expected).to_owned())) => {
+        }
         _ => return false,
     }
     if expected_classes.is_empty() || (base.is_empty() && !variants.is_empty()) {
@@ -264,7 +275,10 @@ fn valid_observation(value: &Value, budget: &mut usize) -> bool {
         {
             return false;
         }
-        let variant_id = variant["variant_id"].as_str().unwrap_or_default().to_owned();
+        let variant_id = variant["variant_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
         if !variant_ids.insert(variant_id) {
             return false;
         }
@@ -275,13 +289,7 @@ fn valid_observation(value: &Value, budget: &mut usize) -> bool {
         safe_indexes.extend(indexes);
     }
     let effective = match &value["effective_segment_indexes"] {
-        Value::Array(indexes)
-            if indexes
-                .iter()
-                .all(|index| integer(index, 127)) =>
-        {
-            indexes.clone()
-        }
+        Value::Array(indexes) if indexes.iter().all(|index| integer(index, 127)) => indexes.clone(),
         _ => return false,
     };
     let expected_effective: Vec<Value> = base
@@ -418,9 +426,9 @@ pub fn validate_native_command_observations(value: &Value) -> Option<()> {
     let mut uncertainty_count = observations
         .iter()
         .chain(permission_observations.iter())
-        .filter(|item| {
-            matches!(&item["uncertainty_reasons"], Value::Array(items) if !items.is_empty())
-        })
+        .filter(
+            |item| matches!(&item["uncertainty_reasons"], Value::Array(items) if !items.is_empty()),
+        )
         .count();
     if !error.is_null() {
         uncertainty_count += 1;
@@ -565,7 +573,9 @@ pub fn observations_from_native_evidence(
         });
     }
     for raw in &validated.permission_observations {
-        let extension = registry.get(&raw.extension_id).ok_or(ERR_UNKNOWN_IDENTITY)?;
+        let extension = registry
+            .get(&raw.extension_id)
+            .ok_or(ERR_UNKNOWN_IDENTITY)?;
         let permission = registry
             .permission(&raw.permission_id)
             .ok_or(ERR_UNKNOWN_IDENTITY)?;

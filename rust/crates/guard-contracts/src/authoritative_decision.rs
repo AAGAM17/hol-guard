@@ -22,10 +22,10 @@
 
 use std::collections::BTreeSet;
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::decision_lattice::{
-    DEFAULT_UNKNOWN_GUARD_ACTION, GuardAction, is_action_bearing_key, most_restrictive_guard_action,
+    is_action_bearing_key, most_restrictive_guard_action, GuardAction, DEFAULT_UNKNOWN_GUARD_ACTION,
 };
 use crate::signal_contract::{RiskConfidenceLabel, RiskSignalV2};
 
@@ -283,14 +283,15 @@ pub fn decision_from_legacy_policy_action(
         ),
         _ => (vec![], None),
     };
-    let (user_body, harness_message): (String, String) = if action == GuardAction::Block && signals.is_empty() {
-        (
-            "HOL Guard blocked this action because runtime policy denied it.".into(),
-            "HOL Guard blocked this action before launch.".into(),
-        )
-    } else {
-        (body.to_string(), harness.to_string())
-    };
+    let (user_body, harness_message): (String, String) =
+        if action == GuardAction::Block && signals.is_empty() {
+            (
+                "HOL Guard blocked this action because runtime policy denied it.".into(),
+                "HOL Guard blocked this action before launch.".into(),
+            )
+        } else {
+            (body.to_string(), harness.to_string())
+        };
     let (user_body, harness_message) = if action == GuardAction::Warn && signals.is_empty() {
         (
             "HOL Guard warned about this action.".into(),
@@ -473,11 +474,8 @@ pub fn validate_authoritative_decision(decision: &AuthoritativeGuardDecision) ->
     if decision.enforcement.snapshot_permitted != expected_launch {
         bail!("enforcement.snapshot_permitted must derive from action and authority state");
     }
-    let expected_decision_v2 = decision_from_legacy_policy_action(
-        decision.action,
-        &decision.reason,
-        &decision.signals,
-    );
+    let expected_decision_v2 =
+        decision_from_legacy_policy_action(decision.action, &decision.reason, &decision.signals);
     if decision.decision_v2 != expected_decision_v2 {
         bail!("decision_v2 must derive entirely from action, reason, and signals");
     }
@@ -521,7 +519,10 @@ pub fn validate_composition_trace(
             }
             Some(v) => {
                 if !is_guard_action_value(v) {
-                    bailf!("composition_trace.{} must be a known Guard action or null", key);
+                    bailf!(
+                        "composition_trace.{} must be a known Guard action or null",
+                        key
+                    );
                 }
                 parsed.insert(key.to_string(), v.clone());
             }
@@ -547,8 +548,12 @@ pub fn validate_composition_trace(
     let current_action = parsed.get("current_action");
 
     for (key, candidate) in &parsed {
-        let Some(cand_str) = candidate.as_str() else { continue };
-        let Some(cand) = GuardAction::from_canonical(cand_str) else { continue };
+        let Some(cand_str) = candidate.as_str() else {
+            continue;
+        };
+        let Some(cand) = GuardAction::from_canonical(cand_str) else {
+            continue;
+        };
         if !is_terminal_composition_action(cand) {
             continue;
         }
@@ -564,9 +569,10 @@ pub fn validate_composition_trace(
         let candidate = parsed.get(key);
         if let (Some(cur), Some(cand)) = (current_action, candidate) {
             if let (Value::String(cs), Value::String(cands)) = (cur, cand) {
-                if let (Some(ca), Some(cb)) =
-                    (GuardAction::from_canonical(cs), GuardAction::from_canonical(cands))
-                {
+                if let (Some(ca), Some(cb)) = (
+                    GuardAction::from_canonical(cs),
+                    GuardAction::from_canonical(cands),
+                ) {
                     if ca.severity() < cb.severity() {
                         bailf!(
                             "composition_trace.current_action cannot be weaker than {}",
@@ -582,9 +588,9 @@ pub fn validate_composition_trace(
         && matches!(parsed.get("saved_action"), Some(Value::String(s)) if s=="allow")
         && saved_state_present
         && matches!(action, GuardAction::Allow | GuardAction::Warn);
-    let explicit_approval_override =
-        (trusted_override && matches!(action, GuardAction::Allow | GuardAction::Warn))
-            || saved_allow_override;
+    let explicit_approval_override = (trusted_override
+        && matches!(action, GuardAction::Allow | GuardAction::Warn))
+        || saved_allow_override;
     let runtime_warn = matches!(runtime_action, Some(Value::String(s)) if s=="warn");
     if runtime_warn && action.severity() < GuardAction::Warn.severity() {
         bail!("runtime detector warning cannot be erased by the final action");
@@ -603,7 +609,10 @@ pub fn validate_composition_trace(
         .filter_map(|(_, v)| v.as_str())
         .filter_map(GuardAction::from_canonical)
         .collect();
-    let strongest_input = authority_inputs.iter().copied().max_by_key(|a| a.severity());
+    let strongest_input = authority_inputs
+        .iter()
+        .copied()
+        .max_by_key(|a| a.severity());
     match strongest_input {
         None => return Ok(()),
         Some(si) if action.severity() >= si.severity() => return Ok(()),
@@ -624,7 +633,10 @@ fn reject_unknown_composition_action_fields(trace: &Map<String, Value>) -> Resul
                 let key_path = format!("{}.{}", path, raw_key);
                 let known_top = top_level && is_known_composition_action_field(raw_key);
                 if is_action_bearing_key(raw_key) && !known_top {
-                    bailf!("composition_trace contains unknown action-bearing field: {}", key_path);
+                    bailf!(
+                        "composition_trace contains unknown action-bearing field: {}",
+                        key_path
+                    );
                 }
                 visit(nested, &key_path, false)?;
             }
@@ -682,9 +694,7 @@ pub fn validate_artifact_projection(
         if comp.get("final_action") != Some(&json!(decision.action.as_str())) {
             bail!("policy_composition.final_action must match authoritative action");
         }
-        if payload.contains_key("authoritative_decision")
-            && comp != &decision.composition_trace
-        {
+        if payload.contains_key("authoritative_decision") && comp != &decision.composition_trace {
             bail!("policy_composition must match authoritative composition_trace");
         }
     }
@@ -702,7 +712,13 @@ pub fn validate_artifact_projection(
             }
         }
         if payload.contains_key("authoritative_decision")
-            && dv2 != &decision.decision_v2.to_value().as_object().cloned().unwrap_or_default()
+            && dv2
+                != &decision
+                    .decision_v2
+                    .to_value()
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default()
         {
             bail!("decision_v2_json must match authoritative decision_v2");
         }
@@ -726,8 +742,18 @@ pub fn validate_artifact_projection(
             "action_envelope_json",
         )?;
         require_matching_alias(envelope, "action_id", "actionId", "action_envelope_json")?;
-        require_matching_alias(envelope, "action_type", "actionType", "action_envelope_json")?;
-        require_matching_alias(envelope, "policy_action", "policyAction", "action_envelope_json")?;
+        require_matching_alias(
+            envelope,
+            "action_type",
+            "actionType",
+            "action_envelope_json",
+        )?;
+        require_matching_alias(
+            envelope,
+            "policy_action",
+            "policyAction",
+            "action_envelope_json",
+        )?;
         require_matching_alias(
             envelope,
             "pre_execution_result",
@@ -750,7 +776,10 @@ pub fn validate_artifact_projection(
                 bailf!("action_envelope_json.{} must be a known Guard action", key);
             }
             if envelope_action != json!(decision.action.as_str()) {
-                bailf!("action_envelope_json.{} must match authoritative action", key);
+                bailf!(
+                    "action_envelope_json.{} must match authoritative action",
+                    key
+                );
             }
         }
     }
@@ -763,13 +792,17 @@ fn require_matching_alias(
     camel: &str,
     context: &str,
 ) -> Result<(), VErr> {
-    if payload.contains_key(snake) && payload.contains_key(camel) && payload.get(snake) != payload.get(camel) {
+    if payload.contains_key(snake)
+        && payload.contains_key(camel)
+        && payload.get(snake) != payload.get(camel)
+    {
         bailf!("{}.{} must match {}", context, camel, snake);
     }
     Ok(())
 }
 
-const ARTIFACT_ACTION_FIELDS: [&str; 3] = ["policy_action", "verdict_action", "action_envelope_json"];
+const ARTIFACT_ACTION_FIELDS: [&str; 3] =
+    ["policy_action", "verdict_action", "action_envelope_json"];
 
 /// `_reject_unknown_action_bearing_fields` — reject keys that can smuggle a
 /// second action authority, except the explicitly allowed ones.
@@ -803,9 +836,13 @@ fn validate_artifact_approval_projection(
     .iter()
     .any(|k| payload.contains_key(*k));
     if !approval_fields_present
-        && !["saved_state_present", "trusted_request_override", "saved_approval_claim"]
-            .iter()
-            .any(|k| trace.contains_key(*k))
+        && ![
+            "saved_state_present",
+            "trusted_request_override",
+            "saved_approval_claim",
+        ]
+        .iter()
+        .any(|k| trace.contains_key(*k))
     {
         return Ok(());
     }
@@ -845,7 +882,9 @@ fn validate_artifact_approval_projection(
     if trace.get("current_action") != Some(&json!(current_action.as_str())) {
         bail!("composition_trace.current_action must match approval_reuse.current_action");
     }
-    let saved_action_json = saved_action.map(|a| json!(a.as_str())).unwrap_or(Value::Null);
+    let saved_action_json = saved_action
+        .map(|a| json!(a.as_str()))
+        .unwrap_or(Value::Null);
     if trace.get("saved_action").cloned().unwrap_or(Value::Null) != saved_action_json
         && !(trace.get("saved_action").is_none() && saved_action.is_none())
     {
@@ -867,7 +906,10 @@ fn validate_artifact_approval_projection(
         Some(Value::Bool(b)) => *b,
         _ => bail!("trusted_request_override.applied must be a boolean"),
     };
-    let trusted_reason = raw_trusted.get("reason_code").cloned().unwrap_or(Value::Null);
+    let trusted_reason = raw_trusted
+        .get("reason_code")
+        .cloned()
+        .unwrap_or(Value::Null);
     let expected_trusted_reason = if trusted_applied {
         json!(TRUSTED_REQUEST_OVERRIDE_REASON)
     } else {
@@ -942,7 +984,10 @@ fn validate_artifact_approval_projection(
         if claim.is_some() {
             bail!("trusted request and saved approval claim cannot both finalize authority");
         }
-        if !matches!(reuse_action, GuardAction::Review | GuardAction::RequireReapproval) {
+        if !matches!(
+            reuse_action,
+            GuardAction::Review | GuardAction::RequireReapproval
+        ) {
             bail!("trusted request override must satisfy a review action");
         }
         if !decision.enforcement.authority_finalized {
@@ -991,7 +1036,9 @@ fn validate_saved_approval_claim(
     if actual != expected {
         bail!("saved approval claim has an invalid schema");
     }
-    if !["consumed", "retained"].contains(&claim.get("status").and_then(Value::as_str).unwrap_or("")) {
+    if !["consumed", "retained"]
+        .contains(&claim.get("status").and_then(Value::as_str).unwrap_or(""))
+    {
         bail!("saved approval claim status must be consumed or retained");
     }
     let context_hash = payload.get("approval_context_hash").and_then(Value::as_str);
@@ -1078,9 +1125,7 @@ pub fn authoritative_decision_from_artifact(
 }
 
 /// `evaluation_authority_error` — detect authoritative-vs-legacy divergence.
-pub fn evaluation_authority_error(
-    evaluation: &Map<String, Value>,
-) -> Option<&'static str> {
+pub fn evaluation_authority_error(evaluation: &Map<String, Value>) -> Option<&'static str> {
     let authority = evaluation.get("authoritative_decision")?.as_object()?;
     let action = authority.get("action")?.as_str()?;
     if evaluation.get("policy_action") != Some(&json!(action)) {
@@ -1127,9 +1172,7 @@ pub fn validate_run_decision_projection(
     {
         bail!("runtime detector composition must match run authority");
     }
-    if decision
-        .composition_trace
-        .get("runtime_detector_action")
+    if decision.composition_trace.get("runtime_detector_action")
         != Some(&json!(decision.action.as_str()))
     {
         bail!("run authority trace must match the runtime detector action");
@@ -1209,7 +1252,10 @@ fn decode_authoritative_decision(
         "sandbox_required",
         "snapshot_permitted",
     ];
-    if enforcement_raw.keys().map(String::as_str).collect::<BTreeSet<_>>()
+    if enforcement_raw
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
         != EF.into_iter().collect::<BTreeSet<_>>()
     {
         bail!("enforcement fields must match schema");
@@ -1268,11 +1314,15 @@ fn decode_authoritative_decision(
         .collect::<Result<_, _>>()
         .map_err(|_| verr("decision_v2.signals must be a list of valid signal objects"))?;
     let dv2 = GuardDecisionV2 {
-        guard_action: parse_guard_action_value(dv2_raw.get("guard_action").unwrap_or(&Value::Null))?,
+        guard_action: parse_guard_action_value(
+            dv2_raw.get("guard_action").unwrap_or(&Value::Null),
+        )?,
         action: match dv2_raw.get("action").and_then(Value::as_str) {
-            Some("allow") | Some("warn") | Some("ask") | Some("block") => {
-                dv2_raw.get("action").and_then(Value::as_str).unwrap().to_string()
-            }
+            Some("allow") | Some("warn") | Some("ask") | Some("block") => dv2_raw
+                .get("action")
+                .and_then(Value::as_str)
+                .unwrap()
+                .to_string(),
             _ => bail!("action must be a known Guard decision action"),
         },
         reason: rs("reason")?,
@@ -1283,7 +1333,12 @@ fn decode_authoritative_decision(
         approval_scopes: dv2_raw
             .get("approval_scopes")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default(),
         retry_instruction: dv2_raw
             .get("retry_instruction")
@@ -1318,12 +1373,16 @@ fn decode_authoritative_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::signal_contract::{
-        RiskRedactionLevel, RiskSeverityLabel, RiskSignalCategory,
-    };
+    use crate::signal_contract::{RiskRedactionLevel, RiskSeverityLabel, RiskSignalCategory};
     use serde_json::json;
 
-    fn sig(cat: RiskSignalCategory, sev: RiskSeverityLabel, conf: RiskConfidenceLabel, det: &str, id: &str) -> RiskSignalV2 {
+    fn sig(
+        cat: RiskSignalCategory,
+        sev: RiskSeverityLabel,
+        conf: RiskConfidenceLabel,
+        det: &str,
+        id: &str,
+    ) -> RiskSignalV2 {
         RiskSignalV2 {
             signal_id: id.into(),
             category: cat,
@@ -1371,23 +1430,42 @@ mod tests {
         let mut trace = Map::new();
         trace.insert("final_action".into(), json!("review"));
         let d = build_authoritative_decision(
-            GuardAction::Review, "needs approval", trace, &[], false, "composed-consumer-policy",
+            GuardAction::Review,
+            "needs approval",
+            trace,
+            &[],
+            false,
+            "composed-consumer-policy",
         )
         .unwrap();
         assert!(d.enforcement.blocking);
         assert!(!d.enforcement.launch_permitted); // blocking -> not permitted
         assert!(d.enforcement.prompt_required);
         assert_eq!(d.decision_v2.action, "ask");
-        assert_eq!(d.decision_v2.approval_scopes, vec!["once", "task", "always"]);
+        assert_eq!(
+            d.decision_v2.approval_scopes,
+            vec!["once", "task", "always"]
+        );
     }
 
     #[test]
     fn build_block_derives_block_copy() {
         let mut trace = Map::new();
         trace.insert("final_action".into(), json!("block"));
-        let sigs = vec![sig(RiskSignalCategory::Secret, RiskSeverityLabel::Critical, RiskConfidenceLabel::Strong, "d", "s")];
+        let sigs = vec![sig(
+            RiskSignalCategory::Secret,
+            RiskSeverityLabel::Critical,
+            RiskConfidenceLabel::Strong,
+            "d",
+            "s",
+        )];
         let d = build_authoritative_decision(
-            GuardAction::Block, "denied", trace, &sigs, true, "composed-consumer-policy",
+            GuardAction::Block,
+            "denied",
+            trace,
+            &sigs,
+            true,
+            "composed-consumer-policy",
         )
         .unwrap();
         assert!(d.enforcement.blocking);
@@ -1398,7 +1476,9 @@ mod tests {
     #[test]
     fn empty_reason_rejected() {
         let trace = Map::new();
-        assert!(build_authoritative_decision(GuardAction::Allow, "   ", trace, &[], true, "s").is_err());
+        assert!(
+            build_authoritative_decision(GuardAction::Allow, "   ", trace, &[], true, "s").is_err()
+        );
     }
 
     #[test]
@@ -1420,11 +1500,20 @@ mod tests {
             advisory_id: None,
         }];
         let d = build_authoritative_decision(
-            GuardAction::Block, "denied", trace, &sigs, true, "composed-consumer-policy",
-        ).unwrap();
+            GuardAction::Block,
+            "denied",
+            trace,
+            &sigs,
+            true,
+            "composed-consumer-policy",
+        )
+        .unwrap();
         assert_eq!(data_flow_sink_type(&d.signals), "network host");
         assert!(d.decision_v2.harness_message.contains("network host"));
-        assert!(d.decision_v2.dashboard_primary_detail.contains("Source-to-sink route"));
+        assert!(d
+            .decision_v2
+            .dashboard_primary_detail
+            .contains("Source-to-sink route"));
     }
 
     #[test]
@@ -1439,10 +1528,40 @@ mod tests {
 
     #[test]
     fn merge_signals_dedupes_by_id() {
-        let a = sig(RiskSignalCategory::Network, RiskSeverityLabel::Low, RiskConfidenceLabel::Likely, "d1", "id-1");
-        let b = sig(RiskSignalCategory::Secret, RiskSeverityLabel::High, RiskConfidenceLabel::Strong, "d2", "id-2");
-        let b2 = sig(RiskSignalCategory::Secret, RiskSeverityLabel::High, RiskConfidenceLabel::Strong, "d2", "id-2");
-        let merged = merge_signals(&[a.clone(), b.clone()], &[b2, sig(RiskSignalCategory::Policy, RiskSeverityLabel::Info, RiskConfidenceLabel::Weak, "d3", "id-3")]);
+        let a = sig(
+            RiskSignalCategory::Network,
+            RiskSeverityLabel::Low,
+            RiskConfidenceLabel::Likely,
+            "d1",
+            "id-1",
+        );
+        let b = sig(
+            RiskSignalCategory::Secret,
+            RiskSeverityLabel::High,
+            RiskConfidenceLabel::Strong,
+            "d2",
+            "id-2",
+        );
+        let b2 = sig(
+            RiskSignalCategory::Secret,
+            RiskSeverityLabel::High,
+            RiskConfidenceLabel::Strong,
+            "d2",
+            "id-2",
+        );
+        let merged = merge_signals(
+            &[a.clone(), b.clone()],
+            &[
+                b2,
+                sig(
+                    RiskSignalCategory::Policy,
+                    RiskSeverityLabel::Info,
+                    RiskConfidenceLabel::Weak,
+                    "d3",
+                    "id-3",
+                ),
+            ],
+        );
         assert_eq!(merged.len(), 3);
         assert_eq!(merged[0].signal_id, "id-1");
         assert_eq!(merged[2].signal_id, "id-3");
@@ -1456,7 +1575,10 @@ mod tests {
         // build would fail at validate; call the validator directly
         let r = validate_composition_trace(GuardAction::Allow, &trace);
         assert!(r.is_err());
-        assert_eq!(r.unwrap_err().as_str().unwrap(), "runtime detector block cannot be overridden");
+        assert_eq!(
+            r.unwrap_err().as_str().unwrap(),
+            "runtime detector block cannot be overridden"
+        );
     }
 
     #[test]
@@ -1467,7 +1589,11 @@ mod tests {
         nested.insert("sneakyAction".into(), json!("block")); // action-bearing nested
         trace.insert("meta".into(), Value::Object(nested));
         let r = validate_composition_trace(GuardAction::Allow, &trace);
-        assert!(r.unwrap_err().as_str().unwrap().contains("unknown action-bearing field"));
+        assert!(r
+            .unwrap_err()
+            .as_str()
+            .unwrap()
+            .contains("unknown action-bearing field"));
     }
 
     #[test]
@@ -1505,7 +1631,11 @@ mod tests {
         // parity check: decision_action-bearing projection is rejected
         let mut bad = d.to_artifact_projection().as_object().cloned().unwrap();
         let r = authoritative_decision_from_artifact(&bad, true);
-        assert!(r.unwrap_err().as_str().unwrap().contains("unknown action-bearing field: decision_action"));
+        assert!(r
+            .unwrap_err()
+            .as_str()
+            .unwrap()
+            .contains("unknown action-bearing field: decision_action"));
         let _ = bad.remove("policy_reason");
     }
 }

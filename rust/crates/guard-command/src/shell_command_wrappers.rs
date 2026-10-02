@@ -38,8 +38,7 @@ pub fn normalize_transparent_shell_command(
             wrapper_chain: Vec::new(),
         };
     }
-    let (normalized_command, wrapper_chain) =
-        normalize_command_text(stripped, 0, cwd, home_dir);
+    let (normalized_command, wrapper_chain) = normalize_command_text(stripped, 0, cwd, home_dir);
     ShellCommandNormalization {
         raw_command: stripped.to_owned(),
         normalized_command: normalized_command.unwrap_or_else(|| stripped.to_owned()),
@@ -66,13 +65,8 @@ fn normalize_command_text(
         return (Some(command_text.to_owned()), Vec::new());
     }
     let (prefix_env, index) = consume_leading_env_assignments(&parts, 0);
-    let (normalized, wrappers) = normalize_parts(
-        &parts[index..],
-        depth,
-        cwd,
-        home_dir,
-        Some(prefix_env),
-    );
+    let (normalized, wrappers) =
+        normalize_parts(&parts[index..], depth, cwd, home_dir, Some(prefix_env));
     if wrappers.is_empty() {
         return (Some(command_text.to_owned()), Vec::new());
     }
@@ -117,8 +111,7 @@ fn normalize_parts(
             } else {
                 join_shell_tokens(&suffix)
             };
-            let mut inner_command_text =
-                join_command_fragments(&[&inner_text, &suffix_text]);
+            let mut inner_command_text = join_command_fragments(&[&inner_text, &suffix_text]);
             if !preserved_env.is_empty() {
                 inner_command_text = join_command_fragments(&[
                     &join_shell_tokens(&preserved_env),
@@ -143,8 +136,7 @@ fn normalize_parts(
             } else {
                 join_shell_tokens(&suffix)
             };
-            let mut inner_command_text =
-                join_command_fragments(&[&inner_text, &suffix_text]);
+            let mut inner_command_text = join_command_fragments(&[&inner_text, &suffix_text]);
             if !preserved_env.is_empty() {
                 inner_command_text = join_command_fragments(&[
                     &join_shell_tokens(&preserved_env),
@@ -209,8 +201,7 @@ fn normalize_parts(
     }
     let mut current_text = join_shell_tokens(&current);
     if !preserved_env.is_empty() {
-        current_text =
-            join_command_fragments(&[&join_shell_tokens(&preserved_env), &current_text]);
+        current_text = join_command_fragments(&[&join_shell_tokens(&preserved_env), &current_text]);
     }
     (Some(current_text), wrappers)
 }
@@ -233,7 +224,11 @@ fn env_assignment_re(token: &str) -> bool {
         Some(i) => {
             let name = &token[..i];
             !name.is_empty()
-                && name.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_').unwrap_or(false)
+                && name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_alphabetic() || c == '_')
+                    .unwrap_or(false)
                 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         }
     }
@@ -268,10 +263,7 @@ fn unwrap_shell_string_wrapper(parts: &[String]) -> Option<(String, Vec<String>)
             index += 1;
             break;
         }
-        if token.starts_with('-')
-            && !token.starts_with("--")
-            && token[1..].contains('c')
-        {
+        if token.starts_with('-') && !token.starts_with("--") && token[1..].contains('c') {
             if index + 1 >= parts.len() {
                 return None;
             }
@@ -287,10 +279,7 @@ fn unwrap_shell_string_wrapper(parts: &[String]) -> Option<(String, Vec<String>)
 }
 
 /// `_strip_env_wrapper` (:223-229).
-fn strip_env_wrapper(
-    parts: &[String],
-    cwd: Option<&Path>,
-) -> (Option<Vec<String>>, Vec<String>) {
+fn strip_env_wrapper(parts: &[String], cwd: Option<&Path>) -> (Option<Vec<String>>, Vec<String>) {
     let parsed = parse_env_wrapper(&parts[1..], None, cwd);
     if !parsed.complete || parsed.executable_argv.is_empty() {
         return (None, Vec::new());
@@ -342,8 +331,7 @@ fn strip_time_wrapper(parts: &[String]) -> Option<Vec<String>> {
             index += 1;
             continue;
         }
-        if (token.starts_with("-f") && token != "-f")
-            || (token.starts_with("-o") && token != "-o")
+        if (token.starts_with("-f") && token != "-f") || (token.starts_with("-o") && token != "-o")
         {
             index += 1;
             continue;
@@ -372,9 +360,7 @@ fn strip_nice_wrapper(parts: &[String]) -> Option<Vec<String>> {
             index += 2;
             continue;
         }
-        if token.starts_with("--adjustment=")
-            || (token.starts_with("-n") && token != "-n")
-        {
+        if token.starts_with("--adjustment=") || (token.starts_with("-n") && token != "-n") {
             index += 1;
             continue;
         }
@@ -521,7 +507,9 @@ fn resolve(path: &Path) -> PathBuf {
 
 /// `_path_is_root_owned` (:384-385). Missing path → not root-owned.
 fn path_is_root_owned(path: &Path) -> bool {
-    std::fs::metadata(path).map(|m| m.uid() == 0).unwrap_or(false)
+    std::fs::metadata(path)
+        .map(|m| m.uid() == 0)
+        .unwrap_or(false)
 }
 
 /// `_trusted_symlink_component` (:388-397).

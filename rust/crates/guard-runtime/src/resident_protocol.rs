@@ -1,12 +1,12 @@
 use guard_command::CommandModelRequestV1;
 use guard_contracts::{
     ApprovalChallengeRequestV3, ApprovalChallengeRequestV4, ApprovalConsumeRequestV3,
-    ApprovalConsumeRequestV4, ApprovalGateRequestV1, ApprovalValidateRequestV3,
-    ApprovalValidateRequestV4, ApprovalReuseRequestV1, CommandEffectRequestV1,
-    ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1,
-    GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
-    NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
-    ClaimApprovalReuseDecisionsRequestV1,
+    ApprovalConsumeRequestV4, ApprovalGateRequestV1, ApprovalReuseRequestV1,
+    ApprovalValidateRequestV3, ApprovalValidateRequestV4, ClaimApprovalReuseDecisionsRequestV1,
+    CommandEffectRequestV1, ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1,
+    RuntimeCapabilitiesV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES,
+    NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION,
+    NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use guard_hook_core::review_post_tool;
 use guard_policy_snapshot::canonical_json_bytes;

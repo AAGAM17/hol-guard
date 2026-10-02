@@ -35,10 +35,7 @@ pub fn parse_brew_intent(tokens: &[String], workspace: Option<&Path>) -> Option<
 }
 
 /// `_parse_brew_install_intent` (:38-47).
-fn parse_brew_install_intent(
-    tokens: &[String],
-    working_tokens: &[String],
-) -> PackageIntent {
+fn parse_brew_install_intent(tokens: &[String], working_tokens: &[String]) -> PackageIntent {
     let cask = brew_command_uses_cask(working_tokens);
     let specs = collect_brew_specs(&working_tokens[2.min(working_tokens.len())..]);
     let targets: Vec<PackageIntentTarget> = specs
@@ -49,10 +46,7 @@ fn parse_brew_install_intent(
 }
 
 /// `_parse_brew_tap_intent` (:50-63).
-fn parse_brew_tap_intent(
-    tokens: &[String],
-    working_tokens: &[String],
-) -> Option<PackageIntent> {
+fn parse_brew_tap_intent(tokens: &[String], working_tokens: &[String]) -> Option<PackageIntent> {
     let tap_name = first_positional(
         &working_tokens[2.min(working_tokens.len())..],
         &["--custom-remote", "--repair"],
@@ -78,10 +72,7 @@ fn parse_brew_bundle_intent(
     {
         return None;
     }
-    let manifest_paths = existing_relative_paths(
-        workspace,
-        &[brew_bundle_file(working_tokens)],
-    );
+    let manifest_paths = existing_relative_paths(workspace, &[brew_bundle_file(working_tokens)]);
     let targets = brewfile_targets(workspace, &manifest_paths);
     Some(build_brew_intent("sync", tokens, targets, manifest_paths))
 }
@@ -171,7 +162,10 @@ fn brew_bundle_file(tokens: &[String]) -> String {
 }
 
 /// `_brewfile_targets` (:147-159).
-fn brewfile_targets(workspace: Option<&Path>, manifest_paths: &[String]) -> Vec<PackageIntentTarget> {
+fn brewfile_targets(
+    workspace: Option<&Path>,
+    manifest_paths: &[String],
+) -> Vec<PackageIntentTarget> {
     let Some(workspace) = workspace else {
         return Vec::new();
     };
@@ -200,9 +194,7 @@ fn brewfile_targets(workspace: Option<&Path>, manifest_paths: &[String]) -> Vec<
 fn expanduser(path: &Path) -> PathBuf {
     let text = path.as_os_str().to_string_lossy();
     if text == "~" || text.starts_with("~/") {
-        if let Some(home) =
-            std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
-        {
+        if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
             if text == "~" {
                 return PathBuf::from(home);
             }
@@ -296,15 +288,20 @@ mod tests {
 
     #[test]
     fn brew_cask_marks_ecosystem() {
-        let intent =
-            parse_brew_intent(&t(&["brew", "install", "--cask", "alfred"]), None).unwrap();
+        let intent = parse_brew_intent(&t(&["brew", "install", "--cask", "alfred"]), None).unwrap();
         assert_eq!(intent.targets[0].ecosystem, "homebrew-cask");
     }
 
     #[test]
     fn brew_tap_with_custom_remote() {
         let intent = parse_brew_intent(
-            &t(&["brew", "tap", "acme/taps", "--custom-remote", "https://example.com/t.git"]),
+            &t(&[
+                "brew",
+                "tap",
+                "acme/taps",
+                "--custom-remote",
+                "https://example.com/t.git",
+            ]),
             None,
         )
         .unwrap();
@@ -323,7 +320,9 @@ mod tests {
 
     #[test]
     fn brewfile_line_targets_literal_call() {
-        let targets = brewfile_line_targets("brew \"wget\"\ncask 'alfred'\ntap \"acme/taps\", \"https://example.com/t.git\"\n");
+        let targets = brewfile_line_targets(
+            "brew \"wget\"\ncask 'alfred'\ntap \"acme/taps\", \"https://example.com/t.git\"\n",
+        );
         assert_eq!(targets.len(), 3);
         assert_eq!(targets[0].ecosystem, "homebrew");
         assert_eq!(targets[1].ecosystem, "homebrew-cask");

@@ -42,9 +42,7 @@ use crate::jsonc::{loads_jsonc_pairs_checked, JsoncPairs};
 // package_intent_common.py:28-141).
 // ---------------------------------------------------------------------------
 
-use crate::package_intent_common::{
-    ManifestDependencyChange, ManifestParseResult, python_target,
-};
+use crate::package_intent_common::{python_target, ManifestDependencyChange, ManifestParseResult};
 // ---------------------------------------------------------------------------
 // Regex constants (package_manifest_diff.py:26-30 +
 // package_intent_common.py:21-25 for `python_target` helpers).
@@ -54,22 +52,35 @@ static GRADLE_DEP_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):([A-Za-z0-9+_.-]+)").unwrap()
 });
 static GEMFILE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&r#"gem[PYWS]+["']([^"']+)["'](?:[PYWS]*,[PYWS]*["']([^"']+)["'])?"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap()
+    Regex::new(
+        &r#"gem[PYWS]+["']([^"']+)["'](?:[PYWS]*,[PYWS]*["']([^"']+)["'])?"#
+            .replace("PYWS", r"\s\x1c-\x1f"),
+    )
+    .unwrap()
 });
-static GO_REQUIRE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&r"^[PYWS]*([A-Za-z0-9./_-]+)[PYWS]+(v[^PYWS]+)[PYWS]*$".replace("PYWS", r"\s\x1c-\x1f")).unwrap());
-static YARN_CLASSIC_VERSION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&r#"^version[PYWS]+"([^"]+)"$"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap());
-static YARN_BERRY_VERSION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&r#"^version:[PYWS]*"?([^"PYWS]+)"?$"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap());
+static GO_REQUIRE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        &r"^[PYWS]*([A-Za-z0-9./_-]+)[PYWS]+(v[^PYWS]+)[PYWS]*$".replace("PYWS", r"\s\x1c-\x1f"),
+    )
+    .unwrap()
+});
+static YARN_CLASSIC_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&r#"^version[PYWS]+"([^"]+)"$"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap()
+});
+static YARN_BERRY_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&r#"^version:[PYWS]*"?([^"PYWS]+)"?$"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap()
+});
 static GEMFILE_LOCK_HEADER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Z][A-Z0-9_ ]+$").unwrap());
-static GEMFILE_LOCK_SPEC_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&r"^[PYWS]{4}([A-Za-z0-9_.:-]+) \(([^)]+)\)".replace("PYWS", r"\s\x1c-\x1f")).unwrap());
+static GEMFILE_LOCK_SPEC_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&r"^[PYWS]{4}([A-Za-z0-9_.:-]+) \(([^)]+)\)".replace("PYWS", r"\s\x1c-\x1f"))
+        .unwrap()
+});
 static REQ_COMMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&r"[PYWS]+#".replace("PYWS", r"\s\x1c-\x1f")).unwrap());
-static REQ_HASH_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&r"[PYWS]+--hash(?:=|[PYWS]+)[^PYWS]+".replace("PYWS", r"\s\x1c-\x1f")).unwrap());
+static REQ_HASH_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&r"[PYWS]+--hash(?:=|[PYWS]+)[^PYWS]+".replace("PYWS", r"\s\x1c-\x1f")).unwrap()
+});
 
 // ---------------------------------------------------------------------------
 // Deadline (package_manifest_diff.py:33-34, :639-642).
@@ -144,10 +155,7 @@ fn py_splitlines(text: &str) -> Vec<&str> {
     while index < bytes.len() {
         let boundary_end = match bytes[index] {
             b'\n' | b'\r' | 0x0b | 0x0c | 0x1c..=0x1e => {
-                if bytes[index] == b'\r'
-                    && index + 1 < bytes.len()
-                    && bytes[index + 1] == b'\n'
-                {
+                if bytes[index] == b'\r' && index + 1 < bytes.len() && bytes[index + 1] == b'\n' {
                     index += 1;
                 }
                 Some(index + 1)
@@ -156,10 +164,9 @@ fn py_splitlines(text: &str) -> Vec<&str> {
                 index += 1;
                 Some(index + 1)
             }
-            0xe2
-                if index + 2 < bytes.len()
-                    && bytes[index + 1] == 0x80
-                    && (bytes[index + 2] == 0xa8 || bytes[index + 2] == 0xa9) =>
+            0xe2 if index + 2 < bytes.len()
+                && bytes[index + 1] == 0x80
+                && (bytes[index + 2] == 0xa8 || bytes[index + 2] == 0xa9) =>
             {
                 index += 2;
                 Some(index + 1)
@@ -301,7 +308,6 @@ fn py_str_repr(text: &str) -> String {
     out
 }
 
-
 // ---------------------------------------------------------------------------
 // Public API (package_manifest_diff.py:37-78).
 // ---------------------------------------------------------------------------
@@ -346,10 +352,7 @@ pub fn parse_manifest_dependency_changes(
             };
         }
     };
-    let mut names: Vec<&String> = before_deps
-        .keys()
-        .chain(after_deps.keys())
-        .collect();
+    let mut names: Vec<&String> = before_deps.keys().chain(after_deps.keys()).collect();
     names.sort();
     names.dedup();
     let changes = names
@@ -566,7 +569,10 @@ fn json_loads(text: &str) -> ParseResult<Value> {
 // pnpm-lock.yaml hand-rolled line scanner (:187-236). NOT a YAML parser.
 // ---------------------------------------------------------------------------
 
-fn pnpm_lock_dependency_map(text: &str, deadline: &Deadline) -> ParseResult<BTreeMap<String, String>> {
+fn pnpm_lock_dependency_map(
+    text: &str,
+    deadline: &Deadline,
+) -> ParseResult<BTreeMap<String, String>> {
     let mut dependencies = BTreeMap::new();
     let mut package_versions: BTreeMap<String, String> = BTreeMap::new();
     let mut section: Option<String> = None;
@@ -580,12 +586,7 @@ fn pnpm_lock_dependency_map(text: &str, deadline: &Deadline) -> ParseResult<BTre
         // indent = len(raw_line) - len(raw_line.lstrip(" ")) — spaces only.
         let indent = raw_line.len() - raw_line.trim_start_matches(' ').len();
         if indent == 0 {
-            section = Some(
-                stripped
-                    .strip_suffix(':')
-                    .unwrap_or(stripped)
-                    .to_string(),
-            );
+            section = Some(stripped.strip_suffix(':').unwrap_or(stripped).to_string());
             dependency_block = false;
             continue;
         }
@@ -650,7 +651,10 @@ fn pnpm_entry_name_version(entry: &str) -> (Option<String>, Option<String>) {
 // `version: x`.
 // ---------------------------------------------------------------------------
 
-fn yarn_lock_dependency_map(text: &str, deadline: &Deadline) -> ParseResult<BTreeMap<String, String>> {
+fn yarn_lock_dependency_map(
+    text: &str,
+    deadline: &Deadline,
+) -> ParseResult<BTreeMap<String, String>> {
     let mut dependencies = BTreeMap::new();
     let mut current_names: Vec<String> = Vec::new();
     for raw_line in py_splitlines(text) {
@@ -660,9 +664,7 @@ fn yarn_lock_dependency_map(text: &str, deadline: &Deadline) -> ParseResult<BTre
             continue;
         }
         if !raw_line.starts_with(' ') && !raw_line.starts_with('\t') {
-            current_names = yarn_selector_names(
-                stripped.strip_suffix(':').unwrap_or(stripped),
-            );
+            current_names = yarn_selector_names(stripped.strip_suffix(':').unwrap_or(stripped));
             continue;
         }
         if current_names.is_empty() {
@@ -734,7 +736,10 @@ fn yarn_selector_name(selector: &str) -> Option<String> {
 // `versions[0]`; `serde_json::Map` sorts keys without `preserve_order`.
 // ---------------------------------------------------------------------------
 
-fn bun_lock_dependency_map(text: &str, deadline: &Deadline) -> ParseResult<BTreeMap<String, String>> {
+fn bun_lock_dependency_map(
+    text: &str,
+    deadline: &Deadline,
+) -> ParseResult<BTreeMap<String, String>> {
     let versions_by_name = bun_lock_package_versions(text, deadline)?;
     let mut dependencies = BTreeMap::new();
     for (package_name, versions) in versions_by_name {
@@ -906,10 +911,7 @@ fn requirements_dependency_map(
         }
         let target = python_target(&stripped, false, None, Vec::new());
         if let Some(package_name) = target.package_name {
-            dependencies.insert(
-                package_name,
-                target.requested_specifier.unwrap_or_default(),
-            );
+            dependencies.insert(package_name, target.requested_specifier.unwrap_or_default());
         }
     }
     Ok(dependencies)
@@ -938,7 +940,6 @@ fn requirements_logical_lines(text: &str, deadline: &Deadline) -> ParseResult<Ve
     Ok(logical_lines)
 }
 
-
 // ---------------------------------------------------------------------------
 // TOML manifests (:379-533). `tomllib.loads` → `toml::from_str` (both TOML
 // 1.0; `tomllib` returns a dict, `toml::Value::Table` mirrors it).
@@ -963,11 +964,7 @@ fn pyproject_dependency_map(
     let payload = payload.as_table().ok_or(ParseFailure::Error)?;
     let mut dependencies = BTreeMap::new();
     if let Some(project) = payload.get("project").and_then(toml::Value::as_table) {
-        collect_python_dependency_list(
-            &mut dependencies,
-            project.get("dependencies"),
-            deadline,
-        )?;
+        collect_python_dependency_list(&mut dependencies, project.get("dependencies"), deadline)?;
         if let Some(optional_dependencies) = project
             .get("optional-dependencies")
             .and_then(toml::Value::as_table)
@@ -1019,10 +1016,7 @@ fn collect_python_dependency_list(
         deadline.ensure()?;
         let target = python_target(&toml_py_str(value), false, None, Vec::new());
         if let Some(package_name) = target.package_name {
-            dependencies.insert(
-                package_name,
-                target.requested_specifier.unwrap_or_default(),
-            );
+            dependencies.insert(package_name, target.requested_specifier.unwrap_or_default());
         }
     }
     Ok(())
@@ -1300,7 +1294,11 @@ fn gradle_lockfile_dependency_map(
     for raw_line in py_splitlines(text) {
         deadline.ensure()?;
         let line = py_strip(raw_line);
-        if line.is_empty() || line.starts_with('#') || line.starts_with("empty=") || !line.contains('=') {
+        if line.is_empty()
+            || line.starts_with('#')
+            || line.starts_with("empty=")
+            || !line.contains('=')
+        {
             continue;
         }
         let (package_name, version) = rpartition(line, ":");
@@ -1341,7 +1339,10 @@ fn composer_lock_dependency_map(
 }
 
 /// `_gemfile_dependency_map` (:609-616) — `_GEMFILE_RE.search` per line.
-fn gemfile_dependency_map(text: &str, deadline: &Deadline) -> ParseResult<BTreeMap<String, String>> {
+fn gemfile_dependency_map(
+    text: &str,
+    deadline: &Deadline,
+) -> ParseResult<BTreeMap<String, String>> {
     let mut dependencies = BTreeMap::new();
     for line in py_splitlines(text) {
         deadline.ensure()?;
@@ -1438,13 +1439,10 @@ mod tests {
         }"#;
         let deadline = Deadline::from_ms(GENEROUS);
         let map = dependency_map_for_path("package-lock.json", text, &deadline).unwrap();
-        let expected: BTreeMap<String, String> = [
-            ("@scope/tool", "2.0.0"),
-            ("react", "18.2.0"),
-        ]
-        .into_iter()
-        .map(|(name, version)| (name.to_string(), version.to_string()))
-        .collect();
+        let expected: BTreeMap<String, String> = [("@scope/tool", "2.0.0"), ("react", "18.2.0")]
+            .into_iter()
+            .map(|(name, version)| (name.to_string(), version.to_string()))
+            .collect();
         assert_eq!(map, expected);
         // v1 subtree must be ignored once v2 produced entries.
         assert!(!map.contains_key("legacy"));
@@ -1465,13 +1463,10 @@ mod tests {
         }"#;
         let deadline = Deadline::from_ms(GENEROUS);
         let map = dependency_map_for_path("package-lock.json", text, &deadline).unwrap();
-        let expected: BTreeMap<String, String> = [
-            ("nested", "2.0.0"),
-            ("outer", "1.0.0"),
-        ]
-        .into_iter()
-        .map(|(name, version)| (name.to_string(), version.to_string()))
-        .collect();
+        let expected: BTreeMap<String, String> = [("nested", "2.0.0"), ("outer", "1.0.0")]
+            .into_iter()
+            .map(|(name, version)| (name.to_string(), version.to_string()))
+            .collect();
         assert_eq!(map, expected);
     }
 
@@ -1709,7 +1704,11 @@ mod tests {
                 .args(["-c", ORACLE_SCRIPT, path, text])
                 .output()
                 .expect("python3 must exist for oracle test");
-            assert!(output.status.success(), "oracle failed: {}", String::from_utf8_lossy(&output.stderr));
+            assert!(
+                output.status.success(),
+                "oracle failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             let oracle: BTreeMap<String, String> = serde_json::from_slice(&output.stdout).unwrap();
             let deadline = Deadline::from_ms(GENEROUS);
             let rust = dependency_map_for_path(path, text, &deadline).unwrap();

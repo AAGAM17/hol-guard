@@ -62,8 +62,23 @@ const ENV_LONG_VALUE_OPTIONS: &[&str] = &["--argv0", "--chdir", "--unset"];
 const ENV_SHORT_BOOLEAN_OPTIONS: &[char] = &['0', 'i', 'v'];
 const ENV_SHORT_VALUE_OPTIONS: &[char] = &['C', 'P', 'a', 'u'];
 const WINDOWS_EXECUTABLES: &[&str] = &[
-    "aws", "bunx", "cat", "docker", "gcloud", "getfacl", "gh", "hol-guard", "keyring", "npm", "npx",
-    "plugin-guard", "rm", "stripe", "systemctl", "timeout", "xargs",
+    "aws",
+    "bunx",
+    "cat",
+    "docker",
+    "gcloud",
+    "getfacl",
+    "gh",
+    "hol-guard",
+    "keyring",
+    "npm",
+    "npx",
+    "plugin-guard",
+    "rm",
+    "stripe",
+    "systemctl",
+    "timeout",
+    "xargs",
 ];
 const MAX_LAUNCHER_CHILDREN: usize = 256;
 
@@ -93,7 +108,10 @@ pub fn command_critical_floor_factors(
         }
         map.insert(key, factor);
     }
-    order.into_iter().map(|key| map.remove(&key).unwrap()).collect()
+    order
+        .into_iter()
+        .map(|key| map.remove(&key).unwrap())
+        .collect()
 }
 
 /// `_command_critical_floor_factors` (:105).
@@ -105,10 +123,8 @@ fn inner(
     remaining_launcher_children: &mut [usize; 1],
 ) -> Vec<DecisionFactor> {
     let mut factors: Vec<DecisionFactor> = Vec::new();
-    let authorization_evidence = github_workflow_authorization_evidence(
-        authorization,
-        &command.security_identity,
-    );
+    let authorization_evidence =
+        github_workflow_authorization_evidence(authorization, &command.security_identity);
     let mut authorized_action_class: Option<&'static str> = None;
     if let Some((proof, action_class)) = authorization_evidence {
         authorized_action_class = Some(action_class);
@@ -158,7 +174,9 @@ fn inner(
         ) {
             factors.push(github_factor);
         }
-        if let Some((action, reason_code)) = critical_floor(command, segment, &executable, arguments) {
+        if let Some((action, reason_code)) =
+            critical_floor(command, segment, &executable, arguments)
+        {
             factors.push(factor(command, index, action, reason_code));
         }
         let launcher_children = launcher_child_commands(&executable, arguments);
@@ -243,7 +261,12 @@ fn github_factor(
     if (indirect || windows_executable) && effective_floor != GuardAction::Block {
         effective_floor = GuardAction::RequireReapproval;
     }
-    Some(factor(command, index, effective_floor, "critical.github-cli"))
+    Some(factor(
+        command,
+        index,
+        effective_floor,
+        "critical.github-cli",
+    ))
 }
 
 /// `_critical_floor` (:217).
@@ -291,21 +314,36 @@ fn critical_floor<'a>(
         }
     }
     if segment.path_overridden {
-        return Some((GuardAction::RequireReapproval, "critical.path-provenance-drift"));
+        return Some((
+            GuardAction::RequireReapproval,
+            "critical.path-provenance-drift",
+        ));
     }
     if ["npx", "npm", "pnpm", "yarn", "bunx"].contains(&executable)
         && local_package_source(&normalized)
     {
-        return Some((GuardAction::RequireReapproval, "critical.package-source-drift"));
+        return Some((
+            GuardAction::RequireReapproval,
+            "critical.package-source-drift",
+        ));
     }
     if executable == "cat" && segment.execution_context.starts_with("substitution:") {
-        return Some((GuardAction::RequireReapproval, "critical.dynamic-sensitive-read"));
+        return Some((
+            GuardAction::RequireReapproval,
+            "critical.dynamic-sensitive-read",
+        ));
     }
     if executable == "cat" && is_pipeline_segment(command, segment) {
-        return Some((GuardAction::RequireReapproval, "critical.pipeline-sensitive-read"));
+        return Some((
+            GuardAction::RequireReapproval,
+            "critical.pipeline-sensitive-read",
+        ));
     }
     if executable == "keyring" && normalized.first().map(String::as_str) == Some("get") {
-        return Some((GuardAction::RequireReapproval, "critical.credential-metadata"));
+        return Some((
+            GuardAction::RequireReapproval,
+            "critical.credential-metadata",
+        ));
     }
     if executable == "npm" && normalized.first().map(String::as_str) == Some("view") {
         return Some((GuardAction::Review, "critical.package-registry-read"));
@@ -314,13 +352,17 @@ fn critical_floor<'a>(
         return Some((GuardAction::Review, "critical.container-state-read"));
     }
     if executable == "aws"
-        && normalized.get(..2).map(|s| s.iter().map(String::as_str).collect::<Vec<_>>())
+        && normalized
+            .get(..2)
+            .map(|s| s.iter().map(String::as_str).collect::<Vec<_>>())
             == Some(vec!["sts", "get-caller-identity"])
     {
         return Some((GuardAction::Review, "critical.cloud-identity-read"));
     }
     if executable == "gcloud"
-        && normalized.get(..2).map(|s| s.iter().map(String::as_str).collect::<Vec<_>>())
+        && normalized
+            .get(..2)
+            .map(|s| s.iter().map(String::as_str).collect::<Vec<_>>())
             == Some(vec!["projects", "describe"])
     {
         return Some((GuardAction::Review, "critical.cloud-identity-read"));
@@ -357,7 +399,11 @@ fn factor(
 
 /// `_executable_name` (:278).
 fn executable_name(segment: &CommandSegmentV1) -> String {
-    let executable = segment.executable.as_deref().unwrap_or("").replace('\\', "/");
+    let executable = segment
+        .executable
+        .as_deref()
+        .unwrap_or("")
+        .replace('\\', "/");
     let name = executable.rsplit('/').next().unwrap_or("").to_lowercase();
     if name.ends_with(".exe") {
         let stem = &name[..name.len() - 4];
@@ -380,8 +426,7 @@ fn recursive_force(arguments: &[String]) -> bool {
         .collect();
     let has_recursive = flags.iter().any(|item| {
         long_option_prefix(item, "--recursive")
-            || (!item.starts_with("--")
-                && (item[1..].contains('r') || item[1..].contains('R')))
+            || (!item.starts_with("--") && (item[1..].contains('r') || item[1..].contains('R')))
     });
     let has_force = flags.iter().any(|item| {
         long_option_prefix(item, "--force") || (!item.starts_with("--") && item[1..].contains('f'))
@@ -462,10 +507,9 @@ fn destructive_timeout_shell(arguments: &[String]) -> bool {
         })
         .expect("resident parse_command always returns a CanonicalCommandV1");
         let nested = CanonicalCommand::from_v1(&nested);
-        return nested
-            .segments
-            .iter()
-            .any(|segment| executable_name(segment) == "rm" && destructive_remove(&segment.arguments));
+        return nested.segments.iter().any(|segment| {
+            executable_name(segment) == "rm" && destructive_remove(&segment.arguments)
+        });
     }
     false
 }
@@ -654,7 +698,10 @@ fn command_path(
         positional.push(argument.clone());
         index += 1;
     }
-    positional.iter().map(String::as_str).eq(expected.iter().copied())
+    positional
+        .iter()
+        .map(String::as_str)
+        .eq(expected.iter().copied())
 }
 
 /// `_resolved_option` (:453).
@@ -684,7 +731,9 @@ fn contains_ordered(arguments: &[String], first: &str, second: &str) -> bool {
 /// `_guard_control_floor` (:473).
 fn guard_control_floor(arguments: &[String]) -> Option<(GuardAction, &'static str)> {
     let control_tokens = ["capability", "clear", "policy", "uninstall"];
-    if arguments.iter().any(|a| control_tokens.contains(&a.as_str()))
+    if arguments
+        .iter()
+        .any(|a| control_tokens.contains(&a.as_str()))
         && arguments
             .iter()
             .any(|item| ["help", "--help", "-h"].contains(&item.as_str()))

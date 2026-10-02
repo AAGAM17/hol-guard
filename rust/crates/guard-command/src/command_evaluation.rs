@@ -901,8 +901,8 @@ use crate::github_workflow_authorization::{
     github_workflow_authorization_evidence, GitHubWorkflowAuthorizationV1,
 };
 use crate::native_command_catalog::CommandCatalog;
-use guard_contracts::NativeCommandControlBindingV1;
 use crate::native_command_extension_evidence::observations_from_native_evidence;
+use guard_contracts::NativeCommandControlBindingV1;
 
 /// `evaluate_command` (:171-557).
 ///
@@ -941,7 +941,11 @@ pub fn evaluate_command(
     // structured: (extension, rule, effective_evidence) for obs with evidence.
     // Rust keeps `NativeCommandExtensionObservation` (which carries
     // extension_id/rule_id) + resolves the catalog rule for floor/metadata.
-    let selected: Vec<(&NativeCommandExtensionObservation, &crate::native_command_catalog::CatalogRule, Vec<crate::command_evaluation::NativeMatcherEvidence>)> = {
+    let selected: Vec<(
+        &NativeCommandExtensionObservation,
+        &crate::native_command_catalog::CatalogRule,
+        Vec<crate::command_evaluation::NativeMatcherEvidence>,
+    )> = {
         let mut out = Vec::new();
         for item in &observations {
             let effective = item.effective_evidence();
@@ -1070,7 +1074,10 @@ pub fn evaluate_command(
             .iter()
             .map(|control| {
                 (
-                    (control.target.kind.as_str().to_owned(), control.target.target_id.clone()),
+                    (
+                        control.target.kind.as_str().to_owned(),
+                        control.target.target_id.clone(),
+                    ),
                     control.state == crate::extension_control::ControlState::Enabled,
                 )
             })
@@ -1161,10 +1168,8 @@ pub fn evaluate_command(
         }
     }
     // authorization (:302-307).
-    let authorization_evidence = github_workflow_authorization_evidence(
-        workflow_authorization,
-        &command.security_identity,
-    );
+    let authorization_evidence =
+        github_workflow_authorization_evidence(workflow_authorization, &command.security_identity);
     let authorized_action_class = authorization_evidence
         .as_ref()
         .map(|(_proof, action_class)| *action_class);
@@ -1312,8 +1317,10 @@ pub fn evaluate_command(
     baseline_factors.extend(workspace_write_candidates.iter().cloned());
     baseline_factors.extend(critical_floor_factors.iter().cloned());
     baseline_factors.extend(read_factors.iter().cloned());
-    let baseline_uncertainties =
-        command_uncertainties(command, !baseline_factors.is_empty() || minimum_action == CommandDecisionFloor::Block);
+    let baseline_uncertainties = command_uncertainties(
+        command,
+        !baseline_factors.is_empty() || minimum_action == CommandDecisionFloor::Block,
+    );
     let decision_uncertainties = {
         let mut u = baseline_uncertainties.clone();
         for item in observation_uncertainties {
@@ -1334,13 +1341,14 @@ pub fn evaluate_command(
     let mut current_decision_factors = decision_factors(
         &effective_evidence_batch,
         decision_compatibility_action_class,
-        compatibility_rule.map(|(item, rule)| CompatRuleRef {
-            extension_required: item.extension_required,
-            rule_severity: rule.severity.clone(),
-            rule_default_mode: rule.default_mode.clone(),
-            rule_id: rule.rule_id.clone(),
-        })
-        .as_ref(),
+        compatibility_rule
+            .map(|(item, rule)| CompatRuleRef {
+                extension_required: item.extension_required,
+                rule_severity: rule.severity.clone(),
+                rule_default_mode: rule.default_mode.clone(),
+                rule_id: rule.rule_id.clone(),
+            })
+            .as_ref(),
     )?;
     // authorization factor (:453-463).
     if let Some((proof, _action_class)) = &authorization_evidence {
@@ -1464,7 +1472,10 @@ pub fn evaluate_command(
         schema_version: crate::effect_decision::EFFECT_DECISION_SCHEMA_VERSION.to_owned(),
     })?;
     // final floor merge (:538-539).
-    minimum_action = stronger_floor(minimum_action, decision_action_floor(decision_plane.action.as_str()));
+    minimum_action = stronger_floor(
+        minimum_action,
+        decision_action_floor(decision_plane.action.as_str()),
+    );
     Ok(CompositeCommandEvaluation {
         security_identity: command.security_identity.clone(),
         parse_confidence: command.confidence.clone(),
@@ -1519,7 +1530,8 @@ fn native_classification_factors(
     if !value.is_object() {
         return Vec::new();
     }
-    let blocked = value.get("minimum_action") == Some(&serde_json::Value::String("block".to_owned()));
+    let blocked =
+        value.get("minimum_action") == Some(&serde_json::Value::String("block".to_owned()));
     let privileged_wrapper_reapproval = value.get("minimum_action")
         == Some(&serde_json::Value::String("require-reapproval".to_owned()))
         && value.get("reason_code")
@@ -1671,7 +1683,9 @@ fn explicit_permission_allow_factors(
 }
 
 /// `_direct_github_permission_ids` (:708-719).
-fn direct_github_permission_ids(command: &crate::canonical_command::CanonicalCommand) -> Vec<String> {
+fn direct_github_permission_ids(
+    command: &crate::canonical_command::CanonicalCommand,
+) -> Vec<String> {
     let mut permission_ids: BTreeSet<String> = BTreeSet::new();
     for segment in &command.segments {
         let executable = segment
@@ -1690,7 +1704,9 @@ fn direct_github_permission_ids(command: &crate::canonical_command::CanonicalCom
         let assessment = classify_github_cli(&segment.arguments);
         for capability in &assessment.capabilities {
             permission_ids.insert(
-                github_capability_contract(*capability).permission_id.clone(),
+                github_capability_contract(*capability)
+                    .permission_id
+                    .clone(),
             );
         }
     }
@@ -1709,7 +1725,10 @@ impl crate::extension_control::ControlRegistry for CommandCatalog {
             }
         })
     }
-    fn permission(&self, permission_id: &str) -> Option<crate::extension_control::RegistryPermission> {
+    fn permission(
+        &self,
+        permission_id: &str,
+    ) -> Option<crate::extension_control::RegistryPermission> {
         CommandCatalog::permission(self, permission_id).map(|permission| {
             crate::extension_control::RegistryPermission {
                 permission_id: permission.permission_id.clone(),

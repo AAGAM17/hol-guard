@@ -132,7 +132,9 @@ fn required_string(payload: &Map<String, Value>, key: &str) -> Res<String> {
     let v = payload.get(key).cloned().unwrap_or(Value::Null);
     match v {
         Value::String(s) if !s.trim().is_empty() => Ok(s),
-        _ => Err(SignalContractError("required string field missing or empty")),
+        _ => Err(SignalContractError(
+            "required string field missing or empty",
+        )),
     }
 }
 
@@ -140,18 +142,21 @@ fn optional_string(payload: &Map<String, Value>, key: &str) -> Res<Option<String
     match payload.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        _ => Err(SignalContractError("optional string field must be a string or null")),
+        _ => Err(SignalContractError(
+            "optional string field must be a string or null",
+        )),
     }
 }
 
 fn optional_i64(payload: &Map<String, Value>, key: &str) -> Res<Option<i64>> {
     match payload.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Number(n)) => n
-            .as_i64()
-            .map(Some)
-            .ok_or(SignalContractError("source_line must be an integer or null")),
-        _ => Err(SignalContractError("source_line must be an integer or null")),
+        Some(Value::Number(n)) => n.as_i64().map(Some).ok_or(SignalContractError(
+            "source_line must be an integer or null",
+        )),
+        _ => Err(SignalContractError(
+            "source_line must be an integer or null",
+        )),
     }
 }
 
@@ -394,10 +399,22 @@ mod tests {
 
     #[test]
     fn confidence_label_thresholds() {
-        assert_eq!(confidence_label_from_score(0.85), RiskConfidenceLabel::Strong);
-        assert_eq!(confidence_label_from_score(0.9), RiskConfidenceLabel::Strong);
-        assert_eq!(confidence_label_from_score(0.5), RiskConfidenceLabel::Likely);
-        assert_eq!(confidence_label_from_score(0.84), RiskConfidenceLabel::Likely);
+        assert_eq!(
+            confidence_label_from_score(0.85),
+            RiskConfidenceLabel::Strong
+        );
+        assert_eq!(
+            confidence_label_from_score(0.9),
+            RiskConfidenceLabel::Strong
+        );
+        assert_eq!(
+            confidence_label_from_score(0.5),
+            RiskConfidenceLabel::Likely
+        );
+        assert_eq!(
+            confidence_label_from_score(0.84),
+            RiskConfidenceLabel::Likely
+        );
         assert_eq!(confidence_label_from_score(0.1), RiskConfidenceLabel::Weak);
     }
 

@@ -109,7 +109,10 @@ pub fn shell_tokens(command: &str) -> (Vec<String>, bool) {
     }
     match crate::shell_tokens(command, false) {
         Ok(tokens) => (tokens, true),
-        Err(_) => (command.split_whitespace().map(str::to_owned).collect(), false),
+        Err(_) => (
+            command.split_whitespace().map(str::to_owned).collect(),
+            false,
+        ),
     }
 }
 
@@ -158,7 +161,9 @@ pub fn leading_environment(tokens: &[String]) -> (Vec<String>, usize, Vec<String
                     .iter()
                     .map(|(name, _)| name.clone()),
             );
-            if !parsed.complete || parsed.command_index.is_none() || !parsed.split_expansions.is_empty()
+            if !parsed.complete
+                || parsed.command_index.is_none()
+                || !parsed.split_expansions.is_empty()
             {
                 return (names, tokens.len(), wrappers);
             }

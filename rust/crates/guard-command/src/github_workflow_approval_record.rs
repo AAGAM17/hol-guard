@@ -14,8 +14,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 /// `GITHUB_WORKFLOW_APPROVAL_RECORD_SCHEMA` (:19).
-pub const GITHUB_WORKFLOW_APPROVAL_RECORD_SCHEMA: &str =
-    "guard.github-workflow-approval-record.v1";
+pub const GITHUB_WORKFLOW_APPROVAL_RECORD_SCHEMA: &str = "guard.github-workflow-approval-record.v1";
 
 /// The ten authorization-eligible `operation_kind` values (:34-46).
 const OPERATION_KINDS: &[&str] = &[
@@ -56,9 +55,9 @@ impl GitHubWorkflowApprovalRecord {
     /// `from_dict` (:69) — strict-key decode; `binding` goes through
     /// `WorkflowCapabilityBinding.from_dict` (strict keys, full validation).
     pub fn decode(payload: &Value) -> RecordResult<Self> {
-        let m = payload.as_object().ok_or_else(|| {
-            "invalid GitHub workflow approval record shape".to_string()
-        })?;
+        let m = payload
+            .as_object()
+            .ok_or_else(|| "invalid GitHub workflow approval record shape".to_string())?;
         const EXPECTED: &[&str] = &[
             "schema_version",
             "operation_kind",
@@ -67,9 +66,7 @@ impl GitHubWorkflowApprovalRecord {
             "operation_digest_sha256",
             "binding",
         ];
-        if m.len() != EXPECTED.len()
-            || EXPECTED.iter().any(|k| !m.contains_key(*k))
-        {
+        if m.len() != EXPECTED.len() || EXPECTED.iter().any(|k| !m.contains_key(*k)) {
             return Err("invalid GitHub workflow approval record shape".to_string());
         }
         let binding_value = m.get("binding").unwrap();
@@ -79,8 +76,7 @@ impl GitHubWorkflowApprovalRecord {
             resource_type: required_string(m, "resource_type")?,
             command_identity_sha256: required_string(m, "command_identity_sha256")?,
             operation_digest_sha256: required_string(m, "operation_digest_sha256")?,
-            binding: WorkflowCapabilityBinding::decode(binding_value)
-                .map_err(|e| e.to_string())?,
+            binding: WorkflowCapabilityBinding::decode(binding_value).map_err(|e| e.to_string())?,
         };
         record.validate()?;
         Ok(record)
@@ -90,7 +86,10 @@ impl GitHubWorkflowApprovalRecord {
     /// `binding.to_value()` produces the identical nested shape.
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
-        m.insert("schema_version".into(), Value::String(self.schema_version.clone()));
+        m.insert(
+            "schema_version".into(),
+            Value::String(self.schema_version.clone()),
+        );
         m.insert(
             "operation_kind".into(),
             Value::String(self.operation_kind.clone()),
@@ -161,7 +160,11 @@ fn required_string(m: &Map<String, Value>, key: &str) -> RecordResult<String> {
 
 /// `_validate_sha256` (:134).
 fn validate_sha256(value: &str) -> RecordResult<()> {
-    if value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
         return Err("invalid GitHub workflow approval digest".to_string());
     }
     Ok(())
@@ -171,8 +174,8 @@ fn validate_sha256(value: &str) -> RecordResult<()> {
 fn framed_sha256(purpose: &str, payload: &Value) -> String {
     // Mirrors `_digest`; the payload here is always a well-formed `to_value`
     // map so `canonical_framed_payload` cannot fail. Keep the message anyway.
-    let framed = guard_contracts::canonical_framed_payload(purpose, payload)
-        .unwrap_or_else(|_| Vec::new());
+    let framed =
+        guard_contracts::canonical_framed_payload(purpose, payload).unwrap_or_else(|_| Vec::new());
     let mut hasher = Sha256::new();
     hasher.update(&framed);
     hasher

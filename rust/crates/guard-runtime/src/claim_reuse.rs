@@ -111,10 +111,14 @@ pub fn materialized_policy_bundle_row_identity(row: &Value) -> Vec<Value> {
 /// rest read as optional text, matching `_row_mapping` (sqlite3.Row → dict).
 pub(crate) fn policy_row_to_value(row: &rusqlite::Row) -> rusqlite::Result<Value> {
     let text = |i: usize| -> rusqlite::Result<Value> {
-        Ok(row.get::<_, Option<String>>(i)?.map_or(Value::Null, Value::String))
+        Ok(row
+            .get::<_, Option<String>>(i)?
+            .map_or(Value::Null, Value::String))
     };
     let int = |i: usize| -> rusqlite::Result<Value> {
-        Ok(row.get::<_, Option<i64>>(i)?.map_or(Value::Null, Value::from))
+        Ok(row
+            .get::<_, Option<i64>>(i)?
+            .map_or(Value::Null, Value::from))
     };
     Ok(serde_json::json!({
         "decision_id": int(0)?,
@@ -241,7 +245,9 @@ fn claim_approval_reuse_decision_locked(
             return Ok(false);
         }
         let disposition = approval_reuse_claim_disposition(decision);
-        let Some(disposition) = disposition else { return Ok(false) };
+        let Some(disposition) = disposition else {
+            return Ok(false);
+        };
         let claimed = claim_local_once_approval_by_id_locked(
             connection,
             aid,
@@ -251,7 +257,9 @@ fn claim_approval_reuse_decision_locked(
             local_integrity_key_id,
             disposition == "consumed",
         )?;
-        let Some(claimed) = claimed else { return Ok(false) };
+        let Some(claimed) = claimed else {
+            return Ok(false);
+        };
         let event_name = if disposition == "retained" {
             "approval.local_once_reused"
         } else {
@@ -266,7 +274,8 @@ fn claim_approval_reuse_decision_locked(
                     "request_id": claimed.get("request_id").cloned().unwrap_or(Value::Null),
                     "harness": claimed.get("harness").cloned().unwrap_or(Value::Null),
                     "artifact_id": claimed.get("artifact_id").cloned().unwrap_or(Value::Null),
-                })).unwrap_or_default(),
+                }))
+                .unwrap_or_default(),
                 current_time,
             ],
         )?;
@@ -299,8 +308,8 @@ fn claim_approval_reuse_decision_locked(
         let Some(identities) = policy_bundle_decision_identities else {
             return Ok(false);
         };
-        let identity =
-            serde_json::to_string(&materialized_policy_bundle_row_identity(&row)).unwrap_or_default();
+        let identity = serde_json::to_string(&materialized_policy_bundle_row_identity(&row))
+            .unwrap_or_default();
         if !identities.contains(&identity) {
             return Ok(false);
         }
@@ -318,9 +327,14 @@ fn claim_approval_reuse_decision_locked(
                 None,
             )
         } else {
-            let state = integrity_state.cloned().unwrap_or_else(|| serde_json::json!({}));
+            let state = integrity_state
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
             let generation = state.get("generation").and_then(Value::as_i64);
-            let mode = state.get("mode").and_then(Value::as_str).unwrap_or("degraded");
+            let mode = state
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("degraded");
             (
                 guard_policy_snapshot::policy_integrity::verify_local_policy_row(
                     &row,
@@ -364,7 +378,8 @@ fn claim_approval_reuse_decision_locked(
                 "harness": current_payload.get("harness").cloned().unwrap_or(Value::Null),
                 "artifact_id": current_payload.get("artifact_id").cloned().unwrap_or(Value::Null),
                 "scope": current_payload.get("scope").cloned().unwrap_or(Value::Null),
-            })).unwrap_or_default(),
+            }))
+            .unwrap_or_default(),
             current_time,
         ],
     )?;
@@ -401,9 +416,7 @@ pub fn claim_approval_reuse_decisions(
             return Ok(false);
         }
         let revision = match decision.get("_approval_authority_revision") {
-            Some(Value::Number(n)) if n.as_i64().is_some() && !n.is_f64() => {
-                n.as_i64().unwrap()
-            }
+            Some(Value::Number(n)) if n.as_i64().is_some() && !n.is_f64() => n.as_i64().unwrap(),
             _ => return Ok(false),
         };
         if revision < 0 {
@@ -416,14 +429,20 @@ pub fn claim_approval_reuse_decisions(
         }
         let approval_id = decision.get("approval_id");
         let decision_id = decision.get("decision_id");
-        let key = if approval_id.and_then(Value::as_str).map_or(false, |s| !s.is_empty()) {
+        let key = if approval_id
+            .and_then(Value::as_str)
+            .map_or(false, |s| !s.is_empty())
+        {
             ("approval_id", approval_id.cloned().unwrap_or(Value::Null))
         } else if decision_id.and_then(Value::as_i64).is_some() {
             ("decision_id", decision_id.cloned().unwrap_or(Value::Null))
         } else {
             return Ok(false);
         };
-        let key = (key.0.to_owned(), serde_json::to_string(&key.1).unwrap_or_default());
+        let key = (
+            key.0.to_owned(),
+            serde_json::to_string(&key.1).unwrap_or_default(),
+        );
         if !seen_keys.insert(key) {
             continue;
         }
@@ -501,12 +520,26 @@ mod tests {
                 "insert into policy_decisions values
                  (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
                 params![
-                    gi("decision_id"), gs("harness"), gs("scope"), gs("artifact_id"),
-                    gs("action"), gs("artifact_hash"), gs("workspace"), gs("publisher"),
-                    gs("source"), gs("reason"), gs("owner"), gs("created_at"),
-                    gs("updated_at"), gs("expires_at"), gi("integrity_version"),
-                    gi("integrity_generation"), gs("payload_hash"), gs("payload_mac"),
-                    gs("integrity_key_id"), gs("signed_at"),
+                    gi("decision_id"),
+                    gs("harness"),
+                    gs("scope"),
+                    gs("artifact_id"),
+                    gs("action"),
+                    gs("artifact_hash"),
+                    gs("workspace"),
+                    gs("publisher"),
+                    gs("source"),
+                    gs("reason"),
+                    gs("owner"),
+                    gs("created_at"),
+                    gs("updated_at"),
+                    gs("expires_at"),
+                    gi("integrity_version"),
+                    gi("integrity_generation"),
+                    gs("payload_hash"),
+                    gs("payload_mac"),
+                    gs("integrity_key_id"),
+                    gs("signed_at"),
                 ],
             )
             .unwrap();
@@ -526,16 +559,31 @@ mod tests {
     }
     /// The merged decision dict the resolver emits for a `policy_decisions`
     /// row — `policy_row_payload` + authority revision.
-    fn selected_allow(conn: &Connection, did: i64, key: &[u8], key_id: &str,
-                      state: &Value, revision: i64) -> Value {
-        let row: Value = conn.query_row(
-            "select decision_id, harness, scope, artifact_id, action, artifact_hash, \
+    fn selected_allow(
+        conn: &Connection,
+        did: i64,
+        key: &[u8],
+        key_id: &str,
+        state: &Value,
+        revision: i64,
+    ) -> Value {
+        let row: Value = conn
+            .query_row(
+                "select decision_id, harness, scope, artifact_id, action, artifact_hash, \
              workspace, publisher, source, reason, owner, expires_at, updated_at, \
              integrity_version, integrity_generation, payload_hash, payload_mac, \
              integrity_key_id, signed_at from policy_decisions where decision_id=?1",
-            params![did], policy_row_to_value).unwrap();
+                params![did],
+                policy_row_to_value,
+            )
+            .unwrap();
         let res = guard_policy_snapshot::policy_integrity::verify_local_policy_row(
-            &row, Some(key), Some(key_id), false, state.get("generation").and_then(Value::as_i64));
+            &row,
+            Some(key),
+            Some(key_id),
+            false,
+            state.get("generation").and_then(Value::as_i64),
+        );
         let mut d = policy_row_payload(&row, Some(&res), Some(state));
         d["_approval_authority_revision"] = json!(revision);
         d
@@ -557,10 +605,15 @@ mod tests {
             Some("consumed")
         );
         // non-allow → None.
-        assert_eq!(approval_reuse_claim_disposition(&json!({"action":"block","approval_id":"a"})), None);
+        assert_eq!(
+            approval_reuse_claim_disposition(&json!({"action":"block","approval_id":"a"})),
+            None
+        );
         // allow + approval_id but empty artifact → None.
         assert_eq!(
-            approval_reuse_claim_disposition(&json!({"action":"allow","approval_id":"a","artifact_id":""})),
+            approval_reuse_claim_disposition(
+                &json!({"action":"allow","approval_id":"a","artifact_id":""})
+            ),
             None
         );
         // approval-gate + expiry → consumed.
@@ -602,11 +655,24 @@ mod tests {
 
         let d1 = selected_allow(&conn, 1, &key, key_id, state, 9);
         assert!(claim_approval_reuse_decisions(
-            &conn, std::slice::from_ref(&d1), Some(now),
-            None, None, None, Some(state), Some(&key), Some(key_id),
-        ).unwrap());
-        let still: i64 = conn.query_row(
-            "select count(*) from policy_decisions where decision_id=1", [], |r| r.get(0)).unwrap();
+            &conn,
+            std::slice::from_ref(&d1),
+            Some(now),
+            None,
+            None,
+            None,
+            Some(state),
+            Some(&key),
+            Some(key_id),
+        )
+        .unwrap());
+        let still: i64 = conn
+            .query_row(
+                "select count(*) from policy_decisions where decision_id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(still, 1);
         let ev: i64 = conn.query_row(
             "select count(*) from guard_events where event_name='approval.policy_reuse_applied'",
@@ -616,11 +682,24 @@ mod tests {
         // Consumed approval-gate row: claims, row deleted.
         let d2 = selected_allow(&conn, 2, &key, key_id, state, 9);
         assert!(claim_approval_reuse_decisions(
-            &conn, std::slice::from_ref(&d2), Some(now),
-            None, None, None, Some(state), Some(&key), Some(key_id),
-        ).unwrap());
-        let gone: i64 = conn.query_row(
-            "select count(*) from policy_decisions where decision_id=2", [], |r| r.get(0)).unwrap();
+            &conn,
+            std::slice::from_ref(&d2),
+            Some(now),
+            None,
+            None,
+            None,
+            Some(state),
+            Some(&key),
+            Some(key_id),
+        )
+        .unwrap());
+        let gone: i64 = conn
+            .query_row(
+                "select count(*) from policy_decisions where decision_id=2",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(gone, 0);
 
         // cloud-sync source → rejected outright (claims false, row intact).
@@ -628,15 +707,31 @@ mod tests {
         // selected_allow marks cloud-sync valid via remote-source path; keep as-is.
         d3["_approval_authority_revision"] = json!(9);
         assert!(!claim_approval_reuse_decisions(
-            &conn, std::slice::from_ref(&d3), Some(now),
-            None, None, None, Some(state), Some(&key), Some(key_id),
-        ).unwrap());
+            &conn,
+            std::slice::from_ref(&d3),
+            Some(now),
+            None,
+            None,
+            None,
+            Some(state),
+            Some(&key),
+            Some(key_id),
+        )
+        .unwrap());
 
         // Revision mismatch → whole batch fails.
         let d_bad = decision(1, 0, &[]);
         assert!(!claim_approval_reuse_decisions(
-            &conn, std::slice::from_ref(&d_bad), Some(now),
-            None, None, None, Some(state), Some(&key), Some(key_id),
-        ).unwrap());
+            &conn,
+            std::slice::from_ref(&d_bad),
+            Some(now),
+            None,
+            None,
+            None,
+            Some(state),
+            Some(&key),
+            Some(key_id),
+        )
+        .unwrap());
     }
 }

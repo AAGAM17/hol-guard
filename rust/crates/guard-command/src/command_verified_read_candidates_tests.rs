@@ -102,7 +102,12 @@ fn verified_read_operation_matches_python_oracle() {
             mismatches.push(format!("{}: rust={:?} py={:?}", row.command, got, row.op));
         }
     }
-    assert!(mismatches.is_empty(), "{} mismatches:\n{}", mismatches.len(), mismatches.join("\n"));
+    assert!(
+        mismatches.is_empty(),
+        "{} mismatches:\n{}",
+        mismatches.len(),
+        mismatches.join("\n")
+    );
 }
 
 #[test]
@@ -116,8 +121,14 @@ fn verified_read_factor_shape() {
             (None, None) => {}
             (Some(op), Some(f)) => {
                 assert_eq!(f.reason_code, "verified-read-proof-required");
-                assert_eq!(f.operation_ref.as_deref(), Some(format!("operation:{op}").as_str()));
-                assert_eq!(f.producer_ref.as_deref(), Some("policy:verified-read-candidate-v1"));
+                assert_eq!(
+                    f.operation_ref.as_deref(),
+                    Some(format!("operation:{op}").as_str())
+                );
+                assert_eq!(
+                    f.producer_ref.as_deref(),
+                    Some("policy:verified-read-candidate-v1")
+                );
                 assert_eq!(f.basis.action_floor.as_str(), "review");
             }
             (a, b) => panic!("{}: op={:?} factor-present={}", row.command, a, b.is_some()),

@@ -48,10 +48,7 @@ pub fn command_security_identity(command: &CanonicalCommandV1) -> String {
     let mut out = Vec::new();
     // Payload is all strings/ints/arrays — always CPython-encodable.
     let _ = guard_contracts::write_canonical_json(&payload, &mut out);
-    format!(
-        "command-security-v2:{:x}",
-        Sha256::digest(&out)
-    )
+    format!("command-security-v2:{:x}", Sha256::digest(&out))
 }
 
 /// `CanonicalCommand` — the Python command-model projection `evaluate_command`

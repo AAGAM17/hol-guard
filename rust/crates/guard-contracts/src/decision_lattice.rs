@@ -24,7 +24,9 @@
 
 use serde_json::Value;
 
-use crate::signal_contract::{RiskConfidenceLabel, RiskSeverityLabel, RiskSignalV2, RiskSignalCategory};
+use crate::signal_contract::{
+    RiskConfidenceLabel, RiskSeverityLabel, RiskSignalCategory, RiskSignalV2,
+};
 
 // ---------------------------------------------------------------------------
 // GuardAction lattice
@@ -251,7 +253,10 @@ pub fn is_action_bearing_key(key: &str) -> bool {
 
 /// `_DOWNGRADE_BLOCK_CATEGORIES` — risk categories that veto a downgrade.
 fn is_downgrade_block_category(c: RiskSignalCategory) -> bool {
-    matches!(c, RiskSignalCategory::Bypass | RiskSignalCategory::Persistence)
+    matches!(
+        c,
+        RiskSignalCategory::Bypass | RiskSignalCategory::Persistence
+    )
 }
 
 /// `_DOWNGRADE_PROTECTED_SEVERITIES` — retained for parity; not used by the
@@ -362,8 +367,10 @@ pub fn compose_action_from_signals(
             let upgraded = most_restrictive_of(current, GuardAction::Block);
             if upgraded.severity() > current.severity() {
                 if upgrade_reason.is_none() {
-                    upgrade_reason =
-                        Some(format!("critical signal '{}' forces block", signal.detector));
+                    upgrade_reason = Some(format!(
+                        "critical signal '{}' forces block",
+                        signal.detector
+                    ));
                 }
                 current = upgraded;
             }
@@ -376,7 +383,9 @@ pub fn compose_action_from_signals(
         let all_fp_strong = fp
             .iter()
             .all(|s| s.confidence == RiskConfidenceLabel::Strong);
-        let only_low_risk = risk.iter().all(|s| is_fp_downgrade_max_severity(s.severity));
+        let only_low_risk = risk
+            .iter()
+            .all(|s| is_fp_downgrade_max_severity(s.severity));
         let no_protected_cats = !risk.iter().any(|s| is_downgrade_block_category(s.category));
 
         if all_fp_strong
@@ -468,7 +477,13 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn risk_signal(cat: RiskSignalCategory, sev: RiskSeverityLabel, conf: RiskConfidenceLabel, det: &str, id: &str) -> RiskSignalV2 {
+    fn risk_signal(
+        cat: RiskSignalCategory,
+        sev: RiskSeverityLabel,
+        conf: RiskConfidenceLabel,
+        det: &str,
+        id: &str,
+    ) -> RiskSignalV2 {
         RiskSignalV2 {
             signal_id: id.into(),
             category: cat,
@@ -531,7 +546,8 @@ mod tests {
             GuardAction::Block
         );
         // unknown input normalized to fallback participates
-        let w = most_restrictive_guard_action(&[json!("allow"), json!("bogus")], GuardAction::Review);
+        let w =
+            most_restrictive_guard_action(&[json!("allow"), json!("bogus")], GuardAction::Review);
         assert_eq!(w, GuardAction::Review);
     }
 
@@ -540,11 +556,11 @@ mod tests {
         assert!(is_action_bearing_key("finalAction"));
         assert!(is_action_bearing_key("observed_policy_action"));
         assert!(is_action_bearing_key("action"));
-        assert!(is_action_bearing_key("policyAction"));   // camel bump -> "policy action"
+        assert!(is_action_bearing_key("policyAction")); // camel bump -> "policy action"
         assert!(is_action_bearing_key("preExecutionResult")); // semantic alias
         assert!(is_action_bearing_key("action_envelope_json"));
-        assert!(!is_action_bearing_key("redaction"));      // "redaction" -> no standalone token
-        assert!(!is_action_bearing_key("reaction"));       // contains 'action' but not token
+        assert!(!is_action_bearing_key("redaction")); // "redaction" -> no standalone token
+        assert!(!is_action_bearing_key("reaction")); // contains 'action' but not token
         assert!(!is_action_bearing_key("user_title"));
         assert!(is_action_bearing_key("transActionName")); // tokens: trans action name -> has "action"
     }
@@ -559,8 +575,11 @@ mod tests {
     #[test]
     fn compose_bypass_upgrades_to_block() {
         let sigs = vec![risk_signal(
-            RiskSignalCategory::Bypass, RiskSeverityLabel::Low, RiskConfidenceLabel::Likely,
-            "det-bypass", "sig-bypass",
+            RiskSignalCategory::Bypass,
+            RiskSeverityLabel::Low,
+            RiskConfidenceLabel::Likely,
+            "det-bypass",
+            "sig-bypass",
         )];
         let r = compose_action_from_signals(&sigs, &json!("allow"));
         assert_eq!(r.action, GuardAction::Block);
@@ -571,8 +590,11 @@ mod tests {
     #[test]
     fn compose_critical_likely_upgrades_to_block() {
         let sigs = vec![risk_signal(
-            RiskSignalCategory::Secret, RiskSeverityLabel::Critical, RiskConfidenceLabel::Strong,
-            "det-crit", "sig-crit",
+            RiskSignalCategory::Secret,
+            RiskSeverityLabel::Critical,
+            RiskConfidenceLabel::Strong,
+            "det-crit",
+            "sig-crit",
         )];
         let r = compose_action_from_signals(&sigs, &json!("warn"));
         assert_eq!(r.action, GuardAction::Block);
@@ -583,8 +605,11 @@ mod tests {
     #[test]
     fn compose_persistence_high_upgrades_to_review() {
         let sigs = vec![risk_signal(
-            RiskSignalCategory::Persistence, RiskSeverityLabel::High, RiskConfidenceLabel::Weak,
-            "det-pers", "sig-pers",
+            RiskSignalCategory::Persistence,
+            RiskSeverityLabel::High,
+            RiskConfidenceLabel::Weak,
+            "det-pers",
+            "sig-pers",
         )];
         let r = compose_action_from_signals(&sigs, &json!("allow"));
         assert_eq!(r.action, GuardAction::Review);
@@ -595,8 +620,20 @@ mod tests {
     #[test]
     fn compose_strong_fp_low_risk_downgrades_block_to_review() {
         let sigs = vec![
-            risk_signal(RiskSignalCategory::FalsePositive, RiskSeverityLabel::Info, RiskConfidenceLabel::Strong, "det-fp", "fp:source-search:x"),
-            risk_signal(RiskSignalCategory::Filesystem, RiskSeverityLabel::Low, RiskConfidenceLabel::Likely, "det-fs", "sig-fs"),
+            risk_signal(
+                RiskSignalCategory::FalsePositive,
+                RiskSeverityLabel::Info,
+                RiskConfidenceLabel::Strong,
+                "det-fp",
+                "fp:source-search:x",
+            ),
+            risk_signal(
+                RiskSignalCategory::Filesystem,
+                RiskSeverityLabel::Low,
+                RiskConfidenceLabel::Likely,
+                "det-fs",
+                "sig-fs",
+            ),
         ];
         let r = compose_action_from_signals(&sigs, &json!("block"));
         assert_eq!(r.action, GuardAction::Review);
@@ -607,21 +644,39 @@ mod tests {
     #[test]
     fn compose_strong_readonly_fp_no_risk_downgrades_review_to_warn() {
         let sigs = vec![risk_signal(
-            RiskSignalCategory::FalsePositive, RiskSeverityLabel::Info, RiskConfidenceLabel::Strong,
-            "det-fp", "fp:read-only-http-fetch:x",
+            RiskSignalCategory::FalsePositive,
+            RiskSeverityLabel::Info,
+            RiskConfidenceLabel::Strong,
+            "det-fp",
+            "fp:read-only-http-fetch:x",
         )];
         let r = compose_action_from_signals(&sigs, &json!("review"));
         assert_eq!(r.action, GuardAction::Warn);
         assert!(r.downgraded);
-        assert_eq!(r.reason, "strong read-only false-positive with no risk signals; downgraded review \u{2192} warn");
+        assert_eq!(
+            r.reason,
+            "strong read-only false-positive with no risk signals; downgraded review \u{2192} warn"
+        );
     }
 
     #[test]
     fn compose_does_not_downgrade_when_bypass_present() {
         // bypass category is a protected category -> no downgrade even w/ strong fp + low sev
         let sigs = vec![
-            risk_signal(RiskSignalCategory::FalsePositive, RiskSeverityLabel::Info, RiskConfidenceLabel::Strong, "det-fp", "fp:x"),
-            risk_signal(RiskSignalCategory::Bypass, RiskSeverityLabel::Low, RiskConfidenceLabel::Weak, "det-b", "sig-b"),
+            risk_signal(
+                RiskSignalCategory::FalsePositive,
+                RiskSeverityLabel::Info,
+                RiskConfidenceLabel::Strong,
+                "det-fp",
+                "fp:x",
+            ),
+            risk_signal(
+                RiskSignalCategory::Bypass,
+                RiskSeverityLabel::Low,
+                RiskConfidenceLabel::Weak,
+                "det-b",
+                "sig-b",
+            ),
         ];
         // bypass weak confidence does NOT upgrade (needs likely+)
         let r = compose_action_from_signals(&sigs, &json!("block"));
@@ -633,26 +688,47 @@ mod tests {
     fn compose_never_downgrades_unrecognized_base() {
         // base unrecognized -> fallback to "block" but recognized=false -> no downgrade
         let sigs = vec![risk_signal(
-            RiskSignalCategory::FalsePositive, RiskSeverityLabel::Info, RiskConfidenceLabel::Strong,
-            "det-fp", "fp:x",
+            RiskSignalCategory::FalsePositive,
+            RiskSeverityLabel::Info,
+            RiskConfidenceLabel::Strong,
+            "det-fp",
+            "fp:x",
         )];
         let r = compose_action_from_signals(&sigs, &json!("bogus"));
         assert_eq!(r.action, GuardAction::Block); // fallback block
         assert_eq!(r.normalization_reason_code, Some("guard_action_unknown"));
         assert!(!r.downgraded); // recognized gate blocks downgrade
-        assert_eq!(r.reason, "advisory false-positive signals only; base action applies");
+        assert_eq!(
+            r.reason,
+            "advisory false-positive signals only; base action applies"
+        );
     }
 
     #[test]
     fn compose_plain_risk_reports_top_signal_reason() {
         let sigs = vec![
-            risk_signal(RiskSignalCategory::Network, RiskSeverityLabel::Medium, RiskConfidenceLabel::Likely, "det-net", "sig-net"),
-            risk_signal(RiskSignalCategory::Filesystem, RiskSeverityLabel::High, RiskConfidenceLabel::Weak, "det-fs", "sig-fs"),
+            risk_signal(
+                RiskSignalCategory::Network,
+                RiskSeverityLabel::Medium,
+                RiskConfidenceLabel::Likely,
+                "det-net",
+                "sig-net",
+            ),
+            risk_signal(
+                RiskSignalCategory::Filesystem,
+                RiskSeverityLabel::High,
+                RiskConfidenceLabel::Weak,
+                "det-fs",
+                "sig-fs",
+            ),
         ];
         let r = compose_action_from_signals(&sigs, &json!("warn"));
         assert_eq!(r.action, GuardAction::Warn);
         // top = highest severity (high/fs) -> reason names it
-        assert_eq!(r.reason, "risk signal 'det-fs' (high/weak); base action applies");
+        assert_eq!(
+            r.reason,
+            "risk signal 'det-fs' (high/weak); base action applies"
+        );
         assert!(!r.upgraded && !r.downgraded);
     }
 }

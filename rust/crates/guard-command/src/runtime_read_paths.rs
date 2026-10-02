@@ -17,9 +17,7 @@ fn strip_cli_value(value: &str) -> String {
 /// `_runtime_read_roots` (:195-210).
 pub(crate) fn runtime_read_roots(cwd: Option<&Path>, home_dir: Option<&Path>) -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
-    let fallback_home = || {
-        std::env::var_os("HOME").map(PathBuf::from)
-    };
+    let fallback_home = || std::env::var_os("HOME").map(PathBuf::from);
     let home = home_dir.map(Path::to_path_buf).or_else(fallback_home);
     for candidate in [cwd.map(Path::to_path_buf), home].into_iter().flatten() {
         // `Path.resolve(strict=False)` — canonicalize the longest existing
@@ -71,7 +69,12 @@ fn weak_canonicalize(path: &Path) -> Option<PathBuf> {
 fn runtime_read_root_texts(roots: &[PathBuf]) -> Vec<String> {
     roots
         .iter()
-        .map(|r| std::fs::canonicalize(r).unwrap_or_else(|_| r.clone()).to_string_lossy().into_owned())
+        .map(|r| {
+            std::fs::canonicalize(r)
+                .unwrap_or_else(|_| r.clone())
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect()
 }
 

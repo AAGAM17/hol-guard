@@ -3,9 +3,7 @@
 
 use std::path::Path;
 
-use crate::effect_decision::{
-    DecisionBasis, DecisionFactor, DecisionFactorSource, GuardAction,
-};
+use crate::effect_decision::{DecisionBasis, DecisionFactor, DecisionFactorSource, GuardAction};
 use crate::shell_secret_reads::assess_shell_reads;
 
 /// `shell_read_floor_factors` (:13-33). Review floors only — never execution
@@ -44,7 +42,6 @@ pub fn shell_read_floor_factors(
     }]
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::shell_read_floor_factors;
@@ -58,19 +55,37 @@ mod tests {
         ("bash script.sh", Some("critical.local-script-execution")),
         ("sh -c 'echo hi'", None),
         ("echo hello", None),
-        ("cat ~/.ssh/id_rsa && ls", Some("critical.local-secret-read")),
+        (
+            "cat ~/.ssh/id_rsa && ls",
+            Some("critical.local-secret-read"),
+        ),
         ("python script.py", Some("critical.local-script-execution")),
         ("cat /tmp/nonexistent_file_xyz", None),
         ("cat ~/.aws/credentials", Some("critical.local-secret-read")),
-        ("head -1 ~/.ssh/id_ed25519", Some("critical.local-secret-read")),
+        (
+            "head -1 ~/.ssh/id_ed25519",
+            Some("critical.local-secret-read"),
+        ),
         ("cat ~/.netrc", Some("critical.local-secret-read")),
         ("source ~/.zshrc", Some("critical.local-script-execution")),
         (". ./config.sh", Some("critical.local-script-execution")),
         ("cat ~/secrets/token.txt", None),
-        ("sleep 1 && cat ~/.ssh/id_rsa", Some("critical.local-secret-read")),
-        ("cat $(echo ~/.ssh/id_rsa)", Some("critical.local-script-execution")),
-        ("bash -c 'cat ~/.ssh/id_rsa'", Some("critical.local-secret-read")),
-        ("cat ~/.ssh/id_rsa | wc -l", Some("critical.local-secret-read")),
+        (
+            "sleep 1 && cat ~/.ssh/id_rsa",
+            Some("critical.local-secret-read"),
+        ),
+        (
+            "cat $(echo ~/.ssh/id_rsa)",
+            Some("critical.local-script-execution"),
+        ),
+        (
+            "bash -c 'cat ~/.ssh/id_rsa'",
+            Some("critical.local-secret-read"),
+        ),
+        (
+            "cat ~/.ssh/id_rsa | wc -l",
+            Some("critical.local-secret-read"),
+        ),
     ];
 
     #[test]
@@ -90,8 +105,7 @@ mod tests {
 
         let cwd = PathBuf::from("/tmp");
         for (command, want_reason) in ORACLE {
-            let factors =
-                shell_read_floor_factors(command, "guard:shell", Some(&cwd), Some(&home));
+            let factors = shell_read_floor_factors(command, "guard:shell", Some(&cwd), Some(&home));
             let got_reason = factors.first().map(|f| f.reason_code.as_str());
             assert_eq!(
                 got_reason, *want_reason,

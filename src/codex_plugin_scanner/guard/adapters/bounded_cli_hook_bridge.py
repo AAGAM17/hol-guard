@@ -397,6 +397,12 @@ def run_bounded_cli_hook(config: Mapping[str, object], *, input_text: str) -> in
         timeout_seconds=float(timeout_seconds),
     )
     if daemon_result is not None:
+        from .zcode_contained_tests import contained_zcode_response
+        daemon_payload = _json_object(daemon_result[0].strip())
+        routed = contained_zcode_response(daemon_payload or {}, input_text=input_text, config=config, cli_args=cli_args)
+        if routed is not None:
+            _ = sys.stdout.write(json.dumps(routed, ensure_ascii=True, separators=(",", ":")) + "\n")
+            return 0
         remaining = max(0.0, deadline - time.monotonic())
         daemon_stdout, daemon_stderr, daemon_exit = _apply_grok_bridge_approval_wait(
             guard_home=guard_home,
@@ -439,6 +445,11 @@ def run_bounded_cli_hook(config: Mapping[str, object], *, input_text: str) -> in
             guard_home=guard_home,
         )
     compact_payload = _json_object(result.stdout.strip())
+    from .zcode_contained_tests import contained_zcode_response
+    routed = contained_zcode_response(compact_payload or {}, input_text=input_text, config=config, cli_args=cli_args)
+    if routed is not None:
+        _ = sys.stdout.write(json.dumps(routed, ensure_ascii=True, separators=(",", ":")) + "\n")
+        return 0
     if compact_payload is None and not _has_json_object_line(result.stdout):
         return _emit_failure(
             harness=harness,

@@ -134,7 +134,7 @@ pub fn evaluate_pre_tool_envelope_with_context(
     // Other platforms retain review until they can enforce the same profile.
     if cfg!(target_os = "macos")
         && event == "PreToolUse"
-        && matches!(harness, "omp" | "oh-my-pi")
+        && matches!(harness, "omp" | "oh-my-pi" | "zcode")
         && cwd.is_some()
         && (result.action.action_type == PreToolActionTypeV1::Command
             || (matches!(

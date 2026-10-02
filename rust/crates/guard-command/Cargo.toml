@@ -23,6 +23,8 @@ rsa.workspace = true
 base64ct.workspace = true
 
 [build-dependencies]
+guard-command-build = { path = "../guard-command-build" }
+serde_json.workspace = true
 sha2.workspace = true
 
 [lints]

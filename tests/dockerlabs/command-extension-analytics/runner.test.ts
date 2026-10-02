@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { composeCommand, runCommand, safeProjectName, type CommandResult } from "./lab-process";
 import { runInstalledPlaywright } from "./installed-playwright";
 import { fetchLabGet, fetchLabIdempotent } from "./relay-fetch";
-import { readyFromLogs } from "./runner";
+import { readyFromLogs, resolveWheel } from "./runner";
 import { readDashboardSession } from "./session-handoff";
 import { teardownLab } from "./teardown";
 
@@ -12,6 +12,19 @@ function result(stdout = "", exitCode = 0): CommandResult {
 }
 
 describe("command extension analytics Dockerlabs orchestration", () => {
+  test("requires an explicit native wheel instead of building a pure wheel", () => {
+    const original = Bun.env.HOL_GUARD_WHEEL;
+    try {
+      delete Bun.env.HOL_GUARD_WHEEL;
+      expect(() => resolveWheel()).toThrow("native-injected wheel");
+      Bun.env.HOL_GUARD_WHEEL = "dist/synthetic.whl";
+      expect(resolveWheel()).toBe("dist/synthetic.whl");
+    } finally {
+      if (original === undefined) delete Bun.env.HOL_GUARD_WHEEL;
+      else Bun.env.HOL_GUARD_WHEEL = original;
+    }
+  });
+
   test("normalizes bounded compose project names", () => {
     expect(safeProjectName("Guard Command Analytics 42")).toBe("guard-command-analytics-42");
     expect(() => safeProjectName("../")).toThrow("invalid Dockerlabs project name");

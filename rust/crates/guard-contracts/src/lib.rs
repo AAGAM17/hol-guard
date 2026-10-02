@@ -21,6 +21,8 @@ mod context_digest;
 pub use context_digest::*;
 mod command_effect;
 pub use command_effect::*;
+mod canonical_json;
+pub use canonical_json::*;
 
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";

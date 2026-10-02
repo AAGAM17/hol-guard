@@ -392,16 +392,20 @@ def _default_guard_daemon_start_timeout() -> float:
     )
     # The client's startup poll must outlast the worker's own readiness budget.
     # When an operator raises HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS for a
-    # slow host (QEMU guests, cold CI) beyond what ``base`` already covers, the
-    # daemon needs that full window plus a margin to finish its isolated
-    # handshake before the client gives up.  A fixed client deadline would
-    # otherwise re-create the nested-budget deadlock one level higher: a
-    # healthy daemon killed while still waiting on a healthy worker.  When the
-    # worker floor already fits inside ``base`` the deadline is left alone.
+    # slow host (QEMU guests, cold CI), the daemon needs that full window plus a
+    # margin to finish its isolated handshake before the client gives up. A
+    # fixed client deadline would otherwise re-create the nested-budget deadlock
+    # one level higher: a healthy daemon killed while still waiting on a healthy
+    # worker.
     worker_ready_floor = hook_worker_ready_timeout(0.0)
-    if worker_ready_floor <= base:
-        return base
-    return worker_ready_floor + GUARD_DAEMON_START_TIMEOUT_MARGIN_SECONDS
+    return max(base, worker_ready_floor + GUARD_DAEMON_START_TIMEOUT_MARGIN_SECONDS)
+
+
+def _post_update_guard_daemon_start_timeout() -> float:
+    return max(
+        GUARD_DAEMON_POST_UPDATE_START_TIMEOUT_SECONDS,
+        hook_worker_ready_timeout(0.0) + GUARD_DAEMON_START_TIMEOUT_MARGIN_SECONDS,
+    )
 
 
 def ensure_guard_daemon(
@@ -644,14 +648,14 @@ def ensure_guard_daemon_after_update(
         return ensure_guard_daemon(
             guard_home,
             home_dir=home_dir,
-            start_timeout=GUARD_DAEMON_POST_UPDATE_START_TIMEOUT_SECONDS,
+            start_timeout=_post_update_guard_daemon_start_timeout(),
             preferred_port=preferred_port,
             allow_windows_job_breakaway=allow_windows_job_breakaway,
         )
     return ensure_guard_daemon(
         guard_home,
         home_dir=home_dir,
-        start_timeout=GUARD_DAEMON_POST_UPDATE_START_TIMEOUT_SECONDS,
+        start_timeout=_post_update_guard_daemon_start_timeout(),
         preferred_port=preferred_port,
         allow_windows_job_breakaway=allow_windows_job_breakaway,
         executable=executable,
@@ -2135,7 +2139,7 @@ def _guard_daemon_start_progress_is_live(guard_home: Path, record: GuardDaemonSt
     ):
         return False
     age_ns = time.time_ns() - recorded_at_ns
-    if age_ns < 0 or age_ns >= int(GUARD_DAEMON_POST_UPDATE_START_TIMEOUT_SECONDS * 1_000_000_000):
+    if age_ns < 0 or age_ns >= int(_post_update_guard_daemon_start_timeout() * 1_000_000_000):
         return False
     if not _guard_daemon_pid_is_running(pid):
         return False

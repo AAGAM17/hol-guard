@@ -44,7 +44,7 @@ def _context(tmp_path: Path) -> HarnessContext:
     home_dir = tmp_path / "home"
     guard_home = tmp_path / "guard-home"
     home_dir.mkdir()
-    guard_home.mkdir()
+    guard_home.mkdir(mode=0o700)
     return HarnessContext(home_dir=home_dir, workspace_dir=None, guard_home=guard_home)
 
 

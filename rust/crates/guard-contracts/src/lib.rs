@@ -40,6 +40,8 @@ pub use install_checks::*;
 mod generic_hook_payload;
 pub use generic_hook_payload::*;
 
+mod workflow_capability;
+pub use workflow_capability::*;
 
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";

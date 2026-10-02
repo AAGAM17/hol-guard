@@ -105,7 +105,7 @@ def _child_python_environment() -> dict[str, str]:
     environment = os.environ.copy()
     # Python's -X cache prefix is not inherited by subprocess interpreters.
     if sys.pycache_prefix is not None:
-        environment["PYTHONPYCACHEPREFIX"] = sys.pycache_prefix
+        environment["PYTHONPYCACHEPREFIX"] = str(Path(sys.pycache_prefix).absolute())
     return environment
 
 

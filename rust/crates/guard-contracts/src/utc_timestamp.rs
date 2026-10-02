@@ -314,4 +314,59 @@ mod tests {
         assert!(timestamp_has_expired("not-a-date", "2026-10-02T00:00:00+00:00"));
         assert!(timestamp_has_expired("", "2026-10-02T00:00:00+00:00"));
     }
+
+    /// Consumes the language-neutral `expiry-boundaries.v1.json` corpus landed
+    /// under `tests/fixtures/guard-expiry-boundaries/` (RM-011/RTM-006 gap-003):
+    /// pins `canonical_utc_timestamp`, SQLite `julianday`, and the
+    /// `timestamp_has_expired` `<=`/fail-closed contract against a checked-in
+    /// expectation record rather than a recomputed Python oracle.
+    #[test]
+    fn expiry_boundaries_fixture() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../tests/fixtures/guard-expiry-boundaries/expiry-boundaries.v1.json"
+        );
+        let text = std::fs::read_to_string(path).expect("expiry-boundaries fixture");
+        let doc: serde_json::Value = serde_json::from_str(&text).expect("valid fixture json");
+
+        for v in doc["canonical_utc_timestamp_vectors"].as_array().unwrap() {
+            let input = v["input"].as_str().unwrap();
+            let expected = v["expected"].as_str();
+            assert_eq!(
+                canonical_utc_timestamp(input).as_deref(),
+                expected,
+                "canonical {input:?}"
+            );
+        }
+
+        for v in doc["julianday_vectors"].as_array().unwrap() {
+            let input = v["input"].as_str().unwrap();
+            match v.get("expected") {
+                Some(serde_json::Value::Null) | None => {
+                    assert_eq!(sqlite_julianday(input), None, "julianday {input:?}")
+                }
+                Some(serde_json::Value::Number(want)) => {
+                    let got =
+                        sqlite_julianday(input).unwrap_or_else(|| panic!("julianday {input:?}"));
+                    assert!(
+                        (got - want.as_f64().unwrap()).abs() < 1e-6,
+                        "julianday {input:?}: {got} vs {want}"
+                    );
+                }
+                _ => panic!("unexpected julianday expected for {input:?}"),
+            }
+        }
+
+        for v in doc["timestamp_has_expired_vectors"].as_array().unwrap() {
+            let expires_at = v["expires_at"].as_str().unwrap();
+            let now = v["now"].as_str().unwrap();
+            let expected = v["expected"].as_bool().unwrap();
+            assert_eq!(
+                timestamp_has_expired(expires_at, now),
+                expected,
+                "{}: expires_at={expires_at:?} now={now:?}",
+                v["label"].as_str().unwrap_or("")
+            );
+        }
+    }
 }

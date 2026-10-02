@@ -114,6 +114,7 @@ jobs:
             tests/test_guard_mcp_server_contribution.py \
             --junitxml=builder-evidence/tests.xml --tb=short
       - name: Verify native public directory projections
+        env: { HEAD_REF: ${{ github.head_ref }}, HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}, PR_AUTHOR: ${{ github.event.pull_request.user.login }}, AUTOMATION_LOGIN: ${{ vars.GUARD_AUTOMATION_LOGIN }} }
         run: |
           detect=(--flag)
           arguments=(--compiler "$HOL_GUARD_NATIVE_SOURCE_COMPILER")
@@ -126,7 +127,11 @@ jobs:
             # regen/* pull requests exist precisely to carry the regenerated
             # maintainer-owned projections this gate otherwise rejects; exempt
             # them so the regen pipeline can publish its refresh to main.
-            if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.head_ref }}" != regen/artifacts-* ]]; then
+            is_regen_pr=false
+            if [[ "$HEAD_REPO" == "${{ github.repository }}" && "$HEAD_REF" == regen/artifacts-* && -n "$AUTOMATION_LOGIN" && "$PR_AUTHOR" == "$AUTOMATION_LOGIN" ]]; then
+              is_regen_pr=true
+            fi
+            if [[ "${{ github.event_name }}" == "pull_request" && "$is_regen_pr" != "true" ]]; then
               git fetch -q origin "+refs/heads/${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
               if git diff --name-only "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- \
                 contracts/extensions/command-catalog.v1.json \

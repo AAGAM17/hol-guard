@@ -188,6 +188,7 @@ fn evaluate(
         Some(&cwd),
         Some(&home_dir),
     );
+    #[cfg(unix)]
     guard_command::evaluate_command(
         &canonical,
         &request.native_extension_evidence,

@@ -1,6 +1,8 @@
 //! Flow and segment helpers for shell secret-read assessment
 //! (`runtime/_shell_secret_read_flow.py`, 92 lines — verbatim).
 
+#![cfg(unix)]
+
 use std::sync::OnceLock;
 
 use regex::Regex;

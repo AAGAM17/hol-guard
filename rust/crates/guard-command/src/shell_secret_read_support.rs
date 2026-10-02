@@ -5,6 +5,8 @@
 //! `interpreter_observers`, `constants_core`, `false_positive_rules` they
 //! import).
 
+#![cfg_attr(windows, allow(dead_code))]
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

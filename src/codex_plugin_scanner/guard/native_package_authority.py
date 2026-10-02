@@ -20,9 +20,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .native_resident_client import native_resident_client_request
-from .native_runtime import _isolated_environment, _native_error, native_runtime_status
+from .native_runtime import _isolated_environment, native_runtime_status
 from .native_runtime_resilience import (
-    native_record_overload,
     native_record_resident_failure,
     native_record_resident_success,
 )
@@ -101,7 +100,6 @@ def _resident_request(
         # legacy path produces the authoritative decision.
         return None
     native_record_resident_success(status.identity.sha256, guard_home)
-    payload_value = decoded.get("payload")
     return decoded if isinstance(decoded, dict) else None
 
 

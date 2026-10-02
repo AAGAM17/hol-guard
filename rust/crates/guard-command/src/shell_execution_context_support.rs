@@ -124,7 +124,7 @@ impl ShellPathIdentity {
         ShellPathIdentity {
             device: 0,
             inode: 0,
-            mode: (m.file_attributes() as u32) & 0o170000,
+            mode: m.file_attributes() & 0o170000,
             change_time_ns: write_ns,
             creation_time_ns: m
                 .created()

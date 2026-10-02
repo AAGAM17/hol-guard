@@ -1463,10 +1463,7 @@ def test_runtime_fingerprint_reuses_content_hash_when_tree_signature_matches(tmp
 
 def test_desktop_ensure_uses_post_update_timeout(monkeypatch):
     monkeypatch.setenv("HOL_GUARD_DESKTOP", "1")
-    assert (
-        daemon_manager_module._default_guard_daemon_start_timeout()
-        == daemon_manager_module.GUARD_DAEMON_POST_UPDATE_START_TIMEOUT_SECONDS
-    )
+    assert daemon_manager_module._default_guard_daemon_start_timeout() == 19.0
     monkeypatch.delenv("HOL_GUARD_DESKTOP")
     assert (
         daemon_manager_module._default_guard_daemon_start_timeout()

@@ -123,7 +123,7 @@ def _run_guard_execute_contained_test_command(
     if guard_home is None or workspace is None or context is None or store is None:
         return 126
 
-    def execution_workspace(original: dict) -> Path:
+    def execution_workspace(original: dict[str, object]) -> Path:
         if "cwd" not in original:
             return workspace
         try:

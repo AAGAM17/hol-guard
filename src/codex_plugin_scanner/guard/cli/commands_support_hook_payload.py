@@ -672,14 +672,22 @@ def _headless_approval_resolver(
             return wait_result
 
         def resolve_from_local_queue():
-            queued = queue_blocked_approvals(
-                redaction_level=config.receipt_redaction_level,
-                detection=detection,
-                evaluation=payload,
-                store=store,
-                approval_center_url=approval_center_url,
-                now=_now(),
-            )
+            try:
+                queued = queue_blocked_approvals(
+                    redaction_level=config.receipt_redaction_level,
+                    detection=detection,
+                    evaluation=payload,
+                    store=store,
+                    approval_center_url=approval_center_url,
+                    now=_now(),
+                )
+            except Exception as queue_error:
+                # A fatal store error (e.g. a quarantined SQLite store) must not
+                # abort the deny path: still emit an explicit, empty approval
+                # queue so callers always find the key and the action stays
+                # blocked pending manual resolution.
+                queued = []
+                payload["approval_queue_unavailable"] = type(queue_error).__name__
             payload["approval_requests"] = queued
             _attach_primary_approval_link(
                 payload,

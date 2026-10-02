@@ -160,7 +160,7 @@ fn optional_i64(payload: &Map<String, Value>, key: &str) -> Res<Option<i64>> {
     }
 }
 
-fn obj<'a>(v: &'a Value) -> Res<&'a Map<String, Value>> {
+fn obj(v: &Value) -> Res<&Map<String, Value>> {
     v.as_object()
         .ok_or(SignalContractError("payload must be an object"))
 }

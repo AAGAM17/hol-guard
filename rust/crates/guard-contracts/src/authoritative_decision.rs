@@ -1390,7 +1390,7 @@ mod tests {
             confidence: conf,
             detector: det.into(),
             title: "t".into(),
-            plain_reason: format!("reason-{}", id),
+            plain_reason: format!("reason-{id}"),
             technical_detail: None,
             evidence_ref: None,
             redaction_level: RiskRedactionLevel::Summary,

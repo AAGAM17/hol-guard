@@ -77,7 +77,7 @@ fn validate_timestamp(v: &str) -> WfResult<()> {
 fn validate_reason_code(v: &str) -> WfResult<()> {
     let ok = !v.is_empty()
         && v.len() <= 64
-        && v.chars().next().map_or(false, |c| c.is_ascii_lowercase())
+        && v.chars().next().is_some_and(|c| c.is_ascii_lowercase())
         && v.chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-'));
     if ok {

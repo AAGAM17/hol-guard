@@ -71,7 +71,7 @@ fn validate_identifier(v: &str) -> WfResult<()> {
         && !v.contains('*')
         && v.chars()
             .next()
-            .map_or(false, |c| c.is_ascii_alphanumeric())
+            .is_some_and(|c| c.is_ascii_alphanumeric())
         && v.chars().all(|c| {
             c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
         });
@@ -91,7 +91,7 @@ pub fn validate_workflow_capability_identifier(name: &'static str, v: &str) -> W
         && !v.contains('*')
         && v.chars()
             .next()
-            .map_or(false, |c| c.is_ascii_alphanumeric())
+            .is_some_and(|c| c.is_ascii_alphanumeric())
         && v.chars().all(|c| {
             c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
         });
@@ -231,7 +231,7 @@ impl WorkflowCapabilityBinding {
     /// extras, `rules` an array of strict rule-binding objects.
     pub fn decode(payload: &Value) -> WfResult<Self> {
         let m = strict_object(payload, BINDING_KEYS)?;
-        let rules_v = require(&m, "rules")?
+        let rules_v = require(m, "rules")?
             .as_array()
             .ok_or(WorkflowCapabilityError("invalid_rule_bindings"))?;
         let mut rules = Vec::with_capacity(rules_v.len());
@@ -384,6 +384,7 @@ const CLAIM_KEYS: &[&str] = &[
 ];
 
 impl WorkflowCapabilityClaim {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         capability_id: &str,
         approval_provenance_id: &str,
@@ -466,7 +467,7 @@ impl WorkflowCapabilityClaim {
     /// `from_dict` strict-key decode.
     pub fn decode(payload: &Value) -> WfResult<Self> {
         let m = strict_object(payload, CLAIM_KEYS)?;
-        let max_uses = require(&m, "max_uses")?
+        let max_uses = require(m, "max_uses")?
             .as_i64()
             .ok_or(WorkflowCapabilityError("invalid_capability_max_uses"))?;
         let claim = WorkflowCapabilityClaim {
@@ -478,7 +479,7 @@ impl WorkflowCapabilityClaim {
             nonce: require_str(&m, "nonce")?,
             issuer_id: require_str(&m, "issuer_id")?,
             subject_id: require_str(&m, "subject_id")?,
-            binding: WorkflowCapabilityBinding::decode(require(&m, "binding")?)?,
+            binding: WorkflowCapabilityBinding::decode(require(m, "binding")?)?,
             issued_at: require_str(&m, "issued_at")?,
             not_before: require_str(&m, "not_before")?,
             expires_at: require_str(&m, "expires_at")?,
@@ -576,7 +577,7 @@ impl SignedWorkflowCapability {
         let signed = SignedWorkflowCapability {
             envelope_schema: require_str(&m, "envelope_schema")?,
             algorithm: require_str(&m, "algorithm")?,
-            claim: WorkflowCapabilityClaim::decode(require(&m, "claim")?)?,
+            claim: WorkflowCapabilityClaim::decode(require(m, "claim")?)?,
             key_id: require_str(&m, "key_id")?,
             signature: require_str(&m, "signature")?,
         };
@@ -645,10 +646,10 @@ const RECEIPT_KEYS: &[&str] = &[
 impl WorkflowCapabilityReceipt {
     pub fn decode(payload: &Value) -> WfResult<Self> {
         let m = strict_object(payload, RECEIPT_KEYS)?;
-        let use_number = require(&m, "use_number")?
+        let use_number = require(m, "use_number")?
             .as_i64()
             .ok_or(WorkflowCapabilityError("invalid_receipt_use_number"))?;
-        let event_id = require(&m, "event_id")?
+        let event_id = require(m, "event_id")?
             .as_i64()
             .ok_or(WorkflowCapabilityError("invalid_receipt_event_id"))?;
         let receipt = WorkflowCapabilityReceipt {
@@ -659,7 +660,7 @@ impl WorkflowCapabilityReceipt {
             invocation_id: require_str(&m, "invocation_id")?,
             approval_provenance_id: require_str(&m, "approval_provenance_id")?,
             claim_sha256: require_str(&m, "claim_sha256")?,
-            binding: WorkflowCapabilityBinding::decode(require(&m, "binding")?)?,
+            binding: WorkflowCapabilityBinding::decode(require(m, "binding")?)?,
             use_number,
             event_id,
             claimed_at: require_str(&m, "claimed_at")?,
@@ -811,7 +812,7 @@ impl SignedWorkflowCapabilityReceipt {
             .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
         let m = strict_object(&payload, SIGNED_RECEIPT_KEYS)
             .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
-        let receipt = WorkflowCapabilityReceipt::decode(require(&m, "receipt")?)
+        let receipt = WorkflowCapabilityReceipt::decode(require(m, "receipt")?)
             .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
         Ok(SignedWorkflowCapabilityReceipt {
             envelope_schema: require_str(&m, "envelope_schema")

@@ -94,6 +94,27 @@ pub(super) fn bounded_file_read_target(
     bounded_read_target(value, home_dir, cwd, false)
 }
 
+pub(super) fn existing_regular_read_target(
+    value: &str,
+    home: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    if value.trim() != value || !bounded_file_read_target(value, home, cwd) {
+        return false;
+    }
+    let expanded = expand_home_read_path(value, home).unwrap_or_else(|| value.to_owned());
+    let path = std::path::Path::new(&expanded);
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(cwd) = cwd {
+        std::path::Path::new(&expand_home_read_path(cwd, home).unwrap_or_else(|| cwd.to_owned()))
+            .join(path)
+    } else {
+        return false;
+    };
+    std::fs::canonicalize(candidate).is_ok_and(|path| path.is_file())
+}
+
 pub(super) fn bounded_read_target(
     value: &str,
     home_dir: Option<&str>,

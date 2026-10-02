@@ -57,12 +57,10 @@ pub fn hook_event_name(payload: &Map<String, Value>) -> Option<String> {
 /// `_coalesce_string` (`commands_hook_native_generic.py:13-19`): first
 /// non-empty stripped string, else `unknown-artifact`.
 fn coalesce_string(values: &[Option<&str>]) -> String {
-    for value in values {
-        if let Some(text) = value {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() {
-                return trimmed.to_string();
-            }
+    for text in values.iter().flatten() {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
         }
     }
     "unknown-artifact".to_string()
@@ -350,7 +348,7 @@ fn native_tool_command_text(
 /// returns `shlex.join(args)` — Rust reproduces the single-quote wrapping
 /// POSIX shell join.
 fn grep_tool_command_text(executable: &str, tool_input: &Map<String, Value>) -> Option<String> {
-    let pattern = first_tool_input_string(tool_input, &SEARCH_PATTERN_KEYS)?;
+    let pattern = first_tool_input_string(tool_input, SEARCH_PATTERN_KEYS)?;
     let path = first_tool_input_string(tool_input, &["path", "glob"]);
     let line_numbers = tool_input
         .get("output_mode")

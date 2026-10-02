@@ -9,7 +9,7 @@
 //!
 //! The store half (`build_authority_transition` + `append_authority_transition`
 //! + `validate_global_authority_ledger`) lives in `guard-runtime` atop
-//! `rusqlite`.
+//!   `rusqlite`.
 
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};

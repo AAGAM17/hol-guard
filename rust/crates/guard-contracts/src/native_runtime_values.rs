@@ -15,8 +15,6 @@
 //! comparison.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 
 /// `NativeRuntimeManifest` (`native_runtime_values.py:76-85`). The validated
 /// admission contract for a bundled/discovered runtime artifact.

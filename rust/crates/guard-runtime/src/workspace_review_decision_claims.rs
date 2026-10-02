@@ -66,14 +66,17 @@ pub(super) fn consume_or_replay_claim(
         }
         return Err("native_workspace_review_decision_replay".to_owned());
     }
+    // Reject only a provable replay: a semantic-digest match or a claim_id
+    // tombstone (handled above). A legacy claim that predates semantic
+    // digests (`is_none()`) must NOT reject a *new* claim_id here — its own
+    // replay is already blocked by its claim_id tombstone, and "I cannot
+    // prove this is not a replay" is not a sound reason to permanently
+    // wedge every new decision on an honest upgraded install. This check is
+    // about catching *duplicate semantics*, not enforcing blanket caution.
     if state
         .consumed_claims
         .iter()
         .any(|claim| claim.semantic_decision_digest.as_deref() == Some(semantic_digest))
-        || state
-            .consumed_claims
-            .iter()
-            .any(|claim| claim.semantic_decision_digest.is_none())
     {
         return Err("native_workspace_review_decision_replay".to_owned());
     }

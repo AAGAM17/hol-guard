@@ -321,18 +321,21 @@ fn verify_and_claim_at(
         // A v1 state created before the floor existed still carries expiry
         // timestamps. Seed the observation floor from the latest consumed
         // expiry so a v1 history cannot replay under a rolled-back clock.
-        // Preserve the full expiry even when it is in the future; decisions
-        // must not proceed until the wall clock reaches the migrated floor.
+        // Cap the migrated floor at the current wall clock: a floor above
+        // `now_ms` would reject every subsequent decision as clock_rollback
+        // until that expiry elapsed, permanently locking out an honest
+        // upgraded install whose latest claim is still in the future. The
+        // rollback guard only needs to prevent *backward* movement from the
+        // real wall clock, and replay is independently blocked by claim
+        // tombstones and the envelope expiry check, so capping preserves
+        // the security property without the false-positive wedge.
         let migrated_floor = state
             .consumed_claims
             .iter()
             .filter_map(|claim| claim.expires_at_ms)
             .max()
-            .unwrap_or(0);
-        if migrated_floor != 0 {
-            state.last_observed_time_ms = migrated_floor;
-            floor_changed = true;
-        }
+            .unwrap_or(0)
+            .min(now_ms);
     }
     if now_ms < state.last_observed_time_ms {
         return Err("native_workspace_review_clock_rollback".to_owned());

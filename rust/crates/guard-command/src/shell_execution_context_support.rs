@@ -109,7 +109,7 @@ impl ShellPathIdentity {
                 .created()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_nanos() as i64)
+                .map(|d| (d.as_secs_f64() * 1_000_000_000.0) as i64)
                 .unwrap_or(0),
         }
     }
@@ -407,7 +407,8 @@ fn mask_heredoc_bodies_local(command_text: &str) -> String {
     if heredocs.is_empty() {
         return command_text.to_owned();
     }
-    let mut characters: Vec<char> = command_text.chars().collect();
+    let original: Vec<char> = command_text.chars().collect();
+    let mut characters = original.clone();
     let len = characters.len();
     for heredoc in &heredocs {
         let start = heredoc.body_start.saturating_sub(1);
@@ -415,7 +416,7 @@ fn mask_heredoc_bodies_local(command_text: &str) -> String {
         for slot in characters[start..end].iter_mut() {
             *slot = ' ';
         }
-        if heredoc.end > 0 && heredoc.end <= len && characters[heredoc.end - 1] == '\n' {
+        if heredoc.end > 0 && heredoc.end <= len && original[heredoc.end - 1] == '\n' {
             characters[heredoc.end - 1] = '\n';
         }
     }

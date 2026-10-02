@@ -85,7 +85,7 @@ def harness_json_from_native_pre_tool(harness: str, response: Mapping[str, objec
         ):
             # This is not permission to execute the original input. New adapters
             # may route it to the protected sink; old adapters still see deny.
-            receipt = {
+            receipt: dict[str, object] = {
                 "decision": "deny",
                 "policy_action": "sandbox-required",
                 "reason_code": reason_code,

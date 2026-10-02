@@ -195,3 +195,149 @@ pub(crate) fn evaluate_command_effect_bytes(bytes: &[u8]) -> Result<Vec<u8>, Str
         .map_err(|_| "native_command_effect_invalid_json".to_owned())?;
     evaluate_command_effect_request(&request)
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use guard_contracts::{
+        NativeCommandControlBindingV1, NativeExtensionControlLayerV1,
+    };
+    use serde_json::{json, Value};
+
+    fn digest64(seed: u8) -> String {
+        format!("{:02x}", seed).repeat(32)
+    }
+
+    fn valid_control_snapshot() -> NativeCommandControlBindingV1 {
+        let layer = NativeExtensionControlLayerV1 {
+            schema_version: "1.0.0".to_owned(),
+            kind: "local-admin".to_owned(),
+            catalog_digest: digest64(0xaa),
+            global_lockdown: false,
+            controls: Vec::new(),
+        };
+        let mut binding = NativeCommandControlBindingV1 {
+            schema: guard_contracts::NATIVE_COMMAND_CONTROL_BINDING_SCHEMA.to_owned(),
+            program_digest: digest64(0x11),
+            catalog_digest: digest64(0xaa),
+            trust_digest: digest64(0x22),
+            health: "protected".to_owned(),
+            revision: 1,
+            managed_revision: 1,
+            effective_digest: String::new(),
+            layers: vec![layer],
+            authority: None,
+        };
+        binding.effective_digest = binding.compute_effective_digest().unwrap();
+        binding
+    }
+
+    fn observations_digest() -> String {
+        let batch = json!({
+            "observations": [],
+            "permission_observations": [],
+            "evaluation_error": Value::Null,
+        });
+        guard_command::native_command_program::digest_value(
+            b"hol-guard.native-command-observations.v1\0",
+            &batch,
+        )
+        .unwrap()
+    }
+
+    fn request_json(command: &str, snapshot: &NativeCommandControlBindingV1) -> Value {
+        let registry = packaged_command_catalog().unwrap();
+        let command_extensions = json!({
+            "schema": guard_contracts::NATIVE_COMMAND_OBSERVATIONS_SCHEMA,
+            "binding": {
+                "schema": guard_contracts::NATIVE_COMMAND_RECEIPT_BINDING_SCHEMA,
+                "program_digest": registry.program_digest,
+                "catalog_digest": registry.catalog_digest,
+                "trust_digest": snapshot.trust_digest,
+                "control_revision": snapshot.revision,
+                "managed_control_revision": snapshot.managed_revision,
+                "control_effective_digest": snapshot.effective_digest,
+                "observations_digest": observations_digest(),
+                "observation_count": 0,
+                "uncertainty_count": 0,
+            },
+            "observations": [],
+            "permission_observations": [],
+            "evaluation_error": Value::Null,
+        });
+        let evidence = json!({
+            "command_model": { "normalized_text": command.trim() },
+            "command_extensions": command_extensions,
+            "decision": "deny",
+            "policy_action": "review",
+            "minimum_action": "review",
+            "explicitly_benign": false,
+        });
+        json!({
+            "operation": "command_effect_decide",
+            "request": {
+                "schema": COMMAND_EFFECT_REQUEST_SCHEMA,
+                "request_id": "req-test",
+                "command_text": command,
+                "canonical_command": Value::Null,
+                "compatibility_action_class": Value::Null,
+                "compatibility_reason": Value::Null,
+                "native_extension_evidence": evidence,
+                "control_snapshot": serde_json::to_value(snapshot).unwrap(),
+                "control_layers": [],
+                "workflow_authorization": Value::Null,
+                "cwd": "/tmp",
+                "home_dir": "/tmp/rtm008-home",
+            }
+        })
+    }
+
+    #[test]
+    fn command_effect_op_decides_over_resident_transport() {
+        std::fs::create_dir_all("/tmp/rtm008-home").ok();
+        let snapshot = valid_control_snapshot();
+
+        let out = crate::resident_protocol::evaluate_resident_bytes(
+            request_json("ls -la", &snapshot).to_string().as_bytes(),
+            None,
+        )
+        .expect("benign op should return bytes");
+        let v: Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(v["status"], "ok", "benign op errored: {}", v["code"]);
+        assert_eq!(v["schema"], COMMAND_EFFECT_RESULT_SCHEMA);
+
+        let out = crate::resident_protocol::evaluate_resident_bytes(
+            request_json("cat ~/.ssh/id_rsa", &snapshot)
+                .to_string()
+                .as_bytes(),
+            None,
+        )
+        .expect("secret-read op should return bytes");
+        let v: Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(v["status"], "ok", "secret-read op errored: {}", v["code"]);
+        let payload = v["payload"].as_object().expect("payload object");
+        let text = serde_json::to_string(payload).unwrap();
+        assert!(
+            text.contains("critical.local-secret-read")
+                || text.contains("shell-read-floors"),
+            "expected shell-read factor in payload: {text}"
+        );
+    }
+
+    #[test]
+    fn command_effect_op_rejects_bad_schema() {
+        let snapshot = valid_control_snapshot();
+        let mut req = request_json("ls", &snapshot);
+        req["request"]["schema"] = json!("bogus");
+        let out = crate::resident_protocol::evaluate_resident_bytes(
+            req.to_string().as_bytes(),
+            None,
+        )
+        .expect("bad-schema op should still return bytes");
+        let v: Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(v["status"], "error");
+        assert_eq!(v["code"], "native_command_effect_schema_mismatch");
+    }
+}

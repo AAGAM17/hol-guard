@@ -431,7 +431,7 @@ pub(crate) fn supervise_managed_for_owner(
                 if watcher_done.load(Ordering::Acquire) {
                     break;
                 }
-                if !executable.is_file() {
+                if crate::resident_process_identity::executable_missing(&executable) {
                     break;
                 }
                 let owner_alive = owner_start_marker.as_deref().is_some_and(|expected| {

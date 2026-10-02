@@ -128,6 +128,7 @@ fn managed_accept_loop(
             Err(_) => return Err("native_socket_accept_failed".to_owned()),
         }
     }
+    crate::resident_transport::drain_resident_workers(admission);
     Ok(())
 }
 
@@ -193,6 +194,7 @@ pub(super) fn serve_loopback_managed(
             Err(_) => break Err("native_resident_loopback_accept_failed".to_owned()),
         }
     };
+    crate::resident_transport::drain_resident_workers(admission);
     resident_state_retirement::retire_state(
         scope,
         generation,

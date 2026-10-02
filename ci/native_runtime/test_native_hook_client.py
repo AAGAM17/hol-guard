@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import select
 import shutil
 import subprocess
 import time
@@ -20,6 +21,27 @@ from native_hook_client_support import (
 from native_hook_client_support import native_runtime as _native_runtime_fixture  # noqa: F401
 
 from ci.native_runtime.native_process_test_support import process_is_alive
+
+
+def _read_stream_frame(client: subprocess.Popen[bytes], timeout: float = 3) -> bytes:
+    assert client.stdout is not None
+    deadline = time.monotonic() + timeout
+
+    def read_exact(size: int) -> bytes:
+        chunks = bytearray()
+        while len(chunks) < size:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "native stream frame timed out"
+            ready, _, _ = select.select([client.stdout], [], [], remaining)
+            assert ready, "native stream frame timed out"
+            chunk = os.read(client.stdout.fileno(), size - len(chunks))
+            assert chunk, "native stream closed before completing frame"
+            chunks.extend(chunk)
+        return bytes(chunks)
+
+    size = int.from_bytes(read_exact(4), "big")
+    assert 0 < size <= 4 * 1024 * 1024
+    return read_exact(size)
 
 
 @pytest.mark.parametrize("event", ["PreToolUse", "UserPromptSubmit"])
@@ -74,9 +96,7 @@ def test_removed_frozen_extraction_releases_owner_even_with_live_client(
         assert client.stdin is not None and client.stdout is not None
         client.stdin.write(len(request).to_bytes(4, "big") + request)
         client.stdin.flush()
-        size = int.from_bytes(client.stdout.read(4), "big")
-        assert size > 0
-        assert _result(json.loads(client.stdout.read(size)))["minimum_action"] == "allow"
+        assert _result(json.loads(_read_stream_frame(client)))["minimum_action"] == "allow"
         extracted.unlink()
         deadline = time.monotonic() + 3
         while process_is_alive(state["process_id"]) and time.monotonic() < deadline:

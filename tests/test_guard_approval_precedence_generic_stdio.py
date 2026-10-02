@@ -224,7 +224,9 @@ def test_sensitive_read_risk_block_outranks_exact_allow(tmp_path: Path) -> None:
     assert action == "block"
 
 
-def test_stdio_sensitive_read_old_allow_cannot_survive_new_exact_artifact_block(tmp_path: Path, native_context_digest: Path) -> None:
+def test_stdio_sensitive_read_old_allow_cannot_survive_new_exact_artifact_block(
+    tmp_path: Path, native_context_digest: Path
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
@@ -267,7 +269,9 @@ def test_stdio_sensitive_read_old_allow_cannot_survive_new_exact_artifact_block(
     assert store.list_approval_requests(limit=None) == []
 
 
-def test_stdio_sensitive_read_old_allow_cannot_survive_new_default_block(tmp_path: Path, native_context_digest: Path) -> None:
+def test_stdio_sensitive_read_old_allow_cannot_survive_new_default_block(
+    tmp_path: Path, native_context_digest: Path
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
@@ -366,7 +370,9 @@ def test_stdio_sensitive_read_fresh_terminal_action_never_queues_approval(
     assert store.list_receipts(limit=1)[0]["policy_decision"] == terminal_action
 
 
-def test_stdio_sensitive_read_exact_saved_block_is_terminal_and_not_reapprovable(tmp_path: Path, native_context_digest: Path) -> None:
+def test_stdio_sensitive_read_exact_saved_block_is_terminal_and_not_reapprovable(
+    tmp_path: Path, native_context_digest: Path
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
@@ -708,7 +714,9 @@ def test_stdio_sensitive_read_fails_closed_when_postclaim_config_refresh_fails(
     assert receipt["scanner_evidence"][-1] == approval_evidence[-1]
 
 
-def test_stdio_invalidated_saved_allow_with_current_review_never_reaches_child(tmp_path: Path, native_context_digest: Path) -> None:
+def test_stdio_invalidated_saved_allow_with_current_review_never_reaches_child(
+    tmp_path: Path, native_context_digest: Path
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")

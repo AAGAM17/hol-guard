@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .native_resident_client import native_resident_client_request
 from .native_runtime import _isolated_environment, native_runtime_status
@@ -49,12 +50,7 @@ def _resident_request(
 ) -> dict[str, object] | None:
     """Envelope + transport shared by the three package-authority ops."""
     status = native_runtime_status()
-    if (
-        not status.available
-        or not status.compatible
-        or status.identity is None
-        or status.capabilities is None
-    ):
+    if not status.available or not status.compatible or status.identity is None or status.capabilities is None:
         return None
     features = set(status.capabilities.features)
     if _RESIDENT_PROTOCOL_FEATURE not in features or _PACKAGE_AUTHORITY_FEATURE not in features:
@@ -76,23 +72,17 @@ def _resident_request(
         timeout_seconds=timeout_seconds,
     )
     if response is None:
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason=f"native_{operation}_transport"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=f"native_{operation}_transport")
         return None
     try:
         decoded = json.loads(response.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason=f"native_{operation}_malformed"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=f"native_{operation}_malformed")
         return None
     if not isinstance(decoded, dict):
         return None
     if decoded.get("schema") != _RESULT_SCHEMA:
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason=f"native_{operation}_schema"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=f"native_{operation}_schema")
         return None
     if decoded.get("status") != "ok":
         # Business-rule rejection or deterministic eval failure — surface the
@@ -223,8 +213,6 @@ def evaluation_from_native_payload(payload: Mapping[str, object]) -> Any:
         policy_version=str(data.get("policy_version") or ""),
         bundle_version=data.get("bundle_version") if isinstance(data.get("bundle_version"), str) else None,
         workspace_fingerprint=(
-            data.get("workspace_fingerprint")
-            if isinstance(data.get("workspace_fingerprint"), str)
-            else None
+            data.get("workspace_fingerprint") if isinstance(data.get("workspace_fingerprint"), str) else None
         ),
     )

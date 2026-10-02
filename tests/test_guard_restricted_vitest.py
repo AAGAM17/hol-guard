@@ -25,7 +25,7 @@ def test_readonly_config_loader_is_version_bounded(tmp_path: Path, version: str,
 
 def test_invalid_manifest_cannot_enable_config_loader(tmp_path: Path) -> None:
     manifest = tmp_path / "package.json"
-    for content in ('[]', '{broken', 'x' * 65537):
+    for content in ("[]", "{broken", "x" * 65537):
         manifest.write_text(content)
         assert vitest._readonly_config_arguments(("run",), manifest) == ("run",)
 

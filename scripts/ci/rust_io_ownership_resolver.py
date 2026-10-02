@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Mapping
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Protocol, TypeVar
 
@@ -28,7 +28,7 @@ def _read(path: Path) -> str:
         raise RuntimeError(f"could not inspect {path}") from exc
 
 
-@lru_cache(maxsize=None)
+@cache
 def _parsed_module(path: Path) -> ast.Module:
     """Parse a source file once per process; inputs are read-only while validating."""
 

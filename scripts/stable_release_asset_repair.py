@@ -10,7 +10,6 @@ publish provenance bundle is absent. A complete release is not republished.
 from __future__ import annotations
 
 import argparse
-import sys
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -32,9 +31,7 @@ def _required_release_assets(version: str) -> set[str]:
         f"hol_guard-{version}.tar.gz",
         f"hol-guard-v{version}.intoto.jsonl",
     }
-    required.update(
-        f"hol_guard-{wheel_version}-py3-none-{platform}.whl" for platform in _NATIVE_PLATFORM_TAGS
-    )
+    required.update(f"hol_guard-{wheel_version}-py3-none-{platform}.whl" for platform in _NATIVE_PLATFORM_TAGS)
     return required
 
 

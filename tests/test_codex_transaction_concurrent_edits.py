@@ -307,9 +307,7 @@ def test_substituted_target_during_snapshot_is_reported_as_invalid_not_conflict(
 
     monkeypatch.setattr(adapter_module, "rollback_file_identity", first_then_substitute)
     with pytest.raises(RuntimeError, match="codex_hook_config_invalid"):
-        adapter._write_authenticated_hook_config(
-            context, config_path=config_path, payload={}, previous_manifest=None
-        )
+        adapter._write_authenticated_hook_config(context, config_path=config_path, payload={}, previous_manifest=None)
     assert config_path.stat().st_ino == target.stat().st_ino
     assert config_path.stat().st_nlink == 2
     assert target.read_bytes() == b'owner = "other-writer"\n'

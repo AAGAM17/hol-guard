@@ -148,9 +148,7 @@ class PackageIntent:
             redacted_command=str(redacted_command) if isinstance(redacted_command, str) else "",
             targets=tuple(
                 evidence
-                for evidence in (
-                    _package_intent_target_from_dict(item) for item in _dict_items(payload.get("targets"))
-                )
+                for evidence in (_package_intent_target_from_dict(item) for item in _dict_items(payload.get("targets")))
                 if evidence is not None
             ),
             manifest_paths=_str_tuple(payload.get("manifest_paths")),
@@ -160,8 +158,7 @@ class PackageIntent:
             local_executions=tuple(
                 evidence
                 for evidence in (
-                    _local_execution_evidence_from_dict(item)
-                    for item in _dict_items(payload.get("local_executions"))
+                    _local_execution_evidence_from_dict(item) for item in _dict_items(payload.get("local_executions"))
                 )
                 if evidence is not None
             ),
@@ -169,6 +166,7 @@ class PackageIntent:
             execution_context_cwds=_str_tuple(payload.get("execution_context_cwds")),
             execution_context_reason_codes=_str_tuple(payload.get("execution_context_reason_codes")),
         )
+
 
 def _dict_items(value: object) -> tuple[Mapping[str, object], ...]:
     if not isinstance(value, (list, tuple)):
@@ -247,16 +245,14 @@ def _local_execution_evidence_from_dict(value: object) -> LocalPackageExecutionE
         manifests=tuple(
             evidence
             for evidence in (
-                _package_execution_file_evidence_from_dict(item)
-                for item in _dict_items(value.get("manifests"))
+                _package_execution_file_evidence_from_dict(item) for item in _dict_items(value.get("manifests"))
             )
             if evidence is not None
         ),
         lockfiles=tuple(
             evidence
             for evidence in (
-                _package_execution_file_evidence_from_dict(item)
-                for item in _dict_items(value.get("lockfiles"))
+                _package_execution_file_evidence_from_dict(item) for item in _dict_items(value.get("lockfiles"))
             )
             if evidence is not None
         ),

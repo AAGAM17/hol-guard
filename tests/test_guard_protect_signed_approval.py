@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 
 from codex_plugin_scanner.cli import main
-from codex_plugin_scanner.guard.cli import commands_dispatch_local
-from codex_plugin_scanner.guard.cli import render
+from codex_plugin_scanner.guard.cli import commands_dispatch_local, render
 from codex_plugin_scanner.guard.cli.render import emit_guard_payload
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.test_guard_package_shims import WORKSPACE_ID
@@ -123,8 +122,7 @@ def test_guard_protect_human_output_replaces_all_approval_url_occurrences(tmp_pa
     assert isinstance(signed_url, str)
     assert signed_url != review_url
     assert user_copy["harness_message"] == (
-        "Review __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__; "
-        "retry with __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__."
+        "Review __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__; retry with __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__."
     )
 
 

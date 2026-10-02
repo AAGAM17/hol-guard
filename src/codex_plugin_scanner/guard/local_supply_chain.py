@@ -43,6 +43,8 @@ from .runtime.approval_context import (
     parse_approval_context_token,
     resolved_runtime_launch_argv,
     runtime_launch_identity_is_reusable,
+)
+from .runtime.approval_context import (
     saved_allow_context_validation_reason as package_saved_allow_validation_reason,
 )
 from .runtime.approval_reuse import (
@@ -70,10 +72,20 @@ from .runtime.package_intent_common import (
 from .runtime.package_manifest_diff import parse_manifest_dependencies, parse_manifest_dependency_changes
 from .runtime.package_protect_projection import (
     LOCAL_SUPPLY_CHAIN_HARNESS as _LOCAL_SUPPLY_CHAIN_HARNESS,
+)
+from .runtime.package_protect_projection import (
     PackageProtectProjection as _PackageProtectProjection,
+)
+from .runtime.package_protect_projection import (
     PackageProtectVerdictContext,
+)
+from .runtime.package_protect_projection import (
     build_package_guard_receipt as _build_guard_receipt,
+)
+from .runtime.package_protect_projection import (
     protect_target_payload as _protect_target_payload,
+)
+from .runtime.package_protect_projection import (
     resolve_local_supply_chain_harness as _resolve_local_supply_chain_harness,
 )
 from .runtime.restricted_archive_download import RestrictedArchiveDownload
@@ -300,7 +312,7 @@ def _parse_package_intent_native(
             environment=dict(environment) if environment is not None else None,
             guard_home=guard_home,
         )
-    except Exception:  # noqa: BLE001 - transport/contract failures degrade to the Python parser
+    except Exception:
         return None
     if not isinstance(payload, dict):
         return None

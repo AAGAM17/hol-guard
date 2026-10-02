@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING
 
 from .native_resident_client import native_resident_client_request
 from .native_runtime import _isolated_environment, _native_error, native_runtime_status
@@ -46,7 +47,7 @@ def _gate_error_cls():
     return ApprovalGateError
 
 
-def _input_to_wire(gate_input: "ApprovalGateInput | None") -> dict[str, object] | None:
+def _input_to_wire(gate_input: ApprovalGateInput | None) -> dict[str, object] | None:
     if gate_input is None:
         return None
     wire: dict[str, object] = {}
@@ -65,7 +66,7 @@ def _input_to_wire(gate_input: "ApprovalGateInput | None") -> dict[str, object] 
     return wire
 
 
-def _grant_to_wire(grant: "ApprovalGateGrant | None") -> dict[str, object] | None:
+def _grant_to_wire(grant: ApprovalGateGrant | None) -> dict[str, object] | None:
     if grant is None:
         return None
     return {
@@ -91,8 +92,8 @@ def approval_gate_native(
     guard_home: Path,
     *,
     params: Mapping[str, object] | None = None,
-    approval_gate_input: "ApprovalGateInput | None" = None,
-    approval_gate_grant: "ApprovalGateGrant | None" = None,
+    approval_gate_input: ApprovalGateInput | None = None,
+    approval_gate_grant: ApprovalGateGrant | None = None,
     strict: bool = False,
     purpose: str | None = None,
     now: str | None = None,
@@ -167,16 +168,12 @@ def approval_gate_native(
         deadline_monotonic=deadline_monotonic,
     )
     if output is None:
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason="native_approval_gate_unavailable"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason="native_approval_gate_unavailable")
         return None
     try:
         envelope = json.loads(output)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason="native_approval_gate_decode_failed"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason="native_approval_gate_decode_failed")
         return None
     if _native_error(envelope) == "native_overloaded":
         native_record_overload(status.identity.sha256, guard_home)
@@ -200,9 +197,7 @@ def approval_gate_native(
     # (e.g. "denied") must not be treated as a successful gate pass — a
     # `-> None` caller would otherwise proceed unauthenticated.
     if envelope_status != "ok":
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason="native_approval_gate_bad_status"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason="native_approval_gate_bad_status")
         return None
     payload = envelope.get("payload")
     return payload if isinstance(payload, dict) else None

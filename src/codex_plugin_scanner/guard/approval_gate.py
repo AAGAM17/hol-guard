@@ -14,8 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .native_approval_gate import approval_gate_native as _approval_gate_native
-
 from .approval_gate_state import (
     APPROVAL_GATE_ALLOWED_COOLDOWNS,
     APPROVAL_GATE_STATE_FILE,
@@ -65,6 +63,7 @@ from .approval_gate_state import (
 )
 from .local_authority_integrity import sign_local_authority_payload, verify_local_authority_payload
 from .models import PolicyDecision
+from .native_approval_gate import approval_gate_native as _approval_gate_native
 from .totp import TotpSecretStore, build_otpauth_uri, generate_totp_secret, verify_totp_code
 
 APPROVAL_GATE_MIN_PASSWORD_LENGTH = 8
@@ -160,7 +159,7 @@ class ApprovalGateGrant:
     totp_verified: bool
 
 
-def _grant_from_wire(payload: object) -> "ApprovalGateGrant | None":
+def _grant_from_wire(payload: object) -> ApprovalGateGrant | None:
     """Reconstruct an ``ApprovalGateGrant`` from a resident op grant dict."""
     if not isinstance(payload, dict):
         return None
@@ -178,8 +177,7 @@ def _grant_from_wire(payload: object) -> "ApprovalGateGrant | None":
             strict=bool(payload["strict"]),
             used_cooldown=bool(payload["used_cooldown"]),
             cooldown_expires_at=(
-                None if payload.get("cooldown_expires_at") is None
-                else str(payload["cooldown_expires_at"])
+                None if payload.get("cooldown_expires_at") is None else str(payload["cooldown_expires_at"])
             ),
             password_verified=bool(payload["password_verified"]),
             totp_verified=bool(payload["totp_verified"]),
@@ -188,7 +186,7 @@ def _grant_from_wire(payload: object) -> "ApprovalGateGrant | None":
         return None
 
 
-def _config_from_wire(payload: object) -> "ApprovalGatePublicConfig | None":
+def _config_from_wire(payload: object) -> ApprovalGatePublicConfig | None:
     """Reconstruct ``ApprovalGatePublicConfig`` from a resident op dict."""
     if not isinstance(payload, dict):
         return None
@@ -799,9 +797,7 @@ def require_policy_clear(
     approval_gate_grant: ApprovalGateGrant | None = None,
     now: str | None = None,
 ) -> None:
-    native = _approval_gate_native(
-        "require_policy_clear", guard_home,
-        approval_gate_grant=approval_gate_grant, now=now)
+    native = _approval_gate_native("require_policy_clear", guard_home, approval_gate_grant=approval_gate_grant, now=now)
     if native is not None:
         return
     if not _enabled(_load_state(guard_home)):
@@ -816,8 +812,8 @@ def require_settings_write(
     now: str | None = None,
 ) -> None:
     native = _approval_gate_native(
-        "require_settings_write", guard_home,
-        approval_gate_grant=approval_gate_grant, now=now)
+        "require_settings_write", guard_home, approval_gate_grant=approval_gate_grant, now=now
+    )
     if native is not None:
         return
     if not _enabled(_load_state(guard_home)):

@@ -7853,9 +7853,10 @@ fn build_package_protect_payload(
         return Ok(denied);
     }
 
-    let launch_args: Vec<String> = command[1..].to_vec();
     // `launch_identity` is POSIX-only (shutil.which + exec-bit semantics);
     // non-unix builds fail closed exactly like Python's early-exit paths.
+    #[cfg(unix)]
+    let launch_args: Vec<String> = command[1..].to_vec();
     #[cfg(unix)]
     let (launch_command, launch_reusable) = (
         crate::launch_identity::resolved_runtime_launch_argv(

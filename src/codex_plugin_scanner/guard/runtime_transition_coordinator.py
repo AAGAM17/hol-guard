@@ -132,6 +132,8 @@ class RuntimeTransitionCoordinator:
             self._check_deadline(deadline)
             self.runtime.finish_rollback(operation_id, functional_proof=observation)
         except Exception as error:
+            if persistence_error is not None:
+                raise persistence_error
             if (
                 not inverse_attempted
                 or inverse_completed
@@ -225,6 +227,8 @@ class RuntimeTransitionCoordinator:
                     self._check_deadline(deadline)
                     self.runtime.finish_rollback(plan.operation_id, functional_proof=observation)
                 except Exception as recovery_error:
+                    if persistence_error is not None:
+                        raise persistence_error
                     if retirement_error is not None and retirement_error is not recovery_error:
                         self.runtime.record_recovery_failure(
                             plan.operation_id,

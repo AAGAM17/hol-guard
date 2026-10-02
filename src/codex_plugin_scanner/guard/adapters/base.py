@@ -67,6 +67,7 @@ class PreparedHarnessInstall:
             restore_error: Exception | None = None
             for payload in reversed(written):
                 try:
+                    RuntimeTransition._compare({"files": [payload]}, "after")
                     RuntimeTransition._write_file(payload, "before")
                 except Exception as failure:
                     restore_error = failure

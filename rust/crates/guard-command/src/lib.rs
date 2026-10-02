@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 mod command_ascii_comparison;
+mod command_candidate_common;
+mod command_contained_routine_candidates;
 mod command_common_cli_matchers;
 pub mod command_compatibility;
 mod command_database_matchers;
@@ -17,6 +19,7 @@ pub mod native_command_extension_evidence;
 mod native_command_extension_evidence_tests;
 mod executable_flag_contract;
 pub mod extension_control;
+pub mod extension_trust;
 pub mod native_command_controls;
 pub mod native_command_catalog;
 pub mod native_command_program;

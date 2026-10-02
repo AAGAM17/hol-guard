@@ -866,15 +866,15 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         self._submit_transport_request(request_socket, client_address, control=control)
 
     def _park_saturation_probe(self, request: socket.socket, client_address: Any, accepted_at: float) -> None:
-        # Cover the write that follows accept without holding a permit.
-        # The watchdog already polls inside this window.
         deadline = accepted_at + 0.15
+        limit = max(1, self.control_request_capacity_limit + self.critical_request_capacity_limit)
         with self.unclassified_connections_lock:
-            self.saturation_probes[id(request)] = (
-                request,
-                cast(tuple[str, int], client_address),
-                deadline,
-            )
+            if len(self.saturation_probes) < limit:
+                self.saturation_probes[id(request)] = (request, cast(tuple[str, int], client_address), deadline)
+                return
+        with self.request_capacity_lock:
+            self.rejected_requests += 1
+        self._close_unclassified_socket(request)
 
     def _submit_transport_request(self, request_socket: socket.socket, client_address: Any, *, control: bool) -> None:
         executor = (
@@ -1137,7 +1137,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                     control=True,
                     pending=False,
                     accepted_at=accepted_at,
-                    admission_deadline=accepted_at + _DAEMON_CONNECTION_ADMISSION_WAIT_SECONDS,
+                    admission_deadline=accepted_at,
                 )
             except BaseException:
                 self.handle_error(request, address)

@@ -46,6 +46,9 @@ _SCHEMA = "hol-guard.codex-authority-repair-request.v1"
 _PURPOSE = "codex-authority-repair-request"
 _MAX_REQUEST = 8 * 1024 * 1024
 _REVIEW_SECONDS = 300.0
+# Canonical JSON preserves each timestamp. Subtracting the loaded values can
+# exceed the signed window by a few ulps. One microsecond covers that error.
+_REVIEW_TIMESTAMP_SLACK_SECONDS = 1e-6
 _INVERSE_SCHEMA = "hol-guard.codex-publication-inverse-request.v1"
 _INVERSE_PURPOSE = "codex-publication-inverse-request"
 RepairPlan = PreparedCodexHookRepair | PreparedCodexPublicationInverse
@@ -333,14 +336,18 @@ def load_codex_hook_repair_request(
     if verification.status != "valid":
         raise TransitionError("authority_repair_request_authentication_invalid")
     created, expires = payload["created_monotonic"], payload["expires_monotonic"]
+    timestamps_are_real = (
+        isinstance(created, (int, float))
+        and not isinstance(created, bool)
+        and math.isfinite(created)
+        and isinstance(expires, (int, float))
+        and not isinstance(expires, bool)
+        and math.isfinite(expires)
+    )
+    window = expires - created if timestamps_are_real else 0.0
     if (
-        not isinstance(created, (int, float))
-        or isinstance(created, bool)
-        or not math.isfinite(created)
-        or not isinstance(expires, (int, float))
-        or isinstance(expires, bool)
-        or not math.isfinite(expires)
-        or not 0 < expires - created <= _REVIEW_SECONDS
+        not timestamps_are_real
+        or not 0 < window <= _REVIEW_SECONDS + _REVIEW_TIMESTAMP_SLACK_SECONDS
         or not created <= time.monotonic() < expires
     ):
         raise TransitionError("authority_repair_request_expired")

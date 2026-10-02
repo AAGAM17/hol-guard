@@ -61,14 +61,28 @@ def sqlite_operation_deadline(deadline_monotonic: float) -> Generator[None]:
 
 
 @contextmanager
-def sqlite_connect_timeout_override(timeout_seconds: float) -> Generator[None]:
-    """Bound SQLite waits for one thread-local operation."""
+def sqlite_connect_timeout_override(
+    timeout_seconds: float,
+    *,
+    operation_seconds: float | None = None,
+) -> Generator[None]:
+    """Bound SQLite waits for one thread-local operation.
 
-    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+    ``timeout_seconds`` is the lock-wait cap. ``operation_seconds`` is the wall
+    clock for work that already holds the database; it defaults to the same cap.
+    """
+
+    operation_budget = timeout_seconds if operation_seconds is None else operation_seconds
+    if (
+        not math.isfinite(timeout_seconds)
+        or timeout_seconds <= 0
+        or not math.isfinite(operation_budget)
+        or operation_budget <= 0
+    ):
         raise ValueError("SQLite timeout override must be positive")
     token = _SQLITE_CONNECT_TIMEOUT_OVERRIDE.set(timeout_seconds)
     try:
-        with sqlite_operation_deadline(time.monotonic() + timeout_seconds):
+        with sqlite_operation_deadline(time.monotonic() + operation_budget):
             yield
     finally:
         _SQLITE_CONNECT_TIMEOUT_OVERRIDE.reset(token)

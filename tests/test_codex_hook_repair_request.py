@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import random
 import time
 
 import pytest
@@ -53,6 +54,35 @@ def _resign(plan, path, payload, *, purpose="codex-authority-repair-request"):
     raw = canonical_manifest_bytes(payload) + b"\n"
     path.write_bytes(raw)
     return hashlib.sha256(raw).hexdigest()
+
+
+def test_binary_timestamp_round_trip_stays_inside_the_review_window(captured, monkeypatch):
+    _context, _config, _manifest, plan, path = captured
+    _write(plan, path)
+    payload = json.loads(path.read_bytes())
+    rng = random.Random(0)
+    magnitudes = (1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000)
+    found = None
+    for step in range(200_000):
+        created = rng.random() * magnitudes[step % len(magnitudes)]
+        expires = created + requests._REVIEW_SECONDS
+        loaded_created, loaded_expires = json.loads(json.dumps([created, expires], separators=(",", ":")))
+        window = loaded_expires - loaded_created
+        if requests._REVIEW_SECONDS < window <= requests._REVIEW_SECONDS + requests._REVIEW_TIMESTAMP_SLACK_SECONDS:
+            found = (loaded_created, loaded_expires)
+            break
+    assert found is not None
+    payload["created_monotonic"], payload["expires_monotonic"] = found
+    digest = _resign(plan, path, payload)
+    stored = json.loads(path.read_bytes())
+    stored_window = stored["expires_monotonic"] - stored["created_monotonic"]
+    assert (
+        requests._REVIEW_SECONDS < stored_window <= requests._REVIEW_SECONDS + requests._REVIEW_TIMESTAMP_SLACK_SECONDS
+    )
+    monkeypatch.setattr(requests.time, "monotonic", lambda: found[0] + 1.0)
+    loaded = _load(plan, path, digest)
+    assert loaded.payload() == plan.payload()
+    assert loaded.subject() == plan.subject()
 
 
 def test_exact_roundtrip_is_read_only_except_private_request(captured, tmp_path):

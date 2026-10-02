@@ -684,6 +684,11 @@ def _headless_approval_resolver(
                     now=_now(),
                 )
             except (sqlite3.Error, OSError) as queue_error:
+                # A fatal store/IO error (e.g. a quarantined SQLite store) must
+                # not abort the deny path: still emit an explicit, empty approval
+                # queue so callers always find the key and the action stays
+                # blocked pending manual resolution. Programming errors
+                # (TypeError/ValueError/AttributeError) still propagate.
                 logging.getLogger(__name__).warning(
                     "Guard approval queue unavailable: %s", queue_error, exc_info=True
                 )

@@ -26,8 +26,9 @@ use crate::npm_source_spec::{parse_npm_source_spec, NpmSourceSpec};
 
 type IntentResult<T> = Result<T, &'static str>;
 
-static EXTRAS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(?P<name>[A-Za-z0-9_.-]+)\[(?P<extras>[A-Za-z0-9_,.-]+)\]$").unwrap());
+static EXTRAS_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?P<name>[A-Za-z0-9_.-]+)\[(?P<extras>[A-Za-z0-9_,.-]+)\]$").unwrap()
+});
 static EGG_FRAGMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[#&])egg=([^&#]+)").unwrap());
 static PYTHON_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -79,13 +80,25 @@ impl PackageIntentTarget {
         payload.insert("ecosystem".to_owned(), json!(self.ecosystem));
         payload.insert("package_name".to_owned(), json!(self.package_name));
         payload.insert("raw_spec".to_owned(), json!(sanitize_url(&self.raw_spec)));
-        payload.insert("requested_specifier".to_owned(), json!(self.requested_specifier));
+        payload.insert(
+            "requested_specifier".to_owned(),
+            json!(self.requested_specifier),
+        );
         payload.insert("source_url".to_owned(), Value::Null);
         payload.insert("source_kind".to_owned(), json!(self.source_kind));
-        payload.insert("source_repository".to_owned(), json!(self.source_repository));
-        payload.insert("source_revision_kind".to_owned(), json!(self.source_revision_kind));
+        payload.insert(
+            "source_repository".to_owned(),
+            json!(self.source_repository),
+        );
+        payload.insert(
+            "source_revision_kind".to_owned(),
+            json!(self.source_revision_kind),
+        );
         payload.insert("source_identity".to_owned(), json!(self.source_identity));
-        payload.insert("source_invalid_reason".to_owned(), json!(self.source_invalid_reason));
+        payload.insert(
+            "source_invalid_reason".to_owned(),
+            json!(self.source_invalid_reason),
+        );
         payload.insert("alias".to_owned(), json!(self.alias));
         payload.insert("dependency_group".to_owned(), json!(self.dependency_group));
         payload.insert("extras".to_owned(), json!(self.extras));
@@ -111,13 +124,25 @@ impl PackageIntentTarget {
         payload.insert("ecosystem".to_owned(), json!(self.ecosystem));
         payload.insert("package_name".to_owned(), json!(self.package_name));
         payload.insert("raw_spec".to_owned(), json!(self.raw_spec));
-        payload.insert("requested_specifier".to_owned(), json!(self.requested_specifier));
+        payload.insert(
+            "requested_specifier".to_owned(),
+            json!(self.requested_specifier),
+        );
         payload.insert("source_url".to_owned(), json!(self.source_url));
         payload.insert("source_kind".to_owned(), json!(self.source_kind));
-        payload.insert("source_repository".to_owned(), json!(self.source_repository));
-        payload.insert("source_revision_kind".to_owned(), json!(self.source_revision_kind));
+        payload.insert(
+            "source_repository".to_owned(),
+            json!(self.source_repository),
+        );
+        payload.insert(
+            "source_revision_kind".to_owned(),
+            json!(self.source_revision_kind),
+        );
         payload.insert("source_identity".to_owned(), json!(self.source_identity));
-        payload.insert("source_invalid_reason".to_owned(), json!(self.source_invalid_reason));
+        payload.insert(
+            "source_invalid_reason".to_owned(),
+            json!(self.source_invalid_reason),
+        );
         payload.insert("alias".to_owned(), json!(self.alias));
         payload.insert("dependency_group".to_owned(), json!(self.dependency_group));
         payload.insert("extras".to_owned(), json!(self.extras));
@@ -200,8 +225,14 @@ impl LocalPackageExecutionEvidence {
         payload.insert("path_source".to_owned(), json!(self.path_source));
         payload.insert("effective_cwd".to_owned(), json!(self.effective_cwd));
         payload.insert("cwd_source".to_owned(), json!(self.cwd_source));
-        payload.insert("manager_is_guard_shim".to_owned(), json!(self.manager_is_guard_shim));
-        payload.insert("local_only_requested".to_owned(), json!(self.local_only_requested));
+        payload.insert(
+            "manager_is_guard_shim".to_owned(),
+            json!(self.manager_is_guard_shim),
+        );
+        payload.insert(
+            "local_only_requested".to_owned(),
+            json!(self.local_only_requested),
+        );
         payload.insert("context_hash".to_owned(), json!(self.context_hash));
         payload.insert("package_name".to_owned(), json!(self.package_name));
         payload.insert("executable_name".to_owned(), json!(self.executable_name));
@@ -275,7 +306,12 @@ impl PackageIntent {
         payload.insert("notes".to_owned(), json!(self.notes));
         payload.insert(
             "local_executions".to_owned(),
-            Value::Array(self.local_executions.iter().map(|ev| ev.to_dict()).collect()),
+            Value::Array(
+                self.local_executions
+                    .iter()
+                    .map(|ev| ev.to_dict())
+                    .collect(),
+            ),
         );
         payload.insert(
             "execution_context_hashes".to_owned(),
@@ -374,7 +410,10 @@ fn redact_url(value: Option<&str>) -> Option<String> {
         .into_iter()
         .map(|(key, item)| {
             let lower = key.to_lowercase();
-            if ["key", "token", "auth", "secret"].iter().any(|t| lower.contains(t)) {
+            if ["key", "token", "auth", "secret"]
+                .iter()
+                .any(|t| lower.contains(t))
+            {
                 (key, "*****".to_owned())
             } else {
                 (key, item)
@@ -530,13 +569,19 @@ fn redact_metadata(value: &Value, key: Option<&str>) -> Value {
         Value::Object(map) => {
             let mut out = Map::new();
             for (item_key, item_value) in map {
-                out.insert(item_key.clone(), redact_metadata(item_value, Some(item_key)));
+                out.insert(
+                    item_key.clone(),
+                    redact_metadata(item_value, Some(item_key)),
+                );
             }
             Value::Object(out)
         }
-        Value::Array(items) => {
-            Value::Array(items.iter().map(|item| redact_metadata(item, None)).collect())
-        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| redact_metadata(item, None))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -571,13 +616,25 @@ pub fn build_package_request_artifact(
     );
     fingerprint_material.insert(
         "targets".to_owned(),
-        Value::Array(intent.targets.iter().map(|t| t.to_fingerprint_dict()).collect()),
+        Value::Array(
+            intent
+                .targets
+                .iter()
+                .map(|t| t.to_fingerprint_dict())
+                .collect(),
+        ),
     );
     fingerprint_material.insert("manifest_paths".to_owned(), json!(manifest_paths));
     fingerprint_material.insert("lockfile_paths".to_owned(), json!(lockfile_paths));
     fingerprint_material.insert(
         "local_executions".to_owned(),
-        Value::Array(intent.local_executions.iter().map(|ev| ev.to_dict()).collect()),
+        Value::Array(
+            intent
+                .local_executions
+                .iter()
+                .map(|ev| ev.to_dict())
+                .collect(),
+        ),
     );
     fingerprint_material.insert(
         "execution_context_hashes".to_owned(),
@@ -617,7 +674,13 @@ pub fn build_package_request_artifact(
     metadata.insert("notes".to_owned(), json!(intent.notes));
     metadata.insert(
         "local_executions".to_owned(),
-        Value::Array(intent.local_executions.iter().map(|ev| ev.to_dict()).collect()),
+        Value::Array(
+            intent
+                .local_executions
+                .iter()
+                .map(|ev| ev.to_dict())
+                .collect(),
+        ),
     );
     metadata.insert(
         "shell_execution_context_hashes".to_owned(),
@@ -642,7 +705,10 @@ pub fn build_package_request_artifact(
             .last()
             .map_or(Value::Null, |cwd| json!(cwd)),
     );
-    metadata.insert("redacted_command".to_owned(), json!(intent.redacted_command));
+    metadata.insert(
+        "redacted_command".to_owned(),
+        json!(intent.redacted_command),
+    );
     metadata.insert(
         "request_summary".to_owned(),
         json!(package_request_summary(intent)),
@@ -671,12 +737,21 @@ pub fn build_package_request_artifact(
     let mut private_metadata = Map::new();
     private_metadata.insert(
         "package_targets".to_owned(),
-        Value::Array(intent.targets.iter().map(|t| t.to_execution_dict()).collect()),
+        Value::Array(
+            intent
+                .targets
+                .iter()
+                .map(|t| t.to_execution_dict())
+                .collect(),
+        ),
     );
 
     GuardArtifact {
         artifact_id: format!("{harness}:{source_scope}:package-request:{fingerprint}"),
-        name: format!("{} {} {}", intent.package_manager, intent.intent_kind, target_label),
+        name: format!(
+            "{} {} {}",
+            intent.package_manager, intent.intent_kind, target_label
+        ),
         harness: harness.to_owned(),
         artifact_type: "package_request".to_owned(),
         source_scope: source_scope.to_owned(),
@@ -749,7 +824,11 @@ fn is_global_package_install(intent: &PackageIntent) -> bool {
     if !["npm", "pnpm", "yarn"].contains(&intent.package_manager.as_str()) {
         return false;
     }
-    if intent.notes.iter().any(|n| n == "multiple-package-segments") {
+    if intent
+        .notes
+        .iter()
+        .any(|n| n == "multiple-package-segments")
+    {
         return all_package_segments_are_global(intent);
     }
     intent.flags.iter().any(|flag| is_true_global_flag(flag))
@@ -766,7 +845,9 @@ fn all_package_segments_are_global(intent: &PackageIntent) -> bool {
     if segments.is_empty() {
         return false;
     }
-    segments.iter().all(|segment| segment_has_global_flag(segment))
+    segments
+        .iter()
+        .all(|segment| segment_has_global_flag(segment))
 }
 
 /// `_segment_has_global_flag` (:230-235): `shlex.split` with `ValueError`
@@ -856,7 +937,10 @@ fn package_runtime_summary(intent: &PackageIntent) -> String {
             intent.package_manager
         );
     }
-    format!("Mutates project dependencies through {}.", intent.package_manager)
+    format!(
+        "Mutates project dependencies through {}.",
+        intent.package_manager
+    )
 }
 
 /// `package_runtime_reason` (:283-292).
@@ -872,7 +956,6 @@ fn package_runtime_reason(intent: &PackageIntent) -> String {
         intent.intent_kind
     )
 }
-
 
 /// `_fingerprint_command_shape` (:295-306): git source spellings collapse to
 /// `<canonical-git-source>` so alias/format variants share an identity.
@@ -971,13 +1054,11 @@ pub fn flag_tokens(tokens: &[String]) -> Vec<String> {
             if token.starts_with("--global=") || token.starts_with("--location=") {
                 flags.push(token.clone());
             } else {
-                flags.push(
-                    if token.starts_with("--") && token.contains('=') {
-                        token.split('=').next().unwrap_or(token).to_owned()
-                    } else {
-                        token.clone()
-                    },
-                );
+                flags.push(if token.starts_with("--") && token.contains('=') {
+                    token.split('=').next().unwrap_or(token).to_owned()
+                } else {
+                    token.clone()
+                });
             }
         }
         index += 1;
@@ -1119,13 +1200,25 @@ pub fn js_target(spec: &str) -> PackageIntentTarget {
     }
     let parsed_source = parse_npm_source_spec(Some(&normalized_spec));
     if parsed_source.is_some() && is_unnamed_js_source_spec(&normalized_spec) {
-        return js_source_target(spec, &normalized_spec, parsed_source.as_ref().unwrap(), None, alias);
+        return js_source_target(
+            spec,
+            &normalized_spec,
+            parsed_source.as_ref().unwrap(),
+            None,
+            alias,
+        );
     }
     let (named_source_package, source_url) = split_js_named_source_spec(&normalized_spec);
     if let Some(source_url) = source_url {
         let parsed_source = parse_npm_source_spec(Some(&source_url))
             .expect("named source spec validated by split_js_named_source_spec");
-        return js_source_target(spec, &source_url, &parsed_source, named_source_package, alias);
+        return js_source_target(
+            spec,
+            &source_url,
+            &parsed_source,
+            named_source_package,
+            alias,
+        );
     }
     if let Some(source) = parsed_source {
         return js_source_target(spec, &normalized_spec, &source, None, alias);
@@ -1231,9 +1324,17 @@ pub fn python_target(
                     .map(|n| n.to_string_lossy().into_owned())?;
                 Some(name.strip_suffix(".git").unwrap_or(&name).to_owned())
             });
-        return base(package_name.filter(|n| !n.is_empty()), None, Some(spec.to_owned()), Vec::new());
+        return base(
+            package_name.filter(|n| !n.is_empty()),
+            None,
+            Some(spec.to_owned()),
+            Vec::new(),
+        );
     }
-    if spec.contains('@') && !spec.starts_with("./") && !spec.starts_with("../") && !spec.starts_with('/')
+    if spec.contains('@')
+        && !spec.starts_with("./")
+        && !spec.starts_with("../")
+        && !spec.starts_with('/')
     {
         let (package_name, _, requested_specifier) = rsplit3(spec, '@');
         let (normalized_name, detected_extras) = split_python_extras(package_name);
@@ -1241,12 +1342,19 @@ pub fn python_target(
             (!normalized_name.is_empty()).then_some(normalized_name),
             (!requested_specifier.is_empty()).then_some(requested_specifier.to_string()),
             None,
-            if !extras.is_empty() { extras } else { detected_extras },
+            if !extras.is_empty() {
+                extras
+            } else {
+                detected_extras
+            },
         );
     }
     let (normalized_name, requested_specifier) = split_python_specifier(spec);
     let (mut package_name, detected_extras) = split_python_extras(&normalized_name);
-    if package_name.starts_with("./") || package_name.starts_with("../") || package_name.starts_with('/') {
+    if package_name.starts_with("./")
+        || package_name.starts_with("../")
+        || package_name.starts_with('/')
+    {
         package_name = Path::new(&package_name)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -1257,7 +1365,11 @@ pub fn python_target(
         (!package_name.is_empty()).then_some(package_name),
         requested_specifier,
         None,
-        if !extras.is_empty() { extras } else { detected_extras },
+        if !extras.is_empty() {
+            extras
+        } else {
+            detected_extras
+        },
     )
 }
 
@@ -1278,7 +1390,11 @@ fn rsplit3<'a>(text: &'a str, sep: char) -> (&'a str, &'a str, &'a str) {
 }
 
 /// `version_target` (:496-498).
-pub fn version_target(ecosystem: &str, spec: &str, source_url: Option<&str>) -> PackageIntentTarget {
+pub fn version_target(
+    ecosystem: &str,
+    spec: &str,
+    source_url: Option<&str>,
+) -> PackageIntentTarget {
     let (package_name, requested_specifier) = split_package_token(spec);
     PackageIntentTarget {
         ecosystem: ecosystem.to_owned(),
@@ -1303,13 +1419,20 @@ pub fn coordinate_target(ecosystem: &str, spec: &str) -> PackageIntentTarget {
     let parts: Vec<&str> = spec.split(':').collect();
     let (package_name, specifier) = if parts.len() < 3 {
         (
-            if spec.is_empty() { None } else { Some(spec.to_owned()) },
+            if spec.is_empty() {
+                None
+            } else {
+                Some(spec.to_owned())
+            },
             None,
         )
     } else {
         (
             Some(parts[..2].join(":")),
-            parts.last().filter(|p| !p.is_empty()).map(|p| p.to_string()),
+            parts
+                .last()
+                .filter(|p| !p.is_empty())
+                .map(|p| p.to_string()),
         )
     };
     PackageIntentTarget {
@@ -1359,7 +1482,11 @@ pub fn homebrew_target(spec: &str, cask: bool) -> PackageIntentTarget {
     let ecosystem = if cask { "homebrew-cask" } else { "homebrew" };
     PackageIntentTarget {
         ecosystem: ecosystem.to_owned(),
-        package_name: if spec.is_empty() { None } else { Some(spec.to_owned()) },
+        package_name: if spec.is_empty() {
+            None
+        } else {
+            Some(spec.to_owned())
+        },
         raw_spec: spec.to_owned(),
         requested_specifier: None,
         source_url: None,
@@ -1417,7 +1544,10 @@ pub fn split_python_extras(name: &str) -> (String, Vec<String>) {
         })
         .unwrap_or_default();
     (
-        matched.name("name").map(|m| m.as_str().to_owned()).unwrap_or_else(|| name.to_owned()),
+        matched
+            .name("name")
+            .map(|m| m.as_str().to_owned())
+            .unwrap_or_else(|| name.to_owned()),
         extras,
     )
 }
@@ -1428,14 +1558,15 @@ pub(crate) fn sanitize_url(value: &str) -> String {
     if let Some(http_source) = HTTP_SOURCE_IN_TOKEN_RE.find(value) {
         let source = &value[http_source.start()..];
         if !UNSANITIZED_HTTP_SOURCE_RE.is_match(source) {
-            let scheme = source
-                .partition3(':')
-                .0
-                .to_lowercase();
+            let scheme = source.partition3(':').0.to_lowercase();
             // npm treats slashless, single-slash, and backslash HTTP(S)
             // specifiers as remote URLs. They are rejected by Guard, and the
             // persisted command shape must not retain their query/userinfo.
-            return format!("{}{}:<redacted-source>", &value[..http_source.start()], scheme);
+            return format!(
+                "{}{}:<redacted-source>",
+                &value[..http_source.start()],
+                scheme
+            );
         }
     }
     if !value.contains("://") && !value.starts_with("git+") {
@@ -1492,7 +1623,10 @@ fn split_js_named_source_spec(spec: &str) -> (Option<String>, Option<String>) {
         let package_name = spec[..index].trim();
         let source_candidate = spec[index + 1..].trim();
         if !package_name.is_empty() && parse_npm_source_spec(Some(source_candidate)).is_some() {
-            return (Some(package_name.to_owned()), Some(source_candidate.to_owned()));
+            return (
+                Some(package_name.to_owned()),
+                Some(source_candidate.to_owned()),
+            );
         }
     }
     (None, None)
@@ -1539,13 +1673,31 @@ fn source_url_package_name(source_url: &str) -> Option<String> {
         .unwrap_or_default();
     if package_name.ends_with(".tar.gz") {
         let stem = &package_name[..package_name.len() - ".tar.gz".len()];
-        return Some(if stem.is_empty() { normalized.to_owned() } else { stem.to_owned() });
+        return Some(if stem.is_empty() {
+            normalized.to_owned()
+        } else {
+            stem.to_owned()
+        });
     }
-    if package_name.ends_with(".git") || package_name.ends_with(".tar") || package_name.ends_with(".tgz") {
-        let stem = package_name.rsplit_once('.').map(|(stem, _)| stem).unwrap_or("");
-        return Some(if stem.is_empty() { normalized.to_owned() } else { stem.to_owned() });
+    if package_name.ends_with(".git")
+        || package_name.ends_with(".tar")
+        || package_name.ends_with(".tgz")
+    {
+        let stem = package_name
+            .rsplit_once('.')
+            .map(|(stem, _)| stem)
+            .unwrap_or("");
+        return Some(if stem.is_empty() {
+            normalized.to_owned()
+        } else {
+            stem.to_owned()
+        });
     }
-    Some(if package_name.is_empty() { normalized.to_owned() } else { package_name })
+    Some(if package_name.is_empty() {
+        normalized.to_owned()
+    } else {
+        package_name
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1571,7 +1723,11 @@ pub(crate) fn split_package_token(value: &str) -> (Option<String>, Option<String
         }
         return (
             Some(format!("{scope}/{name}")),
-            if version.is_empty() { None } else { Some(version.to_owned()) },
+            if version.is_empty() {
+                None
+            } else {
+                Some(version.to_owned())
+            },
         );
     }
     if value.contains("://") {
@@ -1583,7 +1739,11 @@ pub(crate) fn split_package_token(value: &str) -> (Option<String>, Option<String
     }
     (
         Some(name.to_owned()),
-        if version.is_empty() { None } else { Some(version.to_owned()) },
+        if version.is_empty() {
+            None
+        } else {
+            Some(version.to_owned())
+        },
     )
 }
 
@@ -1637,7 +1797,12 @@ fn redact_url_userinfo(value: &str) -> String {
         return value.to_owned();
     };
     let redacted_authority = &authority[at_index + 1..];
-    format!("{}{}{}", &value[..authority_start], redacted_authority, &value[authority_end..])
+    format!(
+        "{}{}{}",
+        &value[..authority_start],
+        redacted_authority,
+        &value[authority_end..]
+    )
 }
 
 /// `_url_authority_contains_userinfo` (mcp_protection.py :341-347).
@@ -1666,7 +1831,11 @@ fn url_authority_bounds(value: &str) -> Option<(usize, usize)> {
 /// `str.partition` on a substring separator.
 fn partition3_str<'a>(text: &'a str, sep: &str) -> (&'a str, &'a str, &'a str) {
     match text.find(sep) {
-        Some(index) => (&text[..index], &text[index..index + sep.len()], &text[index + sep.len()..]),
+        Some(index) => (
+            &text[..index],
+            &text[index..index + sep.len()],
+            &text[index + sep.len()..],
+        ),
         None => (text, "", ""),
     }
 }
@@ -1692,10 +1861,17 @@ mod tests {
         // Python: flag_tokens(("npm", "--location", "global", "--save-dev",
         //                     "--save-dev", "-g"))
         // → ("--location=global", "--save-dev", "-g") — "npm" is not a flag.
-        let tokens: Vec<String> = ["npm", "--location", "global", "--save-dev", "--save-dev", "-g"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let tokens: Vec<String> = [
+            "npm",
+            "--location",
+            "global",
+            "--save-dev",
+            "--save-dev",
+            "-g",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(
             flag_tokens(&tokens),
             vec!["--location=global", "--save-dev", "-g"]
@@ -1771,7 +1947,12 @@ mod tests {
         assert_eq!(target.requested_specifier.as_deref(), Some("2.0"));
         assert_eq!(target.dependency_group.as_deref(), Some("dev"));
 
-        let target = python_target("requests @ https://example.com/requests.whl", true, None, Vec::new());
+        let target = python_target(
+            "requests @ https://example.com/requests.whl",
+            true,
+            None,
+            Vec::new(),
+        );
         assert_eq!(target.package_name.as_deref(), Some("requests"));
         assert_eq!(
             target.source_url.as_deref(),
@@ -1821,7 +2002,8 @@ mod tests {
             execution_context_cwds: Vec::new(),
             execution_context_reason_codes: Vec::new(),
         };
-        let artifact = build_package_request_artifact("claude", &intent, "settings.json", "workspace");
+        let artifact =
+            build_package_request_artifact("claude", &intent, "settings.json", "workspace");
         assert!(artifact
             .artifact_id
             .starts_with("claude:workspace:package-request:"));
@@ -1832,8 +2014,12 @@ mod tests {
             json!("lodash")
         );
         // to_dict drops the private metadata.
-        assert!(artifact.to_dict()["metadata"].get("package_targets").is_none() ||
-                !artifact.to_dict().get("runtime_private_metadata").is_some());
+        assert!(
+            artifact.to_dict()["metadata"]
+                .get("package_targets")
+                .is_none()
+                || !artifact.to_dict().get("runtime_private_metadata").is_some()
+        );
         assert!(artifact.to_dict().get("runtime_private_metadata").is_none());
     }
 }
@@ -1842,7 +2028,11 @@ mod tests {
 pub fn homebrew_tap_target(spec: &str, source_url: Option<&str>) -> PackageIntentTarget {
     PackageIntentTarget {
         ecosystem: "homebrew-tap".to_owned(),
-        package_name: if spec.is_empty() { None } else { Some(spec.to_owned()) },
+        package_name: if spec.is_empty() {
+            None
+        } else {
+            Some(spec.to_owned())
+        },
         raw_spec: spec.to_owned(),
         requested_specifier: None,
         source_url: source_url.map(str::to_owned),
@@ -2035,7 +2225,10 @@ pub(crate) fn looks_like_runtime_path(value: &str) -> bool {
         .rfind('.')
         .map(|idx| base[idx..].to_lowercase())
         .unwrap_or_default();
-    if !matches!(suffix.as_str(), ".cjs" | ".js" | ".json" | ".mjs" | ".py" | ".ts") {
+    if !matches!(
+        suffix.as_str(),
+        ".cjs" | ".js" | ".json" | ".mjs" | ".py" | ".ts"
+    ) {
         return false;
     }
     normalized.contains('/') && !normalized.starts_with('@')
@@ -2053,7 +2246,8 @@ pub(crate) fn package_token(command_name: &str, args: &[String]) -> Option<Strin
             index += 1;
             continue;
         }
-        if positional_index == 0 && launcher_non_package_subcommands(command_name).contains(&value) {
+        if positional_index == 0 && launcher_non_package_subcommands(command_name).contains(&value)
+        {
             return None;
         }
         if positional_index == 0 && launcher_subcommands(command_name).contains(&value) {
@@ -2240,7 +2434,8 @@ fn collect_candidate_commands(value: &Value, results: &mut Vec<String>, depth: u
         }
     }
     for (key, child) in dict {
-        if COMMAND_LIST_KEYS.contains(&key.as_str()) || COMMAND_SEQUENCE_KEYS.contains(&key.as_str())
+        if COMMAND_LIST_KEYS.contains(&key.as_str())
+            || COMMAND_SEQUENCE_KEYS.contains(&key.as_str())
         {
             continue;
         }

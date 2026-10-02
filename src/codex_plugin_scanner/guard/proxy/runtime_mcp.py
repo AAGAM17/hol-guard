@@ -2437,7 +2437,7 @@ class RuntimeMcpGuardProxy:
         decision_v2_payload = self._package_decision_v2(package_evaluation, policy_action)
         risk_signals = tuple(str(item.get("message") or item.get("code") or "") for item in package_evaluation.reasons)
         if not asks_for_approval(self.config):
-            return self._queue_approval_center_response(
+            response, event = self._queue_approval_center_response(
                 message_id=message_id,
                 artifact=artifact,
                 artifact_hash=artifact_hash,
@@ -2447,6 +2447,19 @@ class RuntimeMcpGuardProxy:
                 scanner_evidence=scanner_evidence,
                 policy_action=policy_action,
             )
+            evaluation_payload = deepcopy(package_evaluation.to_dict())
+            evaluation_payload["decision"] = "block"
+            evaluation_payload["policy_action"] = "block"
+            user_copy = evaluation_payload.setdefault("user_copy", {})
+            user_copy.update(
+                title="Package request blocked",
+                summary=package_evaluation.risk_summary,
+                dashboard_url=None,
+                next_step=response["error"]["message"],
+                harness_message=response["error"]["message"],
+            )
+            response["error"]["data"]["supplyChainEvaluation"] = evaluation_payload
+            return response, event
         approval_center_url = ensure_guard_daemon(self.context.guard_home)
         queued = queue_blocked_approvals(
             redaction_level=self.config.receipt_redaction_level,

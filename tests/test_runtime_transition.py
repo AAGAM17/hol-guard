@@ -1709,6 +1709,39 @@ def test_core_coordinator_expiry_never_launches_cleanup_with_a_fresh_budget(tran
     assert pointer.read_bytes() == (b"previous pointer" if boundary == "stop_previous" else b"candidate pointer")
 
 
+def test_prepare_recovery_failure_still_retires_the_candidate(transition, monkeypatch):
+    from codex_plugin_scanner.guard.runtime_transition_coordinator import RuntimeTransitionCoordinator
+
+    runtime, plan, *_ = transition
+    events = []
+
+    class Driver:
+        def stop(self, artifact, *, deadline_monotonic):
+            events.append("stop_candidate" if artifact == plan.candidate else "stop_predecessor")
+
+        def start(self, artifact, *, deadline_monotonic):
+            events.append("start_candidate")
+            raise TransitionError("candidate_start_failed")
+
+        def observe_protection(self, *_args, **_kwargs):
+            pytest.fail("observation is not reached")
+
+    def broken(_operation_id, *, first_cause):
+        events.append(first_cause)
+        raise OSError("journal unavailable")
+
+    monkeypatch.setattr(runtime, "prepare_recovery", broken)
+    result = RuntimeTransitionCoordinator(runtime, Driver()).activate(
+        plan,
+        authority_home=plan.guard_home,
+        grant=None,
+    )
+    assert events == ["stop_predecessor", "start_candidate", "candidate_start_failed", "stop_candidate"]
+    assert result.phase == "RecoveryRequired"
+    assert result.first_cause == "candidate_start_failed"
+    assert any(cause["code"] == "OSError" for cause in result.recovery_causes)
+
+
 def test_transition_begin_dependency_wait_consumes_original_coordinator_deadline(transition, monkeypatch):
     from codex_plugin_scanner.guard import runtime_transition as module
 

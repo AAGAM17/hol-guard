@@ -128,6 +128,44 @@ def test_preparation_composes_real_codex_and_claude_adapters_without_writes(prep
     assert codex.after["manifest"]["managed_hook_integrity"] == "authenticated"
 
 
+def test_ordinary_install_restores_files_written_before_a_later_write_fails(tmp_path: Path, monkeypatch):
+    from codex_plugin_scanner.guard.adapters.base import PreparedHarnessInstall
+    from codex_plugin_scanner.guard.runtime_transition import RuntimeTransition, TransitionFile
+
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_bytes(b"old-first")
+    second.write_bytes(b"old-second")
+    install = PreparedHarnessInstall(
+        (
+            TransitionFile(first, b"old-first", b"new-first"),
+            TransitionFile(second, b"old-second", b"new-second"),
+        ),
+        {"ok": True},
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.codex_install_transaction.require_codex_install_owner",
+        lambda _home: None,
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.runtime_transition.assert_transition_mutation_allowed",
+        lambda _home: None,
+    )
+    monkeypatch.setattr(RuntimeTransition, "_compare", staticmethod(lambda *_args, **_kwargs: None))
+    original = RuntimeTransition._write_file
+
+    def write(change, generation):
+        if generation == "after" and str(change["path"]).endswith("second.txt"):
+            raise TransitionError("publication_failed")
+        original(change, generation)
+
+    monkeypatch.setattr(RuntimeTransition, "_write_file", staticmethod(write))
+    with pytest.raises(TransitionError, match="publication_failed"):
+        install.publish(tmp_path)
+    assert first.read_bytes() == b"old-first"
+    assert second.read_bytes() == b"old-second"
+
+
 def test_preparation_refuses_unsupported_active_harness_before_publication(preparation, monkeypatch):
     module, _, _, store, bindings, _ = preparation
     store.set_managed_install("hermes", True, None, {}, "old-time")

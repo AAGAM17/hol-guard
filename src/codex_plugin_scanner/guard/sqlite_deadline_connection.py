@@ -235,20 +235,28 @@ class DeadlineCursor(sqlite3.Cursor):
                 return super().executescript(*args, **kwargs)
         return super().executescript(*args, **kwargs)
 
+    def _refuse_if_expired(self) -> None:
+        connection = self.connection
+        if not isinstance(connection, DeadlineConnection):
+            return
+        deadline = connection._effective_deadline()
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError("Guard storage operation deadline expired.")
+
     def fetchone(self) -> Any:
-        self._prepare()
+        self._refuse_if_expired()
         return super().fetchone()
 
     def fetchmany(self, *args: Any, **kwargs: Any) -> Any:
-        self._prepare()
+        self._refuse_if_expired()
         return super().fetchmany(*args, **kwargs)
 
     def fetchall(self) -> Any:
-        self._prepare()
+        self._refuse_if_expired()
         return super().fetchall()
 
     def __next__(self) -> Any:
-        self._prepare()
+        self._refuse_if_expired()
         return super().__next__()
 
 
@@ -270,7 +278,10 @@ def _deadline_cursor_class(factory: type[sqlite3.Cursor]) -> type[sqlite3.Cursor
 
 def _guarded_cursor_method(cursor_type: type[sqlite3.Cursor], name: str) -> Callable[..., Any]:
     def guarded(cursor: sqlite3.Cursor, *args: Any, **kwargs: Any) -> Any:
-        DeadlineCursor._prepare(cast(DeadlineCursor, cursor))
+        if name in {"fetchone", "fetchmany", "fetchall", "__next__"}:
+            DeadlineCursor._refuse_if_expired(cast(DeadlineCursor, cursor))
+        else:
+            DeadlineCursor._prepare(cast(DeadlineCursor, cursor))
         if name == "executescript" and isinstance(cursor.connection, DeadlineConnection):
             # A custom cursor may call sqlite3.Cursor directly instead of
             # using its MRO tail. Own the whole callback/SQLite script scope.

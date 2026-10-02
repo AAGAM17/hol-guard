@@ -55,10 +55,24 @@ class PreparedHarnessInstall:
             raise TransitionError("adapter_install_plan_invalid")
         changes: dict[str, object] = {"files": [change.payload() for change in self.files]}
         RuntimeTransition._compare(changes, "before")
-        for change in self.files:
-            RuntimeTransition._compare({"files": [change.payload()]}, "before")
-            RuntimeTransition._write_file(change.payload(), "after")
-        RuntimeTransition._compare(changes, "after")
+        written: list[dict[str, object]] = []
+        try:
+            for change in self.files:
+                payload = change.payload()
+                RuntimeTransition._compare({"files": [payload]}, "before")
+                RuntimeTransition._write_file(payload, "after")
+                written.append(payload)
+            RuntimeTransition._compare(changes, "after")
+        except Exception as error:
+            restore_error: Exception | None = None
+            for payload in reversed(written):
+                try:
+                    RuntimeTransition._write_file(payload, "before")
+                except Exception as failure:
+                    restore_error = failure
+            if restore_error is not None:
+                raise restore_error from error
+            raise
         return self.manifest
 
 

@@ -559,7 +559,6 @@ class StoreConnectionSchemaMixin:
         connection.row_factory = sqlite3.Row
         start = time.monotonic()
         notification: dict[str, object] | None = None
-        database_failed = False
         try:
             connection.execute(f"pragma busy_timeout={int(connect_timeout_seconds * 1000)}")
             # WAL can use synchronous=NORMAL; rollback-journal and schema-init stay FULL.
@@ -578,16 +577,14 @@ class StoreConnectionSchemaMixin:
             )
             notification = self._take_policy_integrity_state_notification(connection)
         except sqlite3.OperationalError as error:
-            database_failed = True
             if sqlite_error_is_busy_locked(error):
                 profiler.record_busy_locked()
             raise
-        except BaseException:
-            database_failed = True
-            raise
         finally:
             profiler.record_transaction((time.monotonic() - start) * 1000)
-            if notification is None and not database_failed:
+            if notification is None:
+                # A failed transaction must drop the queued notice. Leaving it
+                # keyed by id(connection) lets a later connection publish it.
                 self._take_policy_integrity_state_notification(connection)
             connection.close()
             elapsed_ms = (time.monotonic() - start) * 1000
@@ -1340,9 +1337,17 @@ class StoreConnectionSchemaMixin:
         if not self.path.is_file():
             return False
         timeout_seconds = sqlite_connect_timeout_seconds()
+        if timeout_seconds <= 0:
+            raise TimeoutError("Guard storage operation deadline expired.")
         try:
             with self._hold_storage_gate(exclusive=False):
-                connection = sqlite3.connect(self.path, timeout=timeout_seconds)
+                from .sqlite_deadline_connection import DeadlineConnection
+                from .sqlite_tuning import sqlite_operation_deadline_monotonic
+
+                factory = (
+                    DeadlineConnection if sqlite_operation_deadline_monotonic() is not None else sqlite3.Connection
+                )
+                connection = sqlite3.connect(self.path, timeout=timeout_seconds, factory=factory)
                 try:
                     connection.execute(f"pragma busy_timeout={int(timeout_seconds * 1000)}")
                     placeholders = ", ".join("?" for _ in _REQUIRED_SCHEMA_MIGRATION_VERSIONS)

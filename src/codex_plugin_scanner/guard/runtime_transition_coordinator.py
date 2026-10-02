@@ -105,12 +105,18 @@ class RuntimeTransitionCoordinator:
             raise TransitionError("native_runtime_bindings_missing")
         cause = status.first_cause or "interrupted_transition"
         self._check_deadline(deadline)
-        self.runtime.prepare_recovery(operation_id, first_cause=cause)
+        persistence_error: Exception | None = None
+        try:
+            self.runtime.prepare_recovery(operation_id, first_cause=cause)
+        except Exception as error:
+            persistence_error = error
         inverse_attempted = False
         inverse_completed = False
         try:
             self._check_deadline(deadline)
             self.driver.stop(plan.candidate, deadline_monotonic=deadline)
+            if persistence_error is not None:
+                raise persistence_error
             self._check_deadline(deadline)
             inverse_attempted = True
             self.runtime.restore_files(operation_id, first_cause=cause)
@@ -184,7 +190,11 @@ class RuntimeTransitionCoordinator:
                 _ = self.runtime.advance(plan.operation_id, "CandidateFunctional", functional_proof=observation)
             except Exception as first_error:
                 cause = first_error.reason if isinstance(first_error, TransitionError) else type(first_error).__name__
-                self.runtime.prepare_recovery(plan.operation_id, first_cause=cause)
+                persistence_error: Exception | None = None
+                try:
+                    self.runtime.prepare_recovery(plan.operation_id, first_cause=cause)
+                except Exception as error:
+                    persistence_error = error
                 retirement_error: Exception | None = None
                 if candidate_may_be_running:
                     try:
@@ -195,6 +205,8 @@ class RuntimeTransitionCoordinator:
                 inverse_attempted = False
                 inverse_completed = False
                 try:
+                    if persistence_error is not None:
+                        raise persistence_error
                     if retirement_error is not None:
                         # Keep selection and bindings coherent for a candidate
                         # whose process retirement is still unconfirmed.

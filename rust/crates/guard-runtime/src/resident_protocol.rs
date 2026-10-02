@@ -2,9 +2,9 @@ use guard_command::CommandModelRequestV1;
 use guard_contracts::{
     ApprovalChallengeRequestV3, ApprovalChallengeRequestV4, ApprovalConsumeRequestV3,
     ApprovalConsumeRequestV4, ApprovalValidateRequestV3, ApprovalValidateRequestV4,
-    GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA,
-    MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES,
-    NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1,
+    GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
+    NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use guard_hook_core::review_post_tool;
 use guard_policy_snapshot::canonical_json_bytes;
@@ -29,6 +29,7 @@ pub(crate) enum ResidentOperationV1 {
     WorkspaceReviewAuthorityEnroll(WorkspaceReviewAuthorityEnrollRequestV1),
     WorkspaceReviewContext(WorkspaceReviewContextRequestV1),
     WorkspaceReviewDecision(WorkspaceReviewDecisionRequestV1),
+    ContextDigest(ContextDigestRequestV1),
     Health(Value),
     Shutdown(Value),
 }
@@ -98,6 +99,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "native-resident-client-v1".into(),
         "native-resident-lifecycle-v1".into(),
         guard_contracts::ARCHIVE_INSPECTION_FEATURE.into(),
+        guard_contracts::CONTEXT_DIGEST_FEATURE.into(),
     ];
     if cfg!(windows) {
         features.push("authenticated-loopback-resident-v1".into());
@@ -269,6 +271,9 @@ pub(crate) fn evaluate_resident_bytes(
                     "request_snapshot_digest": verified.request_snapshot_digest,
                     "envelope_digest": verified.envelope_digest,
                 }))
+            }
+            ResidentOperationV1::ContextDigest(request) => {
+                crate::context_digest::evaluate_context_digest_request(&request)
             }
             ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
                 "status": "ready",

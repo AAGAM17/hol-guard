@@ -5,11 +5,18 @@
 //! `guard-contracts::command_effect`; this module owns the evaluator.
 //!
 //! The full factor/lattice/decision-plane port from Python's
-//! `runtime/command_evaluation.py` lands incrementally behind this op. Until a
-//! producer is ported, the evaluator fails closed with
-//! `native_command_effect_unimplemented` rather than emit a partial
-//! `CompositeCommandEvaluation` — callers keep their Python path until the op
-//! returns `ok` for their request shape.
+//! `runtime/command_evaluation.py` lives in
+//! `guard-command::command_evaluation::evaluate_command` (36/36 oracle parity
+//! in `guard-command::command_evaluation_tests`). This op intentionally still
+//! fails closed with `native_command_effect_unimplemented` rather than emit a
+//! partial `CompositeCommandEvaluation`: the request schema is missing the
+//! host-owned `read_factors` (shell-read model deferred) and `write_redirect`
+//! inputs `evaluate_command` needs, and `control_snapshot`/`control_layers`/
+//! `workflow_authorization` arrive as untyped `Value`s that need a
+//! `NativeExtensionControlLayerV1`/`NativeCommandControlBindingV1`/
+//! `GitHubWorkflowAuthorizationV1` translation layer before the typed resolver.
+//! Wire those inputs, then swap this stub for the ported evaluator — callers
+//! keep their Python path until the op returns `ok` for their request shape.
 
 use guard_contracts::{
     CommandEffectRequestV1, CommandEffectResultV1, COMMAND_EFFECT_REQUEST_SCHEMA,

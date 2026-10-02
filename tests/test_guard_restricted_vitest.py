@@ -25,7 +25,7 @@ def test_readonly_config_loader_is_version_bounded(tmp_path: Path, version: str,
 
 def test_invalid_manifest_cannot_enable_config_loader(tmp_path: Path) -> None:
     manifest = tmp_path / "package.json"
-    for content in ('[]', '{broken', 'x' * 65537):
+    for content in ("[]", "{broken", "x" * 65537):
         manifest.write_text(content)
         assert vitest._readonly_config_arguments(("run",), manifest) == ("run",)
 
@@ -42,6 +42,9 @@ def test_manifest_symlink_is_not_read_for_config_capability(tmp_path: Path) -> N
     "command",
     [
         ["bunx", "vitest", "run", "tests/example.test.ts"],
+        ["bun", "x", "vitest", "run"],
+        ["bun", "--cwd", "/project", "x", "vitest", "run"],
+        ["bun", "--cwd=/project", "x", "--no-install", "vitest", "run"],
         ["npx", "--no-install", "vitest", "run"],
         ["vitest", "run"],
         ["node", "/project/node_modules/vitest/vitest.mjs", "run"],
@@ -59,6 +62,9 @@ def test_local_vitest_run_arguments(command: list[str]) -> None:
         ["vitest", "watch"],
         ["vitest", "run", ";", "sh"],
         ["node", "/outside/tool.mjs", "run"],
+        ["bun", "--cwd", "", "x", "vitest", "run"],
+        ["bun", "--cwd=/project", "x", "vitest@evil", "run"],
+        ["bun", "--cwd=/project", "x", "vitest", "run", ";", "sh"],
     ],
 )
 def test_downloads_other_tools_and_shell_operators_are_not_execution_plans(command: list[str]) -> None:
@@ -67,12 +73,16 @@ def test_downloads_other_tools_and_shell_operators_are_not_execution_plans(comma
 
 
 @pytest.mark.parametrize("underlying_denied", [False, True])
+@pytest.mark.parametrize("wrapper", ["bunx vitest run", "bun --cwd target x vitest run"])
 def test_underlying_native_deny_cannot_inherit_wrapper_permission(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     underlying_denied: bool,
+    wrapper: str,
 ) -> None:
-    plan = SimpleNamespace(command=("/usr/bin/node", str(tmp_path / "node_modules/vitest/vitest.mjs"), "run"))
+    plan = SimpleNamespace(
+        command=("/usr/bin/node", str(tmp_path / "node_modules/vitest/vitest.mjs"), "run"), cwd=tmp_path / "target"
+    )
     executed, authorized = [], []
     monkeypatch.setattr(vitest, "prepare_restricted_vitest", lambda *args, **kwargs: plan)
     monkeypatch.setattr(
@@ -81,6 +91,8 @@ def test_underlying_native_deny_cannot_inherit_wrapper_permission(
 
     def authorize(payload):
         authorized.append(payload["tool_input"]["command"])
+        if len(authorized) == 2:
+            assert payload["cwd"] == str(plan.cwd)
         if underlying_denied and len(authorized) == 2:
             return {"decision": "deny", "policy_action": "block", "reason_code": "native_command_permission_disabled"}
         return {
@@ -90,7 +102,7 @@ def test_underlying_native_deny_cannot_inherit_wrapper_permission(
             "required_execution_profile": "vitest-readonly-v1",
         }
 
-    payload = {"tool_name": "bash", "tool_input": {"command": "bunx vitest run"}}
+    payload = {"tool_name": "bash", "tool_input": {"command": wrapper}}
     if underlying_denied:
         with pytest.raises(RestrictedPytestError):
             sink.run_authorized_contained_test(payload, workspace=tmp_path, timeout_seconds=20, authorize=authorize)
@@ -101,6 +113,23 @@ def test_underlying_native_deny_cannot_inherit_wrapper_permission(
             == 0
         )
         assert executed == [plan]
-    assert authorized[0] == "bunx vitest run"
+    assert authorized[0] == wrapper
     assert authorized[1].startswith("/usr/bin/node ")
-    assert payload["tool_input"]["command"] == "bunx vitest run"
+    assert payload["tool_input"]["command"] == wrapper
+
+
+@pytest.mark.parametrize("form", ["relative", "absolute", "equals"])
+def test_bun_cwd_resolves_before_local_dependency_preparation(tmp_path, monkeypatch, form):
+    target = tmp_path / "target"
+    target.mkdir()
+    arguments = ["--cwd=target"] if form == "equals" else ["--cwd", "target" if form == "relative" else str(target)]
+    captured = []
+
+    def prepare(command, *, workspace, cwd):
+        captured.append((workspace, cwd))
+        raise RestrictedPytestError("test_stop", "stop before backend preparation")
+
+    monkeypatch.setattr(vitest, "prepare_restricted_node_test", prepare)
+    with pytest.raises(RestrictedPytestError, match="stop before backend"):
+        vitest.prepare_restricted_vitest(["bun", *arguments, "x", "vitest", "run"], workspace=tmp_path, cwd=tmp_path)
+    assert captured == [(target.resolve(), target.resolve())]

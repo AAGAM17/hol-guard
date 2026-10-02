@@ -125,6 +125,9 @@ fn vitest_wrapper_and_resolved_script_require_the_same_protected_profile() {
     for harness in ["omp", "zcode"] {
         for command in [
             "bunx vitest run tests/example.test.ts",
+            "bun x vitest run tests/example.test.ts",
+            "bun --cwd /project x vitest run tests/example.test.ts",
+            "bun --cwd=/project x --no-install vitest run tests/example.test.ts",
             "bunx vitest run __tests__/one.test.ts __tests__/two.test.ts",
             "npx --no-install vitest run",
             "vitest run",
@@ -141,6 +144,9 @@ fn vitest_wrapper_and_resolved_script_require_the_same_protected_profile() {
         }
         for command in [
             "bunx vitest@evil run",
+            "bun --cwd /project x vitest@evil run",
+            "bun --cwd /project x vitest watch",
+            "bun --cwd /project x vitest run && rm -rf /",
             "bunx other run",
             "vitest watch",
             "bunx vitest run && rm -rf /",

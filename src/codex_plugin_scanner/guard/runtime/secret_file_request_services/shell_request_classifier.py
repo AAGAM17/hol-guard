@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .._shell_execution_context_support import SHELL_CWD_UNRESOLVED_PARENT_SHELL
@@ -29,6 +30,7 @@ from .pytest_target_detection import _shell_command_targets_pytest
 from .request_models import ToolActionRequestMatch
 from .shell_initial_risk import initial_shell_risk_match
 from .shell_quote_parsing import _bounded_current_workspace_source_edit_execution_context, literal_cd_execution_context
+from .shell_static_safety import _is_python_interpreter_command
 from .source_edit_context import (
     _bounded_verified_source_edit_execution_context,
     low_risk_compound_developer_execution_context,
@@ -82,12 +84,31 @@ def _destructive_shell_tool_action_request(
     # Command-extension interaction is authoritative native pre-tool evidence.
     # This legacy request classifier retains its independent shell checks only.
     extension_interaction = CommandExtensionInteraction(None, None)
+    if native_evaluation is not None and (
+        native_evaluation.command.normalized_text != canonical_command.normalized_text
+        or native_evaluation.command.security_identity != canonical_command.security_identity
+    ):
+        raise ValueError("native command evaluation does not match the classified command")
+    # Content binding does not establish Windows host ACL trust. Keep this
+    # floor independent of native benign syntax and Guard's own interpreter.
+    if (
+        os.name == "nt"
+        and len(canonical_command.segments) > 1
+        and any(_is_python_interpreter_command(segment.executable or "") for segment in canonical_command.segments)
+        and (native_evaluation is None or native_evaluation.minimum_action == "allow")
+    ):
+        return ToolActionRequestMatch(
+            tool_name=tool_name,
+            normalized_tool_name=normalized_tool_name,
+            command_text=command_text,
+            action_class="unverified compound interpreter host",
+            reason="Guard requires review because this compound Python launch has no Windows host ACL proof.",
+            canonical_command=canonical_command,
+            guard_default_action="require-reapproval",
+            reason_code="interpreter_host_binding_unverified",
+            interpreter_executable_identities=interpreter_executable_identities,
+        )
     if native_evaluation is not None:
-        if (
-            native_evaluation.command.normalized_text != canonical_command.normalized_text
-            or native_evaluation.command.security_identity != canonical_command.security_identity
-        ):
-            raise ValueError("native command evaluation does not match the classified command")
         native_explicitly_benign = any(
             reason.reason_code == "native.explicit-benign" for reason in native_evaluation.decision_plane.reasons
         )

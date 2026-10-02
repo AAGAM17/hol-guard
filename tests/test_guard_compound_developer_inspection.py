@@ -379,7 +379,17 @@ def test_compound_git_and_filesystem_inspection_requires_host_binary_proof(tmp_p
         assert artifact.metadata["guard_default_action"] == "require-reapproval"
 
 
-def test_compound_stdin_only_python_observer_requires_host_binary_proof(tmp_path: Path) -> None:
+@pytest.mark.parametrize("windows_host", (False, True))
+def test_compound_stdin_only_python_observer_requires_host_binary_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, windows_host: bool
+) -> None:
+    from types import SimpleNamespace
+
+    from codex_plugin_scanner.guard.runtime.secret_file_request_services import shell_request_classifier
+
+    windows_host = windows_host or os.name == "nt"
+    if windows_host:
+        monkeypatch.setattr(shell_request_classifier, "os", SimpleNamespace(name="nt"))
     home = tmp_path / "home"
     workspace = home / "projects" / "workspace"
     workspace.mkdir(parents=True)
@@ -390,13 +400,14 @@ def test_compound_stdin_only_python_observer_requires_host_binary_proof(tmp_path
         home=home,
     )
 
-    if os.name == "nt":
+    if windows_host:
         # The compound host recognizer has no Windows executable ACL proof.
         # A stdin-only script cannot waive the launch identity requirement.
-        assert not is_trusted_absolute_command_path(Path(sys.executable), cwd=workspace, home_dir=home)
+        if os.name == "nt":
+            assert not is_trusted_absolute_command_path(Path(sys.executable), cwd=workspace, home_dir=home)
         assert artifact is not None
         assert artifact.metadata["compound_segment_count"] == 3
-        assert artifact.metadata["command_evaluation_status"] == "native_unavailable"
+        assert artifact.metadata["reason_code"] == "interpreter_host_binding_unverified"
         assert artifact.metadata["guard_default_action"] == "require-reapproval"
     else:
         assert artifact is None

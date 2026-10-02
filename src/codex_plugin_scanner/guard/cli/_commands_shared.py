@@ -201,7 +201,7 @@ from ..runtime.secret_sensitivity import (
 )
 from ..runtime.sed_scripts import sed_script_is_bounded_print
 from ..runtime.signals import RiskSignalV2
-from ..runtime.supply_chain_package_eval import evaluate_package_request_artifact
+from ..local_supply_chain import evaluate_package_request_artifact
 from ..runtime.surface_server import GuardSurfaceRuntime
 from ..shims import activate_package_shims, package_shim_status, uninstall_package_shims
 from ..store import GuardStore

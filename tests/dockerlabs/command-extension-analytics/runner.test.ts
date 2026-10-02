@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
-import { composeCommand, runCommand, safeProjectName, type CommandResult } from "./lab-process";
+import { composeCommand, REPO_ROOT, runCommand, safeProjectName, type CommandResult } from "./lab-process";
 import { runInstalledPlaywright } from "./installed-playwright";
 import { fetchLabGet, fetchLabIdempotent } from "./relay-fetch";
 import { readyFromLogs, resolveWheel } from "./runner";
@@ -17,7 +18,7 @@ describe("command extension analytics Dockerlabs orchestration", () => {
     try {
       delete Bun.env.HOL_GUARD_WHEEL;
       expect(() => resolveWheel()).toThrow("native-injected wheel");
-      Bun.env.HOL_GUARD_WHEEL = "dist/synthetic.whl";
+      Bun.env.HOL_GUARD_WHEEL = resolve(REPO_ROOT, "dist/synthetic.whl");
       expect(resolveWheel()).toBe("dist/synthetic.whl");
     } finally {
       if (original === undefined) delete Bun.env.HOL_GUARD_WHEEL;

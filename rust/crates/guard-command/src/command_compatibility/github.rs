@@ -33,15 +33,19 @@ fn one(capability: &'static str) -> Capabilities {
 }
 
 pub(super) fn arguments_are_read_only(arguments: &[String]) -> bool {
-    !arguments
-        .iter()
-        .any(|argument| matches!(argument.as_str(), "--web" | "-w"))
-        && classify(arguments).is_some_and(|capabilities| {
-            !capabilities.is_empty()
-                && capabilities
-                    .iter()
-                    .all(|capability| matches!(*capability, "read_local" | "read_remote"))
-        })
+    !arguments.iter().any(|argument| {
+        argument == "--web"
+            || argument.starts_with("--web=")
+            || (argument.starts_with('-')
+                && !argument.starts_with("--")
+                && !argument.starts_with("-R")
+                && argument[1..].split('=').next().is_some_and(|flags| flags.contains('w')))
+    }) && classify(arguments).is_some_and(|capabilities| {
+        !capabilities.is_empty()
+            && capabilities
+                .iter()
+                .all(|capability| matches!(*capability, "read_local" | "read_remote"))
+    })
 }
 
 fn classify(original: &[String]) -> Capabilities {

@@ -27,8 +27,13 @@ _PROFILES = {
 
 
 def route_zcode_containment(
-    response: dict[str, object], *, harness: str, payload: Mapping[str, object],
-    guard_home: Path, home_dir: Path, workspace: Path | None,
+    response: dict[str, object],
+    *,
+    harness: str,
+    payload: Mapping[str, object],
+    guard_home: Path,
+    home_dir: Path,
+    workspace: Path | None,
 ) -> dict[str, object]:
     """Rewrite at the authority edge so frozen/stdlib hook clients also work."""
     # The execution sink needs the denial/profile receipt, not another rewrite.
@@ -36,28 +41,37 @@ def route_zcode_containment(
     if harness != "zcode" or workspace is None or payload.get("guard_containment_receipt_only") is True:
         return response
     config = {
-        "harness": "zcode", "guard_home": str(guard_home), "python_executable": sys.executable,
+        "harness": "zcode",
+        "guard_home": str(guard_home),
+        "python_executable": sys.executable,
         "package_root": str(Path(__file__).resolve().parents[3]),
     }
     routed = contained_zcode_response(
-        response, input_text=json.dumps({**payload, "cwd": str(workspace)}), config=config,
+        response,
+        input_text=json.dumps({**payload, "cwd": str(workspace)}),
+        config=config,
         cli_args=["--home", str(home_dir)],
     )
     return routed if routed is not None else response
 
 
 def contained_zcode_response(
-    response: Mapping[str, object], *, input_text: str, config: Mapping[str, object],
+    response: Mapping[str, object],
+    *,
+    input_text: str,
+    config: Mapping[str, object],
     cli_args: Sequence[str],
 ) -> dict[str, object] | None:
     """Allow only the rewritten sink; native authority is rechecked at execution."""
     reason = response.get("reason_code")
     if (
-        sys.platform != "darwin" or config.get("harness") != "zcode"
+        sys.platform != "darwin"
+        or config.get("harness") != "zcode"
         or response.get("decision") != "deny"
         or response.get("policy_action") != "sandbox-required"
         or response.get("observe_mode") is True
-        or not isinstance(reason, str) or reason not in _PROFILES
+        or not isinstance(reason, str)
+        or reason not in _PROFILES
         or response.get("required_execution_profile") != _PROFILES[reason]
     ):
         return None
@@ -70,7 +84,10 @@ def contained_zcode_response(
         tool = payload.get("tool_name", payload.get("toolName"))
         original = payload.get("tool_input", payload.get("toolInput"))
         if event not in {"PreToolUse", "pre_tool_use"} or tool not in {
-            "Bash", "bash", "run_terminal_command", "run_command",
+            "Bash",
+            "bash",
+            "run_terminal_command",
+            "run_command",
         }:
             return None
         if not isinstance(original, dict) or not isinstance(original.get("command"), str):
@@ -84,14 +101,20 @@ def contained_zcode_response(
         if not workspace.is_dir():
             return None
         snapshot_payload = {
-            "hook_event_name": "PreToolUse", "tool_name": "bash", "tool_input": original,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "bash",
+            "tool_input": original,
             "cwd": str(workspace),
             "session_id": payload.get("session_id", payload.get("sessionId")),
             "tool_call_id": payload.get("tool_call_id", payload.get("toolCallId", payload.get("tool_use_id"))),
         }
-        serialized = json.dumps({
-            "schema": "guard-contained-test-request.v1", "workspace": str(workspace), "payload": snapshot_payload,
-        }).encode()
+        serialized = json.dumps(
+            {
+                "schema": "guard-contained-test-request.v1",
+                "workspace": str(workspace),
+                "payload": snapshot_payload,
+            }
+        ).encode()
         if len(serialized) > 1_048_576:
             return None
         directory = Path(tempfile.mkdtemp(prefix="hol-guard-contained-test-"))
@@ -101,23 +124,37 @@ def contained_zcode_response(
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(serialized)
         args = [
-            "guard", "execute-contained-test", "--harness", "zcode", "--guard-home", str(config["guard_home"]),
-            "--workspace", str(workspace), "--request-file", str(request),
-            "--request-sha256", hashlib.sha256(serialized).hexdigest(),
+            "guard",
+            "execute-contained-test",
+            "--harness",
+            "zcode",
+            "--guard-home",
+            str(config["guard_home"]),
+            "--workspace",
+            str(workspace),
+            "--request-file",
+            str(request),
+            "--request-sha256",
+            hashlib.sha256(serialized).hexdigest(),
         ]
         if "--home" in cli_args:
             args.extend(["--home", cli_args[cli_args.index("--home") + 1]])
         if getattr(sys, "frozen", False):
             from ..stable_guard_cli import resolve_frozen_guard_cli
+
             command = (resolve_frozen_guard_cli(), *args)
         else:
             command = isolated_guard_cli_command(
-                str(config["python_executable"]), Path(str(config["package_root"])), args,
+                str(config["python_executable"]),
+                Path(str(config["package_root"])),
+                args,
             )
         return {
-            "policy_action": "allow", "reason_code": "native_contained_execution_routed",
+            "policy_action": "allow",
+            "reason_code": "native_contained_execution_routed",
             "hookSpecificOutput": {
-                "hookEventName": "PreToolUse", "permissionDecision": "allow",
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
                 "updatedInput": {**original, "command": shlex.join(command)},
             },
         }

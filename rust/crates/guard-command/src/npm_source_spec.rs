@@ -556,16 +556,18 @@ fn digest(value: &str) -> String {
 /// non-numeric or out-of-range so callers emit `npm_source_malformed_port`.
 /// No WHATWG host normalization; `_canonical_host` handles IDNA/case.
 #[derive(Debug)]
-struct SplitUrl {
-    scheme: String,
-    netloc: String,
-    username: String,
-    password: String,
-    hostname: Option<String>,
-    port: Result<Option<u16>, ()>,
-    path: String,
-    query: String,
-    fragment: String,
+/// `pub(crate)`: `package_intent_common::redact_url` (models.py `_redact_url`)
+/// round-trips through urlsplit/urlunsplit.
+pub(crate) struct SplitUrl {
+    pub(crate) scheme: String,
+    pub(crate) netloc: String,
+    pub(crate) username: String,
+    pub(crate) password: String,
+    pub(crate) hostname: Option<String>,
+    pub(crate) port: Result<Option<u16>, ()>,
+    pub(crate) path: String,
+    pub(crate) query: String,
+    pub(crate) fragment: String,
 }
 
 impl Default for SplitUrl {
@@ -584,7 +586,7 @@ impl Default for SplitUrl {
     }
 }
 
-fn split_url(url: &str) -> SplitUrl {
+pub(crate) fn split_url(url: &str) -> SplitUrl {
     let mut out = SplitUrl::default();
     let (before_frag, frag) = match url.split_once('#') {
         Some((b, f)) => (b, f),

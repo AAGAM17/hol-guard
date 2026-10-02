@@ -246,7 +246,9 @@ def _hook_evaluator_loop(
         if message_type == "close_native_resident_clients":
             from ..native_resident_client import close_native_resident_clients
 
-            guard_home = Path(configured_guard_home).resolve(strict=False) if configured_guard_home is not None else None
+            guard_home = (
+                Path(configured_guard_home).resolve(strict=False) if configured_guard_home is not None else None
+            )
             close_native_resident_clients(guard_home)
             try:
                 connection.send(("closed_native_resident_clients", None))

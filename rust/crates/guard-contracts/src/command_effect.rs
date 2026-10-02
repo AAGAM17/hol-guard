@@ -40,6 +40,15 @@ pub struct CommandEffectRequestV1 {
     /// caller may request canonicalization inside the op.
     #[serde(default)]
     pub canonical_command: Option<Value>,
+    /// Optional compatibility attribution: when the command only matched via a
+    /// compatibility fallback, the action class it is attributed to
+    /// (`evaluate_command` `compatibility_action_class`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_action_class: Option<String>,
+    /// Human-readable reason for the compatibility fallback
+    /// (`evaluate_command` `compatibility_reason`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_reason: Option<String>,
     /// Native command-safety extension evidence (per-extension observations +
     /// floor/benign/uncertainty flags). Mirrors `native_extension_evidence`.
     #[serde(default)]

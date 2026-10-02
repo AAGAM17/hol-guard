@@ -6,15 +6,28 @@
 //! semantics byte-for-byte: enum values are the Python str-enum values, reason
 //! ordering is `_reason_key`, factor ordering is `semantic_key`, and the
 //! disposition lattice is `_disposition`.
-
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 /// Effect-decision contract schema version (mirrors EFFECT_DECISION_SCHEMA_VERSION).
 pub const EFFECT_DECISION_SCHEMA_VERSION: &str = "1.1.0";
 /// Effect-contract schema version (mirrors EFFECT_CONTRACT_SCHEMA_VERSION).
 pub const EFFECT_CONTRACT_SCHEMA_VERSION: &str = "1.0.0";
+
+/// `_REASON_CODE` (effect_decision.py:28) — stable lowercase factor identifier.
+static REASON_CODE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$").unwrap());
+
+/// `_REFERENCE` (effect_decision.py:29) — `scheme:path` canonical reference.
+static REFERENCE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9._/-]*$").unwrap());
+
+/// `_SHA256` (effect_decision.py:30) — lowercase SHA-256 hex digest.
+static SHA256: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-f]{64}$").unwrap());
 
 /// Canonical action lattice rank (mirrors `action_lattice.GUARD_ACTION_SEVERITY`).
 ///
@@ -247,7 +260,9 @@ impl EffectKind {
             EffectKind::CredentialOrSecretOperation => "credential-or-secret-operation",
             EffectKind::SystemOrPrivilegeOperation => "system-or-privilege-operation",
             EffectKind::PackageOrSourceInstallation => "package-or-source-installation",
-            EffectKind::DestructiveOrIrreversibleOperation => "destructive-or-irreversible-operation",
+            EffectKind::DestructiveOrIrreversibleOperation => {
+                "destructive-or-irreversible-operation"
+            }
             EffectKind::GuardControlOperation => "guard-control-operation",
         }
     }
@@ -428,6 +443,19 @@ impl FinalDisposition {
             GuardAction::Block => Some(FinalDisposition::Block),
         }
     }
+    /// Python `.value` — the wire disposition string.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            FinalDisposition::SilentVerified => "silent-verified",
+            FinalDisposition::SilentContained => "silent-contained",
+            FinalDisposition::WorkflowAuthorized => "workflow-authorized",
+            FinalDisposition::Warn => "warn",
+            FinalDisposition::Review => "review",
+            FinalDisposition::RequireReapproval => "require-reapproval",
+            FinalDisposition::SandboxRequired => "sandbox-required",
+            FinalDisposition::Block => "block",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -518,7 +546,12 @@ impl DecisionFactor {
                 p.route.as_str().to_owned(),
                 p.binding_digest.clone(),
                 sorted_join(&p.satisfied_requirements, ProofRequirement::as_str),
-                if p.enforced { "enforced" } else { "not-enforced" }.to_owned(),
+                if p.enforced {
+                    "enforced"
+                } else {
+                    "not-enforced"
+                }
+                .to_owned(),
             ],
         }
     }
@@ -619,6 +652,10 @@ pub fn evaluate_effect_decision(
     if request.schema_version != EFFECT_DECISION_SCHEMA_VERSION {
         return Err("unsupported effect decision schema version");
     }
+    // `__post_init__` invariants (effect_decision.py:100-190, effect_contract.py
+    // :125-130/:185-217) — fail-closed: any request Python would reject is an
+    // error here rather than a silently-accepted degenerate request.
+    validate_request(request)?;
     // Python __post_init__ orders factors by semantic_key and uncertainties by
     // value; we sort copies to match regardless of wire order.
     let mut factors = request.factors.clone();
@@ -700,6 +737,204 @@ fn disposition(action: GuardAction, routes: &[ProofRoute]) -> FinalDisposition {
         return FinalDisposition::SilentVerified;
     }
     FinalDisposition::from_action(action).unwrap_or(FinalDisposition::Review)
+}
+
+/// Request-level `__post_init__` invariants (effect_decision.py:181-190):
+/// deduped uncertainties, no duplicate factor `semantic_key`s, per-factor
+/// `__post_init__`.
+fn validate_request(request: &EffectDecisionRequest) -> Result<(), &'static str> {
+    // uncertainties deduped (sorted by value → adjacent-equal check is exact).
+    let mut sorted_unc: Vec<&str> = request.uncertainties.iter().map(|u| u.as_str()).collect();
+    sorted_unc.sort_unstable();
+    if sorted_unc.windows(2).any(|w| w[0] == w[1]) {
+        return Err("uncertainties cannot contain duplicates");
+    }
+    let mut seen_keys = std::collections::HashSet::new();
+    for factor in &request.factors {
+        validate_factor(factor)?;
+        // Duplicate semantic_key rejection (effect_decision.py:185-186).
+        if !seen_keys.insert(factor.semantic_key()) {
+            return Err("duplicate decision factors are not allowed");
+        }
+    }
+    Ok(())
+}
+
+/// `DecisionBasis.__post_init__` (effect_contract.py:125-130): floors below
+/// `review` require a positive proof route.
+fn validate_basis(basis: &DecisionBasis) -> Result<(), &'static str> {
+    if basis.action_floor.severity() < GuardAction::Review.severity() && basis.proof_route.is_none()
+    {
+        return Err("permissive action floors require a positive proof route");
+    }
+    Ok(())
+}
+
+/// `PositiveProof.__post_init__` (effect_decision.py:64-83): sha256 binding
+/// digest; CONTAINED ⇒ enforced + CONTAINMENT_IDENTITY; enforced ⇒ CONTAINED.
+fn validate_proof(proof: &PositiveProof) -> Result<(), &'static str> {
+    if !SHA256.is_match(&proof.binding_digest) {
+        return Err("binding_digest must be a lowercase SHA-256 digest");
+    }
+    if proof.route == ProofRoute::Contained {
+        if !proof.enforced {
+            return Err("contained proof must be enforced");
+        }
+        if !proof
+            .satisfied_requirements
+            .contains(&ProofRequirement::ContainmentIdentity)
+        {
+            return Err("contained proof must bind containment identity");
+        }
+    } else if proof.enforced {
+        return Err("only contained proof may claim enforcement");
+    }
+    Ok(())
+}
+
+/// `EffectAssessment.__post_init__` (effect_contract.py:185-217): confidence /
+/// uncertainty / unknown-dimension / containment cross-invariants + contract
+/// schema version.
+fn validate_assessment(assessment: &EffectAssessment) -> Result<(), &'static str> {
+    if assessment.schema_version != EFFECT_CONTRACT_SCHEMA_VERSION {
+        return Err("unsupported effect contract schema version");
+    }
+    let uncertain = matches!(
+        assessment.confidence,
+        EffectConfidence::Partial | EffectConfidence::Dynamic | EffectConfidence::Unknown
+    );
+    if uncertain && assessment.uncertainty_reasons.is_empty() {
+        return Err("partial, dynamic, and unknown effects require an uncertainty reason");
+    }
+    if assessment.confidence == EffectConfidence::Exact
+        && !assessment.uncertainty_reasons.is_empty()
+    {
+        return Err("exact effects cannot carry uncertainty reasons");
+    }
+    let has_unknown_dimension = assessment.target_scope == EffectTargetScope::Unknown
+        || assessment.reversibility == EffectReversibility::Unknown
+        || assessment.blast_radius == EffectBlastRadius::Unknown;
+    if has_unknown_dimension
+        && (assessment.confidence == EffectConfidence::Exact
+            || assessment.uncertainty_reasons.is_empty())
+    {
+        return Err("unknown effect dimensions require non-exact confidence and typed uncertainty");
+    }
+    if assessment.containment == ContainmentRequirement::Required
+        && !assessment
+            .proof_requirements
+            .contains(&ProofRequirement::ContainmentIdentity)
+    {
+        return Err("required containment must bind containment identity");
+    }
+    Ok(())
+}
+
+/// `DecisionFactor.__post_init__` (effect_decision.py:100-145): identifier
+/// patterns, basis validity, and proof↔assessment cross-invariants.
+fn validate_factor(factor: &DecisionFactor) -> Result<(), &'static str> {
+    if !REASON_CODE.is_match(&factor.reason_code) {
+        return Err("reason_code must be a stable lowercase identifier");
+    }
+    validate_basis(&factor.basis)?;
+    for reference in [
+        factor.segment_ref.as_deref(),
+        factor.operation_ref.as_deref(),
+        factor.producer_ref.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !REFERENCE.is_match(reference) {
+            return Err("reference must be a canonical reference");
+        }
+    }
+    if let Some(digest) = factor.evidence_digest.as_deref() {
+        if !SHA256.is_match(digest) {
+            return Err("evidence_digest must be a lowercase SHA-256 digest");
+        }
+    }
+    if let Some(assessment) = &factor.assessment {
+        validate_assessment(assessment)?;
+    }
+    if let Some(proof) = &factor.proof {
+        validate_proof(proof)?;
+    }
+    if let (Some(proof), Some(assessment)) = (&factor.proof, &factor.assessment) {
+        // proof.satisfied_requirements must cover assessment.proof_requirements.
+        let missing = assessment
+            .proof_requirements
+            .iter()
+            .any(|req| !proof.satisfied_requirements.contains(req));
+        if missing {
+            return Err("proof does not satisfy every effect requirement");
+        }
+        if proof.route == ProofRoute::Contained
+            && !matches!(
+                assessment.containment,
+                ContainmentRequirement::Eligible | ContainmentRequirement::Required
+            )
+        {
+            return Err("contained proof is incompatible with the effect containment requirement");
+        }
+        if assessment.containment == ContainmentRequirement::Required
+            && proof.route != ProofRoute::Contained
+        {
+            return Err("containment-required effects require contained proof");
+        }
+    }
+    Ok(())
+}
+
+/// `_reason_to_dict` (command_decision_adapter.py:231): one DecisionReason →
+/// the exact wire dict, with `segment_ref`/`operation_ref` emitted as `null`.
+fn reason_to_payload(reason: &DecisionReason) -> Value {
+    json!({
+        "source": reason.source.as_str(),
+        "reason_code": reason.reason_code,
+        "action_floor": reason.action_floor.as_str(),
+        "segment_ref": reason.segment_ref,
+        "operation_ref": reason.operation_ref,
+    })
+}
+
+/// `effect_decision_to_dict` (command_decision_adapter.py:223) — the exact
+/// `decision_plane` dict embedded in `CompositeCommandEvaluation.to_dict()`.
+pub fn effect_decision_to_payload(decision: &EffectDecision) -> Value {
+    let mut proof_routes: Vec<&str> = decision.proof_routes.iter().map(|r| r.as_str()).collect();
+    proof_routes.sort_unstable();
+    let mut payload = Map::new();
+    payload.insert(
+        "schema_version".to_owned(),
+        Value::String(decision.schema_version.clone()),
+    );
+    payload.insert(
+        "action".to_owned(),
+        Value::String(decision.action.as_str().to_owned()),
+    );
+    payload.insert(
+        "disposition".to_owned(),
+        Value::String(decision.disposition.as_str().to_owned()),
+    );
+    payload.insert(
+        "proof_routes".to_owned(),
+        Value::Array(proof_routes.into_iter().map(Value::from).collect()),
+    );
+    payload.insert(
+        "controlling_reasons".to_owned(),
+        Value::Array(
+            decision
+                .controlling_reasons
+                .iter()
+                .map(reason_to_payload)
+                .collect(),
+        ),
+    );
+    payload.insert(
+        "reasons".to_owned(),
+        Value::Array(decision.reasons.iter().map(reason_to_payload).collect()),
+    );
+    Value::Object(payload)
 }
 
 #[cfg(test)]
@@ -789,5 +1024,124 @@ mod tests {
             .iter()
             .any(|r| r.source == DecisionFactorSource::Effect
                 && r.reason_code == "uncertainty.parser-failure"));
+    }
+
+    fn request(
+        factors: Vec<DecisionFactor>,
+        uncertainties: Vec<UncertaintyKind>,
+    ) -> EffectDecisionRequest {
+        EffectDecisionRequest {
+            factors,
+            uncertainties,
+            schema_version: EFFECT_DECISION_SCHEMA_VERSION.to_owned(),
+        }
+    }
+
+    #[test]
+    fn rejects_permissive_floor_without_proof_route() {
+        // DecisionBasis.__post_init__: floor < review requires proof_route.
+        let mut f = factor(DecisionFactorSource::Match, "ok", GuardAction::Warn);
+        f.basis.proof_route = None;
+        assert!(evaluate_effect_decision(&request(vec![f], vec![])).is_err());
+    }
+
+    #[test]
+    fn rejects_noncanonical_reason_code() {
+        let f = factor(
+            DecisionFactorSource::Match,
+            "Not_A Code!",
+            GuardAction::Review,
+        );
+        assert!(evaluate_effect_decision(&request(vec![f], vec![])).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_factor_semantic_keys() {
+        let f = || {
+            factor(
+                DecisionFactorSource::Match,
+                "same-code",
+                GuardAction::Review,
+            )
+        };
+        assert!(evaluate_effect_decision(&request(vec![f(), f()], vec![])).is_err());
+    }
+
+    #[test]
+    fn rejects_contained_proof_without_enforcement() {
+        let mut f = factor(DecisionFactorSource::Match, "ok", GuardAction::Allow);
+        f.proof = Some(PositiveProof {
+            route: ProofRoute::Contained,
+            binding_digest: "b".repeat(64),
+            satisfied_requirements: vec![ProofRequirement::ContainmentIdentity],
+            enforced: false, // CONTAINED must be enforced
+        });
+        assert!(evaluate_effect_decision(&request(vec![f], vec![])).is_err());
+    }
+
+    #[test]
+    fn rejects_exact_assessment_carrying_uncertainty() {
+        let mut f = factor(DecisionFactorSource::Effect, "e", GuardAction::Review);
+        f.assessment = Some(EffectAssessment {
+            kind: EffectKind::SensitiveRead,
+            target_scope: EffectTargetScope::SensitiveLocal,
+            reversibility: EffectReversibility::Reversible,
+            blast_radius: EffectBlastRadius::SingleResource,
+            evidence_source: EffectEvidenceSource::Parser,
+            confidence: EffectConfidence::Exact,
+            containment: ContainmentRequirement::None,
+            proof_requirements: vec![],
+            uncertainty_reasons: vec![UncertaintyKind::ParserFailure],
+            schema_version: EFFECT_CONTRACT_SCHEMA_VERSION.to_owned(),
+        });
+        assert!(evaluate_effect_decision(&request(vec![f], vec![])).is_err());
+    }
+
+    #[test]
+    fn payload_emits_null_refs_and_exact_key_set() {
+        let req = request(
+            vec![factor(
+                DecisionFactorSource::Match,
+                "ok",
+                GuardAction::Review,
+            )],
+            vec![],
+        );
+        let decision = evaluate_effect_decision(&req).unwrap();
+        let payload = effect_decision_to_payload(&decision);
+        // `effect_decision_to_dict` key set (command_decision_adapter.py:224-231).
+        let obj = payload.as_object().unwrap();
+        assert_eq!(
+            obj.keys().cloned().collect::<BTreeSet<_>>(),
+            [
+                "schema_version",
+                "action",
+                "disposition",
+                "proof_routes",
+                "controlling_reasons",
+                "reasons"
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<_>>(),
+        );
+        // `_reason_to_dict`: segment_ref/operation_ref serialize as null (not omitted).
+        let reason = &obj["reasons"][0];
+        assert!(reason["segment_ref"].is_null());
+        assert!(reason["operation_ref"].is_null());
+        let reason_keys: BTreeSet<String> = reason.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(
+            reason_keys,
+            [
+                "source",
+                "reason_code",
+                "action_floor",
+                "segment_ref",
+                "operation_ref"
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<_>>(),
+        );
     }
 }

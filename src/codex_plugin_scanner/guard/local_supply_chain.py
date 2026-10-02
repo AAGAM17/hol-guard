@@ -301,17 +301,16 @@ def _parse_package_intent_native(
     *,
     environment: Mapping[str, str] | None,
     workspace: Path | None,
-    harness: str,
+    guard_home: Path,
 ) -> PackageIntent | None:
     """Try the resident ``package_intent_parse`` op; ``None`` falls back to
     the Python parser."""
     try:
         payload = _native_package_authority_module().package_intent_parse_native(
-            command=raw_command,
-            cwd=str(workspace if workspace is not None else Path.cwd()),
-            env=dict(environment) if environment is not None else None,
-            harness=harness,
+            raw_command,
             workspace=workspace,
+            environment=dict(environment) if environment is not None else None,
+            guard_home=guard_home,
         )
     except Exception:  # noqa: BLE001 - transport/contract failures degrade to the Python parser
         return None
@@ -347,6 +346,8 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
         return None
     now = kwargs.get("now")
     if now is not None and not isinstance(now, str):
+        return None
+    if bool(kwargs.get("retain_external_archive_blob", False)):
         return None
     native_authority = _native_package_authority_module()
     payload = native_authority.supply_chain_eval_native(
@@ -1484,7 +1485,7 @@ def _build_package_protect_authority(
         shlex.join(command),
         environment=launch_environment,
         workspace=launch_cwd,
-        harness=invoking_harness or _LOCAL_SUPPLY_CHAIN_HARNESS,
+        guard_home=store.guard_home,
     )
     if intent is None:
         intent = _package_intent_parser_module().parse_package_intent(

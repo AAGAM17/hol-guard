@@ -95,10 +95,7 @@ def _parse_shim_package_intent(raw_command: str, *, workspace: Path | None = Non
 
     try:
         payload = package_intent_parse_native(
-            command=raw_command,
-            cwd=str(workspace if workspace is not None else Path.cwd()),
-            env=None,
-            harness="",
+            raw_command,
             workspace=workspace,
             guard_home=resolve_guard_home(),
         )

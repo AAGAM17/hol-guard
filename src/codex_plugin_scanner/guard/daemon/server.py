@@ -874,15 +874,34 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     def _park_saturation_probe(self, request: socket.socket, client_address: Any, accepted_at: float) -> None:
         deadline = accepted_at + 0.15
         limit = max(1, self.connection_capacity_limit)
+        displaced: tuple[socket.socket, tuple[str, int], float] | None = None
         with self.unclassified_connections_lock:
-            if len(self.saturation_probes) < limit:
-                self.saturation_probes[id(request)] = (request, cast(tuple[str, int], client_address), deadline)
-                return
+            # A full probe table is older unread clients. Closing the newcomer
+            # drops a health check that has not sent its request line yet.
+            if len(self.saturation_probes) >= limit:
+                displaced = self.saturation_probes.pop(next(iter(self.saturation_probes)))
+            self.saturation_probes[id(request)] = (request, cast(tuple[str, int], client_address), deadline)
+        if displaced is None:
+            return
         with self.request_capacity_lock:
             self.rejected_requests += 1
-        self._close_unclassified_socket(request)
+        self._close_unclassified_socket(displaced[0])
 
     def _submit_transport_request(self, request_socket: socket.socket, client_address: Any, *, control: bool) -> None:
+        # An unread socket stays on the evictable set. Starting a worker
+        # classifies it and holds its connection permit until the read times
+        # out, which closes a later health check without a response.
+        # Classification advancement removes the socket before submit, so a
+        # completed header does not return here.
+        if not self._buffered_request_headers_complete(request_socket, pending=True):
+            with self.unclassified_connections_lock:
+                current = self.unclassified_connections.get(id(request_socket))
+                if current is not None and current[0] is request_socket:
+                    self.pending_classifications[id(request_socket)] = (
+                        cast(tuple[str, int], client_address),
+                        current[1],
+                    )
+                    return
         executor = (
             self.control_request_executor
             if control or self._transport_request_is_control(request_socket)
@@ -1094,7 +1113,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             with self.unclassified_connections_lock:
                 if id(request) not in self.pending_classifications:
                     continue
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline or self._unread_peer_closed(request):
                 self._discard_request(request)
                 continue
             if not self._buffered_request_headers_complete(request, pending=True):
@@ -1105,10 +1124,16 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                     continue
                 self.unclassified_connections.pop(id(request), None)
             if not control and not self._reserve_normal_connection(request):
+                # The socket reserved its seat before its headers were ready.
+                # A full pool makes a second reserve fail even though this
+                # request already counts toward the limit.
                 with self.request_capacity_lock:
-                    self.rejected_requests += 1
-                self._discard_request(request)
-                continue
+                    already_reserved = id(request) in self.normal_connections
+                    if not already_reserved:
+                        self.rejected_requests += 1
+                if not already_reserved:
+                    self._discard_request(request)
+                    continue
             try:
                 self._submit_transport_request(request, address, control=control)
             except BaseException:
@@ -1147,6 +1172,24 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 )
             except BaseException:
                 self.handle_error(request, address)
+
+    @staticmethod
+    def _unread_peer_closed(request: socket.socket) -> bool:
+        """Return whether the peer closed before sending a request line."""
+        timeout = request.gettimeout()
+        try:
+            if not select.select([request], [], [], 0)[0]:
+                return False
+            request.setblocking(False)
+            peeked = request.recv(1, socket.MSG_PEEK | (getattr(socket, "MSG_DONTWAIT", 0) or 0))
+        except (BlockingIOError, InterruptedError):
+            return False
+        except OSError:
+            return True
+        finally:
+            with suppress(OSError):
+                request.settimeout(timeout)
+        return peeked == b""
 
     @staticmethod
     def _buffered_request_headers_complete(request: socket.socket, *, pending: bool = False) -> bool:

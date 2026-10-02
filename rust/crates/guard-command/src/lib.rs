@@ -23,6 +23,11 @@ pub mod extension_trust;
 pub mod native_command_controls;
 pub mod native_command_catalog;
 pub mod native_command_program;
+mod github_capability_contract;
+mod github_command_capabilities;
+#[cfg(test)]
+mod github_capability_contract_tests;
+mod github_command_capabilities_tests;
 mod parser_wrappers;
 pub mod pretool;
 

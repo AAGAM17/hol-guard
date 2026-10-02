@@ -8,6 +8,7 @@ MCPolicyRequestRepository directly, without FastMCP or stdio transport.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +145,79 @@ def env_flags(monkeypatch: pytest.MonkeyPatch) -> None:
 def _digest(yaml: str) -> str:
     document = parse_policy_document_yaml(yaml)
     return policy_document_digest(document)
+
+
+_TOTP_REQUEST_ID = "FixturetotpRequestId0123456789AB"
+_CREDENTIAL_WORDS = ("password", "totp", "secret", "token", "credential", "passphrase")
+
+
+@pytest.fixture(params=(None, _TOTP_REQUEST_ID), ids=("random-id", "totp-id"))
+def opaque_request_id(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str | None:
+    request_id = request.param
+    if request_id is not None:
+        monkeypatch.setattr("codex_plugin_scanner.guard.mcp.policy_store.generate_request_id", lambda: request_id)
+    return request_id
+
+
+def _assert_no_policy_response_leaks(
+    payload: dict[str, object], *, request_id: str, sensitive_values: tuple[str, ...] = ()
+) -> None:
+    assert re.fullmatch(r"[A-Za-z0-9]{16,64}", request_id), "Invalid expected request ID"
+    assert payload.get("requestId") == request_id, "Response request ID changed"
+    serialized = json.dumps(payload, sort_keys=True)
+    for value in sensitive_values:
+        assert value and value not in serialized, "Response leaked sensitive value"
+
+    # Only the verified root correlation ID may coincidentally contain a credential word.
+    checked_payload = {**payload, "requestId": ""}
+    serialized = json.dumps(checked_payload, sort_keys=True)
+    assert "apiVersion:" not in serialized, "Response leaked policy YAML"
+    for field in ("canonicalPolicyYaml", "canonical_policy_yaml"):
+        assert field not in serialized, f"Response leaked policy YAML field: {field}"
+    for word in _CREDENTIAL_WORDS:
+        assert word not in serialized.lower(), f"Response leaked credential-like key or value: {word}"
+
+
+class TestPolicyResponseLeakAssertions:
+    @pytest.mark.parametrize("field", (*_CREDENTIAL_WORDS, "canonicalPolicyYaml", "canonical_policy_yaml"))
+    @pytest.mark.parametrize("nested", (False, True))
+    def test_rejects_sensitive_fields(self, field: str, nested: bool) -> None:
+        leaked = {field: "fixture-value"}
+        payload = {"requestId": _TOTP_REQUEST_ID, **({"details": [leaked]} if nested else leaked)}
+        with pytest.raises(AssertionError, match="Response leaked"):
+            _assert_no_policy_response_leaks(payload, request_id=_TOTP_REQUEST_ID)
+
+    @pytest.mark.parametrize("word", (*_CREDENTIAL_WORDS, "apiVersion:"))
+    def test_rejects_sensitive_values_in_nested_lists(self, word: str) -> None:
+        payload = {"requestId": _TOTP_REQUEST_ID, "details": [{"message": f"{word} fixture-value"}]}
+        with pytest.raises(AssertionError, match="Response leaked"):
+            _assert_no_policy_response_leaks(payload, request_id=_TOTP_REQUEST_ID)
+
+    def test_rejects_full_policy_yaml(self) -> None:
+        payload = {"requestId": _TOTP_REQUEST_ID, "message": _BASIC_POLICY_YAML}
+        with pytest.raises(AssertionError, match="Response leaked policy YAML"):
+            _assert_no_policy_response_leaks(payload, request_id=_TOTP_REQUEST_ID)
+
+    def test_request_id_exception_is_root_only(self) -> None:
+        payload = {"requestId": _TOTP_REQUEST_ID, "details": [{"requestId": _TOTP_REQUEST_ID}]}
+        with pytest.raises(AssertionError, match="Response leaked credential-like key or value: totp"):
+            _assert_no_policy_response_leaks(payload, request_id=_TOTP_REQUEST_ID)
+
+    @pytest.mark.parametrize("field", ("message", "requestId"))
+    def test_rejects_known_credentials_even_in_request_id(self, field: str) -> None:
+        sensitive_value = _TOTP_REQUEST_ID if field == "requestId" else "fixture-auth-value"
+        payload = {"requestId": _TOTP_REQUEST_ID, field: sensitive_value}
+        with pytest.raises(AssertionError, match="Response leaked sensitive value"):
+            _assert_no_policy_response_leaks(payload, request_id=_TOTP_REQUEST_ID, sensitive_values=(sensitive_value,))
+
+    @pytest.mark.parametrize("value", (None, {"totp": "123456"}, "OtherRequestId0123456789AB"))
+    def test_rejects_unverified_request_id(self, value: object) -> None:
+        with pytest.raises(AssertionError, match="Response request ID changed"):
+            _assert_no_policy_response_leaks({"requestId": value}, request_id=_TOTP_REQUEST_ID)
+
+    def test_rejects_invalid_expected_request_id(self) -> None:
+        with pytest.raises(AssertionError, match="Invalid expected request ID"):
+            _assert_no_policy_response_leaks({"requestId": "totp: 123456"}, request_id="totp: 123456")
 
 
 class TestValidatePolicy:
@@ -926,12 +1000,14 @@ class TestDaemonMcpPolicyRequestSurface:
         assert payload["resolvedAt"] is not None
 
     def test_decision_response_contains_no_credentials(
-        self, store: GuardStore, env_flags: None, tmp_path: Path
+        self, store: GuardStore, env_flags: None, tmp_path: Path, opaque_request_id: str | None
     ) -> None:
         """VPC046: the decision endpoint never echoes approval-gate material."""
         from codex_plugin_scanner.guard.daemon import GuardDaemonServer
 
         request_id = self._stage_pending_request(store)
+        if opaque_request_id is not None:
+            assert request_id == opaque_request_id
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
         daemon.start()
         try:
@@ -950,19 +1026,17 @@ class TestDaemonMcpPolicyRequestSurface:
             daemon.stop()
 
         assert status == 200
-        serialized = json.dumps(payload, sort_keys=True)
-        for forbidden_key in ("password", "totp", "secret", "token", "credential", "passphrase"):
-            assert forbidden_key not in serialized.lower(), (
-                f"Decision response leaked credential-like key: {forbidden_key}"
-            )
+        _assert_no_policy_response_leaks(payload, request_id=request_id, sensitive_values=(token,))
 
     def test_get_response_contains_no_policy_yaml_or_credentials(
-        self, store: GuardStore, env_flags: None, tmp_path: Path
+        self, store: GuardStore, env_flags: None, tmp_path: Path, opaque_request_id: str | None
     ) -> None:
         """VPC045/046: GET never returns canonical YAML, plan JSON, or credentials."""
         from codex_plugin_scanner.guard.daemon import GuardDaemonServer
 
         request_id = self._stage_pending_request(store)
+        if opaque_request_id is not None:
+            assert request_id == opaque_request_id
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
         daemon.start()
         try:
@@ -979,9 +1053,4 @@ class TestDaemonMcpPolicyRequestSurface:
             daemon.stop()
 
         assert status == 200
-        serialized = json.dumps(payload, sort_keys=True)
-        assert "apiVersion:" not in serialized
-        assert "canonicalPolicyYaml" not in payload
-        assert "canonical_policy_yaml" not in payload
-        for forbidden_key in ("password", "totp", "secret", "credential", "passphrase"):
-            assert forbidden_key not in serialized.lower(), f"GET response leaked credential-like key: {forbidden_key}"
+        _assert_no_policy_response_leaks(payload, request_id=request_id, sensitive_values=(token,))

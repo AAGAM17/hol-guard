@@ -137,6 +137,8 @@ fn vitest_wrapper_and_resolved_script_require_the_same_protected_profile() {
             assert_eq!(result.decision, "deny", "{command}");
             let expected = if cfg!(target_os = "macos") {
                 "native_vitest_readonly_containment_required"
+            } else if command.starts_with("bun ") {
+                "native_package_review"
             } else {
                 "native_command_review_required"
             };

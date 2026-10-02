@@ -42,3 +42,18 @@ def test_malformed_tool_arguments_fail_as_assertions(value):
 def test_malformed_json_fails_as_an_assertion():
     with pytest.raises(AssertionError, match="malformed Pi event JSON"):
         decode_events('{"type":')
+
+
+def test_protected_admission_requires_the_exact_containment_route():
+    reason = "native_vitest_readonly_containment_required"
+    case = WorkflowCase("vitest", "bunx vitest run", protected_reason=reason)
+    result = {
+        "decision": "deny",
+        "policy_action": "sandbox-required",
+        "reason_code": reason,
+        "required_execution_profile": "vitest-readonly-v1",
+    }
+    assert_admission([case], [result])
+    for field, value in [("decision", "allow"), ("required_execution_profile", "wrong-profile")]:
+        with pytest.raises(AssertionError, match="vitest"):
+            assert_admission([case], [{**result, field: value}])

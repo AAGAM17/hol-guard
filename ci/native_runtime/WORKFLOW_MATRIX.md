@@ -14,6 +14,9 @@ test project must contain `tests/workflow.test.mjs`, `tests/zcode-multi.test.mjs
 and its already-installed local Vitest. This runner never installs dependencies,
 enables Codex, grants approvals, changes user policy, or mutates the test project.
 It creates a fresh disposable home, workspace and Guard state for each run.
+Live protected-test proofs (`--live-omp --test-project`) require macOS. All runs
+require symbolic-link creation privileges for the synthetic secret-alias case;
+on Windows, enable Developer Mode or use an account with that privilege.
 
 ## Mandatory Outcomes
 

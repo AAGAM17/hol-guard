@@ -28,7 +28,10 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
     (workspace / ".env").write_text("SYNTHETIC_ONLY=not-a-real-secret\n")
     (workspace / "unsafe-tests").mkdir()
     (workspace / "unsafe-tests/.env").write_text("SYNTHETIC_ONLY=not-a-real-secret\n")
-    (workspace / "unsafe-tests/alias.ts").symlink_to(workspace / ".env")
+    try:
+        (workspace / "unsafe-tests/alias.ts").symlink_to(workspace / ".env")
+    except OSError as error:
+        raise RuntimeError("workflow matrix requires permission to create symbolic links") from error
     file = shlex.quote(str(workspace / "src/one.ts"))
     directory = shlex.quote(str(workspace / "__tests__") + "/")
     outside = shlex.quote(str(home / "notes.txt"))

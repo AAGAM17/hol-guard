@@ -100,11 +100,19 @@ fn classify(original: &[String]) -> Capabilities {
         return match subcommand.as_str() {
             "token" => one("secret_remote"),
             "status"
-                if options::has_option(tail, "--show-token") || options::has_option(tail, "-t") =>
+                if options::has_option(tail, "--show-token")
+                    || tail.iter().any(|argument| {
+                        argument.starts_with('-')
+                            && !argument.starts_with("--")
+                            && argument[1..]
+                                .split('=')
+                                .next()
+                                .is_some_and(|flags| flags.contains('t'))
+                    }) =>
             {
                 one("secret_remote")
             }
-            "status" => one("read_remote"),
+            "status" => Some(vec!["read_local", "read_remote"]),
             "switch" if tail.len() == 1 && tail[0] == "--help" => one("read_local"),
             "login" | "logout" | "switch" | "refresh" | "setup-git" => one("write_local"),
             _ => one("unknown"),

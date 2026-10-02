@@ -122,6 +122,17 @@ def _run_guard_execute_contained_test_command(
 
     if guard_home is None or workspace is None or context is None or store is None:
         return 126
+
+    def execution_workspace(original: dict) -> Path:
+        if "cwd" not in original:
+            return workspace
+        try:
+            return Path(str(original["cwd"])).resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise RestrictedPytestError(
+                "guard_contained_test_rejected", f"Execution directory is unavailable: {error}",
+            ) from error
+
     request_validated = False
     try:
         payload = read_contained_test_request(
@@ -134,16 +145,13 @@ def _run_guard_execute_contained_test_command(
                 payload={**original, "guard_containment_receipt_only": True},
                 harness=str(getattr(args, "harness", "omp")), home_dir=context.home_dir,
                 guard_home=guard_home,
-                workspace=Path(str(original["cwd"])).resolve(strict=True) if "cwd" in original else workspace,
+                workspace=execution_workspace(original),
                 store=store,
             ),
         )
     except RestrictedPytestError as error:
         print(f"{error.reason_code}: {error}", file=sys.stderr)
         return error.exit_code
-    except (OSError, RuntimeError):
-        print("guard_contained_test_rejected: Execution directory is unavailable.", file=sys.stderr)
-        return 126
     finally:
         if request_validated and getattr(args, "harness", "omp") == "zcode":
             with suppress(OSError):

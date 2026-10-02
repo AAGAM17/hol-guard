@@ -8,7 +8,8 @@ fn explicit_github_read_permission_deny_still_wins() {
     use guard_contracts::NativeCommandControlBindingV1;
 
     let program = packaged_command_program().unwrap();
-    let mut binding: NativeCommandControlBindingV1 = serde_json::from_value(json!({
+    for permission in ["read-local", "read-remote"] {
+        let mut binding: NativeCommandControlBindingV1 = serde_json::from_value(json!({
         "schema": "guard.native-command-control-binding.v1",
         "program_digest": program.program_digest, "catalog_digest": program.catalog_digest,
         "trust_digest": program.trust_digest, "health": "protected",
@@ -16,27 +17,31 @@ fn explicit_github_read_permission_deny_still_wins() {
             "schema_version": "1.0.0", "kind": "local-admin", "catalog_digest": program.catalog_digest,
             "global_lockdown": false, "controls": [{
                 "target_kind": "permission",
-                "target_id": "command.github.permission.read-remote", "state": "disabled"
+                "target_id": format!("command.github.permission.{permission}"), "state": "disabled"
             }]
         }]
     })).unwrap();
-    binding.effective_digest = binding.compute_effective_digest().unwrap();
-    let controls = CompiledNativeCommandControls::new(&binding).unwrap();
-    for command in [
-        "gh api repos/owner/repo/compare/base...main",
-        "gh auth status",
-    ] {
-        let result = evaluate_pre_tool_envelope_with_context(
-            "zcode",
-            "PreToolUse",
-            &json!({"tool_name":"bash","tool_input":{"command":command}}),
-            Some(&controls),
-            None,
-            None,
-            None,
-        );
-        assert_eq!(result.minimum_action, "block");
-        assert_eq!(result.decision, "deny");
+        binding.effective_digest = binding.compute_effective_digest().unwrap();
+        let controls = CompiledNativeCommandControls::new(&binding).unwrap();
+        for command in [
+            "gh api repos/owner/repo/compare/base...main",
+            "gh auth status",
+        ] {
+            if permission == "read-local" && command != "gh auth status" {
+                continue;
+            }
+            let result = evaluate_pre_tool_envelope_with_context(
+                "zcode",
+                "PreToolUse",
+                &json!({"tool_name":"bash","tool_input":{"command":command}}),
+                Some(&controls),
+                None,
+                None,
+                None,
+            );
+            assert_eq!(result.minimum_action, "block");
+            assert_eq!(result.decision, "deny");
+        }
     }
 }
 
@@ -53,6 +58,8 @@ fn github_read_capabilities_have_a_benign_floor_but_mutations_do_not() {
             ("gh auth status", true),
             ("gh auth token", false),
             ("gh auth status --show-token", false),
+            ("gh auth status -at", false),
+            ("gh auth status -ta", false),
             ("gh pr view 1 --web", false),
             ("gh pr view 1 --web=true", false),
             ("gh pr view 1 -w", false),

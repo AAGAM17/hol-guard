@@ -11,6 +11,7 @@ import json
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -26,7 +27,10 @@ def assert_admission(cases: list[WorkflowCase], results: list[dict[str, object]]
         allowed = result.get("decision") == "allow" and result.get("policy_action") in {"allow", "warn"}
         if case.protected_reason:
             allowed = (
-                result.get("reason_code") == case.protected_reason and result.get("policy_action") == "sandbox-required"
+                result.get("decision") == "deny"
+                and result.get("required_execution_profile") == "vitest-readonly-v1"
+                and result.get("reason_code") == case.protected_reason
+                and result.get("policy_action") == "sandbox-required"
             )
         if allowed != case.quiet:
             failures.append(f"{case.name}: expected quiet={case.quiet}, reason={result.get('reason_code')}")
@@ -174,6 +178,8 @@ def main() -> int:
     parser.add_argument("--test-project", type=Path, help="Existing isolated Vitest project; no dependencies installed")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.live_omp and args.test_project and sys.platform != "darwin":
+        parser.error("live protected-test proofs require the macOS containment adapter")
     args.output.mkdir(mode=0o700, parents=True, exist_ok=True)
     _, identity, capabilities = probe._probe_native_identity()
     if args.expected_source_sha and capabilities.build_sha != args.expected_source_sha:
@@ -277,6 +283,7 @@ def main() -> int:
                         output=args.output / "tests",
                     )
                 cases.extend(protected)
+                results.extend(protected_results)
                 # The reported --cwd regression crossed hook and test-project scopes.
                 # Same-directory --cwd alone cannot establish this invariant.
                 cross = [
@@ -317,6 +324,19 @@ def main() -> int:
                         output=args.output / "cross-project",
                     )
                 cases.extend(cross)
+                results.extend(cross_results)
+            evidence = [
+                {
+                    "case": case.name,
+                    "quiet": case.quiet,
+                    "decision": result.get("decision"),
+                    "policy_action": result.get("policy_action"),
+                    "reason": result.get("reason_code"),
+                    "required_execution_profile": result.get("required_execution_profile"),
+                }
+                for case, result in zip(cases, results, strict=True)
+            ]
+            (args.output / "admission.json").write_text(json.dumps(evidence, indent=2))
             summary = {
                 "pass": True,
                 "mandatory_cases": len(cases),

@@ -49,7 +49,17 @@ def _save_rule(store, request, action):
 @pytest.mark.parametrize("grant_kind", ["single", "local-once", "bulk"])
 @pytest.mark.parametrize(
     "mutation",
-    ["none", "args", "catalog", "config", "deny-after-claim", "corrupt", "final-catalog", "postclaim-config"],
+    [
+        "none",
+        "older-allow",
+        "args",
+        "catalog",
+        "config",
+        "deny-after-claim",
+        "corrupt",
+        "final-catalog",
+        "postclaim-config",
+    ],
 )
 def test_fresh_opencode_reapproval_runs_exactly_once(
     tmp_path: Path,
@@ -98,6 +108,8 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     assert first["responses"][2]["error"]["data"]["guardPolicyAction"] == "require-reapproval"
     assert not marker.exists()
     request = store.list_approval_requests(limit=1)[0]
+    if mutation == "older-allow":
+        _save_rule(store, request, "allow")
     if grant_kind == "single":
         apply_approval_resolution(
             store=store,
@@ -194,7 +206,7 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
         assert not marker.exists()
         return
     second = proxy.run_session(messages)
-    if mutation != "none" or grant_kind == "retained":
+    if mutation not in {"none", "older-allow"} or grant_kind == "retained":
         assert not marker.exists(), second["events"][2]
         assert "error" in second["responses"][2]
         if mutation in {"deny-after-claim", "final-catalog", "postclaim-config"}:
@@ -220,7 +232,8 @@ def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, inst
 
 
 @pytest.mark.parametrize("grant_kind", ["single", "local-once", "bulk"])
-def test_direct_postclaim_revalidation(tmp_path, monkeypatch, install_fake_system_keyring, grant_kind):
+@pytest.mark.parametrize("mutation", ["none", "older-allow"])
+def test_direct_postclaim_revalidation(tmp_path, monkeypatch, install_fake_system_keyring, grant_kind, mutation):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, grant_kind, "none", direct=True
+        tmp_path, monkeypatch, install_fake_system_keyring, grant_kind, mutation, direct=True
     )

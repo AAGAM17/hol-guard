@@ -27,6 +27,7 @@ mod native_hook_receipt;
 mod native_runtime_admission;
 mod native_runtime_resilience;
 mod oneshot;
+mod github_workflow_runtime_authorization;
 mod workflow_capability_store;
 mod policy_enforcement;
 mod policy_store;

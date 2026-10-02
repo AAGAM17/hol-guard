@@ -155,13 +155,24 @@ class OpenClawHarnessAdapter(HarnessAdapter):
         if cloud_identity is not None:
             manifest["cloud_agent_identity"] = cloud_identity
         files = list(prepared_shim.files)
-        for path, snapshot, payload in zip(normalized, before, (
-            overlay_payload(detection), pretool_payload(context=context), manifest,
-        ), strict=True):
+        for path, snapshot, payload in zip(
+            normalized,
+            before,
+            (
+                overlay_payload(detection),
+                pretool_payload(context=context),
+                manifest,
+            ),
+            strict=True,
+        ):
             mode = path.stat().st_mode & 0o777 if snapshot is not None else 0o600
             change = TransitionFile(
-                path.resolve(strict=False), snapshot, (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
-                before_mode=mode, after_mode=0o600, no_follow=True,
+                path.resolve(strict=False),
+                snapshot,
+                (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
+                before_mode=mode,
+                after_mode=0o600,
+                no_follow=True,
             )
             change.payload()
             files.append(change)

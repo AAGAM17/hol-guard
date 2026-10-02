@@ -65,7 +65,9 @@ def test_client_frame_write_skips_selector_on_windows_pipes(
     stdin = PipeStdin()
     monkeypatch.setattr(transport.os, "name", "nt")
     assert transport.write_frame(
-        stdin, b"frame", deadline_monotonic=time.monotonic() + 1,
+        stdin,
+        b"frame",
+        deadline_monotonic=time.monotonic() + 1,
         launch_worker=lambda worker: worker.start() or True,
     )
     assert stdin.written == b"frame"
@@ -103,7 +105,9 @@ def test_client_frame_write_is_bounded_when_pipe_writer_blocks() -> None:
     started = time.monotonic()
     try:
         assert not _PersistentNativeClient._write_frame(  # pyright: ignore[reportPrivateUsage]
-            stdin, b"frame", deadline_monotonic=time.monotonic() + 0.05,
+            stdin,
+            b"frame",
+            deadline_monotonic=time.monotonic() + 0.05,
             launch_worker=launch_worker,
         )
         assert stdin.started.is_set()

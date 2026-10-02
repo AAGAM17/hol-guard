@@ -74,7 +74,13 @@ def load_hook_authority_receipt(home: Path, config: Path) -> AuthenticatedHookAu
     except (ValueError, UnicodeDecodeError, RecursionError) as exc:
         raise _error("receipt_invalid") from exc
     if not isinstance(payload, dict) or set(payload) != {
-        "schema", "guard_home", "config_path", "installation_id", "config_sha256", "manifest", "authentication",
+        "schema",
+        "guard_home",
+        "config_path",
+        "installation_id",
+        "config_sha256",
+        "manifest",
+        "authentication",
     }:
         raise _error("receipt_invalid")
     authentication = payload.pop("authentication")
@@ -88,8 +94,13 @@ def load_hook_authority_receipt(home: Path, config: Path) -> AuthenticatedHookAu
         or payload["installation_id"] != secret.installation_id
         or not isinstance(authentication, dict)
         or verify_local_authority_payload(
-            payload, authentication, key=secret.key, key_id=secret.key_id, purpose=_RECEIPT_PURPOSE,
-        ).status != "valid"
+            payload,
+            authentication,
+            key=secret.key,
+            key_id=secret.key_id,
+            purpose=_RECEIPT_PURPOSE,
+        ).status
+        != "valid"
     ):
         raise _error("receipt_authentication_invalid")
     manifest_bytes = _decode(payload["manifest"])
@@ -116,9 +127,10 @@ def load_hook_authority_receipt(home: Path, config: Path) -> AuthenticatedHookAu
     if config_bytes is None or payload["config_sha256"] != hashlib.sha256(config_bytes).hexdigest():
         raise _error("receipt_generation_changed")
     check_hook_validation_deadline()
-    if read_private_regular_bytes(path, max_bytes=_MAX_SNAPSHOT, require_private_parent=True) != raw or _snapshot(
-        config
-    ) != config_bytes:
+    if (
+        read_private_regular_bytes(path, max_bytes=_MAX_SNAPSHOT, require_private_parent=True) != raw
+        or _snapshot(config) != config_bytes
+    ):
         raise _error("receipt_generation_changed")
     if load_hook_secret(home) != secret:
         raise _error("receipt_generation_changed")
@@ -138,8 +150,11 @@ def build_hook_authority_receipt(home: Path, config: Path, *, config_bytes: byte
         "manifest": _encode(manifest_bytes),
     }
     payload["authentication"] = sign_local_authority_payload(
-        payload, key=secret.key, key_id=secret.key_id,
-        purpose=_RECEIPT_PURPOSE, signed_at=hashlib.sha256(manifest_bytes).hexdigest(),
+        payload,
+        key=secret.key,
+        key_id=secret.key_id,
+        purpose=_RECEIPT_PURPOSE,
+        signed_at=hashlib.sha256(manifest_bytes).hexdigest(),
     )
     encoded = canonical_manifest_bytes(payload) + b"\n"
     if len(encoded) > _MAX_SNAPSHOT:
@@ -297,8 +312,10 @@ def _validate_repair_record(payload: dict[str, object]) -> None:
         or not isinstance(payload.get("after_receipt"), str)
         or payload.get("before_config") != payload.get("after_config")
         or payload.get("before_receipt") != payload.get("after_receipt")
-        or not isinstance(publication_time, (float, int)) or isinstance(publication_time, bool)
-        or not math.isfinite(publication_time) or publication_time <= 0
+        or not isinstance(publication_time, (float, int))
+        or isinstance(publication_time, bool)
+        or not math.isfinite(publication_time)
+        or publication_time <= 0
     ):
         raise _error("repair_record_invalid")
     if payload.get("phase") == "committed":
@@ -318,7 +335,9 @@ def _repair_proof_matches(payload: dict[str, object], proof: dict[str, object]) 
     generation = "codex-authority-repair-" + hashlib.sha256(canonical_manifest_bytes(plan)).hexdigest()
     observed, published = proof.get("observed_monotonic"), payload.get("repair_publication_monotonic")
     return (
-        config is not None and manifest is not None and isinstance(evidence, dict)
+        config is not None
+        and manifest is not None
+        and isinstance(evidence, dict)
         and proof.get("schema") == "hol-guard.native-protection-admission.v1"
         and proof.get("operation_id") == plan.get("operation_id")
         and proof.get("generation") == generation
@@ -327,27 +346,42 @@ def _repair_proof_matches(payload: dict[str, object], proof: dict[str, object]) 
         and evidence.get("harness") == "codex"
         and evidence.get("config_sha256") == hashlib.sha256(config).hexdigest()
         and evidence.get("manifest_sha256") == hashlib.sha256(manifest).hexdigest()
-        and isinstance(observed, (float, int)) and not isinstance(observed, bool) and math.isfinite(observed)
-        and isinstance(published, (float, int)) and not isinstance(published, bool) and math.isfinite(published)
+        and isinstance(observed, (float, int))
+        and not isinstance(observed, bool)
+        and math.isfinite(observed)
+        and isinstance(published, (float, int))
+        and not isinstance(published, bool)
+        and math.isfinite(published)
         and observed >= published
     )
 
 
 def assert_owned_hook_repair_publication(
-    home: Path, config: Path, *, repair_plan: dict[str, object],
-    config_bytes: bytes, manifest_bytes: bytes, receipt_bytes: bytes,
+    home: Path,
+    config: Path,
+    *,
+    repair_plan: dict[str, object],
+    config_bytes: bytes,
+    manifest_bytes: bytes,
+    receipt_bytes: bytes,
     publication_monotonic: float,
 ) -> None:
     """Accept only the authenticated, exact provisional record owned now."""
     owner = require_codex_install_owner(home)
     payload = _load_record(home)
     expected = {
-        "operation_id": owner.operation_id, "config_path": canonical_path(config),
-        "repair_plan": repair_plan, "phase": "prepared", "key_created": False,
+        "operation_id": owner.operation_id,
+        "config_path": canonical_path(config),
+        "repair_plan": repair_plan,
+        "phase": "prepared",
+        "key_created": False,
         "repair_publication_monotonic": publication_monotonic,
-        "before_config": _encode(config_bytes), "after_config": _encode(config_bytes),
-        "before_manifest": None, "after_manifest": _encode(manifest_bytes),
-        "before_receipt": _encode(receipt_bytes), "after_receipt": _encode(receipt_bytes),
+        "before_config": _encode(config_bytes),
+        "after_config": _encode(config_bytes),
+        "before_manifest": None,
+        "after_manifest": _encode(manifest_bytes),
+        "before_receipt": _encode(receipt_bytes),
+        "after_receipt": _encode(receipt_bytes),
     }
     if any(payload.get(key) != value for key, value in expected.items()):
         raise _error("repair_owner_mismatch")
@@ -445,9 +479,7 @@ def mark_owned_hook_publication_conflict(home: Path, config: Path) -> None:
     atomic_write_bytes(_record_path(home), canonical_manifest_bytes(payload) + b"\n", mode=0o600, private=True)
 
 
-def record_owned_hook_config_publication(
-    home: Path, config: Path, identity: tuple[int, int, int, int, int]
-) -> None:
+def record_owned_hook_config_publication(home: Path, config: Path, identity: tuple[int, int, int, int, int]) -> None:
     """Make the observed published inode durable before accepting readback.
 
     A crash after rename but before this record remains recovery-required;
@@ -526,8 +558,7 @@ def recover_hook_publication(home: Path) -> bool:
     if "after_receipt" in payload or "before_receipt" in payload:
         if "after_receipt" not in payload or "before_receipt" not in payload:
             raise _error("record_invalid")
-        changes.append((receipt,
-                        _decode(payload["before_receipt"]), _decode(payload["after_receipt"])))
+        changes.append((receipt, _decode(payload["before_receipt"]), _decode(payload["after_receipt"])))
     # Validate both before modifying either: a foreign edit or newer generation
     # must survive, even if the other file still matches this transaction.
     committed = payload["phase"] == "committed"
@@ -568,9 +599,9 @@ def commit_hook_publication(home: Path) -> None:
     if "repair_plan" in payload:
         raise _error("repair_requires_native_verification")
     config = Path(str(payload["config_path"]))
-    if _snapshot(config) != _decode(payload["after_config"]) or _snapshot(
-        hook_manifest_path(home, config)
-    ) != _decode(payload["after_manifest"]):
+    if _snapshot(config) != _decode(payload["after_config"]) or _snapshot(hook_manifest_path(home, config)) != _decode(
+        payload["after_manifest"]
+    ):
         raise _error("generation_changed")
     if "after_receipt" in payload and _snapshot(hook_authority_receipt_path(home, config)) != _decode(
         payload["after_receipt"]
@@ -580,7 +611,10 @@ def commit_hook_publication(home: Path) -> None:
 
 
 def _commit_verified_hook_repair_publication(
-    pending: PendingCodexHookRepair, *, proof: object, started_monotonic: float,
+    pending: PendingCodexHookRepair,
+    *,
+    proof: object,
+    started_monotonic: float,
 ) -> None:
     """Only an exact live authorization and sealed configured-hook proof commit."""
     import time
@@ -592,10 +626,15 @@ def _commit_verified_hook_repair_publication(
     payload = _load_record(plan.guard_home)
     observation = verified_admission_payload(proof)
     observed = observation.get("observed_monotonic")
-    if (type(started_monotonic) not in (float, int) or not math.isfinite(started_monotonic)
-            or not isinstance(observed, (float, int)) or isinstance(observed, bool) or not math.isfinite(observed)
-            or not pending.publication_monotonic <= started_monotonic <= observed <= time.monotonic()
-            or not _repair_proof_matches(payload, observation)):
+    if (
+        type(started_monotonic) not in (float, int)
+        or not math.isfinite(started_monotonic)
+        or not isinstance(observed, (float, int))
+        or isinstance(observed, bool)
+        or not math.isfinite(observed)
+        or not pending.publication_monotonic <= started_monotonic <= observed <= time.monotonic()
+        or not _repair_proof_matches(payload, observation)
+    ):
         raise _error("repair_native_verification_invalid")
     pending.compare("after")
     payload["native_verification"] = observation

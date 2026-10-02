@@ -45,9 +45,14 @@ def _context(home: Path, guard_home: Path) -> MagicMock:
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX shell profiles")
-@pytest.mark.parametrize("shell,relative", [
-    ("zsh", ".zshrc"), ("bash", ".bashrc"), ("fish", ".config/fish/config.fish"),
-])
+@pytest.mark.parametrize(
+    "shell,relative",
+    [
+        ("zsh", ".zshrc"),
+        ("bash", ".bashrc"),
+        ("fish", ".config/fish/config.fish"),
+    ],
+)
 def test_prepared_shell_profile_matches_normal_renderer_without_writes(tmp_path, monkeypatch, shell, relative):
     from codex_plugin_scanner.guard import shims
 

@@ -115,36 +115,60 @@ def _reviewable_prior_inverse(home: Path, record: dict[str, object]) -> str | No
     restored, phase = marker.get("restored"), marker.get("phase")
     published, owner_pid = marker.get("publication_monotonic"), marker.get("owner_pid")
     manifest, receipt = _record_authentication_targets(home, record)
-    targets = ((Path(str(record["config_path"])), "before_config"),
-               (manifest, "before_manifest"), (receipt, "before_receipt"))
-    if (marker.get("schema") != "hol-guard.codex-explicit-publication-inverse.v1"
-            or not isinstance(phase, str) or phase not in {"restoring", "restored", "verified"}
-            or prior.get("schema") != "hol-guard.codex-publication-inverse-plan.v1"
-            or prior.get("action") != PUBLICATION_INVERSE_ACTION
-            or prior.get("guard_home") != str(home) or prior.get("config_path") != record["config_path"]
-            or prior.get("interrupted_operation_id") != record["operation_id"]
-            or marker.get("subject") != f"codex-publication-inverse:{operation}:"
-            + hashlib.sha256(canonical_manifest_bytes(prior)).hexdigest()
-            or type(owner_pid) is not int or owner_pid <= 0
-            or not isinstance(marker.get("owner_operation_id"), str)
-            or not marker["owner_operation_id"]
-            or not isinstance(published, (float, int)) or isinstance(published, bool)
-            or not math.isfinite(published) or published <= 0
-            or not isinstance(files, list) or len(files) != 3
-            or not isinstance(identities, list) or len(identities) != 3
-            or not isinstance(restored, list) or any(type(index) is not int for index in restored)
-            or restored not in ([], [1], [1, 2], [1, 2, 0])
-            or (phase in {"restored", "verified"} and restored != [1, 2, 0])
-            or (phase == "verified" and not isinstance(marker.get("native_verification"), dict))):
+    targets = (
+        (Path(str(record["config_path"])), "before_config"),
+        (manifest, "before_manifest"),
+        (receipt, "before_receipt"),
+    )
+    if (
+        marker.get("schema") != "hol-guard.codex-explicit-publication-inverse.v1"
+        or not isinstance(phase, str)
+        or phase not in {"restoring", "restored", "verified"}
+        or prior.get("schema") != "hol-guard.codex-publication-inverse-plan.v1"
+        or prior.get("action") != PUBLICATION_INVERSE_ACTION
+        or prior.get("guard_home") != str(home)
+        or prior.get("config_path") != record["config_path"]
+        or prior.get("interrupted_operation_id") != record["operation_id"]
+        or marker.get("subject")
+        != f"codex-publication-inverse:{operation}:" + hashlib.sha256(canonical_manifest_bytes(prior)).hexdigest()
+        or type(owner_pid) is not int
+        or owner_pid <= 0
+        or not isinstance(marker.get("owner_operation_id"), str)
+        or not marker["owner_operation_id"]
+        or not isinstance(published, (float, int))
+        or isinstance(published, bool)
+        or not math.isfinite(published)
+        or published <= 0
+        or not isinstance(files, list)
+        or len(files) != 3
+        or not isinstance(identities, list)
+        or len(identities) != 3
+        or not isinstance(restored, list)
+        or any(type(index) is not int for index in restored)
+        or restored not in ([], [1], [1, 2], [1, 2, 0])
+        or (phase in {"restored", "verified"} and restored != [1, 2, 0])
+        or (phase == "verified" and not isinstance(marker.get("native_verification"), dict))
+    ):
         raise TransitionError("publication_inverse_prior_record_invalid")
     for change, identity, (target, key) in zip(files, identities, targets, strict=True):
-        if (not isinstance(change, dict) or change.get("path") != str(target)
-                or change.get("kind") != "binding" or change.get("no_follow") is not True
-                or type(change.get("after_mode")) is not int or change.get("after_mode") != 0o600
-                or "expected_digest" in change
-                or _decode(change.get("after")) != _decode(record.get(key))
-                or (identity is not None and (not isinstance(identity, list) or len(identity) != 5
-                                             or any(type(value) is not int for value in identity)))):
+        if (
+            not isinstance(change, dict)
+            or change.get("path") != str(target)
+            or change.get("kind") != "binding"
+            or change.get("no_follow") is not True
+            or type(change.get("after_mode")) is not int
+            or change.get("after_mode") != 0o600
+            or "expected_digest" in change
+            or _decode(change.get("after")) != _decode(record.get(key))
+            or (
+                identity is not None
+                and (
+                    not isinstance(identity, list)
+                    or len(identity) != 5
+                    or any(type(value) is not int for value in identity)
+                )
+            )
+        ):
             raise TransitionError("publication_inverse_prior_record_invalid")
     return operation
 
@@ -171,18 +195,25 @@ class PreparedCodexPublicationInverse:
         return {
             "schema": "hol-guard.codex-publication-inverse-plan.v1",
             "action": PUBLICATION_INVERSE_ACTION,
-            "guard_home": str(self.guard_home), "config_path": str(self.config_path),
-            "operation_id": self.operation_id, "interrupted_operation_id": self.interrupted_operation_id,
+            "guard_home": str(self.guard_home),
+            "config_path": str(self.config_path),
+            "operation_id": self.operation_id,
+            "interrupted_operation_id": self.interrupted_operation_id,
             "resumed_inverse_operation_id": self.resumed_inverse_operation_id,
-            "journal_sha256": self.journal_sha256, "journal_identity": list(self.journal_identity),
+            "journal_sha256": self.journal_sha256,
+            "journal_identity": list(self.journal_identity),
             "files": [change.payload() for change in self.changes],
             "file_identities": [
                 list(identity) if identity is not None else None for identity in self.change_identities
             ],
             "dependencies": [dependency.payload() for dependency in self.dependencies],
-            "native_runtime": None if self.native_runtime is None else {
-                "path": str(self.native_runtime.path), "size": self.native_runtime.size,
-                "mtime_ns": self.native_runtime.mtime_ns, "sha256": self.native_runtime.sha256,
+            "native_runtime": None
+            if self.native_runtime is None
+            else {
+                "path": str(self.native_runtime.path),
+                "size": self.native_runtime.size,
+                "mtime_ns": self.native_runtime.mtime_ns,
+                "sha256": self.native_runtime.sha256,
             },
             "verification_workspace": None if self.verification_workspace is None else str(self.verification_workspace),
         }
@@ -194,17 +225,22 @@ class PreparedCodexPublicationInverse:
     def summary(self) -> dict[str, object]:
         """Expose target/digest changes without config bytes or authentication."""
         return {
-            "action": PUBLICATION_INVERSE_ACTION, "operation_id": self.operation_id,
+            "action": PUBLICATION_INVERSE_ACTION,
+            "operation_id": self.operation_id,
             "interrupted_operation_id": self.interrupted_operation_id,
             "resumed_inverse_operation_id": self.resumed_inverse_operation_id,
             "journal_sha256": self.journal_sha256,
             "files": [
-                {"path": str(change.path),
-                 "before_sha256": None if change.before is None else hashlib.sha256(change.before).hexdigest(),
-                 "after_sha256": None if change.after is None else hashlib.sha256(change.after).hexdigest()}
+                {
+                    "path": str(change.path),
+                    "before_sha256": None if change.before is None else hashlib.sha256(change.before).hexdigest(),
+                    "after_sha256": None if change.after is None else hashlib.sha256(change.after).hexdigest(),
+                }
                 for change in self.changes
             ],
-            "dependency_count": len(self.dependencies), "authorized": False, "verified": False,
+            "dependency_count": len(self.dependencies),
+            "authorized": False,
+            "verified": False,
         }
 
     def compare_before(self) -> None:
@@ -212,27 +248,42 @@ class PreparedCodexPublicationInverse:
         assert_transition_mutation_allowed(self.guard_home)
         check_hook_validation_deadline()
         journal = _record_path(self.guard_home)
-        if (rollback_file_identity(journal) != self.journal_identity
-                or hashlib.sha256(_journal_bytes(journal)).hexdigest() != self.journal_sha256
-                or rollback_file_identity(journal) != self.journal_identity):
+        if (
+            rollback_file_identity(journal) != self.journal_identity
+            or hashlib.sha256(_journal_bytes(journal)).hexdigest() != self.journal_sha256
+            or rollback_file_identity(journal) != self.journal_identity
+        ):
             raise TransitionError("publication_inverse_journal_changed")
         record = _load_record(self.guard_home, live_config_conflict=True)
         manifest, receipt = _record_authentication_targets(self.guard_home, record)
         targets = ((self.config_path, "before_config"), (manifest, "before_manifest"), (receipt, "before_receipt"))
-        if (record["phase"] not in {"prepared", "config_conflict"} or "repair_plan" in record
-                or _reviewable_prior_inverse(self.guard_home, record) != self.resumed_inverse_operation_id
-                or record["config_path"] != os.path.abspath(self.config_path)
-                or record["operation_id"] != self.interrupted_operation_id
-                or len(self.changes) != 3 or len(self.change_identities) != 3
-                or any(change.path != target or change.after != _decode(record.get(key))
-                       or change.after is None or not change.no_follow or change.after_mode != 0o600
-                       or change.kind != "binding" or change.expected_digest is not None
-                       for change, (target, key) in zip(self.changes, targets, strict=True))):
+        if (
+            record["phase"] not in {"prepared", "config_conflict"}
+            or "repair_plan" in record
+            or _reviewable_prior_inverse(self.guard_home, record) != self.resumed_inverse_operation_id
+            or record["config_path"] != os.path.abspath(self.config_path)
+            or record["operation_id"] != self.interrupted_operation_id
+            or len(self.changes) != 3
+            or len(self.change_identities) != 3
+            or any(
+                change.path != target
+                or change.after != _decode(record.get(key))
+                or change.after is None
+                or not change.no_follow
+                or change.after_mode != 0o600
+                or change.kind != "binding"
+                or change.expected_digest is not None
+                for change, (target, key) in zip(self.changes, targets, strict=True)
+            )
+        ):
             raise TransitionError("publication_inverse_plan_invalid")
         for change, identity in zip(self.changes, self.change_identities, strict=True):
             check_hook_validation_deadline()
-            if (rollback_file_identity(change.path) != identity or _snapshot(change.path) != change.before
-                    or rollback_file_identity(change.path) != identity):
+            if (
+                rollback_file_identity(change.path) != identity
+                or _snapshot(change.path) != change.before
+                or rollback_file_identity(change.path) != identity
+            ):
                 raise TransitionError("publication_inverse_generation_changed")
         predecessor = _decode(record.get("before_manifest"))
         assert predecessor is not None
@@ -248,7 +299,9 @@ class PreparedCodexPublicationInverse:
 
 
 def _with_native_dependency(
-    dependencies: tuple[TransitionFile, ...], native: NativeRuntimeIdentity | None, workspace: Path | None,
+    dependencies: tuple[TransitionFile, ...],
+    native: NativeRuntimeIdentity | None,
+    workspace: Path | None,
 ) -> tuple[TransitionFile, ...]:
     deadline = active_hook_validation_deadline()
     with inverse_recovery_budget(deadline) if deadline is not None else nullcontext():
@@ -256,21 +309,38 @@ def _with_native_dependency(
 
 
 def _capture_native_dependency(
-    dependencies: tuple[TransitionFile, ...], native: NativeRuntimeIdentity | None, workspace: Path | None,
+    dependencies: tuple[TransitionFile, ...],
+    native: NativeRuntimeIdentity | None,
+    workspace: Path | None,
 ) -> tuple[TransitionFile, ...]:
-    if (native is None or workspace is None or not workspace.is_absolute()
-            or workspace.resolve(strict=False) != workspace or not workspace.is_dir()
-            or not native.path.is_absolute() or native.path.resolve(strict=False) != native.path
-            or type(native.size) is not int or native.size <= 0 or type(native.mtime_ns) is not int
-            or len(native.sha256) != 64 or any(char not in "0123456789abcdef" for char in native.sha256)):
+    if (
+        native is None
+        or workspace is None
+        or not workspace.is_absolute()
+        or workspace.resolve(strict=False) != workspace
+        or not workspace.is_dir()
+        or not native.path.is_absolute()
+        or native.path.resolve(strict=False) != native.path
+        or type(native.size) is not int
+        or native.size <= 0
+        or type(native.mtime_ns) is not int
+        or len(native.sha256) != 64
+        or any(char not in "0123456789abcdef" for char in native.sha256)
+    ):
         raise TransitionError("publication_inverse_native_binding_invalid")
     metadata = validate_regular_file(native.path, role="artifact", executable_required=True)
     if metadata.st_mtime_ns != native.mtime_ns or metadata.st_size != native.size:
         raise TransitionError("native_runtime_generation_changed")
-    item = TransitionFile.artifact_dependency({
-        "path": str(native.path), "size": native.size, "sha256": native.sha256,
-        "mode": metadata.st_mode & 0o777, "owner_uid": metadata.st_uid, "role": "artifact",
-    })
+    item = TransitionFile.artifact_dependency(
+        {
+            "path": str(native.path),
+            "size": native.size,
+            "sha256": native.sha256,
+            "mode": metadata.st_mode & 0o777,
+            "owner_uid": metadata.st_uid,
+            "role": "artifact",
+        }
+    )
     merged = {value.path: value for value in dependencies}
     previous = merged.get(item.path)
     merged[item.path] = item if previous is None else merge_transition_dependency(previous, item)
@@ -278,8 +348,11 @@ def _capture_native_dependency(
 
 
 def bind_codex_publication_inverse_verification(
-    plan: PreparedCodexPublicationInverse, *, expected_runtime: NativeRuntimeIdentity,
-    workspace: Path, deadline_monotonic: float,
+    plan: PreparedCodexPublicationInverse,
+    *,
+    expected_runtime: NativeRuntimeIdentity,
+    workspace: Path,
+    deadline_monotonic: float,
 ) -> PreparedCodexPublicationInverse:
     """Pin comparison inputs before approval; never produce native admission."""
     if plan.native_runtime is not None or plan.verification_workspace is not None:
@@ -287,8 +360,9 @@ def bind_codex_publication_inverse_verification(
     with inverse_recovery_budget(deadline_monotonic), hook_validation_deadline(deadline_monotonic):
         plan.compare_before()
         dependencies = _with_native_dependency(plan.dependencies, expected_runtime, workspace)
-        bound = replace(plan, dependencies=dependencies, native_runtime=expected_runtime,
-                        verification_workspace=workspace)
+        bound = replace(
+            plan, dependencies=dependencies, native_runtime=expected_runtime, verification_workspace=workspace
+        )
         bound.compare_before()
     return bound
 
@@ -347,8 +421,15 @@ def prepare_authenticated_hook_publication_inverse(spec: CodexHookManifestSpec) 
     if _journal_bytes(journal) != raw or rollback_file_identity(journal) != journal_identity:
         raise TransitionError("publication_inverse_journal_changed")
     prepared = PreparedCodexPublicationInverse(
-        home, config, str(uuid.uuid4()), str(record["operation_id"]), hashlib.sha256(raw).hexdigest(),
-        journal_identity, tuple(changes), tuple(identities), dependencies,
+        home,
+        config,
+        str(uuid.uuid4()),
+        str(record["operation_id"]),
+        hashlib.sha256(raw).hexdigest(),
+        journal_identity,
+        tuple(changes),
+        tuple(identities),
+        dependencies,
         resumed_inverse_operation_id=resumed_operation,
     )
     prepared.compare_before()

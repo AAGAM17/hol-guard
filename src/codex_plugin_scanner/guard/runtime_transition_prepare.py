@@ -57,7 +57,11 @@ def _check_deadline(deadline: float) -> None:
 
 
 def _pin_executable(
-    path: Path, *, deadline: float, expected: Mapping[str, object] | None = None, expected_sha256: str | None = None,
+    path: Path,
+    *,
+    deadline: float,
+    expected: Mapping[str, object] | None = None,
+    expected_sha256: str | None = None,
 ) -> TransitionFile:
     _check_deadline(deadline)
     before = validate_regular_file(path, role="artifact", executable_required=True)
@@ -67,8 +71,15 @@ def _pin_executable(
         opened = os.fstat(descriptor)
 
         def fingerprint(value: os.stat_result) -> tuple[int, ...]:
-            return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_size,
-                    value.st_mtime_ns, value.st_ctime_ns)
+            return (
+                value.st_dev,
+                value.st_ino,
+                value.st_mode,
+                value.st_uid,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
 
         if fingerprint(before) != fingerprint(opened):
             raise TransitionError("generation_changed")
@@ -84,19 +95,31 @@ def _pin_executable(
             if count > opened.st_size:
                 raise TransitionError("generation_changed")
             digest.update(chunk)
-        if (count != opened.st_size or fingerprint(opened) != fingerprint(os.fstat(descriptor))
-                or fingerprint(opened) != fingerprint(path.lstat())):
+        if (
+            count != opened.st_size
+            or fingerprint(opened) != fingerprint(os.fstat(descriptor))
+            or fingerprint(opened) != fingerprint(path.lstat())
+        ):
             raise TransitionError("generation_changed")
         sha256 = digest.hexdigest()
         if expected_sha256 is not None and sha256 != expected_sha256:
             raise TransitionError("artifact_generation_changed")
-        if expected is not None and (expected.get("sha256") != sha256 or expected.get("size") != count
-                                     or expected.get("mtime_ns") != opened.st_mtime_ns):
+        if expected is not None and (
+            expected.get("sha256") != sha256
+            or expected.get("size") != count
+            or expected.get("mtime_ns") != opened.st_mtime_ns
+        ):
             raise TransitionError("native_runtime_generation_changed")
-        result = TransitionFile.artifact_dependency({
-            "path": str(path), "mode": opened.st_mode & 0o777, "owner_uid": opened.st_uid,
-            "size": count, "sha256": sha256, "role": "artifact",
-        })
+        result = TransitionFile.artifact_dependency(
+            {
+                "path": str(path),
+                "mode": opened.st_mode & 0o777,
+                "owner_uid": opened.st_uid,
+                "size": count,
+                "sha256": sha256,
+                "role": "artifact",
+            }
+        )
         _check_deadline(deadline)
         return result
     finally:
@@ -104,15 +127,22 @@ def _pin_executable(
 
 
 def prepare_runtime_transition(
-    request: RuntimeTransitionPreparation, *, context: HarnessContext, store: PreparationStore,
+    request: RuntimeTransitionPreparation,
+    *,
+    context: HarnessContext,
+    store: PreparationStore,
     deadline_monotonic: float,
 ) -> TransitionPlan:
     """Capture exact inverses under the permanent home owner; perform no writes."""
     deadline = deadline_monotonic
-    if (isinstance(deadline, bool) or not math.isfinite(deadline)
-            or not 0 < deadline - time.monotonic() <= 60
-            or isinstance(request.deadline_epoch, bool) or not math.isfinite(request.deadline_epoch)
-            or not 0 < request.deadline_epoch - time.time() <= 60):
+    if (
+        isinstance(deadline, bool)
+        or not math.isfinite(deadline)
+        or not 0 < deadline - time.monotonic() <= 60
+        or isinstance(request.deadline_epoch, bool)
+        or not math.isfinite(request.deadline_epoch)
+        or not 0 < request.deadline_epoch - time.time() <= 60
+    ):
         raise TransitionError("deadline_invalid")
     deadline = min(deadline, time.monotonic() + request.deadline_epoch - time.time())
     try:
@@ -130,8 +160,10 @@ def prepare_runtime_transition(
     executable_digests = deepcopy(dict(request.executable_digests or {}))
     if request.executable_digests is not None and (
         set(executable_digests) != {"candidate", "predecessor"}
-        or any(not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
-               for value in executable_digests.values())
+        or any(
+            not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
+            for value in executable_digests.values()
+        )
     ):
         raise TransitionError("artifact_digest_invalid")
     if set(native) != {"candidate", "predecessor"}:
@@ -171,7 +203,8 @@ def prepare_runtime_transition(
                     raise TransitionError("managed_install_snapshot_invalid")
                 manifest = cast(dict[str, object], row["manifest"])
                 adapter_context = replace(
-                    context, workspace_dir=Path(workspace) if isinstance(workspace, str) else None,
+                    context,
+                    workspace_dir=Path(workspace) if isinstance(workspace, str) else None,
                     workspace_override_explicit=manifest.get("hook_workspace_explicit") is True,
                 )
                 _check_deadline(deadline)
@@ -182,22 +215,39 @@ def prepare_runtime_transition(
                     if change.kind != "binding":
                         raise TransitionError("adapter_preparation_generation_conflict")
                     add(change)
-                after: dict[str, object] = {"harness": harness, "active": True, "workspace": workspace,
-                                            "manifest": deepcopy(prepared.manifest), "updated_at": updated_at}
+                after: dict[str, object] = {
+                    "harness": harness,
+                    "active": True,
+                    "workspace": workspace,
+                    "manifest": deepcopy(prepared.manifest),
+                    "updated_at": updated_at,
+                }
                 installs.append(TransitionInstall(harness, row, after))
             if not installs:
                 raise TransitionError("managed_install_bindings_missing")
             for side in ("predecessor", "candidate"):
                 path = artifacts[side].get("path")
                 identity = native[side]
-                if (not isinstance(path, str) or not Path(path).is_absolute() or not isinstance(identity, dict)
-                        or not isinstance(identity.get("path"), str) or not Path(identity["path"]).is_absolute()):
+                if (
+                    not isinstance(path, str)
+                    or not Path(path).is_absolute()
+                    or not isinstance(identity, dict)
+                    or not isinstance(identity.get("path"), str)
+                    or not Path(identity["path"]).is_absolute()
+                ):
                     raise TransitionError("artifact_identity_invalid")
                 add(_pin_executable(Path(path), deadline=deadline, expected_sha256=executable_digests.get(side)))
                 add(_pin_executable(Path(identity["path"]), deadline=deadline, expected=identity))
-            plan = TransitionPlan(request.operation_id, context.guard_home, artifacts["predecessor"],
-                                  artifacts["candidate"], tuple(files.values()), request.deadline_epoch,
-                                  managed_installs=tuple(installs), native_runtimes=native)
+            plan = TransitionPlan(
+                request.operation_id,
+                context.guard_home,
+                artifacts["predecessor"],
+                artifacts["candidate"],
+                tuple(files.values()),
+                request.deadline_epoch,
+                managed_installs=tuple(installs),
+                native_runtimes=native,
+            )
             payload = plan.payload()
             RuntimeTransition._compare(payload, "before")
             if store.list_managed_installs() != rows:

@@ -38,10 +38,21 @@ def preparation(tmp_path, monkeypatch):
         native_path.write_bytes((side + "native").encode())
         native_path.chmod(0o700)
         metadata = native_path.stat()
-        native[side] = {"path": str(native_path), "size": metadata.st_size, "mtime_ns": metadata.st_mtime_ns,
-                        "sha256": hashlib.sha256(native_path.read_bytes()).hexdigest()}
-        artifacts[side] = {"version": "3.15.2", "source_commit": "a" * 40, "target": "fixture",
-                           "format": "onedir", "sha256": "b" * 64, "path": str(executable), "generation": side}
+        native[side] = {
+            "path": str(native_path),
+            "size": metadata.st_size,
+            "mtime_ns": metadata.st_mtime_ns,
+            "sha256": hashlib.sha256(native_path.read_bytes()).hexdigest(),
+        }
+        artifacts[side] = {
+            "version": "3.15.2",
+            "source_commit": "a" * 40,
+            "target": "fixture",
+            "format": "onedir",
+            "sha256": "b" * 64,
+            "path": str(executable),
+            "generation": side,
+        }
     bindings = {}
     calls = []
     for harness in ("codex", "claude"):
@@ -59,14 +70,18 @@ def preparation(tmp_path, monkeypatch):
         def prepare_install(self, current):
             calls.append((self.harness, current))
             path = bindings[self.harness]
-            return PreparedHarnessInstall((TransitionFile(path, path.read_bytes(), b"new binding"),),
-                                          {"harness": self.harness, "binding": "new"})
+            return PreparedHarnessInstall(
+                (TransitionFile(path, path.read_bytes(), b"new binding"),), {"harness": self.harness, "binding": "new"}
+            )
 
     monkeypatch.setattr(module, "get_adapter", Adapter)
     request = module.RuntimeTransitionPreparation(
-        operation_id=str(uuid.uuid4()), predecessor=artifacts["predecessor"], candidate=artifacts["candidate"],
+        operation_id=str(uuid.uuid4()),
+        predecessor=artifacts["predecessor"],
+        candidate=artifacts["candidate"],
         selection_files=(TransitionFile(pointer, b"old pointer", b"new pointer", kind="selection"),),
-        native_runtimes=native, deadline_epoch=time.time() + 30,
+        native_runtimes=native,
+        deadline_epoch=time.time() + 30,
     )
     return module, request, context, store, bindings, calls
 
@@ -74,8 +89,9 @@ def preparation(tmp_path, monkeypatch):
 def prepare(fixture, **kwargs):
     module, request, context, store, *_ = fixture
     with codex_install_transaction(context.guard_home, request.selection_files[0].path, actor="prepare-test"):
-        return module.prepare_runtime_transition(request, context=context, store=store,
-                                                 deadline_monotonic=time.monotonic() + 20, **kwargs)
+        return module.prepare_runtime_transition(
+            request, context=context, store=store, deadline_monotonic=time.monotonic() + 20, **kwargs
+        )
 
 
 def test_preparation_captures_every_active_install_without_publication(preparation):
@@ -155,8 +171,10 @@ def test_preparation_preserves_recorded_workspace_and_explicit_hook_selection(pr
 
 def test_preparation_refuses_unreviewed_executable_bytes(preparation):
     module, request, *_ = preparation
-    digests = {side: hashlib.sha256(Path(artifact["path"]).read_bytes()).hexdigest()
-               for side, artifact in (("predecessor", request.predecessor), ("candidate", request.candidate))}
+    digests = {
+        side: hashlib.sha256(Path(artifact["path"]).read_bytes()).hexdigest()
+        for side, artifact in (("predecessor", request.predecessor), ("candidate", request.candidate))
+    }
     digests["candidate"] = "f" * 64
     modified = (module, replace(request, executable_digests=digests), *preparation[2:])
     with pytest.raises(TransitionError, match="artifact_generation_changed"):
@@ -208,8 +226,9 @@ def test_preparation_refuses_changed_authority_boundaries(preparation, monkeypat
             reads += 1
             rows = read_rows()
             if reads > 1:
-                rows.append({"harness": "foreign", "active": True, "workspace": None,
-                             "manifest": {}, "updated_at": "foreign"})
+                rows.append(
+                    {"harness": "foreign", "active": True, "workspace": None, "manifest": {}, "updated_at": "foreign"}
+                )
             return rows
 
         monkeypatch.setattr(store, "list_managed_installs", changed_rows)
@@ -218,11 +237,16 @@ def test_preparation_refuses_changed_authority_boundaries(preparation, monkeypat
         preparation = (module, expired, *preparation[2:])
     with pytest.raises((TransitionError, CodexHookIntegrityError)) as error:
         prepare(preparation)
-    assert getattr(error.value, "reason", None) == {
-        "native_digest": "native_runtime_generation_changed", "native_mtime": "native_runtime_generation_changed",
-        "symlink": "codex_hook_artifact_not_regular", "store_race": "managed_install_generation_changed",
-        "expired": "deadline_invalid",
-    }[fault]
+    assert (
+        getattr(error.value, "reason", None)
+        == {
+            "native_digest": "native_runtime_generation_changed",
+            "native_mtime": "native_runtime_generation_changed",
+            "symlink": "codex_hook_artifact_not_regular",
+            "store_race": "managed_install_generation_changed",
+            "expired": "deadline_invalid",
+        }[fault]
+    )
     if fault == "expired":
         assert calls == []
 

@@ -70,25 +70,40 @@ def retained_launch_generations(manifest: Mapping[str, object]) -> list[dict[str
     retained = manifest.get("retained_bridge_generations", [])
     allowed = manifest.get("compatible_bridge_argv_sha256", [])
     if (
-        not isinstance(retained, list) or len(retained) > _MAX_COMPATIBLE_BRIDGE_GENERATIONS
-        or not isinstance(allowed, list) or len(allowed) > _MAX_COMPATIBLE_BRIDGE_GENERATIONS
-        or any(not isinstance(value, str) or len(value) != 64
-               or any(char not in "0123456789abcdef" for char in value) for value in allowed)
+        not isinstance(retained, list)
+        or len(retained) > _MAX_COMPATIBLE_BRIDGE_GENERATIONS
+        or not isinstance(allowed, list)
+        or len(allowed) > _MAX_COMPATIBLE_BRIDGE_GENERATIONS
+        or any(
+            not isinstance(value, str) or len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+            for value in allowed
+        )
     ):
         raise ValueError("managed Codex hook retained generation identity is invalid")
     result = []
     for candidate in retained:
-        if not isinstance(candidate, dict) or any(candidate.get(field) != manifest.get(field) for field in (
-            "schema_version", "harness", "installation_id", "config", "context",
-        )):
+        if not isinstance(candidate, dict) or any(
+            candidate.get(field) != manifest.get(field)
+            for field in (
+                "schema_version",
+                "harness",
+                "installation_id",
+                "config",
+                "context",
+            )
+        ):
             raise ValueError("managed Codex hook retained generation context is invalid")
         events = candidate.get("events")
         if not isinstance(events, list) or not events:
             raise ValueError("managed Codex hook retained event identity is invalid")
         for event in events:
             argv = event.get("argv") if isinstance(event, dict) else None
-            if (not isinstance(argv, list) or not argv or not all(isinstance(value, str) for value in argv)
-                    or bridge_argv_sha256(argv) not in allowed):
+            if (
+                not isinstance(argv, list)
+                or not argv
+                or not all(isinstance(value, str) for value in argv)
+                or bridge_argv_sha256(argv) not in allowed
+            ):
                 raise ValueError("managed Codex hook retained argv is not registered")
         result.append(candidate)
     return result

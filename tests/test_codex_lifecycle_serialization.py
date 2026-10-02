@@ -33,7 +33,9 @@ def test_core_publication_transaction_shares_configuration_exclusion(tmp_path, l
 
     def competing_publication():
         with codex_install_transaction(
-            other_guard, home / ".codex/config.toml", actor="competing-publication",
+            other_guard,
+            home / ".codex/config.toml",
+            actor="competing-publication",
             deadline=time.monotonic() + 1,
         ):
             return "foreign transaction admitted"
@@ -290,7 +292,7 @@ def test_fork_during_target_acquisition_does_not_retain_crashed_parent_lock(tmp_
     root.mkdir(mode=0o700)
     # Fork exactly after the kernel grants ownership, before the lock helper
     # returns. The owner exits without cleanup while its child remains alive.
-    owner_script = r'''
+    owner_script = r"""
 import os, sys, time
 from pathlib import Path
 import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
@@ -314,8 +316,8 @@ def acquire(handle):
 locks.try_lock_daemon_file = acquire
 with locks.codex_configuration_lock(root / "config.toml"):
     raise AssertionError("owner must exit at the acquisition boundary")
-'''
-    probe_script = r'''
+"""
+    probe_script = r"""
 import sys, time
 from pathlib import Path
 import codex_plugin_scanner.guard.adapters.codex_lifecycle_lock as locks
@@ -323,16 +325,19 @@ root = Path(sys.argv[1])
 locks._account_home = lambda: root
 with locks.codex_configuration_lock(root / "config.toml", deadline=time.monotonic() + 0.3):
     print("acquired")
-'''
-    owner = subprocess.Popen([sys.executable, "-c", owner_script, str(root)],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+"""
+    owner = subprocess.Popen(
+        [sys.executable, "-c", owner_script, str(root)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
     try:
         # Pipes are deliberately inherited by the child; wait for the owner,
         # rather than waiting for pipe EOF from that still-live child.
         assert owner.wait(timeout=5) == 0
         assert (root / "child-ready").exists()
-        probe = subprocess.run([sys.executable, "-c", probe_script, str(root)],
-                               capture_output=True, timeout=5)
+        probe = subprocess.run([sys.executable, "-c", probe_script, str(root)], capture_output=True, timeout=5)
         assert probe.returncode == 0, probe.stderr.decode(errors="replace")
         assert probe.stdout.strip() == b"acquired"
     finally:

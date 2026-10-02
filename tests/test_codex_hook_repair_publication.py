@@ -25,7 +25,9 @@ from .test_codex_hook_repair_authorization import _grant, prepared_repair  # noq
 
 def _authorize(prepared, owner):
     return repair.authorize_codex_hook_repair(
-        prepared, authority_home=prepared.guard_home, grant=_grant(prepared, owner),
+        prepared,
+        authority_home=prepared.guard_home,
+        grant=_grant(prepared, owner),
         deadline_monotonic=time.monotonic() + 10,
     )
 

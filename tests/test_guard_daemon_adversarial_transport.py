@@ -201,7 +201,11 @@ def test_disconnected_slow_clients_do_not_emit_handler_exception_storm(
 @pytest.mark.parametrize("traffic", ["unclassified", "normal"])
 @pytest.mark.parametrize(("authenticated", "expected_status"), [(True, 200), (False, 401)])
 def test_real_128_connection_admission_keeps_control_authenticated_and_releases_capacity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, traffic: str, authenticated: bool, expected_status: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    traffic: str,
+    authenticated: bool,
+    expected_status: int,
 ) -> None:
     monkeypatch.setenv("HOL_GUARD_DAEMON_MAX_ACTIVE_REQUESTS", "128")
     # Hold generated slow sockets long enough to measure admission, rather
@@ -238,8 +242,10 @@ def test_real_128_connection_admission_keeps_control_authenticated_and_releases_
                 client = socket.create_connection(("127.0.0.1", daemon.port), timeout=1)
                 clients.append(client)
                 if traffic == "normal":
-                    client.sendall(b"GET /v1/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-                                   + f"X-Guard-Token: {server.auth_token}\r\n\r\n".encode())
+                    client.sendall(
+                        b"GET /v1/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                        + f"X-Guard-Token: {server.auth_token}\r\n\r\n".encode()
+                    )
             deadline = time.monotonic() + 1
             while time.monotonic() < deadline:
                 with server.request_capacity_lock:
@@ -255,13 +261,16 @@ def test_real_128_connection_admission_keeps_control_authenticated_and_releases_
             token = f"X-Guard-Token: {server.auth_token}\r\n".encode() if authenticated else b""
             started = time.monotonic()
             try:
-                response = _raw_request(daemon.port,
-                                        b"GET /v1/healthz/details HTTP/1.1\r\nHost: 127.0.0.1\r\n" + token + b"\r\n")
+                response = _raw_request(
+                    daemon.port, b"GET /v1/healthz/details HTTP/1.1\r\nHost: 127.0.0.1\r\n" + token + b"\r\n"
+                )
             except TimeoutError:
-                pytest.fail(f"control_routed={control_routed.is_set()}; "
-                            f"pending={len(server.pending_classifications)}; normal={len(server.normal_connections)}; "
-                            f"active={server.active_requests}; "
-                            f"watchdog_alive={server.unclassified_watchdog_thread.is_alive()}")
+                pytest.fail(
+                    f"control_routed={control_routed.is_set()}; "
+                    f"pending={len(server.pending_classifications)}; normal={len(server.normal_connections)}; "
+                    f"active={server.active_requests}; "
+                    f"watchdog_alive={server.unclassified_watchdog_thread.is_alive()}"
+                )
             assert _status_code(response) == expected_status
             control_ms = (time.monotonic() - started) * 1000
             assert control_ms < 500
@@ -308,8 +317,10 @@ def test_shutdown_discards_deferred_classification_and_returns_both_permits(tmp_
             assert not server.pending_classifications
             assert not server.active_connections and not server.request_accepted_at
             assert server.active_requests == 0
-            for semaphore, expected in ((server.connection_capacity, server.connection_capacity_limit),
-                                        (server._guard_slots, server._guard_capacity_limit)):
+            for semaphore, expected in (
+                (server.connection_capacity, server.connection_capacity_limit),
+                (server._guard_slots, server._guard_capacity_limit),
+            ):
                 acquired = 0
                 try:
                     while semaphore.acquire(blocking=False):
@@ -505,8 +516,7 @@ def test_transport_submission_failure_releases_all_admission_ownership(
             monkeypatch.setattr(executor, "submit", fail_submit)
         path = "/v1/healthz/details" if control else "/v1/sessions"
         request = (
-            f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-            f"X-Guard-Token: {daemon._server.auth_token}\r\n\r\n"
+            f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Guard-Token: {daemon._server.auth_token}\r\n\r\n"
         ).encode()
         try:
             response = _raw_request(daemon.port, request)

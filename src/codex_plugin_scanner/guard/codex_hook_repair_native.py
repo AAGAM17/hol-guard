@@ -22,9 +22,13 @@ def inspect_codex_repair_native_runtime(*, deadline_monotonic: float) -> NativeR
     protection. The capabilities probe keeps its existing one-second stage cap
     within the parent's original deadline and process containment.
     """
+
     def check_deadline() -> None:
-        if (isinstance(deadline_monotonic, bool) or not math.isfinite(deadline_monotonic)
-                or time.monotonic() >= deadline_monotonic):
+        if (
+            isinstance(deadline_monotonic, bool)
+            or not math.isfinite(deadline_monotonic)
+            or time.monotonic() >= deadline_monotonic
+        ):
             raise TransitionError("deadline_exceeded")
 
     check_deadline()
@@ -43,8 +47,9 @@ def inspect_codex_repair_native_runtime(*, deadline_monotonic: float) -> NativeR
             artifact = dependency.artifact_identity
             assert artifact is not None and dependency.expected_digest is not None
             metadata = path.stat()
-            identity = NativeRuntimeIdentity(path.resolve(strict=True), metadata.st_size,
-                                             metadata.st_mtime_ns, dependency.expected_digest)
+            identity = NativeRuntimeIdentity(
+                path.resolve(strict=True), metadata.st_size, metadata.st_mtime_ns, dependency.expected_digest
+            )
             manifest = None
             if native._is_bundled_candidate(path):
                 manifest, reason = native._manifest_for_bundled_identity(identity)
@@ -52,13 +57,15 @@ def inspect_codex_repair_native_runtime(*, deadline_monotonic: float) -> NativeR
                 if reason is not None:
                     raise TransitionError(reason)
             result = run_isolated_hook_process(
-                (str(identity.path), "capabilities", "--json"), input_text="", cwd=identity.path.parent,
-                environment=native._isolated_environment(), output_limit=64 * 1024,
+                (str(identity.path), "capabilities", "--json"),
+                input_text="",
+                cwd=identity.path.parent,
+                environment=native._isolated_environment(),
+                output_limit=64 * 1024,
                 deadline_monotonic=min(deadline_monotonic, time.monotonic() + 1.0),
             )
             check_deadline()
-            if (result.returncode != 0 or result.timed_out or result.containment_failed
-                    or result.output_limit_exceeded):
+            if result.returncode != 0 or result.timed_out or result.containment_failed or result.output_limit_exceeded:
                 raise TransitionError("authority_repair_native_inspection_failed")
             try:
                 capabilities = native._decode_capabilities(json.loads(result.stdout))
@@ -68,16 +75,23 @@ def inspect_codex_repair_native_runtime(*, deadline_monotonic: float) -> NativeR
                 raise TransitionError("native_protocol_mismatch")
             if manifest is not None and (
                 capabilities.runtime_version != manifest.package_version
-                or capabilities.rule_digest != manifest.rule_digest or capabilities.build_sha != manifest.source_sha
+                or capabilities.rule_digest != manifest.rule_digest
+                or capabilities.build_sha != manifest.source_sha
             ):
                 raise TransitionError("native_manifest_capabilities_mismatch")
             version = native._python_package_version()
             check_deadline()
             if mode == "auto" and version is not None and capabilities.runtime_version != version:
                 raise TransitionError("native_version_mismatch")
-            _pin_executable(path, deadline=deadline_monotonic, expected={
-                "size": identity.size, "mtime_ns": identity.mtime_ns, "sha256": identity.sha256,
-            })
+            _pin_executable(
+                path,
+                deadline=deadline_monotonic,
+                expected={
+                    "size": identity.size,
+                    "mtime_ns": identity.mtime_ns,
+                    "sha256": identity.sha256,
+                },
+            )
             check_deadline()
             return identity
     raise TransitionError("authority_repair_native_unavailable")

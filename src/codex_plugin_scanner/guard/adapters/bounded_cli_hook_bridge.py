@@ -84,11 +84,14 @@ def _isolated_bounded_hook_command(
         before = _snapshot(target)
         mode = target.stat().st_mode & 0o777 if before is not None else 0o600
         change = TransitionFile(
-            target, before,
-            _render_bounded_hook_script(
-                guard_home=guard_home, harness=harness, timeout_seconds=timeout_seconds
-            ).encode("utf-8"),
-            before_mode=mode, after_mode=0o600, no_follow=True,
+            target,
+            before,
+            _render_bounded_hook_script(guard_home=guard_home, harness=harness, timeout_seconds=timeout_seconds).encode(
+                "utf-8"
+            ),
+            before_mode=mode,
+            after_mode=0o600,
+            no_follow=True,
         )
         change.payload()
         prepared_files.append(change)
@@ -372,7 +375,10 @@ def _daemon_response_to_native(
 
 
 def run_bounded_cli_hook(
-    config: Mapping[str, object], *, input_text: str, deadline_monotonic: float | None = None,
+    config: Mapping[str, object],
+    *,
+    input_text: str,
+    deadline_monotonic: float | None = None,
 ) -> int:
     """Run one isolated CLI hook and preserve its native stdout contract."""
 
@@ -410,8 +416,9 @@ def run_bounded_cli_hook(
     guard_home = Path(guard_home_value)
 
     def fail(reason: str = _FAILURE_REASON) -> int:
-        return _emit_failure(harness=harness, input_text=input_text, guard_home=guard_home,
-                             reason=reason, deadline_monotonic=deadline)
+        return _emit_failure(
+            harness=harness, input_text=input_text, guard_home=guard_home, reason=reason, deadline_monotonic=deadline
+        )
 
     runtime_frozen = bool(getattr(sys, "frozen", False))
     if runtime_frozen:
@@ -495,8 +502,7 @@ def main_from_argv(argv: Sequence[str]) -> int:
     configured_harness = config.get("harness") if config is not None else None
     harness = configured_harness if isinstance(configured_harness, str) else "unknown"
     timeout = config.get("timeout_seconds") if config is not None else None
-    if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
-            or not math.isfinite(timeout) or timeout <= 0):
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
         return _emit_failure(harness=harness, input_text="{}")
     deadline = started_monotonic + float(timeout)
     try:

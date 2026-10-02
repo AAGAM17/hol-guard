@@ -176,8 +176,7 @@ def prepare_authenticated_hook_publication(
     receipt_mode = receipt_path.stat().st_mode & 0o777 if before_receipt is not None else 0o600
     secret_path = hook_secret_path(spec.guard_home)
     authority_before = (
-        TransitionFile.identity_dependency(secret_path)
-        if secret_path.exists() or secret_path.is_symlink() else None
+        TransitionFile.identity_dependency(secret_path) if secret_path.exists() or secret_path.is_symlink() else None
     )
     manifest = (_manifest_builder or build_authenticated_hook_manifest)(
         spec, previous_manifest=baseline, create_key=create_key
@@ -192,16 +191,36 @@ def prepare_authenticated_hook_publication(
     prepared = PreparedCodexHookPublication(
         manifest,
         rendered_config,
-        TransitionFile(config_path, before_config, rendered_config.encode("utf-8"),
-                       before_mode=config_mode, after_mode=0o600, no_follow=True),
-        TransitionFile(manifest_path, before_manifest, canonical_manifest_bytes(manifest) + b"\n",
-                       before_mode=manifest_mode, after_mode=0o600, no_follow=True),
+        TransitionFile(
+            config_path,
+            before_config,
+            rendered_config.encode("utf-8"),
+            before_mode=config_mode,
+            after_mode=0o600,
+            no_follow=True,
+        ),
+        TransitionFile(
+            manifest_path,
+            before_manifest,
+            canonical_manifest_bytes(manifest) + b"\n",
+            before_mode=manifest_mode,
+            after_mode=0o600,
+            no_follow=True,
+        ),
         authority_dependency,
-        TransitionFile(receipt_path, before_receipt,
-                       build_hook_authority_receipt(spec.guard_home, config_path,
-                                                    config_bytes=rendered_config.encode("utf-8"),
-                                                    manifest_bytes=canonical_manifest_bytes(manifest) + b"\n"),
-                       before_mode=receipt_mode, after_mode=0o600, no_follow=True),
+        TransitionFile(
+            receipt_path,
+            before_receipt,
+            build_hook_authority_receipt(
+                spec.guard_home,
+                config_path,
+                config_bytes=rendered_config.encode("utf-8"),
+                manifest_bytes=canonical_manifest_bytes(manifest) + b"\n",
+            ),
+            before_mode=receipt_mode,
+            after_mode=0o600,
+            no_follow=True,
+        ),
     )
     RuntimeTransition._compare({"files": [change.payload() for change in prepared.files]}, "before")
     return prepared
@@ -256,34 +275,56 @@ class PreparedCodexHookRepair:
         config = self.config_path.parent.resolve(strict=False) / self.config_path.name
         change = self.manifest_change
         if (
-            len(self.files) > 128 or len({item.path for item in self.files}) != len(self.files)
-            or change.path != hook_manifest_path(home, config) or change.before is not None
-            or change.after is None or change.expected_digest is not None or not change.no_follow
-            or change.kind != "binding" or change.after_mode != 0o600
+            len(self.files) > 128
+            or len({item.path for item in self.files}) != len(self.files)
+            or change.path != hook_manifest_path(home, config)
+            or change.before is not None
+            or change.after is None
+            or change.expected_digest is not None
+            or not change.no_follow
+            or change.kind != "binding"
+            or change.after_mode != 0o600
             or sum(item == change for item in self.files) != 1
-            or any(item != change and (
-                item.expected_digest is None or item.before is not None or item.after is not None
-            ) for item in self.files)
+            or any(
+                item != change and (item.expected_digest is None or item.before is not None or item.after is not None)
+                for item in self.files
+            )
         ):
             raise TransitionError("authority_repair_plan_invalid")
         required = {hook_secret_path(home), hook_authority_receipt_path(home, config), config}
         if not required <= {item.path for item in self.files if item.expected_digest is not None}:
             raise TransitionError("authority_repair_plan_invalid")
         payload: dict[str, object] = {
-            "schema": "hol-guard.codex-authority-repair-plan.v1", "action": CODEX_AUTHORITY_REPAIR_ACTION,
-            "guard_home": str(home), "config_path": str(config), "operation_id": self.operation_id,
+            "schema": "hol-guard.codex-authority-repair-plan.v1",
+            "action": CODEX_AUTHORITY_REPAIR_ACTION,
+            "guard_home": str(home),
+            "config_path": str(config),
+            "operation_id": self.operation_id,
             "files": [item.payload() for item in self.files],
         }
         if self.native_runtime is not None or self.verification_workspace is not None:
             native, workspace = self.native_runtime, self.verification_workspace
-            if (native is None or workspace is None or not workspace.is_absolute()
-                    or workspace.resolve(strict=False) != workspace or not workspace.is_dir()
-                    or not native.path.is_absolute() or native.path.resolve(strict=False) != native.path
-                    or type(native.size) is not int or native.size <= 0 or type(native.mtime_ns) is not int
-                    or len(native.sha256) != 64 or any(char not in "0123456789abcdef" for char in native.sha256)
-                    or not any(item.path == native.path and item.expected_digest == native.sha256
-                               and item.artifact_identity is not None
-                               and item.artifact_identity.get("size") == native.size for item in self.files)):
+            if (
+                native is None
+                or workspace is None
+                or not workspace.is_absolute()
+                or workspace.resolve(strict=False) != workspace
+                or not workspace.is_dir()
+                or not native.path.is_absolute()
+                or native.path.resolve(strict=False) != native.path
+                or type(native.size) is not int
+                or native.size <= 0
+                or type(native.mtime_ns) is not int
+                or len(native.sha256) != 64
+                or any(char not in "0123456789abcdef" for char in native.sha256)
+                or not any(
+                    item.path == native.path
+                    and item.expected_digest == native.sha256
+                    and item.artifact_identity is not None
+                    and item.artifact_identity.get("size") == native.size
+                    for item in self.files
+                )
+            ):
                 raise TransitionError("authority_repair_native_binding_invalid")
             try:
                 if native.path.stat().st_mtime_ns != native.mtime_ns:
@@ -291,7 +332,10 @@ class PreparedCodexHookRepair:
             except OSError as exc:
                 raise TransitionError("native_runtime_generation_changed") from exc
             payload["native_runtime"] = {
-                "path": str(native.path), "size": native.size, "mtime_ns": native.mtime_ns, "sha256": native.sha256,
+                "path": str(native.path),
+                "size": native.size,
+                "mtime_ns": native.mtime_ns,
+                "sha256": native.sha256,
             }
             payload["verification_workspace"] = str(workspace)
         return payload
@@ -316,7 +360,9 @@ def prepare_authenticated_hook_manifest_repair(spec: CodexHookManifestSpec) -> P
         raise TransitionError("authority_repair_manifest_present")
     dependencies = []
     for path in (
-        hook_secret_path(spec.guard_home), hook_authority_receipt_path(spec.guard_home, config), config,
+        hook_secret_path(spec.guard_home),
+        hook_authority_receipt_path(spec.guard_home, config),
+        config,
     ):
         check_hook_validation_deadline()
         dependencies.append(TransitionFile.identity_dependency(path))
@@ -327,7 +373,9 @@ def prepare_authenticated_hook_manifest_repair(spec: CodexHookManifestSpec) -> P
     if isinstance(features, Mapping) and features.get("hooks") is False:
         raise TransitionError("authority_repair_hooks_disabled")
     state = _verify_hook_manifest(
-        spec, hooks=payload.get("hooks"), captured_text=receipt.manifest_bytes.decode("utf-8"),
+        spec,
+        hooks=payload.get("hooks"),
+        captured_text=receipt.manifest_bytes.decode("utf-8"),
     )
     if state.get("integrity_status") != "valid":
         raise CodexHookIntegrityError(str(state["integrity_reason"]), str(state["integrity_message"]))
@@ -345,8 +393,9 @@ def prepare_authenticated_hook_manifest_repair(spec: CodexHookManifestSpec) -> P
             check_hook_validation_deadline()
             dependencies.append(TransitionFile.artifact_dependency(target, invocation=interpreter))
     except ValueError as exc:
-        raise CodexHookIntegrityError("codex_hook_repair_retained_identity_invalid",
-                                      "Guard could not verify a retained Codex launch generation.") from exc
+        raise CodexHookIntegrityError(
+            "codex_hook_repair_retained_identity_invalid", "Guard could not verify a retained Codex launch generation."
+        ) from exc
     change = TransitionFile(manifest_path, None, receipt.manifest_bytes, no_follow=True)
     unique: dict[Path, TransitionFile] = {change.path: change}
     for dependency in dependencies:
@@ -388,13 +437,17 @@ def verify_live_hook_manifest(
 
 
 def _verify_hook_manifest(
-    spec: CodexHookManifestSpec, *, hooks: object, captured_text: str | None = None,
+    spec: CodexHookManifestSpec,
+    *,
+    hooks: object,
+    captured_text: str | None = None,
 ) -> dict[str, object]:
     event_matches = {event_name: False for event_name in MANAGED_CODEX_HOOK_EVENTS}
     manifest_path = hook_manifest_path(spec.guard_home, spec.config_path)
     try:
         manifest = (
-            load_authenticated_hook_manifest(spec.guard_home, spec.config_path) if captured_text is None
+            load_authenticated_hook_manifest(spec.guard_home, spec.config_path)
+            if captured_text is None
             else authenticate_hook_manifest_text(spec.guard_home, captured_text)
         )
         _verify_manifest_header(manifest, spec)

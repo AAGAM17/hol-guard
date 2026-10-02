@@ -24,9 +24,12 @@ class DaemonArtifactBinding:
     package_version: str
 
     def __post_init__(self) -> None:
-        if (not self.executable.is_absolute() or len(self.executable_sha256) != 64
-                or any(character not in "0123456789abcdef" for character in self.executable_sha256)
-                or not self.package_version):
+        if (
+            not self.executable.is_absolute()
+            or len(self.executable_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in self.executable_sha256)
+            or not self.package_version
+        ):
             raise ValueError("Exact daemon artifact binding is invalid.")
 
     @classmethod
@@ -42,8 +45,12 @@ class DaemonArtifactBinding:
         for change in cast(list[dict[str, object]], payload["files"]):
             identity = change.get("artifact_identity")
             digest = change.get("expected_digest")
-            if (change["path"] == str(path) and isinstance(identity, dict)
-                    and cast(dict[str, object], identity).get("role") == "artifact" and isinstance(digest, str)):
+            if (
+                change["path"] == str(path)
+                and isinstance(identity, dict)
+                and cast(dict[str, object], identity).get("role") == "artifact"
+                and isinstance(digest, str)
+            ):
                 return cls(path, digest, str(artifact["version"]))
         raise TransitionError("daemon_artifact_dependency_missing")
 
@@ -57,7 +64,10 @@ class DaemonArtifactBinding:
 
 
 def _proxy_disabled_health_details(
-    url: str, auth_token: str, *, deadline_monotonic: float | None = None,
+    url: str,
+    auth_token: str,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object] | None:
     """Use the bounded loopback client without changing authenticated identity checks."""
     from .client import read_guard_health_details
@@ -68,13 +78,16 @@ def _proxy_disabled_health_details(
 
 
 def verified_live_guard_daemon_identity(
-    guard_home: Path, *, expected_artifact: DaemonArtifactBinding | None = None,
+    guard_home: Path,
+    *,
+    expected_artifact: DaemonArtifactBinding | None = None,
     deadline_monotonic: float | None = None,
 ) -> dict[str, object] | None:
     """Return authenticated live daemon identity after state and health agree."""
 
     if deadline_monotonic is not None and (
-        isinstance(deadline_monotonic, bool) or not math.isfinite(deadline_monotonic)
+        isinstance(deadline_monotonic, bool)
+        or not math.isfinite(deadline_monotonic)
         or time.monotonic() >= deadline_monotonic
     ):
         return None
@@ -108,8 +121,8 @@ def verified_live_guard_daemon_identity(
     daemon_url = f"http://{url_host}:{port}"
     details = (
         _proxy_disabled_health_details(daemon_url, token)
-        if deadline_monotonic is None else
-        _proxy_disabled_health_details(daemon_url, token, deadline_monotonic=deadline_monotonic)
+        if deadline_monotonic is None
+        else _proxy_disabled_health_details(daemon_url, token, deadline_monotonic=deadline_monotonic)
     )
     identity_fields = ("package_version", "compatibility_version", "runtime_fingerprint", "pid")
     details_guard_home = details.get("guard_home") if isinstance(details, dict) else None
@@ -129,8 +142,9 @@ def verified_live_guard_daemon_identity(
         return None
     if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
         return None
-    if (load_authenticated_daemon_state(guard_home) != state
-            or (deadline_monotonic is not None and time.monotonic() >= deadline_monotonic)):
+    if load_authenticated_daemon_state(guard_home) != state or (
+        deadline_monotonic is not None and time.monotonic() >= deadline_monotonic
+    ):
         return None
     return {**state, "daemon_url": daemon_url}
 

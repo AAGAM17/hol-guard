@@ -250,7 +250,11 @@ class KimiHarnessAdapter(HarnessAdapter):
         new_text = f"{cleaned_text.rstrip()}\n\n{managed_block}\n".lstrip()
         mode = config_path.stat().st_mode & 0o777 if before is not None else 0o644
         config = TransitionFile(
-            config_path.resolve(strict=False), before, new_text.encode("utf-8"), before_mode=mode, after_mode=mode,
+            config_path.resolve(strict=False),
+            before,
+            new_text.encode("utf-8"),
+            before_mode=mode,
+            after_mode=mode,
         )
         config.payload()
 

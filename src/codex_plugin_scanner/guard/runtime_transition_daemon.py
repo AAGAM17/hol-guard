@@ -24,14 +24,22 @@ from .runtime_transition_admission import NativeProtectionAdmission, verified_ad
 
 class TransitionHookObserver(Protocol):
     def __call__(
-        self, artifact: Mapping[str, object], daemon_identity: Mapping[str, object], operation_id: str,
-        *, deadline_monotonic: float,
+        self,
+        artifact: Mapping[str, object],
+        daemon_identity: Mapping[str, object],
+        operation_id: str,
+        *,
+        deadline_monotonic: float,
     ) -> NativeProtectionAdmission: ...
 
 
 class TransitionDaemonDriver:
     def __init__(
-        self, runtime: RuntimeTransition, plan: TransitionPlan, *, home_dir: Path,
+        self,
+        runtime: RuntimeTransition,
+        plan: TransitionPlan,
+        *,
+        home_dir: Path,
         observe_hook: TransitionHookObserver,
     ):
         payload = plan.payload()
@@ -48,10 +56,15 @@ class TransitionDaemonDriver:
         # Refuse mutable plan changes between capture and dependency extraction.
         files = cast(list[dict[str, object]], payload["files"])
         for side, binding in self.bindings.items():
-            if (str(binding.executable) != self.artifacts[side]["path"]
-                    or binding.package_version != self.artifacts[side]["version"]
-                    or not any(change["path"] == str(binding.executable)
-                               and change.get("expected_digest") == binding.executable_sha256 for change in files)):
+            if (
+                str(binding.executable) != self.artifacts[side]["path"]
+                or binding.package_version != self.artifacts[side]["version"]
+                or not any(
+                    change["path"] == str(binding.executable)
+                    and change.get("expected_digest") == binding.executable_sha256
+                    for change in files
+                )
+            ):
                 raise TransitionError("plan_context_mismatch")
         if payload["guard_home"] != str(runtime.home):
             raise TransitionError("plan_context_mismatch")
@@ -70,14 +83,16 @@ class TransitionDaemonDriver:
         return side
 
     def _state(self, side: str, *, allow_retained_predecessor: bool = False) -> dict[str, object] | None:
-        if (manager.load_authenticated_guard_daemon_pending_launch(self.runtime.home) is not None
-                or manager.load_authenticated_guard_daemon_start_progress(self.runtime.home) is not None):
+        if (
+            manager.load_authenticated_guard_daemon_pending_launch(self.runtime.home) is not None
+            or manager.load_authenticated_guard_daemon_start_progress(self.runtime.home) is not None
+        ):
             raise TransitionError("daemon_retirement_incomplete")
         state = load_authenticated_daemon_state(self.runtime.home)
         if state is not None:
-            if (not self.bindings[side].matches(state)
-                    and not (allow_retained_predecessor and side == "candidate"
-                             and self.bindings["predecessor"].matches(state))):
+            if not self.bindings[side].matches(state) and not (
+                allow_retained_predecessor and side == "candidate" and self.bindings["predecessor"].matches(state)
+            ):
                 raise TransitionError("daemon_generation_changed")
             return state
         path = manager._state_path(self.runtime.home)
@@ -107,7 +122,9 @@ class TransitionDaemonDriver:
             if not manager._guard_daemon_pid_is_proven_dead(pid):
                 token = process_start_token(pid, deadline_monotonic=deadline_monotonic)
                 if token is None or not manager._retire_guard_daemon_pid(
-                    pid, expected_guard_home=self.runtime.home, expected_start_token=token,
+                    pid,
+                    expected_guard_home=self.runtime.home,
+                    expected_start_token=token,
                     deadline_monotonic=deadline_monotonic,
                 ):
                     raise TransitionError("daemon_retirement_incomplete")
@@ -130,8 +147,11 @@ class TransitionDaemonDriver:
                 raise TransitionError("daemon_identity_unavailable")
             try:
                 _ = manager.ensure_guard_daemon(
-                    self.runtime.home, home_dir=self.home_dir, executable=self.bindings[side].executable,
-                    deadline_monotonic=deadline_monotonic, background_maintenance=False,
+                    self.runtime.home,
+                    home_dir=self.home_dir,
+                    executable=self.bindings[side].executable,
+                    deadline_monotonic=deadline_monotonic,
+                    background_maintenance=False,
                 )
             except TransitionError:
                 raise
@@ -144,14 +164,20 @@ class TransitionDaemonDriver:
         if time.monotonic() >= deadline:
             raise TransitionError("deadline_exceeded")
         identity = verified_live_guard_daemon_identity(
-            self.runtime.home, expected_artifact=self.bindings[side], deadline_monotonic=deadline,
+            self.runtime.home,
+            expected_artifact=self.bindings[side],
+            deadline_monotonic=deadline,
         )
         if time.monotonic() >= deadline:
             raise TransitionError("deadline_exceeded")
         return identity
 
     def observe_protection(
-        self, artifact: Mapping[str, object], operation_id: str, *, deadline_monotonic: float,
+        self,
+        artifact: Mapping[str, object],
+        operation_id: str,
+        *,
+        deadline_monotonic: float,
     ) -> NativeProtectionAdmission:
         if operation_id != self.operation_id:
             raise TransitionError("operation_superseded")
@@ -163,8 +189,11 @@ class TransitionDaemonDriver:
                 raise TransitionError("daemon_identity_unavailable")
             observation = self.observe_hook(artifact, identity, operation_id, deadline_monotonic=deadline_monotonic)
             evidence = verified_admission_payload(observation).get("installed_hook_evidence")
-            if (not isinstance(evidence, dict) or evidence.get("schema") != "hol-guard.installed-hook-evidence.v1"
-                    or evidence.get("harness") != "codex"):
+            if (
+                not isinstance(evidence, dict)
+                or evidence.get("schema") != "hol-guard.installed-hook-evidence.v1"
+                or evidence.get("harness") != "codex"
+            ):
                 raise TransitionError("installed_hook_proof_missing")
             _ = self._admit(artifact, "observe", deadline_monotonic)
             if self._live(side, deadline_monotonic) != identity:

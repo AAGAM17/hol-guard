@@ -547,18 +547,20 @@ class _PiFamilyHarnessAdapter(HarnessAdapter):
         if not isinstance(settings, dict):
             raise ValueError(f"{self.display_name} settings must be a JSON object.")
         extension_after = managed_extension_source(
-                guard_home=context.guard_home,
-                home_dir=context.home_dir,
-                settings_path=settings_path,
-                harness=self.harness,
-                display_name=self.display_name,
-            ).encode("utf-8")
+            guard_home=context.guard_home,
+            home_dir=context.home_dir,
+            settings_path=settings_path,
+            harness=self.harness,
+            display_name=self.display_name,
+        ).encode("utf-8")
         settings_after = managed_extension_settings(
             settings, settings_path=settings_path, extension_path=extension_path
         )
         files = list(prepared_shim.files)
-        for path, before, after in ((extension_path, extension_before, extension_after),
-                                    (settings_path, settings_before, settings_after)):
+        for path, before, after in (
+            (extension_path, extension_before, extension_after),
+            (settings_path, settings_before, settings_after),
+        ):
             mode = path.stat().st_mode & 0o777 if before is not None else 0o644
             change = TransitionFile(path.resolve(strict=False), before, after, before_mode=mode, after_mode=mode)
             change.payload()

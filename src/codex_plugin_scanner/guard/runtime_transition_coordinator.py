@@ -30,7 +30,11 @@ class TransitionRuntimeDriver(Protocol):
     def stop(self, artifact: Mapping[str, object], *, deadline_monotonic: float) -> None: ...
     def start(self, artifact: Mapping[str, object], *, deadline_monotonic: float) -> None: ...
     def observe_protection(
-        self, artifact: Mapping[str, object], operation_id: str, *, deadline_monotonic: float,
+        self,
+        artifact: Mapping[str, object],
+        operation_id: str,
+        *,
+        deadline_monotonic: float,
     ) -> NativeProtectionAdmission: ...
 
 
@@ -51,9 +55,12 @@ class RuntimeTransitionCoordinator:
     def _publication_owner(self, plan: TransitionPlan, deadline: float) -> Generator[None, None, None]:
         with ExitStack() as stack:
             try:
-                stack.enter_context(codex_publication_locks(
-                    (change.path for change in plan.files), deadline=deadline,
-                ))
+                stack.enter_context(
+                    codex_publication_locks(
+                        (change.path for change in plan.files),
+                        deadline=deadline,
+                    )
+                )
             except RuntimeError as error:
                 if str(error).startswith("codex_lifecycle_busy:"):
                     raise TransitionError("configuration_target_busy") from error
@@ -70,13 +77,18 @@ class RuntimeTransitionCoordinator:
         A caller supplies one deadline for lock admission, restoration and proof.
         """
         deadline = deadline_monotonic
-        if (isinstance(deadline, bool) or not isinstance(deadline, (int, float))
-                or not math.isfinite(deadline) or deadline - time.monotonic() > 60):
+        if (
+            isinstance(deadline, bool)
+            or not isinstance(deadline, (int, float))
+            or not math.isfinite(deadline)
+            or deadline - time.monotonic() > 60
+        ):
             raise TransitionError("deadline_invalid")
         self._check_deadline(deadline)
         with (
-            codex_install_transaction(self.runtime.home, self.runtime.path,
-                                      actor="runtime-transition-recovery", deadline=deadline),
+            codex_install_transaction(
+                self.runtime.home, self.runtime.path, actor="runtime-transition-recovery", deadline=deadline
+            ),
             inverse_recovery_budget(deadline),
         ):
             self._check_deadline(deadline)
@@ -107,18 +119,27 @@ class RuntimeTransitionCoordinator:
             self.driver.start(plan.predecessor, deadline_monotonic=deadline)
             self._check_deadline(deadline)
             observation = self.driver.observe_protection(
-                plan.predecessor, operation_id, deadline_monotonic=deadline,
+                plan.predecessor,
+                operation_id,
+                deadline_monotonic=deadline,
             )
             self._check_deadline(deadline)
             self.runtime.finish_rollback(operation_id, functional_proof=observation)
         except Exception as error:
-            if (not inverse_attempted or inverse_completed
-                    or self.runtime.status(operation_id).phase != "RecoveryRequired"):
+            if (
+                not inverse_attempted
+                or inverse_completed
+                or self.runtime.status(operation_id).phase != "RecoveryRequired"
+            ):
                 self.runtime.record_recovery_failure(operation_id, first_cause=cause, error=error)
         return self.runtime.status(operation_id)
 
     def activate(
-        self, plan: TransitionPlan, *, authority_home: Path, grant: ApprovalGateGrant | None,
+        self,
+        plan: TransitionPlan,
+        *,
+        authority_home: Path,
+        grant: ApprovalGateGrant | None,
         deadline_monotonic: float | None = None,
     ) -> TransitionStatus:
         if set(plan.native_runtimes or {}) != {"candidate", "predecessor"}:
@@ -133,8 +154,9 @@ class RuntimeTransitionCoordinator:
         self._check_deadline(deadline)
         with (
             self._publication_owner(plan, deadline),
-            codex_install_transaction(self.runtime.home, self.runtime.path,
-                                      actor="runtime-transition-coordinator", deadline=deadline),
+            codex_install_transaction(
+                self.runtime.home, self.runtime.path, actor="runtime-transition-coordinator", deadline=deadline
+            ),
             inverse_recovery_budget(deadline),
         ):
             self._check_deadline(deadline)
@@ -153,7 +175,9 @@ class RuntimeTransitionCoordinator:
                 self.driver.start(plan.candidate, deadline_monotonic=deadline)
                 self._check_deadline(deadline)
                 observation = self.driver.observe_protection(
-                    plan.candidate, plan.operation_id, deadline_monotonic=deadline,
+                    plan.candidate,
+                    plan.operation_id,
+                    deadline_monotonic=deadline,
                 )
                 self._check_deadline(deadline)
                 _ = self.runtime.advance(plan.operation_id, "Switching", functional_proof=observation)
@@ -182,18 +206,25 @@ class RuntimeTransitionCoordinator:
                     self._check_deadline(deadline)
                     self.driver.start(plan.predecessor, deadline_monotonic=deadline)
                     observation = self.driver.observe_protection(
-                        plan.predecessor, plan.operation_id, deadline_monotonic=deadline,
+                        plan.predecessor,
+                        plan.operation_id,
+                        deadline_monotonic=deadline,
                     )
                     self._check_deadline(deadline)
                     self.runtime.finish_rollback(plan.operation_id, functional_proof=observation)
                 except Exception as recovery_error:
                     if retirement_error is not None and retirement_error is not recovery_error:
                         self.runtime.record_recovery_failure(
-                            plan.operation_id, first_cause=cause, error=retirement_error,
+                            plan.operation_id,
+                            first_cause=cause,
+                            error=retirement_error,
                         )
                     # The inverse writer already records its own failures.
                     # Lifecycle failures need their own durable observation.
-                    if (not inverse_attempted or inverse_completed
-                            or self.runtime.status(plan.operation_id).phase != "RecoveryRequired"):
+                    if (
+                        not inverse_attempted
+                        or inverse_completed
+                        or self.runtime.status(plan.operation_id).phase != "RecoveryRequired"
+                    ):
                         self.runtime.record_recovery_failure(plan.operation_id, first_cause=cause, error=recovery_error)
             return self.runtime.status(plan.operation_id)

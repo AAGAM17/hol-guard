@@ -16,9 +16,7 @@ def _configuration() -> tuple[dict, dict]:
 def test_each_native_platform_has_one_regression_cache_writer() -> None:
     """Both setup paths use shard zero, while other shards remain read-only."""
     action, workflow = _configuration()
-    setup_steps = [
-        step for step in action["runs"]["steps"] if step.get("uses", "").startswith("astral-sh/setup-uv@")
-    ]
+    setup_steps = [step for step in action["runs"]["steps"] if step.get("uses", "").startswith("astral-sh/setup-uv@")]
     assert len(setup_steps) == 2
     for step in setup_steps:
         options = step["with"]
@@ -50,9 +48,7 @@ def test_macos_proofs_restore_the_same_lock_bound_cache_without_writing() -> Non
     action_python = next(
         step for step in action["runs"]["steps"] if step.get("uses", "").startswith("actions/setup-python@")
     )
-    proof_python = next(
-        step for step in proof["steps"] if step.get("uses", "").startswith("actions/setup-python@")
-    )
+    proof_python = next(step for step in proof["steps"] if step.get("uses", "").startswith("actions/setup-python@"))
     assert proof_python["with"]["python-version"] == action_python["with"]["python-version"] == "3.12"
 
 

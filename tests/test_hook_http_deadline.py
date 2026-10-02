@@ -108,6 +108,7 @@ def test_expired_discovery_cannot_start_token_read(tmp_path, monkeypatch, genera
         assert namespace["_daemon_auth"]() is None
         assert reads == ["daemon-state.json"]
     else:
+
         def endpoint(*args):
             time.sleep(0.03)
             return "http://127.0.0.1:4781/v1/hooks/grok"

@@ -89,7 +89,9 @@ def test_health_probe_rejects_invalid_authorities_before_connecting(monkeypatch:
 @pytest.mark.parametrize("drip_headers", [False, True])
 @pytest.mark.parametrize("outer_deadline", [False, True])
 def test_health_probe_enforces_deadline_against_byte_drip(
-    monkeypatch: pytest.MonkeyPatch, drip_headers: bool, outer_deadline: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    drip_headers: bool,
+    outer_deadline: bool,
 ) -> None:
     """Neither a partial header nor a slowly arriving body can extend the total deadline."""
 
@@ -118,7 +120,8 @@ def test_health_probe_enforces_deadline_against_byte_drip(
         try:
             started = time.monotonic()
             result = client.read_guard_health_details(
-                f"http://127.0.0.1:{server.server_port}", "test-token",
+                f"http://127.0.0.1:{server.server_port}",
+                "test-token",
                 deadline_monotonic=started + 0.08 if outer_deadline else None,
             )
             elapsed = time.monotonic() - started
@@ -135,26 +138,38 @@ def test_health_probe_invalid_or_expired_operation_deadline_never_connects(monke
         pytest.fail("expired or invalid operation opened a connection")
 
     monkeypatch.setattr(client, "HTTPConnection", unexpected_connection)
-    assert client.read_guard_health_details(
-        "http://127.0.0.1:1234", "test-token", deadline_monotonic=deadline,
-    ) is None
+    assert (
+        client.read_guard_health_details(
+            "http://127.0.0.1:1234",
+            "test-token",
+            deadline_monotonic=deadline,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
-    "fault", [None, "version", "fingerprint", "path", "source", "superseded", "expiry", "reread_expiry"],
+    "fault",
+    [None, "version", "fingerprint", "path", "source", "superseded", "expiry", "reread_expiry"],
 )
 def test_exact_live_identity_requires_planned_executable_generation_through_admission(tmp_path, monkeypatch, fault):
     executable = tmp_path / "core-generation" / "hol-guard"
     binding = live_identity.DaemonArtifactBinding(executable, "a" * 64, "3.13.1")
     state = {
-        "package_version": binding.package_version, "executable": str(executable), "source_root": str(executable),
-        "runtime_fingerprint": binding.executable_sha256, "pid": 123,
-        "host": "127.0.0.1", "port": 4321, "state_id": "first-state",
+        "package_version": binding.package_version,
+        "executable": str(executable),
+        "source_root": str(executable),
+        "runtime_fingerprint": binding.executable_sha256,
+        "pid": 123,
+        "host": "127.0.0.1",
+        "port": 4321,
+        "state_id": "first-state",
         "compatibility_version": live_identity.GUARD_DAEMON_COMPATIBILITY_VERSION,
     }
     if fault in {"version", "fingerprint", "path", "source"}:
         field, value = {
-            "version": ("package_version", "4.0.0"), "fingerprint": ("runtime_fingerprint", "b" * 64),
+            "version": ("package_version", "4.0.0"),
+            "fingerprint": ("runtime_fingerprint", "b" * 64),
             "path": ("executable", str(tmp_path / "foreign-core")),
             "source": ("source_root", str(tmp_path / "foreign-source")),
         }[fault]
@@ -183,7 +198,9 @@ def test_exact_live_identity_requires_planned_executable_generation_through_admi
 
     monkeypatch.setattr(live_identity, "_proxy_disabled_health_details", health)
     result = live_identity.verified_live_guard_daemon_identity(
-        tmp_path, expected_artifact=binding, deadline_monotonic=deadline,
+        tmp_path,
+        expected_artifact=binding,
+        deadline_monotonic=deadline,
     )
     if fault is None:
         assert result is not None and binding.matches(result)

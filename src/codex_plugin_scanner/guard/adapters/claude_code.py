@@ -487,8 +487,11 @@ class ClaudeCodeHarnessAdapter(HarnessAdapter):
         _remove_unsupported_guard_hook_groups(hooks)
         mode = settings_path.stat().st_mode & 0o777 if before is not None else 0o644
         settings = TransitionFile(
-            settings_path.resolve(strict=False), before, json.dumps(payload, indent=2).encode("utf-8"),
-            before_mode=mode, after_mode=mode,
+            settings_path.resolve(strict=False),
+            before,
+            json.dumps(payload, indent=2).encode("utf-8"),
+            before_mode=mode,
+            after_mode=mode,
         )
         settings.payload()
         manifest: dict[str, object] = {

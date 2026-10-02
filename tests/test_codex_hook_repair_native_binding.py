@@ -30,8 +30,9 @@ def native_binding(prepared_repair, tmp_path):  # noqa: F811
     artifact.write_bytes(content)
     artifact.chmod(0o700)
     metadata = artifact.stat()
-    identity = NativeRuntimeIdentity(artifact.resolve(), metadata.st_size, metadata.st_mtime_ns,
-                                     hashlib.sha256(content).hexdigest())
+    identity = NativeRuntimeIdentity(
+        artifact.resolve(), metadata.st_size, metadata.st_mtime_ns, hashlib.sha256(content).hexdigest()
+    )
     workspace = tmp_path / "verification-workspace"
     workspace.mkdir()
     return context, config, manifest, plan, identity, workspace
@@ -39,7 +40,10 @@ def native_binding(prepared_repair, tmp_path):  # noqa: F811
 
 def _prepare(plan, identity, workspace):
     return repair.prepare_codex_hook_repair_verification(
-        plan, expected_runtime=identity, workspace=workspace.resolve(), deadline_monotonic=time.monotonic() + 5,
+        plan,
+        expected_runtime=identity,
+        workspace=workspace.resolve(),
+        deadline_monotonic=time.monotonic() + 5,
     )
 
 
@@ -51,7 +55,10 @@ def test_native_binding_is_read_only_and_changes_approved_subject(native_binding
     assert not manifest.exists()
     assert prepared.subject() != plan.subject()
     assert prepared.payload()["native_runtime"] == {
-        "path": str(identity.path), "size": identity.size, "mtime_ns": identity.mtime_ns, "sha256": identity.sha256,
+        "path": str(identity.path),
+        "size": identity.size,
+        "mtime_ns": identity.mtime_ns,
+        "sha256": identity.sha256,
     }
     assert prepared.payload()["verification_workspace"] == str(workspace.resolve())
     assert sum(item.path == identity.path for item in prepared.files) == 1
@@ -65,8 +72,9 @@ def test_old_grant_cannot_add_native_identity_after_approval(native_binding):
         grant = _grant(plan, owner)
         prepared = _prepare(plan, identity, workspace)
         with pytest.raises(ApprovalGateError):
-            repair.authorize_codex_hook_repair(prepared, authority_home=context.guard_home, grant=grant,
-                                              deadline_monotonic=time.monotonic() + 5)
+            repair.authorize_codex_hook_repair(
+                prepared, authority_home=context.guard_home, grant=grant, deadline_monotonic=time.monotonic() + 5
+            )
     assert not manifest.exists()
 
 
@@ -76,7 +84,9 @@ def test_changed_native_comparison_artifact_refuses_forward_publication(native_b
     prepared = _prepare(plan, identity, workspace)
     with codex_install_transaction(context.guard_home, config, actor=CODEX_AUTHORITY_REPAIR_ACTION) as owner:
         authorization = repair.authorize_codex_hook_repair(
-            prepared, authority_home=context.guard_home, grant=_grant(prepared, owner),
+            prepared,
+            authority_home=context.guard_home,
+            grant=_grant(prepared, owner),
             deadline_monotonic=time.monotonic() + 5,
         )
         if mutation == "bytes":
@@ -104,8 +114,9 @@ def test_changed_workspace_cannot_reuse_exact_native_grant(native_binding):
         grant = _grant(prepared, owner)
         changed = replace(prepared, verification_workspace=other_workspace.resolve())
         with pytest.raises(ApprovalGateError):
-            repair.authorize_codex_hook_repair(changed, authority_home=context.guard_home, grant=grant,
-                                              deadline_monotonic=time.monotonic() + 5)
+            repair.authorize_codex_hook_repair(
+                changed, authority_home=context.guard_home, grant=grant, deadline_monotonic=time.monotonic() + 5
+            )
     assert not manifest.exists()
 
 
@@ -116,11 +127,23 @@ def test_unpinned_native_identity_is_not_a_valid_repair_plan(native_binding):
 
 
 @pytest.mark.usefixtures("native_hook_force")
-@pytest.mark.parametrize("boundary", [
-    "commit", "commit-cleanup-crash", "wrong-native", "tampered-proof", "record-cap", "revoked-proof", "stale-proof",
-])
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "commit",
+        "commit-cleanup-crash",
+        "wrong-native",
+        "tampered-proof",
+        "record-cap",
+        "revoked-proof",
+        "stale-proof",
+    ],
+)
 def test_real_configured_hook_native_protection_commits_repair(
-    prepared_repair, tmp_path, monkeypatch, boundary,  # noqa: F811 -- shared fixture
+    prepared_repair,
+    tmp_path,
+    monkeypatch,
+    boundary,  # noqa: F811 -- shared fixture
 ):
     from codex_plugin_scanner.guard import codex_hook_recovery as recovery
     from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
@@ -138,8 +161,9 @@ def test_real_configured_hook_native_protection_commits_repair(
         comparison.write_bytes(content)
         comparison.chmod(0o700)
         metadata = comparison.stat()
-        identity = NativeRuntimeIdentity(comparison.resolve(), metadata.st_size, metadata.st_mtime_ns,
-                                         hashlib.sha256(content).hexdigest())
+        identity = NativeRuntimeIdentity(
+            comparison.resolve(), metadata.st_size, metadata.st_mtime_ns, hashlib.sha256(content).hexdigest()
+        )
     workspace = tmp_path / "native-repair-workspace"
     workspace.mkdir()
     prepared = _prepare(plan, identity, workspace)
@@ -149,7 +173,9 @@ def test_real_configured_hook_native_protection_commits_repair(
     try:
         with codex_install_transaction(context.guard_home, config, actor=CODEX_AUTHORITY_REPAIR_ACTION) as owner:
             authorization = repair.authorize_codex_hook_repair(
-                prepared, authority_home=context.guard_home, grant=_grant(prepared, owner),
+                prepared,
+                authority_home=context.guard_home,
+                grant=_grant(prepared, owner),
                 deadline_monotonic=time.monotonic() + 45,
             )
             pending = repair.publish_codex_hook_repair(authorization)
@@ -159,20 +185,27 @@ def test_real_configured_hook_native_protection_commits_repair(
                 old_proof = observe_configured_codex_hook(
                     operation_id=prepared.operation_id,
                     artifact_generation="codex-authority-repair-" + prepared.subject().rsplit(":", 1)[1],
-                    expected_runtime=identity, guard_home=context.guard_home, config_path=config,
-                    workspace=workspace.resolve(), deadline_monotonic=authorization.deadline_monotonic,
+                    expected_runtime=identity,
+                    guard_home=context.guard_home,
+                    config_path=config,
+                    workspace=workspace.resolve(),
+                    deadline_monotonic=authorization.deadline_monotonic,
                     receipt_store=store,
                 )
                 assert recovery.recover_hook_publication(context.guard_home)
                 assert not manifest.exists()
                 fresh_authorization = repair.authorize_codex_hook_repair(
-                    prepared, authority_home=context.guard_home, grant=_grant(prepared, owner),
+                    prepared,
+                    authority_home=context.guard_home,
+                    grant=_grant(prepared, owner),
                     deadline_monotonic=authorization.deadline_monotonic,
                 )
                 pending = repair.publish_codex_hook_repair(fresh_authorization)
                 with pytest.raises(CodexHookIntegrityError) as stale:
                     recovery._commit_verified_hook_repair_publication(
-                        pending, proof=old_proof, started_monotonic=old_proof.observed_monotonic - 1,
+                        pending,
+                        proof=old_proof,
+                        started_monotonic=old_proof.observed_monotonic - 1,
                     )
                 assert stale.value.reason == "codex_hook_recovery_repair_native_verification_invalid"
                 assert recovery.hook_publication_pending(context.guard_home)
@@ -182,6 +215,7 @@ def test_real_configured_hook_native_protection_commits_repair(
             if boundary == "stale-proof":
                 pass
             elif boundary == "commit-cleanup-crash":
+
                 class CleanupCrash(BaseException):
                     pass
 
@@ -211,9 +245,12 @@ def test_real_configured_hook_native_protection_commits_repair(
                             )
 
                             settings_grant = require_high_risk(
-                                context.guard_home, purpose="settings_write",
-                                approval_gate_input=ApprovalGateInput(password=PASSWORD), action="settings.write",
-                                scope="local-protection", subject="generated repair commit revocation",
+                                context.guard_home,
+                                purpose="settings_write",
+                                approval_gate_input=ApprovalGateInput(password=PASSWORD),
+                                action="settings.write",
+                                scope="local-protection",
+                                subject="generated repair commit revocation",
                             )
                             update_settings(context.guard_home, {"enabled": False}, approval_gate_grant=settings_grant)
                         return proof
@@ -258,7 +295,9 @@ def test_unsealed_completion_input_cannot_commit(native_binding, proof):
     prepared = _prepare(plan, identity, workspace)
     with codex_install_transaction(context.guard_home, config, actor=CODEX_AUTHORITY_REPAIR_ACTION) as owner:
         authorization = repair.authorize_codex_hook_repair(
-            prepared, authority_home=context.guard_home, grant=_grant(prepared, owner),
+            prepared,
+            authority_home=context.guard_home,
+            grant=_grant(prepared, owner),
             deadline_monotonic=time.monotonic() + 5,
         )
         pending = repair.publish_codex_hook_repair(authorization)

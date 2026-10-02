@@ -283,8 +283,9 @@ def write_copilot_state(
     state_path: Path,
     scope: str,
 ) -> None:
-    payload = copilot_state_payload(context, target_path=target_path, backup_path=backup_path,
-                                    state_path=state_path, scope=scope)
+    payload = copilot_state_payload(
+        context, target_path=target_path, backup_path=backup_path, state_path=state_path, scope=scope
+    )
     write_text_atomic_no_follow(state_path, json.dumps(payload, indent=2) + "\n")
 
 

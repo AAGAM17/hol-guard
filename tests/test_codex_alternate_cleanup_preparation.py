@@ -27,8 +27,10 @@ def test_hook_cleanup_is_exact_and_preserves_user_hooks(tmp_path, monkeypatch):
     managed = adapter._managed_hook_groups(context)["PreToolUse"]
     user = {"matcher": "Bash", "hooks": [{"type": "command", "command": "python user_hook.py"}]}
     lookalike = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo codex_daemon_hook_bridge.py"}]}
-    payload = {"hooks": {"PreToolUse": [managed, user, lookalike]},
-               "features": {"hooks": True, "codex_hooks": True, "other": True}}
+    payload = {
+        "hooks": {"PreToolUse": [managed, user, lookalike]},
+        "features": {"hooks": True, "codex_hooks": True, "other": True},
+    }
     context, path = _source(tmp_path, monkeypatch, payload)
     before = _tree(tmp_path)
     change = adapter.prepare_codex_alternate_cleanup(context, config_path=path)
@@ -40,14 +42,20 @@ def test_hook_cleanup_is_exact_and_preserves_user_hooks(tmp_path, monkeypatch):
 
 
 def test_combined_cleanup_preserves_proxy_and_unselected_mcp(tmp_path, monkeypatch):
-    payload = {"model": "fixture", "features": {"hooks": True, "other": True},
-               "mcp_servers": {"original": {"command": "node", "args": ["server.js"]},
-                               "proxy": {"command": "hol-guard", "args": ["mcp-proxy"]},
-                               "user": {"command": "node", "args": ["user.js"]}}}
+    payload = {
+        "model": "fixture",
+        "features": {"hooks": True, "other": True},
+        "mcp_servers": {
+            "original": {"command": "node", "args": ["server.js"]},
+            "proxy": {"command": "hol-guard", "args": ["mcp-proxy"]},
+            "user": {"command": "node", "args": ["user.js"]},
+        },
+    }
     context, path = _source(tmp_path, monkeypatch, payload)
     before = _tree(tmp_path)
-    change = adapter.prepare_codex_alternate_cleanup(context, config_path=path,
-                                                      managed_server_names=("original", "proxy"))
+    change = adapter.prepare_codex_alternate_cleanup(
+        context, config_path=path, managed_server_names=("original", "proxy")
+    )
     assert _tree(tmp_path) == before
     rendered = parse_toml_object(change.after, path=path, label="fixture")
     assert rendered["features"] == {"other": True}
@@ -57,14 +65,18 @@ def test_combined_cleanup_preserves_proxy_and_unselected_mcp(tmp_path, monkeypat
 
 def test_mcp_only_publication_preserves_mode_and_repeated_cleanup_inode(tmp_path, monkeypatch):
     context, path = _source(tmp_path, monkeypatch, {"mcp_servers": {"original": {"command": "node"}}})
-    change = adapter.prepare_codex_alternate_cleanup(context, config_path=path, remove_hooks=False,
-                                                      managed_server_names=("original",))
+    change = adapter.prepare_codex_alternate_cleanup(
+        context, config_path=path, remove_hooks=False, managed_server_names=("original",)
+    )
     assert change.after_mode == 0o644
     adapter._publish_codex_alternate_cleanup(change)
     assert path.read_bytes() == b"" and path.stat().st_mode & 0o777 == 0o644
     before = _tree(tmp_path)
-    adapter._publish_codex_alternate_cleanup(adapter.prepare_codex_alternate_cleanup(
-        context, config_path=path, remove_hooks=False, managed_server_names=("original",)))
+    adapter._publish_codex_alternate_cleanup(
+        adapter.prepare_codex_alternate_cleanup(
+            context, config_path=path, remove_hooks=False, managed_server_names=("original",)
+        )
+    )
     assert _tree(tmp_path) == before
 
 
@@ -74,8 +86,9 @@ def test_empty_or_malformed_mcp_entries_are_preserved(tmp_path, monkeypatch, pay
     if payload.get("mcp_servers", {}).get("original"):
         payload["mcp_servers"]["original"]["args"] = "malformed"
     context, path = _source(tmp_path, monkeypatch, payload)
-    change = adapter.prepare_codex_alternate_cleanup(context, config_path=path, remove_hooks=False,
-                                                      managed_server_names=("original",))
+    change = adapter.prepare_codex_alternate_cleanup(
+        context, config_path=path, remove_hooks=False, managed_server_names=("original",)
+    )
     assert change.before == change.after
 
 
@@ -106,7 +119,9 @@ def test_invalid_config_is_not_replaced(tmp_path, monkeypatch, invalid):
 
 
 def test_signed_cleanup_inverse_restores_bytes_and_mode(
-    transition, tmp_path, monkeypatch,  # noqa: F811 -- shared pytest fixture
+    transition,
+    tmp_path,
+    monkeypatch,  # noqa: F811 -- shared pytest fixture
 ):
     runtime, plan, _bindings, _pointer = transition
     context, path = _source(tmp_path, monkeypatch, {"features": {"hooks": True, "other": True}})

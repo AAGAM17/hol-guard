@@ -40,16 +40,27 @@ def test_private_request_roundtrip_preserves_exact_review_and_changes_nothing(in
     path, digest = capture(context, config, plan, tmp_path)
     with codex_install_transaction(context.guard_home, config, actor=PUBLICATION_INVERSE_ACTION):
         loaded = load_codex_hook_repair_request(
-            path, guard_home=context.guard_home, config_path=config, expected_sha256=digest,
-            deadline_monotonic=time.monotonic() + 30, inverse_spec=_hook_manifest_spec(context),
+            path,
+            guard_home=context.guard_home,
+            config_path=config,
+            expected_sha256=digest,
+            deadline_monotonic=time.monotonic() + 30,
+            inverse_spec=_hook_manifest_spec(context),
         )
     assert loaded.payload() == plan.payload()
     assert loaded.subject() == plan.subject()
     assert path.stat().st_mode & 0o777 == 0o600
     assert participant_digests(context, config, manifest) == before
     assert set(json.loads(path.read_bytes())) == {
-        "schema", "guard_home", "config_path", "installation_id", "created_monotonic",
-        "expires_monotonic", "plan", "subject", "authentication",
+        "schema",
+        "guard_home",
+        "config_path",
+        "installation_id",
+        "created_monotonic",
+        "expires_monotonic",
+        "plan",
+        "subject",
+        "authentication",
     }
 
 
@@ -78,7 +89,9 @@ def test_request_refusal_precedes_approval_and_publication(inverse, tmp_path, mo
     monkeypatch.setattr(command, "consume_desktop_lifecycle_env", forbidden)
     code, result = command.run_codex_authority_repair(
         _args("--authority-request", str(path), "--authority-request-sha256", digest),
-        context, GuardStore(context.guard_home), None,
+        context,
+        GuardStore(context.guard_home),
+        None,
     )
     assert code == 2 and result["status"] == "recovery-required" and result["verified"] is False
     assert participant_digests(context, config, manifest) == before
@@ -89,7 +102,10 @@ def test_inverse_request_cannot_be_loaded_as_missing_authority_repair(inverse, t
     path, digest = capture(context, config, plan, tmp_path)
     with pytest.raises(TransitionError, match="authority_repair_request_context_invalid"):
         load_codex_hook_repair_request(
-            path, guard_home=context.guard_home, config_path=config, expected_sha256=digest,
+            path,
+            guard_home=context.guard_home,
+            config_path=config,
+            expected_sha256=digest,
             deadline_monotonic=time.monotonic() + 30,
         )
 
@@ -110,22 +126,32 @@ def test_mac_valid_request_cannot_change_live_inverse_or_replay_expired_review(i
     elif change == "expired":
         value["created_monotonic"] = time.monotonic() - 301
         value["expires_monotonic"] = value["created_monotonic"] + 300
-    value["subject"] = (f"codex-publication-inverse:{plan.operation_id}:"
-                        + hashlib.sha256(canonical_manifest_bytes(value["plan"])).hexdigest())
+    value["subject"] = (
+        f"codex-publication-inverse:{plan.operation_id}:"
+        + hashlib.sha256(canonical_manifest_bytes(value["plan"])).hexdigest()
+    )
     secret = load_hook_secret(context.guard_home)
     value["authentication"] = sign_local_authority_payload(
-        value, key=secret.key, key_id=secret.key_id, signed_at=plan.operation_id,
+        value,
+        key=secret.key,
+        key_id=secret.key_id,
+        signed_at=plan.operation_id,
         purpose="codex-authority-repair-request" if change == "purpose" else "codex-publication-inverse-request",
     )
     raw = canonical_manifest_bytes(value) + b"\n"
     path.write_bytes(raw)
     before = participant_digests(context, config, manifest)
-    with (codex_install_transaction(context.guard_home, config, actor=PUBLICATION_INVERSE_ACTION),
-          pytest.raises(TransitionError)):
+    with (
+        codex_install_transaction(context.guard_home, config, actor=PUBLICATION_INVERSE_ACTION),
+        pytest.raises(TransitionError),
+    ):
         load_codex_hook_repair_request(
-            path, guard_home=context.guard_home, config_path=config,
+            path,
+            guard_home=context.guard_home,
+            config_path=config,
             expected_sha256=hashlib.sha256(raw).hexdigest(),
-            deadline_monotonic=time.monotonic() + 30, inverse_spec=_hook_manifest_spec(context),
+            deadline_monotonic=time.monotonic() + 30,
+            inverse_spec=_hook_manifest_spec(context),
         )
     assert participant_digests(context, config, manifest) == before
 
@@ -154,7 +180,10 @@ def test_cli_review_approval_publication_and_real_native_retirement(inverse, tmp
     before = participant_digests(context, config, manifest)
     monkeypatch.setattr(command, "consume_desktop_lifecycle_env", lambda **kwargs: ApprovalGateInput(password=PASSWORD))
     code, preview = command.run_codex_authority_repair(
-        _args("--dry-run", "--authority-request", str(request)), context, store, tmp_path,
+        _args("--dry-run", "--authority-request", str(request)),
+        context,
+        store,
+        tmp_path,
     )
     assert code == 0 and preview["repair"] == "codex-publication-inverse"
     assert preview["verified"] is False
@@ -173,7 +202,9 @@ def test_cli_review_approval_publication_and_real_native_retirement(inverse, tmp
     try:
         code, result = command.run_codex_authority_repair(
             _args("--authority-request", str(request), "--authority-request-sha256", preview["request_sha256"]),
-            context, store, tmp_path,
+            context,
+            store,
+            tmp_path,
         )
         assert code == 0, result
         assert result["verified"] is True and result["recovery_required"] is False

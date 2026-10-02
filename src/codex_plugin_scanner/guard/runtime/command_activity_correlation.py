@@ -160,7 +160,9 @@ def load_existing_installation_correlation_key(guard_home: Path) -> Installation
     to repair missing authority. Missing or unsafe files remain unavailable.
     """
     raw = read_private_regular_bytes(
-        guard_home / COMMAND_ACTIVITY_CORRELATION_KEY_FILE, max_bytes=4096, require_private_parent=True,
+        guard_home / COMMAND_ACTIVITY_CORRELATION_KEY_FILE,
+        max_bytes=4096,
+        require_private_parent=True,
     )
     if raw is None:
         return None

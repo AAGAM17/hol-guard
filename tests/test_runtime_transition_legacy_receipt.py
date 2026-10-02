@@ -19,11 +19,22 @@ from tests.test_native_decision_receipt import _receipt
 
 
 def persist(store, writer, payload, action, *, variant="a"):
-    receipt = _receipt(harness="codex", event_name="PreToolUse", policy_action=action,
-                       decision="allow" if action == "allow" else "deny", request_digest=variant * 64)
+    receipt = _receipt(
+        harness="codex",
+        event_name="PreToolUse",
+        policy_action=action,
+        decision="allow" if action == "allow" else "deny",
+        request_digest=variant * 64,
+    )
     assert writer.submit_native_decision_receipt(receipt=receipt)
-    assert writer.submit_command_activity(harness="codex", event="PreToolUse", payload=payload,
-                                         succeeded=True, policy_action=action, receipt_id=receipt["decision_id"])
+    assert writer.submit_command_activity(
+        harness="codex",
+        event="PreToolUse",
+        payload=payload,
+        succeeded=True,
+        policy_action=action,
+        receipt_id=receipt["decision_id"],
+    )
     return receipt
 
 
@@ -44,8 +55,9 @@ def legacy(tmp_path):
 
 
 def read(store, handle, since):
-    return lookup.read_legacy_codex_probe_receipt(store, correlation=handle, since=since,
-                                                deadline_monotonic=time.monotonic() + 2)
+    return lookup.read_legacy_codex_probe_receipt(
+        store, correlation=handle, since=since, deadline_monotonic=time.monotonic() + 2
+    )
 
 
 @pytest.mark.parametrize("expired", [False, True])
@@ -65,7 +77,10 @@ def test_connection_timeout_preserves_parent_deadline_and_first_cause(legacy, mo
         patch.setattr(lookup.time, "monotonic", lambda: now[0])
         with pytest.raises(TransitionError if expired else TimeoutError) as caught:
             lookup.read_legacy_codex_probe_receipt(
-                FailedConnectionStore(), correlation=handle, since=since, deadline_monotonic=20.0,
+                FailedConnectionStore(),
+                correlation=handle,
+                since=since,
+                deadline_monotonic=20.0,
             )
     if expired:
         assert "admission_deadline_expired" in str(caught.value)
@@ -97,8 +112,10 @@ def test_matching_but_invalid_evidence_is_refused(legacy, fault):
     assert writer.stop(timeout_seconds=2)
     with store._connect() as connection:
         if fault == "receipt_stale":
-            connection.execute("update native_hook_decision_receipts set recorded_at = ?",
-                               ((since - timedelta(seconds=1)).isoformat(),))
+            connection.execute(
+                "update native_hook_decision_receipts set recorded_at = ?",
+                ((since - timedelta(seconds=1)).isoformat(),),
+            )
         elif fault == "receipt_changed":
             connection.execute("update native_hook_decision_receipts set runtime_identity = ?", ("0" * 64,))
         elif fault == "prompted":
@@ -136,5 +153,6 @@ def test_expired_deadline_never_opens_store(legacy, monkeypatch):
 
     monkeypatch.setattr(store, "_connect", forbidden)
     with pytest.raises(TransitionError, match="admission_deadline_expired"):
-        lookup.read_legacy_codex_probe_receipt(store, correlation=handle, since=since,
-                                             deadline_monotonic=time.monotonic() - 1)
+        lookup.read_legacy_codex_probe_receipt(
+            store, correlation=handle, since=since, deadline_monotonic=time.monotonic() - 1
+        )

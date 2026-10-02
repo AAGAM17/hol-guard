@@ -51,8 +51,11 @@ _FORWARD_CAP_SECONDS = 60.0
 
 
 def prepare_codex_hook_repair_verification(
-    plan: PreparedCodexHookRepair, *, expected_runtime: NativeRuntimeIdentity,
-    workspace: Path, deadline_monotonic: float,
+    plan: PreparedCodexHookRepair,
+    *,
+    expected_runtime: NativeRuntimeIdentity,
+    workspace: Path,
+    deadline_monotonic: float,
 ) -> PreparedCodexHookRepair:
     """Pin a native comparison identity before exact approval; never launch it.
 
@@ -62,15 +65,20 @@ def prepare_codex_hook_repair_verification(
     """
     from .runtime_transition_prepare import _pin_executable
 
-    if (isinstance(deadline_monotonic, bool) or not math.isfinite(deadline_monotonic)
-            or time.monotonic() >= deadline_monotonic):
+    if (
+        isinstance(deadline_monotonic, bool)
+        or not math.isfinite(deadline_monotonic)
+        or time.monotonic() >= deadline_monotonic
+    ):
         raise TransitionError("deadline_exceeded")
     if plan.native_runtime is not None or plan.verification_workspace is not None:
         raise TransitionError("authority_repair_native_binding_already_prepared")
     plan.payload()
     native = {
-        "path": str(expected_runtime.path), "size": expected_runtime.size,
-        "mtime_ns": expected_runtime.mtime_ns, "sha256": expected_runtime.sha256,
+        "path": str(expected_runtime.path),
+        "size": expected_runtime.size,
+        "mtime_ns": expected_runtime.mtime_ns,
+        "sha256": expected_runtime.sha256,
     }
     with inverse_recovery_budget(deadline_monotonic), hook_validation_deadline(deadline_monotonic):
         RuntimeTransition._compare(plan.payload(), "before")
@@ -80,8 +88,9 @@ def prepare_codex_hook_repair_verification(
         files[dependency.path] = (
             merge_transition_dependency(previous, dependency) if previous is not None else dependency
         )
-        prepared = replace(plan, files=tuple(files.values()), native_runtime=expected_runtime,
-                           verification_workspace=workspace)
+        prepared = replace(
+            plan, files=tuple(files.values()), native_runtime=expected_runtime, verification_workspace=workspace
+        )
         RuntimeTransition._compare(prepared.payload(), "before")
     if time.monotonic() >= deadline_monotonic:
         raise TransitionError("deadline_exceeded")
@@ -107,7 +116,8 @@ if hasattr(os, "register_at_fork"):
 
 
 def _owner_and_pending(
-    plan: PreparedCodexHookRepair, publication: PendingCodexHookRepair | None = None,
+    plan: PreparedCodexHookRepair,
+    publication: PendingCodexHookRepair | None = None,
 ) -> CodexInstallOwner:
     owner = require_codex_install_owner(plan.guard_home)
     if owner.actor != CODEX_AUTHORITY_REPAIR_ACTION:
@@ -115,9 +125,13 @@ def _owner_and_pending(
     assert_transition_mutation_allowed(plan.guard_home)
     if publication is not None:
         assert_owned_hook_repair_publication(
-            plan.guard_home, plan.config_path, repair_plan=plan.payload(),
-            config_bytes=publication.config_bytes, manifest_bytes=publication.manifest_bytes,
-            receipt_bytes=publication.receipt_bytes, publication_monotonic=publication.publication_monotonic,
+            plan.guard_home,
+            plan.config_path,
+            repair_plan=plan.payload(),
+            config_bytes=publication.config_bytes,
+            manifest_bytes=publication.manifest_bytes,
+            receipt_bytes=publication.receipt_bytes,
+            publication_monotonic=publication.publication_monotonic,
         )
     elif hook_publication_pending(plan.guard_home):
         raise TransitionError("authority_repair_publication_pending")
@@ -146,23 +160,38 @@ class CodexHookRepairAuthorization:
         if owner.operation_id != self.owner_operation_id or owner.pid != self.owner_pid:
             raise TransitionError("authority_repair_owner_mismatch")
         expected_home = lifecycle_authority_home(
-            self.plan.guard_home, requirement=LifecycleGateRequirement(CODEX_AUTHORITY_REPAIR_ACTION,
-                                                                       self.approved_subject),
+            self.plan.guard_home,
+            requirement=LifecycleGateRequirement(CODEX_AUTHORITY_REPAIR_ACTION, self.approved_subject),
         ).resolve(strict=False)
         if expected_home != self.authority_home:
             raise TransitionError("approval_authority_mismatch")
         with _claims_guard:
             claim = _claims.get(self.grant.grant_id)
             publication_time = _publications.get(self.grant.grant_id)
-        if self.plan.subject() != self.approved_subject or claim is None or claim[:4] != (
-            self.approved_subject, self.owner_operation_id, self.owner_pid, self.deadline_monotonic,
+        if (
+            self.plan.subject() != self.approved_subject
+            or claim is None
+            or claim[:4]
+            != (
+                self.approved_subject,
+                self.owner_operation_id,
+                self.owner_pid,
+                self.deadline_monotonic,
+            )
         ):
             raise TransitionError("authority_repair_authorization_invalid")
         if publication is not None and publication_time != publication.publication_monotonic:
             raise TransitionError("authority_repair_authorization_invalid")
-        validate_grant(self.authority_home, self.grant, purpose="protection_lifecycle", strict=True,
-                       action=CODEX_AUTHORITY_REPAIR_ACTION, scope="local-protection", subject=self.approved_subject,
-                       session_nonce=self.owner_operation_id)
+        validate_grant(
+            self.authority_home,
+            self.grant,
+            purpose="protection_lifecycle",
+            strict=True,
+            action=CODEX_AUTHORITY_REPAIR_ACTION,
+            scope="local-protection",
+            subject=self.approved_subject,
+            session_nonce=self.owner_operation_id,
+        )
 
     def compare_before(self) -> None:
         self.check()
@@ -172,22 +201,36 @@ class CodexHookRepairAuthorization:
 
 
 def authorize_codex_hook_repair(
-    plan: PreparedCodexHookRepair, *, authority_home: Path, grant: ApprovalGateGrant | None,
+    plan: PreparedCodexHookRepair,
+    *,
+    authority_home: Path,
+    grant: ApprovalGateGrant | None,
     deadline_monotonic: float,
 ) -> CodexHookRepairAuthorization:
-    if (isinstance(deadline_monotonic, bool) or not math.isfinite(deadline_monotonic)
-            or time.monotonic() >= deadline_monotonic):
+    if (
+        isinstance(deadline_monotonic, bool)
+        or not math.isfinite(deadline_monotonic)
+        or time.monotonic() >= deadline_monotonic
+    ):
         raise TransitionError("deadline_exceeded")
     owner = _owner_and_pending(plan)
     subject = plan.subject()
     expected_home = lifecycle_authority_home(
-        plan.guard_home, requirement=LifecycleGateRequirement(CODEX_AUTHORITY_REPAIR_ACTION, subject),
+        plan.guard_home,
+        requirement=LifecycleGateRequirement(CODEX_AUTHORITY_REPAIR_ACTION, subject),
     ).resolve(strict=False)
     if authority_home.resolve(strict=False) != expected_home:
         raise TransitionError("approval_authority_mismatch")
-    validate_grant(expected_home, grant, purpose="protection_lifecycle", strict=True,
-                   action=CODEX_AUTHORITY_REPAIR_ACTION, scope="local-protection", subject=subject,
-                   session_nonce=owner.operation_id)
+    validate_grant(
+        expected_home,
+        grant,
+        purpose="protection_lifecycle",
+        strict=True,
+        action=CODEX_AUTHORITY_REPAIR_ACTION,
+        scope="local-protection",
+        subject=subject,
+        session_nonce=owner.operation_id,
+    )
     assert grant is not None
     now = time.monotonic()
     expires_epoch = datetime.fromisoformat(grant.expires_at.replace("Z", "+00:00")).timestamp()
@@ -205,8 +248,9 @@ def authorize_codex_hook_repair(
         if len(_claims) >= _MAX_CLAIMS:
             raise TransitionError("authority_repair_capacity")
         _claims[grant.grant_id] = (subject, owner.operation_id, owner.pid, deadline, claim_retirement)
-    authorization = CodexHookRepairAuthorization(plan, expected_home, grant, owner.operation_id,
-                                               owner.pid, deadline, subject)
+    authorization = CodexHookRepairAuthorization(
+        plan, expected_home, grant, owner.operation_id, owner.pid, deadline, subject
+    )
     authorization.compare_before()
     return authorization
 
@@ -224,15 +268,20 @@ class PendingCodexHookRepair:
             raise TransitionError("generation_invalid")
         authorization = self.authorization
         authorization._check(self)
-        with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-            authorization.deadline_monotonic,
+        with (
+            inverse_recovery_budget(authorization.deadline_monotonic),
+            hook_validation_deadline(
+                authorization.deadline_monotonic,
+            ),
         ):
             RuntimeTransition._compare(authorization.plan.payload(), generation)
         authorization._check(self)
 
 
 def verify_and_commit_codex_hook_repair(
-    pending: PendingCodexHookRepair, *, receipt_store: GuardStore | None = None,
+    pending: PendingCodexHookRepair,
+    *,
+    receipt_store: GuardStore | None = None,
 ) -> NativeProtectionAdmission:
     """Run the configured hook; commit only fresh sealed native protection."""
     from .runtime_transition_codex_observer import observe_configured_codex_hook
@@ -244,13 +293,21 @@ def verify_and_commit_codex_hook_repair(
     started = time.monotonic()
     generation = "codex-authority-repair-" + plan.subject().rsplit(":", 1)[1]
     try:
-        with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-            authorization.deadline_monotonic,
+        with (
+            inverse_recovery_budget(authorization.deadline_monotonic),
+            hook_validation_deadline(
+                authorization.deadline_monotonic,
+            ),
         ):
             proof = observe_configured_codex_hook(
-                operation_id=plan.operation_id, artifact_generation=generation, expected_runtime=plan.native_runtime,
-                guard_home=plan.guard_home, config_path=plan.config_path, workspace=plan.verification_workspace,
-                deadline_monotonic=authorization.deadline_monotonic, receipt_store=receipt_store,
+                operation_id=plan.operation_id,
+                artifact_generation=generation,
+                expected_runtime=plan.native_runtime,
+                guard_home=plan.guard_home,
+                config_path=plan.config_path,
+                workspace=plan.verification_workspace,
+                deadline_monotonic=authorization.deadline_monotonic,
+                receipt_store=receipt_store,
             )
             _commit_verified_hook_repair_publication(pending, proof=proof, started_monotonic=started)
     except Exception as first_error:
@@ -261,8 +318,11 @@ def verify_and_commit_codex_hook_repair(
 
 def _inverse_failed_publication(authorization: CodexHookRepairAuthorization, first_error: Exception) -> None:
     try:
-        with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-            authorization.deadline_monotonic,
+        with (
+            inverse_recovery_budget(authorization.deadline_monotonic),
+            hook_validation_deadline(
+                authorization.deadline_monotonic,
+            ),
         ):
             recover_hook_publication(authorization.plan.guard_home)
     except Exception as rollback_error:
@@ -283,17 +343,28 @@ def publish_codex_hook_repair(authorization: CodexHookRepairAuthorization) -> Pe
             raise TransitionError("authority_repair_publication_claimed")
         publication_time = time.monotonic()
         _publications[authorization.grant.grant_id] = publication_time
-    with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-        authorization.deadline_monotonic,
+    with (
+        inverse_recovery_budget(authorization.deadline_monotonic),
+        hook_validation_deadline(
+            authorization.deadline_monotonic,
+        ),
     ):
         prepare_hook_publication(
-            plan.guard_home, plan.config_path, before_config=receipt.config_bytes, after_config=receipt.config_bytes,
-            before_manifest=None, after_manifest=receipt.manifest_bytes, key_created=False,
-            before_receipt=receipt.receipt_bytes, after_receipt=receipt.receipt_bytes, repair_plan=plan.payload(),
+            plan.guard_home,
+            plan.config_path,
+            before_config=receipt.config_bytes,
+            after_config=receipt.config_bytes,
+            before_manifest=None,
+            after_manifest=receipt.manifest_bytes,
+            key_created=False,
+            before_receipt=receipt.receipt_bytes,
+            after_receipt=receipt.receipt_bytes,
+            repair_plan=plan.payload(),
             repair_publication_monotonic=publication_time,
         )
-    pending = PendingCodexHookRepair(authorization, receipt.config_bytes, receipt.manifest_bytes,
-                                    receipt.receipt_bytes, publication_time)
+    pending = PendingCodexHookRepair(
+        authorization, receipt.config_bytes, receipt.manifest_bytes, receipt.receipt_bytes, publication_time
+    )
     try:
         pending.compare("before")
         atomic_write_bytes(plan.manifest_change.path, receipt.manifest_bytes, mode=0o600, private=True)

@@ -6,7 +6,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import cast
 
-HOOK_HTTP_DEADLINE_TEMPLATE = '''
+HOOK_HTTP_DEADLINE_TEMPLATE = """
 def _deadline_http_handler(deadline_monotonic):
     import http.client
     import io
@@ -79,7 +79,7 @@ def _deadline_http_handler(deadline_monotonic):
             return self.do_open(DeadlineConnection, request)
 
     return DeadlineHandler()
-'''
+"""
 
 _handler_namespace: dict[str, object] = {"__name__": __name__}
 exec(compile(HOOK_HTTP_DEADLINE_TEMPLATE, __file__, "exec"), _handler_namespace)

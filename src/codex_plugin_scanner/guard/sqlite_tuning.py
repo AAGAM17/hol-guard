@@ -53,9 +53,7 @@ def sqlite_operation_deadline(deadline_monotonic: float) -> Generator[None]:
     if not math.isfinite(deadline_monotonic):
         raise ValueError("SQLite deadline must be finite")
     parent = _SQLITE_OPERATION_DEADLINE.get()
-    token = _SQLITE_OPERATION_DEADLINE.set(
-        deadline_monotonic if parent is None else min(parent, deadline_monotonic)
-    )
+    token = _SQLITE_OPERATION_DEADLINE.set(deadline_monotonic if parent is None else min(parent, deadline_monotonic))
     try:
         yield
     finally:

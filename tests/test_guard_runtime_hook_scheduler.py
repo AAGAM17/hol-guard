@@ -440,8 +440,12 @@ def test_invalid_byte_reservation_cannot_publish_phantom_queued_work(previous_ow
         reservation.release()
     else:
         previous = scheduler.acquire(
-            harness="codex", client_key="previous", lane="decision", payload_bytes=5,
-            deadline=time.monotonic() + 1, byte_reservation=reservation,
+            harness="codex",
+            client_key="previous",
+            lane="decision",
+            payload_bytes=5,
+            deadline=time.monotonic() + 1,
+            byte_reservation=reservation,
         )
         assert previous.permit is not None
         previous.permit.release()
@@ -449,12 +453,19 @@ def test_invalid_byte_reservation_cannot_publish_phantom_queued_work(previous_ow
     assert baseline["active"] == baseline["queued"] == baseline["retained_bytes"] == 0
     with pytest.raises(RuntimeError, match="no longer transferable"):
         scheduler.acquire(
-            harness="codex", client_key="invalid", lane="decision", payload_bytes=5,
-            deadline=time.monotonic() + 1, byte_reservation=reservation,
+            harness="codex",
+            client_key="invalid",
+            lane="decision",
+            payload_bytes=5,
+            deadline=time.monotonic() + 1,
+            byte_reservation=reservation,
         )
     assert scheduler.stats() == baseline, "rejected ownership must not enqueue or change byte accounting"
     next_request = scheduler.acquire(
-        harness="pi", client_key="next", lane="decision", payload_bytes=10,
+        harness="pi",
+        client_key="next",
+        lane="decision",
+        payload_bytes=10,
         deadline=time.monotonic() + 1,
     )
     assert next_request.permit is not None
@@ -466,7 +477,10 @@ def test_invalid_byte_reservation_cannot_publish_phantom_queued_work(previous_ow
 def test_cancelling_queued_reserved_payload_returns_bytes_without_releasing_active_owner() -> None:
     scheduler = RuntimeHookScheduler(active_limit=1, retained_bytes_limit=10)
     active = scheduler.acquire(
-        harness="pi", client_key="active", lane="decision", payload_bytes=5,
+        harness="pi",
+        client_key="active",
+        lane="decision",
+        payload_bytes=5,
         deadline=time.monotonic() + 2,
     )
     assert active.permit is not None
@@ -475,9 +489,14 @@ def test_cancelling_queued_reserved_payload_returns_bytes_without_releasing_acti
     cancellation = threading.Event()
     with ThreadPoolExecutor(max_workers=1) as executor:
         queued = executor.submit(
-            scheduler.acquire, harness="codex", client_key="cancelled", lane="decision",
-            payload_bytes=5, deadline=time.monotonic() + 2,
-            byte_reservation=reservation, cancellation=cancellation,
+            scheduler.acquire,
+            harness="codex",
+            client_key="cancelled",
+            lane="decision",
+            payload_bytes=5,
+            deadline=time.monotonic() + 2,
+            byte_reservation=reservation,
+            cancellation=cancellation,
         )
         try:
             until = time.monotonic() + 1
@@ -528,10 +547,7 @@ def test_default_scheduler_admits_thirty_two_hooks_across_harnesses() -> None:
         permit.release()
     final = scheduler.stats()
     assert final["active"] == final["queued"] == final["retained_bytes"] == 0
-    print(
-        "C1 pass hooks=32 codex=24 pi=8 active_limit=32 "
-        f"retained_bytes_after={final['retained_bytes']}"
-    )
+    print(f"C1 pass hooks=32 codex=24 pi=8 active_limit=32 retained_bytes_after={final['retained_bytes']}")
 
 
 def test_repeated_cancellation_returns_hook_scheduler_baseline() -> None:
@@ -585,8 +601,12 @@ def test_queue_notification_exception_cannot_leave_unowned_payload(reserved: boo
     try:
         with pytest.raises(RuntimeError) as raised:
             scheduler.acquire(
-                harness="codex", client_key="failed-notification", lane="decision", payload_bytes=10,
-                deadline=time.monotonic() + 1, byte_reservation=reservation,
+                harness="codex",
+                client_key="failed-notification",
+                lane="decision",
+                payload_bytes=10,
+                deadline=time.monotonic() + 1,
+                byte_reservation=reservation,
             )
         assert raised.value is failure
     finally:
@@ -597,7 +617,10 @@ def test_queue_notification_exception_cannot_leave_unowned_payload(reserved: boo
     assert not stats["per_harness_queued"]
     scheduler.set_active_limit(1)
     following = scheduler.acquire(
-        harness="pi", client_key="following", lane="decision", payload_bytes=10,
+        harness="pi",
+        client_key="following",
+        lane="decision",
+        payload_bytes=10,
         deadline=time.monotonic() + 1,
     )
     assert following.permit is not None
@@ -608,7 +631,8 @@ def test_queue_notification_exception_cannot_leave_unowned_payload(reserved: boo
 
 @pytest.mark.parametrize("admitted_before_interrupt", [False, True])
 def test_interrupted_scheduler_wait_returns_ownership_before_propagating(
-    monkeypatch: pytest.MonkeyPatch, admitted_before_interrupt: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    admitted_before_interrupt: bool,
 ) -> None:
     scheduler = RuntimeHookScheduler(active_limit=0, retained_bytes_limit=10)
     interruption = KeyboardInterrupt("generated isolated waiter interruption")
@@ -623,7 +647,10 @@ def test_interrupted_scheduler_wait_returns_ownership_before_propagating(
         waiter_patch.setattr(scheduler._condition, "wait", interrupted_wait)
         with pytest.raises(KeyboardInterrupt) as raised:
             scheduler.acquire(
-                harness="codex", client_key="interrupted", lane="decision", payload_bytes=10,
+                harness="codex",
+                client_key="interrupted",
+                lane="decision",
+                payload_bytes=10,
                 deadline=time.monotonic() + 1,
             )
         assert raised.value is interruption
@@ -632,7 +659,10 @@ def test_interrupted_scheduler_wait_returns_ownership_before_propagating(
     assert not stats["per_harness_active"] and not stats["per_harness_queued"]
     scheduler.set_active_limit(1)
     following = scheduler.acquire(
-        harness="pi", client_key="following", lane="decision", payload_bytes=10,
+        harness="pi",
+        client_key="following",
+        lane="decision",
+        payload_bytes=10,
         deadline=time.monotonic() + 1,
     )
     assert following.permit is not None

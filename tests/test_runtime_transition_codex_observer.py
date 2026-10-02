@@ -34,8 +34,9 @@ def installed_context(tmp_path):
     home, workspace = tmp_path / "home", tmp_path / "workspace"
     home.mkdir()
     workspace.mkdir()
-    context = HarnessContext(home_dir=home, workspace_dir=None, guard_home=tmp_path / "guard",
-                             home_override_explicit=True)
+    context = HarnessContext(
+        home_dir=home, workspace_dir=None, guard_home=tmp_path / "guard", home_override_explicit=True
+    )
     store = GuardStore(context.guard_home)
     CodexHarnessAdapter().install(context)
     return context, workspace, store
@@ -45,8 +46,13 @@ def observe(context, workspace, identity, deadline, receipt_store=None):
     config = context.home_dir / ".codex" / "config.toml"
     with codex_install_transaction(context.guard_home, config, actor="transition-probe", deadline=deadline):
         return observer.observe_configured_codex_hook(
-            operation_id=str(uuid.uuid4()), artifact_generation="candidate", expected_runtime=identity,
-            guard_home=context.guard_home, config_path=config, workspace=workspace, deadline_monotonic=deadline,
+            operation_id=str(uuid.uuid4()),
+            artifact_generation="candidate",
+            expected_runtime=identity,
+            guard_home=context.guard_home,
+            config_path=config,
+            workspace=workspace,
+            deadline_monotonic=deadline,
             receipt_store=receipt_store,
         )
 
@@ -56,9 +62,11 @@ def observe(context, workspace, identity, deadline, receipt_store=None):
 def test_legacy_channel_uses_real_configured_hook_and_persisted_rust_receipts(tmp_path, monkeypatch, security_level):
     with monkeypatch.context() as role_patch:
         paths = codex_adapter._hook_packaged_file_paths
-        role_patch.setattr(codex_adapter, "_hook_packaged_file_paths",
-                           lambda: tuple((role, path) for role, path in paths()
-                                         if role not in {"hook_probe", "native_receipt"}))
+        role_patch.setattr(
+            codex_adapter,
+            "_hook_packaged_file_paths",
+            lambda: tuple((role, path) for role, path in paths() if role not in {"hook_probe", "native_receipt"}),
+        )
         context, workspace, store = installed_context(tmp_path)
     (context.guard_home / "config.toml").write_text(f'security_level = "{security_level}"\n')
     live_identity = native_runtime_status().identity
@@ -83,12 +91,19 @@ def test_legacy_channel_uses_real_configured_hook_and_persisted_rust_receipts(tm
         result = real_launch(*args, **kwargs)
         receipt = daemon._server.hook_worker.last_native_decision_receipt or {}
         output = json.loads(result.stdout)
-        launch_diagnostics.append({"elapsed": time.monotonic() - started, "returncode": result.returncode,
-                                   "timed_out": result.timed_out, "decision": receipt.get("decision"),
-                                   "policy_action": receipt.get("policy_action"),
-                                   "reason_code": receipt.get("reason_code"),
-                                   "permission_reason": str(output.get("hookSpecificOutput", {})
-                                                            .get("permissionDecisionReason", ""))[:512]})
+        launch_diagnostics.append(
+            {
+                "elapsed": time.monotonic() - started,
+                "returncode": result.returncode,
+                "timed_out": result.timed_out,
+                "decision": receipt.get("decision"),
+                "policy_action": receipt.get("policy_action"),
+                "reason_code": receipt.get("reason_code"),
+                "permission_reason": str(output.get("hookSpecificOutput", {}).get("permissionDecisionReason", ""))[
+                    :512
+                ],
+            }
+        )
         assert not result.stderr  # Actual bridge has no probe envelope to emit.
         return result
 
@@ -98,11 +113,20 @@ def test_legacy_channel_uses_real_configured_hook_and_persisted_rust_receipts(tm
             proof = observe(context, workspace, identity, time.monotonic() + 20, receipt_store=store)
         except TransitionError as error:
             with store._connect() as connection:
-                counts = {name: connection.execute(f"select count(*) from {name}").fetchone()[0]
-                          for name in ("command_activity", "command_activity_correlations",
-                                       "native_hook_decision_receipts")}
-            pytest.fail(str({"reason": error.reason, "launches": launch_diagnostics, "counts": counts,
-                             "writer": daemon._server.runtime_hook_evidence_writer.stats()}))
+                counts = {
+                    name: connection.execute(f"select count(*) from {name}").fetchone()[0]
+                    for name in ("command_activity", "command_activity_correlations", "native_hook_decision_receipts")
+                }
+            pytest.fail(
+                str(
+                    {
+                        "reason": error.reason,
+                        "launches": launch_diagnostics,
+                        "counts": counts,
+                        "writer": daemon._server.runtime_hook_evidence_writer.stats(),
+                    }
+                )
+            )
         assert len(launched) == 2 and len(set(launched)) == 2
         assert proof.allow_receipt["decision"] == "allow" and proof.deny_receipt["decision"] == "deny"
         assert store.get_native_decision_receipt(proof.allow_receipt["decision_id"]) == proof.allow_receipt
@@ -116,24 +140,29 @@ def test_legacy_channel_uses_real_configured_hook_and_persisted_rust_receipts(tm
         assert close_native_residents(context.guard_home, deadline_monotonic=time.monotonic() + 5)
 
 
-@pytest.mark.parametrize("fault,reason", [
-    ("no_store", "legacy_probe_store_unavailable"),
-    ("missing_key", "legacy_probe_correlation_unavailable"),
-    ("unsafe_key", "legacy_probe_correlation_unavailable"),
-    ("malformed_key", "legacy_probe_correlation_invalid"),
-    ("changed_key", "legacy_probe_correlation_changed"),
-    ("missing_receipt", "admission_deadline_expired"),
-    ("unrelated_nonce", "admission_deadline_expired"),
-    ("wrong_runtime", "admission_protection_failed"),
-    ("changed_receipt", "legacy_probe_receipt_invalid"),
-    ("stale_receipt", "legacy_probe_receipt_invalid"),
-])
+@pytest.mark.parametrize(
+    "fault,reason",
+    [
+        ("no_store", "legacy_probe_store_unavailable"),
+        ("missing_key", "legacy_probe_correlation_unavailable"),
+        ("unsafe_key", "legacy_probe_correlation_unavailable"),
+        ("malformed_key", "legacy_probe_correlation_invalid"),
+        ("changed_key", "legacy_probe_correlation_changed"),
+        ("missing_receipt", "admission_deadline_expired"),
+        ("unrelated_nonce", "admission_deadline_expired"),
+        ("wrong_runtime", "admission_protection_failed"),
+        ("changed_receipt", "legacy_probe_receipt_invalid"),
+        ("stale_receipt", "legacy_probe_receipt_invalid"),
+    ],
+)
 def test_legacy_observer_refuses_unverified_state_without_relaunch(tmp_path, monkeypatch, fault, reason):
     with monkeypatch.context() as role_patch:
         paths = codex_adapter._hook_packaged_file_paths
-        role_patch.setattr(codex_adapter, "_hook_packaged_file_paths",
-                           lambda: tuple((role, path) for role, path in paths()
-                                         if role not in {"hook_probe", "native_receipt"}))
+        role_patch.setattr(
+            codex_adapter,
+            "_hook_packaged_file_paths",
+            lambda: tuple((role, path) for role, path in paths() if role not in {"hook_probe", "native_receipt"}),
+        )
         context, workspace, store = installed_context(tmp_path)
     identity = NativeRuntimeIdentity(tmp_path / "fixture-native", 1, 1, "d" * 64)
     writer = None
@@ -153,29 +182,43 @@ def test_legacy_observer_refuses_unverified_state_without_relaunch(tmp_path, mon
         if fault == "changed_key":
             rotate_installation_correlation_key(context.guard_home)
         if writer is not None:
-            receipt = _receipt(harness="codex", event_name="PreToolUse",
-                               runtime_identity="0" * 64 if fault == "wrong_runtime" else identity.sha256)
+            receipt = _receipt(
+                harness="codex",
+                event_name="PreToolUse",
+                runtime_identity="0" * 64 if fault == "wrong_runtime" else identity.sha256,
+            )
             if fault == "unrelated_nonce":
                 payload["tool_call_id"] = uuid.uuid4().hex
             assert writer.submit_native_decision_receipt(receipt=receipt)
-            assert writer.submit_command_activity(harness="codex", event="PreToolUse", payload=payload,
-                                                 succeeded=True, policy_action="allow",
-                                                 receipt_id=receipt["decision_id"])
+            assert writer.submit_command_activity(
+                harness="codex",
+                event="PreToolUse",
+                payload=payload,
+                succeeded=True,
+                policy_action="allow",
+                receipt_id=receipt["decision_id"],
+            )
             assert writer.stop(timeout_seconds=1)
             if fault in {"changed_receipt", "stale_receipt"}:
                 with store._connect() as connection:
                     if fault == "changed_receipt":
                         connection.execute("update native_hook_decision_receipts set runtime_identity = ?", ("0" * 64,))
                     else:
-                        connection.execute("update native_hook_decision_receipts set recorded_at = ?",
-                                           ("2000-01-01T00:00:00+00:00",))
-        return BoundedHookProcessResult(0, '{}', False, False, stderr="")
+                        connection.execute(
+                            "update native_hook_decision_receipts set recorded_at = ?", ("2000-01-01T00:00:00+00:00",)
+                        )
+        return BoundedHookProcessResult(0, "{}", False, False, stderr="")
 
     monkeypatch.setattr(observer, "run_isolated_hook_process", launch)
     try:
         with pytest.raises(TransitionError, match=reason):
-            observe(context, workspace, identity, time.monotonic() + 0.7,
-                    receipt_store=None if fault == "no_store" else store)
+            observe(
+                context,
+                workspace,
+                identity,
+                time.monotonic() + 0.7,
+                receipt_store=None if fault == "no_store" else store,
+            )
         assert len(launched) == (0 if fault in {"no_store", "missing_key", "unsafe_key", "malformed_key"} else 1)
         if fault == "missing_key":
             assert not (context.guard_home / COMMAND_ACTIVITY_CORRELATION_KEY_FILE).exists()
@@ -207,10 +250,17 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
         result = real_review(**kwargs)
         receipt = daemon._server.hook_worker.last_native_decision_receipt or {}
         response = result or {}
-        reviews.append({"probe_present": PROBE_FIELD in kwargs["payload"],
-                        "decision": receipt.get("decision"), "harness": receipt.get("harness"),
-                        "receipt_present": bool(receipt), "policy_action": response.get("policy_action"),
-                        "reason_code": response.get("reason_code"), "prompted": response.get("prompted") is True})
+        reviews.append(
+            {
+                "probe_present": PROBE_FIELD in kwargs["payload"],
+                "decision": receipt.get("decision"),
+                "harness": receipt.get("harness"),
+                "receipt_present": bool(receipt),
+                "policy_action": response.get("policy_action"),
+                "reason_code": response.get("reason_code"),
+                "prompted": response.get("prompted") is True,
+            }
+        )
         return result
 
     monkeypatch.setattr(daemon._server.hook_worker, "review_http_payload", measured_review)
@@ -219,27 +269,38 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
         started = time.monotonic()
         result = real_launch(*args, **kwargs)
         assert not result.timed_out, {
-            "elapsed": time.monotonic() - started, "returncode": result.returncode,
+            "elapsed": time.monotonic() - started,
+            "returncode": result.returncode,
             "containment_failed": result.containment_failed,
-            "stdout_present": bool(result.stdout), "stderr_present": bool(result.stderr), "reviews": reviews,
+            "stdout_present": bool(result.stdout),
+            "stderr_present": bool(result.stderr),
+            "reviews": reviews,
         }
         output = json.loads(result.stdout)
         assert result.stderr, {
-            "elapsed": time.monotonic() - started, "returncode": result.returncode,
-            "containment_failed": result.containment_failed, "output_limit_exceeded": result.output_limit_exceeded,
-            "output_keys": list(output), "reason_code": output.get("reason_code"), "reviews": reviews,
+            "elapsed": time.monotonic() - started,
+            "returncode": result.returncode,
+            "containment_failed": result.containment_failed,
+            "output_limit_exceeded": result.output_limit_exceeded,
+            "output_keys": list(output),
+            "reason_code": output.get("reason_code"),
+            "reviews": reviews,
         }
         observed = json.loads(result.stderr)["native_receipt"]
         expected = "allow" if json.loads(kwargs["input_text"])["tool_input"].get("command") == "pwd" else "deny"
         assert observed["decision"] == expected, {
-            "expected": expected, "decision": observed["decision"], "policy_action": observed["policy_action"],
+            "expected": expected,
+            "decision": observed["decision"],
+            "policy_action": observed["policy_action"],
             "reason_code": observed["reason_code"],
             "reviews": reviews,
         }
         assert observed["runtime_identity"] == identity.sha256
         permission = output.get("hookSpecificOutput", {}).get("permissionDecision")
         assert permission in ({None, "allow"} if expected == "allow" else {"deny"}), {
-            "expected": expected, "permission": permission, "output_keys": list(output),
+            "expected": expected,
+            "permission": permission,
+            "output_keys": list(output),
         }
         return result
 
@@ -266,8 +327,19 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
 
 
 @pytest.mark.usefixtures("native_hook_force")
-@pytest.mark.parametrize("fault", ["missing_receipt", "replay", "foreign_runtime", "wrong_stdout", "policy_change",
-                                   "changed_config", "containment", "deadline"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing_receipt",
+        "replay",
+        "foreign_runtime",
+        "wrong_stdout",
+        "policy_change",
+        "changed_config",
+        "containment",
+        "deadline",
+    ],
+)
 def test_configured_observer_refuses_false_functional_proof(tmp_path, monkeypatch, fault):
     context, workspace, store = installed_context(tmp_path)
     identity = native_runtime_status().identity
@@ -280,8 +352,12 @@ def test_configured_observer_refuses_false_functional_proof(tmp_path, monkeypatc
         payload = json.loads(input_text)
         decision = "allow" if len(calls) == 1 else "deny"
         receipt = _receipt(
-            request_id=payload[PROBE_FIELD]["request_id"], harness="codex", event_name="PreToolUse",
-            runtime_identity=identity.sha256, decision=decision, policy_action=decision,
+            request_id=payload[PROBE_FIELD]["request_id"],
+            harness="codex",
+            event_name="PreToolUse",
+            runtime_identity=identity.sha256,
+            decision=decision,
+            policy_action=decision,
             request_digest=("a" if decision == "allow" else "b") * 64,
             policy_generation=2 if fault == "policy_change" and len(calls) == 2 else 1,
         )
@@ -300,10 +376,17 @@ def test_configured_observer_refuses_false_functional_proof(tmp_path, monkeypatc
             config.write_bytes(config.read_bytes() + b"\n# concurrent writer\n")
         if fault == "deadline":
             monkeypatch.setattr(observer.time, "monotonic", lambda: deadline + 1)
-        return BoundedHookProcessResult(0, json.dumps(output), False, False,
-                                        containment_failed=fault == "containment", stderr=json.dumps(observation))
+        return BoundedHookProcessResult(
+            0,
+            json.dumps(output),
+            False,
+            False,
+            containment_failed=fault == "containment",
+            stderr=json.dumps(observation),
+        )
 
     monkeypatch.setattr(observer, "run_isolated_hook_process", launch)
+
     def forbidden_legacy_lookup(*args, **kwargs):
         raise AssertionError("modern channel failure attempted legacy rescue")
 
@@ -336,6 +419,11 @@ def test_invalid_configuration_never_launches_a_child(tmp_path, monkeypatch, fau
         pytest.raises(TransitionError),
     ):
         observer.observe_configured_codex_hook(
-            operation_id=str(uuid.uuid4()), artifact_generation="candidate", expected_runtime=None,
-            guard_home=context.guard_home, config_path=config, workspace=workspace, deadline_monotonic=deadline,
+            operation_id=str(uuid.uuid4()),
+            artifact_generation="candidate",
+            expected_runtime=None,
+            guard_home=context.guard_home,
+            config_path=config,
+            workspace=workspace,
+            deadline_monotonic=deadline,
         )

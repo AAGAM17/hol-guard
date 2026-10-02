@@ -33,7 +33,8 @@ def test_read_missing_manifest_receipt_is_exact_and_read_only(installed):  # noq
 
 @pytest.mark.parametrize("failure", ["tamper", "config", "symlink", "public", "oversized", "invalid_json", "nested"])
 def test_receipt_refuses_changed_authority_or_config_without_mutation(
-    installed, failure,  # noqa: F811 -- shared pytest fixture
+    installed,
+    failure,  # noqa: F811 -- shared pytest fixture
 ):
     context, config, manifest = installed
     receipt = recovery.hook_authority_receipt_path(context.guard_home, config)
@@ -56,10 +57,16 @@ def test_receipt_refuses_changed_authority_or_config_without_mutation(
         receipt.write_bytes(b"[" * 2000 + b"0" + b"]" * 2000)
     else:
         receipt.write_bytes(b"invalid JSON")
+
     def metadata():
         current = receipt.lstat()
         return (
-            current.st_dev, current.st_ino, current.st_mode, current.st_size, current.st_mtime_ns, current.st_ctime_ns,
+            current.st_dev,
+            current.st_ino,
+            current.st_mode,
+            current.st_size,
+            current.st_mtime_ns,
+            current.st_ctime_ns,
         )
 
     before = manifest.read_bytes(), config.read_bytes(), metadata()
@@ -86,7 +93,8 @@ def test_expired_receipt_read_refuses_before_file_access(tmp_path: Path, monkeyp
 
 @pytest.mark.parametrize("failure", ["inner_mac", "inner_target", "outer_target"])
 def test_signed_receipt_does_not_authenticate_inconsistent_manifest(
-    installed, failure,  # noqa: F811 -- shared pytest fixture
+    installed,
+    failure,  # noqa: F811 -- shared pytest fixture
 ):
     from codex_plugin_scanner.guard.codex_hook_integrity import (
         canonical_manifest_bytes,
@@ -103,8 +111,10 @@ def test_signed_receipt_does_not_authenticate_inconsistent_manifest(
         embedded = sign_hook_manifest(embedded, load_hook_secret(context.guard_home))
     encoded_manifest = original if failure == "outer_target" else canonical_manifest_bytes(embedded) + b"\n"
     encoded = recovery.build_hook_authority_receipt(
-        context.guard_home, config.with_name("other-config.toml") if failure == "outer_target" else config,
-        config_bytes=config.read_bytes(), manifest_bytes=encoded_manifest,
+        context.guard_home,
+        config.with_name("other-config.toml") if failure == "outer_target" else config,
+        config_bytes=config.read_bytes(),
+        manifest_bytes=encoded_manifest,
     )
     receipt = recovery.hook_authority_receipt_path(context.guard_home, config)
     receipt.write_bytes(encoded)
@@ -115,7 +125,9 @@ def test_signed_receipt_does_not_authenticate_inconsistent_manifest(
 
 
 def test_key_replacement_during_receipt_read_is_preserved_and_refused(
-    installed, monkeypatch, tmp_path,  # noqa: F811 -- shared pytest fixture
+    installed,
+    monkeypatch,
+    tmp_path,  # noqa: F811 -- shared pytest fixture
 ):
     from codex_plugin_scanner.guard.codex_hook_integrity import hook_secret_path, load_or_create_hook_secret
 
@@ -139,7 +151,8 @@ def test_key_replacement_during_receipt_read_is_preserved_and_refused(
 
 
 def test_missing_manifest_repair_preparation_pins_authority_without_publication(
-    installed, tmp_path,  # noqa: F811 -- shared pytest fixture
+    installed,
+    tmp_path,  # noqa: F811 -- shared pytest fixture
 ):
     context, config, manifest = installed
     expected = manifest.read_bytes()
@@ -159,7 +172,10 @@ def test_missing_manifest_repair_preparation_pins_authority_without_publication(
 
 @pytest.mark.parametrize("failure", ["present", "version", "argv", "receipt", "config"])
 def test_repair_plan_refuses_changed_or_incompatible_generation(
-    installed, tmp_path, monkeypatch, failure,  # noqa: F811 -- shared pytest fixture
+    installed,
+    tmp_path,
+    monkeypatch,
+    failure,  # noqa: F811 -- shared pytest fixture
 ):
     from dataclasses import replace
 
@@ -206,7 +222,8 @@ def test_prepared_repair_cannot_be_used_after_manifest_replacement(
 
 
 def test_signed_repair_file_inverse_restores_missing_manifest_state(
-    installed, transition,  # noqa: F811 -- shared pytest fixtures
+    installed,
+    transition,  # noqa: F811 -- shared pytest fixtures
 ):
     from dataclasses import replace
 
@@ -233,8 +250,9 @@ def test_signed_repair_file_inverse_restores_missing_manifest_state(
 def retained_installation(tmp_path, monkeypatch):
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
 
-    context = HarnessContext(home_dir=tmp_path / "home", guard_home=tmp_path / "guard-home",
-                             workspace_dir=None, home_override_explicit=True)
+    context = HarnessContext(
+        home_dir=tmp_path / "home", guard_home=tmp_path / "guard-home", workspace_dir=None, home_override_explicit=True
+    )
     monkeypatch.setenv("HOME", str(context.home_dir))
     monkeypatch.setenv("USERPROFILE", str(context.home_dir))
     source_root = Path(adapter.__file__).resolve().parents[3]
@@ -291,8 +309,9 @@ def test_frozen_retained_repair_pins_both_physical_executables(tmp_path, monkeyp
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
     from codex_plugin_scanner.guard.runtime_transition import RuntimeTransition, TransitionError
 
-    context = HarnessContext(home_dir=tmp_path / "home", guard_home=tmp_path / "guard-home",
-                             workspace_dir=None, home_override_explicit=True)
+    context = HarnessContext(
+        home_dir=tmp_path / "home", guard_home=tmp_path / "guard-home", workspace_dir=None, home_override_explicit=True
+    )
     monkeypatch.setenv("HOME", str(context.home_dir))
     executables = []
     for number in range(2):
@@ -326,10 +345,14 @@ def _replace_generated_receipt(context, config, payload):
     payload.pop("authentication")
     signed = sign_hook_manifest(payload, load_hook_secret(context.guard_home))
     receipt = recovery.hook_authority_receipt_path(context.guard_home, config)
-    receipt.write_bytes(recovery.build_hook_authority_receipt(
-        context.guard_home, config, config_bytes=config.read_bytes(),
-        manifest_bytes=canonical_manifest_bytes(signed) + b"\n",
-    ))
+    receipt.write_bytes(
+        recovery.build_hook_authority_receipt(
+            context.guard_home,
+            config,
+            config_bytes=config.read_bytes(),
+            manifest_bytes=canonical_manifest_bytes(signed) + b"\n",
+        )
+    )
 
 
 @pytest.mark.parametrize("failure", ["argv", "context", "hash", "fallback", "transport"])

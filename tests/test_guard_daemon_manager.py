@@ -1276,7 +1276,8 @@ def test_ensure_guard_daemon_advances_ports_after_early_process_exit(tmp_path, m
     reason="its fake Popen omits the native Windows process identity required by daemon launch",
 )
 @pytest.mark.parametrize(
-    "scenario", ["default", "outer_deadline", "preparation_expired", "retirement_failed", "transition_no_maintenance"],
+    "scenario",
+    ["default", "outer_deadline", "preparation_expired", "retirement_failed", "transition_no_maintenance"],
 )
 def test_ensure_guard_daemon_uses_one_start_deadline_across_candidate_ports(tmp_path, monkeypatch, scenario):
     guard_home = tmp_path / "guard-home"
@@ -1320,6 +1321,7 @@ def test_ensure_guard_daemon_uses_one_start_deadline_across_candidate_ports(tmp_
         "_clear_spawned_guard_daemon_pending_launch",
         lambda *_args, **_kwargs: True,
     )
+
     def retire(_process, *, deadline_monotonic):
         retirement_deadlines.append(deadline_monotonic)
         return scenario != "retirement_failed"
@@ -1329,12 +1331,14 @@ def test_ensure_guard_daemon_uses_one_start_deadline_across_candidate_ports(tmp_
     monkeypatch.setattr(daemon_manager_module.time, "monotonic", lambda: clock["value"])
 
     if scenario == "preparation_expired":
+
         def expired_launcher_env(**_kwargs):
             clock["value"] = 106.0
             return {}
 
         monkeypatch.setattr(daemon_manager_module, "_daemon_launcher_env", expired_launcher_env)
     if scenario == "transition_no_maintenance":
+
         def unexpected_maintenance(*_args, **_kwargs):
             pytest.fail("exact transition scheduled work outside its planned generation")
 
@@ -1342,8 +1346,12 @@ def test_ensure_guard_daemon_uses_one_start_deadline_across_candidate_ports(tmp_
         path.parent.mkdir(parents=True, mode=0o700)
         path.write_text("{}")
         path.chmod(0o600)
-        for name in ("_schedule_stale_ephemeral_guard_daemon_reap", "_schedule_duplicate_guard_daemon_retirement",
-                     "reap_orphaned_daemon_workers", "retire_all_guard_daemons_for_home"):
+        for name in (
+            "_schedule_stale_ephemeral_guard_daemon_reap",
+            "_schedule_duplicate_guard_daemon_retirement",
+            "reap_orphaned_daemon_workers",
+            "retire_all_guard_daemons_for_home",
+        ):
             monkeypatch.setattr(daemon_manager_module, name, unexpected_maintenance)
     failure = (
         "startup process could not be retired" if scenario == "retirement_failed" else "approval center did not start"
@@ -1351,7 +1359,9 @@ def test_ensure_guard_daemon_uses_one_start_deadline_across_candidate_ports(tmp_
     outer_deadline = 102.0 if scenario == "outer_deadline" else None
     with pytest.raises(RuntimeError, match=failure):
         daemon_manager_module.ensure_guard_daemon(
-            guard_home, start_timeout=5.0, deadline_monotonic=outer_deadline,
+            guard_home,
+            start_timeout=5.0,
+            deadline_monotonic=outer_deadline,
             background_maintenance=scenario != "transition_no_maintenance",
         )
 
@@ -1400,7 +1410,8 @@ def test_spawned_daemon_retirement_shares_the_remaining_operation_budget(monkeyp
 
     monkeypatch.setattr(daemon_manager_module.time, "monotonic", lambda: clock["value"])
     assert not daemon_manager_module._terminate_spawned_guard_daemon(
-        FakeProcess(), deadline_monotonic=100.0 + remaining,
+        FakeProcess(),
+        deadline_monotonic=100.0 + remaining,
     )
     assert waits == [remaining, 0.0]
     assert signals == ["terminate", "kill"]
@@ -1431,7 +1442,9 @@ def test_exact_retirement_refuses_expiry_or_pid_reuse_before_signaling(monkeypat
     monkeypatch.setattr(live_process_identity, "process_start_token", token)
     monkeypatch.setattr(daemon_manager_module.os, "kill", unexpected_signal)
     assert not daemon_manager_module._retire_guard_daemon_pid(
-        123, deadline_monotonic=deadline, expected_start_token="expected",
+        123,
+        deadline_monotonic=deadline,
+        expected_start_token="expected",
     )
     assert len(queries) == {"expired": 0, "foreign_token": 1, "query_expired": 1, "reused_before_signal": 2}[fault]
 
@@ -1441,11 +1454,17 @@ def test_actual_owned_startup_child_does_not_add_two_seconds_of_retirement_wait(
     import select
 
     child = subprocess.Popen(
-        [sys.executable, "-c", (
-            "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
-            "print('owned fixture ready',flush=True); time.sleep(30)"
-        )],
-        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        [
+            sys.executable,
+            "-c",
+            (
+                "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                "print('owned fixture ready',flush=True); time.sleep(30)"
+            ),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
     try:
@@ -3604,19 +3623,27 @@ def test_retire_all_daemon_waits_share_original_deadline(tmp_path, monkeypatch, 
     pending = {"pid": pid, "port": 4781, "process_creation_time": 1234}
     state = {"pid": pid, "port": 4781, "guard_home": str(guard_home)}
     monkeypatch.setattr(daemon_manager_module, "time", SimpleNamespace(monotonic=lambda: now[0]))
-    monkeypatch.setattr(daemon_manager_module, "load_authenticated_guard_daemon_pending_launch",
-                        lambda _home: pending if source == "pending" else None)
-    monkeypatch.setattr(daemon_manager_module, "load_authenticated_daemon_state",
-                        lambda _home: state if source == "state" else None)
+    monkeypatch.setattr(
+        daemon_manager_module,
+        "load_authenticated_guard_daemon_pending_launch",
+        lambda _home: pending if source == "pending" else None,
+    )
+    monkeypatch.setattr(
+        daemon_manager_module, "load_authenticated_daemon_state", lambda _home: state if source == "state" else None
+    )
     monkeypatch.setattr(daemon_manager_module, "windows_process_creation_time", lambda _pid: 1234)
-    monkeypatch.setattr(daemon_manager_module, "_guard_daemon_process_inventory_for_guard_home",
-                        lambda _home: [(pid, 4781)] if source == "inventory" else None)
+    monkeypatch.setattr(
+        daemon_manager_module,
+        "_guard_daemon_process_inventory_for_guard_home",
+        lambda _home: [(pid, 4781)] if source == "inventory" else None,
+    )
     monkeypatch.setattr(daemon_manager_module, "_guard_daemon_pid_is_proven_dead", lambda _pid: False)
     monkeypatch.setattr(daemon_manager_module, "_guard_daemon_pid_matches_command", lambda *_args: True)
     monkeypatch.setattr(daemon_manager_module.os, "kill", lambda _pid, sig: signals.append(sig))
     monkeypatch.setattr(daemon_manager_module, "record_daemon_lifecycle_event", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(daemon_manager_module, "reap_orphaned_daemon_workers",
-                        lambda *, deadline: reaper_deadlines.append(deadline))
+    monkeypatch.setattr(
+        daemon_manager_module, "reap_orphaned_daemon_workers", lambda *, deadline: reaper_deadlines.append(deadline)
+    )
 
     def wait(_pid, *, timeout=1.0):
         waits.append(timeout)

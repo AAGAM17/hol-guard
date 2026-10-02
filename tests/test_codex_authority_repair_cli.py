@@ -44,7 +44,9 @@ def test_only_explicit_restore_path_defers_to_exact_gate():
 
 @pytest.mark.parametrize("deadline", ["nan", "inf", "-inf", "0", "expired", "too-long"])
 def test_parent_deadline_refuses_before_preparation_or_factors(
-    prepared_repair, monkeypatch, deadline,  # noqa: F811 -- shared fixture
+    prepared_repair,
+    monkeypatch,
+    deadline,  # noqa: F811 -- shared fixture
 ):
     context, _config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -56,7 +58,10 @@ def test_parent_deadline_refuses_before_preparation_or_factors(
     monkeypatch.setattr(command, "prepare_authenticated_hook_manifest_repair", forbidden)
     monkeypatch.setattr(command, "consume_desktop_lifecycle_env", forbidden)
     code, payload = command.run_codex_authority_repair(
-        _args("--authority-deadline-epoch=" + value, "--dry-run"), context, store, None,
+        _args("--authority-deadline-epoch=" + value, "--dry-run"),
+        context,
+        store,
+        None,
     )
     assert code == 2
     assert payload["error"] == "authority_repair_deadline_invalid"
@@ -104,7 +109,10 @@ def test_approval_prompt_does_not_restart_expired_parent_budget(prepared_repair,
     monkeypatch.setattr(command, "prompt_for_approval_gate", expire_during_prompt)
     monkeypatch.setattr(command, "require_high_risk", forbidden)
     code, payload = command.run_codex_authority_repair(
-        _args("--authority-deadline-epoch", str(epoch + 10)), context, store, None,
+        _args("--authority-deadline-epoch", str(epoch + 10)),
+        context,
+        store,
+        None,
     )
     assert len(observed) == 1
     assert observed[0] == pytest.approx(now - 1)
@@ -141,8 +149,11 @@ def test_refused_authentication_preserves_missing_authority(prepared_repair, mon
     store = GuardStore(context.guard_home)
     monkeypatch.setattr(command, "consume_desktop_lifecycle_env", lambda **kwargs: None)
     if proof == "incorrect":
-        monkeypatch.setattr(command, "prompt_for_approval_gate",
-                            lambda *args, **kwargs: ApprovalGateInput(password="wrong generated password"))
+        monkeypatch.setattr(
+            command,
+            "prompt_for_approval_gate",
+            lambda *args, **kwargs: ApprovalGateInput(password="wrong generated password"),
+        )
     code, payload = command.run_codex_authority_repair(_args(), context, store, None)
     assert code == 2
     assert payload["status"] == "failed"
@@ -152,7 +163,9 @@ def test_refused_authentication_preserves_missing_authority(prepared_repair, mon
     assert config.read_bytes() == before_config
     after = hook_secret_path(context.guard_home).stat()
     assert (after.st_ino, after.st_size, after.st_mtime_ns) == (
-        key_metadata.st_ino, key_metadata.st_size, key_metadata.st_mtime_ns,
+        key_metadata.st_ino,
+        key_metadata.st_size,
+        key_metadata.st_mtime_ns,
     )
     assert not hook_publication_pending(context.guard_home)
 
@@ -177,7 +190,9 @@ def test_existing_inverse_reports_recovery_required_before_factors(prepared_repa
 
 @pytest.mark.usefixtures("native_hook_force")
 def test_public_apps_repair_uses_exact_plan_and_real_native_protection(
-    prepared_repair, monkeypatch, capsys,  # noqa: F811 -- shared fixture
+    prepared_repair,
+    monkeypatch,
+    capsys,  # noqa: F811 -- shared fixture
 ):
     context, config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -222,7 +237,10 @@ def test_public_apps_repair_uses_exact_plan_and_real_native_protection(
 
 @pytest.mark.usefixtures("native_hook_force")
 def test_captured_request_apply_does_not_prepare_under_collected_factors(
-    prepared_repair, tmp_path, monkeypatch, capsys,  # noqa: F811 -- shared fixture
+    prepared_repair,
+    tmp_path,
+    monkeypatch,
+    capsys,  # noqa: F811 -- shared fixture
 ):
     context, _config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -246,8 +264,9 @@ def test_captured_request_apply_does_not_prepare_under_collected_factors(
     daemon = GuardDaemonServer(store, host="127.0.0.1", port=0, home_dir=context.home_dir)
     daemon.start()
     try:
-        code = run_guard_command(_args("--authority-request", str(path), "--authority-request-sha256",
-                                       str(prepared["request_sha256"])))
+        code = run_guard_command(
+            _args("--authority-request", str(path), "--authority-request-sha256", str(prepared["request_sha256"]))
+        )
         result = json.loads(capsys.readouterr().out)
         assert code == 0, result
         assert result["status"] == "verified" and result["verified"] is True
@@ -262,7 +281,9 @@ def test_captured_request_apply_does_not_prepare_under_collected_factors(
 
 @pytest.mark.usefixtures("native_hook_force")
 def test_changed_captured_dependency_refuses_before_factor_consumption(
-    prepared_repair, tmp_path, monkeypatch,  # noqa: F811 -- shared fixture
+    prepared_repair,
+    tmp_path,
+    monkeypatch,  # noqa: F811 -- shared fixture
 ):
     context, config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -270,7 +291,10 @@ def test_changed_captured_dependency_refuses_before_factor_consumption(
     folder.mkdir(mode=0o700)
     path = folder / "request.json"
     code, prepared = command.run_codex_authority_repair(
-        _args("--dry-run", "--authority-request", str(path)), context, store, None,
+        _args("--dry-run", "--authority-request", str(path)),
+        context,
+        store,
+        None,
     )
     assert code == 0
     foreign = config.read_bytes() + b"\n# newer generation during review\n"
@@ -278,8 +302,10 @@ def test_changed_captured_dependency_refuses_before_factor_consumption(
     factors = []
     monkeypatch.setattr(command, "consume_desktop_lifecycle_env", lambda **kwargs: factors.append(kwargs))
     code, result = command.run_codex_authority_repair(
-        _args("--authority-request", str(path), "--authority-request-sha256",
-              str(prepared["request_sha256"])), context, store, None,
+        _args("--authority-request", str(path), "--authority-request-sha256", str(prepared["request_sha256"])),
+        context,
+        store,
+        None,
     )
     assert code == 2 and result["verified"] is False
     assert factors == []
@@ -289,7 +315,9 @@ def test_changed_captured_dependency_refuses_before_factor_consumption(
 
 @pytest.mark.usefixtures("native_hook_force")
 def test_verification_workspace_does_not_change_signed_installation_context(
-    prepared_repair, tmp_path, capsys,  # noqa: F811 -- shared fixture
+    prepared_repair,
+    tmp_path,
+    capsys,  # noqa: F811 -- shared fixture
 ):
     _context, _config, manifest, _plan = prepared_repair
     folder = tmp_path / "private-review-context"
@@ -297,13 +325,17 @@ def test_verification_workspace_does_not_change_signed_installation_context(
     workspace = tmp_path / "native-verification-workspace"
     workspace.mkdir(mode=0o700)
     request = folder / "request.json"
-    code = run_guard_command(_args("--dry-run", "--authority-request", str(request),
-                                   "--authority-verification-workspace", str(workspace)))
+    code = run_guard_command(
+        _args("--dry-run", "--authority-request", str(request), "--authority-verification-workspace", str(workspace))
+    )
     output = capsys.readouterr()
     result = json.loads(output.out)
     assert code == 0, result
-    stages = [json.loads(line.removeprefix("guard_runtime_stage "))
-              for line in output.err.splitlines() if line.startswith("guard_runtime_stage ")]
+    stages = [
+        json.loads(line.removeprefix("guard_runtime_stage "))
+        for line in output.err.splitlines()
+        if line.startswith("guard_runtime_stage ")
+    ]
     started = [entry["stage"] for entry in stages if entry["phase"] == "started"]
     finished = [entry["stage"] for entry in stages if entry["phase"] == "finished"]
     assert started == finished == ["control", "plan_preparation", "request_capture"]

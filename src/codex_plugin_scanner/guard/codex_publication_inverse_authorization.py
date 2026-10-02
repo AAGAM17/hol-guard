@@ -62,20 +62,33 @@ class CodexPublicationInverseAuthorization:
         if owner.operation_id != self.owner_operation_id or owner.pid != self.owner_pid:
             raise TransitionError("publication_inverse_owner_mismatch")
         expected = lifecycle_authority_home(
-            self.plan.guard_home, requirement=LifecycleGateRequirement(PUBLICATION_INVERSE_ACTION,
-                                                                       self.approved_subject),
+            self.plan.guard_home,
+            requirement=LifecycleGateRequirement(PUBLICATION_INVERSE_ACTION, self.approved_subject),
         ).resolve(strict=False)
         if expected != self.authority_home:
             raise TransitionError("approval_authority_mismatch")
         with _claims_guard:
             claim = _claims.get(self.grant.grant_id)
-        if self.plan.subject() != self.approved_subject or claim is None or claim[:4] != (
-            self.approved_subject, self.owner_operation_id, self.owner_pid, self.deadline_monotonic,
+        if (
+            self.plan.subject() != self.approved_subject
+            or claim is None
+            or claim[:4]
+            != (
+                self.approved_subject,
+                self.owner_operation_id,
+                self.owner_pid,
+                self.deadline_monotonic,
+            )
         ):
             raise TransitionError("publication_inverse_authorization_invalid")
         validate_grant(
-            expected, self.grant, purpose="protection_lifecycle", strict=True,
-            action=PUBLICATION_INVERSE_ACTION, scope="local-protection", subject=self.approved_subject,
+            expected,
+            self.grant,
+            purpose="protection_lifecycle",
+            strict=True,
+            action=PUBLICATION_INVERSE_ACTION,
+            scope="local-protection",
+            subject=self.approved_subject,
             session_nonce=self.owner_operation_id,
         )
 
@@ -87,24 +100,39 @@ class CodexPublicationInverseAuthorization:
 
 
 def authorize_codex_publication_inverse(
-    plan: PreparedCodexPublicationInverse, *, authority_home: Path, grant: ApprovalGateGrant | None,
+    plan: PreparedCodexPublicationInverse,
+    *,
+    authority_home: Path,
+    grant: ApprovalGateGrant | None,
     deadline_monotonic: float,
 ) -> CodexPublicationInverseAuthorization:
-    if (isinstance(deadline_monotonic, bool) or not isinstance(deadline_monotonic, (int, float))
-            or not math.isfinite(deadline_monotonic) or time.monotonic() >= deadline_monotonic):
+    if (
+        isinstance(deadline_monotonic, bool)
+        or not isinstance(deadline_monotonic, (int, float))
+        or not math.isfinite(deadline_monotonic)
+        or time.monotonic() >= deadline_monotonic
+    ):
         raise TransitionError("deadline_exceeded")
     owner = _owner(plan)
     subject = plan.subject()
     expected = lifecycle_authority_home(
-        plan.guard_home, requirement=LifecycleGateRequirement(PUBLICATION_INVERSE_ACTION, subject),
+        plan.guard_home,
+        requirement=LifecycleGateRequirement(PUBLICATION_INVERSE_ACTION, subject),
     ).resolve(strict=False)
     if authority_home.resolve(strict=False) != expected:
         raise TransitionError("approval_authority_mismatch")
     if grant is None:
         raise ApprovalGateError("approval_gate_required", "Exact local approval is required for publication inverse.")
-    validate_grant(expected, grant, purpose="protection_lifecycle", strict=True,
-                   action=PUBLICATION_INVERSE_ACTION, scope="local-protection", subject=subject,
-                   session_nonce=owner.operation_id)
+    validate_grant(
+        expected,
+        grant,
+        purpose="protection_lifecycle",
+        strict=True,
+        action=PUBLICATION_INVERSE_ACTION,
+        scope="local-protection",
+        subject=subject,
+        session_nonce=owner.operation_id,
+    )
     now = time.monotonic()
     expires_at = datetime.fromisoformat(grant.expires_at.replace("Z", "+00:00")).timestamp()
     retirement = now + max(0.0, expires_at - time.time())
@@ -121,7 +149,13 @@ def authorize_codex_publication_inverse(
             raise TransitionError("publication_inverse_authorization_capacity")
         _claims[grant.grant_id] = (subject, owner.operation_id, owner.pid, deadline, retirement)
     authorization = CodexPublicationInverseAuthorization(
-        plan, expected, grant, owner.operation_id, owner.pid, deadline, subject,
+        plan,
+        expected,
+        grant,
+        owner.operation_id,
+        owner.pid,
+        deadline,
+        subject,
     )
     authorization.compare_before()
     return authorization

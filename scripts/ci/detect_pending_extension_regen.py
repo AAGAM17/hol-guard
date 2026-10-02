@@ -127,7 +127,9 @@ def _contributions_changed(base_sha: str) -> list[str]:
     except subprocess.TimeoutExpired:
         raise ContributionDiffError("Cannot compare contribution sources: Git timed out [git_timeout]") from None
     except UnicodeError:
-        raise ContributionDiffError("Cannot compare contribution sources: Git output unreadable [git_encoding]") from None
+        raise ContributionDiffError(
+            "Cannot compare contribution sources: Git output unreadable [git_encoding]"
+        ) from None
     except OSError:
         raise ContributionDiffError("Cannot compare contribution sources: Git unavailable [git_process]") from None
     if completed.returncode:
@@ -137,9 +139,7 @@ def _contributions_changed(base_sha: str) -> list[str]:
 
 def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(
-            ["git", *arguments], cwd=ROOT, check=False, capture_output=True, text=True, timeout=30
-        )
+        return subprocess.run(["git", *arguments], cwd=ROOT, check=False, capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return subprocess.CompletedProcess(["git", *arguments], 1, "", "")
 
@@ -162,16 +162,15 @@ def pr_diff_paths() -> list[str] | None:
             return result.stdout.splitlines() if result.returncode == 0 else None
         return None
     commit = _git("cat-file", "commit", "HEAD")
-    parents = [
-        line.split()[1]
-        for line in commit.stdout.splitlines()
-        if line.startswith("parent ")
-    ]
+    parents = [line.split()[1] for line in commit.stdout.splitlines() if line.startswith("parent ")]
     base_ref = os.environ["GITHUB_BASE_REF"]
     probe = _git("rev-parse", "--is-shallow-repository")
     shallow = probe.returncode != 0 or probe.stdout.strip() == "true"
     fetch = [
-        "fetch", "-q", *(["--depth=1"] if shallow else []), "origin",
+        "fetch",
+        "-q",
+        *(["--depth=1"] if shallow else []),
+        "origin",
         f"+refs/heads/{base_ref}:refs/remotes/pending-diff/base",
     ]
     base_tip = "pending-diff/base"
@@ -186,10 +185,7 @@ def pr_diff_paths() -> list[str] | None:
             head_sha = None
     current = _git("rev-parse", "HEAD")
     synthetic_merge = (
-        len(parents) >= 2
-        and head_sha is not None
-        and current.returncode == 0
-        and current.stdout.strip() != head_sha
+        len(parents) >= 2 and head_sha is not None and current.returncode == 0 and current.stdout.strip() != head_sha
     )
     if synthetic_merge:
         # HEAD is the synthetic refs/pull merge, so its first parent is the
@@ -209,10 +205,7 @@ def pr_diff_paths() -> list[str] | None:
 def _owned_path(path: str) -> bool:
     if path.endswith(".schema.json"):
         return False
-    return any(
-        path == owned or path.startswith(owned.rstrip("/") + "/")
-        for owned in REGEN_OWNED_PATHS
-    )
+    return any(path == owned or path.startswith(owned.rstrip("/") + "/") for owned in REGEN_OWNED_PATHS)
 
 
 def regen_artifacts_absent_from_diff(diff: list[str] | None = None) -> bool:

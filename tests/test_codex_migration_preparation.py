@@ -21,9 +21,17 @@ def _sources(tmp_path, monkeypatch):
     hooks = config.with_name("hooks.json")
     config.parent.mkdir(parents=True)
     config.write_text('model = "fixture"\n')
-    hooks.write_text(json.dumps({"hooks": {"PreToolUse": [
-        {"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 user_hook.py"}]},
-    ]}}))
+    hooks.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 user_hook.py"}]},
+                    ]
+                }
+            }
+        )
+    )
     config.chmod(0o644)
     hooks.chmod(0o600)
     return context, config, hooks
@@ -86,9 +94,13 @@ def test_changed_source_after_inventory_never_publishes_migration(tmp_path, monk
     config.write_text('model = "user-modified"\n')
     before = _tree(tmp_path)
     with pytest.raises(RuntimeError, match="codex_hook_inventory_source_changed"):
-        adapter.prepare_codex_hook_migration(context, config_path=config, hooks_path=hooks,
-                                             expected_config_payload={"model": "fixture"},
-                                             expected_hooks_payload=expected_hooks)
+        adapter.prepare_codex_hook_migration(
+            context,
+            config_path=config,
+            hooks_path=hooks,
+            expected_config_payload={"model": "fixture"},
+            expected_hooks_payload=expected_hooks,
+        )
     assert _tree(tmp_path) == before
 
 
@@ -112,7 +124,9 @@ def test_foreign_json_generation_during_render_is_preserved(tmp_path, monkeypatc
 @pytest.mark.parametrize("existing_backup", [False, True])
 def test_signed_migration_inverse_restores_sources_and_backup(
     transition,  # noqa: F811 -- pytest injects the imported shared fixture
-    tmp_path, monkeypatch, existing_backup,
+    tmp_path,
+    monkeypatch,
+    existing_backup,
 ):
     runtime, plan, _bindings, _pointer = transition
     context, config, hooks = _sources(tmp_path, monkeypatch)

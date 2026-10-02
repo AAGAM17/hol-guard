@@ -76,11 +76,17 @@ class StoreCloudEventsMixin:
                     "from managed_installs where harness = ?",
                     (harness,),
                 ).fetchone()
-                current = None if row is None else {
-                    "harness": str(row["harness"]), "active": bool(row["active"]),
-                    "workspace": row["workspace"], "manifest": json.loads(str(row["manifest_json"])),
-                    "updated_at": str(row["updated_at"]),
-                }
+                current = (
+                    None
+                    if row is None
+                    else {
+                        "harness": str(row["harness"]),
+                        "active": bool(row["active"]),
+                        "workspace": row["workspace"],
+                        "manifest": json.loads(str(row["manifest_json"])),
+                        "updated_at": str(row["updated_at"]),
+                    }
+                )
                 if current not in allowed:
                     return False
             before_mutation()
@@ -93,8 +99,13 @@ class StoreCloudEventsMixin:
                         values (?, ?, ?, ?, ?) on conflict(harness) do update set
                         active = excluded.active, workspace = excluded.workspace,
                         manifest_json = excluded.manifest_json, updated_at = excluded.updated_at""",
-                        (harness, int(replacement["active"]), replacement["workspace"],
-                         json.dumps(replacement["manifest"]), replacement["updated_at"]),
+                        (
+                            harness,
+                            int(replacement["active"]),
+                            replacement["workspace"],
+                            json.dumps(replacement["manifest"]),
+                            replacement["updated_at"],
+                        ),
                     )
         return True
 

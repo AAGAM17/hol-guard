@@ -327,8 +327,9 @@ def run_isolated_hook_process(
     else:
         deadline = deadline_monotonic
     if time.monotonic() >= deadline:
-        return BoundedHookProcessResult(None, "", False, True,
-                                        containment_failed=_HOOK_PROCESS_CONTAINMENT_FAILED.is_set())
+        return BoundedHookProcessResult(
+            None, "", False, True, containment_failed=_HOOK_PROCESS_CONTAINMENT_FAILED.is_set()
+        )
     if _HOOK_PROCESS_CONTAINMENT_FAILED.is_set() and not _retry_quarantined_hook_processes():
         return BoundedHookProcessResult(None, "", False, False, containment_failed=True)
     try:

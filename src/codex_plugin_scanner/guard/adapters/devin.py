@@ -426,15 +426,31 @@ class DevinHarnessAdapter(HarnessAdapter):
         backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else config_mode
         state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o600
         state_after = (json.dumps({"managed_config_path": str(config_path)}, indent=2) + "\n").encode("utf-8")
-        files = (*prepared_shim.files, *hook_files,
-                 TransitionFile(backup_path.resolve(strict=False), backup_before,
-                                backup_before if backup_before is not None else config_before,
-                                before_mode=backup_mode, after_mode=backup_mode),
-                 TransitionFile(config_path.resolve(strict=False), config_before,
-                                (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
-                                before_mode=config_mode, after_mode=config_mode),
-                 TransitionFile(state_path.resolve(strict=False), state_before, state_after,
-                                before_mode=state_mode, after_mode=state_mode))
+        files = (
+            *prepared_shim.files,
+            *hook_files,
+            TransitionFile(
+                backup_path.resolve(strict=False),
+                backup_before,
+                backup_before if backup_before is not None else config_before,
+                before_mode=backup_mode,
+                after_mode=backup_mode,
+            ),
+            TransitionFile(
+                config_path.resolve(strict=False),
+                config_before,
+                (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
+                before_mode=config_mode,
+                after_mode=config_mode,
+            ),
+            TransitionFile(
+                state_path.resolve(strict=False),
+                state_before,
+                state_after,
+                before_mode=state_mode,
+                after_mode=state_mode,
+            ),
+        )
         for change in files:
             change.payload()
         manifest = _adapter_result(

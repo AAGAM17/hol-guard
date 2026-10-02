@@ -117,35 +117,57 @@ def _validate_digest_dependency(change: Mapping[str, object]) -> None:
         return
     digest = change["expected_digest"]
     if (
-        not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
-        or change.get("before") is not None or change.get("after") is not None
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(c not in "0123456789abcdef" for c in digest)
+        or change.get("before") is not None
+        or change.get("after") is not None
         or change.get("before_mode") != change.get("after_mode")
-        or change.get("kind") != "binding" or change.get("no_follow") is not True
+        or change.get("kind") != "binding"
+        or change.get("no_follow") is not True
     ):
         raise TransitionError("authority_dependency_invalid")
     if "artifact_identity" in change:
         identity = change["artifact_identity"]
-        if (not isinstance(identity, dict)
-                or set(identity) not in ({"size", "owner_uid"}, {"size", "owner_uid", "role"})):
+        if not isinstance(identity, dict) or set(identity) not in (
+            {"size", "owner_uid"},
+            {"size", "owner_uid", "role"},
+        ):
             raise TransitionError("artifact_dependency_invalid")
         if "role" in identity and (not isinstance(identity["role"], str) or not 0 < len(identity["role"]) <= 128):
             raise TransitionError("artifact_dependency_invalid")
         size, owner = identity["size"], identity["owner_uid"]
-        if (isinstance(size, bool) or not isinstance(size, int) or not 0 <= size < 2**63
-                or isinstance(owner, bool) or (owner is not None and (not isinstance(owner, int) or owner < 0))
-                or (os.name != "nt" and owner not in {0, os.geteuid()})):
+        if (
+            isinstance(size, bool)
+            or not isinstance(size, int)
+            or not 0 <= size < 2**63
+            or isinstance(owner, bool)
+            or (owner is not None and (not isinstance(owner, int) or owner < 0))
+            or (os.name != "nt" and owner not in {0, os.geteuid()})
+        ):
             raise TransitionError("artifact_dependency_invalid")
     if "invocation_identity" in change:
         invocation = change["invocation_identity"]
-        if ("artifact_identity" not in change or not isinstance(invocation, dict)
-                or set(invocation) != {"path", "mode", "owner_uid", "link_target"}):
+        if (
+            "artifact_identity" not in change
+            or not isinstance(invocation, dict)
+            or set(invocation) != {"path", "mode", "owner_uid", "link_target"}
+        ):
             raise TransitionError("invocation_dependency_invalid")
         path, mode, owner, link = (invocation[field] for field in ("path", "mode", "owner_uid", "link_target"))
-        if (not isinstance(path, str) or not 0 < len(path) <= 4096 or "\0" in path or not Path(path).is_absolute()
-                or isinstance(mode, bool) or not isinstance(mode, int) or mode & ~0o777
-                or isinstance(owner, bool) or (owner is not None and (not isinstance(owner, int) or owner < 0))
-                or (os.name != "nt" and owner not in {0, os.geteuid()})
-                or (link is not None and (not isinstance(link, str) or not 0 < len(link) <= 4096 or "\0" in link))):
+        if (
+            not isinstance(path, str)
+            or not 0 < len(path) <= 4096
+            or "\0" in path
+            or not Path(path).is_absolute()
+            or isinstance(mode, bool)
+            or not isinstance(mode, int)
+            or mode & ~0o777
+            or isinstance(owner, bool)
+            or (owner is not None and (not isinstance(owner, int) or owner < 0))
+            or (os.name != "nt" and owner not in {0, os.geteuid()})
+            or (link is not None and (not isinstance(link, str) or not 0 < len(link) <= 4096 or "\0" in link))
+        ):
             raise TransitionError("invocation_dependency_invalid")
 
 
@@ -168,8 +190,15 @@ def _invocation_generation(target: Path, identity: Mapping[str, object]) -> tupl
         after = path.lstat()
 
         def fingerprint(metadata: os.stat_result) -> tuple[int, ...]:
-            return (metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_uid,
-                    metadata.st_mtime_ns, metadata.st_ctime_ns)
+            return (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_uid,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+            )
+
         if fingerprint(before) != fingerprint(after):
             raise TransitionError("invocation_generation_changed")
         if active is not None and time.monotonic() >= active[2]:
@@ -192,8 +221,16 @@ def _artifact_digest(target: Path, identity: Mapping[str, object], mode: int) ->
     active = _ACTIVE_TRANSITION.get()
 
     def fingerprint(metadata: os.stat_result) -> tuple[int, ...]:
-        return (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns,
-                metadata.st_ctime_ns, metadata.st_mode, metadata.st_uid, metadata.st_gid)
+        return (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+            metadata.st_mode,
+            metadata.st_uid,
+            metadata.st_gid,
+        )
 
     def check_deadline() -> None:
         _check_inverse_deadline()
@@ -214,8 +251,9 @@ def _artifact_digest(target: Path, identity: Mapping[str, object], mode: int) ->
         opened = os.fstat(descriptor)
         if fingerprint(trusted) != fingerprint(opened):
             raise TransitionError("generation_changed")
-        if (not stat.S_ISREG(opened.st_mode)
-                or getattr(opened, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
+        if not stat.S_ISREG(opened.st_mode) or getattr(opened, "st_file_attributes", 0) & getattr(
+            stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+        ):
             raise TransitionError("artifact_dependency_invalid")
         if opened.st_size != identity["size"]:
             raise TransitionError("generation_changed")
@@ -237,8 +275,11 @@ def _artifact_digest(target: Path, identity: Mapping[str, object], mode: int) ->
                 raise TransitionError("generation_changed")
             digest.update(chunk)
         final, current = os.fstat(descriptor), target.lstat()
-        if (count != opened.st_size or fingerprint(opened) != fingerprint(final)
-                or fingerprint(final) != fingerprint(current)):
+        if (
+            count != opened.st_size
+            or fingerprint(opened) != fingerprint(final)
+            or fingerprint(final) != fingerprint(current)
+        ):
             raise TransitionError("generation_changed")
         check_deadline()
         return digest.hexdigest()
@@ -255,10 +296,11 @@ def _record_files(payload: Mapping[str, object]) -> list[dict[str, object]]:
         required = {"path", "before", "after", "before_mode", "after_mode", "kind"}
         path = change.get("path")
         if (
-            not required <= set(change) <= required | {
-                "no_follow", "expected_digest", "artifact_identity", "invocation_identity"
-            }
-            or not isinstance(path, str) or not Path(path).is_absolute()
+            not required
+            <= set(change)
+            <= required | {"no_follow", "expected_digest", "artifact_identity", "invocation_identity"}
+            or not isinstance(path, str)
+            or not Path(path).is_absolute()
             or change["kind"] not in ("binding", "selection")
             or not isinstance(change.get("no_follow", False), bool)
         ):
@@ -267,7 +309,8 @@ def _record_files(payload: Mapping[str, object]) -> list[dict[str, object]]:
         for generation in ("before", "after"):
             mode = change[f"{generation}_mode"]
             if (
-                isinstance(mode, bool) or not isinstance(mode, int)
+                isinstance(mode, bool)
+                or not isinstance(mode, int)
                 or _unsafe_file_mode(mode, change.get("artifact_identity"))
             ):
                 raise TransitionError("file_mode_invalid")
@@ -300,16 +343,23 @@ def _native_runtime_bindings(payload: Mapping[str, object]) -> dict[str, dict[st
     result: dict[str, dict[str, object]] = {}
     for side, value in bindings.items():
         identity = _object_mapping(value, reason="native_runtime_bindings_invalid")
-        if (set(identity) != {"path", "size", "mtime_ns", "sha256"}
-                or not isinstance(identity["path"], str) or not Path(identity["path"]).is_absolute()
-                or type(identity["size"]) is not int or identity["size"] <= 0
-                or type(identity["mtime_ns"]) is not int or identity["mtime_ns"] <= 0
-                or not isinstance(identity["sha256"], str) or len(identity["sha256"]) != 64
-                or any(character not in "0123456789abcdef" for character in identity["sha256"])):
+        if (
+            set(identity) != {"path", "size", "mtime_ns", "sha256"}
+            or not isinstance(identity["path"], str)
+            or not Path(identity["path"]).is_absolute()
+            or type(identity["size"]) is not int
+            or identity["size"] <= 0
+            or type(identity["mtime_ns"]) is not int
+            or identity["mtime_ns"] <= 0
+            or not isinstance(identity["sha256"], str)
+            or len(identity["sha256"]) != 64
+            or any(character not in "0123456789abcdef" for character in identity["sha256"])
+        ):
             raise TransitionError("native_runtime_bindings_invalid")
         dependencies = _record_files(payload)
         if not any(
-            change["path"] == identity["path"] and change.get("expected_digest") == identity["sha256"]
+            change["path"] == identity["path"]
+            and change.get("expected_digest") == identity["sha256"]
             and isinstance(change.get("artifact_identity"), dict)
             and cast(dict[str, object], change["artifact_identity"]).get("size") == identity["size"]
             for change in dependencies
@@ -326,8 +376,10 @@ class PolicyAuthority(Protocol):
 class ManagedInstallStore(Protocol):
     def get_managed_install(self, harness: str) -> dict[str, object] | None: ...
     def compare_and_set_managed_installs(
-        self, changes: Sequence[tuple[str, tuple[dict[str, object] | None, ...], dict[str, object] | None]],
-        *, before_mutation: Callable[[], None],
+        self,
+        changes: Sequence[tuple[str, tuple[dict[str, object] | None, ...], dict[str, object] | None]],
+        *,
+        before_mutation: Callable[[], None],
     ) -> bool: ...
 
 
@@ -358,8 +410,12 @@ class TransitionInstall:
             ):
                 raise TransitionError("managed_install_snapshot_invalid")
         # Normalize tuples to the same JSON shape returned by GuardStore.
-        encoded = json.dumps({"harness": self.harness, "before": self.before, "after": self.after},
-                             allow_nan=False, sort_keys=True, separators=(",", ":"))
+        encoded = json.dumps(
+            {"harness": self.harness, "before": self.before, "after": self.after},
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         if len(encoded.encode()) > 1024 * 1024:
             raise TransitionError("managed_install_snapshot_too_large")
         return json.loads(encoded)
@@ -420,27 +476,57 @@ class TransitionFile:
         if data is None:
             raise TransitionError("authority_dependency_missing")
         mode = path.stat().st_mode & 0o777
-        return cls(path.resolve(strict=False), None, None, before_mode=mode, after_mode=mode,
-                   no_follow=True, expected_digest=hashlib.sha256(data).hexdigest())
+        return cls(
+            path.resolve(strict=False),
+            None,
+            None,
+            before_mode=mode,
+            after_mode=mode,
+            no_follow=True,
+            expected_digest=hashlib.sha256(data).hexdigest(),
+        )
 
     @classmethod
     def artifact_dependency(
-        cls, identity: Mapping[str, object], *, invocation: Mapping[str, object] | None = None,
+        cls,
+        identity: Mapping[str, object],
+        *,
+        invocation: Mapping[str, object] | None = None,
     ) -> TransitionFile:
         """Pin the exact authenticated artifact without journaling its bytes."""
         path, mode, digest = identity.get("path"), identity.get("mode"), identity.get("sha256")
-        if (not isinstance(path, str) or not isinstance(mode, int) or isinstance(mode, bool)
-                or not isinstance(digest, str)):
+        if (
+            not isinstance(path, str)
+            or not isinstance(mode, int)
+            or isinstance(mode, bool)
+            or not isinstance(digest, str)
+        ):
             raise TransitionError("artifact_dependency_invalid")
-        invocation_identity = None if invocation is None else {
-            "path": invocation.get("invocation_path"), "mode": invocation.get("invocation_mode"),
-            "owner_uid": invocation.get("invocation_owner_uid"), "link_target": invocation.get("link_target"),
-        }
-        change = cls(Path(path), None, None, before_mode=mode, after_mode=mode, no_follow=True,
-                     expected_digest=digest, artifact_identity={"size": identity.get("size"),
-                                                                "owner_uid": identity.get("owner_uid"),
-                                                                "role": identity.get("role")},
-                     invocation_identity=invocation_identity)
+        invocation_identity = (
+            None
+            if invocation is None
+            else {
+                "path": invocation.get("invocation_path"),
+                "mode": invocation.get("invocation_mode"),
+                "owner_uid": invocation.get("invocation_owner_uid"),
+                "link_target": invocation.get("link_target"),
+            }
+        )
+        change = cls(
+            Path(path),
+            None,
+            None,
+            before_mode=mode,
+            after_mode=mode,
+            no_follow=True,
+            expected_digest=digest,
+            artifact_identity={
+                "size": identity.get("size"),
+                "owner_uid": identity.get("owner_uid"),
+                "role": identity.get("role"),
+            },
+            invocation_identity=invocation_identity,
+        )
         RuntimeTransition._compare({"files": [change.payload()]}, "before")
         return change
 
@@ -484,8 +570,12 @@ def merge_transition_dependency(previous: TransitionFile, change: TransitionFile
     if before == after:
         return previous
     for payload in (before, after):
-        if (payload.get("expected_digest") is None or not isinstance(payload.get("artifact_identity"), dict)
-                or payload["before"] is not None or payload["after"] is not None):
+        if (
+            payload.get("expected_digest") is None
+            or not isinstance(payload.get("artifact_identity"), dict)
+            or payload["before"] is not None
+            or payload["after"] is not None
+        ):
             raise TransitionError("adapter_preparation_generation_conflict")
     normalized = []
     for payload in (before, after):
@@ -496,12 +586,16 @@ def merge_transition_dependency(previous: TransitionFile, change: TransitionFile
         item.pop("invocation_identity", None)
         normalized.append(item)
     if normalized[0] != normalized[1] or (
-        previous.invocation_identity is not None and change.invocation_identity is not None
+        previous.invocation_identity is not None
+        and change.invocation_identity is not None
         and previous.invocation_identity != change.invocation_identity
     ):
         raise TransitionError("adapter_preparation_generation_conflict")
-    return replace(previous, artifact_identity=cast(dict[str, object], normalized[0]["artifact_identity"]),
-                   invocation_identity=previous.invocation_identity or change.invocation_identity)
+    return replace(
+        previous,
+        artifact_identity=cast(dict[str, object], normalized[0]["artifact_identity"]),
+        invocation_identity=previous.invocation_identity or change.invocation_identity,
+    )
 
 
 @dataclass(frozen=True)
@@ -574,8 +668,13 @@ class RuntimeTransition:
     def record_approval_refusal(self, plan: TransitionPlan, reason: str, *, deadline_monotonic: float) -> None:
         """Record only a refusal before begin; this is never a forward grant."""
         require_codex_install_owner(self.home)
-        if (plan.guard_home != self.home or not reason or len(reason) > 128
-                or not reason.isascii() or any(not (character.isalnum() or character == "_") for character in reason)):
+        if (
+            plan.guard_home != self.home
+            or not reason
+            or len(reason) > 128
+            or not reason.isascii()
+            or any(not (character.isalnum() or character == "_") for character in reason)
+        ):
             raise TransitionError("refusal_context_invalid")
         if time.monotonic() >= deadline_monotonic:
             raise TransitionError("deadline_exceeded")
@@ -585,21 +684,32 @@ class RuntimeTransition:
             raise TransitionError("pending_transition")
         path = self._refusal_path(plan.operation_id)
         key, key_id = self._key()
-        payload: dict[str, object] = {"schema": _REFUSAL_SCHEMA, "guard_home": str(self.home),
-                   "operation_id": plan.operation_id,
-                   "artifact_generation": _artifact_identity(plan.candidate)["generation"], "reason_code": reason}
+        payload: dict[str, object] = {
+            "schema": _REFUSAL_SCHEMA,
+            "guard_home": str(self.home),
+            "operation_id": plan.operation_id,
+            "artifact_generation": _artifact_identity(plan.candidate)["generation"],
+            "reason_code": reason,
+        }
         signed = dict(payload)
         signed["authentication"] = sign_local_authority_payload(
-            payload, key=key, key_id=key_id, purpose=_REFUSAL_PURPOSE, signed_at=plan.operation_id,
+            payload,
+            key=key,
+            key_id=key_id,
+            purpose=_REFUSAL_PURPOSE,
+            signed_at=plan.operation_id,
         )
         encoded = canonical_manifest_bytes(signed) + b"\n"
         if len(encoded) > 4096:
             raise TransitionError("refusal_capacity")
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         metadata = path.parent.lstat()
-        if (path.parent.resolve(strict=True) != path.parent or not stat.S_ISDIR(metadata.st_mode)
-                or stat.S_ISLNK(metadata.st_mode)
-                or (os.name != "nt" and (metadata.st_uid != os.getuid() or metadata.st_mode & 0o077))):
+        if (
+            path.parent.resolve(strict=True) != path.parent
+            or not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or (os.name != "nt" and (metadata.st_uid != os.getuid() or metadata.st_mode & 0o077))
+        ):
             raise TransitionError("refusal_directory_unsafe")
         # Bound retained evidence; never evict a refusal to authorize reuse.
         with os.scandir(path.parent) as entries:
@@ -638,16 +748,29 @@ class RuntimeTransition:
             raise TransitionError("refusal_invalid")
         integrity = payload.pop("authentication", None)
         key, key_id = self._key()
-        if (not isinstance(integrity, dict) or verify_local_authority_payload(
-                payload, integrity, key=key, key_id=key_id, purpose=_REFUSAL_PURPOSE).status != "valid"):
+        if (
+            not isinstance(integrity, dict)
+            or verify_local_authority_payload(
+                payload, integrity, key=key, key_id=key_id, purpose=_REFUSAL_PURPOSE
+            ).status
+            != "valid"
+        ):
             raise TransitionError("refusal_unauthenticated")
         generation, reason = payload.get("artifact_generation"), payload.get("reason_code")
-        if (set(payload) != {"schema", "guard_home", "operation_id", "artifact_generation", "reason_code"}
-                or payload.get("schema") != _REFUSAL_SCHEMA or payload.get("guard_home") != str(self.home)
-                or payload.get("operation_id") != operation_id or not isinstance(generation, str)
-                or len(generation) != 64 or any(character not in "0123456789abcdef" for character in generation)
-                or not isinstance(reason, str) or not reason or len(reason) > 128
-                or not reason.isascii() or any(not (character.isalnum() or character == "_") for character in reason)):
+        if (
+            set(payload) != {"schema", "guard_home", "operation_id", "artifact_generation", "reason_code"}
+            or payload.get("schema") != _REFUSAL_SCHEMA
+            or payload.get("guard_home") != str(self.home)
+            or payload.get("operation_id") != operation_id
+            or not isinstance(generation, str)
+            or len(generation) != 64
+            or any(character not in "0123456789abcdef" for character in generation)
+            or not isinstance(reason, str)
+            or not reason
+            or len(reason) > 128
+            or not reason.isascii()
+            or any(not (character.isalnum() or character == "_") for character in reason)
+        ):
             raise TransitionError("refusal_context_invalid")
         return TransitionStatus(operation_id, "NotStarted", reason, (), generation)
 
@@ -705,7 +828,11 @@ class RuntimeTransition:
         return payload
 
     def begin(
-        self, plan: TransitionPlan, *, authority_home: Path, grant: ApprovalGateGrant | None,
+        self,
+        plan: TransitionPlan,
+        *,
+        authority_home: Path,
+        grant: ApprovalGateGrant | None,
         deadline_monotonic: float | None = None,
     ) -> None:
         from .cli.commands_lifecycle_gate import LifecycleGateRequirement, lifecycle_authority_home
@@ -734,9 +861,9 @@ class RuntimeTransition:
             target = Path(str(change["path"]))
             # Authority may participate only as a validated digest dependency.
             # No key bytes or replacement can enter the forward/inverse journal.
-            if target in reserved or (target == key_path and (
-                "expected_digest" not in change or "artifact_identity" in change
-            )):
+            if target in reserved or (
+                target == key_path and ("expected_digest" not in change or "artifact_identity" in change)
+            ):
                 raise TransitionError("authority_target_forbidden")
         if self.path.exists() or self.path.is_symlink():
             raise TransitionError("pending_transition")
@@ -776,8 +903,13 @@ class RuntimeTransition:
             raise TransitionError("deadline_exceeded")
         if grant is not None:
             validate_grant(
-                authority_home, grant, purpose="protection_lifecycle", strict=True,
-                action="runtime.transition", scope="local-protection", subject=plan.subject(),
+                authority_home,
+                grant,
+                purpose="protection_lifecycle",
+                strict=True,
+                action="runtime.transition",
+                scope="local-protection",
+                subject=plan.subject(),
             )
         forward_expires_epoch = min(
             plan.deadline_epoch,
@@ -806,7 +938,8 @@ class RuntimeTransition:
     def status(self, operation_id: str) -> TransitionStatus:
         payload = self._read(operation_id)
         return TransitionStatus(
-            operation_id, str(payload["phase"]),
+            operation_id,
+            str(payload["phase"]),
             str(payload["first_cause"]) if payload["first_cause"] is not None else None,
             tuple(_record_objects(payload, "recovery_causes", maximum=8)),
             cast(str, _artifact_identity(payload["candidate"])["generation"]),
@@ -820,7 +953,8 @@ class RuntimeTransition:
         if payload["phase"] not in {"Committed", "FailedWithVerifiedRollback"}:
             raise TransitionError("nonterminal_transition")
         return TransitionStatus(
-            operation_id, str(payload["phase"]),
+            operation_id,
+            str(payload["phase"]),
             str(payload["first_cause"]) if payload["first_cause"] is not None else None,
             tuple(_record_objects(payload, "recovery_causes", maximum=8)),
             cast(str, _artifact_identity(payload["candidate"])["generation"]),
@@ -836,7 +970,8 @@ class RuntimeTransition:
         files = tuple(
             TransitionFile(
                 Path(cast(str, change["path"])),
-                _decode(change["before"]), _decode(change["after"]),
+                _decode(change["before"]),
+                _decode(change["after"]),
                 before_mode=cast(int, change["before_mode"]),
                 after_mode=cast(int, change["after_mode"]),
                 kind=cast(str, change["kind"]),
@@ -844,12 +979,16 @@ class RuntimeTransition:
                 expected_digest=cast(str | None, change.get("expected_digest")),
                 artifact_identity=cast(dict[str, object] | None, change.get("artifact_identity")),
                 invocation_identity=cast(dict[str, object] | None, change.get("invocation_identity")),
-            ) for change in _record_files(payload)
+            )
+            for change in _record_files(payload)
         )
         plan = TransitionPlan(
-            operation_id, self.home,
-            _artifact_identity(payload["predecessor"]), _artifact_identity(payload["candidate"]),
-            files, _record_number(payload, "deadline_epoch"),
+            operation_id,
+            self.home,
+            _artifact_identity(payload["predecessor"]),
+            _artifact_identity(payload["candidate"]),
+            files,
+            _record_number(payload, "deadline_epoch"),
             managed_installs=tuple(_record_installs(payload)),
             native_runtimes=_native_runtime_bindings(payload),
         )
@@ -888,8 +1027,13 @@ class RuntimeTransition:
                 raise TransitionError("managed_install_generation_changed")
 
     def _apply_installs(
-        self, payload: dict[str, object], expected: str, replacement: str,
-        callback: Callable[[], None], *, inverse: bool = False,
+        self,
+        payload: dict[str, object],
+        expected: str,
+        replacement: str,
+        callback: Callable[[], None],
+        *,
+        inverse: bool = False,
     ) -> None:
         changes = _record_installs(payload)
         if not changes:
@@ -898,8 +1042,12 @@ class RuntimeTransition:
         if self.install_store is None:
             raise TransitionError("managed_install_store_unavailable")
         updates = [
-            (change.harness, (change.snapshot(expected), change.after) if inverse else (change.snapshot(expected),),
-             change.snapshot(replacement)) for change in changes
+            (
+                change.harness,
+                (change.snapshot(expected), change.after) if inverse else (change.snapshot(expected),),
+                change.snapshot(replacement),
+            )
+            for change in changes
         ]
         if not self.install_store.compare_and_set_managed_installs(updates, before_mutation=callback):
             raise TransitionError("managed_install_generation_changed")
@@ -983,16 +1131,17 @@ class RuntimeTransition:
         self._validate_forward_grant(payload)
         token = _ACTIVE_TRANSITION.set((self.home, operation_id, _record_number(payload, "forward_expires_monotonic")))
         try:
-            with sqlite_operation_deadline(min(
-                _record_number(payload, "deadline_monotonic"), _record_number(payload, "forward_expires_monotonic"),
-            )):
+            with sqlite_operation_deadline(
+                min(
+                    _record_number(payload, "deadline_monotonic"),
+                    _record_number(payload, "forward_expires_monotonic"),
+                )
+            ):
                 yield
         finally:
             _ACTIVE_TRANSITION.reset(token)
 
-    def advance(
-        self, operation_id: str, expected_phase: str, *, functional_proof: object = None
-    ) -> str:
+    def advance(self, operation_id: str, expected_phase: str, *, functional_proof: object = None) -> str:
         payload = self._read(operation_id)
         if payload["phase"] != expected_phase or expected_phase not in _FORWARD:
             raise TransitionError("phase_changed")
@@ -1009,12 +1158,26 @@ class RuntimeTransition:
         self._compare_installs(payload, "after")
         if expected_phase == "AuthorizedForExactTransition":
             self._compare(
-                {**payload, "files": [change for change in _record_objects(payload, "files", maximum=128)
-                                      if change["kind"] == "binding"]}, "after"
+                {
+                    **payload,
+                    "files": [
+                        change
+                        for change in _record_objects(payload, "files", maximum=128)
+                        if change["kind"] == "binding"
+                    ],
+                },
+                "after",
             )
             self._compare(
-                {**payload, "files": [change for change in _record_objects(payload, "files", maximum=128)
-                                      if change["kind"] == "selection"]}, "before"
+                {
+                    **payload,
+                    "files": [
+                        change
+                        for change in _record_objects(payload, "files", maximum=128)
+                        if change["kind"] == "selection"
+                    ],
+                },
+                "before",
             )
         elif expected_phase == "HooksPrepared":
             self._compare(payload, "after")
@@ -1047,13 +1210,19 @@ class RuntimeTransition:
         payload = self._read(operation_id)
         if payload["authorized_subject"] != subject:
             raise TransitionError("plan_context_mismatch")
-        forward = {("predecessor", "stop"): "HooksPrepared", ("candidate", "start"): "Switching",
-                   ("candidate", "observe"): "Switching"}
+        forward = {
+            ("predecessor", "stop"): "HooksPrepared",
+            ("candidate", "start"): "Switching",
+            ("candidate", "observe"): "Switching",
+        }
         if (side, action) in forward and payload["phase"] == forward[(side, action)]:
             self.authorize_runtime_step(operation_id, forward[(side, action)])
             return
-        if (payload["phase"] != "RestoringPrevious" or payload.get("recovery_owner") != current_process_identity()
-                or (side, action) not in {("candidate", "stop"), ("predecessor", "start"), ("predecessor", "observe")}):
+        if (
+            payload["phase"] != "RestoringPrevious"
+            or payload.get("recovery_owner") != current_process_identity()
+            or (side, action) not in {("candidate", "stop"), ("predecessor", "start"), ("predecessor", "observe")}
+        ):
             raise TransitionError("daemon_step_not_authorized")
         if action != "stop":
             if payload.get("inverse_files_restored") is not True:
@@ -1062,19 +1231,25 @@ class RuntimeTransition:
             self._compare_installs(payload, "before")
 
     def _validate_functional_proof(
-        self, payload: Mapping[str, object], proof: object, side: str,
+        self,
+        payload: Mapping[str, object],
+        proof: object,
+        side: str,
     ) -> dict[str, object]:
         from .runtime_transition_admission import verified_admission_payload
 
         observation = verified_admission_payload(proof)
         native = _native_runtime_bindings(payload).get(side)
         observed = _record_number(observation, "observed_monotonic")
-        if (native is None or observation["runtime_identity"] != native
-                or observation["operation_id"] != payload["operation_id"]
-                or observation["generation"] != _artifact_identity(payload[side])["generation"]
-                or observation["guard_home"] != str(self.home)
-                or observed < _record_number(payload, "functional_started_monotonic")
-                or observed > time.monotonic()):
+        if (
+            native is None
+            or observation["runtime_identity"] != native
+            or observation["operation_id"] != payload["operation_id"]
+            or observation["generation"] != _artifact_identity(payload[side])["generation"]
+            or observation["guard_home"] != str(self.home)
+            or observed < _record_number(payload, "functional_started_monotonic")
+            or observed > time.monotonic()
+        ):
             raise TransitionError("functional_proof_missing")
         return observation
 
@@ -1097,9 +1272,7 @@ class RuntimeTransition:
             self._compare({**payload, "files": selected}, "after")
 
         with self._mutation_scope(operation_id):
-            self._apply_installs(
-                payload, "before" if kind == "binding" else "after", "after", publish_files
-            )
+            self._apply_installs(payload, "before" if kind == "binding" else "after", "after", publish_files)
             return self.advance(operation_id, expected_phase)
 
     def prepare_recovery(self, operation_id: str, *, first_cause: str) -> None:
@@ -1175,8 +1348,10 @@ class RuntimeTransition:
         payload["phase"] = "RecoveryRequired"
         payload["recovery_causes"] = [
             *_record_objects(payload, "recovery_causes", maximum=8),
-            {"code": error.reason if isinstance(error, TransitionError) else type(error).__name__,
-             "errno": getattr(error, "errno", None)},
+            {
+                "code": error.reason if isinstance(error, TransitionError) else type(error).__name__,
+                "errno": getattr(error, "errno", None),
+            },
         ][-8:]
         self._write(payload)
 

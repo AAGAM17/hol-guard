@@ -23,7 +23,9 @@ _LEGACY = "legacy-marker-command"
 
 def _context(tmp_path: Path, name: str) -> HarnessContext:
     return HarnessContext(
-        home_dir=tmp_path / name, workspace_dir=None, guard_home=tmp_path / "guard-home",
+        home_dir=tmp_path / name,
+        workspace_dir=None,
+        guard_home=tmp_path / "guard-home",
         home_override_explicit=True,
     )
 
@@ -37,7 +39,8 @@ def _legacy_sources(home: Path) -> None:
 
 
 def test_bootstrap_rebind_and_uninstall_preserve_authority_and_legacy_sources(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Bootstrap, same-target rebind, and uninstall use the production caller entry points."""
 
@@ -51,7 +54,10 @@ def test_bootstrap_rebind_and_uninstall_preserve_authority_and_legacy_sources(
     original_config = '[features]\nhooks = true\nmodel = "legacy-marker-model"\n'
 
     installed = _build_bootstrap_install(
-        requested_harness="codex", skip_install=False, context=first, store=store,
+        requested_harness="codex",
+        skip_install=False,
+        context=first,
+        store=store,
     )
     assert installed["installed"] is True
     assert not legacy_path.exists()
@@ -93,7 +99,8 @@ def test_bootstrap_rebind_and_uninstall_preserve_authority_and_legacy_sources(
 
 
 def test_second_config_public_install_stays_fail_closed_beside_existing_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A second config cannot mint authority from a key that already belongs to another install."""
 
@@ -111,7 +118,10 @@ def test_second_config_public_install_stays_fail_closed_beside_existing_key(
     before_legacy = second_legacy.read_bytes()
 
     installed = _build_bootstrap_install(
-        requested_harness="codex", skip_install=False, context=first, store=store,
+        requested_harness="codex",
+        skip_install=False,
+        context=first,
+        store=store,
     )
     assert installed["installed"] is True
     key = hook_secret_path(guard)
@@ -138,7 +148,8 @@ def test_second_config_public_install_stays_fail_closed_beside_existing_key(
 
 
 def test_bootstrapped_hook_denies_a_missing_manifest_without_replacing_authority(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The installed bridge reports the missing manifest and leaves the key in place."""
 
@@ -148,7 +159,10 @@ def test_bootstrapped_hook_denies_a_missing_manifest_without_replacing_authority
     context = _context(tmp_path, "home")
     _legacy_sources(context.home_dir)
     installed = _build_bootstrap_install(
-        requested_harness="codex", skip_install=False, context=context, store=GuardStore(guard),
+        requested_harness="codex",
+        skip_install=False,
+        context=context,
+        store=GuardStore(guard),
     )
     assert installed["installed"] is True
     config = context.home_dir / ".codex" / "config.toml"
@@ -161,10 +175,16 @@ def test_bootstrapped_hook_denies_a_missing_manifest_without_replacing_authority
 
     result = subprocess.run(
         argv,
-        input=json.dumps({
-            "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "true"},
-        }),
-        capture_output=True, text=True, timeout=20,
+        input=json.dumps(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "true"},
+            }
+        ),
+        capture_output=True,
+        text=True,
+        timeout=20,
         env={**os.environ, "HOME": str(context.home_dir), "USERPROFILE": str(context.home_dir)},
         check=False,
     )
@@ -178,7 +198,10 @@ def test_bootstrapped_hook_denies_a_missing_manifest_without_replacing_authority
     assert not manifest.exists()
     after_secret = secret.stat()
     assert (after_secret.st_dev, after_secret.st_ino, after_secret.st_mtime_ns, after_secret.st_size) == (
-        before_secret.st_dev, before_secret.st_ino, before_secret.st_mtime_ns, before_secret.st_size,
+        before_secret.st_dev,
+        before_secret.st_ino,
+        before_secret.st_mtime_ns,
+        before_secret.st_size,
     )
     assert codex_native_hook_state(context)["protection_active"] is False
     print("H1 pass caller=bootstrap bridge_decision=deny reason=codex_hook_manifest_missing key_rotated=false")

@@ -26,8 +26,9 @@ def candidate(tmp_path, monkeypatch):
     monkeypatch.setenv("HOL_GUARD_DESKTOP_PREFLIGHT", "1")
     store = GuardStore(home)
     context = HarnessContext(home, None, home, {})
-    args = argparse.Namespace(operation_id=str(uuid.uuid4()), artifact_generation="a" * 64,
-                              deadline_epoch=time.time() + 10)
+    args = argparse.Namespace(
+        operation_id=str(uuid.uuid4()), artifact_generation="a" * 64, deadline_epoch=time.time() + 10
+    )
     return args, context, store
 
 
@@ -101,17 +102,37 @@ def test_actual_cli_child_qualifies_and_retires_its_isolated_native_runtime(cand
     args.deadline_epoch = time.time() + budget
     deadline = time.monotonic() + budget
     environment = dict(os.environ)
-    environment.update(HOME=str(context.home_dir), USERPROFILE=str(context.home_dir),
-                       HOL_GUARD_HOME=str(context.guard_home), HOL_GUARD_DESKTOP_PREFLIGHT="1")
+    environment.update(
+        HOME=str(context.home_dir),
+        USERPROFILE=str(context.home_dir),
+        HOL_GUARD_HOME=str(context.guard_home),
+        HOL_GUARD_DESKTOP_PREFLIGHT="1",
+    )
     result = run_isolated_hook_process(
-        [sys.executable, "-c",
-         "import os,sys; os.environ['HOL_GUARD_DESKTOP_PREFLIGHT']='1'; "
-         "sys.argv[0]='hol-guard'; from codex_plugin_scanner.cli import main; "
-         "raise SystemExit(main())",
-         "desktop", "qualify", "--json", "--operation-id", args.operation_id,
-         "--artifact-generation", args.artifact_generation, "--deadline-epoch", str(args.deadline_epoch),
-         "--guard-home", str(context.guard_home), "--home", str(context.home_dir)],
-        input_text="", cwd=context.home_dir, environment=environment, deadline_monotonic=deadline,
+        [
+            sys.executable,
+            "-c",
+            "import os,sys; os.environ['HOL_GUARD_DESKTOP_PREFLIGHT']='1'; "
+            "sys.argv[0]='hol-guard'; from codex_plugin_scanner.cli import main; "
+            "raise SystemExit(main())",
+            "desktop",
+            "qualify",
+            "--json",
+            "--operation-id",
+            args.operation_id,
+            "--artifact-generation",
+            args.artifact_generation,
+            "--deadline-epoch",
+            str(args.deadline_epoch),
+            "--guard-home",
+            str(context.guard_home),
+            "--home",
+            str(context.home_dir),
+        ],
+        input_text="",
+        cwd=context.home_dir,
+        environment=environment,
+        deadline_monotonic=deadline,
     )
     assert not result.timed_out and not result.containment_failed
     document = json.loads(result.stdout)
@@ -156,7 +177,8 @@ def test_qualification_preserves_probe_cause_when_both_cleanup_steps_fail(candid
         assert document["qualified"] is False and document["cleanup_complete"] is False
         assert document["reason_code"] == "admission_protection_failed"
         assert document["cleanup_reason_codes"] == [
-            "qualification_publisher_cleanup_failed", "qualification_resident_cleanup_failed",
+            "qualification_publisher_cleanup_failed",
+            "qualification_resident_cleanup_failed",
         ]
         assert len(deadlines) == 3 and len(set(deadlines)) == 1
     finally:

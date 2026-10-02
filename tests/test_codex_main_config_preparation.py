@@ -14,8 +14,10 @@ from .test_codex_publication_preparation import _context, _tree
 from .test_runtime_transition import begin, transition  # noqa: F401 -- shared pytest fixture
 
 
-@pytest.mark.parametrize("original,migrated", [(None, None), (b'# comment\nmodel="fixture"\n', None),
-                                              (b'model="fixture"\n', {"model": "fixture", "hooks": {}})])
+@pytest.mark.parametrize(
+    "original,migrated",
+    [(None, None), (b'# comment\nmodel="fixture"\n', None), (b'model="fixture"\n', {"model": "fixture", "hooks": {}})],
+)
 def test_backup_preparation_preserves_content_rule_without_writes(tmp_path, monkeypatch, original, migrated):
     context = _context(tmp_path, monkeypatch)
     before = _tree(tmp_path)
@@ -60,15 +62,25 @@ def _server(context, name, scope="global"):
 def test_mcp_renderer_refreshes_proxy_preserves_input_and_workspace_precedence(tmp_path, monkeypatch):
     context = replace(_context(tmp_path, monkeypatch), workspace_dir=tmp_path / "workspace")
     monkeypatch.setattr(adapter, "_guard_python_executable", lambda: "/fixture/current-python")
-    payload = {"model": "fixture", "mcp_servers": {
-        "prior": {"command": "/old/python", "args": ["-m", "codex_plugin_scanner.cli", "guard", "codex-mcp-proxy"],
-                  "env": {"FIXTURE": "retained"}},
-        "shadow": {"command": "node"}, "user": {"command": "unselected"}}}
+    payload = {
+        "model": "fixture",
+        "mcp_servers": {
+            "prior": {
+                "command": "/old/python",
+                "args": ["-m", "codex_plugin_scanner.cli", "guard", "codex-mcp-proxy"],
+                "env": {"FIXTURE": "retained"},
+            },
+            "shadow": {"command": "node"},
+            "user": {"command": "unselected"},
+        },
+    }
     workspace = {"mcp_servers": {"shadow": {"command": "workspace"}, "project": {"command": "node"}}}
     originals = deepcopy((payload, workspace))
     before = _tree(tmp_path)
     rendered, migrated = adapter.render_codex_managed_mcp(
-        context, payload, workspace_payload=workspace,
+        context,
+        payload,
+        workspace_payload=workspace,
         managed_servers=(_server(context, "shadow"), _server(context, "project", "project")),
     )
     assert (payload, workspace) == originals
@@ -84,7 +96,10 @@ def test_mcp_renderer_refreshes_proxy_preserves_input_and_workspace_precedence(t
 
 @pytest.mark.parametrize("existing", [False, True])
 def test_signed_backup_inverse_preserves_prior_generation(
-    transition, tmp_path, monkeypatch, existing,  # noqa: F811 -- shared pytest fixture
+    transition,
+    tmp_path,
+    monkeypatch,
+    existing,  # noqa: F811 -- shared pytest fixture
 ):
     runtime, plan, _bindings, _pointer = transition
     context = _context(tmp_path, monkeypatch)

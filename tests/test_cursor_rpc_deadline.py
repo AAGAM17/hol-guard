@@ -16,9 +16,11 @@ import pytest
 from .test_cursor_hook_deadline import _hook_namespace
 
 
-@pytest.mark.parametrize("target,slow_stage", [
-    (target, stage) for target in ("health", "verify", "hook") for stage in ("headers", "body")
-] + [("complete", ""), ("oversize", ""), ("error", "body")])
+@pytest.mark.parametrize(
+    "target,slow_stage",
+    [(target, stage) for target in ("health", "verify", "hook") for stage in ("headers", "body")]
+    + [("complete", ""), ("oversize", ""), ("error", "body")],
+)
 def test_cursor_rpc_obeys_original_deadline(tmp_path, target, slow_stage):
     namespace = _hook_namespace(tmp_path)
     baseline_fds = len(os.listdir("/dev/fd")) if os.path.isdir("/dev/fd") else None
@@ -51,8 +53,14 @@ def test_cursor_rpc_obeys_original_deadline(tmp_path, target, slow_stage):
                             return
                         request += chunk
                     headers, payload = request.split(b"\r\n\r\n", 1)
-                    length = next((int(line.split(b":", 1)[1]) for line in headers.lower().split(b"\r\n")
-                                   if line.startswith(b"content-length:")), 0)
+                    length = next(
+                        (
+                            int(line.split(b":", 1)[1])
+                            for line in headers.lower().split(b"\r\n")
+                            if line.startswith(b"content-length:")
+                        ),
+                        0,
+                    )
                     if length > 10_000:
                         return
                     while len(payload) < length:

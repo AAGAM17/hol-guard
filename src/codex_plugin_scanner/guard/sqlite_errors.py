@@ -7,7 +7,9 @@ from typing import Final, Literal
 
 SQLiteFailureKind = Literal["busy", "locked", "io", "full", "corrupt", "other"]
 FATAL_SQLITE_ERROR_MARKERS = (
-    "database disk image is malformed", "database corruption", "file is not a database",
+    "database disk image is malformed",
+    "database corruption",
+    "file is not a database",
 )
 SQLITE_IO_ERROR_MARKER = "disk i/o error"
 # SQLite's stable primary result codes; named sqlite3 exports require Python

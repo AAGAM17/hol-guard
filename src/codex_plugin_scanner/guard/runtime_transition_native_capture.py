@@ -54,12 +54,28 @@ def _check(deadline: float) -> None:
 
 class _BSDInfo(ctypes.Structure):
     # Apple XNU bsd/sys/proc_info.h: struct proc_bsdinfo, PROC_PIDTBSDINFO=3.
-    _fields_ = [(name, ctypes.c_uint32) for name in (
-        "flags", "status", "xstatus", "pid", "ppid", "uid", "gid", "ruid", "rgid",
-        "svuid", "svgid", "reserved",
-    )] + [("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32)] + [
-        (name, ctypes.c_uint32) for name in ("nfiles", "pgid", "pjobc", "tdev", "tpgid")
-    ] + [("nice", ctypes.c_int32), ("start_sec", ctypes.c_uint64), ("start_usec", ctypes.c_uint64)]
+    _fields_ = (
+        [
+            (name, ctypes.c_uint32)
+            for name in (
+                "flags",
+                "status",
+                "xstatus",
+                "pid",
+                "ppid",
+                "uid",
+                "gid",
+                "ruid",
+                "rgid",
+                "svuid",
+                "svgid",
+                "reserved",
+            )
+        ]
+        + [("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32)]
+        + [(name, ctypes.c_uint32) for name in ("nfiles", "pgid", "pjobc", "tdev", "tpgid")]
+        + [("nice", ctypes.c_int32), ("start_sec", ctypes.c_uint64), ("start_usec", ctypes.c_uint64)]
+    )
 
 
 def _darwin_api():
@@ -76,8 +92,12 @@ def _darwin_api():
 class _DarwinSigInfo(ctypes.Structure):
     # Apple XNU bsd/sys/signal.h: siginfo_t (the sigval union has pointer alignment).
     _fields_ = [(name, ctypes.c_int) for name in ("signo", "errno", "code", "pid")] + [
-        ("uid", ctypes.c_uint32), ("status", ctypes.c_int), ("addr", ctypes.c_void_p),
-        ("value", ctypes.c_void_p), ("band", ctypes.c_long), ("pad", ctypes.c_ulong * 7),
+        ("uid", ctypes.c_uint32),
+        ("status", ctypes.c_int),
+        ("addr", ctypes.c_void_p),
+        ("value", ctypes.c_void_p),
+        ("band", ctypes.c_long),
+        ("pad", ctypes.c_ulong * 7),
     ]
 
 
@@ -129,7 +149,11 @@ def _process_snapshot(pid: int, deadline: float) -> ProcessSnapshot:
         # The executable lookup must refer to the same incarnation as BSD info.
         again = _BSDInfo()
         if api.proc_pidinfo(pid, 3, 0, ctypes.byref(again), size) != size or (
-            again.pid, again.ppid, again.uid, again.start_sec, again.start_usec,
+            again.pid,
+            again.ppid,
+            again.uid,
+            again.start_sec,
+            again.start_usec,
         ) != (info.pid, info.ppid, info.uid, info.start_sec, info.start_usec):
             raise NativeCaptureError("native_capture_process_changed")
         again_path = ctypes.create_string_buffer(4096)
@@ -148,7 +172,10 @@ def _process_snapshot(pid: int, deadline: float) -> ProcessSnapshot:
         result = ProcessSnapshot(pid, int(fields[1]), owner, "linux:" + fields[19].decode("ascii"), path)
         again_fields = _read_proc(root / "stat", 4096, deadline).rpartition(b")")[2].split()
         if (again_fields[1], again_fields[19], root.stat().st_uid, os.readlink(root / "exe")) != (
-            fields[1], fields[19], owner, str(path),
+            fields[1],
+            fields[19],
+            owner,
+            str(path),
         ):
             raise NativeCaptureError("native_capture_process_changed")
     else:
@@ -187,16 +214,26 @@ def _child_pids(pid: int, deadline: float) -> tuple[int, ...]:
 
 def _fingerprint(value: os.stat_result) -> tuple[int, ...]:
     return (
-        value.st_dev, value.st_ino, value.st_mode, value.st_uid,
-        value.st_size, value.st_mtime_ns, value.st_ctime_ns,
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_uid,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
     )
 
 
 def _native_identity(path: Path, deadline: float) -> NativeRuntimeIdentity:
     _check(deadline)
     before = path.lstat()
-    if (not stat.S_ISREG(before.st_mode) or not before.st_mode & 0o111 or before.st_mode & 0o022
-            or before.st_uid not in {0, os.getuid()} or not 0 < before.st_size <= MAX_NATIVE_BYTES):
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or not before.st_mode & 0o111
+        or before.st_mode & 0o022
+        or before.st_uid not in {0, os.getuid()}
+        or not 0 < before.st_size <= MAX_NATIVE_BYTES
+    ):
         raise NativeCaptureError("native_capture_file_unsafe")
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, "rb") as handle:
@@ -222,7 +259,10 @@ def _native_identity(path: Path, deadline: float) -> NativeRuntimeIdentity:
 
 
 def capture_owned_native_candidate(
-    guard_home: Path, expected_artifact: DaemonArtifactBinding, *, deadline_monotonic: float,
+    guard_home: Path,
+    expected_artifact: DaemonArtifactBinding,
+    *,
+    deadline_monotonic: float,
 ) -> OwnedNativeCandidate:
     """Capture one native file below bounded, exactly identified Core workers.
 
@@ -235,7 +275,9 @@ def capture_owned_native_candidate(
     _check(deadline)
     try:
         state = verified_live_guard_daemon_identity(
-            guard_home, expected_artifact=expected_artifact, deadline_monotonic=deadline,
+            guard_home,
+            expected_artifact=expected_artifact,
+            deadline_monotonic=deadline,
         )
         pid = state.get("pid") if state else None
         if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
@@ -274,9 +316,15 @@ def capture_owned_native_candidate(
         identity = _native_identity(selected[0].executable, deadline)
         if any(_process_snapshot(child.pid, deadline) != child for child in (*selected, *workers)):
             raise NativeCaptureError("native_capture_process_changed")
-        if _process_snapshot(pid, deadline) != parent or verified_live_guard_daemon_identity(
-            guard_home, expected_artifact=expected_artifact, deadline_monotonic=deadline,
-        ) != state:
+        if (
+            _process_snapshot(pid, deadline) != parent
+            or verified_live_guard_daemon_identity(
+                guard_home,
+                expected_artifact=expected_artifact,
+                deadline_monotonic=deadline,
+            )
+            != state
+        ):
             raise NativeCaptureError("native_capture_daemon_changed")
         _check(deadline)
         return OwnedNativeCandidate(identity, parent, tuple(selected), tuple(workers))

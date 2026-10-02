@@ -298,7 +298,8 @@ def test_storage_gate_and_sqlite_lock_consume_one_operation_budget(tmp_path: Pat
         caller_started.set()
         with (
             pytest.raises(sqlite3.OperationalError, match="locked"),
-            sqlite_connect_timeout_override(0.4), store._connect() as connection,
+            sqlite_connect_timeout_override(0.4),
+            store._connect() as connection,
         ):
             connection.execute(
                 "insert into guard_events (event_name, payload_json, occurred_at) values ('deadline', '{}', 'now')"
@@ -332,7 +333,8 @@ def test_expired_caller_budget_cannot_be_restarted_by_nested_override(tmp_path: 
         time.sleep(0.04)
         with (
             pytest.raises(TimeoutError, match="deadline expired"),
-            sqlite_connect_timeout_override(1), store._connect() as connection,
+            sqlite_connect_timeout_override(1),
+            store._connect() as connection,
         ):
             connection.execute(
                 "insert into guard_events (event_name, payload_json, occurred_at) values ('expired', '{}', 'now')"
@@ -351,7 +353,8 @@ def test_later_statement_uses_remaining_busy_budget(tmp_path: Path, use_cursor: 
     try:
         with (
             pytest.raises(sqlite3.OperationalError, match="locked"),
-            sqlite_connect_timeout_override(0.4), store._connect() as connection,
+            sqlite_connect_timeout_override(0.4),
+            store._connect() as connection,
         ):
             target = connection.cursor() if use_cursor else connection
             time.sleep(0.25)
@@ -369,7 +372,8 @@ def test_long_query_obeys_deadline_after_caller_clears_progress_handler(tmp_path
     started = time.monotonic()
     with (
         pytest.raises(sqlite3.OperationalError, match="interrupted"),
-        sqlite_connect_timeout_override(0.04), store._connect() as connection,
+        sqlite_connect_timeout_override(0.04),
+        store._connect() as connection,
     ):
         connection.set_progress_handler(None, 0)
         connection.execute(
@@ -386,7 +390,8 @@ def test_expired_transaction_cannot_commit_through_alternate_apis(tmp_path: Path
     sql = "insert into guard_events (event_name, payload_json, occurred_at) values ('late-commit', '{}', 'now')"
     with (
         pytest.raises(TimeoutError, match="deadline expired"),
-        sqlite_connect_timeout_override(0.04), store._connect() as connection,
+        sqlite_connect_timeout_override(0.04),
+        store._connect() as connection,
     ):
         if finalizer == "context":
             with connection:
@@ -421,7 +426,8 @@ def test_bulk_parameter_producer_cannot_execute_rows_after_deadline(tmp_path: Pa
 
     with (
         pytest.raises(TimeoutError, match="deadline expired"),
-        sqlite_connect_timeout_override(0.04), store._connect() as connection,
+        sqlite_connect_timeout_override(0.04),
+        store._connect() as connection,
     ):
         connection.create_function("observed", 1, observed)
         target = connection.cursor() if use_cursor else connection
@@ -431,9 +437,10 @@ def test_bulk_parameter_producer_cannot_execute_rows_after_deadline(tmp_path: Pa
         )
     assert executed == ["before"], "bulk execution stepped a row after its original deadline"
     with store._connect() as connection:
-        assert connection.execute(
-            "select count(*) from guard_events where event_name in ('before','after')"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute("select count(*) from guard_events where event_name in ('before','after')").fetchone()[0]
+            == 0
+        )
 
 
 def test_budgeted_bulk_write_preserves_sqlite_result_accounting(tmp_path: Path) -> None:
@@ -451,7 +458,10 @@ def test_budgeted_bulk_write_preserves_sqlite_result_accounting(tmp_path: Path) 
 @pytest.mark.parametrize("path_kind", ["probe", "write-probe", "local-salvage", "cloud-salvage"])
 @pytest.mark.parametrize("expired", [False, True])
 def test_recovery_connections_obey_deadline_and_close_handles(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path_kind: str, expired: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_kind: str,
+    expired: bool,
 ) -> None:
     from codex_plugin_scanner.guard import sqlite_cloud_review_recovery, sqlite_recovery
     from codex_plugin_scanner.guard.sqlite_deadline_connection import DeadlineConnection
@@ -476,7 +486,8 @@ def test_recovery_connections_obey_deadline_and_close_handles(
             assert sqlite_recovery.salvage_local_cli_state(source=source.path, destination=destination.path)
         else:
             assert not sqlite_cloud_review_recovery.salvage_cloud_review_state(
-                source=source.path, destination=destination.path,
+                source=source.path,
+                destination=destination.path,
             )  # Generated empty source has no cloud consent to recover.
 
     monkeypatch.setattr(sqlite3, "connect", observed_connect)
@@ -539,12 +550,16 @@ def test_custom_cursor_preserves_behavior_and_refuses_late_statement(tmp_path: P
         return value
 
     selected = {
-        "base": sqlite3.Cursor, "class": TrackingCursor, "callable": factory,
-        "slot-class": SlottedTrackingCursor, "slot-callable": factory,
+        "base": sqlite3.Cursor,
+        "class": TrackingCursor,
+        "callable": factory,
+        "slot-class": SlottedTrackingCursor,
+        "slot-callable": factory,
     }[factory_kind]
     with (
         pytest.raises(TimeoutError, match="deadline expired"),
-        sqlite_connect_timeout_override(0.04), store._connect() as connection,
+        sqlite_connect_timeout_override(0.04),
+        store._connect() as connection,
     ):
         connection.create_function("observe_late", 1, observe)
         cursor = connection.cursor(factory=selected)
@@ -579,7 +594,8 @@ def test_custom_cursor_callback_cannot_step_sql_after_consuming_deadline(tmp_pat
 
     with (
         pytest.raises(TimeoutError, match="deadline expired"),
-        sqlite_connect_timeout_override(0.04), store._connect() as connection,
+        sqlite_connect_timeout_override(0.04),
+        store._connect() as connection,
     ):
         connection.create_function("observed", 1, observed)
         connection.cursor(factory=SlowCursor).execute(
@@ -712,7 +728,8 @@ def test_script_preserves_sqlite_parsing_transactions_and_caller_trace(tmp_path:
             """)
             assert not connection.in_transaction
             assert connection.execute("select value from items order by rowid").fetchall() == [
-                ("a;b",), ("trigger;value",),
+                ("a;b",),
+                ("trigger;value",),
             ]
             assert any("CREATE TRIGGER" in sql for sql in traced)
             assert any("select value from items" in sql for sql in traced)

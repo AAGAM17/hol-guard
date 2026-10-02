@@ -67,6 +67,8 @@ def packaged_executable() -> Path:
     if not path.is_file():
         pytest.skip("HOL_GUARD_PACKAGED_EXECUTABLE is not a file")
     return path
+
+
 CRASH_PHASES = (
     "authorized",
     "hooks-prepared",
@@ -210,7 +212,10 @@ def _retire_isolated_daemon(guard: Path) -> None:
     token = process_start_token(pid, deadline_monotonic=deadline)
     if token is not None:
         _retire_guard_daemon_pid(
-            pid, expected_guard_home=guard, expected_start_token=token, deadline_monotonic=deadline,
+            pid,
+            expected_guard_home=guard,
+            expected_start_token=token,
+            deadline_monotonic=deadline,
         )
     if not _guard_daemon_pid_is_proven_dead(pid):
         os.kill(pid, signal.SIGTERM)
@@ -226,19 +231,28 @@ def _packaged_version(executable: Path) -> str:
 
 def _artifact(path: Path, version: str, generation: str, package_format: str) -> dict[str, str]:
     return {
-        "version": version, "source_commit": hashlib.sha256(path.name.encode()).hexdigest()[:40],
-        "target": "darwin", "format": package_format, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "generation": generation, "path": str(path.resolve()),
+        "version": version,
+        "source_commit": hashlib.sha256(path.name.encode()).hexdigest()[:40],
+        "target": "darwin",
+        "format": package_format,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "generation": generation,
+        "path": str(path.resolve()),
     }
 
 
 def _dependency(path: Path) -> TransitionFile:
     metadata = path.stat()
-    return TransitionFile.artifact_dependency({
-        "path": str(path.resolve()), "size": metadata.st_size,
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "mode": metadata.st_mode & 0o777, "owner_uid": metadata.st_uid, "role": "artifact",
-    })
+    return TransitionFile.artifact_dependency(
+        {
+            "path": str(path.resolve()),
+            "size": metadata.st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "mode": metadata.st_mode & 0o777,
+            "owner_uid": metadata.st_uid,
+            "role": "artifact",
+        }
+    )
 
 
 def _native_binding(identity: NativeRuntimeIdentity) -> dict[str, object]:
@@ -249,7 +263,10 @@ def _bundled_runtime(executable: Path) -> NativeRuntimeIdentity:
     path = executable.parent / "_internal" / "codex_plugin_scanner" / "_native" / "hol-guard-runtime"
     metadata = path.stat()
     return NativeRuntimeIdentity(
-        path.resolve(), metadata.st_size, metadata.st_mtime_ns, hashlib.sha256(path.read_bytes()).hexdigest(),
+        path.resolve(),
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        hashlib.sha256(path.read_bytes()).hexdigest(),
     )
 
 
@@ -276,7 +293,10 @@ def test_rebind_then_unauthenticated_daemon_state_restores_bindings(transition):
 
     driver = TransitionDaemonDriver(runtime, plan, home_dir=plan.guard_home.parent, observe_hook=observe)
     result = RuntimeTransitionCoordinator(runtime, driver).activate(
-        plan, authority_home=plan.guard_home, grant=None, deadline_monotonic=time.monotonic() + 20,
+        plan,
+        authority_home=plan.guard_home,
+        grant=None,
+        deadline_monotonic=time.monotonic() + 20,
     )
     assert bindings.read_bytes() == b"previous hooks"
     assert pointer.read_bytes() == b"previous pointer"
@@ -295,6 +315,7 @@ def test_enrollment_and_structural_admission_leave_the_active_runtime(transition
     plan = core_dependencies(replace(original, deadline_epoch=time.time() + 30))
     password = "isolated-transition-enrollment"
     update_settings(plan.guard_home, {"enabled": True, "new_password": password, "confirm_password": password})
+
     def observe(*args, **kwargs):
         del args, kwargs
         raise AssertionError("enrollment reached lifecycle")
@@ -302,12 +323,18 @@ def test_enrollment_and_structural_admission_leave_the_active_runtime(transition
     driver = TransitionDaemonDriver(runtime, plan, home_dir=plan.guard_home.parent, observe_hook=observe)
     with pytest.raises(ApprovalGateError) as enrollment:
         RuntimeTransitionCoordinator(runtime, driver).activate(
-            plan, authority_home=plan.guard_home, grant=None, deadline_monotonic=time.monotonic() + 15,
+            plan,
+            authority_home=plan.guard_home,
+            grant=None,
+            deadline_monotonic=time.monotonic() + 15,
         )
     structural = replace(plan, native_runtimes={})
     with pytest.raises(TransitionError) as structural_error:
         RuntimeTransitionCoordinator(runtime, driver).activate(
-            structural, authority_home=plan.guard_home, grant=None, deadline_monotonic=time.monotonic() + 15,
+            structural,
+            authority_home=plan.guard_home,
+            grant=None,
+            deadline_monotonic=time.monotonic() + 15,
         )
     assert enrollment.value.code == "approval_gate_required"
     assert structural_error.value.reason == "native_runtime_bindings_missing"
@@ -345,20 +372,32 @@ def test_stale_native_admission_cannot_overwrite_a_newer_transition(tmp_path: Pa
     stale_operation = str(uuid.uuid4())
     candidate_generation = "b" * 64
     plan = TransitionPlan(
-        operation_id, guard, _artifact(previous, "3.16.1", "a" * 64, "onefile"),
+        operation_id,
+        guard,
+        _artifact(previous, "3.16.1", "a" * 64, "onefile"),
         _artifact(candidate, "3.16.2", candidate_generation, "onefile"),
-        (TransitionFile(bindings, b"previous hooks", b"candidate hooks"),
-         TransitionFile(pointer, b"previous pointer", b"candidate pointer", kind="selection"),
-         _dependency(previous), _dependency(candidate), _dependency(identity.path)),
-        time.time() + 40, native_runtimes={"candidate": native, "predecessor": native},
+        (
+            TransitionFile(bindings, b"previous hooks", b"candidate hooks"),
+            TransitionFile(pointer, b"previous pointer", b"candidate pointer", kind="selection"),
+            _dependency(previous),
+            _dependency(candidate),
+            _dependency(identity.path),
+        ),
+        time.time() + 40,
+        native_runtimes={"candidate": native, "predecessor": native},
     )
     store = GuardStore(guard)
     worker = HookWorker(store=store, wait_for_native_policy=False)
     runtime = RuntimeTransition(guard, store, install_store=store)
     try:
         stale = probe_native_protection(
-            worker=worker, operation_id=stale_operation, artifact_generation=candidate_generation,
-            expected_runtime=identity, home_dir=home, workspace=home, deadline_monotonic=time.monotonic() + 20,
+            worker=worker,
+            operation_id=stale_operation,
+            artifact_generation=candidate_generation,
+            expected_runtime=identity,
+            home_dir=home,
+            workspace=home,
+            deadline_monotonic=time.monotonic() + 20,
         )
         assert stale.allow_receipt["decision"] == "allow"
         assert stale.deny_receipt["decision"] == "deny"
@@ -409,12 +448,19 @@ def test_live_predecessor_is_adopted_and_not_reused_as_the_candidate(tmp_path: P
     version = _packaged_version(packaged_executable())
     operation_id = str(uuid.uuid4())
     plan = TransitionPlan(
-        operation_id, guard, _artifact(packaged_executable(), version, "a" * 64, "onedir"),
+        operation_id,
+        guard,
+        _artifact(packaged_executable(), version, "a" * 64, "onedir"),
         _artifact(candidate, "0.0.0", "b" * 64, "onefile"),
-        (TransitionFile(bindings, b"previous hooks", b"candidate hooks"),
-         TransitionFile(pointer, b"previous pointer", b"candidate pointer", kind="selection"),
-         _dependency(packaged_executable()), _dependency(candidate), _dependency(identity.path)),
-        time.time() + 40, native_runtimes={"candidate": native, "predecessor": native},
+        (
+            TransitionFile(bindings, b"previous hooks", b"candidate hooks"),
+            TransitionFile(pointer, b"previous pointer", b"candidate pointer", kind="selection"),
+            _dependency(packaged_executable()),
+            _dependency(candidate),
+            _dependency(identity.path),
+        ),
+        time.time() + 40,
+        native_runtimes={"candidate": native, "predecessor": native},
     )
     store = GuardStore(guard)
     runtime = RuntimeTransition(guard, store, install_store=store)
@@ -426,7 +472,10 @@ def test_live_predecessor_is_adopted_and_not_reused_as_the_candidate(tmp_path: P
     driver = TransitionDaemonDriver(runtime, plan, home_dir=home, observe_hook=observe)
     try:
         ensure_guard_daemon(
-            guard, home_dir=home, executable=packaged_executable(), deadline_monotonic=time.monotonic() + 25,
+            guard,
+            home_dir=home,
+            executable=packaged_executable(),
+            deadline_monotonic=time.monotonic() + 25,
             background_maintenance=False,
         )
         _retire_isolated_daemon(guard)
@@ -435,25 +484,37 @@ def test_live_predecessor_is_adopted_and_not_reused_as_the_candidate(tmp_path: P
             runtime.publish(operation_id, "AuthorizedForExactTransition")
             runtime.publish(operation_id, "HooksPrepared")
         ensure_guard_daemon(
-            guard, home_dir=home, executable=packaged_executable(), deadline_monotonic=time.monotonic() + 25,
+            guard,
+            home_dir=home,
+            executable=packaged_executable(),
+            deadline_monotonic=time.monotonic() + 25,
             background_maintenance=False,
         )
         live = verified_live_guard_daemon_identity(
-            guard, expected_artifact=driver.bindings["predecessor"], deadline_monotonic=time.monotonic() + 10,
+            guard,
+            expected_artifact=driver.bindings["predecessor"],
+            deadline_monotonic=time.monotonic() + 10,
         )
         assert live is not None
         pid = live["pid"]
         with codex_install_transaction(guard, bindings, actor="adoption-start"):
             with pytest.raises(TransitionError, match="daemon_generation_changed"):
                 driver.start(plan.candidate, deadline_monotonic=time.monotonic() + 10)
-            assert verified_live_guard_daemon_identity(
-                guard, expected_artifact=driver.bindings["predecessor"], deadline_monotonic=time.monotonic() + 5,
-            )["pid"] == pid
+            assert (
+                verified_live_guard_daemon_identity(
+                    guard,
+                    expected_artifact=driver.bindings["predecessor"],
+                    deadline_monotonic=time.monotonic() + 5,
+                )["pid"]
+                == pid
+            )
             runtime.prepare_recovery(operation_id, first_cause="candidate_generation_rejected")
             runtime.restore_files(operation_id, first_cause="candidate_generation_rejected")
             driver.start(plan.predecessor, deadline_monotonic=time.monotonic() + 10)
         adopted = verified_live_guard_daemon_identity(
-            guard, expected_artifact=driver.bindings["predecessor"], deadline_monotonic=time.monotonic() + 5,
+            guard,
+            expected_artifact=driver.bindings["predecessor"],
+            deadline_monotonic=time.monotonic() + 5,
         )
         assert adopted is not None and adopted["pid"] == pid
         assert bindings.read_bytes() == b"previous hooks"
@@ -465,7 +526,8 @@ def test_live_predecessor_is_adopted_and_not_reused_as_the_candidate(tmp_path: P
 
 @pytest.mark.usefixtures("native_hook_force")
 def test_candidate_start_failure_restores_configured_hook_allow_and_deny(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """A2: candidate start fails and the restored hook still allows and denies."""
 
@@ -495,16 +557,24 @@ def test_candidate_start_failure_restores_configured_hook_allow_and_deny(
     def observe(artifact, daemon_identity, observed_operation, *, deadline_monotonic):
         del daemon_identity
         observation = observe_configured_codex_hook(
-            operation_id=observed_operation, artifact_generation=str(artifact["generation"]),
-            expected_runtime=identity, guard_home=guard, config_path=home / ".codex" / "config.toml",
-            workspace=workspace, deadline_monotonic=deadline_monotonic, receipt_store=store,
+            operation_id=observed_operation,
+            artifact_generation=str(artifact["generation"]),
+            expected_runtime=identity,
+            guard_home=guard,
+            config_path=home / ".codex" / "config.toml",
+            workspace=workspace,
+            deadline_monotonic=deadline_monotonic,
+            receipt_store=store,
         )
         proofs.append(observation)
         return observation
 
     try:
         ensure_guard_daemon(
-            guard, home_dir=home, executable=packaged_executable(), deadline_monotonic=time.monotonic() + 25,
+            guard,
+            home_dir=home,
+            executable=packaged_executable(),
+            deadline_monotonic=time.monotonic() + 25,
             background_maintenance=False,
         )
         _retire_isolated_daemon(guard)
@@ -517,7 +587,9 @@ def test_candidate_start_failure_restores_configured_hook_allow_and_deny(
         native = _native_binding(identity)
         selection = TransitionFile(pointer, b"previous pointer", b"candidate pointer", kind="selection")
         plan = TransitionPlan(
-            operation_id, guard, _artifact(packaged_executable(), version, "a" * 64, "onedir"),
+            operation_id,
+            guard,
+            _artifact(packaged_executable(), version, "a" * 64, "onedir"),
             _artifact(candidate, "0.0.0", "b" * 64, "onefile"),
             (
                 *prepared.files,
@@ -533,13 +605,20 @@ def test_candidate_start_failure_restores_configured_hook_allow_and_deny(
         password = "isolated-production-driver-password"
         update_settings(guard, {"enabled": True, "new_password": password, "confirm_password": password})
         grant = require_high_risk(
-            guard, purpose="protection_lifecycle", approval_gate_input=ApprovalGateInput(password=password),
-            action="runtime.transition", scope="local-protection", subject=plan.subject(),
+            guard,
+            purpose="protection_lifecycle",
+            approval_gate_input=ApprovalGateInput(password=password),
+            action="runtime.transition",
+            scope="local-protection",
+            subject=plan.subject(),
         )
         runtime = RuntimeTransition(guard, store, install_store=store)
         driver = TransitionDaemonDriver(runtime, plan, home_dir=home, observe_hook=observe)
         result = RuntimeTransitionCoordinator(runtime, driver).activate(
-            plan, authority_home=guard, grant=grant, deadline_monotonic=time.monotonic() + 55,
+            plan,
+            authority_home=guard,
+            grant=grant,
+            deadline_monotonic=time.monotonic() + 55,
         )
         assert result.phase == "FailedWithVerifiedRollback", (result.first_cause, result.recovery_causes)
         assert result.first_cause == "daemon_start_failed"
@@ -566,7 +645,9 @@ def test_candidate_start_failure_restores_configured_hook_allow_and_deny(
 @pytest.mark.usefixtures("native_hook_force")
 @pytest.mark.parametrize("phase", CRASH_PHASES)
 def test_restart_after_each_persisted_phase_recovers_through_the_production_cli(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
 ):
     """A3: kill after each durable phase, then recover through the production CLI."""
 
@@ -577,7 +658,8 @@ def test_restart_after_each_persisted_phase_recovers_through_the_production_cli(
     native = os.environ["HOL_GUARD_NATIVE_BINARY"]
     completed = subprocess.run(
         [sys.executable, "-c", CRASH_TRANSITION, phase, str(root), operation_id, native],
-        capture_output=True, timeout=90,
+        capture_output=True,
+        timeout=90,
         env={**os.environ, "HOME": str(root), "USERPROFILE": str(root), "HOL_GUARD_HOME": str(guard)},
     )
     assert completed.returncode == 17, completed.stderr.decode(errors="replace")
@@ -593,7 +675,10 @@ def test_restart_after_each_persisted_phase_recovers_through_the_production_cli(
     store = GuardStore(guard)
     output = io.StringIO()
     code = run_desktop_runtime_transition(
-        argparse_namespace(operation_id), context=context, store=store, output_stream=output,
+        argparse_namespace(operation_id),
+        context=context,
+        store=store,
+        output_stream=output,
     )
     recovered = json.loads(output.getvalue())
     assert code == 1
@@ -604,7 +689,10 @@ def test_restart_after_each_persisted_phase_recovers_through_the_production_cli(
     assert (root / "current.json").read_bytes() == b"previous pointer\n"
     again = io.StringIO()
     second = run_desktop_runtime_transition(
-        argparse_namespace(operation_id), context=context, store=store, output_stream=again,
+        argparse_namespace(operation_id),
+        context=context,
+        store=store,
+        output_stream=again,
     )
     repeated = json.loads(again.getvalue())
     assert second == 1
@@ -622,8 +710,9 @@ def test_restart_after_each_persisted_phase_recovers_through_the_production_cli(
         f"A3 phase={phase} result_phase={recovered['phase']} first_cause={recovered['first_cause']} "
         f"recovery={recovered['recovery_causes']}"
         + (
-            "" if decisions is None else
-            f" allow={decisions['allow']} deny={decisions['deny']} authority={decisions['authority']}"
+            ""
+            if decisions is None
+            else f" allow={decisions['allow']} deny={decisions['deny']} authority={decisions['authority']}"
         )
     )
 
@@ -632,5 +721,7 @@ def argparse_namespace(operation_id: str):
     import argparse
 
     return argparse.Namespace(
-        desktop_command="transition-recover", operation_id=operation_id, deadline_epoch=time.time() + 50,
+        desktop_command="transition-recover",
+        operation_id=operation_id,
+        deadline_epoch=time.time() + 50,
     )

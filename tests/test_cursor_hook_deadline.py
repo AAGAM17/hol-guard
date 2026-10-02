@@ -45,8 +45,11 @@ def test_contained_launch_uses_only_budget_remaining_after_spawn(tmp_path):
     namespace = _hook_namespace(tmp_path)
     real_popen = namespace["subprocess"].Popen
     marker = tmp_path / "child-completed.marker"
-    argv = [sys.executable, "-c", "import time; time.sleep(0.1); "
-            f"from pathlib import Path; Path({str(marker)!r}).write_text('completed')"]
+    argv = [
+        sys.executable,
+        "-c",
+        f"import time; time.sleep(0.1); from pathlib import Path; Path({str(marker)!r}).write_text('completed')",
+    ]
     original_deadline = time.monotonic() + 0.1
 
     def delayed_spawn(*args, **kwargs):
@@ -67,8 +70,9 @@ def test_expired_isolated_budget_returns_timeout_without_spawning(tmp_path, monk
         pytest.fail("An expired operation must not create a new child")
 
     monkeypatch.setattr(runtime, "_spawn_hook_process", refuse_spawn)
-    result = runtime.run_isolated_hook_process([sys.executable], cwd=tmp_path, environment={}, input_text="",
-                                               deadline_monotonic=time.monotonic() - 1)
+    result = runtime.run_isolated_hook_process(
+        [sys.executable], cwd=tmp_path, environment={}, input_text="", deadline_monotonic=time.monotonic() - 1
+    )
     assert result.timed_out is True
     assert result.output_limit_exceeded is False
 
@@ -88,7 +92,10 @@ def test_expired_denial_does_not_import_availability_evaluator(tmp_path, monkeyp
 
     monkeypatch.setattr(builtins, "__import__", tracked_import)
     response, exit_code = namespace["_cursor_availability_response"](
-        {}, hook_event_name="beforeReadFile", workspace=str(tmp_path), deadline_monotonic=time.monotonic() - 1,
+        {},
+        hook_event_name="beforeReadFile",
+        workspace=str(tmp_path),
+        deadline_monotonic=time.monotonic() - 1,
     )
     assert response["permission"] == "deny"
     assert exit_code == 2
@@ -113,23 +120,33 @@ def test_expired_rpc_does_not_read_daemon_authority(tmp_path, monkeypatch):
         pytest.fail("An expired RPC must not read daemon files")
 
     monkeypatch.setattr(Path, "read_text", refuse_read)
-    assert namespace["_daemon_hook_result"]("{}", deadline_monotonic=time.monotonic() - 1,
-                                           workspace=None) == (None, "timeout")
+    assert namespace["_daemon_hook_result"]("{}", deadline_monotonic=time.monotonic() - 1, workspace=None) == (
+        None,
+        "timeout",
+    )
 
 
-@pytest.mark.parametrize("partial,event,code", [
-    ("", "beforeShellExecution", 2),
-    ('{"hook_event_name":"beforeShellExecution"', "beforeShellExecution", 2),
-    ("", "afterShellExecution", 0),
-])
+@pytest.mark.parametrize(
+    "partial,event,code",
+    [
+        ("", "beforeShellExecution", 2),
+        ('{"hook_event_name":"beforeShellExecution"', "beforeShellExecution", 2),
+        ("", "afterShellExecution", 0),
+    ],
+)
 def test_open_input_pipe_cannot_extend_hook_deadline(tmp_path, partial, event, code):
     context = HarnessContext(home_dir=tmp_path, guard_home=tmp_path / "guard", workspace_dir=None)
     source = cursor_hook_script_source(context, guard_cli=[sys.executable], recovery_command=[sys.executable])
     source = source.replace("GUARD_HOOK_TIMEOUT_SECONDS = 42", "GUARD_HOOK_TIMEOUT_SECONDS = 0.15", 1)
     script = tmp_path / "cursor-hook.py"
     script.write_text(source)
-    process = subprocess.Popen([sys.executable, "-S", str(script), "--cursor-hook-event", event], stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = subprocess.Popen(
+        [sys.executable, "-S", str(script), "--cursor-hook-event", event],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     assert process.stdin is not None
     try:
         if partial:

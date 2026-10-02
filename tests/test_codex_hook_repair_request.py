@@ -32,7 +32,10 @@ def _write(plan, path):
 
 def _load(plan, path, digest):
     return requests.load_codex_hook_repair_request(
-        path, guard_home=plan.guard_home, config_path=plan.config_path, expected_sha256=digest,
+        path,
+        guard_home=plan.guard_home,
+        config_path=plan.config_path,
+        expected_sha256=digest,
         deadline_monotonic=time.monotonic() + 10,
     )
 
@@ -41,7 +44,10 @@ def _resign(plan, path, payload, *, purpose="codex-authority-repair-request"):
     payload.pop("authentication", None)
     secret = load_hook_secret(plan.guard_home)
     payload["authentication"] = sign_local_authority_payload(
-        payload, key=secret.key, key_id=secret.key_id, purpose=purpose,
+        payload,
+        key=secret.key,
+        key_id=secret.key_id,
+        purpose=purpose,
         signed_at=plan.operation_id,
     )
     raw = canonical_manifest_bytes(payload) + b"\n"
@@ -103,9 +109,18 @@ def test_private_request_or_digest_change_refuses_loading(captured, mutation, mo
     assert not manifest.exists()
 
 
-@pytest.mark.parametrize("mutation", [
-    "subject", "context", "extra-write", "extra-field", "expires", "authentication", "auth-extra-field",
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "subject",
+        "context",
+        "extra-write",
+        "extra-field",
+        "expires",
+        "authentication",
+        "auth-extra-field",
+    ],
+)
 def test_authenticated_request_still_requires_exact_constrained_plan(captured, mutation):
     _context, _config, manifest, plan, path = captured
     _write(plan, path)
@@ -115,10 +130,17 @@ def test_authenticated_request_still_requires_exact_constrained_plan(captured, m
     elif mutation == "context":
         payload["config_path"] = str(path.with_name("foreign-config"))
     elif mutation == "extra-write":
-        payload["plan"]["files"].append({
-            "path": str(path.with_name("extra-write")), "before": None, "after": "eA==",
-            "before_mode": 0o600, "after_mode": 0o600, "kind": "binding", "no_follow": True,
-        })
+        payload["plan"]["files"].append(
+            {
+                "path": str(path.with_name("extra-write")),
+                "before": None,
+                "after": "eA==",
+                "before_mode": 0o600,
+                "after_mode": 0o600,
+                "kind": "binding",
+                "no_follow": True,
+            }
+        )
     elif mutation == "extra-field":
         payload["grant_id"] = "must never be accepted"
     elif mutation == "expires":

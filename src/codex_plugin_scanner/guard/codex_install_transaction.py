@@ -70,8 +70,12 @@ if hasattr(os, "register_at_fork"):
 
 def require_codex_install_owner(guard_home: Path) -> CodexInstallOwner:
     owner = _OWNER.get()
-    if (owner is None or owner.pid != os.getpid() or owner.thread_id != threading.get_ident()
-            or owner.guard_home != guard_home.resolve(strict=False)):
+    if (
+        owner is None
+        or owner.pid != os.getpid()
+        or owner.thread_id != threading.get_ident()
+        or owner.guard_home != guard_home.resolve(strict=False)
+    ):
         raise CodexHookIntegrityError(
             "codex_hook_transaction_owner_missing", "Codex mutation requires exclusive installation ownership."
         )
@@ -170,8 +174,12 @@ def _guard_home_install_transaction(
     home = guard_home.resolve(strict=False)
     target_id = hashlib.sha256(str(config_path.resolve(strict=False)).encode()).hexdigest()
     previous = _OWNER.get()
-    if (previous is not None and previous.guard_home == home and previous.pid == os.getpid()
-            and previous.thread_id == threading.get_ident()):
+    if (
+        previous is not None
+        and previous.guard_home == home
+        and previous.pid == os.getpid()
+        and previous.thread_id == threading.get_ident()
+    ):
         yield previous
         return
     with _locks_guard:

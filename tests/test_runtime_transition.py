@@ -79,12 +79,21 @@ def transition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         path.chmod(0o700)
         metadata = path.stat()
         native_runtimes[side] = {
-            "path": str(path), "size": len(data), "mtime_ns": metadata.st_mtime_ns,
+            "path": str(path),
+            "size": len(data),
+            "mtime_ns": metadata.st_mtime_ns,
             "sha256": hashlib.sha256(data).hexdigest(),
         }
-        native_files.append(TransitionFile.artifact_dependency({
-            **native_runtimes[side], "mode": 0o700, "owner_uid": metadata.st_uid, "role": "artifact",
-        }))
+        native_files.append(
+            TransitionFile.artifact_dependency(
+                {
+                    **native_runtimes[side],
+                    "mode": 0o700,
+                    "owner_uid": metadata.st_uid,
+                    "role": "artifact",
+                }
+            )
+        )
     plan = TransitionPlan(
         "fixture-operation",
         home,
@@ -122,8 +131,7 @@ def test_coordinator_excludes_cross_home_writers_for_every_binding_target(transi
     foreign_home = tmp_path / "foreign-guard"
 
     def competing_publication():
-        with codex_install_transaction(foreign_home, config, actor="foreign-writer",
-                                       deadline=time.monotonic() + 0.15):
+        with codex_install_transaction(foreign_home, config, actor="foreign-writer", deadline=time.monotonic() + 0.15):
             return "admitted"
 
     class Driver:
@@ -169,8 +177,7 @@ def test_busy_binding_target_refuses_before_lifecycle_or_transition_mutation(tra
     if operation == "recover":
         begin(runtime, plan)
         runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
-    before = {path: path.read_bytes() if path.exists() else None
-              for path in (runtime.path, bindings, pointer, config)}
+    before = {path: path.read_bytes() if path.exists() else None for path in (runtime.path, bindings, pointer, config)}
     ready, release = Event(), Event()
 
     def foreign_writer():
@@ -261,11 +268,13 @@ def test_desktop_transition_status_is_authenticated_and_redacted(transition, mon
     begin(runtime, plan)
     monkeypatch.setattr(module, "RuntimeTransition", lambda *args, **kwargs: runtime)
     context = HarnessContext(tmp_path, None, runtime.home)
-    args = argparse.Namespace(desktop_command="transition-status", operation_id=plan.operation_id,
-                              deadline_epoch=time.time() + 10)
+    args = argparse.Namespace(
+        desktop_command="transition-status", operation_id=plan.operation_id, deadline_epoch=time.time() + 10
+    )
     output = io.StringIO()
-    assert module.run_desktop_runtime_transition(args, context=context, store=runtime.authority,
-                                                output_stream=output) == 0
+    assert (
+        module.run_desktop_runtime_transition(args, context=context, store=runtime.authority, output_stream=output) == 0
+    )
     payload = json.loads(output.getvalue())
     assert payload["phase"] == "AuthorizedForExactTransition"
     assert set(payload) == {"schema", "operation_id", "phase", "first_cause", "recovery_causes", "artifact_generation"}
@@ -274,8 +283,9 @@ def test_desktop_transition_status_is_authenticated_and_redacted(transition, mon
     assert str(runtime.home) not in output.getvalue()
     args.operation_id = str(uuid.uuid4())
     output = io.StringIO()
-    assert module.run_desktop_runtime_transition(args, context=context, store=runtime.authority,
-                                                output_stream=output) == 1
+    assert (
+        module.run_desktop_runtime_transition(args, context=context, store=runtime.authority, output_stream=output) == 1
+    )
     assert json.loads(output.getvalue())["reason_code"] == "operation_superseded"
 
 
@@ -393,10 +403,16 @@ def test_daemon_binding_uses_planned_executable_digest_instead_of_artifact_archi
     path.write_bytes(data)
     path.chmod(0o700)
     digest = hashlib.sha256(data).hexdigest()
-    dependency = TransitionFile.artifact_dependency({
-        "path": str(path), "mode": 0o700, "sha256": digest,
-        "size": len(data), "owner_uid": path.stat().st_uid, "role": "artifact",
-    })
+    dependency = TransitionFile.artifact_dependency(
+        {
+            "path": str(path),
+            "mode": 0o700,
+            "sha256": digest,
+            "size": len(data),
+            "owner_uid": path.stat().st_uid,
+            "role": "artifact",
+        }
+    )
     plan = replace(plan, files=(*plan.files, dependency))
     binding = DaemonArtifactBinding.from_transition_plan(plan, side)
     assert binding.executable_sha256 == digest and binding.executable_sha256 != artifact["sha256"]
@@ -409,18 +425,32 @@ def proof(plan, generation, *, installed=False):
     side = "candidate" if generation == plan.candidate["generation"] else "predecessor"
     identity = plan.native_runtimes[side]
     native = NativeRuntimeIdentity(Path(identity["path"]), identity["size"], identity["mtime_ns"], identity["sha256"])
-    return _seal_verified_admission(NativeProtectionAdmission(
-        plan.operation_id, generation, native, 1, "a" * 64,
-        {"unit_protocol_fixture": "allow"}, {"unit_protocol_fixture": "deny"},
-        plan.guard_home.resolve(), time.monotonic(),
-        {"schema": "hol-guard.installed-hook-evidence.v1", "harness": "codex", "unit_protocol_fixture": True}
-        if installed else None,
-    ))
+    return _seal_verified_admission(
+        NativeProtectionAdmission(
+            plan.operation_id,
+            generation,
+            native,
+            1,
+            "a" * 64,
+            {"unit_protocol_fixture": "allow"},
+            {"unit_protocol_fixture": "deny"},
+            plan.guard_home.resolve(),
+            time.monotonic(),
+            {"schema": "hol-guard.installed-hook-evidence.v1", "harness": "codex", "unit_protocol_fixture": True}
+            if installed
+            else None,
+        )
+    )
 
 
 def install_row(harness, generation):
-    return {"harness": harness, "active": True, "workspace": None,
-            "manifest": {"generation": generation}, "updated_at": "2026-09-30T00:00:00Z"}
+    return {
+        "harness": harness,
+        "active": True,
+        "workspace": None,
+        "manifest": {"generation": generation},
+        "updated_at": "2026-09-30T00:00:00Z",
+    }
 
 
 def with_install_store(runtime, plan, changes):
@@ -430,8 +460,9 @@ def with_install_store(runtime, plan, changes):
     for change in changes:
         if change.before is not None:
             row = change.before
-            store.set_managed_install(row["harness"], row["active"], row["workspace"],
-                                      row["manifest"], row["updated_at"])
+            store.set_managed_install(
+                row["harness"], row["active"], row["workspace"], row["manifest"], row["updated_at"]
+            )
     runtime.install_store = store
     return store, replace(plan, managed_installs=tuple(changes))
 
@@ -461,8 +492,10 @@ def test_install_rows_publish_and_restore_with_files(transition, previous_exists
 
 def test_foreign_install_row_preserves_all_files_and_rows(transition):
     runtime, plan, bindings, pointer = transition
-    changes = [TransitionInstall(harness, install_row(harness, "previous"), install_row(harness, "candidate"))
-               for harness in ("codex", "claude")]
+    changes = [
+        TransitionInstall(harness, install_row(harness, "previous"), install_row(harness, "candidate"))
+        for harness in ("codex", "claude")
+    ]
     store, plan = with_install_store(runtime, plan, changes)
     begin(runtime, plan)
     runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
@@ -564,9 +597,11 @@ def test_native_claude_binding_plan_restores_user_hooks_and_launchers(transition
     ctx = HarnessContext(home_dir=runtime.home.parent, workspace_dir=None, guard_home=runtime.home)
     settings = ctx.home_dir / ".claude/settings.json"
     settings.parent.mkdir(parents=True)
-    settings.write_text(json.dumps({"theme": "user-theme", "hooks": {
-        "Stop": [{"hooks": [{"type": "command", "command": "user-stop-hook"}]}]
-    }}))
+    settings.write_text(
+        json.dumps(
+            {"theme": "user-theme", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "user-stop-hook"}]}]}}
+        )
+    )
     settings.chmod(0o600)
     adapter = ClaudeCodeHarnessAdapter()
     adapter.install(ctx)
@@ -608,7 +643,7 @@ def test_native_kimi_plan_restores_config_and_launchers_after_rebind(transition)
     begin(runtime, plan)
     runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
     assert b"candidate-workspace" in config.read_bytes()
-    assert b'user-model' in config.read_bytes()
+    assert b"user-model" in config.read_bytes()
     runtime.restore_files(plan.operation_id, first_cause="failure after Kimi hook rebind")
     for change in prepared.files:
         assert change.path.read_bytes() == change.before
@@ -633,12 +668,18 @@ def test_prepared_native_install_preserves_foreign_edit_before_any_publication(t
     assert not (ctx.guard_home / "bin").exists()
 
 
-@pytest.mark.parametrize("field,value", [
-    ("files", [None]), ("managed_installs", ["invalid"]),
-    ("deadline_monotonic", True), ("deadline_monotonic", float("inf")),
-    ("forward_expires_monotonic", "later"), ("candidate", {}),
-    ("recovery_causes", "invalid"),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("files", [None]),
+        ("managed_installs", ["invalid"]),
+        ("deadline_monotonic", True),
+        ("deadline_monotonic", float("inf")),
+        ("forward_expires_monotonic", "later"),
+        ("candidate", {}),
+        ("recovery_causes", "invalid"),
+    ],
+)
 def test_authenticated_record_shape_failure_preserves_state_and_bindings(transition, field, value):
     runtime, plan, bindings, pointer = transition
     begin(runtime, plan)
@@ -653,10 +694,16 @@ def test_authenticated_record_shape_failure_preserves_state_and_bindings(transit
     assert pointer.read_bytes() == b"previous pointer"
 
 
-@pytest.mark.parametrize("field,value", [
-    ("no_follow", "false"), ("after_mode", True), ("path", "relative"),
-    ("expected_digest", False), ("expected_digest", "a" * 64),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("no_follow", "false"),
+        ("after_mode", True),
+        ("path", "relative"),
+        ("expected_digest", False),
+        ("expected_digest", "a" * 64),
+    ],
+)
 def test_authenticated_invalid_file_contract_refuses_publication(transition, field, value):
     runtime, plan, bindings, pointer = transition
     begin(runtime, plan)
@@ -705,7 +752,7 @@ def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, p
     adapter = GrokHarnessAdapter()
     config = ctx.home_dir / ".grok/managed_config.toml"
     config.parent.mkdir(parents=True)
-    config.write_text('# user setting\n[ui]\nsimple_mode = true\n')
+    config.write_text("# user setting\n[ui]\nsimple_mode = true\n")
     config.chmod(0o600)
     if previous_exists:
         adapter.install(ctx)
@@ -853,8 +900,9 @@ def test_opencode_plan_restores_config_overlay_plugins_launchers_and_backup(tran
     adapter = OpenCodeHarnessAdapter()
     config = ctx.home_dir / ".config/opencode/opencode.json"
     config.parent.mkdir(parents=True)
-    config.write_text(json.dumps({"mcp": {"user": {"type": "local", "command": ["node", "user.js"]}},
-                                  "user_setting": True}))
+    config.write_text(
+        json.dumps({"mcp": {"user": {"type": "local", "command": ["node", "user.js"]}}, "user_setting": True})
+    )
     config.chmod(0o640)
     if previous_exists:
         adapter.install(ctx)
@@ -910,7 +958,11 @@ def test_opencode_foreign_source_config_prevents_any_transition_publication(tran
 @pytest.mark.parametrize("previous_exists", [False, True])
 @pytest.mark.parametrize("frozen", [False, True])
 def test_copilot_plan_restores_native_bindings_and_preserves_authority(
-    transition, monkeypatch, workspace_enabled, previous_exists, frozen,
+    transition,
+    monkeypatch,
+    workspace_enabled,
+    previous_exists,
+    frozen,
 ):
     from codex_plugin_scanner.guard.adapters.adapter_state_integrity import authenticate_adapter_state
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
@@ -925,8 +977,7 @@ def test_copilot_plan_restores_native_bindings_and_preserves_authority(
     authority_before = authority.stat()
     for target in adapter._target_mcp_paths(ctx):
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('{"user_setting": true, "mcpServers": {"user": '
-                          '{"command": "node", "args": ["user.js"]}}}')
+        target.write_text('{"user_setting": true, "mcpServers": {"user": {"command": "node", "args": ["user.js"]}}}')
         target.chmod(0o640)
     if previous_exists:
         adapter.install(ctx)
@@ -977,8 +1028,11 @@ def test_changed_copilot_authority_prevents_any_transition_mutation(transition, 
     if after_publication:
         begin(runtime, plan)
         runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
-    before_files = {change.path: (change.path.read_bytes() if change.path.exists() else None)
-                    for change in prepared.files if change.expected_digest is None}
+    before_files = {
+        change.path: (change.path.read_bytes() if change.path.exists() else None)
+        for change in prepared.files
+        if change.expected_digest is None
+    }
     authority = runtime.home / "managed/adapter-state.key"
     authority.write_bytes(b"foreign authority generation")
     with pytest.raises(TransitionError, match="generation_changed"):
@@ -998,13 +1052,16 @@ def test_changed_copilot_authority_prevents_any_transition_mutation(transition, 
         assert state["recovery_causes"] == [{"code": "generation_changed", "errno": None}]
 
 
-@pytest.mark.parametrize("kwargs", [
-    {"expected_digest": "not-a-digest"},
-    {"expected_digest": "a" * 64, "after": b"new authority"},
-    {"expected_digest": "a" * 64, "after_mode": 0o640},
-    {"expected_digest": "a" * 64, "no_follow": False},
-    {"expected_digest": "a" * 64, "kind": "selection"},
-])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"expected_digest": "not-a-digest"},
+        {"expected_digest": "a" * 64, "after": b"new authority"},
+        {"expected_digest": "a" * 64, "after_mode": 0o640},
+        {"expected_digest": "a" * 64, "no_follow": False},
+        {"expected_digest": "a" * 64, "kind": "selection"},
+    ],
+)
 def test_authority_dependency_rejects_mutating_or_invalid_contracts(tmp_path, kwargs):
     fields = {"path": tmp_path / "authority", "before": None, "after": None, "no_follow": True, **kwargs}
     with pytest.raises(TransitionError, match="authority_dependency_invalid"):
@@ -1031,8 +1088,7 @@ def test_cursor_editor_plan_restores_native_and_legacy_bindings(transition, prev
     adapter = CursorHarnessAdapter()
     config = ctx.home_dir / ".cursor/mcp.json"
     config.parent.mkdir(parents=True)
-    config.write_text('{"user_setting": true, "mcpServers": {"user": '
-                      '{"command": "node", "args": ["user.js"]}}}')
+    config.write_text('{"user_setting": true, "mcpServers": {"user": {"command": "node", "args": ["user.js"]}}}')
     config.chmod(0o640)
     if previous_exists:
         adapter.install(ctx)
@@ -1044,8 +1100,9 @@ def test_cursor_editor_plan_restores_native_and_legacy_bindings(transition, prev
         entries = [user_entry]
         if legacy in {"managed", "backup"}:
             legacy_script.parent.mkdir(parents=True, exist_ok=True)
-            legacy_script.write_text(cursor_hook_script_source(ctx, guard_cli=["/previous/core"],
-                                                               recovery_command=["true"]))
+            legacy_script.write_text(
+                cursor_hook_script_source(ctx, guard_cli=["/previous/core"], recovery_command=["true"])
+            )
             legacy_script.chmod(0o750)
             entries.append({"command": str(legacy_script.resolve())})
         legacy_hooks.write_text(json.dumps({"version": 1, "hooks": {"beforeShellExecution": entries}}))
@@ -1094,8 +1151,11 @@ def test_cursor_foreign_workspace_config_prevents_any_transition_publication(tra
         begin(runtime, replace(plan, files=(*plan.files, *prepared.files)))
     assert bindings.read_bytes() == b"previous hooks"
     assert pointer.read_bytes() == b"previous pointer"
-    assert all(not change.path.exists() for change in prepared.files
-               if change.before is None and change.expected_digest is None)
+    assert all(
+        not change.path.exists()
+        for change in prepared.files
+        if change.before is None and change.expected_digest is None
+    )
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX shell profiles")
@@ -1119,9 +1179,12 @@ def test_cursor_all_surfaces_restore_launchers_and_shell_profile(transition, mon
         profile.chmod(0o640)
     prepared = CursorHarnessAdapter().prepare_install(ctx, surface=surface)
     assert len(prepared.files) == (5 if surface == "cli" else 14)
-    assert all(change.path.name in {".zshrc", "guard-cursor", "guard-cursor.cmd",
-                                    "guard-cursor-agent", "guard-cursor-agent.cmd"}
-               for change in prepared.files if surface == "cli")
+    assert all(
+        change.path.name
+        in {".zshrc", "guard-cursor", "guard-cursor.cmd", "guard-cursor-agent", "guard-cursor-agent.cmd"}
+        for change in prepared.files
+        if surface == "cli"
+    )
     assert (profile.read_text() if profile.exists() else None) == (
         'export USER_SETTING="keep me"\n' if profile_exists else None
     )
@@ -1187,8 +1250,21 @@ def test_full_phase_order_requires_candidate_hook_and_restores_both_files(transi
 
 
 @pytest.mark.parametrize("rollback", [False, True])
-@pytest.mark.parametrize("fault", ["boolean", "serialized", "constructed", "modified_receipt", "wrong_home",
-                                  "wrong_runtime", "wrong_generation", "wrong_operation", "stale", "future"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "boolean",
+        "serialized",
+        "constructed",
+        "modified_receipt",
+        "wrong_home",
+        "wrong_runtime",
+        "wrong_generation",
+        "wrong_operation",
+        "stale",
+        "future",
+    ],
+)
 def test_completion_rejects_unproven_or_mismatched_native_observation(transition, rollback, fault):
     runtime, plan, bindings, pointer = transition
     begin(runtime, plan)
@@ -1315,16 +1391,24 @@ def core_dependencies(plan):
         data = (side + " isolated executable").encode()
         path.write_bytes(data)
         path.chmod(0o700)
-        dependencies.append(TransitionFile.artifact_dependency({
-            "path": str(path), "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-            "mode": 0o700, "owner_uid": path.stat().st_uid, "role": "artifact",
-        }))
+        dependencies.append(
+            TransitionFile.artifact_dependency(
+                {
+                    "path": str(path),
+                    "size": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "mode": 0o700,
+                    "owner_uid": path.stat().st_uid,
+                    "role": "artifact",
+                }
+            )
+        )
     return replace(plan, files=(*plan.files, *dependencies))
 
 
 @pytest.mark.parametrize(
-    "failure", [None, "start_candidate", "observe_candidate", "foreign_generation", "pending_owner",
-                "isolated_native_proof"],
+    "failure",
+    [None, "start_candidate", "observe_candidate", "foreign_generation", "pending_owner", "isolated_native_proof"],
 )
 def test_transition_daemon_driver_composes_exact_lifecycle_and_inverse(transition, monkeypatch, failure):
     from codex_plugin_scanner.guard import runtime_transition_daemon as module
@@ -1342,22 +1426,33 @@ def test_transition_daemon_driver_composes_exact_lifecycle_and_inverse(transitio
         if failure == "observe_candidate" and side == "candidate":
             raise TransitionError("candidate_hook_failed")
         return proof(
-            plan, artifact["generation"], installed=failure != "isolated_native_proof" or side == "predecessor",
+            plan,
+            artifact["generation"],
+            installed=failure != "isolated_native_proof" or side == "predecessor",
         )
 
     driver = module.TransitionDaemonDriver(runtime, plan, home_dir=plan.guard_home.parent, observe_hook=observe)
 
     def state(side, pid):
         binding = driver.bindings[side]
-        return {"executable": str(binding.executable), "source_root": str(binding.executable),
-                "runtime_fingerprint": binding.executable_sha256, "package_version": binding.package_version,
-                "pid": pid, "state_id": side, "daemon_url": "http://127.0.0.1:1234"}
+        return {
+            "executable": str(binding.executable),
+            "source_root": str(binding.executable),
+            "runtime_fingerprint": binding.executable_sha256,
+            "package_version": binding.package_version,
+            "pid": pid,
+            "state_id": side,
+            "daemon_url": "http://127.0.0.1:1234",
+        }
 
     current.update(state("predecessor", 123))
     monkeypatch.setattr(module, "load_authenticated_daemon_state", lambda _home: dict(current) if current else None)
     monkeypatch.setattr(module.manager, "_guard_daemon_start_in_progress", lambda _home: False)
-    monkeypatch.setattr(module.manager, "load_authenticated_guard_daemon_pending_launch",
-                        lambda _home: {"pid": 999} if failure == "pending_owner" else None)
+    monkeypatch.setattr(
+        module.manager,
+        "load_authenticated_guard_daemon_pending_launch",
+        lambda _home: {"pid": 999} if failure == "pending_owner" else None,
+    )
     monkeypatch.setattr(module.manager, "load_authenticated_guard_daemon_start_progress", lambda _home: None)
     monkeypatch.setattr(module, "process_start_token", lambda _pid, **_kwargs: "fixture-start")
     monkeypatch.setattr(module.manager, "_guard_daemon_pid_is_proven_dead", lambda pid: pid in dead)
@@ -1390,8 +1485,13 @@ def test_transition_daemon_driver_composes_exact_lifecycle_and_inverse(transitio
     monkeypatch.setattr(module.manager, "_retire_guard_daemon_pid", retire)
     monkeypatch.setattr(module.manager, "_clear_authenticated_guard_daemon_state_if_current", clear)
     monkeypatch.setattr(module.manager, "ensure_guard_daemon", ensure)
-    monkeypatch.setattr(module, "verified_live_guard_daemon_identity", lambda _home, *, expected_artifact,
-                        deadline_monotonic: dict(current) if expected_artifact.matches(current) else None)
+    monkeypatch.setattr(
+        module,
+        "verified_live_guard_daemon_identity",
+        lambda _home, *, expected_artifact, deadline_monotonic: (
+            dict(current) if expected_artifact.matches(current) else None
+        ),
+    )
     result = RuntimeTransitionCoordinator(runtime, driver).activate(plan, authority_home=plan.guard_home, grant=None)
     assert len(set(deadlines)) == (0 if failure == "pending_owner" else 1)
     if failure is None:
@@ -1423,12 +1523,17 @@ def test_recovery_candidate_retirement_preserves_exact_predecessor(transition, m
     plan = core_dependencies(plan)
     begin(runtime, plan)
     runtime.prepare_recovery(plan.operation_id, first_cause="interrupted_before_launch")
-    driver = module.TransitionDaemonDriver(runtime, plan, home_dir=plan.guard_home.parent,
-                                          observe_hook=lambda *args, **kwargs: None)
+    driver = module.TransitionDaemonDriver(
+        runtime, plan, home_dir=plan.guard_home.parent, observe_hook=lambda *args, **kwargs: None
+    )
     binding = driver.bindings["predecessor"]
-    state = {"executable": str(binding.executable), "source_root": str(binding.executable),
-             "runtime_fingerprint": binding.executable_sha256, "package_version": binding.package_version,
-             "pid": 123}
+    state = {
+        "executable": str(binding.executable),
+        "source_root": str(binding.executable),
+        "runtime_fingerprint": binding.executable_sha256,
+        "package_version": binding.package_version,
+        "pid": 123,
+    }
     monkeypatch.setattr(module, "load_authenticated_daemon_state", lambda _home: state)
     monkeypatch.setattr(module.manager, "load_authenticated_guard_daemon_pending_launch", lambda _home: None)
     monkeypatch.setattr(module.manager, "load_authenticated_guard_daemon_start_progress", lambda _home: None)
@@ -1490,13 +1595,18 @@ def test_core_coordinator_records_runtime_recovery_failures_without_claiming_res
     result = RuntimeTransitionCoordinator(runtime, Driver()).activate(plan, authority_home=plan.guard_home, grant=None)
     assert result.phase == "RecoveryRequired"
     assert result.first_cause == "first_candidate_start_failure"
-    assert result.recovery_causes[-1]["code"] == {
-        "candidate_stop": "candidate_retirement_failed", "previous_start": "previous_start_failed",
-        "previous_observation": "previous_protection_failed",
-    }[failure]
+    assert (
+        result.recovery_causes[-1]["code"]
+        == {
+            "candidate_stop": "candidate_retirement_failed",
+            "previous_start": "previous_start_failed",
+            "previous_observation": "previous_protection_failed",
+        }[failure]
+    )
     if failure == "candidate_stop":
-        assert bindings.read_bytes() == b"candidate hooks" and pointer.read_bytes() == b"candidate pointer", \
+        assert bindings.read_bytes() == b"candidate hooks" and pointer.read_bytes() == b"candidate pointer", (
             "a potentially live candidate must retain its binding and selection generation"
+        )
         assert events == [plan.candidate["generation"]], "do not start a competing predecessor"
     else:
         assert bindings.read_bytes() == b"previous hooks" and pointer.read_bytes() == b"previous pointer"
@@ -1530,7 +1640,8 @@ def test_core_coordinator_records_runtime_recovery_failures_without_claiming_res
 
         reopened = RuntimeTransition(runtime.home, runtime.authority)
         restored = RuntimeTransitionCoordinator(reopened, RecoveryDriver()).recover(
-            plan.operation_id, deadline_monotonic=recovery_deadline,
+            plan.operation_id,
+            deadline_monotonic=recovery_deadline,
         )
         assert restored.phase == "FailedWithVerifiedRollback"
         assert restored.first_cause == "first_candidate_start_failure"
@@ -1588,7 +1699,9 @@ def test_core_coordinator_expiry_never_launches_cleanup_with_a_fresh_budget(tran
             pytest.fail("an expired operation must not launch a hook probe")
 
     result = module.RuntimeTransitionCoordinator(runtime, Driver()).activate(
-        plan, authority_home=plan.guard_home, grant=None,
+        plan,
+        authority_home=plan.guard_home,
+        grant=None,
     )
     assert result.phase == "RecoveryRequired" and result.first_cause == "deadline_exceeded"
     assert events == (["stop_previous"] if boundary == "stop_previous" else ["stop_previous", "start_candidate"])
@@ -1674,14 +1787,24 @@ def test_actual_native_admission_drives_protocol_completion(transition, tmp_path
     runtime, plan, *_ = transition
     identity = native_runtime_status().identity
     assert identity is not None
-    binding = {"path": str(identity.path), "size": identity.size,
-               "mtime_ns": identity.mtime_ns, "sha256": identity.sha256}
+    binding = {
+        "path": str(identity.path),
+        "size": identity.size,
+        "mtime_ns": identity.mtime_ns,
+        "sha256": identity.sha256,
+    }
     metadata = identity.path.stat()
-    dependency = TransitionFile.artifact_dependency({
-        **binding, "owner_uid": metadata.st_uid, "mode": metadata.st_mode & 0o777, "role": "artifact",
-    })
-    plan = replace(plan, files=(*plan.files[:2], dependency),
-                   native_runtimes={"candidate": binding, "predecessor": binding})
+    dependency = TransitionFile.artifact_dependency(
+        {
+            **binding,
+            "owner_uid": metadata.st_uid,
+            "mode": metadata.st_mode & 0o777,
+            "role": "artifact",
+        }
+    )
+    plan = replace(
+        plan, files=(*plan.files[:2], dependency), native_runtimes={"candidate": binding, "predecessor": binding}
+    )
     store = GuardStore(plan.guard_home)
     worker = HookWorker(store=store, wait_for_native_policy=False)
     workspace, home = tmp_path / "probe-workspace", tmp_path / "probe-home"
@@ -1697,8 +1820,12 @@ def test_actual_native_admission_drives_protocol_completion(transition, tmp_path
             runtime.publish(plan.operation_id, "HooksPrepared")
             generation = plan.candidate["generation"]
         observation = probe_native_protection(
-            worker=worker, operation_id=plan.operation_id, artifact_generation=generation,
-            expected_runtime=identity, home_dir=home, workspace=workspace,
+            worker=worker,
+            operation_id=plan.operation_id,
+            artifact_generation=generation,
+            expected_runtime=identity,
+            home_dir=home,
+            workspace=workspace,
             deadline_monotonic=runtime._read(plan.operation_id)["deadline_monotonic"],
         )
         if rollback:
@@ -1984,9 +2111,7 @@ def test_real_process_exit_releases_owner_and_recovers_transition_pair(tmp_path:
     from codex_plugin_scanner.guard.store import GuardStore
 
     store = GuardStore(home)
-    assert store.get_managed_install("codex") == install_row(
-        "codex", "candidate" if phase == "pointer" else "previous"
-    )
+    assert store.get_managed_install("codex") == install_row("codex", "candidate" if phase == "pointer" else "previous")
     with codex_install_transaction(home, bindings, actor="restart-recovery"):
         reopened = RuntimeTransition(home, authority, install_store=store)
         expected_phase = "HooksPrepared" if phase == "pointer" else "AuthorizedForExactTransition"
@@ -2017,12 +2142,22 @@ def test_production_driver_restores_bindings_when_candidate_start_fails(transiti
         path = Path(artifact["path"])
         path.write_bytes(script)
         path.chmod(0o700)
-        dependencies.append(TransitionFile.artifact_dependency({
-            "path": str(path), "size": len(script), "sha256": hashlib.sha256(script).hexdigest(),
-            "mode": 0o700, "owner_uid": path.stat().st_uid, "role": "artifact",
-        }))
+        dependencies.append(
+            TransitionFile.artifact_dependency(
+                {
+                    "path": str(path),
+                    "size": len(script),
+                    "sha256": hashlib.sha256(script).hexdigest(),
+                    "mode": 0o700,
+                    "owner_uid": path.stat().st_uid,
+                    "role": "artifact",
+                }
+            )
+        )
     plan = replace(
-        plan, files=(*plan.files, *dependencies), deadline_epoch=time.time() + 8,
+        plan,
+        files=(*plan.files, *dependencies),
+        deadline_epoch=time.time() + 8,
     )
 
     def observe(artifact, daemon_identity, operation_id, *, deadline_monotonic):
@@ -2030,11 +2165,17 @@ def test_production_driver_restores_bindings_when_candidate_start_fails(transiti
         raise AssertionError(f"hook observation without a live daemon: {artifact['generation']}")
 
     driver = TransitionDaemonDriver(
-        runtime, plan, home_dir=plan.guard_home.parent, observe_hook=observe,
+        runtime,
+        plan,
+        home_dir=plan.guard_home.parent,
+        observe_hook=observe,
     )
     started = time.monotonic()
     result = RuntimeTransitionCoordinator(runtime, driver).activate(
-        plan, authority_home=plan.guard_home, grant=None, deadline_monotonic=started + 8,
+        plan,
+        authority_home=plan.guard_home,
+        grant=None,
+        deadline_monotonic=started + 8,
     )
     assert bindings.read_bytes() == b"previous hooks"
     assert pointer.read_bytes() == b"previous pointer"

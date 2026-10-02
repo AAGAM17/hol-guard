@@ -21,9 +21,15 @@ def _context(tmp_path, monkeypatch):
 
 
 def _tree(root: Path):
-    return {str(path.relative_to(root)): (path.stat().st_mode, path.stat().st_ino, path.stat().st_mtime_ns,
-                                         hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None)
-            for path in root.rglob("*")}
+    return {
+        str(path.relative_to(root)): (
+            path.stat().st_mode,
+            path.stat().st_ino,
+            path.stat().st_mtime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+        )
+        for path in root.rglob("*")
+    }
 
 
 def test_preparation_missing_authority_never_enrolls(tmp_path, monkeypatch):
@@ -44,8 +50,9 @@ def test_enrolled_pair_preparation_preserves_files_and_authority(tmp_path, monke
     baseline = manifests.load_hook_manifest_baseline(spec)
     before = _tree(tmp_path)
     rendered = spec.config_path.read_text() + "\n# candidate revision\n"
-    prepared = manifests.prepare_authenticated_hook_publication(spec, rendered_config=rendered,
-                                                                previous_manifest=baseline)
+    prepared = manifests.prepare_authenticated_hook_publication(
+        spec, rendered_config=rendered, previous_manifest=baseline
+    )
     assert _tree(tmp_path) == before
     assert prepared.config_change.after == rendered.encode()
     assert prepared.manifest["installation_id"] == baseline["installation_id"]

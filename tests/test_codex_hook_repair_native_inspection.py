@@ -21,11 +21,25 @@ def test_actual_native_inspection_is_read_only(native_hook_force, tmp_path):
     after = native_hook_force.stat()
     # Reads may update atime; execution permission and artifact identity must
     # remain unchanged.
-    assert (after.st_dev, after.st_ino, after.st_mode, after.st_uid, after.st_gid,
-            after.st_size, after.st_mtime_ns, after.st_ctime_ns) == (
-                metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_uid, metadata.st_gid,
-                metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns,
-            )
+    assert (
+        after.st_dev,
+        after.st_ino,
+        after.st_mode,
+        after.st_uid,
+        after.st_gid,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ) == (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
     assert _tree(tmp_path) == before
 
 

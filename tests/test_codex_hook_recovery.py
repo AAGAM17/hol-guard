@@ -84,8 +84,13 @@ def test_hook_publication_cannot_join_pending_runtime_inverse(installed, operati
 
     def prepare():
         codex_hook_recovery.prepare_hook_publication(
-            home, config, before_config=before_config, before_manifest=before_manifest,
-            after_config=after_config, after_manifest=after_manifest, key_created=False,
+            home,
+            config,
+            before_config=before_config,
+            before_manifest=before_manifest,
+            after_config=after_config,
+            after_manifest=after_manifest,
+            key_created=False,
         )
 
     publication = home / "managed/codex/pending-hook-publication.json"
@@ -170,12 +175,14 @@ raise RuntimeError('conflict record boundary was not reached')
     result = subprocess.run(
         [sys.executable, "-c", script, str(context.home_dir), substitution],
         env={**os.environ, "HOME": str(context.home_dir), "USERPROFILE": str(context.home_dir)},
-        capture_output=True, timeout=20,
+        capture_output=True,
+        timeout=20,
     )
     assert result.returncode == 17, result.stderr.decode(errors="replace")
     pending = context.guard_home / "managed/codex/pending-hook-publication.json"
     assert json.loads(pending.read_bytes())["phase"] == "config_conflict"
     import hashlib
+
     snapshots = json.loads((context.home_dir / "participant-digests.json").read_bytes())
     snapshots[str(pending)] = hashlib.sha256(pending.read_bytes()).hexdigest()
     config_snapshot = config.read_bytes() if config.exists() else None
@@ -205,9 +212,13 @@ def test_conflict_marker_refuses_competing_authentication_generation(installed):
     context, config, manifest = installed
     with codex_install_transaction(context.guard_home, config, actor="live-abort-owner"):
         codex_hook_recovery.prepare_hook_publication(
-            context.guard_home, config, before_config=config.read_bytes(),
-            before_manifest=manifest.read_bytes(), after_config=config.read_bytes() + b"\n",
-            after_manifest=manifest.read_bytes() + b"\n", key_created=False,
+            context.guard_home,
+            config,
+            before_config=config.read_bytes(),
+            before_manifest=manifest.read_bytes(),
+            after_config=config.read_bytes() + b"\n",
+            after_manifest=manifest.read_bytes() + b"\n",
+            key_created=False,
         )
         config.write_bytes(b"# foreign configuration\n")
         manifest.write_bytes(b"foreign authentication generation\n")
@@ -236,14 +247,26 @@ def test_successful_publication_retains_exact_authority_receipt(installed):
     assert base64.b64decode(payload["manifest"], validate=True) == manifest.read_bytes()
     authentication = payload.pop("authentication")
     secret = load_hook_secret(context.guard_home)
-    assert verify_local_authority_payload(
-        payload, authentication, key=secret.key, key_id=secret.key_id,
-        purpose="codex-hook-authority-receipt",
-    ).status == "valid"
-    assert verify_local_authority_payload(
-        payload, authentication, key=secret.key, key_id=secret.key_id,
-        purpose="codex-hook-publication-inverse",
-    ).status != "valid"
+    assert (
+        verify_local_authority_payload(
+            payload,
+            authentication,
+            key=secret.key,
+            key_id=secret.key_id,
+            purpose="codex-hook-authority-receipt",
+        ).status
+        == "valid"
+    )
+    assert (
+        verify_local_authority_payload(
+            payload,
+            authentication,
+            key=secret.key,
+            key_id=secret.key_id,
+            purpose="codex-hook-publication-inverse",
+        ).status
+        != "valid"
+    )
 
 
 @pytest.mark.parametrize("phase", ["prepared", "manifest", "config"])
@@ -284,15 +307,19 @@ def test_recovery_preserves_same_byte_foreign_config_before_conflict_marker(inst
         with pytest.raises(CodexHookIntegrityError) as failure:
             recover_hook_publication(context.guard_home)
         assert failure.value.reason == "codex_hook_recovery_generation_changed"
-    assert all(path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest
-               for path, digest in digests.items())
+    assert all(
+        path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest for path, digest in digests.items()
+    )
 
 
 def test_unrecorded_published_inode_requires_recovery_without_restoring_participants(installed):
     context, config, manifest = installed
     result = subprocess.run(
         [sys.executable, "-c", UNRECORDED_CONFIG_INSTALLER, str(context.home_dir)],
-        check=False, capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert result.returncode == 17, result.stderr
     record = context.guard_home / "managed/codex/pending-hook-publication.json"
@@ -304,8 +331,9 @@ def test_unrecorded_published_inode_requires_recovery_without_restoring_particip
         with pytest.raises(CodexHookIntegrityError) as failure:
             recover_hook_publication(context.guard_home)
         assert failure.value.reason == "codex_hook_recovery_generation_changed"
-    assert all(path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest
-               for path, digest in digests.items())
+    assert all(
+        path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest for path, digest in digests.items()
+    )
 
 
 def test_new_owner_cannot_register_a_previous_publishers_config_inode(installed):
@@ -344,7 +372,10 @@ raise RuntimeError('inverse config boundary was not reached')
 """
     result = subprocess.run(
         [sys.executable, "-c", inverse, str(context.guard_home), str(config)],
-        check=False, capture_output=True, text=True, timeout=15,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     assert result.returncode == 17, result.stderr
     record = context.guard_home / "managed/codex/pending-hook-publication.json"
@@ -355,8 +386,9 @@ raise RuntimeError('inverse config boundary was not reached')
         with pytest.raises(CodexHookIntegrityError) as failure:
             recover_hook_publication(context.guard_home)
         assert failure.value.reason == "codex_hook_recovery_generation_changed"
-    assert all(path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest
-               for path, digest in digests.items())
+    assert all(
+        path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest for path, digest in digests.items()
+    )
 
 
 @pytest.mark.parametrize("phase", ["committed", "commit_cleanup"])
@@ -398,9 +430,7 @@ def test_next_install_recovers_before_loading_manifest_baseline(installed):
     assert not (context.guard_home / "managed/codex/pending-hook-publication.json").exists()
 
 
-def test_preparation_failure_after_durable_write_uses_authenticated_inverse(
-    installed, monkeypatch: pytest.MonkeyPatch
-):
+def test_preparation_failure_after_durable_write_uses_authenticated_inverse(installed, monkeypatch: pytest.MonkeyPatch):
     context, config, manifest = installed
     before = config.read_bytes(), manifest.read_bytes()
     original_prepare = codex.prepare_hook_publication
@@ -521,8 +551,11 @@ def test_legacy_signed_record_without_config_identity_preserves_participants(ins
     payload.pop("after_config_identity")
     secret = codex_hook_recovery.load_hook_secret(context.guard_home)
     payload["authentication"] = codex_hook_recovery.sign_local_authority_payload(
-        payload, key=secret.key, key_id=secret.key_id,
-        purpose="codex-hook-publication-inverse", signed_at=payload["operation_id"],
+        payload,
+        key=secret.key,
+        key_id=secret.key_id,
+        purpose="codex-hook-publication-inverse",
+        signed_at=payload["operation_id"],
     )
     record.write_bytes(codex_hook_recovery.canonical_manifest_bytes(payload) + b"\n")
     receipt = manifest.with_name(manifest.name.replace(".manifest.json", ".authority-receipt.json"))
@@ -532,5 +565,6 @@ def test_legacy_signed_record_without_config_identity_preserves_participants(ins
         with pytest.raises(CodexHookIntegrityError) as failure:
             recover_hook_publication(context.guard_home)
         assert failure.value.reason == "codex_hook_recovery_config_identity_missing"
-    assert all(path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest
-               for path, digest in digests.items())
+    assert all(
+        path.exists() and hashlib.sha256(path.read_bytes()).digest() == digest for path, digest in digests.items()
+    )

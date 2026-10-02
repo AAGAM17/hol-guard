@@ -297,34 +297,42 @@ class OpenCodeHarnessAdapter(HarnessAdapter):
             files.extend(prepared_shim.files)
             assert contents is not None
             after: dict[Path, bytes | None] = {
-                path: (json.dumps(payload, indent=2) + "\n").encode("utf-8") for path, payload in writes
+                path: (json.dumps(payload, indent=2) + "\n").encode("utf-8")
+                for path, payload in writes
                 if path != backup_path
             }
             backup_before = _snapshot(backup_path)
-            after[backup_path] = backup_before if backup_before is not None else (
-                json.dumps({"existed": original_text is not None, "content": original_text}, indent=2) + "\n"
-            ).encode("utf-8")
+            after[backup_path] = (
+                backup_before
+                if backup_before is not None
+                else (
+                    json.dumps({"existed": original_text is not None, "content": original_text}, indent=2) + "\n"
+                ).encode("utf-8")
+            )
             source = pretool_plugin_source(context).encode("utf-8")
             managed_plugin = managed_plugin_path(context)
             global_plugin = global_plugin_path(context)
             after[managed_plugin] = after[global_plugin] = source
             plugin_manifest: dict[str, object] = {
-                "managed_plugin_path": str(managed_plugin), "global_plugin_path": str(global_plugin)
+                "managed_plugin_path": str(managed_plugin),
+                "global_plugin_path": str(global_plugin),
             }
             for path, payload in contents.items():
                 if path not in after:
                     after[path] = payload
             for path, payload in after.items():
-                before = (contents[path] if path in contents else
-                          backup_before if path == backup_path else _snapshot(path))
+                before = (
+                    contents[path] if path in contents else backup_before if path == backup_path else _snapshot(path)
+                )
                 before_mode = path.stat().st_mode & 0o777 if before is not None else 0o600
                 after_mode = before_mode if path in contents and path != target_config_path else 0o600
                 if path in {managed_plugin, global_plugin}:
                     after_mode = before_mode if before is not None else 0o644
                 if path == backup_path and backup_before is not None:
                     after_mode = before_mode
-                change = TransitionFile(path.resolve(strict=False), before, payload,
-                                        before_mode=before_mode, after_mode=after_mode)
+                change = TransitionFile(
+                    path.resolve(strict=False), before, payload, before_mode=before_mode, after_mode=after_mode
+                )
                 change.payload()
                 files.append(change)
         else:

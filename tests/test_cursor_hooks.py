@@ -506,9 +506,7 @@ def test_cursor_hook_recovery_honors_total_deadline(tmp_path: Path) -> None:
     assert proc.returncode == 2
     response = json.loads(proc.stdout)
     assert response["permission"] == "deny"
-    assert response["user_message"] == (
-        "HOL Guard could not complete the native hook decision safely."
-    )
+    assert response["user_message"] == ("HOL Guard could not complete the native hook decision safely.")
 
 
 def test_cursor_hook_denies_workspace_read_within_recovery_deadline(tmp_path: Path) -> None:
@@ -564,9 +562,7 @@ def test_cursor_hook_denies_workspace_read_within_recovery_deadline(tmp_path: Pa
     assert proc.returncode == 2, proc.stderr
     response = json.loads(proc.stdout)
     assert response["permission"] == "deny"
-    assert response["user_message"] == (
-        "HOL Guard could not complete the native hook decision safely."
-    )
+    assert response["user_message"] == ("HOL Guard could not complete the native hook decision safely.")
     assert not fallback_marker.exists()
 
 

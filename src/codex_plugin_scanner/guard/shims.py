@@ -158,8 +158,11 @@ def prepare_guard_shim(
         before = _snapshot(path)
         before_mode = path.stat().st_mode & 0o777 if before is not None else 0o644
         change = TransitionFile(
-            path.resolve(strict=False), before, text.replace("\n", os.linesep).encode("utf-8"),
-            before_mode=before_mode, after_mode=before_mode | 0o755 if executable else before_mode,
+            path.resolve(strict=False),
+            before,
+            text.replace("\n", os.linesep).encode("utf-8"),
+            before_mode=before_mode,
+            after_mode=before_mode | 0o755 if executable else before_mode,
         )
         change.payload()  # Reject unsafe modes/targets before any publication.
         files.append(change)
@@ -212,14 +215,21 @@ def remove_guard_shim(
     with codex_install_transaction(context.guard_home, context.guard_home / "bin", actor="harness-shim.uninstall"):
         assert_transition_mutation_allowed(context.guard_home)
         return _remove_guard_shim_owned(
-            harness, context, launcher_name=launcher_name, legacy_launcher_names=legacy_launcher_names,
+            harness,
+            context,
+            launcher_name=launcher_name,
+            legacy_launcher_names=legacy_launcher_names,
             display_name=display_name,
         )
 
 
 def _remove_guard_shim_owned(
-    harness: str, context: HarnessContextLike, *, launcher_name: str | None,
-    legacy_launcher_names: tuple[str, ...], display_name: str | None,
+    harness: str,
+    context: HarnessContextLike,
+    *,
+    launcher_name: str | None,
+    legacy_launcher_names: tuple[str, ...],
+    display_name: str | None,
 ) -> dict[str, object]:
 
     shim_dir = context.guard_home / "bin"
@@ -854,23 +864,35 @@ def prepare_guard_shim_shell_profile(context: HarnessContext) -> PreparedGuardSh
 
     shim_dir = context.guard_home / "bin"
     if os.name == "nt" or _is_transient_path(shim_dir):
-        return PreparedGuardShim((), {
-            "changed": False, "profile_path": None, "shim_dir": str(shim_dir),
-            "restart_shell_required": False, "manual_path_required": True,
-        })
+        return PreparedGuardShim(
+            (),
+            {
+                "changed": False,
+                "profile_path": None,
+                "shim_dir": str(shim_dir),
+                "restart_shell_required": False,
+                "manual_path_required": True,
+            },
+        )
     profile_path, export_line = _guard_shim_profile_target(context.home_dir, shim_dir)
     _ensure_path_within_root(context.home_dir, profile_path, label="Guard shell profile")
     before = _snapshot(profile_path)
     existing = before.decode("utf-8") if before is not None else ""
     after = _managed_profile_content(existing, export_line, _GUARD_PROFILE_MARKER).encode("utf-8")
     mode = profile_path.stat().st_mode & 0o777 if before is not None else 0o600
-    change = TransitionFile(profile_path.resolve(strict=False), before, after,
-                            before_mode=mode, after_mode=mode, no_follow=True)
+    change = TransitionFile(
+        profile_path.resolve(strict=False), before, after, before_mode=mode, after_mode=mode, no_follow=True
+    )
     change.payload()
-    return PreparedGuardShim((change,), {
-        "changed": before != after, "profile_path": str(profile_path), "shim_dir": str(shim_dir),
-        "restart_shell_required": True,
-    })
+    return PreparedGuardShim(
+        (change,),
+        {
+            "changed": before != after,
+            "profile_path": str(profile_path),
+            "shim_dir": str(shim_dir),
+            "restart_shell_required": True,
+        },
+    )
 
 
 def ensure_guard_shim_path_in_shell_profile(context: HarnessContext) -> dict[str, object]:

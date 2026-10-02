@@ -53,7 +53,11 @@ def _string(value: object) -> str:
 
 
 def _pointer_artifact(
-    value: object, root: Path, executable_sha256: str, *, require_receipt: bool,
+    value: object,
+    root: Path,
+    executable_sha256: str,
+    *,
+    require_receipt: bool,
 ) -> dict[str, object]:
     fields = {"schema", "version", "sourceCommit", "target", "relativePath", "sha256", "installedAt"}
     if not isinstance(value, dict) or not fields <= set(value) <= fields | {"artifact"}:
@@ -68,8 +72,12 @@ def _pointer_artifact(
         raise TransitionError("selection_receipt_invalid")
     relative_text = _string(pointer["relativePath"])
     relative = PurePosixPath(relative_text)
-    if (relative.is_absolute() or "\\" in relative_text or ":" in relative_text
-            or any(part in {"", ".", ".."} for part in relative_text.split("/"))):
+    if (
+        relative.is_absolute()
+        or "\\" in relative_text
+        or ":" in relative_text
+        or any(part in {"", ".", ".."} for part in relative_text.split("/"))
+    ):
         raise TransitionError("selection_path_invalid")
     path = root.joinpath(*relative.parts)
     try:
@@ -100,20 +108,40 @@ def _pointer_artifact(
             _string(minimum)
         bootstrap_schema = _string(receipt["bootstrapSchema"])
         generation = _digest(receipt["generation"])
-        identity = [pointer["version"], source, pointer["target"], format_name, archive_sha256,
-                    bootstrap_schema, minimum, executable_sha256]
+        identity = [
+            pointer["version"],
+            source,
+            pointer["target"],
+            format_name,
+            archive_sha256,
+            bootstrap_schema,
+            minimum,
+            executable_sha256,
+        ]
         expected = hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
         if generation != expected:
             raise TransitionError("artifact_generation_changed")
         if format_name == "onefile" and (pointer["sha256"] != executable_sha256 or archive_sha256 != executable_sha256):
             raise TransitionError("artifact_generation_changed")
-    return {"version": pointer["version"], "source_commit": source, "target": pointer["target"],
-            "format": format_name, "sha256": archive_sha256, "path": str(path), "generation": generation}
+    return {
+        "version": pointer["version"],
+        "source_commit": source,
+        "target": pointer["target"],
+        "format": format_name,
+        "sha256": archive_sha256,
+        "path": str(path),
+        "generation": generation,
+    }
 
 
 def load_desktop_transition_request(
-    request_path: Path, *, context: HarnessContext, operation_id: str, deadline_epoch: float,
-    deadline_monotonic: float, request_sha256: str,
+    request_path: Path,
+    *,
+    context: HarnessContext,
+    operation_id: str,
+    deadline_epoch: float,
+    deadline_monotonic: float,
+    request_sha256: str,
 ) -> RuntimeTransitionPreparation:
     def check() -> None:
         if time.monotonic() >= deadline_monotonic:
@@ -127,16 +155,32 @@ def load_desktop_transition_request(
     if hashlib.sha256(raw).hexdigest() != _digest(request_sha256):
         raise TransitionError("transition_request_generation_changed")
     payload = _json_object(raw, reason="transition_request_invalid")
-    fields = {"schema", "operation_id", "guard_home", "home_dir", "managed_root", "previous_pointer_sha256",
-              "candidate_pointer", "executable_digests", "native_runtimes"}
+    fields = {
+        "schema",
+        "operation_id",
+        "guard_home",
+        "home_dir",
+        "managed_root",
+        "previous_pointer_sha256",
+        "candidate_pointer",
+        "executable_digests",
+        "native_runtimes",
+    }
     if not isinstance(payload, dict) or set(payload) != fields or payload["schema"] != REQUEST_SCHEMA:
         raise TransitionError("transition_request_invalid")
-    if (payload["operation_id"] != operation_id or payload["guard_home"] != str(context.guard_home.resolve())
-            or payload["home_dir"] != str(context.home_dir.resolve())):
+    if (
+        payload["operation_id"] != operation_id
+        or payload["guard_home"] != str(context.guard_home.resolve())
+        or payload["home_dir"] != str(context.home_dir.resolve())
+    ):
         raise TransitionError("plan_context_mismatch")
     root = Path(_string(payload["managed_root"]))
-    if (not root.is_absolute() or root.is_symlink() or root != root.resolve(strict=True)
-            or not root.is_relative_to(context.home_dir.resolve())):
+    if (
+        not root.is_absolute()
+        or root.is_symlink()
+        or root != root.resolve(strict=True)
+        or not root.is_relative_to(context.home_dir.resolve())
+    ):
         raise TransitionError("selection_path_invalid")
     digests = payload["executable_digests"]
     if not isinstance(digests, dict) or set(digests) != {"candidate", "predecessor"}:
@@ -146,15 +190,19 @@ def load_desktop_transition_request(
     with hook_validation_deadline(deadline_monotonic):
         previous_bytes = _snapshot(pointer_path)
         check()
-        if (previous_bytes is None
-                or hashlib.sha256(previous_bytes).hexdigest() != _digest(payload["previous_pointer_sha256"])):
+        if previous_bytes is None or hashlib.sha256(previous_bytes).hexdigest() != _digest(
+            payload["previous_pointer_sha256"]
+        ):
             raise TransitionError("selection_generation_changed")
         if len(previous_bytes) > 64 * 1024:
             raise TransitionError("selection_receipt_invalid")
         previous_pointer = _json_object(previous_bytes, reason="selection_receipt_invalid")
         candidate_pointer = payload["candidate_pointer"]
         predecessor = _pointer_artifact(
-            previous_pointer, root, executable_digests["predecessor"], require_receipt=False,
+            previous_pointer,
+            root,
+            executable_digests["predecessor"],
+            require_receipt=False,
         )
         candidate = _pointer_artifact(candidate_pointer, root, executable_digests["candidate"], require_receipt=True)
         try:
@@ -166,8 +214,9 @@ def load_desktop_transition_request(
             raise TransitionError("artifact_identity_invalid")
         after = json.dumps(candidate_pointer, ensure_ascii=False, indent=2).encode() + b"\n"
         mode = pointer_path.stat().st_mode & 0o777
-        selection = TransitionFile(pointer_path, previous_bytes, after,
-                                   before_mode=mode, after_mode=mode, kind="selection")
+        selection = TransitionFile(
+            pointer_path, previous_bytes, after, before_mode=mode, after_mode=mode, kind="selection"
+        )
         # The generic stable launcher is retained unchanged. Initial adoption
         # without that launcher needs its own complete prepared selection plan.
         shim_path = root / ("current-hol-guard.cmd" if os.name == "nt" else "current-hol-guard")
@@ -176,5 +225,13 @@ def load_desktop_transition_request(
     native = payload["native_runtimes"]
     if not isinstance(native, dict):
         raise TransitionError("native_runtime_bindings_invalid")
-    return RuntimeTransitionPreparation(operation_id, predecessor, candidate, (selection,),
-                                        native, deadline_epoch, executable_digests, selection_dependencies=(shim,))
+    return RuntimeTransitionPreparation(
+        operation_id,
+        predecessor,
+        candidate,
+        (selection,),
+        native,
+        deadline_epoch,
+        executable_digests,
+        selection_dependencies=(shim,),
+    )

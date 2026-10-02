@@ -87,7 +87,10 @@ class CursorHarnessAdapter(HarnessAdapter):
         return context.home_dir / ".cursor" / "mcp.json"
 
     def detect(
-        self, context: HarnessContext, *, config_contents: dict[Path, bytes | None] | None = None,
+        self,
+        context: HarnessContext,
+        *,
+        config_contents: dict[Path, bytes | None] | None = None,
     ) -> HarnessDetection:
         def captured_payload(path: Path) -> dict[str, object]:
             if config_contents is None:
@@ -225,8 +228,9 @@ class CursorHarnessAdapter(HarnessAdapter):
             return self._prepare_cli(context)
         if surface == "all":
             editor, cli = self._prepare_editor(context), self._prepare_cli(context)
-            prepared = PreparedHarnessInstall((*editor.files, *cli.files),
-                                               self._all_install_manifest(editor.manifest, cli.manifest))
+            prepared = PreparedHarnessInstall(
+                (*editor.files, *cli.files), self._all_install_manifest(editor.manifest, cli.manifest)
+            )
             RuntimeTransition._compare({"files": [change.payload() for change in prepared.files]}, "before")
             return prepared
         if surface != "editor":
@@ -265,15 +269,25 @@ class CursorHarnessAdapter(HarnessAdapter):
         hooks = prepare_cursor_hooks(context)
         files = list(hooks.files)
         state: dict[str, object] = {
-            "managed_config_path": str(target), "backup_path": str(backup), "surface": "editor",
+            "managed_config_path": str(target),
+            "backup_path": str(backup),
+            "surface": "editor",
             "workspace_dir": str(context.workspace_dir.resolve()) if context.workspace_dir is not None else None,
         }
         after = {
             target: (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
             state_path: (json.dumps(state, indent=2) + "\n").encode("utf-8"),
-            backup: contents[backup] if contents[backup] is not None else (
-                json.dumps({"existed": original is not None,
-                            "content": original.decode("utf-8") if original is not None else None}, indent=2) + "\n"
+            backup: contents[backup]
+            if contents[backup] is not None
+            else (
+                json.dumps(
+                    {
+                        "existed": original is not None,
+                        "content": original.decode("utf-8") if original is not None else None,
+                    },
+                    indent=2,
+                )
+                + "\n"
             ).encode("utf-8"),
         }
         for path in self._editor_config_paths(context):
@@ -281,24 +295,34 @@ class CursorHarnessAdapter(HarnessAdapter):
                 after[path] = contents[path]
         for path, data in after.items():
             mode = path.stat().st_mode & 0o777 if contents[path] is not None else 0o600
-            files.append(TransitionFile(path.resolve(strict=False), contents[path], data,
-                                        before_mode=mode, after_mode=mode, no_follow=True))
+            files.append(
+                TransitionFile(
+                    path.resolve(strict=False), contents[path], data, before_mode=mode, after_mode=mode, no_follow=True
+                )
+            )
         notes = [
             "Guard Cursor editor MCP proxies added to the global Cursor mcp.json config.",
             "Guard native Cursor hooks installed globally for shell, MCP, and file-read interception.",
         ]
         if context.workspace_dir is not None:
-            notes.append("Workspace policy context uses the detected project directory; "
-                         "Guard does not write project-local hook files.")
+            notes.append(
+                "Workspace policy context uses the detected project directory; "
+                "Guard does not write project-local hook files."
+            )
         manifest = {
-            "harness": self.harness, "active": True, "surface": "editor", "managed_config_path": str(target),
-            "backup_path": str(backup), "state_path": str(state_path),
+            "harness": self.harness,
+            "active": True,
+            "surface": "editor",
+            "managed_config_path": str(target),
+            "backup_path": str(backup),
+            "state_path": str(state_path),
             "managed_servers": [server.name for server in managed_servers],
             "skipped_servers": list(skipped_stdio_server_names(detection)),
             "managed_hooks_path": hooks.manifest.get("managed_hooks_path"),
             "managed_hook_script_path": hooks.manifest.get("managed_hook_script_path"),
             "guard_cli_identity": hooks.manifest.get("guard_cli_identity"),
-            "hook_script_sha256": hooks.manifest.get("hook_script_sha256"), "notes": notes,
+            "hook_script_sha256": hooks.manifest.get("hook_script_sha256"),
+            "notes": notes,
         }
         prepared = PreparedHarnessInstall(tuple(files), manifest)
         RuntimeTransition._compare({"files": [change.payload() for change in files]}, "before")
@@ -319,7 +343,9 @@ class CursorHarnessAdapter(HarnessAdapter):
         return self._all_install_manifest(editor_manifest, cli_manifest)
 
     def _all_install_manifest(
-        self, editor_manifest: dict[str, object], cli_manifest: dict[str, object],
+        self,
+        editor_manifest: dict[str, object],
+        cli_manifest: dict[str, object],
     ) -> dict[str, object]:
         return {
             "harness": self.harness,
@@ -496,18 +522,24 @@ class CursorHarnessAdapter(HarnessAdapter):
     def _prepare_cli(self, context: HarnessContext) -> PreparedHarnessInstall:
         from ..runtime_transition import RuntimeTransition
 
-        agent = prepare_guard_shim(self.harness, context, launcher_name="cursor-agent",
-                                   display_name="Cursor CLI (cursor-agent)")
-        cursor = prepare_guard_shim(self.harness, context, launcher_name="cursor",
-                                    display_name="Cursor CLI (cursor agent)")
+        agent = prepare_guard_shim(
+            self.harness, context, launcher_name="cursor-agent", display_name="Cursor CLI (cursor-agent)"
+        )
+        cursor = prepare_guard_shim(
+            self.harness, context, launcher_name="cursor", display_name="Cursor CLI (cursor agent)"
+        )
         profile = prepare_guard_shim_shell_profile(context)
         files = (*agent.files, *cursor.files, *profile.files)
         RuntimeTransition._compare({"files": [change.payload() for change in files]}, "before")
-        return PreparedHarnessInstall(files, self._cli_install_manifest(context, agent.manifest,
-                                                                         cursor.manifest, profile.manifest))
+        return PreparedHarnessInstall(
+            files, self._cli_install_manifest(context, agent.manifest, cursor.manifest, profile.manifest)
+        )
 
     def _cli_install_manifest(
-        self, context: HarnessContext, agent_shim: dict[str, object], cursor_shim: dict[str, object],
+        self,
+        context: HarnessContext,
+        agent_shim: dict[str, object],
+        cursor_shim: dict[str, object],
         profile: dict[str, object],
     ) -> dict[str, object]:
         raw_agent_notes = agent_shim.get("notes")

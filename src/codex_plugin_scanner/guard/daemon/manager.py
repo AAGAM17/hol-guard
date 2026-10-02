@@ -460,8 +460,11 @@ def ensure_guard_daemon(
                 if not guard_daemon_retirement_is_complete(guard_home):
                     raise RuntimeError("Existing Guard daemon could not be retired safely.")
                 clear_guard_daemon_state(guard_home)
-        if (state_path.is_file() and _load_authenticated_daemon_identity(guard_home) is None
-                and (background_maintenance or not _daemon_lifecycle_artifact_is_exact_tombstone(state_path))):
+        if (
+            state_path.is_file()
+            and _load_authenticated_daemon_identity(guard_home) is None
+            and (background_maintenance or not _daemon_lifecycle_artifact_is_exact_tombstone(state_path))
+        ):
             retire_all_guard_daemons_for_home(guard_home, deadline=start_deadline)
             if not _daemon_lifecycle_artifact_is_exact_tombstone(state_path):
                 raise RuntimeError("Untrusted Guard daemon state could not be retired safely.")
@@ -645,7 +648,8 @@ def ensure_guard_daemon(
                 raise
             except BaseException:
                 if not retirement_attempted and _terminate_spawned_guard_daemon(
-                    process, deadline_monotonic=start_deadline,
+                    process,
+                    deadline_monotonic=start_deadline,
                 ):
                     _clear_spawned_guard_daemon_pending_launch(
                         guard_home, process=process, creation_time=pending_creation_time
@@ -767,9 +771,7 @@ def retire_all_guard_daemons_for_home(
 ) -> list[int]:
     """Stop Guard daemon processes for one guard home, optionally keeping one port alive."""
     retire_pid = (
-        _retire_guard_daemon_pid
-        if deadline is None
-        else partial(_retire_guard_daemon_pid, deadline_monotonic=deadline)
+        _retire_guard_daemon_pid if deadline is None else partial(_retire_guard_daemon_pid, deadline_monotonic=deadline)
     )
     retired: list[int] = []
     handled_pids: set[int] = set()
@@ -3307,7 +3309,9 @@ def _retire_guard_daemon_process(payload: dict[str, object]) -> bool:
 
 
 def _terminate_spawned_guard_daemon(
-    process: subprocess.Popen[bytes], *, deadline_monotonic: float | None = None,
+    process: subprocess.Popen[bytes],
+    *,
+    deadline_monotonic: float | None = None,
 ) -> bool:
     """Terminate and reap the exact child handle after startup fails."""
 
@@ -3363,8 +3367,11 @@ def _retire_guard_daemon_pid(
         if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
             return False
         if expected_start_token is not None:
-            token = (process_start_token(pid) if deadline_monotonic is None
-                     else process_start_token(pid, deadline_monotonic=deadline_monotonic))
+            token = (
+                process_start_token(pid)
+                if deadline_monotonic is None
+                else process_start_token(pid, deadline_monotonic=deadline_monotonic)
+            )
             if token != expected_start_token:
                 return False
         return deadline_monotonic is None or time.monotonic() < deadline_monotonic

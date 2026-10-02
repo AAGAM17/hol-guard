@@ -21,8 +21,11 @@ def _sources(tmp_path, monkeypatch):
     profile = context.home_dir / ".zshenv"
     only_managed = context.home_dir / ".bashrc"
     guard = context.guard_home / "managed/codex/codex-zshenv-guard.zsh"
-    for path, data, mode in ((profile, b"\xffKEEP\r\n\r\n" + _block() + b"AFTER\xfe\r\n", 0o640),
-                             (only_managed, _block(), 0o644), (guard, b"legacy guard script", 0o700)):
+    for path, data, mode in (
+        (profile, b"\xffKEEP\r\n\r\n" + _block() + b"AFTER\xfe\r\n", 0o640),
+        (only_managed, _block(), 0o644),
+        (guard, b"legacy guard script", 0o700),
+    ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         path.chmod(mode)
@@ -103,7 +106,9 @@ def test_symlink_target_is_refused_before_any_cleanup(tmp_path, monkeypatch, man
 
 
 def test_signed_inverse_restores_deleted_files_and_non_utf8_profile(
-    transition, tmp_path, monkeypatch,  # noqa: F811 -- shared pytest fixture
+    transition,
+    tmp_path,
+    monkeypatch,  # noqa: F811 -- shared pytest fixture
 ):
     runtime, plan, _bindings, _pointer = transition
     context, profile, only_managed, guard = _sources(tmp_path, monkeypatch)

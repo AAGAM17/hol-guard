@@ -53,8 +53,9 @@ def test_retargeted_invocation_is_refused_even_when_old_target_is_unchanged(tmp_
     elif replacement == "regular-file":
         invocation.write_bytes(original)
         invocation.chmod(0o755)
-    with pytest.raises(module.TransitionError,
-                       match=r"invocation_generation_changed|invocation_dependency_unavailable"):
+    with pytest.raises(
+        module.TransitionError, match=r"invocation_generation_changed|invocation_dependency_unavailable"
+    ):
         module.RuntimeTransition._compare({"files": [payload]}, "after")
     assert target.read_bytes() == original
 
@@ -98,8 +99,17 @@ def test_parent_alias_retarget_is_refused(tmp_path):
         module.RuntimeTransition._compare({"files": [change.payload()]}, "before")
 
 
-@pytest.mark.parametrize("field,value", [("path", "relative"), ("mode", True), ("mode", -1),
-                                        ("owner_uid", True), ("link_target", ""), ("link_target", "bad\0path")])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("path", "relative"),
+        ("mode", True),
+        ("mode", -1),
+        ("owner_uid", True),
+        ("link_target", ""),
+        ("link_target", "bad\0path"),
+    ],
+)
 def test_invocation_record_schema_is_strict(tmp_path, field, value):
     _target, _unused_invocation, change = _invocation(tmp_path)
     payload = change.payload()
@@ -132,7 +142,8 @@ def test_expired_invocation_check_does_not_read_link_metadata(tmp_path, monkeypa
 
 
 def test_signed_inverse_preserves_invocation_and_target(
-    transition, tmp_path,  # noqa: F811 -- shared pytest fixture
+    transition,
+    tmp_path,  # noqa: F811 -- shared pytest fixture
 ):
     runtime, plan, _bindings, _pointer = transition
     target, invocation, change = _invocation(tmp_path)

@@ -45,14 +45,20 @@ class NativeProtectionAdmission:
     def payload(self) -> dict[str, object]:
         result: dict[str, object] = {
             "schema": "hol-guard.native-protection-admission.v1",
-            "operation_id": self.operation_id, "generation": self.artifact_generation,
+            "operation_id": self.operation_id,
+            "generation": self.artifact_generation,
             "runtime_identity": {
-                "path": str(self.runtime_identity.path), "size": self.runtime_identity.size,
-                "mtime_ns": self.runtime_identity.mtime_ns, "sha256": self.runtime_identity.sha256,
+                "path": str(self.runtime_identity.path),
+                "size": self.runtime_identity.size,
+                "mtime_ns": self.runtime_identity.mtime_ns,
+                "sha256": self.runtime_identity.sha256,
             },
-            "policy_generation": self.policy_generation, "policy_digest": self.policy_digest,
-            "allow_receipt": self.allow_receipt, "deny_receipt": self.deny_receipt,
-            "guard_home": str(self.guard_home), "observed_monotonic": self.observed_monotonic,
+            "policy_generation": self.policy_generation,
+            "policy_digest": self.policy_digest,
+            "allow_receipt": self.allow_receipt,
+            "deny_receipt": self.deny_receipt,
+            "guard_home": str(self.guard_home),
+            "observed_monotonic": self.observed_monotonic,
         }
         if self.installed_hook_evidence is not None:
             result["installed_hook_evidence"] = self.installed_hook_evidence
@@ -61,7 +67,10 @@ class NativeProtectionAdmission:
 
 def _admission_bytes(proof: NativeProtectionAdmission) -> bytes:
     return json.dumps(
-        proof.payload(), sort_keys=True, separators=(",", ":"), allow_nan=False,
+        proof.payload(),
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
     ).encode()
 
 
@@ -89,8 +98,13 @@ def verified_admission_payload(proof: object) -> dict[str, object]:
 
 
 def probe_native_protection(
-    *, worker: HookWorker, operation_id: str, artifact_generation: str,
-    expected_runtime: NativeRuntimeIdentity, home_dir: Path, workspace: Path,
+    *,
+    worker: HookWorker,
+    operation_id: str,
+    artifact_generation: str,
+    expected_runtime: NativeRuntimeIdentity,
+    home_dir: Path,
+    workspace: Path,
     deadline_monotonic: float,
 ) -> NativeProtectionAdmission:
     """Require fresh native allow and deny decisions under one ACKed policy."""
@@ -103,8 +117,12 @@ def probe_native_protection(
         status = native_runtime_status()
         if time.monotonic() >= deadline_monotonic:
             raise TransitionError("admission_deadline_expired")
-        if (status.mode not in {"auto", "force"} or not status.available or not status.compatible
-                or status.identity != expected_runtime):
+        if (
+            status.mode not in {"auto", "force"}
+            or not status.available
+            or not status.compatible
+            or status.identity != expected_runtime
+        ):
             raise TransitionError("admission_runtime_mismatch")
 
     check_runtime()
@@ -112,9 +130,14 @@ def probe_native_protection(
     if snapshot is None:
         raise TransitionError("admission_policy_unavailable")
     generation, digest = snapshot.get("generation"), snapshot.get("policy_digest")
-    if (type(generation) is not int or generation <= 0 or not isinstance(digest, str)
-            or re.fullmatch(r"[0-9a-f]{64}", digest) is None or snapshot.get("mode") != "enforce"
-            or snapshot.get("runtime_identity") != expected_runtime.sha256):
+    if (
+        type(generation) is not int
+        or generation <= 0
+        or not isinstance(digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        or snapshot.get("mode") != "enforce"
+        or snapshot.get("runtime_identity") != expected_runtime.sha256
+    ):
         raise TransitionError("admission_policy_mismatch")
     receipts: list[dict[str, object]] = []
     for command, decision in (("pwd", "allow"), ("rm -rf /", "deny")):
@@ -122,24 +145,46 @@ def probe_native_protection(
         request_id = "transition-admission-" + uuid.uuid4().hex
         edge = review_raw_hook_native(
             payload={"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command}},
-            harness="claude-code", event="PreToolUse", guard_home=worker.guard_home,
-            home_dir=home_dir, cwd=workspace, source_ref_external_allowed=False,
-            observe_mode=False, deadline=deadline_monotonic, policy_snapshot=snapshot, request_id=request_id,
+            harness="claude-code",
+            event="PreToolUse",
+            guard_home=worker.guard_home,
+            home_dir=home_dir,
+            cwd=workspace,
+            source_ref_external_allowed=False,
+            observe_mode=False,
+            deadline=deadline_monotonic,
+            policy_snapshot=snapshot,
+            request_id=request_id,
         )
         check_runtime()
         receipt = validate_native_decision_receipt(edge.get("receipt")) if edge is not None else None
-        if (receipt is None or receipt["request_id"] != request_id or receipt["decision"] != decision
-                or receipt["harness"] != "claude-code" or receipt["event_name"] != "PreToolUse"
-                or receipt["payload_kind"] != "inline"
-                or (decision == "allow" and receipt["policy_action"] not in {"allow", "warn"})
-                or receipt["runtime_identity"] != expected_runtime.sha256
-                or receipt["policy_generation"] != generation or receipt["policy_digest"] != digest
-                or receipt["observe_mode"] is not False):
+        if (
+            receipt is None
+            or receipt["request_id"] != request_id
+            or receipt["decision"] != decision
+            or receipt["harness"] != "claude-code"
+            or receipt["event_name"] != "PreToolUse"
+            or receipt["payload_kind"] != "inline"
+            or (decision == "allow" and receipt["policy_action"] not in {"allow", "warn"})
+            or receipt["runtime_identity"] != expected_runtime.sha256
+            or receipt["policy_generation"] != generation
+            or receipt["policy_digest"] != digest
+            or receipt["observe_mode"] is not False
+        ):
             raise TransitionError("admission_protection_failed")
         receipts.append(receipt)
     if receipts[0]["request_digest"] == receipts[1]["request_digest"]:
         raise TransitionError("admission_request_mismatch")
-    return _seal_verified_admission(NativeProtectionAdmission(
-        operation_id, artifact_generation, expected_runtime, generation, digest, receipts[0], receipts[1],
-        worker.guard_home.resolve(strict=False), time.monotonic(),
-    ))
+    return _seal_verified_admission(
+        NativeProtectionAdmission(
+            operation_id,
+            artifact_generation,
+            expected_runtime,
+            generation,
+            digest,
+            receipts[0],
+            receipts[1],
+            worker.guard_home.resolve(strict=False),
+            time.monotonic(),
+        )
+    )

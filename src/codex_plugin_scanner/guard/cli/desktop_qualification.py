@@ -23,22 +23,33 @@ CANDIDATE_QUALIFICATION_SCHEMA = "hol-guard.candidate-qualification.v1"
 
 
 def run_desktop_qualification(
-    args: argparse.Namespace, *, context: HarnessContext, store: GuardStore, output_stream: TextIO,
+    args: argparse.Namespace,
+    *,
+    context: HarnessContext,
+    store: GuardStore,
+    output_stream: TextIO,
 ) -> int:
     """Qualify only a disposable Desktop home, retaining incomplete cleanup."""
     from .commands_dispatch_desktop import _core_version
 
     document: dict[str, object] = {
-        "schema": CANDIDATE_QUALIFICATION_SCHEMA, "core_version": _core_version(),
-        "operation_id": args.operation_id, "generation": args.artifact_generation,
-        "qualified": False, "cleanup_complete": True, "reason_code": None,
+        "schema": CANDIDATE_QUALIFICATION_SCHEMA,
+        "core_version": _core_version(),
+        "operation_id": args.operation_id,
+        "generation": args.artifact_generation,
+        "qualified": False,
+        "cleanup_complete": True,
+        "reason_code": None,
     }
     worker: HookWorker | None = None
     deadline: float | None = None
     try:
         home = Path(store.guard_home).resolve(strict=False)
-        if (not desktop_bootstrap_is_preflight() or home != context.home_dir.resolve(strict=False)
-                or not home.name.startswith("preflight-home-")):
+        if (
+            not desktop_bootstrap_is_preflight()
+            or home != context.home_dir.resolve(strict=False)
+            or not home.name.startswith("preflight-home-")
+        ):
             raise TransitionError("qualification_isolation_required")
         try:
             uuid.UUID(home.name.removeprefix("preflight-home-"))
@@ -46,8 +57,11 @@ def run_desktop_qualification(
         except (ValueError, TypeError, AttributeError):
             raise TransitionError("qualification_identity_invalid") from None
         generation = args.artifact_generation
-        if (not isinstance(generation, str) or len(generation) != 64
-                or any(character not in "0123456789abcdef" for character in generation)):
+        if (
+            not isinstance(generation, str)
+            or len(generation) != 64
+            or any(character not in "0123456789abcdef" for character in generation)
+        ):
             raise TransitionError("qualification_identity_invalid")
         expires = args.deadline_epoch
         if isinstance(expires, bool) or not isinstance(expires, (float, int)) or not math.isfinite(expires):
@@ -57,8 +71,12 @@ def run_desktop_qualification(
             raise TransitionError("qualification_deadline_expired")
         deadline = time.monotonic() + remaining
         status = native_runtime_status()
-        if (status.identity is None or not status.available or not status.compatible
-                or status.mode not in {"auto", "force"}):
+        if (
+            status.identity is None
+            or not status.available
+            or not status.compatible
+            or status.mode not in {"auto", "force"}
+        ):
             raise TransitionError("qualification_native_unavailable")
         if time.monotonic() >= deadline:
             raise TransitionError("qualification_deadline_expired")
@@ -68,8 +86,12 @@ def run_desktop_qualification(
         workspace = home / "qualification-workspace"
         workspace.mkdir(mode=0o700)
         observation = probe_native_protection(
-            worker=worker, operation_id=args.operation_id, artifact_generation=generation,
-            expected_runtime=status.identity, home_dir=home, workspace=workspace,
+            worker=worker,
+            operation_id=args.operation_id,
+            artifact_generation=generation,
+            expected_runtime=status.identity,
+            home_dir=home,
+            workspace=workspace,
             deadline_monotonic=deadline,
         )
         document["native_admission"] = verified_admission_payload(observation)

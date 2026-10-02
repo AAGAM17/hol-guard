@@ -59,20 +59,26 @@ class PendingCodexPublicationInverse:
         with _publications_guard:
             if _publications.get(authorization.grant.grant_id) is not self:
                 raise TransitionError("publication_inverse_publication_invalid")
-        with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-            authorization.deadline_monotonic,
+        with (
+            inverse_recovery_budget(authorization.deadline_monotonic),
+            hook_validation_deadline(
+                authorization.deadline_monotonic,
+            ),
         ):
             journal = _record_path(plan.guard_home)
-            if (rollback_file_identity(journal) != self._journal_identity
-                    or hashlib.sha256(_journal_bytes(journal)).hexdigest() != self._journal_sha256
-                    or _load_record(plan.guard_home, live_config_conflict=True) != self._record
-                    or rollback_file_identity(journal) != self._journal_identity):
+            if (
+                rollback_file_identity(journal) != self._journal_identity
+                or hashlib.sha256(_journal_bytes(journal)).hexdigest() != self._journal_sha256
+                or _load_record(plan.guard_home, live_config_conflict=True) != self._record
+                or rollback_file_identity(journal) != self._journal_identity
+            ):
                 raise TransitionError("publication_inverse_journal_changed")
             predecessor = plan.changes[1].after
             assert predecessor is not None
             dependencies = _with_native_dependency(
                 _predecessor_dependencies(plan.guard_home, predecessor),
-                plan.native_runtime, plan.verification_workspace,
+                plan.native_runtime,
+                plan.verification_workspace,
             )
             if [item.payload() for item in dependencies] != [item.payload() for item in plan.dependencies]:
                 raise TransitionError("publication_inverse_dependencies_invalid")
@@ -95,7 +101,8 @@ class PendingCodexPublicationInverse:
             "subject": self.authorization.approved_subject,
             "owner_operation_id": self.authorization.owner_operation_id,
             "owner_pid": self.authorization.owner_pid,
-            "plan": plan.payload(), "phase": phase,
+            "plan": plan.payload(),
+            "phase": phase,
             "publication_monotonic": self.publication_monotonic,
             "restored": list(self._restored),
             "file_identities": [list(value) if value is not None else None for value in self._identities],
@@ -105,7 +112,10 @@ class PendingCodexPublicationInverse:
         payload["publication_inverse"] = marker
         secret = load_hook_secret(plan.guard_home)
         authentication = sign_local_authority_payload(
-            payload, key=secret.key, key_id=secret.key_id, purpose=_PURPOSE,
+            payload,
+            key=secret.key,
+            key_id=secret.key_id,
+            purpose=_PURPOSE,
             signed_at=self.authorization.owner_operation_id,
         )
         encoded = canonical_manifest_bytes({**payload, "authentication": authentication}) + b"\n"
@@ -114,13 +124,20 @@ class PendingCodexPublicationInverse:
         self.compare()
         published: list[tuple[int, int, int, int, int]] = []
         atomic_write_bytes(
-            _record_path(plan.guard_home), encoded, mode=0o600, private=True,
-            on_publish=published.append, before_publish=self.compare,
+            _record_path(plan.guard_home),
+            encoded,
+            mode=0o600,
+            private=True,
+            on_publish=published.append,
+            before_publish=self.compare,
         )
         identity = published[0] if len(published) == 1 else None
-        if (identity is None or rollback_file_identity(_record_path(plan.guard_home)) != identity
-                or _journal_bytes(_record_path(plan.guard_home)) != encoded
-                or rollback_file_identity(_record_path(plan.guard_home)) != identity):
+        if (
+            identity is None
+            or rollback_file_identity(_record_path(plan.guard_home)) != identity
+            or _journal_bytes(_record_path(plan.guard_home)) != encoded
+            or rollback_file_identity(_record_path(plan.guard_home)) != identity
+        ):
             raise TransitionError("publication_inverse_journal_changed")
         object.__setattr__(self, "_record", payload)
         object.__setattr__(self, "_journal_sha256", hashlib.sha256(encoded).hexdigest())
@@ -134,14 +151,21 @@ def publish_codex_publication_inverse(
     """Restore reviewed bindings once; keep the signed journal until proof."""
     authorization.compare_before()
     plan = authorization.plan
-    with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-        authorization.deadline_monotonic,
+    with (
+        inverse_recovery_budget(authorization.deadline_monotonic),
+        hook_validation_deadline(
+            authorization.deadline_monotonic,
+        ),
     ):
         record = _load_record(plan.guard_home, live_config_conflict=True)
         authorization.compare_before()
         pending = PendingCodexPublicationInverse(
-            authorization, time.monotonic(), record, plan.journal_sha256,
-            plan.journal_identity, plan.change_identities,
+            authorization,
+            time.monotonic(),
+            record,
+            plan.journal_sha256,
+            plan.journal_identity,
+            plan.change_identities,
         )
         with _publications_guard:
             now = time.monotonic()
@@ -161,17 +185,26 @@ def publish_codex_publication_inverse(
             change = plan.changes[index]
             assert change.after is not None
             identity = pending._identities[index]
-            if (_snapshot(change.path) != change.after
-                    or (os.name != "nt" and change.path.stat().st_mode & 0o777 != change.after_mode)):
+            if _snapshot(change.path) != change.after or (
+                os.name != "nt" and change.path.stat().st_mode & 0o777 != change.after_mode
+            ):
                 published: list[tuple[int, int, int, int, int]] = []
                 atomic_write_bytes(
-                    change.path, change.after, mode=0o600, private=True,
-                    on_publish=published.append, before_publish=pending.compare,
+                    change.path,
+                    change.after,
+                    mode=0o600,
+                    private=True,
+                    on_publish=published.append,
+                    before_publish=pending.compare,
                 )
                 identity = published[0] if len(published) == 1 else None
                 record_codex_mutation("explicit_inverse_provisional", change.path, change.before, change.after)
-            if (identity is None or rollback_file_identity(change.path) != identity
-                    or _snapshot(change.path) != change.after or rollback_file_identity(change.path) != identity):
+            if (
+                identity is None
+                or rollback_file_identity(change.path) != identity
+                or _snapshot(change.path) != change.after
+                or rollback_file_identity(change.path) != identity
+            ):
                 raise TransitionError("publication_inverse_generation_changed")
             identities = list(pending._identities)
             identities[index] = identity
@@ -184,14 +217,19 @@ def publish_codex_publication_inverse(
 
 
 def verify_and_retire_codex_publication_inverse(
-    pending: PendingCodexPublicationInverse, *, receipt_store: GuardStore | None = None,
+    pending: PendingCodexPublicationInverse,
+    *,
+    receipt_store: GuardStore | None = None,
 ) -> NativeProtectionAdmission:
     """Retire only fresh sealed native allow/deny through the restored config."""
     from .runtime_transition_codex_observer import observe_configured_codex_hook
 
     authorization, plan = pending.authorization, pending.authorization.plan
-    with inverse_recovery_budget(authorization.deadline_monotonic), hook_validation_deadline(
-        authorization.deadline_monotonic,
+    with (
+        inverse_recovery_budget(authorization.deadline_monotonic),
+        hook_validation_deadline(
+            authorization.deadline_monotonic,
+        ),
     ):
         pending.compare()
         if set(pending._restored) != {0, 1, 2} or plan.native_runtime is None or plan.verification_workspace is None:
@@ -199,23 +237,33 @@ def verify_and_retire_codex_publication_inverse(
         started = time.monotonic()
         generation = "codex-publication-inverse-" + plan.subject().rsplit(":", 1)[1]
         proof = observe_configured_codex_hook(
-            operation_id=plan.operation_id, artifact_generation=generation, expected_runtime=plan.native_runtime,
-            guard_home=plan.guard_home, config_path=plan.config_path, workspace=plan.verification_workspace,
-            deadline_monotonic=authorization.deadline_monotonic, receipt_store=receipt_store,
+            operation_id=plan.operation_id,
+            artifact_generation=generation,
+            expected_runtime=plan.native_runtime,
+            guard_home=plan.guard_home,
+            config_path=plan.config_path,
+            workspace=plan.verification_workspace,
+            deadline_monotonic=authorization.deadline_monotonic,
+            receipt_store=receipt_store,
         )
         pending.compare()
         observation = verified_admission_payload(proof)
         evidence = observation.get("installed_hook_evidence")
         observed = observation.get("observed_monotonic")
-        if (not isinstance(observed, (int, float)) or isinstance(observed, bool) or not math.isfinite(observed)
-                or not pending.publication_monotonic <= started <= observed <= time.monotonic()
-                or observation.get("operation_id") != plan.operation_id
-                or observation.get("generation") != generation
-                or observation.get("guard_home") != str(plan.guard_home)
-                or observation.get("runtime_identity") != plan.payload()["native_runtime"]
-                or not isinstance(evidence, dict) or evidence.get("harness") != "codex"
-                or evidence.get("config_sha256") != hashlib.sha256(plan.changes[0].after or b"").hexdigest()
-                or evidence.get("manifest_sha256") != hashlib.sha256(plan.changes[1].after or b"").hexdigest()):
+        if (
+            not isinstance(observed, (int, float))
+            or isinstance(observed, bool)
+            or not math.isfinite(observed)
+            or not pending.publication_monotonic <= started <= observed <= time.monotonic()
+            or observation.get("operation_id") != plan.operation_id
+            or observation.get("generation") != generation
+            or observation.get("guard_home") != str(plan.guard_home)
+            or observation.get("runtime_identity") != plan.payload()["native_runtime"]
+            or not isinstance(evidence, dict)
+            or evidence.get("harness") != "codex"
+            or evidence.get("config_sha256") != hashlib.sha256(plan.changes[0].after or b"").hexdigest()
+            or evidence.get("manifest_sha256") != hashlib.sha256(plan.changes[1].after or b"").hexdigest()
+        ):
             raise TransitionError("publication_inverse_native_verification_invalid")
         pending._write_record(phase="verified", observation=observation)
         pending.compare()

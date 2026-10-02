@@ -132,10 +132,14 @@ def test_fatal_storage_errors_are_recognized(message: str) -> None:
     assert GuardStore._is_fatal_sqlite_error(sqlite3.DatabaseError(message)) is True
 
 
-@pytest.mark.parametrize("code", [
-    pytest.param(11, id="SQLITE_CORRUPT"), pytest.param(779, id="SQLITE_CORRUPT_INDEX"),
-    pytest.param(26, id="SQLITE_NOTADB"),
-])
+@pytest.mark.parametrize(
+    "code",
+    [
+        pytest.param(11, id="SQLITE_CORRUPT"),
+        pytest.param(779, id="SQLITE_CORRUPT_INDEX"),
+        pytest.param(26, id="SQLITE_NOTADB"),
+    ],
+)
 def test_coded_corruption_recovers_only_after_real_stable_probes(tmp_path: Path, code: int) -> None:
     store = GuardStore(tmp_path / "guard", prime_policy_integrity=False)
     corrupted = _corrupt_store(store.path)
@@ -152,12 +156,19 @@ def test_coded_corruption_recovers_only_after_real_stable_probes(tmp_path: Path,
         assert connection.execute("pragma quick_check").fetchone() == ("ok",)
 
 
-@pytest.mark.parametrize("code", [
-    pytest.param(5, id="SQLITE_BUSY"), pytest.param(262, id="SQLITE_LOCKED_SHAREDCACHE"),
-    pytest.param(13, id="SQLITE_FULL"), pytest.param(8, id="SQLITE_READONLY"),
-])
+@pytest.mark.parametrize(
+    "code",
+    [
+        pytest.param(5, id="SQLITE_BUSY"),
+        pytest.param(262, id="SQLITE_LOCKED_SHAREDCACHE"),
+        pytest.param(13, id="SQLITE_FULL"),
+        pytest.param(8, id="SQLITE_READONLY"),
+    ],
+)
 def test_nonfatal_numeric_code_prevents_message_from_entering_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: int,
 ) -> None:
     store = GuardStore(tmp_path / "guard", prime_policy_integrity=False)
     original_identity = store.path.stat().st_ino
@@ -173,10 +184,13 @@ def test_nonfatal_numeric_code_prevents_message_from_entering_recovery(
     assert not _quarantined_databases(store.guard_home)
 
 
-@pytest.mark.parametrize("code", [pytest.param(266, id="SQLITE_IOERR_READ"),
-                                 pytest.param(1034, id="SQLITE_IOERR_FSYNC")])
+@pytest.mark.parametrize(
+    "code", [pytest.param(266, id="SQLITE_IOERR_READ"), pytest.param(1034, id="SQLITE_IOERR_FSYNC")]
+)
 def test_coded_io_probe_is_not_corruption_even_with_misleading_message(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: int,
 ) -> None:
     from codex_plugin_scanner.guard import sqlite_recovery
 
@@ -190,12 +204,15 @@ def test_coded_io_probe_is_not_corruption_even_with_misleading_message(
     assert sqlite_recovery._probe_sqlite_store(tmp_path / "generated.db") == "io"
 
 
-@pytest.mark.parametrize("code, message, expected", [
-    (517, "generated opaque diagnostic", True),  # SQLITE_BUSY_SNAPSHOT
-    (262, "generated opaque diagnostic", True),  # SQLITE_LOCKED_SHAREDCACHE
-    (3850, "database is locked", False),  # SQLITE_IOERR_LOCK
-    (13, "database is busy", False),  # SQLITE_FULL
-])
+@pytest.mark.parametrize(
+    "code, message, expected",
+    [
+        (517, "generated opaque diagnostic", True),  # SQLITE_BUSY_SNAPSHOT
+        (262, "generated opaque diagnostic", True),  # SQLITE_LOCKED_SHAREDCACHE
+        (3850, "database is locked", False),  # SQLITE_IOERR_LOCK
+        (13, "database is busy", False),  # SQLITE_FULL
+    ],
+)
 def test_busy_lock_routing_uses_extended_code_before_message(code: int, message: str, expected: bool) -> None:
     from codex_plugin_scanner.guard.sqlite_profile import sqlite_error_is_busy_locked
 

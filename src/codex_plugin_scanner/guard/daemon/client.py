@@ -37,7 +37,10 @@ def _interrupt_health_socket(stream: socket.socket) -> None:
 
 
 def read_guard_health_details(
-    daemon_url: str, auth_token: str, *, deadline_monotonic: float | None = None,
+    daemon_url: str,
+    auth_token: str,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object] | None:
     """Read bounded authenticated health details over direct, non-redirecting loopback IPC."""
     try:
@@ -66,9 +69,7 @@ def read_guard_health_details(
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return None
-        with closing(
-            HTTPConnection(parsed.hostname, parsed.port, timeout=remaining)
-        ) as connection:
+        with closing(HTTPConnection(parsed.hostname, parsed.port, timeout=remaining)) as connection:
             connection.connect()
             stream = connection.sock
             remaining = deadline - time.monotonic()

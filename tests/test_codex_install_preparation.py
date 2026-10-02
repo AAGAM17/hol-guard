@@ -29,12 +29,23 @@ def _sources(tmp_path, monkeypatch):
     workspace_config.write_text('model="workspace"\n[mcp_servers.project]\ncommand="node"\nargs=["project.js"]\n')
     workspace_config.chmod(0o644)
     for config in (global_config, workspace_config):
-        config.with_name("hooks.json").write_text(json.dumps({"hooks": {"PreToolUse": [
-            {"matcher": "Bash", "hooks": [{"type": "command", "command": "python user_hook.py"}]},
-        ]}}))
+        config.with_name("hooks.json").write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {"matcher": "Bash", "hooks": [{"type": "command", "command": "python user_hook.py"}]},
+                        ]
+                    }
+                }
+            )
+        )
     context.home_dir.joinpath(".zshenv").write_bytes(
-        b"\xffKEEP\n\n" + adapter._SHELL_GUARD_BEGIN.encode() + b"\nlegacy\n"
-        + adapter._SHELL_GUARD_END.encode() + b"\nAFTER\xfe\n"
+        b"\xffKEEP\n\n"
+        + adapter._SHELL_GUARD_BEGIN.encode()
+        + b"\nlegacy\n"
+        + adapter._SHELL_GUARD_END.encode()
+        + b"\nAFTER\xfe\n"
     )
     guard = context.guard_home / "managed/codex/codex-zshenv-guard.zsh"
     guard.write_bytes(b"legacy guard script")
@@ -53,8 +64,7 @@ def test_composed_preparation_is_read_only_and_captures_complete_native_files(tm
         assert changes[config.with_name("hooks.json")].after is None
         assert changes[config.with_name("hooks.json")].before is not None
         payload = parse_toml_object(changes[config].after, path=config, label="fixture")
-        assert any(group["hooks"][0]["command"] == "python user_hook.py"
-                   for group in payload["hooks"]["PreToolUse"])
+        assert any(group["hooks"][0]["command"] == "python user_hook.py" for group in payload["hooks"]["PreToolUse"])
     global_payload = parse_toml_object(changes[global_config].after, path=global_config, label="fixture")
     workspace_payload = parse_toml_object(changes[workspace_config].after, path=workspace_config, label="fixture")
     assert "codex-mcp-proxy" in global_payload["mcp_servers"]["fixture"]["args"]
@@ -68,14 +78,20 @@ def test_composed_preparation_is_read_only_and_captures_complete_native_files(tm
     signed = json.loads(changes[Path(prepared.manifest["managed_hook_manifest_path"])].after)
     interpreter = signed["interpreter"]
     invocations = [change.invocation_identity for change in prepared.files if change.invocation_identity is not None]
-    assert invocations == [{
-        "path": interpreter["invocation_path"], "mode": interpreter["invocation_mode"],
-        "owner_uid": interpreter["invocation_owner_uid"], "link_target": interpreter["link_target"],
-    }]
+    assert invocations == [
+        {
+            "path": interpreter["invocation_path"],
+            "mode": interpreter["invocation_mode"],
+            "owner_uid": interpreter["invocation_owner_uid"],
+            "link_target": interpreter["link_target"],
+        }
+    ]
 
 
 def test_composed_signed_inverse_restores_all_files_and_modes(
-    transition, tmp_path, monkeypatch,  # noqa: F811 -- shared pytest fixture
+    transition,
+    tmp_path,
+    monkeypatch,  # noqa: F811 -- shared pytest fixture
 ):
     runtime, plan, _bindings, _pointer = transition
     harness, context, _global_config, _workspace_config = _sources(tmp_path, monkeypatch)
@@ -142,13 +158,23 @@ def test_exact_binding_scope_contains_legacy_frozen_launcher_selector(tmp_path, 
     harness = adapter.CodexHarnessAdapter()
     harness.install(context)
     ordinary = harness.prepare_install(context)
-    ordinary_manifest = json.loads(next(change.after for change in ordinary.files
-                                        if str(change.path) == ordinary.manifest["managed_hook_manifest_path"]))
+    ordinary_manifest = json.loads(
+        next(
+            change.after
+            for change in ordinary.files
+            if str(change.path) == ordinary.manifest["managed_hook_manifest_path"]
+        )
+    )
     assert ordinary_manifest["interpreter"]["invocation_path"] == str(shim)
     with exact_process_guard_cli_binding():
         prepared = harness.prepare_install(context)
-    candidate_manifest = json.loads(next(change.after for change in prepared.files
-                                         if str(change.path) == prepared.manifest["managed_hook_manifest_path"]))
+    candidate_manifest = json.loads(
+        next(
+            change.after
+            for change in prepared.files
+            if str(change.path) == prepared.manifest["managed_hook_manifest_path"]
+        )
+    )
     assert candidate_manifest["interpreter"]["invocation_path"] == str(executable)
     assert resolve_frozen_guard_cli() == str(shim)
     assert shim.read_bytes() == b"fixture stable predecessor launcher"
@@ -164,8 +190,15 @@ def test_prepared_file_generations_match_ordinary_install(tmp_path, monkeypatch)
         if str(change.path) == prepared.manifest["managed_hook_manifest_path"]:
             actual = json.loads(change.path.read_bytes())
             expected = json.loads(change.after)
-            for field in ("events", "installation_id", "interpreter", "packaged_files", "context",
-                          "retained_bridge_generations", "compatible_bridge_argv_sha256"):
+            for field in (
+                "events",
+                "installation_id",
+                "interpreter",
+                "packaged_files",
+                "context",
+                "retained_bridge_generations",
+                "compatible_bridge_argv_sha256",
+            ):
                 assert actual[field] == expected[field]
         elif change.path.name.endswith(".authority-receipt.json"):
             import base64
@@ -176,8 +209,15 @@ def test_prepared_file_generations_match_ordinary_install(tmp_path, monkeypatch)
                 assert actual_receipt[field] == expected_receipt[field]
             actual_manifest = json.loads(base64.b64decode(actual_receipt["manifest"], validate=True))
             expected_manifest = json.loads(base64.b64decode(expected_receipt["manifest"], validate=True))
-            for field in ("events", "installation_id", "interpreter", "packaged_files", "context",
-                          "retained_bridge_generations", "compatible_bridge_argv_sha256"):
+            for field in (
+                "events",
+                "installation_id",
+                "interpreter",
+                "packaged_files",
+                "context",
+                "retained_bridge_generations",
+                "compatible_bridge_argv_sha256",
+            ):
                 assert actual_manifest[field] == expected_manifest[field]
             assert change.path.stat().st_mode & 0o777 == change.after_mode
         elif change.after is None:

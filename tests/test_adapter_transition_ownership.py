@@ -88,13 +88,31 @@ def test_install_preparation_is_complete_or_explicitly_unavailable(tmp_path: Pat
             adapter.prepare_install(ctx)
         assert not ctx.guard_home.exists()
         return
-    supported = {"gemini", "antigravity", "claude-code", "kimi", "openclaw", "grok", "zcode",
-                 "pi", "omp", "devin", "opencode"}
+    supported = {
+        "gemini",
+        "antigravity",
+        "claude-code",
+        "kimi",
+        "openclaw",
+        "grok",
+        "zcode",
+        "pi",
+        "omp",
+        "devin",
+        "opencode",
+    }
     if harness in supported:
         prepared = adapter.prepare_install(ctx)
         expected = {
-            "claude-code": 3, "kimi": 3, "openclaw": 5, "grok": 9, "zcode": 5,
-            "pi": 4, "omp": 4, "devin": 5, "opencode": 9
+            "claude-code": 3,
+            "kimi": 3,
+            "openclaw": 5,
+            "grok": 9,
+            "zcode": 5,
+            "pi": 4,
+            "omp": 4,
+            "devin": 5,
+            "opencode": 9,
         }.get(harness, 2)
         assert len(prepared.files) == expected
         assert prepared.manifest["harness"] == harness
@@ -132,8 +150,7 @@ def test_opencode_prepared_generation_matches_normal_install(tmp_path, previous_
     ctx = context(tmp_path)
     config = ctx.home_dir / ".config/opencode/opencode.json"
     config.parent.mkdir(parents=True)
-    config.write_text('{"user_setting": true, "mcp": {"user": {"type": "local", '
-                      '"command": ["node", "user.js"]}}}')
+    config.write_text('{"user_setting": true, "mcp": {"user": {"type": "local", "command": ["node", "user.js"]}}}')
     adapter = OpenCodeHarnessAdapter()
     if previous_exists:
         adapter.install(ctx)
@@ -153,8 +170,11 @@ def test_frozen_copilot_preparation_plans_helper_without_publication(tmp_path, m
     from codex_plugin_scanner.guard.adapters.adapter_state_integrity import authenticate_adapter_state
     from codex_plugin_scanner.guard.adapters.copilot import CopilotHarnessAdapter
 
-    ctx = HarnessContext(home_dir=tmp_path, guard_home=tmp_path / "guard",
-                         workspace_dir=tmp_path / "workspace" if workspace_enabled else None)
+    ctx = HarnessContext(
+        home_dir=tmp_path,
+        guard_home=tmp_path / "guard",
+        workspace_dir=tmp_path / "workspace" if workspace_enabled else None,
+    )
     authenticate_adapter_state(ctx.guard_home, harness="copilot", payload={"enrollment": "fixture"})
     monkeypatch.setattr(bridge.sys, "frozen", True, raising=False)
     monkeypatch.setattr(bridge, "isolated_cursor_hook_python", lambda: sys.executable)
@@ -175,8 +195,11 @@ def test_copilot_prepared_generation_matches_normal_install(tmp_path, workspace_
     from codex_plugin_scanner.guard.adapters.adapter_state_integrity import authenticate_adapter_state
     from codex_plugin_scanner.guard.adapters.copilot import CopilotHarnessAdapter
 
-    ctx = HarnessContext(home_dir=tmp_path, guard_home=tmp_path / "guard",
-                         workspace_dir=tmp_path / "workspace" if workspace_enabled else None)
+    ctx = HarnessContext(
+        home_dir=tmp_path,
+        guard_home=tmp_path / "guard",
+        workspace_dir=tmp_path / "workspace" if workspace_enabled else None,
+    )
     authenticate_adapter_state(ctx.guard_home, harness="copilot", payload={"enrollment": "fixture"})
     adapter = CopilotHarnessAdapter()
     prepared = adapter.prepare_install(ctx)
@@ -209,8 +232,11 @@ def test_cursor_editor_prepared_generation_matches_normal_install(tmp_path, work
     from codex_plugin_scanner.guard.adapters.cursor import CursorHarnessAdapter
     from codex_plugin_scanner.guard.adapters.cursor_native_approval import ensure_cursor_hook_attestation_secret
 
-    ctx = HarnessContext(home_dir=tmp_path, guard_home=tmp_path / "guard",
-                         workspace_dir=tmp_path / "workspace" if workspace_enabled else None)
+    ctx = HarnessContext(
+        home_dir=tmp_path,
+        guard_home=tmp_path / "guard",
+        workspace_dir=tmp_path / "workspace" if workspace_enabled else None,
+    )
     ensure_cursor_hook_attestation_secret(ctx.guard_home)
     adapter = CursorHarnessAdapter()
     prepared = adapter.prepare_install(ctx)
@@ -320,7 +346,10 @@ def test_adapter_owner_covers_body_and_preserves_surface_arguments(tmp_path: Pat
         def install(self, ctx, *, surface="fixture"):
             owner = require_codex_install_owner(ctx.guard_home)
             result = subprocess.run(
-                [sys.executable, "-c", """
+                [
+                    sys.executable,
+                    "-c",
+                    """
 import sys, time
 from pathlib import Path
 from codex_plugin_scanner.guard.codex_install_transaction import codex_install_transaction
@@ -331,7 +360,11 @@ try:
         print("entered")
 except TimeoutError:
     print("excluded")
-""", str(ctx.guard_home)], capture_output=True, timeout=5,
+""",
+                    str(ctx.guard_home),
+                ],
+                capture_output=True,
+                timeout=5,
             )
             assert result.returncode == 0, result.stderr.decode(errors="replace")
             assert result.stdout.strip() == b"excluded"

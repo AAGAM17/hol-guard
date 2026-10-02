@@ -64,14 +64,20 @@ def _codex_observer(plan: TransitionPlan, context: HarnessContext, store: GuardS
         configurations[side] = (config_path, Path(workspace) if isinstance(workspace, str) else context.home_dir)
 
     def observe(
-        artifact: Mapping[str, object], daemon_identity: Mapping[str, object], operation_id: str,
-        *, deadline_monotonic: float,
+        artifact: Mapping[str, object],
+        daemon_identity: Mapping[str, object],
+        operation_id: str,
+        *,
+        deadline_monotonic: float,
     ) -> NativeProtectionAdmission:
         del daemon_identity  # The lifecycle driver checks it before and after observation.
         if operation_id != plan.operation_id:
             raise TransitionError("plan_context_mismatch")
-        sides = [side for side, expected in (("candidate", plan.candidate), ("predecessor", plan.predecessor))
-                 if artifact == expected]
+        sides = [
+            side
+            for side, expected in (("candidate", plan.candidate), ("predecessor", plan.predecessor))
+            if artifact == expected
+        ]
         if len(sides) != 1:
             raise TransitionError("daemon_artifact_binding_invalid")
         side = sides[0]
@@ -81,10 +87,17 @@ def _codex_observer(plan: TransitionPlan, context: HarnessContext, store: GuardS
         native = cast(Mapping[str, object], (plan.native_runtimes or {})[side])
         config_path, workspace = configurations[side]
         return observe_configured_codex_hook(
-            operation_id=operation_id, artifact_generation=cast(str, artifact["generation"]),
-            expected_runtime=NativeRuntimeIdentity(Path(cast(str, native["path"])), cast(int, native["size"]),
-                                                  cast(int, native["mtime_ns"]), cast(str, native["sha256"])),
-            guard_home=plan.guard_home, config_path=config_path, workspace=workspace,
+            operation_id=operation_id,
+            artifact_generation=cast(str, artifact["generation"]),
+            expected_runtime=NativeRuntimeIdentity(
+                Path(cast(str, native["path"])),
+                cast(int, native["size"]),
+                cast(int, native["mtime_ns"]),
+                cast(str, native["sha256"]),
+            ),
+            guard_home=plan.guard_home,
+            config_path=config_path,
+            workspace=workspace,
             deadline_monotonic=deadline_monotonic,
             artifact_binding=artifact_binding,
             receipt_store=store,
@@ -108,7 +121,11 @@ def _control_status(runtime: RuntimeTransition, operation_id: str) -> Transition
 
 
 def run_desktop_runtime_transition(
-    args: argparse.Namespace, *, context: HarnessContext, store: GuardStore, output_stream: TextIO,
+    args: argparse.Namespace,
+    *,
+    context: HarnessContext,
+    store: GuardStore,
+    output_stream: TextIO,
 ) -> int:
     started = time.monotonic()
     timings = _TransitionStageTimings(started)
@@ -118,27 +135,39 @@ def run_desktop_runtime_transition(
     try:
         timings.enter("authority")
         authority_home = lifecycle_authority_home(
-            context.guard_home, requirement=LifecycleGateRequirement("runtime.transition", str(operation_id)),
+            context.guard_home,
+            requirement=LifecycleGateRequirement("runtime.transition", str(operation_id)),
         )
         gate = public_config(authority_home)
         timings.enter("factor_consumption")
         # Consume once before preparation can launch any diagnostic subprocess.
         # Status and inverse-only recovery never turn these factors into grants.
-        factor = consume_desktop_lifecycle_env(totp_enabled=gate.totp_enabled, use_cooldown=False,
-                                               cooldown_seconds=gate.cooldown_seconds)
+        factor = consume_desktop_lifecycle_env(
+            totp_enabled=gate.totp_enabled, use_cooldown=False, cooldown_seconds=gate.cooldown_seconds
+        )
         if not isinstance(operation_id, str) or str(uuid.UUID(operation_id)) != operation_id:
             raise TransitionError("operation_id_invalid")
         requested = getattr(args, "deadline_epoch", None)
-        if (isinstance(requested, bool) or not isinstance(requested, (int, float))
-                or not math.isfinite(requested) or not 0 < requested - epoch <= 60):
+        if (
+            isinstance(requested, bool)
+            or not isinstance(requested, (int, float))
+            or not math.isfinite(requested)
+            or not 0 < requested - epoch <= 60
+        ):
             raise TransitionError("deadline_invalid")
         deadline = started + requested - epoch
         runtime = RuntimeTransition(context.guard_home, store, install_store=store)
         from ..sqlite_tuning import sqlite_operation_deadline
 
         timings.enter("owner_wait")
-        with sqlite_operation_deadline(deadline), codex_install_transaction(
-            runtime.home, runtime.path, actor="desktop-transition", deadline=deadline,
+        with (
+            sqlite_operation_deadline(deadline),
+            codex_install_transaction(
+                runtime.home,
+                runtime.path,
+                actor="desktop-transition",
+                deadline=deadline,
+            ),
         ):
             timings.enter("control")
             if time.monotonic() >= deadline:
@@ -153,12 +182,14 @@ def run_desktop_runtime_transition(
                     plan = runtime.recovery_plan(operation_id)
                     if time.monotonic() >= deadline:
                         raise TransitionError("deadline_exceeded")
-                    driver = TransitionDaemonDriver(runtime, plan, home_dir=context.home_dir,
-                                                    observe_hook=_codex_observer(plan, context, store))
+                    driver = TransitionDaemonDriver(
+                        runtime, plan, home_dir=context.home_dir, observe_hook=_codex_observer(plan, context, store)
+                    )
                     # Home owner precedes the start owner; inverse only.
                     with guard_daemon_start_lock(runtime.home, deadline=deadline):
                         status = RuntimeTransitionCoordinator(runtime, driver).recover(
-                            operation_id, deadline_monotonic=deadline,
+                            operation_id,
+                            deadline_monotonic=deadline,
                         )
             elif args.desktop_command == "transition-finalize":
                 status = _control_status(runtime, operation_id)
@@ -178,8 +209,12 @@ def run_desktop_runtime_transition(
                 if not bool(getattr(sys, "frozen", False)):
                     raise TransitionError("packaged_transition_runtime_required")
                 request = load_desktop_transition_request(
-                    Path(args.request), context=context, operation_id=operation_id,
-                    deadline_epoch=requested, deadline_monotonic=deadline, request_sha256=args.request_sha256,
+                    Path(args.request),
+                    context=context,
+                    operation_id=operation_id,
+                    deadline_epoch=requested,
+                    deadline_monotonic=deadline,
+                    request_sha256=args.request_sha256,
                 )
                 if Path(cast(str, request.candidate["path"])) != Path(sys.executable).resolve(strict=True):
                     raise TransitionError("candidate_process_identity_mismatch")
@@ -188,17 +223,25 @@ def run_desktop_runtime_transition(
                 timings.enter("plan_preparation")
                 with exact_process_guard_cli_binding():
                     plan = prepare_runtime_transition(
-                        request, context=context, store=store, deadline_monotonic=deadline,
+                        request,
+                        context=context,
+                        store=store,
+                        deadline_monotonic=deadline,
                     )
-                driver = TransitionDaemonDriver(runtime, plan, home_dir=context.home_dir,
-                                                observe_hook=_codex_observer(plan, context, store))
+                driver = TransitionDaemonDriver(
+                    runtime, plan, home_dir=context.home_dir, observe_hook=_codex_observer(plan, context, store)
+                )
                 if time.monotonic() >= deadline:
                     raise TransitionError("deadline_exceeded")
                 try:
                     timings.enter("approval")
                     grant = require_high_risk(
-                        authority_home, purpose="protection_lifecycle", approval_gate_input=factor,
-                        action="runtime.transition", scope="local-protection", subject=plan.subject(),
+                        authority_home,
+                        purpose="protection_lifecycle",
+                        approval_gate_input=factor,
+                        action="runtime.transition",
+                        scope="local-protection",
+                        subject=plan.subject(),
                     )
                 except ApprovalGateError as error:
                     try:
@@ -212,32 +255,55 @@ def run_desktop_runtime_transition(
                 with guard_daemon_start_lock(runtime.home, deadline=deadline):
                     timings.enter("activation")
                     status = RuntimeTransitionCoordinator(runtime, driver).activate(
-                        plan, authority_home=authority_home, grant=grant, deadline_monotonic=deadline,
+                        plan,
+                        authority_home=authority_home,
+                        grant=grant,
+                        deadline_monotonic=deadline,
                     )
                 response["artifact_generation"] = plan.candidate["generation"]
             else:
                 raise TransitionError("transition_command_invalid")
-            response.update(phase=status.phase, first_cause=status.first_cause,
-                            recovery_causes=list(status.recovery_causes),
-                            artifact_generation=status.artifact_generation)
+            response.update(
+                phase=status.phase,
+                first_cause=status.first_cause,
+                recovery_causes=list(status.recovery_causes),
+                artifact_generation=status.artifact_generation,
+            )
             if time.monotonic() >= deadline:
                 raise TransitionError("deadline_exceeded")
-            result = 1 if (status.phase == "RecoveryRequired" or (
-                args.desktop_command == "transition-activate" and status.phase != "Committed"
-            )) else 0
+            result = (
+                1
+                if (
+                    status.phase == "RecoveryRequired"
+                    or (args.desktop_command == "transition-activate" and status.phase != "Committed")
+                )
+                else 0
+            )
     except ApprovalGateError as error:
-        response = {"schema": "hol-guard.desktop-runtime-transition.v1", "operation_id": operation_id,
-                    "reason_code": error.code}
+        response = {
+            "schema": "hol-guard.desktop-runtime-transition.v1",
+            "operation_id": operation_id,
+            "reason_code": error.code,
+        }
         result = 1
     except (ValueError, TransitionError, CodexHookIntegrityError) as error:
-        response = {"schema": "hol-guard.desktop-runtime-transition.v1", "operation_id": operation_id,
-                    "reason_code": (error.reason if isinstance(error, (TransitionError, CodexHookIntegrityError))
-                                    else "operation_id_invalid")}
+        response = {
+            "schema": "hol-guard.desktop-runtime-transition.v1",
+            "operation_id": operation_id,
+            "reason_code": (
+                error.reason
+                if isinstance(error, (TransitionError, CodexHookIntegrityError))
+                else "operation_id_invalid"
+            ),
+        }
         result = 1
     except Exception as error:
         # Exception text can include paths, private bindings or process output.
-        response = {"schema": "hol-guard.desktop-runtime-transition.v1", "operation_id": operation_id,
-                    "reason_code": type(error).__name__}
+        response = {
+            "schema": "hol-guard.desktop-runtime-transition.v1",
+            "operation_id": operation_id,
+            "reason_code": type(error).__name__,
+        }
         result = 1
     timings.finish()
     print(json.dumps(response, sort_keys=True), file=output_stream)

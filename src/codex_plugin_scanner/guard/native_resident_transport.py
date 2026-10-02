@@ -118,7 +118,10 @@ def _write_frame_with_stoppable_worker(
 
 
 def write_frame(
-    stdin: object, frame: bytes, *, deadline_monotonic: float,
+    stdin: object,
+    frame: bytes,
+    *,
+    deadline_monotonic: float,
     launch_worker: Callable[[threading.Thread], bool] | None = None,
 ) -> bool:
     """Write a complete frame within a monotonic deadline."""

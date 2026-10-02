@@ -30,6 +30,7 @@ def test_copied_context_cannot_borrow_another_threads_publication_owner(tmp_path
         assert failure.value.reason == "codex_hook_transaction_owner_missing"
         assert require_codex_install_owner(guard) is owner
 
+
 FORK_OWNER = r"""
 import os, subprocess, sys, time
 from pathlib import Path
@@ -93,8 +94,9 @@ finally:
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="POSIX fork ownership")
 @pytest.mark.parametrize("mode", ["idle-child", "child-reacquires"])
 def test_fork_does_not_retain_parent_lock_or_authority(tmp_path: Path, mode: str):
-    result = subprocess.run([sys.executable, "-c", FORK_OWNER, str(tmp_path / "home"), mode],
-                            capture_output=True, timeout=15)
+    result = subprocess.run(
+        [sys.executable, "-c", FORK_OWNER, str(tmp_path / "home"), mode], capture_output=True, timeout=15
+    )
     assert result.returncode == 0, result.stderr.decode(errors="replace")
 
 
@@ -146,8 +148,9 @@ finally:
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="POSIX fork ownership")
 def test_fork_child_unwind_cannot_unlock_live_parent(tmp_path: Path):
-    result = subprocess.run([sys.executable, "-c", FORK_UNWIND, str(tmp_path / "home")],
-                            capture_output=True, timeout=15)
+    result = subprocess.run(
+        [sys.executable, "-c", FORK_UNWIND, str(tmp_path / "home")], capture_output=True, timeout=15
+    )
     assert result.returncode == 0, result.stderr.decode(errors="replace")
 
 
@@ -196,8 +199,9 @@ finally:
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="POSIX fork ownership")
 def test_fork_replaces_locks_owned_by_other_parent_threads(tmp_path: Path):
-    result = subprocess.run([sys.executable, "-c", FORK_THREAD_OWNER, str(tmp_path / "home")],
-                            capture_output=True, timeout=15)
+    result = subprocess.run(
+        [sys.executable, "-c", FORK_THREAD_OWNER, str(tmp_path / "home")], capture_output=True, timeout=15
+    )
     assert result.returncode == 0, result.stderr.decode(errors="replace")
 
 
@@ -302,7 +306,9 @@ def test_failed_installer_cannot_remove_separate_process_winner(
         # A new operation after the failed owner has retired can win safely.
         winner = subprocess.run(
             [sys.executable, "-c", INSTALLER, str(tmp_path), "B"],
-            env=environment, capture_output=True, timeout=10,
+            env=environment,
+            capture_output=True,
+            timeout=10,
         )
         assert winner.returncode == 0, winner.stderr
         assert (tmp_path / "B-committed").exists()
@@ -442,7 +448,9 @@ def test_real_cached_bridge_denies_missing_manifest_without_replacing_authority(
     from codex_plugin_scanner.guard.codex_hook_integrity import hook_secret_path
 
     context = HarnessContext(
-        home_dir=tmp_path / "home", workspace_dir=None, guard_home=tmp_path / "guard-home",
+        home_dir=tmp_path / "home",
+        workspace_dir=None,
+        guard_home=tmp_path / "guard-home",
         home_override_explicit=True,
     )
     codex.CodexHarnessAdapter().install(context)
@@ -475,7 +483,10 @@ def test_real_cached_bridge_denies_missing_manifest_without_replacing_authority(
     assert not manifest.exists()
     after_secret = secret.stat()
     assert (after_secret.st_dev, after_secret.st_ino, after_secret.st_mtime_ns, after_secret.st_size) == (
-        before_secret.st_dev, before_secret.st_ino, before_secret.st_mtime_ns, before_secret.st_size,
+        before_secret.st_dev,
+        before_secret.st_ino,
+        before_secret.st_mtime_ns,
+        before_secret.st_size,
     )
     assert not (context.guard_home / "daemon-state.json").exists()
     assert codex_native_hook_state(context)["protection_active"] is False

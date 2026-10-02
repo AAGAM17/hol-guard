@@ -19,15 +19,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+
 def _rebuild_command(compiler: str) -> list[str]:
     path = ROOT / compiler
     relative = path.resolve().relative_to((ROOT / "rust" / "target").resolve())
     parts = relative.parts
     if len(parts) not in (2, 3) or parts[-2] not in ("debug", "release"):
         raise ValueError("compiler must be in rust/target/[target/]debug or release")
-    command = ["cargo", "build", "--manifest-path", "rust/Cargo.toml", "--locked",
-               "-p", "hol-guard-runtime", "-p", "guard-command",
-               "--bin", "hol-guard-runtime", "--bin", "guard-command-source"]
+    command = [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust/Cargo.toml",
+        "--locked",
+        "-p",
+        "hol-guard-runtime",
+        "-p",
+        "guard-command",
+        "--bin",
+        "hol-guard-runtime",
+        "--bin",
+        "guard-command-source",
+    ]
     if parts[-2] == "release":
         command.append("--release")
     if len(parts) == 3:

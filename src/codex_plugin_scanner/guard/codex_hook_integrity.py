@@ -195,7 +195,10 @@ def load_authenticated_hook_manifest_path(
 
 
 def authenticate_hook_manifest_text(
-    guard_home: Path, raw: str, *, _secret: HookSecretMaterial | None = None,
+    guard_home: Path,
+    raw: str,
+    *,
+    _secret: HookSecretMaterial | None = None,
 ) -> dict[str, object]:
     """Authenticate bounded captured text; this does not validate its file or package."""
     check_hook_validation_deadline()

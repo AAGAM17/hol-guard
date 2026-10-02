@@ -7,7 +7,7 @@ from typing import cast
 
 # Static source is embedded in standalone clients, including frozen installs
 # where inspect.getsource cannot recover the bundled Python implementation.
-HOOK_INPUT_READER_TEMPLATE = '''
+HOOK_INPUT_READER_TEMPLATE = """
 class _HookInputError(ValueError):
     def __init__(self, prefix):
         super().__init__("hook_input_too_large")
@@ -92,7 +92,7 @@ def _read_hook_input(deadline_monotonic: float) -> str:
     if size > limit:
         raise _HookInputError(raw[:limit].decode("utf-8", errors="replace"))
     return raw.decode("utf-8")
-'''
+"""
 
 _reader_namespace: dict[str, object] = {}
 exec(compile(HOOK_INPUT_READER_TEMPLATE, __file__, "exec"), _reader_namespace)

@@ -25,8 +25,12 @@ def test_real_native_candidate_admission_allows_benign_and_denies_canary(tmp_pat
         identity = native_runtime_status().identity
         assert identity is not None
         proof = probe_native_protection(
-            worker=worker, operation_id="isolated-transition", artifact_generation="candidate-generation",
-            expected_runtime=identity, home_dir=home, workspace=workspace,
+            worker=worker,
+            operation_id="isolated-transition",
+            artifact_generation="candidate-generation",
+            expected_runtime=identity,
+            home_dir=home,
+            workspace=workspace,
             deadline_monotonic=time.monotonic() + 10,
         )
         assert proof.operation_id == "isolated-transition"
@@ -51,8 +55,12 @@ def test_candidate_admission_rejects_foreign_runtime_before_policy_publication(t
     assert identity is not None
     with pytest.raises(TransitionError, match="admission_runtime_mismatch"):
         probe_native_protection(
-            worker=Worker(), operation_id="transition", artifact_generation="candidate",
-            expected_runtime=replace(identity, sha256="0" * 64), home_dir=tmp_path, workspace=tmp_path,
+            worker=Worker(),
+            operation_id="transition",
+            artifact_generation="candidate",
+            expected_runtime=replace(identity, sha256="0" * 64),
+            home_dir=tmp_path,
+            workspace=tmp_path,
             deadline_monotonic=time.monotonic() + 1,
         )
 
@@ -64,8 +72,12 @@ def test_expired_admission_starts_no_native_probe(tmp_path, monkeypatch):
     monkeypatch.setattr(admission, "native_runtime_status", forbidden_status)
     with pytest.raises(TransitionError, match="admission_deadline_expired"):
         probe_native_protection(
-            worker=None, operation_id="transition", artifact_generation="candidate",
-            expected_runtime=None, home_dir=tmp_path, workspace=tmp_path,
+            worker=None,
+            operation_id="transition",
+            artifact_generation="candidate",
+            expected_runtime=None,
+            home_dir=tmp_path,
+            workspace=tmp_path,
             deadline_monotonic=time.monotonic() - 1,
         )
 
@@ -78,10 +90,18 @@ def test_unbound_policy_starts_no_admission_hook(tmp_path, monkeypatch, fault):
 
     class Worker:
         def prepare_workspace_policy(self, *args, **kwargs):
-            snapshot = {"mode": "enforce", "policy_digest": "a" * 64,
-                        "runtime_identity": identity.sha256, "generation": 1}
-            snapshot[fault] = {"mode": "observe", "policy_digest": None,
-                               "runtime_identity": "0" * 64, "generation": True}[fault]
+            snapshot = {
+                "mode": "enforce",
+                "policy_digest": "a" * 64,
+                "runtime_identity": identity.sha256,
+                "generation": 1,
+            }
+            snapshot[fault] = {
+                "mode": "observe",
+                "policy_digest": None,
+                "runtime_identity": "0" * 64,
+                "generation": True,
+            }[fault]
             return snapshot
 
     def forbidden_edge(**kwargs):
@@ -90,7 +110,11 @@ def test_unbound_policy_starts_no_admission_hook(tmp_path, monkeypatch, fault):
     monkeypatch.setattr(admission, "review_raw_hook_native", forbidden_edge)
     with pytest.raises(TransitionError, match="admission_policy_mismatch"):
         probe_native_protection(
-            worker=Worker(), operation_id="transition", artifact_generation="candidate",
-            expected_runtime=identity, home_dir=tmp_path, workspace=tmp_path,
+            worker=Worker(),
+            operation_id="transition",
+            artifact_generation="candidate",
+            expected_runtime=identity,
+            home_dir=tmp_path,
+            workspace=tmp_path,
             deadline_monotonic=time.monotonic() + 1,
         )

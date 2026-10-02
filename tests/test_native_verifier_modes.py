@@ -21,8 +21,8 @@ def test_shared_verifier_compiles_pending_pr_sources_and_keeps_other_runs_strict
     detector.ContributionDiffError = real_detector.ContributionDiffError
     detector.contribution_ids = lambda: {"command.fixture"} if pending else set()
     detector.catalog_ids = set
-    detector._contributions_changed = (
-        lambda _sha: ["contributions/command-sources/command.fixture.json"] if changed else []
+    detector._contributions_changed = lambda _sha: (
+        ["contributions/command-sources/command.fixture.json"] if changed else []
     )
     detector.REGEN_INPUT_PREFIXES = real_detector.REGEN_INPUT_PREFIXES
     detector.regen_artifacts_absent_from_diff = lambda _diff=None: True

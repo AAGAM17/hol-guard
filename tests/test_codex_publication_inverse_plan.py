@@ -23,8 +23,10 @@ from .test_codex_hook_recovery import crash, installed  # noqa: F401 -- shared i
 def participant_digests(context, config, manifest):
     receipt = manifest.with_name(manifest.name.replace(".manifest.json", ".authority-receipt.json"))
     journal = context.guard_home / "managed/codex/pending-hook-publication.json"
-    return {path: hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
-            for path in (config, manifest, receipt, journal, hook_secret_path(context.guard_home))}
+    return {
+        path: hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+        for path in (config, manifest, receipt, journal, hook_secret_path(context.guard_home))
+    }
 
 
 @pytest.mark.parametrize("conflicted", [False, True])
@@ -52,8 +54,13 @@ codex.mark_owned_hook_publication_conflict = exit_after_signed_conflict
 codex.CodexHarnessAdapter().install(context)
 raise RuntimeError('signed conflict boundary was not reached')
 """
-        child = subprocess.run([sys.executable, "-c", script, str(context.home_dir)],
-                               capture_output=True, text=True, check=False, timeout=15)
+        child = subprocess.run(
+            [sys.executable, "-c", script, str(context.home_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
         assert child.returncode == 17, child.stderr
         journal = context.guard_home / "managed/codex/pending-hook-publication.json"
         assert json.loads(journal.read_bytes())["phase"] == "config_conflict"
@@ -166,15 +173,17 @@ def test_inverse_plan_revalidates_snapshots_and_dependencies_from_signed_journal
     with codex_install_transaction(context.guard_home, config, actor="review-altered-inverse"):
         plan = prepare_authenticated_hook_publication_inverse(_hook_manifest_spec(context))
         if alteration == "inverse":
-            plan = replace(plan, changes=(replace(plan.changes[0], after=b"unauthorized fixture config"),
-                                          *plan.changes[1:]))
+            plan = replace(
+                plan, changes=(replace(plan.changes[0], after=b"unauthorized fixture config"), *plan.changes[1:])
+            )
         else:
             plan = replace(plan, dependencies=())
         with pytest.raises(TransitionError) as failure:
             plan.compare_before()
         assert failure.value.reason == (
             "publication_inverse_plan_invalid"
-            if alteration == "inverse" else "publication_inverse_dependencies_invalid"
+            if alteration == "inverse"
+            else "publication_inverse_dependencies_invalid"
         )
     assert participant_digests(context, config, manifest) == before
 

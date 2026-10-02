@@ -90,7 +90,11 @@ def _lock_identity(path: Path) -> tuple[int, int] | None:
 
 @contextmanager
 def _target_lock(
-    directory: Path, *, deadline: float | None = None, allow_owned: bool = False, wait: bool = False,
+    directory: Path,
+    *,
+    deadline: float | None = None,
+    allow_owned: bool = False,
+    wait: bool = False,
 ) -> Generator[None, None, None]:
     if wait and deadline is None:
         raise ValueError("Codex lifecycle waiting requires an absolute deadline.")

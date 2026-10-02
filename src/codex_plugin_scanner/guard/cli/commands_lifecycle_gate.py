@@ -54,11 +54,16 @@ def lifecycle_gate_requirement(args: argparse.Namespace) -> LifecycleGateRequire
     if command in {"install", "uninstall", "update", "disconnect"}:
         return LifecycleGateRequirement(command, _command_subject(args))
     apps_command = _string_attribute(args, "apps_command")
-    if command == "apps" and apps_command == "repair" and (
-        _bool_attribute(args, "restore_authority") or _string_attribute(args, "authority_request")
-        or _string_attribute(args, "authority_request_sha256")
-        or getattr(args, "authority_deadline_epoch", None) is not None
-        or getattr(args, "authority_verification_workspace", None) is not None
+    if (
+        command == "apps"
+        and apps_command == "repair"
+        and (
+            _bool_attribute(args, "restore_authority")
+            or _string_attribute(args, "authority_request")
+            or _string_attribute(args, "authority_request_sha256")
+            or getattr(args, "authority_deadline_epoch", None) is not None
+            or getattr(args, "authority_verification_workspace", None) is not None
+        )
     ):
         # This explicit path prepares the exact file/native plan under its
         # owner before consuming factors and requiring its repair-only grant.

@@ -32,8 +32,7 @@ class _TimedLock(Protocol):
 
 @contextmanager
 def _hold_until(lock: _TimedLock, deadline: float | None) -> Iterator[bool]:
-    acquired = (lock.acquire() if deadline is None
-                else lock.acquire(timeout=max(0.0, deadline - time.monotonic())))
+    acquired = lock.acquire() if deadline is None else lock.acquire(timeout=max(0.0, deadline - time.monotonic()))
     try:
         yield acquired
     finally:
@@ -162,11 +161,20 @@ class _PersistentNativeClient:
         )
 
     def _launch_writer(
-        self, worker: threading.Thread, process: subprocess.Popen[bytes], *, deadline_monotonic: float,
+        self,
+        worker: threading.Thread,
+        process: subprocess.Popen[bytes],
+        *,
+        deadline_monotonic: float,
     ) -> bool:
         with _hold_until(self._lock, deadline_monotonic) as state:
-            if (not state or self._closing or self._process is not process or process.poll() is not None
-                    or time.monotonic() >= deadline_monotonic):
+            if (
+                not state
+                or self._closing
+                or self._process is not process
+                or process.poll() is not None
+                or time.monotonic() >= deadline_monotonic
+            ):
                 return False
             if self._writer is not None and self._writer.is_alive():
                 return False
@@ -177,7 +185,8 @@ class _PersistentNativeClient:
 
     def _request_snapshot(
         self,
-        *, deadline_monotonic: float | None = None,
+        *,
+        deadline_monotonic: float | None = None,
     ) -> tuple[subprocess.Popen[bytes], object, Queue[bytes | _StreamFailure]] | None:
         with _hold_until(self._lifecycle_lock, deadline_monotonic) as lifecycle:
             if not lifecycle:
@@ -190,11 +199,16 @@ class _PersistentNativeClient:
                 return self._snapshot_locked(deadline_monotonic=deadline_monotonic)
 
     def _snapshot_locked(
-        self, *, deadline_monotonic: float | None,
+        self,
+        *,
+        deadline_monotonic: float | None,
     ) -> tuple[subprocess.Popen[bytes], object, Queue[bytes | _StreamFailure]] | None:
         if not self._start(deadline_monotonic=deadline_monotonic):
-            self._record_failure("native_client_timed_out" if deadline_monotonic is not None
-                                 and time.monotonic() >= deadline_monotonic else "native_client_start_failed")
+            self._record_failure(
+                "native_client_timed_out"
+                if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic
+                else "native_client_start_failed"
+            )
             return None
         process = self._process
         stdin = process.stdin if process is not None else None
@@ -227,9 +241,13 @@ class _PersistentNativeClient:
                 return None
             frame = struct.pack(">I", len(payload)) + payload
             if not self._write_frame(
-                stdin, frame, deadline_monotonic=deadline_monotonic,
+                stdin,
+                frame,
+                deadline_monotonic=deadline_monotonic,
                 launch_worker=lambda worker: self._launch_writer(
-                    worker, process, deadline_monotonic=deadline_monotonic,
+                    worker,
+                    process,
+                    deadline_monotonic=deadline_monotonic,
                 ),
             ):
                 self.close(deadline_monotonic=deadline_monotonic)
@@ -273,14 +291,16 @@ class _PersistentNativeClient:
                 return response
 
     def _record_current_failure(self, deadline_monotonic: float) -> None:
-        self._record_failure("native_client_timed_out" if time.monotonic() >= deadline_monotonic
-                             else "native_client_stream_failed")
+        self._record_failure(
+            "native_client_timed_out" if time.monotonic() >= deadline_monotonic else "native_client_stream_failed"
+        )
 
     def _request_is_current(
         self,
         process: subprocess.Popen[bytes],
         responses: Queue[bytes | _StreamFailure],
-        *, deadline_monotonic: float | None = None,
+        *,
+        deadline_monotonic: float | None = None,
     ) -> bool:
         """Reject a snapshot invalidated by concurrent client teardown."""
 
@@ -292,8 +312,12 @@ class _PersistentNativeClient:
                 if not state:
                     self._record_failure("native_client_timed_out")
                     return False
-                return (not self._closing and self._process is process and self._responses is responses
-                        and process.poll() is None)
+                return (
+                    not self._closing
+                    and self._process is process
+                    and self._responses is responses
+                    and process.poll() is None
+                )
 
     def _close_locked(self, *, deadline_monotonic: float | None = None) -> bool:
         process = self._process
@@ -302,11 +326,13 @@ class _PersistentNativeClient:
         responses = self._responses
         if process is None:
             return True
-        deadline = (time.monotonic() + 3 * _CLIENT_CLOSE_TIMEOUT_SECONDS
-                    if deadline_monotonic is None else deadline_monotonic)
+        deadline = (
+            time.monotonic() + 3 * _CLIENT_CLOSE_TIMEOUT_SECONDS if deadline_monotonic is None else deadline_monotonic
+        )
 
         def remaining() -> float:
             return min(_CLIENT_CLOSE_TIMEOUT_SECONDS, max(0.0, deadline - time.monotonic()))
+
         with suppress(Full):
             responses.put_nowait(_StreamFailure())
         if process.poll() is None:
@@ -323,8 +349,11 @@ class _PersistentNativeClient:
             reader.join(timeout=remaining())
         if writer is not None and writer is not threading.current_thread():
             writer.join(timeout=remaining())
-        if (process.poll() is None or (reader is not None and reader.is_alive())
-                or (writer is not None and writer.is_alive())):
+        if (
+            process.poll() is None
+            or (reader is not None and reader.is_alive())
+            or (writer is not None and writer.is_alive())
+        ):
             # Keep ownership for a later close; do not block on a buffered
             # stream lock held by the unfinished reader or reuse its generation.
             return False
@@ -338,8 +367,9 @@ class _PersistentNativeClient:
         return True
 
     def close(self, *, deadline_monotonic: float | None = None) -> bool:
-        deadline = (time.monotonic() + 3 * _CLIENT_CLOSE_TIMEOUT_SECONDS
-                    if deadline_monotonic is None else deadline_monotonic)
+        deadline = (
+            time.monotonic() + 3 * _CLIENT_CLOSE_TIMEOUT_SECONDS if deadline_monotonic is None else deadline_monotonic
+        )
         # Mark retirement and wake an in-flight response wait before acquiring
         # its lifecycle lock. A contended lock cannot consume a new budget.
         self._closing = True

@@ -4,6 +4,7 @@ Artifact metadata remains a fixture. The owned-process case replaces real
 daemon processes; this is not installed Desktop or signed-release qualification.
 Hook argv, publication, store and proof are real.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -82,12 +83,20 @@ class OwnedDaemonLifecycle:
     def start(self, deadline):
         assert self.child is None
         ready = self.home / f"owned-daemon-ready-{len(self.pids)}"
-        environment = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home),
-                       "HOL_GUARD_HOME": str(self.guard)}
+        environment = {
+            **os.environ,
+            "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
+            "HOL_GUARD_HOME": str(self.guard),
+        }
         child = subprocess.Popen(
             [sys.executable, "-c", DAEMON_PROCESS, str(self.home), str(self.guard), str(ready)],
-            env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, start_new_session=True,
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
         )
         self.child = child
         self.stop_requested = False
@@ -151,7 +160,9 @@ class OwnedDaemonLifecycle:
 @pytest.mark.usefixtures("native_hook_force")
 @pytest.mark.parametrize("owned_daemon_processes", [False, True])
 def test_configured_native_inverse_restores_binding_store_and_selection(
-    transition, tmp_path, owned_daemon_processes,  # noqa: F811
+    transition,
+    tmp_path,
+    owned_daemon_processes,  # noqa: F811
 ):
     fixture_runtime, fixture_plan, _bindings, pointer = transition
     home, workspace = tmp_path / "hook-home", tmp_path / "hook-workspace"
@@ -165,11 +176,20 @@ def test_configured_native_inverse_restores_binding_store_and_selection(
     identity = native_runtime_status().identity
     assert identity is not None
     metadata = identity.path.stat()
-    native = {"path": str(identity.path), "size": identity.size,
-              "mtime_ns": identity.mtime_ns, "sha256": identity.sha256}
-    dependency = TransitionFile.artifact_dependency({
-        **native, "owner_uid": metadata.st_uid, "mode": metadata.st_mode & 0o777, "role": "artifact",
-    })
+    native = {
+        "path": str(identity.path),
+        "size": identity.size,
+        "mtime_ns": identity.mtime_ns,
+        "sha256": identity.sha256,
+    }
+    dependency = TransitionFile.artifact_dependency(
+        {
+            **native,
+            "owner_uid": metadata.st_uid,
+            "mode": metadata.st_mode & 0o777,
+            "role": "artifact",
+        }
+    )
     selection = next(change for change in fixture_plan.files if change.kind == "selection")
     runtime = RuntimeTransition(context.guard_home, store, install_store=store)
     password = "isolated-configured-native-inverse-password"
@@ -193,9 +213,14 @@ def test_configured_native_inverse_restores_binding_store_and_selection(
 
         def observe_protection(self, artifact, operation_id, *, deadline_monotonic):
             observation = observe_configured_codex_hook(
-                operation_id=operation_id, artifact_generation=artifact["generation"], expected_runtime=identity,
-                guard_home=context.guard_home, config_path=home / ".codex/config.toml", workspace=workspace,
-                deadline_monotonic=deadline_monotonic, receipt_store=store,
+                operation_id=operation_id,
+                artifact_generation=artifact["generation"],
+                expected_runtime=identity,
+                guard_home=context.guard_home,
+                config_path=home / ".codex/config.toml",
+                workspace=workspace,
+                deadline_monotonic=deadline_monotonic,
+                receipt_store=store,
             )
             proofs.append(observation)
             if artifact == plan.candidate:
@@ -217,29 +242,44 @@ def test_configured_native_inverse_restores_binding_store_and_selection(
         assert any(change.before != change.after for change in prepared.files), "exercise actual binding publication"
         before_files = {change.path: change.before for change in prepared.files if change.expected_digest is None}
         after_row = {**before_row, "manifest": prepared.manifest, "updated_at": "candidate-fixture"}
-        plan = replace(fixture_plan, operation_id=str(uuid.uuid4()), files=(*prepared.files, selection, dependency),
-                       managed_installs=(TransitionInstall("codex", before_row, after_row),),
-                       native_runtimes={"candidate": native, "predecessor": native}, deadline_epoch=time.time() + 60)
+        plan = replace(
+            fixture_plan,
+            operation_id=str(uuid.uuid4()),
+            files=(*prepared.files, selection, dependency),
+            managed_installs=(TransitionInstall("codex", before_row, after_row),),
+            native_runtimes={"candidate": native, "predecessor": native},
+            deadline_epoch=time.time() + 60,
+        )
         grant = require_high_risk(
-            context.guard_home, purpose="protection_lifecycle",
+            context.guard_home,
+            purpose="protection_lifecycle",
             approval_gate_input=ApprovalGateInput(password=password),
-            action="runtime.transition", scope="local-protection", subject=plan.subject(),
+            action="runtime.transition",
+            scope="local-protection",
+            subject=plan.subject(),
         )
         assert grant is not None
         result = RuntimeTransitionCoordinator(runtime, Driver()).activate(
-            plan, authority_home=context.guard_home, grant=grant,
+            plan,
+            authority_home=context.guard_home,
+            grant=grant,
         )
         assert result.phase == "FailedWithVerifiedRollback", (result.first_cause, result.recovery_causes, events)
         assert result.first_cause == "injected_after_real_candidate_protection"
         assert password not in runtime.path.read_text() and grant.grant_id not in runtime.path.read_text()
         assert len(proofs) == 2
         assert all(proof.allow_receipt["authority"] == "rust" for proof in proofs)
-        assert all(proof.allow_receipt["decision"] == "allow" and proof.deny_receipt["decision"] == "deny"
-                   for proof in proofs)
+        assert all(
+            proof.allow_receipt["decision"] == "allow" and proof.deny_receipt["decision"] == "deny" for proof in proofs
+        )
         for path, before in before_files.items():
             assert (path.read_bytes() if path.exists() else None) == before
-        assert events == [("stop", plan.predecessor["generation"]), ("start", plan.candidate["generation"]),
-                          ("stop", plan.candidate["generation"]), ("start", plan.predecessor["generation"])]
+        assert events == [
+            ("stop", plan.predecessor["generation"]),
+            ("start", plan.candidate["generation"]),
+            ("stop", plan.candidate["generation"]),
+            ("start", plan.predecessor["generation"]),
+        ]
         if lifecycle is not None:
             assert len(lifecycle.pids) == 3 and len(set(lifecycle.pids)) == 3
             assert lifecycle.retired == lifecycle.pids[:2]
@@ -274,8 +314,12 @@ def test_configured_native_inverse_restores_binding_store_and_selection(
             "managed_install_restored": True,
             "selection_restored": True,
             "native_hook_proofs": [
-                {"allow": proof.allow_receipt["decision"], "deny": proof.deny_receipt["decision"],
-                 "allow_authority": proof.allow_receipt["authority"], "deny_authority": proof.deny_receipt["authority"]}
+                {
+                    "allow": proof.allow_receipt["decision"],
+                    "deny": proof.deny_receipt["decision"],
+                    "allow_authority": proof.allow_receipt["authority"],
+                    "deny_authority": proof.deny_receipt["authority"],
+                }
                 for proof in proofs
             ],
         }

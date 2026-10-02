@@ -23,22 +23,31 @@ from .bounded_cli_hook_test_support import config
 @pytest.mark.parametrize("harness", ["copilot", "grok", "hermes", "openclaw", "kimi", "zcode"])
 def test_timeout_cannot_grant_unreviewed_protected_action(tmp_path, monkeypatch, harness):
     monkeypatch.setattr(daemon, "try_daemon_hook", lambda **kwargs: None)
-    monkeypatch.setattr(bridge, "run_isolated_hook_process",
-                        lambda *args, **kwargs: BoundedHookProcessResult(None, "", False, True))
+    monkeypatch.setattr(
+        bridge, "run_isolated_hook_process", lambda *args, **kwargs: BoundedHookProcessResult(None, "", False, True)
+    )
     output = io.StringIO()
     with redirect_stdout(output):
-        bridge.run_bounded_cli_hook(config(tmp_path, harness=harness), input_text=json.dumps({
-            "hook_event_name": "PreToolUse", "tool_name": "Bash",
-            "tool_input": {"command": "rm -rf protected-project"},
-        }))
+        bridge.run_bounded_cli_hook(
+            config(tmp_path, harness=harness),
+            input_text=json.dumps(
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "rm -rf protected-project"},
+                }
+            ),
+        )
     response = json.loads(output.getvalue())
     specific = response.get("hookSpecificOutput", {})
     assert response.get("decision") != "allow"
     assert response.get("permissionDecision") != "allow"
     assert specific.get("permissionDecision") != "allow"
-    assert (response.get("decision") in {"deny", "block"}
-            or response.get("permissionDecision") == "deny"
-            or specific.get("permissionDecision") == "deny")
+    assert (
+        response.get("decision") in {"deny", "block"}
+        or response.get("permissionDecision") == "deny"
+        or specific.get("permissionDecision") == "deny"
+    )
 
 
 def test_daemon_attempt_cannot_renew_cli_fallback_budget(tmp_path, monkeypatch):
@@ -91,16 +100,25 @@ def test_open_input_pipe_obeys_original_bridge_budget(tmp_path, generated, parti
     hook_config["timeout_seconds"] = 0.15
     if generated:
         script = tmp_path / "bounded-hook.py"
-        script.write_text(_render_bounded_hook_script(
-            guard_home=tmp_path / "guard-home", harness="grok", timeout_seconds=0.15,
-        ))
+        script.write_text(
+            _render_bounded_hook_script(
+                guard_home=tmp_path / "guard-home",
+                harness="grok",
+                timeout_seconds=0.15,
+            )
+        )
         command = [sys.executable, "-S", str(script)]
     else:
-        command = [sys.executable, "-c", "import sys; from codex_plugin_scanner.guard.adapters."
-                   "bounded_cli_hook_bridge import main_from_argv; raise SystemExit(main_from_argv(sys.argv[1:]))",
-                   json.dumps(hook_config)]
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, text=True)
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; from codex_plugin_scanner.guard.adapters."
+            "bounded_cli_hook_bridge import main_from_argv; raise SystemExit(main_from_argv(sys.argv[1:]))",
+            json.dumps(hook_config),
+        ]
+    process = subprocess.Popen(
+        command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
     assert process.stdin is not None
     try:
         if partial:
@@ -151,8 +169,10 @@ def test_invalid_input_never_reaches_protected_evaluator(tmp_path, monkeypatch, 
     with redirect_stdout(output):
         if generated:
             namespace = {"__name__": "input_fixture"}
-            exec(_render_bounded_hook_script(guard_home=tmp_path / "guard-home", harness="grok",
-                                            timeout_seconds=1), namespace)
+            exec(
+                _render_bounded_hook_script(guard_home=tmp_path / "guard-home", harness="grok", timeout_seconds=1),
+                namespace,
+            )
             namespace["_post_hook"] = refuse_evaluation
             namespace["main"]()
         else:
@@ -173,12 +193,15 @@ def test_expired_failure_does_not_read_posture_files(tmp_path, monkeypatch, gene
     with redirect_stdout(output):
         if generated:
             namespace = {"__name__": "expired_fixture"}
-            exec(_render_bounded_hook_script(guard_home=tmp_path / "guard-home", harness="grok",
-                                            timeout_seconds=1), namespace)
+            exec(
+                _render_bounded_hook_script(guard_home=tmp_path / "guard-home", harness="grok", timeout_seconds=1),
+                namespace,
+            )
             namespace["_HOOK_DEADLINE_MONOTONIC"] = time.monotonic() - 1
             namespace["_read_private_text"] = refuse_read
             namespace["_fail"]("{}")
         else:
+
             def exhausted_daemon(**kwargs):
                 time.sleep(0.04)
                 monkeypatch.setattr(Path, "read_text", refuse_read)

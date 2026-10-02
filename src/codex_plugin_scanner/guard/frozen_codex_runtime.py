@@ -314,8 +314,11 @@ def _validate_frozen_codex_hook_launch(
     current_invocation = str(Path(sys.executable).expanduser().resolve(strict=True))
     if expected_artifact is not None:
         current_invocation = str(expected_artifact.executable)
-        if (target_path != current_invocation or target.get("sha256") != expected_artifact.executable_sha256
-                or manifest.get("package_version") != expected_artifact.package_version):
+        if (
+            target_path != current_invocation
+            or target.get("sha256") != expected_artifact.executable_sha256
+            or manifest.get("package_version") != expected_artifact.package_version
+        ):
             raise ValueError("managed frozen Codex transition artifact identity is invalid")
     if invocation_path != current_invocation or not isinstance(target_path, str):
         raise ValueError("managed frozen Codex hook executable identity is invalid")

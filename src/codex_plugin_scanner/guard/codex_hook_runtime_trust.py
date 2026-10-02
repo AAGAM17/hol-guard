@@ -82,8 +82,12 @@ class TrustedCodexHookLaunch:
             deadline_monotonic=self._launch_deadline(timeout_seconds),
             allow_windows_breakaway=True,
         )
-        return (result.returncode == 0 and not result.output_limit_exceeded
-                and not result.timed_out and not result.containment_failed)
+        return (
+            result.returncode == 0
+            and not result.output_limit_exceeded
+            and not result.timed_out
+            and not result.containment_failed
+        )
 
     def run_fallback(
         self,
@@ -229,13 +233,17 @@ def _verified_packaged_files(manifest: Mapping[str, object]) -> dict[str, dict[s
 def _verify_transport(
     packaged_by_role: Mapping[str, dict[str, object]],
     manifest: Mapping[str, object],
-    *, recorded_runtime_path: Path | None = None,
+    *,
+    recorded_runtime_path: Path | None = None,
 ) -> None:
     runtime_path = Path(__file__) if recorded_runtime_path is None else recorded_runtime_path
-    for role, filename in (("hook_probe", "runtime_transition_hook_probe.py"),
-                           ("native_receipt", "native_decision_receipt.py")):
-        if (role in packaged_by_role
-                and packaged_by_role[role].get("path") != str(runtime_path.with_name(filename).resolve())):
+    for role, filename in (
+        ("hook_probe", "runtime_transition_hook_probe.py"),
+        ("native_receipt", "native_decision_receipt.py"),
+    ):
+        if role in packaged_by_role and packaged_by_role[role].get("path") != str(
+            runtime_path.with_name(filename).resolve()
+        ):
             raise ValueError("managed Codex observation package path is invalid")
     bridge_path = runtime_path.with_name("adapters").joinpath("codex_daemon_hook_bridge.py").resolve()
     bridge_resume_path = runtime_path.with_name("adapters").joinpath("codex_daemon_hook_resume.py").resolve()
@@ -296,7 +304,9 @@ def verify_captured_launch_generation(
     context = _mapping(manifest.get("context"), label="context")
     registration = _mapping(manifest.get("config"), label="config target")
     home, runtime_home, target = (
-        context.get("guard_home"), context.get("runtime_guard_home"), registration.get("target"),
+        context.get("guard_home"),
+        context.get("runtime_guard_home"),
+        registration.get("target"),
     )
     if not all(isinstance(value, str) for value in (home, runtime_home, target)):
         raise ValueError("managed Codex hook captured context is invalid")
@@ -312,10 +322,19 @@ def verify_captured_launch_generation(
         if not isinstance(trust_path, str):
             raise ValueError("managed Codex hook captured trust path is invalid")
         _verify_transport(packaged, manifest, recorded_runtime_path=Path(trust_path))
-        _verify_launch_contracts(manifest, interpreter=interpreter, packaged_by_role=packaged,
-                                 runtime_guard_home=Path(runtime_home), fallback_command=fallback, start_command=start)
+        _verify_launch_contracts(
+            manifest,
+            interpreter=interpreter,
+            packaged_by_role=packaged,
+            runtime_guard_home=Path(runtime_home),
+            fallback_command=fallback,
+            start_command=start,
+        )
         _verify_registered_bridge_argv(
-            manifest, interpreter=interpreter, bridge=packaged["bridge"], config_json=config_json,
+            manifest,
+            interpreter=interpreter,
+            bridge=packaged["bridge"],
+            config_json=config_json,
         )
     else:
         from .frozen_codex_runtime import (
@@ -328,11 +347,22 @@ def verify_captured_launch_generation(
         if any(identity.get("path") != target_identity.get("path") for identity in packaged.values()):
             raise ValueError("managed frozen Codex captured package is incomplete")
         _verify_frozen_transport(manifest, packaged)
-        _verify_frozen_launch_contracts(manifest, interpreter=interpreter, guard_home=Path(runtime_home),
-                                        fallback_command=fallback, start_command=start)
-        _verify_frozen_bridge_contract(manifest, interpreter=interpreter, state=state,
-                                       configured_manifest=configured_manifest, fallback_command=fallback,
-                                       start_command=start, config_json=config_json)
+        _verify_frozen_launch_contracts(
+            manifest,
+            interpreter=interpreter,
+            guard_home=Path(runtime_home),
+            fallback_command=fallback,
+            start_command=start,
+        )
+        _verify_frozen_bridge_contract(
+            manifest,
+            interpreter=interpreter,
+            state=state,
+            configured_manifest=configured_manifest,
+            fallback_command=fallback,
+            start_command=start,
+            config_json=config_json,
+        )
     check_hook_validation_deadline()
     return interpreter, packaged
 

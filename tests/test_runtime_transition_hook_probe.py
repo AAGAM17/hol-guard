@@ -19,9 +19,14 @@ from tests.test_native_decision_receipt import _receipt
 
 def probe_payload(command="pwd"):
     return {
-        "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command},
-        PROBE_FIELD: {"schema": PROBE_SCHEMA, "operation_id": str(uuid.uuid4()),
-                      "request_id": "transition-hook-" + uuid.uuid4().hex},
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
+        PROBE_FIELD: {
+            "schema": PROBE_SCHEMA,
+            "operation_id": str(uuid.uuid4()),
+            "request_id": "transition-hook-" + uuid.uuid4().hex,
+        },
     }
 
 
@@ -34,8 +39,10 @@ def test_probe_metadata_is_strict_and_never_a_decision_override(fault):
         payload[PROBE_FIELD] = "allow"
     else:
         field, value = {
-            "extended": ("approval", "allow"), "schema": ("schema", "foreign"),
-            "operation": ("operation_id", "foreign"), "request": ("request_id", "request-1"),
+            "extended": ("approval", "allow"),
+            "schema": ("schema", "foreign"),
+            "operation": ("operation_id", "foreign"),
+            "request": ("request_id", "request-1"),
         }[fault]
         payload[PROBE_FIELD][field] = value
     assert transition_hook_probe(payload) is None
@@ -49,8 +56,10 @@ def test_bridge_probe_sideband_requires_fresh_redacted_enforcing_receipt(capsys,
     overrides = {"request_id": request_id, "harness": "codex", "event_name": "PreToolUse"}
     if fault in {"request", "event", "harness", "observe"}:
         field, value = {
-            "request": ("request_id", "foreign"), "event": ("event_name", "PostToolUse"),
-            "harness": ("harness", "claude-code"), "observe": ("observe_mode", True),
+            "request": ("request_id", "foreign"),
+            "event": ("event_name", "PostToolUse"),
+            "harness": ("harness", "claude-code"),
+            "observe": ("observe_mode", True),
         }[fault]
         overrides[field] = value
     receipt = _receipt(**overrides)
@@ -114,8 +123,13 @@ def test_actual_native_hook_worker_binds_observation_to_fresh_probe_id(tmp_path,
     payload = probe_payload(command)
     try:
         result = worker.review_http_payload(
-            payload=payload, params={}, default_harness="codex", home_dir=tmp_path,
-            guard_home=home, workspace=workspace, deadline=deadline,
+            payload=payload,
+            params={},
+            default_harness="codex",
+            home_dir=tmp_path,
+            guard_home=home,
+            workspace=workspace,
+            deadline=deadline,
         )
         receipt = worker.last_native_decision_receipt
         assert receipt is not None and receipt["decision"] == decision

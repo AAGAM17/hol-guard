@@ -28,12 +28,20 @@ class RuntimeStageTimings:
         now = time.monotonic()
         # Diagnostic loss must preserve the operation's first cause.
         with suppress(OSError, ValueError):
-            print("guard_runtime_stage " + json.dumps({
-                "stage": self.stage,
-                "phase": phase,
-                "elapsed_ms": max(0, int((now - self.started) * 1000)),
-                "duration_ms": 0 if phase == "started" else max(0, int((now - self.stage_started) * 1000)),
-            }, sort_keys=True), file=sys.stderr, flush=True)
+            print(
+                "guard_runtime_stage "
+                + json.dumps(
+                    {
+                        "stage": self.stage,
+                        "phase": phase,
+                        "elapsed_ms": max(0, int((now - self.started) * 1000)),
+                        "duration_ms": 0 if phase == "started" else max(0, int((now - self.stage_started) * 1000)),
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
 
     def finish(self) -> None:
         self._emit("finished")

@@ -69,6 +69,7 @@ def test_owned_candidate_is_content_identity_not_protection(owned, tmp_path: Pat
 def test_identity_changes_refuse(owned, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str):
     binding, native, parent, child = owned
     calls = {100: 0, 101: 0}
+
     def snapshot(pid, deadline):
         calls[pid] += 1
         value = parent if pid == 100 else child
@@ -83,6 +84,7 @@ def test_identity_changes_refuse(owned, tmp_path: Path, monkeypatch: pytest.Monk
         if change == "exe" and pid == 100:
             return capture.ProcessSnapshot(pid, 1, value.uid, value.start_token, native)
         return value
+
     monkeypatch.setattr(capture, "_process_snapshot", snapshot)
     if change == "state":
         states = iter([{"pid": 100}, {"pid": 101}])
@@ -145,7 +147,8 @@ def test_actual_kernel_direct_child_ownership():
         pytest.skip("unsupported platform fails closed")
     with subprocess.Popen(
         [capture.sys.executable, "-c", "import sys; print('ready', flush=True); sys.stdin.read(1)"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
     ) as child:
         try:
             assert child.stdout is not None
@@ -179,9 +182,11 @@ def test_same_binary_pool_is_hashed_once(owned, tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(capture, "_process_snapshot", lambda pid, deadline: {100: parent, 101: child, 102: second}[pid])
     original = capture._native_identity
     hashes = []
+
     def hash_once(path, deadline):
         hashes.append(path)
         return original(path, deadline)
+
     monkeypatch.setattr(capture, "_native_identity", hash_once)
     assert len(collect(binding, tmp_path).processes) == 2
     assert hashes == [native]
@@ -201,9 +206,11 @@ def test_native_below_exact_core_worker_is_captured(owned, tmp_path: Path, monke
 def test_arbitrary_intermediate_process_is_not_traversed(owned, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     binding, _, parent, _ = owned
     unrelated = capture.ProcessSnapshot(102, 100, parent.uid, "unrelated", tmp_path / "unrelated")
+
     def children(pid, deadline):
         assert pid == 100
         return (102,)
+
     monkeypatch.setattr(capture, "_child_pids", children)
     monkeypatch.setattr(capture, "_process_snapshot", lambda pid, deadline: {100: parent, 102: unrelated}[pid])
     with pytest.raises(capture.NativeCaptureError, match="missing"):
@@ -215,6 +222,7 @@ def test_intermediate_worker_reuse_refuses(owned, tmp_path: Path, monkeypatch: p
     worker = capture.ProcessSnapshot(102, 100, parent.uid, "worker", parent.executable)
     child = capture.ProcessSnapshot(101, 102, parent.uid, "native", native)
     count = 0
+
     def snapshot(pid, deadline):
         nonlocal count
         if pid == 102:
@@ -222,6 +230,7 @@ def test_intermediate_worker_reuse_refuses(owned, tmp_path: Path, monkeypatch: p
             if count > 1:
                 return capture.ProcessSnapshot(102, 100, parent.uid, "reused", parent.executable)
         return {100: parent, 101: child, 102: worker}[pid]
+
     monkeypatch.setattr(capture, "_child_pids", lambda pid, deadline: {100: (102,), 102: (101,)}[pid])
     monkeypatch.setattr(capture, "_process_snapshot", snapshot)
     with pytest.raises(capture.NativeCaptureError, match="process_changed"):
@@ -231,8 +240,13 @@ def test_intermediate_worker_reuse_refuses(owned, tmp_path: Path, monkeypatch: p
 def test_worker_chain_depth_is_bounded(owned, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     binding, _, parent, _ = owned
     monkeypatch.setattr(capture, "_child_pids", lambda pid, deadline: (pid + 1,))
-    monkeypatch.setattr(capture, "_process_snapshot", lambda pid, deadline: parent if pid == 100 else
-                        capture.ProcessSnapshot(pid, pid - 1, parent.uid, str(pid), parent.executable))
+    monkeypatch.setattr(
+        capture,
+        "_process_snapshot",
+        lambda pid, deadline: (
+            parent if pid == 100 else capture.ProcessSnapshot(pid, pid - 1, parent.uid, str(pid), parent.executable)
+        ),
+    )
     with pytest.raises(capture.NativeCaptureError, match="capacity"):
         collect(binding, tmp_path)
 
@@ -241,8 +255,13 @@ def test_child_capacity_is_global_across_workers(owned, tmp_path: Path, monkeypa
     binding, _, parent, _ = owned
     children = tuple(range(101, 101 + capture.MAX_CHILDREN))
     monkeypatch.setattr(capture, "_child_pids", lambda pid, deadline: children if pid == 100 else (200,))
-    monkeypatch.setattr(capture, "_process_snapshot", lambda pid, deadline: parent if pid == 100 else
-                        capture.ProcessSnapshot(pid, 100, parent.uid, str(pid), parent.executable))
+    monkeypatch.setattr(
+        capture,
+        "_process_snapshot",
+        lambda pid, deadline: (
+            parent if pid == 100 else capture.ProcessSnapshot(pid, 100, parent.uid, str(pid), parent.executable)
+        ),
+    )
     with pytest.raises(capture.NativeCaptureError, match="capacity"):
         collect(binding, tmp_path)
 
@@ -250,14 +269,18 @@ def test_child_capacity_is_global_across_workers(owned, tmp_path: Path, monkeypa
 def test_file_mutation_during_hash_refuses(owned, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     binding, native, *_ = owned
     original = capture.hashlib.sha256
+
     class MutatingHash:
         def __init__(self):
             self.digest = original()
+
         def update(self, value):
             self.digest.update(value)
             native.write_bytes(b"changed")
+
         def hexdigest(self):
             return self.digest.hexdigest()
+
     monkeypatch.setattr(capture.hashlib, "sha256", MutatingHash)
     with pytest.raises(capture.NativeCaptureError, match="file_changed"):
         collect(binding, tmp_path)
@@ -267,14 +290,18 @@ def test_original_deadline_expires_during_hash(owned, tmp_path: Path, monkeypatc
     binding, *_ = owned
     deadline = time.monotonic() + 2
     original = capture.hashlib.sha256
+
     class ExpiringHash:
         def __init__(self):
             self.digest = original()
+
         def update(self, value):
             self.digest.update(value)
             monkeypatch.setattr(capture.time, "monotonic", lambda: deadline + 1)
+
         def hexdigest(self):
             return self.digest.hexdigest()
+
     monkeypatch.setattr(capture.hashlib, "sha256", ExpiringHash)
     with pytest.raises(capture.NativeCaptureError, match="deadline"):
         capture.capture_owned_native_candidate(tmp_path, binding, deadline_monotonic=deadline)

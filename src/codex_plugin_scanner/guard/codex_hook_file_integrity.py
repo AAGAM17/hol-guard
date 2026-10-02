@@ -57,7 +57,8 @@ def hook_validation_deadline(deadline: float | None) -> Iterator[None]:
     """
     if deadline is not None and (isinstance(deadline, bool) or not math.isfinite(deadline)):
         raise CodexHookIntegrityError(
-            "codex_hook_validation_deadline_invalid", "Codex hook validation budget is invalid.",
+            "codex_hook_validation_deadline_invalid",
+            "Codex hook validation budget is invalid.",
         )
     parent = active_hook_validation_deadline()
     effective = parent if deadline is None else deadline if parent is None else min(parent, deadline)

@@ -30,25 +30,50 @@ def transition_request(tmp_path):
     shim = root / "current-hol-guard"
     shim.write_bytes(b"fixture stable launcher")
     shim.chmod(0o700)
-    previous = {"schema": "hol-guard-core-install.v1", "version": "3.15.2", "sourceCommit": "a" * 40,
-                "target": "fixture", "relativePath": "previous", "sha256": digests["predecessor"],
-                "installedAt": "2026-10-01T00:00:00Z"}
+    previous = {
+        "schema": "hol-guard-core-install.v1",
+        "version": "3.15.2",
+        "sourceCommit": "a" * 40,
+        "target": "fixture",
+        "relativePath": "previous",
+        "sha256": digests["predecessor"],
+        "installedAt": "2026-10-01T00:00:00Z",
+    }
     pointer = root / "current.json"
     pointer.write_text(json.dumps(previous))
     pointer.chmod(0o600)
     candidate = {**previous, "relativePath": "candidate"}
-    receipt = {"format": "onedir-zip", "archiveSha256": "b" * 64, "bootstrapSchema": "bootstrap.v2",
-               "minimumDesktopVersion": "3.0.117"}
-    identity = [candidate["version"], candidate["sourceCommit"], candidate["target"], "onedir-zip", "b" * 64,
-                receipt["bootstrapSchema"], receipt["minimumDesktopVersion"], digests["candidate"]]
+    receipt = {
+        "format": "onedir-zip",
+        "archiveSha256": "b" * 64,
+        "bootstrapSchema": "bootstrap.v2",
+        "minimumDesktopVersion": "3.0.117",
+    }
+    identity = [
+        candidate["version"],
+        candidate["sourceCommit"],
+        candidate["target"],
+        "onedir-zip",
+        "b" * 64,
+        receipt["bootstrapSchema"],
+        receipt["minimumDesktopVersion"],
+        digests["candidate"],
+    ]
     receipt["generation"] = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
     candidate["artifact"] = receipt
     operation_id = str(uuid.uuid4())
     context = HarnessContext(tmp_path, None, tmp_path / "guard")
-    payload = {"schema": REQUEST_SCHEMA, "operation_id": operation_id, "guard_home": str(context.guard_home),
-               "home_dir": str(tmp_path), "managed_root": str(root),
-               "previous_pointer_sha256": hashlib.sha256(pointer.read_bytes()).hexdigest(),
-               "candidate_pointer": candidate, "executable_digests": digests, "native_runtimes": {}}
+    payload = {
+        "schema": REQUEST_SCHEMA,
+        "operation_id": operation_id,
+        "guard_home": str(context.guard_home),
+        "home_dir": str(tmp_path),
+        "managed_root": str(root),
+        "previous_pointer_sha256": hashlib.sha256(pointer.read_bytes()).hexdigest(),
+        "candidate_pointer": candidate,
+        "executable_digests": digests,
+        "native_runtimes": {},
+    }
     private = tmp_path / "request"
     private.mkdir(mode=0o700)
     path = private / "request.json"
@@ -60,9 +85,14 @@ def transition_request(tmp_path):
 def load(request):
     path, payload, context = request
     path.write_text(json.dumps(payload))
-    return load_desktop_transition_request(path, context=context, operation_id=payload["operation_id"],
-                                           deadline_epoch=time.time() + 20, deadline_monotonic=time.monotonic() + 20,
-                                           request_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    return load_desktop_transition_request(
+        path,
+        context=context,
+        operation_id=payload["operation_id"],
+        deadline_epoch=time.time() + 20,
+        deadline_monotonic=time.monotonic() + 20,
+        request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+    )
 
 
 def test_equal_version_legacy_to_onedir_request_derives_exact_selection(transition_request):
@@ -80,13 +110,20 @@ def test_equal_version_legacy_to_onedir_request_derives_exact_selection(transiti
     assert path.exists()
 
 
-@pytest.mark.parametrize("fault,reason", [
-    ("inverse", "transition_request_invalid"), ("operation", "plan_context_mismatch"),
-    ("home", "plan_context_mismatch"), ("relative", "selection_path_invalid"),
-    ("generation", "artifact_generation_changed"), ("previous", "selection_generation_changed"),
-    ("root", "selection_path_invalid"), ("missing_receipt", "selection_receipt_missing"),
-    ("private", "transition_request_unavailable"),
-])
+@pytest.mark.parametrize(
+    "fault,reason",
+    [
+        ("inverse", "transition_request_invalid"),
+        ("operation", "plan_context_mismatch"),
+        ("home", "plan_context_mismatch"),
+        ("relative", "selection_path_invalid"),
+        ("generation", "artifact_generation_changed"),
+        ("previous", "selection_generation_changed"),
+        ("root", "selection_path_invalid"),
+        ("missing_receipt", "selection_receipt_missing"),
+        ("private", "transition_request_unavailable"),
+    ],
+)
 def test_request_refuses_untrusted_context_and_receipts(transition_request, fault, reason):
     path, payload, context = transition_request
     if fault == "inverse":
@@ -95,9 +132,14 @@ def test_request_refuses_untrusted_context_and_receipts(transition_request, faul
         payload["operation_id"] = str(uuid.uuid4())
         path.write_text(json.dumps(payload))
         with pytest.raises(TransitionError, match=reason):
-            load_desktop_transition_request(path, context=context, operation_id=str(uuid.uuid4()),
-                                           deadline_epoch=time.time() + 10, deadline_monotonic=time.monotonic() + 10,
-                                           request_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+            load_desktop_transition_request(
+                path,
+                context=context,
+                operation_id=str(uuid.uuid4()),
+                deadline_epoch=time.time() + 10,
+                deadline_monotonic=time.monotonic() + 10,
+                request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
         return
     elif fault == "home":
         payload["home_dir"] = str(context.home_dir / "foreign")
@@ -126,8 +168,12 @@ def test_activation_refuses_source_process_and_consumes_factor_before_any_launch
     monkeypatch.setenv("HOL_GUARD_APPROVAL_PASSWORD", "fixture-only-unused-factor")
     monkeypatch.setattr(command, "lifecycle_authority_home", lambda *args, **kwargs: context.guard_home)
     monkeypatch.setattr(sys, "frozen", False, raising=False)
-    args = argparse.Namespace(desktop_command="transition-activate", operation_id=payload["operation_id"],
-                              deadline_epoch=time.time() + 10, request=str(transition_request[0]))
+    args = argparse.Namespace(
+        desktop_command="transition-activate",
+        operation_id=payload["operation_id"],
+        deadline_epoch=time.time() + 10,
+        request=str(transition_request[0]),
+    )
     output = io.StringIO()
     assert command.run_desktop_runtime_transition(args, context=context, store=store, output_stream=output) == 1
     assert json.loads(output.getvalue())["reason_code"] == "packaged_transition_runtime_required"
@@ -145,9 +191,14 @@ def test_request_refuses_ambiguous_json(transition_request, fault):
     raw = raw[:-1] + suffix
     path.write_text(raw)
     with pytest.raises(TransitionError, match="transition_request_invalid"):
-        load_desktop_transition_request(path, context=context, operation_id=payload["operation_id"],
-                                        deadline_epoch=time.time() + 10, deadline_monotonic=time.monotonic() + 10,
-                                        request_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        load_desktop_transition_request(
+            path,
+            context=context,
+            operation_id=payload["operation_id"],
+            deadline_epoch=time.time() + 10,
+            deadline_monotonic=time.monotonic() + 10,
+            request_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
 
 
 def test_request_is_bound_to_desktop_staged_digest(transition_request):
@@ -155,9 +206,14 @@ def test_request_is_bound_to_desktop_staged_digest(transition_request):
     expected = hashlib.sha256(path.read_bytes()).hexdigest()
     path.write_bytes(path.read_bytes() + b" ")
     with pytest.raises(TransitionError, match="transition_request_generation_changed"):
-        load_desktop_transition_request(path, context=context, operation_id=payload["operation_id"],
-                                        deadline_epoch=time.time() + 10, deadline_monotonic=time.monotonic() + 10,
-                                        request_sha256=expected)
+        load_desktop_transition_request(
+            path,
+            context=context,
+            operation_id=payload["operation_id"],
+            deadline_epoch=time.time() + 10,
+            deadline_monotonic=time.monotonic() + 10,
+            request_sha256=expected,
+        )
 
 
 def test_activation_parser_requires_request_and_defers_generic_gate(transition_request):
@@ -165,10 +221,21 @@ def test_activation_parser_requires_request_and_defers_generic_gate(transition_r
     from codex_plugin_scanner.guard.cli.commands_lifecycle_gate import lifecycle_gate_requirement
 
     path, payload, _ = transition_request
-    args = _build_parser("hol-guard", program_mode="hol-guard").parse_args([
-        "desktop", "transition-activate", "--json", "--operation-id", payload["operation_id"],
-        "--deadline-epoch", "1", "--request", str(path), "--request-sha256", "a" * 64,
-    ])
+    args = _build_parser("hol-guard", program_mode="hol-guard").parse_args(
+        [
+            "desktop",
+            "transition-activate",
+            "--json",
+            "--operation-id",
+            payload["operation_id"],
+            "--deadline-epoch",
+            "1",
+            "--request",
+            str(path),
+            "--request-sha256",
+            "a" * 64,
+        ]
+    )
     assert args.desktop_command == "transition-activate" and args.request == str(path)
     assert lifecycle_gate_requirement(args) is None  # The prepared exact subject is not available at parsing.
 
@@ -180,8 +247,13 @@ def test_finalize_parser_requires_generation_and_has_no_forward_grant(transition
     _, payload, _ = transition_request
     parser = _build_parser("hol-guard", program_mode="hol-guard")
     argv = [
-        "desktop", "transition-finalize", "--json", "--operation-id", payload["operation_id"],
-        "--deadline-epoch", "1",
+        "desktop",
+        "transition-finalize",
+        "--json",
+        "--operation-id",
+        payload["operation_id"],
+        "--deadline-epoch",
+        "1",
     ]
     with pytest.raises(SystemExit) as missing:
         parser.parse_args(argv)

@@ -64,15 +64,20 @@ def test_unverified_degradation_never_grants_tool_permission(reason: str, event:
         assert reason in output["decision"]["message"]
 
 
-@pytest.mark.parametrize("output", [
-    {}, {"hookSpecificOutput": {}},
-    {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "unknown"}},
-    {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": ["allow"]}},
-    {"hookSpecificOutput": {"hookEventName": "Stop", "permissionDecision": "allow"}},
-])
+@pytest.mark.parametrize(
+    "output",
+    [
+        {},
+        {"hookSpecificOutput": {}},
+        {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "unknown"}},
+        {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": ["allow"]}},
+        {"hookSpecificOutput": {"hookEventName": "Stop", "permissionDecision": "allow"}},
+    ],
+)
 def test_incomplete_or_wrong_event_tool_response_requires_native_approval(output):
     response = bridge._valid_hook_json_or_degraded(
-        json.dumps(output), reason="invalid tool response",
+        json.dumps(output),
+        reason="invalid tool response",
         data=json.dumps({"hook_event_name": "PreToolUse"}),
     )
     assert json.loads(response)["hookSpecificOutput"]["permissionDecision"] == "deny"
@@ -81,7 +86,9 @@ def test_incomplete_or_wrong_event_tool_response_requires_native_approval(output
 @pytest.mark.parametrize("event", ["PermissionRequest", "PermissionRequestV2"])
 def test_empty_permission_response_is_denied(event):
     response = bridge._valid_hook_json_or_degraded(
-        "{}", reason="invalid permission response", data=json.dumps({"hook_event_name": event}),
+        "{}",
+        reason="invalid permission response",
+        data=json.dumps({"hook_event_name": event}),
     )
     assert json.loads(response)["hookSpecificOutput"]["decision"]["behavior"] == "deny"
 

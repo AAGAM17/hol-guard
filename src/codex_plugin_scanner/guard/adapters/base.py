@@ -48,8 +48,10 @@ class PreparedHarnessInstall:
 
         require_codex_install_owner(guard_home)
         assert_transition_mutation_allowed(guard_home)
-        if any(change.kind != "binding" or (change.after is None and change.before != change.after)
-               for change in self.files):
+        if any(
+            change.kind != "binding" or (change.after is None and change.before != change.after)
+            for change in self.files
+        ):
             raise TransitionError("adapter_install_plan_invalid")
         changes: dict[str, object] = {"files": [change.payload() for change in self.files]}
         RuntimeTransition._compare(changes, "before")
@@ -208,8 +210,12 @@ class HarnessAdapter:
         prepared = prepare_guard_shim(self.harness, context)
         return PreparedHarnessInstall(
             prepared.files,
-            {"harness": self.harness, "active": True,
-             "config_path": prepared.manifest["shim_path"], **prepared.manifest},
+            {
+                "harness": self.harness,
+                "active": True,
+                "config_path": prepared.manifest["shim_path"],
+                **prepared.manifest,
+            },
         )
 
     def inventory_snapshot(

@@ -90,9 +90,7 @@ def apply_managed_install(
 ) -> dict[str, object]:
     # The adapter's publication and the corresponding store proof belong to
     # the same home-wide ownership interval, including multi-app operations.
-    with codex_install_transaction(
-        context.guard_home, context.guard_home / "managed", actor=f"managed.{command}"
-    ):
+    with codex_install_transaction(context.guard_home, context.guard_home / "managed", actor=f"managed.{command}"):
         return _apply_managed_install_owned(
             command, requested_harness, install_all, context, store, workspace, now, surface=surface
         )

@@ -52,7 +52,11 @@ def _timestamp(value: object) -> datetime | None:
 
 
 def read_legacy_codex_probe_receipt(
-    store: _ReceiptStore, *, correlation: CorrelationHandle, since: datetime, deadline_monotonic: float,
+    store: _ReceiptStore,
+    *,
+    correlation: CorrelationHandle,
+    since: datetime,
+    deadline_monotonic: float,
 ) -> dict[str, object] | None:
     """Match a fresh request and its receipt in one capped SQLite statement.
 
@@ -61,8 +65,12 @@ def read_legacy_codex_probe_receipt(
     boundary. A nonce's matching results must be unique. No shared last-receipt
     slot, command text or uncorrelated newest-row heuristic is consulted.
     """
-    if (correlation.kind is not CorrelationKind.REQUEST or correlation.harness != "codex"
-            or since.tzinfo is None or not math.isfinite(deadline_monotonic)):
+    if (
+        correlation.kind is not CorrelationKind.REQUEST
+        or correlation.harness != "codex"
+        or since.tzinfo is None
+        or not math.isfinite(deadline_monotonic)
+    ):
         raise TransitionError("legacy_probe_identity_invalid")
     since = since.astimezone(timezone.utc)
 
@@ -74,25 +82,26 @@ def read_legacy_codex_probe_receipt(
     remaining = deadline_monotonic - time.monotonic()
     if remaining <= 0:
         raise TransitionError("admission_deadline_expired")
-    with sqlite_connect_timeout_override(min(0.1, remaining)), _deadline_connection(
-        store, deadline_monotonic
-    ) as connection:
+    with (
+        sqlite_connect_timeout_override(min(0.1, remaining)),
+        _deadline_connection(store, deadline_monotonic) as connection,
+    ):
         check()
         connection.set_progress_handler(lambda: int(time.monotonic() >= deadline_monotonic), 100)
         try:
             rows = connection.execute(
-                    "select r.*, a.occurred_at as activity_occurred_at, "
-                    "a.policy_action as activity_policy_action, a.prompted as activity_prompted, "
-                    "a.approval_reuse_status as activity_approval_reuse_status, "
-                    "a.execution_status as activity_execution_status, c.digest as correlation_digest "
-                    "from command_activity a join command_activity_correlations c "
-                    "on c.activity_id = a.activity_id join native_hook_decision_receipts r "
-                    "on r.decision_id = a.receipt_id "
-                    "where a.harness = 'codex' and c.harness = 'codex' and c.kind = 'request' "
-                    "and c.key_id = ? and a.hook_phase = 'pre' and a.proof_level = 'pre_hook' "
-                    "and a.receipt_link_status = 'linked' and a.occurred_at >= ? "
-                    "order by a.occurred_at desc, a.activity_id limit ?",
-                    (correlation.key_id, since.isoformat(), MAX_LEGACY_PROBE_ROWS + 1),
+                "select r.*, a.occurred_at as activity_occurred_at, "
+                "a.policy_action as activity_policy_action, a.prompted as activity_prompted, "
+                "a.approval_reuse_status as activity_approval_reuse_status, "
+                "a.execution_status as activity_execution_status, c.digest as correlation_digest "
+                "from command_activity a join command_activity_correlations c "
+                "on c.activity_id = a.activity_id join native_hook_decision_receipts r "
+                "on r.decision_id = a.receipt_id "
+                "where a.harness = 'codex' and c.harness = 'codex' and c.kind = 'request' "
+                "and c.key_id = ? and a.hook_phase = 'pre' and a.proof_level = 'pre_hook' "
+                "and a.receipt_link_status = 'linked' and a.occurred_at >= ? "
+                "order by a.occurred_at desc, a.activity_id limit ?",
+                (correlation.key_id, since.isoformat(), MAX_LEGACY_PROBE_ROWS + 1),
             ).fetchall()
         except sqlite3.OperationalError:
             check()
@@ -106,31 +115,46 @@ def read_legacy_codex_probe_receipt(
     for row in rows:
         check()
         raw: dict[str, object] = dict(row)
-        activity = {key.removeprefix("activity_"): raw.pop(key) for key in tuple(raw)
-                    if key.startswith("activity_")}
+        activity = {key.removeprefix("activity_"): raw.pop(key) for key in tuple(raw) if key.startswith("activity_")}
         digest = raw.pop("correlation_digest")
         action = activity["policy_action"]
         expected = correlation.digest
         if action not in {"allow", "warn"}:
             # Exact shipped native-prevented-attempt-v1 wire formula, including
             # JSON's default separators. It is not a new correlation scheme.
-            expected = hashlib.sha256(json.dumps([
-                "native-prevented-attempt-v1", correlation.digest, action, raw["decision_id"],
-                bool(activity["prompted"]), activity["approval_reuse_status"],
-            ]).encode()).hexdigest()
+            expected = hashlib.sha256(
+                json.dumps(
+                    [
+                        "native-prevented-attempt-v1",
+                        correlation.digest,
+                        action,
+                        raw["decision_id"],
+                        bool(activity["prompted"]),
+                        activity["approval_reuse_status"],
+                    ]
+                ).encode()
+            ).hexdigest()
         if not isinstance(digest, str) or not hmac.compare_digest(digest, expected):
             continue
         occurred, recorded = _timestamp(activity["occurred_at"]), _timestamp(raw["recorded_at"])
         receipt = validate_stored_native_decision_receipt(raw)
-        if (receipt is None or occurred is None or recorded is None or occurred < since or recorded < since
-                or occurred > datetime.now(timezone.utc) or recorded > datetime.now(timezone.utc)
-                or activity["prompted"] != 0 or activity["approval_reuse_status"] != "not-applicable"
-                or receipt["harness"] != "codex" or receipt["event_name"] != "PreToolUse"
-                or receipt["payload_kind"] != "inline" or receipt["observe_mode"] is not False
-                or receipt["policy_action"] != action
-                or activity["execution_status"] != (
-                    "allowed_unconfirmed" if action in {"allow", "warn"} else "prevented"
-                )):
+        if (
+            receipt is None
+            or occurred is None
+            or recorded is None
+            or occurred < since
+            or recorded < since
+            or occurred > datetime.now(timezone.utc)
+            or recorded > datetime.now(timezone.utc)
+            or activity["prompted"] != 0
+            or activity["approval_reuse_status"] != "not-applicable"
+            or receipt["harness"] != "codex"
+            or receipt["event_name"] != "PreToolUse"
+            or receipt["payload_kind"] != "inline"
+            or receipt["observe_mode"] is not False
+            or receipt["policy_action"] != action
+            or activity["execution_status"] != ("allowed_unconfirmed" if action in {"allow", "warn"} else "prevented")
+        ):
             raise TransitionError("legacy_probe_receipt_invalid")
         matched.append(receipt)
     check()

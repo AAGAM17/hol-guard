@@ -246,7 +246,9 @@ def test_opaque_token_comparison_accepts_unchanged_context(native_context_digest
         f"{APPROVAL_CONTEXT_TOKEN_PREFIX}{_encoded_payload({'version': 1, 'identity': '0' * 64})}",
     ),
 )
-def test_legacy_or_malformed_saved_value_fails_closed_as_changed_content(legacy_or_malformed: object, native_context_digest: Path) -> None:
+def test_legacy_or_malformed_saved_value_fails_closed_as_changed_content(
+    legacy_or_malformed: object, native_context_digest: Path
+) -> None:
     assert approval_context_tokens_validation_reason(legacy_or_malformed, _token()) == "approval_reuse_content_changed"
 
 

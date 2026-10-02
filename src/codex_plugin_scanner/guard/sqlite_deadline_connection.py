@@ -15,7 +15,10 @@ from .sqlite_tuning import sqlite_connect_timeout_seconds, sqlite_operation_dead
 
 
 def connect_sqlite_with_deadline(
-    database: str | Path, *, timeout_seconds: float, uri: bool = False,
+    database: str | Path,
+    *,
+    timeout_seconds: float,
+    uri: bool = False,
 ) -> sqlite3.Connection:
     """Open recovery storage with the same remaining budget as its caller."""
 
@@ -34,7 +37,8 @@ class DeadlineConnection(sqlite3.Connection):
         # Preserve the constructor's local cap (including shorter recovery
         # probes); the operation deadline may only reduce it.
         self._timeout_cap = min(
-            sqlite_connect_timeout_seconds(), int(original_timeout[0]) / 1000 if original_timeout else 0.0,
+            sqlite_connect_timeout_seconds(),
+            int(original_timeout[0]) / 1000 if original_timeout else 0.0,
         )
         self._caller_progress: Callable[[], int | None] | None = None
         self._caller_interval = 0
@@ -82,7 +86,8 @@ class DeadlineConnection(sqlite3.Connection):
 
     def _install_trace(self) -> None:
         sqlite3.Connection.set_trace_callback(
-            self, self._script_trace if self._script_depth else self._caller_trace,
+            self,
+            self._script_trace if self._script_depth else self._caller_trace,
         )
 
     def _script_trace(self, sql: str) -> None:
@@ -96,7 +101,8 @@ class DeadlineConnection(sqlite3.Connection):
                 self._script_trace_update = True
                 try:
                     _ = sqlite3.Connection.execute(
-                        self, f"pragma busy_timeout={int(min(self._timeout_cap, remaining) * 1000)}",
+                        self,
+                        f"pragma busy_timeout={int(min(self._timeout_cap, remaining) * 1000)}",
                     )
                 finally:
                     self._script_trace_update = False
@@ -162,7 +168,10 @@ class DeadlineConnection(sqlite3.Connection):
         super().commit()
 
     def __exit__(
-        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None,
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
     ) -> Literal[False]:
         if exc_type is None:
             try:

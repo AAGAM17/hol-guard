@@ -20,8 +20,10 @@ def fixture_home() -> Path:
     home = Path(os.environ["HOL_GUARD_AUTHORITY_REPAIR_TEST_HOME"]).resolve(strict=True)
     if home != Path.home().resolve(strict=True) or not (home / "isolated-authority-fixture").is_file():
         raise RuntimeError("Explicit isolated account fixture required")
-    if (not os.environ.get("PYTEST_CURRENT_TEST")
-            or Path(os.environ["HOL_GUARD_TEST_KEYRING_FILE"]).parent.resolve(strict=True) != home):
+    if (
+        not os.environ.get("PYTEST_CURRENT_TEST")
+        or Path(os.environ["HOL_GUARD_TEST_KEYRING_FILE"]).parent.resolve(strict=True) != home
+    ):
         raise RuntimeError("Isolated test credential storage required")
     return home
 
@@ -43,10 +45,17 @@ def seed(home: Path, *, inverse: bool = False) -> int:
     if inverse:
         sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         from tests.test_codex_hook_recovery import crash
+
         crash(context, "manifest")
         (home / "isolated-publication-inverse").write_text("owned fixture lifecycle", encoding="utf-8")
-    update_settings(context.guard_home, {"enabled": True, "new_password": "isolated-desktop-native-repair",
-                                         "confirm_password": "isolated-desktop-native-repair"})
+    update_settings(
+        context.guard_home,
+        {
+            "enabled": True,
+            "new_password": "isolated-desktop-native-repair",
+            "confirm_password": "isolated-desktop-native-repair",
+        },
+    )
     manifest = hook_manifest_path(context.guard_home, config)
     if not inverse:
         manifest.unlink()  # Generated incident fixture: receipt/config/key stay intact.

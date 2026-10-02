@@ -17,7 +17,9 @@ def test_helper_setup_and_failure_cleanup_use_the_original_request_deadline(tmp_
     clock = [100.0]
     monkeypatch.setattr(streams.time, "monotonic", lambda: clock[0])
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     deadlines = []
 
@@ -34,7 +36,9 @@ def test_helper_setup_and_failure_cleanup_use_the_original_request_deadline(tmp_
     monkeypatch.setattr(client, "_request_is_current", lambda *args, **kwargs: True)
     monkeypatch.setattr(client, "_write_frame", write)
     monkeypatch.setattr(
-        client, "close", lambda *, deadline_monotonic: deadlines.append(deadline_monotonic) or True,
+        client,
+        "close",
+        lambda *, deadline_monotonic: deadlines.append(deadline_monotonic) or True,
     )
     assert client.request(b"fixture", deadline_monotonic=101.0) is None
     assert deadlines == [101.0, 101.0]
@@ -42,7 +46,9 @@ def test_helper_setup_and_failure_cleanup_use_the_original_request_deadline(tmp_
 
 def test_expired_request_does_not_start_helper(tmp_path, monkeypatch):
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
 
     def forbidden_snapshot(**kwargs):
@@ -54,7 +60,9 @@ def test_expired_request_does_not_start_helper(tmp_path, monkeypatch):
 
 def test_close_lock_contention_is_bounded_and_recoverable(tmp_path):
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     acquired, release = threading.Event(), threading.Event()
 
@@ -82,7 +90,9 @@ def test_close_lock_contention_is_bounded_and_recoverable(tmp_path):
 def test_request_lock_contention_expires_without_starting_helper(tmp_path, monkeypatch, lock_name):
     failures = []
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
         failure_recorder=failures.append,
     )
     acquired, release = threading.Event(), threading.Event()
@@ -143,7 +153,9 @@ def test_close_waits_share_deadline_and_unfinished_handles_are_retained(tmp_path
             return True
 
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     process, reader = Process(), Reader()
     client._process, client._reader = process, reader
@@ -178,12 +190,20 @@ def test_pending_pool_remains_registered_until_recovery_close(tmp_path, monkeypa
 
 def test_real_ignored_termination_is_killed_and_stream_reader_is_reaped(tmp_path):
     process = subprocess.Popen(
-        [sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-         "print('ready',flush=True); time.sleep(30)"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        [
+            sys.executable,
+            "-c",
+            "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "print('ready',flush=True); time.sleep(30)",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
     )
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     try:
         assert process.stdout.readline() == b"ready\n"
@@ -208,10 +228,14 @@ def test_real_ignored_termination_is_killed_and_stream_reader_is_reaped(tmp_path
 
 def test_failed_request_keeps_incomplete_client_out_of_idle_reuse(tmp_path, monkeypatch):
     pool = pools._PersistentNativeClientPool(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     client = pools._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     pool._clients.add(client)
     pool._idle.append(client)
@@ -243,7 +267,9 @@ def test_unfinished_writer_prevents_buffered_stream_close_and_keeps_ownership(tm
 
     process = Process()
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     client._process, client._writer = process, writer
     writer.start()
@@ -262,10 +288,14 @@ def test_unfinished_writer_prevents_buffered_stream_close_and_keeps_ownership(tm
 def test_real_full_pipe_fallback_writer_is_owned_until_child_retirement(tmp_path, monkeypatch):
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; print('ready',flush=True); time.sleep(30)"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
     )
     client = streams._PersistentNativeClient(
-        executable=tmp_path / "runtime", state_dir=tmp_path / "state", environment={},
+        executable=tmp_path / "runtime",
+        state_dir=tmp_path / "state",
+        environment={},
     )
     monkeypatch.setattr(transport, "_write_frame_nonblocking", lambda *args, **kwargs: None)
     try:
@@ -273,9 +303,13 @@ def test_real_full_pipe_fallback_writer_is_owned_until_child_retirement(tmp_path
         client._process = process
         started = time.monotonic()
         assert not client._write_frame(
-            process.stdin, b"x" * (2 * 1024 * 1024), deadline_monotonic=started + 0.05,
+            process.stdin,
+            b"x" * (2 * 1024 * 1024),
+            deadline_monotonic=started + 0.05,
             launch_worker=lambda worker: client._launch_writer(
-                worker, process, deadline_monotonic=started + 0.05,
+                worker,
+                process,
+                deadline_monotonic=started + 0.05,
             ),
         )
         assert time.monotonic() - started < 0.5

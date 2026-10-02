@@ -136,8 +136,9 @@ def _prepare_cursor_hooks(context: HarnessContext) -> PreparedHarnessInstall:
     hooks = _inline_hooks(payload)
     python_executable = guard_cli.python.executable if guard_cli.python is not None else None
     for event in _MANAGED_HOOK_EVENTS:
-        entry = _managed_hook_entry(context, script_path=script_path, event_name=event,
-                                    python_executable=python_executable)
+        entry = _managed_hook_entry(
+            context, script_path=script_path, event_name=event, python_executable=python_executable
+        )
         hooks[event] = _merge_hook_entries(hooks.get(event), entry, event_name=event)
     if hooks.get("preToolUse") is not None:
         stripped = _strip_managed_hook_entries(hooks["preToolUse"], script_path=script_path)
@@ -146,24 +147,36 @@ def _prepare_cursor_hooks(context: HarnessContext) -> PreparedHarnessInstall:
         else:
             hooks.pop("preToolUse", None)
     payload["hooks"] = hooks
-    source = cursor_hook_script_source(context, guard_cli=list(guard_cli.command),
-                                       recovery_command=_cursor_recovery_command(context, guard_cli.python))
+    source = cursor_hook_script_source(
+        context, guard_cli=list(guard_cli.command), recovery_command=_cursor_recovery_command(context, guard_cli.python)
+    )
     manifest: dict[str, object] = {
-        "managed_hooks_path": str(hooks_path), "managed_hook_script_path": str(script_path),
-        "managed_hook_events": list(_MANAGED_HOOK_EVENTS), "guard_cli_identity": guard_cli.manifest_payload(),
+        "managed_hooks_path": str(hooks_path),
+        "managed_hook_script_path": str(script_path),
+        "managed_hook_events": list(_MANAGED_HOOK_EVENTS),
+        "guard_cli_identity": guard_cli.manifest_payload(),
         "hook_script_sha256": sha256(source.encode("utf-8")).hexdigest(),
-        "backup_path": str(backup_path), "state_path": str(state_path),
+        "backup_path": str(backup_path),
+        "state_path": str(state_path),
     }
-    state = {key: value for key, value in manifest.items()
-             if key not in {"managed_hook_events", "state_path"}}
+    state = {key: value for key, value in manifest.items() if key not in {"managed_hook_events", "state_path"}}
     state["workspace_dir"] = str(context.workspace_dir.resolve()) if context.workspace_dir is not None else None
     after = {
         hooks_path: (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
-        script_path: source.encode("utf-8"), managed_path: source.encode("utf-8"),
+        script_path: source.encode("utf-8"),
+        managed_path: source.encode("utf-8"),
         state_path: (json.dumps(state, indent=2) + "\n").encode("utf-8"),
-        backup_path: before[backup_path] if before[backup_path] is not None else (
-            json.dumps({"existed": original is not None,
-                        "content": original.decode("utf-8") if original is not None else None}, indent=2) + "\n"
+        backup_path: before[backup_path]
+        if before[backup_path] is not None
+        else (
+            json.dumps(
+                {
+                    "existed": original is not None,
+                    "content": original.decode("utf-8") if original is not None else None,
+                },
+                indent=2,
+            )
+            + "\n"
         ).encode("utf-8"),
     }
     for path, data in after.items():
@@ -171,8 +184,11 @@ def _prepare_cursor_hooks(context: HarnessContext) -> PreparedHarnessInstall:
         after_mode = mode if path == backup_path and before[path] is not None else 0o600
         if path in {script_path, managed_path} and os.name != "nt":
             after_mode |= stat.S_IXUSR
-        files.append(TransitionFile(path.resolve(strict=False), before[path], data,
-                                    before_mode=mode, after_mode=after_mode, no_follow=True))
+        files.append(
+            TransitionFile(
+                path.resolve(strict=False), before[path], data, before_mode=mode, after_mode=after_mode, no_follow=True
+            )
+        )
     files.extend(_prepare_legacy_project_cursor_cleanup(context))
     prepared = PreparedHarnessInstall(tuple(files), manifest)
     RuntimeTransition._compare({"files": [change.payload() for change in files]}, "before")
@@ -225,8 +241,11 @@ def _prepare_legacy_project_cursor_cleanup(context: HarnessContext) -> tuple[Tra
     files = []
     for path, data in after.items():
         mode = path.stat().st_mode & 0o777 if before[path] is not None else 0o600
-        files.append(TransitionFile(path.resolve(strict=False), before[path], data,
-                                    before_mode=mode, after_mode=mode, no_follow=True))
+        files.append(
+            TransitionFile(
+                path.resolve(strict=False), before[path], data, before_mode=mode, after_mode=mode, no_follow=True
+            )
+        )
     return tuple(files)
 
 
@@ -452,7 +471,9 @@ def _remove_managed_hook_entries(*, hooks_path: Path, script_path: Path) -> bool
 
 
 def _render_without_managed_hook_entries(
-    payload: object, *, script_path: Path,
+    payload: object,
+    *,
+    script_path: Path,
 ) -> tuple[dict[str, object] | None, bool]:
     if not isinstance(payload, dict):
         return None, False

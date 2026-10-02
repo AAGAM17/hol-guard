@@ -83,9 +83,14 @@ def test_activation_cli_exact_grant_before_publish_and_truthful_rollback(transit
     for row in (before, after):
         row["manifest"]["managed_hook_config_path"] = str(bindings)
     store, plan = with_install_store(runtime, plan, [TransitionInstall("codex", before, after)])
-    request = RuntimeTransitionPreparation(plan.operation_id, plan.predecessor, plan.candidate,
-                                           tuple(change for change in plan.files if change.kind == "selection"),
-                                           plan.native_runtimes, plan.deadline_epoch)
+    request = RuntimeTransitionPreparation(
+        plan.operation_id,
+        plan.predecessor,
+        plan.candidate,
+        tuple(change for change in plan.files if change.kind == "selection"),
+        plan.native_runtimes,
+        plan.deadline_epoch,
+    )
     context = HarnessContext(runtime.home.parent, None, runtime.home)
     monkeypatch.setattr(module.sys, "frozen", True, raising=False)
     monkeypatch.setattr(module.sys, "executable", str(plan.candidate["path"]))
@@ -127,18 +132,32 @@ def test_activation_cli_exact_grant_before_publish_and_truthful_rollback(transit
             return proof(plan, artifact["generation"], installed=True)
 
     monkeypatch.setattr(module, "TransitionDaemonDriver", Driver)
-    args = argparse.Namespace(desktop_command="transition-activate", operation_id=plan.operation_id,
-                              deadline_epoch=plan.deadline_epoch, request="fixture-only-decoder-seam",
-                              request_sha256="a" * 64)
+    args = argparse.Namespace(
+        desktop_command="transition-activate",
+        operation_id=plan.operation_id,
+        deadline_epoch=plan.deadline_epoch,
+        request="fixture-only-decoder-seam",
+        request_sha256="a" * 64,
+    )
     output = io.StringIO()
     result = module.run_desktop_runtime_transition(args, context=context, store=store, output_stream=output)
     response = json.loads(output.getvalue())
-    timing_lines = [json.loads(line.removeprefix("guard_runtime_stage "))
-                    for line in capsys.readouterr().err.splitlines() if line.startswith("guard_runtime_stage ")]
+    timing_lines = [
+        json.loads(line.removeprefix("guard_runtime_stage "))
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith("guard_runtime_stage ")
+    ]
     stages = [entry["stage"] for entry in timing_lines if entry["phase"] == "finished"]
     assert [entry["stage"] for entry in timing_lines if entry["phase"] == "started"] == stages
-    assert stages[:7] == ["authority", "factor_consumption", "owner_wait", "control",
-                          "request_verification", "plan_preparation", "approval"]
+    assert stages[:7] == [
+        "authority",
+        "factor_consumption",
+        "owner_wait",
+        "control",
+        "request_verification",
+        "plan_preparation",
+        "approval",
+    ]
     assert stages[7:] == ([] if failure == "approval" else ["daemon_owner_wait", "activation"])
     assert all(set(entry) == {"stage", "phase", "elapsed_ms", "duration_ms"} for entry in timing_lines)
     assert all(0 <= entry["duration_ms"] <= entry["elapsed_ms"] for entry in timing_lines)
@@ -190,7 +209,10 @@ def test_activation_uses_the_controlling_process_deadline(transition):  # noqa: 
             return proof(plan, artifact["generation"], installed=True)
 
     status = RuntimeTransitionCoordinator(runtime, Driver()).activate(
-        plan, authority_home=runtime.home, grant=None, deadline_monotonic=deadline,
+        plan,
+        authority_home=runtime.home,
+        grant=None,
+        deadline_monotonic=deadline,
     )
     assert status.phase == "Committed" and observed == [deadline, deadline, deadline]
     assert runtime._read(plan.operation_id)["deadline_monotonic"] <= deadline
@@ -211,8 +233,9 @@ def test_status_cli_binds_authenticated_generation_without_replaying_authorizati
     monkeypatch.setattr(module, "require_high_risk", forbidden)
     monkeypatch.setattr(module, "TransitionDaemonDriver", forbidden)
     monkeypatch.setattr(runtime, "recovery_plan", forbidden)
-    args = argparse.Namespace(desktop_command="transition-status", operation_id=plan.operation_id,
-                              deadline_epoch=time.time() + 10)
+    args = argparse.Namespace(
+        desktop_command="transition-status", operation_id=plan.operation_id, deadline_epoch=time.time() + 10
+    )
     output = io.StringIO()
     context = HarnessContext(runtime.home.parent, None, runtime.home)
     result = module.run_desktop_runtime_transition(args, context=context, store=store, output_stream=output)
@@ -246,8 +269,11 @@ def test_not_started_requires_existing_authority_intact_receipt_and_absent_journ
     with pytest.raises(TransitionError, match="pending_transition"):
         runtime.refusal_status(plan.operation_id)
     with pytest.raises(TransitionError, match="pending_transition"):
-        runtime.record_approval_refusal(replace(plan, operation_id=str(uuid.uuid4())), "approval_gate_invalid",
-                                        deadline_monotonic=time.monotonic() + 10)
+        runtime.record_approval_refusal(
+            replace(plan, operation_id=str(uuid.uuid4())),
+            "approval_gate_invalid",
+            deadline_monotonic=time.monotonic() + 10,
+        )
     assert path.read_bytes() == original
 
 
@@ -274,13 +300,18 @@ def test_refusal_never_creates_authority_or_overwrites_prior_evidence(transition
         runtime.record_approval_refusal(plan, "another_reason", deadline_monotonic=time.monotonic() + 10)
     assert runtime._refusal_path(plan.operation_id).read_bytes() == before
     with pytest.raises(TransitionError, match="deadline_exceeded"):
-        runtime.record_approval_refusal(replace(plan, operation_id=str(uuid.uuid4())), "approval_gate_invalid",
-                                        deadline_monotonic=time.monotonic() - 1)
+        runtime.record_approval_refusal(
+            replace(plan, operation_id=str(uuid.uuid4())),
+            "approval_gate_invalid",
+            deadline_monotonic=time.monotonic() - 1,
+        )
 
 
 @pytest.mark.parametrize("state", ["pending", "changed", "rollback"])
 def test_finalize_requires_terminal_exact_live_generation_and_preserves_archived_status(
-    transition, monkeypatch, state,  # noqa: F811 -- shared fixture
+    transition,
+    monkeypatch,
+    state,  # noqa: F811 -- shared fixture
 ):
     from codex_plugin_scanner.guard.runtime_transition import TransitionError
 
@@ -305,8 +336,12 @@ def test_finalize_requires_terminal_exact_live_generation_and_preserves_archived
 
     monkeypatch.setattr(module, "require_high_risk", forbidden)
     monkeypatch.setattr(module, "TransitionDaemonDriver", forbidden)
-    args = argparse.Namespace(desktop_command="transition-finalize", operation_id=plan.operation_id,
-                              artifact_generation=plan.candidate["generation"], deadline_epoch=time.time() + 10)
+    args = argparse.Namespace(
+        desktop_command="transition-finalize",
+        operation_id=plan.operation_id,
+        artifact_generation=plan.candidate["generation"],
+        deadline_epoch=time.time() + 10,
+    )
     context = HarnessContext(runtime.home.parent, None, runtime.home)
     output = io.StringIO()
     args.artifact_generation = "f" * 64

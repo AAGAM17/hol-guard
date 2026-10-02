@@ -22,30 +22,49 @@ MAX_OWNED_QUALIFICATION_BYTES = 64 * 1024
 
 
 def run_desktop_owned_qualification(
-    args: argparse.Namespace, *, context: HarnessContext, store: GuardStore, output_stream: TextIO,
+    args: argparse.Namespace,
+    *,
+    context: HarnessContext,
+    store: GuardStore,
+    output_stream: TextIO,
 ) -> int:
     """Publish bounded observation data, never a lifecycle approval or replay grant."""
     started, epoch = time.monotonic(), time.time()
     document: dict[str, object] = {
-        "schema": OWNED_QUALIFICATION_SCHEMA, "operation_id": args.operation_id,
-        "generation": args.artifact_generation, "qualified": False, "reason_code": None,
+        "schema": OWNED_QUALIFICATION_SCHEMA,
+        "operation_id": args.operation_id,
+        "generation": args.artifact_generation,
+        "qualified": False,
+        "reason_code": None,
     }
     try:
         expires = args.deadline_epoch
-        if (isinstance(expires, bool) or not isinstance(expires, (float, int)) or not math.isfinite(expires)
-                or not 0 < expires - epoch <= 60):
+        if (
+            isinstance(expires, bool)
+            or not isinstance(expires, (float, int))
+            or not math.isfinite(expires)
+            or not 0 < expires - epoch <= 60
+        ):
             raise TransitionError("owned_qualification_deadline")
         deadline = started + expires - epoch
         binding = DaemonArtifactBinding(
-            Path(args.daemon_executable), args.daemon_executable_sha256, args.daemon_package_version,
+            Path(args.daemon_executable),
+            args.daemon_executable_sha256,
+            args.daemon_package_version,
         )
         observed = qualify_owned_codex_native(
-            operation_id=args.operation_id, artifact_generation=args.artifact_generation,
-            expected_artifact=binding, context=context, store=store, deadline_monotonic=deadline,
+            operation_id=args.operation_id,
+            artifact_generation=args.artifact_generation,
+            expected_artifact=binding,
+            context=context,
+            store=store,
+            deadline_monotonic=deadline,
         )
         document["native_admission"] = verified_admission_payload(observed.admission)
         document["daemon_artifact"] = {
-            "path": str(binding.executable), "sha256": binding.executable_sha256, "version": binding.package_version,
+            "path": str(binding.executable),
+            "sha256": binding.executable_sha256,
+            "version": binding.package_version,
         }
         if time.monotonic() >= deadline:
             raise TransitionError("owned_qualification_deadline")
@@ -64,8 +83,10 @@ def run_desktop_owned_qualification(
     encoded = json.dumps(document, sort_keys=True, allow_nan=False)
     if len(encoded.encode("utf-8")) > MAX_OWNED_QUALIFICATION_BYTES:
         document = {
-            "schema": OWNED_QUALIFICATION_SCHEMA, "operation_id": str(args.operation_id)[:128],
-            "generation": str(args.artifact_generation)[:128], "qualified": False,
+            "schema": OWNED_QUALIFICATION_SCHEMA,
+            "operation_id": str(args.operation_id)[:128],
+            "generation": str(args.artifact_generation)[:128],
+            "qualified": False,
             "reason_code": "owned_qualification_capacity",
         }
         encoded = json.dumps(document, sort_keys=True, allow_nan=False)

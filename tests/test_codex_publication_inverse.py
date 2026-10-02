@@ -27,7 +27,9 @@ from .test_codex_publication_inverse_plan import participant_digests
 
 def authorize(context, plan, owner):
     return authorize_codex_publication_inverse(
-        plan, authority_home=context.guard_home, grant=grant_for(plan, owner),
+        plan,
+        authority_home=context.guard_home,
+        grant=grant_for(plan, owner),
         deadline_monotonic=time.monotonic() + 30,
     )
 
@@ -56,8 +58,11 @@ def test_publication_restores_authority_before_config_and_retains_journal(invers
         assert marker["subject"] == plan.subject()
         assert "grant_id" not in json.dumps(marker)
         assert "native_verification" not in marker
-        assert writes == [change.path for change in (plan.changes[1], plan.changes[2], plan.changes[0])
-                          if change.before != change.after]
+        assert writes == [
+            change.path
+            for change in (plan.changes[1], plan.changes[2], plan.changes[0])
+            if change.before != change.after
+        ]
     assert manifest.exists() and journal.exists()
     with pytest.raises(CodexHookIntegrityError):
         pending.compare()
@@ -151,7 +156,8 @@ def test_process_exit_preserves_explicit_inverse_for_fresh_recovery(inverse, bou
             assert plan.native_runtime is not None and plan.verification_workspace is not None
             plan = bind_codex_publication_inverse_verification(
                 prepare_authenticated_hook_publication_inverse(_hook_manifest_spec(context)),
-                expected_runtime=plan.native_runtime, workspace=plan.verification_workspace,
+                expected_runtime=plan.native_runtime,
+                workspace=plan.verification_workspace,
                 deadline_monotonic=time.monotonic() + 30,
             )
 
@@ -189,7 +195,8 @@ def test_process_exit_preserves_explicit_inverse_for_fresh_recovery(inverse, bou
         assert plan.native_runtime is not None and plan.verification_workspace is not None
         reviewed = bind_codex_publication_inverse_verification(
             prepare_authenticated_hook_publication_inverse(_hook_manifest_spec(context)),
-            expected_runtime=plan.native_runtime, workspace=plan.verification_workspace,
+            expected_runtime=plan.native_runtime,
+            workspace=plan.verification_workspace,
             deadline_monotonic=time.monotonic() + 30,
         )
         assert reviewed.resumed_inverse_operation_id == plan.operation_id
@@ -256,7 +263,8 @@ def test_matching_config_bytes_are_published_with_reviewed_private_mode(inverse)
     with codex_install_transaction(context.guard_home, config, actor="prepare-reviewed-config-mode"):
         plan = bind_codex_publication_inverse_verification(
             prepare_authenticated_hook_publication_inverse(_hook_manifest_spec(context)),
-            expected_runtime=prior_plan.native_runtime, workspace=prior_plan.verification_workspace,
+            expected_runtime=prior_plan.native_runtime,
+            workspace=prior_plan.verification_workspace,
             deadline_monotonic=time.monotonic() + 30,
         )
     assert plan.changes[0].before == plan.changes[0].after
@@ -280,7 +288,8 @@ def test_resumption_requires_fresh_plan_and_owner_grant(inverse):  # noqa: F811
         assert plan.native_runtime is not None and plan.verification_workspace is not None
         fresh = bind_codex_publication_inverse_verification(
             prepare_authenticated_hook_publication_inverse(_hook_manifest_spec(context)),
-            expected_runtime=plan.native_runtime, workspace=plan.verification_workspace,
+            expected_runtime=plan.native_runtime,
+            workspace=plan.verification_workspace,
             deadline_monotonic=time.monotonic() + 30,
         )
         assert fresh.resumed_inverse_operation_id == plan.operation_id
@@ -288,7 +297,9 @@ def test_resumption_requires_fresh_plan_and_owner_grant(inverse):  # noqa: F811
         assert fresh.subject() != plan.subject()
         with pytest.raises(ApprovalGateError):
             authorize_codex_publication_inverse(
-                fresh, authority_home=context.guard_home, grant=old_authorization.grant,
+                fresh,
+                authority_home=context.guard_home,
+                grant=old_authorization.grant,
                 deadline_monotonic=time.monotonic() + 30,
             )
         assert participant_digests(context, config, manifest) == before
@@ -327,14 +338,20 @@ def test_signed_but_invalid_prior_inverse_never_authorizes_resumption(inverse, m
     else:
         prior["files"][0]["after"] = prior["files"][1]["after"]
     marker["subject"] = (
-        "codex-publication-inverse:" + prior["operation_id"] + ":"
+        "codex-publication-inverse:"
+        + prior["operation_id"]
+        + ":"
         + hashlib.sha256(canonical_manifest_bytes(prior)).hexdigest()
     )
     # Use the normal authority signer in this isolated fixture. A valid MAC
     # alone must not make an unsupported/foreign inverse actionable.
     secret = load_hook_secret(context.guard_home)
     record["authentication"] = sign_local_authority_payload(
-        record, key=secret.key, key_id=secret.key_id, purpose=_PURPOSE, signed_at=marker["owner_operation_id"],
+        record,
+        key=secret.key,
+        key_id=secret.key_id,
+        purpose=_PURPOSE,
+        signed_at=marker["owner_operation_id"],
     )
     journal.write_bytes(canonical_manifest_bytes(record) + b"\n")
     before = participant_digests(context, config, manifest)
@@ -346,11 +363,21 @@ def test_signed_but_invalid_prior_inverse_never_authorizes_resumption(inverse, m
 
 
 @pytest.mark.usefixtures("native_hook_force")
-@pytest.mark.parametrize("boundary", [
-    "retire", "tampered-proof", "stale-proof", "retirement-interrupted", "inactive-enrollment",
-])
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "retire",
+        "tampered-proof",
+        "stale-proof",
+        "retirement-interrupted",
+        "inactive-enrollment",
+    ],
+)
 def test_real_configured_native_protection_before_inverse_retirement(
-    inverse, monkeypatch, tmp_path, boundary,  # noqa: F811
+    inverse,
+    monkeypatch,
+    tmp_path,
+    boundary,  # noqa: F811
 ):
     from codex_plugin_scanner.guard import runtime_transition_codex_observer as observer
     from codex_plugin_scanner.guard.native_runtime import native_runtime_status
@@ -359,7 +386,6 @@ def test_real_configured_native_protection_before_inverse_retirement(
 
     from .test_runtime_transition_configured_inverse import OwnedDaemonLifecycle
 
-
     context, config, manifest, unbound, _fixture_bound = inverse
     identity = native_runtime_status().identity
     assert identity is not None
@@ -367,7 +393,9 @@ def test_real_configured_native_protection_before_inverse_retirement(
     workspace.mkdir()
     with codex_install_transaction(context.guard_home, config, actor="prepare-native-inverse"):
         plan = bind_codex_publication_inverse_verification(
-            unbound, expected_runtime=identity, workspace=workspace.resolve(),
+            unbound,
+            expected_runtime=identity,
+            workspace=workspace.resolve(),
             deadline_monotonic=time.monotonic() + 30,
         )
     assert plan.verification_workspace is not None
@@ -378,7 +406,10 @@ def test_real_configured_native_protection_before_inverse_retirement(
         with codex_install_transaction(context.guard_home, config, actor=PUBLICATION_INVERSE_ACTION) as owner:
             pending = publication.publish_codex_publication_inverse(authorize(context, plan, owner))
             store.set_managed_install(
-                "codex", boundary != "inactive-enrollment", None, codex_native_hook_state(context),
+                "codex",
+                boundary != "inactive-enrollment",
+                None,
+                codex_native_hook_state(context),
                 "isolated-publication-inverse",
             )
             daemon.start(pending.authorization.deadline_monotonic)
@@ -388,8 +419,11 @@ def test_real_configured_native_protection_before_inverse_retirement(
                 old_proof = observer.observe_configured_codex_hook(
                     operation_id=plan.operation_id,
                     artifact_generation="codex-publication-inverse-" + plan.subject().rsplit(":", 1)[1],
-                    expected_runtime=identity, guard_home=context.guard_home, config_path=config,
-                    workspace=plan.verification_workspace, deadline_monotonic=pending.authorization.deadline_monotonic,
+                    expected_runtime=identity,
+                    guard_home=context.guard_home,
+                    config_path=config,
+                    workspace=plan.verification_workspace,
+                    deadline_monotonic=pending.authorization.deadline_monotonic,
                     receipt_store=store,
                 )
                 monkeypatch.setattr(observer, "observe_configured_codex_hook", lambda **kwargs: old_proof)
@@ -403,6 +437,7 @@ def test_real_configured_native_protection_before_inverse_retirement(
 
                 monkeypatch.setattr(observer, "observe_configured_codex_hook", tamper)
             elif boundary == "retirement-interrupted":
+
                 def interrupt(_home):
                     raise OSError("injected retirement interruption")
 
@@ -411,7 +446,9 @@ def test_real_configured_native_protection_before_inverse_retirement(
                 proof = publication.verify_and_retire_codex_publication_inverse(pending, receipt_store=store)
                 evidence = verified_admission_payload(proof)
                 allow, deny, installed_evidence = (
-                    evidence["allow_receipt"], evidence["deny_receipt"], evidence["installed_hook_evidence"],
+                    evidence["allow_receipt"],
+                    evidence["deny_receipt"],
+                    evidence["installed_hook_evidence"],
                 )
                 assert isinstance(allow, dict) and allow["decision"] == "allow"
                 assert isinstance(deny, dict) and deny["decision"] == "deny"
@@ -453,11 +490,15 @@ def test_real_configured_native_protection_before_inverse_retirement(
                 recovery_deadline = time.monotonic() + 30
                 resumed = bind_codex_publication_inverse_verification(
                     prepare_authenticated_hook_publication_inverse(_hook_manifest_spec(context)),
-                    expected_runtime=identity, workspace=workspace.resolve(), deadline_monotonic=recovery_deadline,
+                    expected_runtime=identity,
+                    workspace=workspace.resolve(),
+                    deadline_monotonic=recovery_deadline,
                 )
                 assert resumed.resumed_inverse_operation_id == plan.operation_id
                 authorization = authorize_codex_publication_inverse(
-                    resumed, authority_home=context.guard_home, grant=grant_for(resumed, owner),
+                    resumed,
+                    authority_home=context.guard_home,
+                    grant=grant_for(resumed, owner),
                     deadline_monotonic=recovery_deadline,
                 )
                 assert authorization.deadline_monotonic <= recovery_deadline

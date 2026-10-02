@@ -367,7 +367,10 @@ def test_frozen_codex_install_and_runtime_trust_validate_without_source_files(
 
 @pytest.mark.parametrize("legacy_roles", [False, True], ids=["current_roles", "legacy_nine_roles"])
 def test_retained_frozen_hook_can_be_validated_against_exact_transition_artifact(
-    tmp_path, frozen_codex_contract, monkeypatch, legacy_roles,
+    tmp_path,
+    frozen_codex_contract,
+    monkeypatch,
+    legacy_roles,
 ):
     from codex_plugin_scanner import __version__
 
@@ -382,15 +385,21 @@ def test_retained_frozen_hook_can_be_validated_against_exact_transition_artifact
     with monkeypatch.context() as role_patch:
         if legacy_roles:
             roles = codex_adapter._hook_packaged_file_paths
-            role_patch.setattr(codex_adapter, "_hook_packaged_file_paths",
-                               lambda: tuple((role, path) for role, path in roles()
-                                             if role not in {"hook_probe", "native_receipt"}))
+            role_patch.setattr(
+                codex_adapter,
+                "_hook_packaged_file_paths",
+                lambda: tuple((role, path) for role, path in roles() if role not in {"hook_probe", "native_receipt"}),
+            )
         CodexHarnessAdapter().install(context)
     argv = codex_adapter._hook_command_parts(context)
     bridge = json.loads(argv[2])
-    kwargs = dict(manifest_path=bridge["manifest_path"], state_path=bridge["state_path"],
-                  fallback_command=bridge["fallback_command"], start_command=bridge["start_command"],
-                  config_json=argv[2])
+    kwargs = dict(
+        manifest_path=bridge["manifest_path"],
+        state_path=bridge["state_path"],
+        fallback_command=bridge["fallback_command"],
+        start_command=bridge["start_command"],
+        config_json=argv[2],
+    )
     config = context.home_dir / ".codex" / "config.toml"
     before = config.read_bytes()
     manifest_path = Path(bridge["manifest_path"])
@@ -403,13 +412,17 @@ def test_retained_frozen_hook_can_be_validated_against_exact_transition_artifact
     assert isinstance(trusted, codex_hook_runtime_trust.TrustedCodexHookLaunch)
     assert config.read_bytes() == before and manifest_path.read_bytes() == before_manifest
     assert sys.executable == str(candidate)  # No process-wide identity override.
-    for invalid in (replace(binding, executable=candidate), replace(binding, executable_sha256="a" * 64),
-                    replace(binding, package_version="0.0.0")):
+    for invalid in (
+        replace(binding, executable=candidate),
+        replace(binding, executable_sha256="a" * 64),
+        replace(binding, package_version="0.0.0"),
+    ):
         with pytest.raises(ValueError, match="transition artifact identity"):
             frozen_codex_runtime._validate_frozen_codex_hook_launch(**kwargs, expected_artifact=invalid)
     with pytest.raises(ValueError, match="fallback"):
         frozen_codex_runtime._validate_frozen_codex_hook_launch(
-            **{**kwargs, "fallback_command": [*bridge["fallback_command"], "foreign"]}, expected_artifact=binding,
+            **{**kwargs, "fallback_command": [*bridge["fallback_command"], "foreign"]},
+            expected_artifact=binding,
         )
     from codex_plugin_scanner.guard.codex_hook_file_integrity import CodexHookIntegrityError, hook_validation_deadline
 

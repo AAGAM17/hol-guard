@@ -39,12 +39,15 @@ def main() -> int:
     if not binding.exists():
         binding.write_bytes(b"previous binding generation")
         binding.chmod(0o600)
-        store.set_managed_install("codex", True, None,
-                                  {"generation": "previous", "managed_hook_config_path": str(binding)}, "fixture")
+        store.set_managed_install(
+            "codex", True, None, {"generation": "previous", "managed_hook_config_path": str(binding)}, "fixture"
+        )
     commands_lifecycle_gate.canonical_lifecycle_home = lambda: guard
     cli.lifecycle_authority_home = lambda *_args, **_kwargs: guard
     cli.RuntimeTransition = lambda *_args, **_kwargs: RuntimeTransition(
-        guard, FixtureAuthority(), install_store=store,
+        guard,
+        FixtureAuthority(),
+        install_store=store,
     )
     cli.require_high_risk = lambda *_args, **_kwargs: None  # Disabled generated fixture gate only.
 
@@ -84,15 +87,27 @@ def main() -> int:
             assert binding.read_bytes() == b"previous binding generation"
             assert store.list_managed_installs()[0]["manifest"]["generation"] == "previous"
             identity = self.plan.native_runtimes["predecessor"]
-            native = NativeRuntimeIdentity(Path(identity["path"]), identity["size"],
-                                           identity["mtime_ns"], identity["sha256"])
-            return _seal_verified_admission(NativeProtectionAdmission(
-                operation_id, artifact["generation"], native, 1, "a" * 64,
-                {"paired_source_fixture": "allow"}, {"paired_source_fixture": "deny"},
-                guard, time.monotonic(),
-                {"schema": "hol-guard.installed-hook-evidence.v1", "harness": "codex",
-                 "paired_source_fixture": True},
-            ))
+            native = NativeRuntimeIdentity(
+                Path(identity["path"]), identity["size"], identity["mtime_ns"], identity["sha256"]
+            )
+            return _seal_verified_admission(
+                NativeProtectionAdmission(
+                    operation_id,
+                    artifact["generation"],
+                    native,
+                    1,
+                    "a" * 64,
+                    {"paired_source_fixture": "allow"},
+                    {"paired_source_fixture": "deny"},
+                    guard,
+                    time.monotonic(),
+                    {
+                        "schema": "hol-guard.installed-hook-evidence.v1",
+                        "harness": "codex",
+                        "paired_source_fixture": True,
+                    },
+                )
+            )
 
     cli.TransitionDaemonDriver = Driver
     if args.desktop_command == "transition-activate":

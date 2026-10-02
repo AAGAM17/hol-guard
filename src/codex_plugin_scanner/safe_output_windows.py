@@ -313,7 +313,11 @@ def remove_file_no_follow_windows(path: Path) -> None:
                     return
                 raise
         opened = api.create_file(
-            absolute, _DELETE | _FILE_READ_ATTRIBUTES, 0, _OPEN_EXISTING, _FILE_FLAG_OPEN_REPARSE_POINT,
+            absolute,
+            _DELETE | _FILE_READ_ATTRIBUTES,
+            0,
+            _OPEN_EXISTING,
+            _FILE_FLAG_OPEN_REPARSE_POINT,
         )
         if opened == _INVALID_HANDLE_VALUE:
             if ctypes.get_last_error() in {2, 3}:

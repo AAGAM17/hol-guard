@@ -46,10 +46,7 @@ fn legacy_history_allows_fresh_claim_and_backfills_semantics_on_exact_replay() {
     // A genuinely new claim_id is not a replay of the semantic-less legacy
     // entry, so it must be consumed rather than rejected as a replay. The
     // legacy entry still blocks its own claim_id via the tombstone path.
-    assert_eq!(
-        verify_and_claim_at(&root, &fresh, &context, NOW_MS).unwrap().replayed,
-        false
-    );
+    assert!(!verify_and_claim_at(&root, &fresh, &context, NOW_MS).unwrap().replayed);
     assert!(
         verify_and_claim_at(&root, &first, &context, NOW_MS)
             .unwrap()

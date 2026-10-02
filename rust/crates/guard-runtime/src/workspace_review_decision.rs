@@ -336,6 +336,10 @@ fn verify_and_claim_at(
             .max()
             .unwrap_or(0)
             .min(now_ms);
+        if migrated_floor != 0 {
+            state.last_observed_time_ms = migrated_floor;
+            floor_changed = true;
+        }
     }
     if now_ms < state.last_observed_time_ms {
         return Err("native_workspace_review_clock_rollback".to_owned());

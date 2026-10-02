@@ -313,6 +313,8 @@ fn exact_safe_command_with_context(
                 model.segments.len() == 1
                     && safe_reads::safe_copy_arguments(&segment.arguments, context)
             }
+            "mkdir" | "touch" | "mv" => model.segments.len() == 1
+                && safe_reads::safe_file_mutation_arguments(basename, &segment.arguments, context),
             // Admit stdin only when every producer in the pipeline is also proven safe.
             "head" | "tail" => {
                 safe_reads::safe_head_tail_arguments(&segment.arguments, segment.pipeline_index > 0, context)

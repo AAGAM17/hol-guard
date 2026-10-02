@@ -209,6 +209,15 @@ pub(super) fn bounded_file_write_target(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
+    bounded_write_target(value, home_dir, cwd, false)
+}
+
+fn bounded_write_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    directory: bool,
+) -> bool {
     let Some(workspace) = cwd.and_then(|root| {
         let expanded = expand_home_read_path(root, home_dir).unwrap_or_else(|| root.to_owned());
         std::fs::canonicalize(expanded).ok()
@@ -234,7 +243,12 @@ pub(super) fn bounded_file_write_target(
     } else {
         workspace.join(supplied)
     };
-    let Some(canonical) = super::worktree_writes::canonical_write_target(&target) else {
+    let canonical = if directory && target.is_dir() {
+        std::fs::canonicalize(&target).ok()
+    } else {
+        super::worktree_writes::canonical_write_target(&target)
+    };
+    let Some(canonical) = canonical else {
         return false;
     };
     (canonical.starts_with(&workspace)
@@ -265,6 +279,17 @@ pub(super) fn safe_copy_arguments(
     } else {
         return false;
     };
+    let destination = if destination.is_dir() {
+        let Some(name) = std::path::Path::new(paths.0).file_name() else {
+            return false;
+        };
+        destination.join(name)
+    } else {
+        destination
+    };
+    let Some(destination_text) = destination.to_str() else {
+        return false;
+    };
     if destination
         .symlink_metadata()
         .is_ok_and(|metadata| metadata.file_type().is_symlink())
@@ -277,8 +302,36 @@ pub(super) fn safe_copy_arguments(
         && !paths.1.starts_with('-')
         && paths.0.trim() == paths.0
         && bounded_file_read_target(paths.0, context.0, context.1)
-        && (bounded_file_write_target(paths.1, context.0, context.1)
-            || bounded_temporary_copy_target(paths.1, context))
+        && (bounded_file_write_target(destination_text, context.0, context.1)
+            || bounded_temporary_copy_target(destination_text, context))
+}
+
+pub(super) fn safe_file_mutation_arguments(
+    command: &str,
+    arguments: &[String],
+    context: (Option<&str>, Option<&str>),
+) -> bool {
+    match (command, arguments) {
+        ("mkdir", [target]) => {
+            !target.starts_with('-') && bounded_write_target(target, context.0, context.1, true)
+        }
+        ("mkdir", [flag, target]) if matches!(flag.as_str(), "-p" | "--parents" | "--") => {
+            !target.starts_with('-') && bounded_write_target(target, context.0, context.1, true)
+        }
+        ("touch", [target]) => {
+            !target.starts_with('-') && bounded_file_write_target(target, context.0, context.1)
+        }
+        ("touch", [flag, target]) if flag == "--" => {
+            !target.starts_with('-') && bounded_file_write_target(target, context.0, context.1)
+        }
+        ("mv", [source, destination]) => {
+            existing_regular_read_target(source, context.0, context.1)
+                && bounded_file_write_target(source, context.0, context.1)
+                && bounded_file_write_target(destination, context.0, context.1)
+                && safe_copy_arguments(arguments, context)
+        }
+        _ => false,
+    }
 }
 
 #[cfg(unix)]

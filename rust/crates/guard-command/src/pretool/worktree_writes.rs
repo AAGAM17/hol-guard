@@ -54,7 +54,7 @@ pub(super) fn same_repository_worktree(workspace: &Path, target: &Path) -> bool 
         && common == source
         && admin.starts_with(common.join("worktrees"))
         && bounded_git_metadata(&admin.join("gitdir"))
-            .and_then(|path| std::fs::canonicalize(path.trim()).ok())
+            .and_then(|path| std::fs::canonicalize(admin.join(path.trim())).ok())
             .is_some_and(|backlink| backlink == root.join(".git"))
 }
 

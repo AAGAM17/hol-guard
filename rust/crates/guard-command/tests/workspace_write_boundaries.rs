@@ -1,13 +1,40 @@
 use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
+struct TestRoot(std::path::PathBuf);
+
+impl TestRoot {
+    fn new(name: &str) -> Self {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target")
+            .join(name);
+        std::fs::create_dir_all(&base).unwrap();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let mut attempt = 0;
+        loop {
+            let root = base.join(format!("run-{}-{nonce}-{attempt}", std::process::id()));
+            match std::fs::create_dir(&root) {
+                Ok(()) => return Self(root.canonicalize().unwrap()),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => attempt += 1,
+                Err(error) => panic!("failed to create test root: {error}"),
+            }
+        }
+    }
+}
+
+impl Drop for TestRoot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/worktree-write-fixtures")
-        .join(format!("run-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
-    let home = std::fs::canonicalize(root).unwrap();
+    let fixture = TestRoot::new("worktree-write-fixtures");
+    let home = &fixture.0;
     let workspace = home.join("project");
     let linked = home.join("linked");
     let linked_path = linked.to_str().unwrap();
@@ -46,6 +73,19 @@ fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
         std::fs::create_dir_all(directory.join("src")).unwrap();
         std::fs::write(directory.join("src/example.ts"), "fixture").unwrap();
     }
+    let marker = std::fs::read_to_string(linked.join(".git")).unwrap();
+    let admin = std::path::Path::new(marker.trim().strip_prefix("gitdir: ").unwrap());
+    std::fs::write(admin.join("gitdir"), "../../../../linked/.git\n").unwrap();
+    let relative = evaluate_pre_tool_envelope_with_context(
+        "zcode",
+        "PreToolUse",
+        &json!({"toolName":"Write", "toolInput":{"file_path":"~/linked/app/api/relative/route.ts", "content":"fixture"}}),
+        None,
+        None,
+        home.to_str(),
+        Some("~/project"),
+    );
+    assert_eq!(relative.minimum_action, "allow", "{}", relative.reason_code);
     for (path, allowed) in [
         ("~/project/src/example.ts", true),
         ("~/linked/src/example.ts", true),
@@ -92,14 +132,12 @@ fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
         );
         assert_ne!(result.minimum_action, "allow");
     }
-    std::fs::remove_dir_all(home).unwrap();
 }
 
 #[test]
 fn routine_workspace_writes_keep_sensitive_and_destructive_boundaries() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/workspace-write-fixtures")
-        .join(format!("run-{}", std::process::id()));
+    let fixture = TestRoot::new("workspace-write-fixtures");
+    let root = &fixture.0;
     let workspace = root.join("project");
     std::fs::create_dir_all(workspace.join("src")).unwrap();
     std::fs::create_dir_all(workspace.join(".ssh")).unwrap();

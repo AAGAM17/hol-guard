@@ -657,10 +657,10 @@ def _revalidate_claimed_tool_call_approval(
         validation_reason = APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM if context_changed is not None else None
     if fresh_decision.approval_reuse_reason_code == "approval_reuse_integrity_failure":
         validation_reason = "approval_reuse_integrity_failure"
-    elif (
-        fresh_decision.approval_reuse_status == "rejected"
-        and fresh_decision.approval_reuse_reason_code not in {None, APPROVAL_REUSE_NO_SAVED_DECISION}
-    ):
+    elif fresh_decision.approval_reuse_status == "rejected" and fresh_decision.approval_reuse_reason_code not in {
+        None,
+        APPROVAL_REUSE_NO_SAVED_DECISION,
+    }:
         validation_reason = APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM
 
     # A fresh unclaimed allow is not launch authority. Reuse the freshly

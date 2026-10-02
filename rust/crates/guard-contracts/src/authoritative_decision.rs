@@ -178,8 +178,7 @@ fn dashboard_detail_from_signals(signals: &[RiskSignalV2], fallback: &str) -> St
     if has_data_flow_exfiltration_signal(signals) {
         let sink = data_flow_sink_type(signals);
         return format!(
-            "Source-to-sink route: local secret -> {}. This command sends local secret to {} without exposing the raw secret in Guard evidence.",
-            sink, sink
+            "Source-to-sink route: local secret -> {sink}. This command sends local secret to {sink} without exposing the raw secret in Guard evidence."
         );
     }
     let strongest = signals
@@ -198,24 +197,19 @@ fn harness_message_from_signals(
         let sink = data_flow_sink_type(signals);
         return match policy_action {
             GuardAction::Allow => format!(
-                "HOL Guard allowed this action after noting that it sends local secret to {}.",
-                sink
+                "HOL Guard allowed this action after noting that it sends local secret to {sink}."
             ),
             GuardAction::Warn => format!(
-                "HOL Guard allowed this action with a warning because it sends local secret to {}.",
-                sink
+                "HOL Guard allowed this action with a warning because it sends local secret to {sink}."
             ),
             GuardAction::SandboxRequired => format!(
-                "HOL Guard requires a sandbox because this action sends local secret to {}.",
-                sink
+                "HOL Guard requires a sandbox because this action sends local secret to {sink}."
             ),
             GuardAction::Block => format!(
-                "HOL Guard blocked this action because it sends local secret to {}.",
-                sink
+                "HOL Guard blocked this action because it sends local secret to {sink}."
             ),
             GuardAction::Review | GuardAction::RequireReapproval => format!(
-                "HOL Guard paused this action because it sends local secret to {}.",
-                sink
+                "HOL Guard paused this action because it sends local secret to {sink}."
             ),
         };
     }
@@ -519,10 +513,7 @@ pub fn validate_composition_trace(
             }
             Some(v) => {
                 if !is_guard_action_value(v) {
-                    bailf!(
-                        "composition_trace.{} must be a known Guard action or null",
-                        key
-                    );
+                    bailf!("composition_trace.{key} must be a known Guard action or null");
                 }
                 parsed.insert(key.to_string(), v.clone());
             }
@@ -558,10 +549,7 @@ pub fn validate_composition_trace(
             continue;
         }
         if action.severity() < cand.severity() {
-            bailf!(
-                "composition_trace.{} cannot be weakened by the final action",
-                key
-            );
+            bailf!("composition_trace.{key} cannot be weakened by the final action");
         }
     }
 
@@ -574,10 +562,7 @@ pub fn validate_composition_trace(
                     GuardAction::from_canonical(cands),
                 ) {
                     if ca.severity() < cb.severity() {
-                        bailf!(
-                            "composition_trace.current_action cannot be weaker than {}",
-                            key
-                        );
+                        bailf!("composition_trace.current_action cannot be weaker than {key}");
                     }
                 }
             }
@@ -630,13 +615,10 @@ fn reject_unknown_composition_action_fields(trace: &Map<String, Value>) -> Resul
     fn visit(value: &Value, path: &str, top_level: bool) -> Result<(), VErr> {
         if let Value::Object(m) = value {
             for (raw_key, nested) in m {
-                let key_path = format!("{}.{}", path, raw_key);
+                let key_path = format!("{path}.{raw_key}");
                 let known_top = top_level && is_known_composition_action_field(raw_key);
                 if is_action_bearing_key(raw_key) && !known_top {
-                    bailf!(
-                        "composition_trace contains unknown action-bearing field: {}",
-                        key_path
-                    );
+                    bailf!("composition_trace contains unknown action-bearing field: {key_path}");
                 }
                 visit(nested, &key_path, false)?;
             }
@@ -644,7 +626,7 @@ fn reject_unknown_composition_action_fields(trace: &Map<String, Value>) -> Resul
         }
         if let Value::Array(a) = value {
             for (i, nested) in a.iter().enumerate() {
-                visit(nested, &format!("{}[{}]", path, i), false)?;
+                visit(nested, &format!("{path}[{i}]"), false)?;
             }
         }
         Ok(())
@@ -773,13 +755,10 @@ pub fn validate_artifact_projection(
                 continue;
             }
             if !is_guard_action_value(&envelope_action) {
-                bailf!("action_envelope_json.{} must be a known Guard action", key);
+                bailf!("action_envelope_json.{key} must be a known Guard action");
             }
             if envelope_action != json!(decision.action.as_str()) {
-                bailf!(
-                    "action_envelope_json.{} must match authoritative action",
-                    key
-                );
+                bailf!("action_envelope_json.{key} must match authoritative action");
             }
         }
     }
@@ -796,7 +775,7 @@ fn require_matching_alias(
         && payload.contains_key(camel)
         && payload.get(snake) != payload.get(camel)
     {
-        bailf!("{}.{} must match {}", context, camel, snake);
+        bailf!("{context}.{camel} must match {snake}");
     }
     Ok(())
 }
@@ -814,7 +793,7 @@ fn reject_unknown_action_bearing_fields(
     let _ = ARTIFACT_ACTION_FIELDS;
     for key in payload.keys() {
         if is_action_bearing_key(key) && !allowed.contains(&key.as_str()) {
-            bailf!("{} contains unknown action-bearing field: {}", context, key);
+            bailf!("{context} contains unknown action-bearing field: {key}");
         }
     }
     Ok(())
@@ -1073,7 +1052,7 @@ fn require_scanner_evidence(
             return Ok(());
         }
     }
-    bailf!("scanner_evidence must contain matching {} evidence", source)
+    bailf!("scanner_evidence must contain matching {source} evidence")
 }
 
 // ---------------------------------------------------------------------------
@@ -1263,7 +1242,7 @@ fn decode_authoritative_decision(
     let rb = |k: &str| -> Result<bool, VErr> {
         match enforcement_raw.get(k) {
             Some(Value::Bool(b)) => Ok(*b),
-            _ => bailf!("{} must be a boolean", k),
+            _ => bailf!("{k} must be a boolean"),
         }
     };
     let enforcement = GuardDecisionEnforcementState {
@@ -1302,7 +1281,7 @@ fn decode_authoritative_decision(
     let rs = |k: &str| -> Result<String, VErr> {
         match dv2_raw.get(k) {
             Some(Value::String(s)) if !s.trim().is_empty() => Ok(s.clone()),
-            _ => bailf!("{} must be a non-empty string", k),
+            _ => bailf!("{k} must be a non-empty string"),
         }
     };
     let dv2_signals: Vec<RiskSignalV2> = dv2_raw

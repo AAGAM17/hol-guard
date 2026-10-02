@@ -69,9 +69,7 @@ fn validate_identifier(v: &str) -> WfResult<()> {
     let valid = !v.is_empty()
         && v.len() <= 256
         && !v.contains('*')
-        && v.chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphanumeric())
+        && v.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
         && v.chars().all(|c| {
             c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
         });
@@ -89,9 +87,7 @@ pub fn validate_workflow_capability_identifier(name: &'static str, v: &str) -> W
     let valid = !v.is_empty()
         && v.len() <= 256
         && !v.contains('*')
-        && v.chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphanumeric())
+        && v.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
         && v.chars().all(|c| {
             c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
         });
@@ -238,26 +234,26 @@ impl WorkflowCapabilityBinding {
         for r in rules_v {
             let rm = strict_object(r, RULE_KEYS)?;
             let rb = WorkflowCapabilityRuleBinding {
-                rule_id: require_str(&rm, "rule_id")?,
-                rule_version: require_str(&rm, "rule_version")?,
+                rule_id: require_str(rm, "rule_id")?,
+                rule_version: require_str(rm, "rule_version")?,
             };
             rb.validate()?;
             rules.push(rb);
         }
         let binding = WorkflowCapabilityBinding {
-            operation_id: require_str(&m, "operation_id")?,
-            resource_type: require_str(&m, "resource_type")?,
-            resource_sha256: require_str(&m, "resource_sha256")?,
-            repository_sha256: require_str(&m, "repository_sha256")?,
-            workspace_sha256: require_str(&m, "workspace_sha256")?,
-            executable_sha256: require_str(&m, "executable_sha256")?,
-            launch_sha256: require_str(&m, "launch_sha256")?,
-            policy_id: require_str(&m, "policy_id")?,
-            policy_version: require_str(&m, "policy_version")?,
-            effect_id: require_str(&m, "effect_id")?,
-            effect_version: require_str(&m, "effect_version")?,
-            decision_id: require_str(&m, "decision_id")?,
-            decision_version: require_str(&m, "decision_version")?,
+            operation_id: require_str(m, "operation_id")?,
+            resource_type: require_str(m, "resource_type")?,
+            resource_sha256: require_str(m, "resource_sha256")?,
+            repository_sha256: require_str(m, "repository_sha256")?,
+            workspace_sha256: require_str(m, "workspace_sha256")?,
+            executable_sha256: require_str(m, "executable_sha256")?,
+            launch_sha256: require_str(m, "launch_sha256")?,
+            policy_id: require_str(m, "policy_id")?,
+            policy_version: require_str(m, "policy_version")?,
+            effect_id: require_str(m, "effect_id")?,
+            effect_version: require_str(m, "effect_version")?,
+            decision_id: require_str(m, "decision_id")?,
+            decision_version: require_str(m, "decision_version")?,
             rules,
         };
         binding.validate()?;
@@ -471,18 +467,18 @@ impl WorkflowCapabilityClaim {
             .as_i64()
             .ok_or(WorkflowCapabilityError("invalid_capability_max_uses"))?;
         let claim = WorkflowCapabilityClaim {
-            schema_version: require_str(&m, "schema_version")?,
-            algorithm: require_str(&m, "algorithm")?,
-            capability_id: require_str(&m, "capability_id")?,
-            approval_provenance_id: require_str(&m, "approval_provenance_id")?,
-            task_id: require_str(&m, "task_id")?,
-            nonce: require_str(&m, "nonce")?,
-            issuer_id: require_str(&m, "issuer_id")?,
-            subject_id: require_str(&m, "subject_id")?,
+            schema_version: require_str(m, "schema_version")?,
+            algorithm: require_str(m, "algorithm")?,
+            capability_id: require_str(m, "capability_id")?,
+            approval_provenance_id: require_str(m, "approval_provenance_id")?,
+            task_id: require_str(m, "task_id")?,
+            nonce: require_str(m, "nonce")?,
+            issuer_id: require_str(m, "issuer_id")?,
+            subject_id: require_str(m, "subject_id")?,
             binding: WorkflowCapabilityBinding::decode(require(m, "binding")?)?,
-            issued_at: require_str(&m, "issued_at")?,
-            not_before: require_str(&m, "not_before")?,
-            expires_at: require_str(&m, "expires_at")?,
+            issued_at: require_str(m, "issued_at")?,
+            not_before: require_str(m, "not_before")?,
+            expires_at: require_str(m, "expires_at")?,
             max_uses,
         };
         claim.validate()?;
@@ -575,11 +571,11 @@ impl SignedWorkflowCapability {
     pub fn decode(payload: &Value) -> WfResult<Self> {
         let m = strict_object(payload, SIGNED_KEYS)?;
         let signed = SignedWorkflowCapability {
-            envelope_schema: require_str(&m, "envelope_schema")?,
-            algorithm: require_str(&m, "algorithm")?,
+            envelope_schema: require_str(m, "envelope_schema")?,
+            algorithm: require_str(m, "algorithm")?,
             claim: WorkflowCapabilityClaim::decode(require(m, "claim")?)?,
-            key_id: require_str(&m, "key_id")?,
-            signature: require_str(&m, "signature")?,
+            key_id: require_str(m, "key_id")?,
+            signature: require_str(m, "signature")?,
         };
         signed.validate_shape()?;
         Ok(signed)
@@ -653,17 +649,17 @@ impl WorkflowCapabilityReceipt {
             .as_i64()
             .ok_or(WorkflowCapabilityError("invalid_receipt_event_id"))?;
         let receipt = WorkflowCapabilityReceipt {
-            schema_version: require_str(&m, "schema_version")?,
-            receipt_id: require_str(&m, "receipt_id")?,
-            capability_id: require_str(&m, "capability_id")?,
-            task_id: require_str(&m, "task_id")?,
-            invocation_id: require_str(&m, "invocation_id")?,
-            approval_provenance_id: require_str(&m, "approval_provenance_id")?,
-            claim_sha256: require_str(&m, "claim_sha256")?,
+            schema_version: require_str(m, "schema_version")?,
+            receipt_id: require_str(m, "receipt_id")?,
+            capability_id: require_str(m, "capability_id")?,
+            task_id: require_str(m, "task_id")?,
+            invocation_id: require_str(m, "invocation_id")?,
+            approval_provenance_id: require_str(m, "approval_provenance_id")?,
+            claim_sha256: require_str(m, "claim_sha256")?,
             binding: WorkflowCapabilityBinding::decode(require(m, "binding")?)?,
             use_number,
             event_id,
-            claimed_at: require_str(&m, "claimed_at")?,
+            claimed_at: require_str(m, "claimed_at")?,
         };
         receipt.validate()?;
         Ok(receipt)
@@ -815,14 +811,14 @@ impl SignedWorkflowCapabilityReceipt {
         let receipt = WorkflowCapabilityReceipt::decode(require(m, "receipt")?)
             .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
         Ok(SignedWorkflowCapabilityReceipt {
-            envelope_schema: require_str(&m, "envelope_schema")
+            envelope_schema: require_str(m, "envelope_schema")
                 .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
-            algorithm: require_str(&m, "algorithm")
+            algorithm: require_str(m, "algorithm")
                 .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
             receipt,
-            key_id: require_str(&m, "key_id")
+            key_id: require_str(m, "key_id")
                 .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
-            signature: require_str(&m, "signature")
+            signature: require_str(m, "signature")
                 .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?,
         })
     }

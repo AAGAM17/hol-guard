@@ -133,7 +133,9 @@ def _run_guard_execute_contained_test_command(
             authorize=lambda original: try_native_hook_authority(
                 payload={**original, "guard_containment_receipt_only": True},
                 harness=str(getattr(args, "harness", "omp")), home_dir=context.home_dir,
-                guard_home=guard_home, workspace=workspace, store=store,
+                guard_home=guard_home,
+                workspace=Path(str(original["cwd"])).resolve(strict=True) if "cwd" in original else workspace,
+                store=store,
             ),
         )
     except RestrictedPytestError as error:

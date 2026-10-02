@@ -141,6 +141,9 @@ def _run_guard_execute_contained_test_command(
     except RestrictedPytestError as error:
         print(f"{error.reason_code}: {error}", file=sys.stderr)
         return error.exit_code
+    except (OSError, RuntimeError):
+        print("guard_contained_test_rejected: Execution directory is unavailable.", file=sys.stderr)
+        return 126
     finally:
         if request_validated and getattr(args, "harness", "omp") == "zcode":
             with suppress(OSError):

@@ -216,16 +216,18 @@ def run_authorized_contained_test(
 
     def authorize_capability(argv: tuple[str, ...]) -> None:
         capability = {**payload, "tool_input": {**tool_input, "command": shlex.join(argv)}}
-        if vitest_plan is not None:
-            capability["cwd"] = str(vitest_plan.cwd)
-        response = authorize(capability)
-        if (
-            not isinstance(response, Mapping)
-            or response.get("decision") != "allow"
-            or response.get("policy_action") != "allow"
-            or response.get("observe_mode") is True
-        ):
-            raise _reject()
+        contexts = [workspace]
+        if vitest_plan is not None and vitest_plan.cwd != workspace:
+            contexts.append(vitest_plan.cwd)
+        for directory in contexts:
+            response = authorize({**capability, "cwd": str(directory)})
+            if (
+                not isinstance(response, Mapping)
+                or response.get("decision") != "allow"
+                or response.get("policy_action") != "allow"
+                or response.get("observe_mode") is True
+            ):
+                raise _reject()
 
     # No shell and no unsandboxed retry: the required profile is the actual sink.
     if inline_plan is not None:
@@ -248,9 +250,10 @@ def run_authorized_contained_test(
         # Check the resolved Node/script action too: wrapper consent must not
         # override an extension deny for the underlying executable.
         underlying = {**payload, "tool_input": {**tool_input, "command": shlex.join(vitest_plan.command)}}
-        underlying["cwd"] = str(vitest_plan.cwd)
-        if not required(authorize(underlying)):
-            raise _reject()
+        # Selecting another directory cannot shed the original project's denies.
+        for directory in dict.fromkeys((workspace, vitest_plan.cwd)):
+            if not required(authorize({**underlying, "cwd": str(directory)})):
+                raise _reject()
         return restricted_vitest.run_restricted_vitest(
             command,
             workspace=workspace,

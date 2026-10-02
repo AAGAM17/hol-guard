@@ -100,6 +100,29 @@ def test_snapshot_cannot_substitute_its_original_hook_working_directory(tmp_path
         sink.read_contained_test_request(request, hashlib.sha256(raw).hexdigest(), workspace=tmp_path)
 
 
+def test_disappearing_execution_directory_rejects_cleanly(tmp_path, monkeypatch, capsys):
+    import argparse
+
+    from codex_plugin_scanner.guard.cli import commands_dispatch_local as cli
+
+    original = {**payload(), "cwd": str(tmp_path)}
+    monkeypatch.setattr(sink, "read_contained_test_request", lambda *args, **kwargs: original)
+
+    def execute(request, *, authorize, **kwargs):
+        authorize({**request, "cwd": str(tmp_path / "missing")})
+        pytest.fail("missing directory must never execute")
+
+    monkeypatch.setattr(sink, "run_authorized_contained_test", execute)
+    args = argparse.Namespace(request_file="unused", request_sha256="unused", timeout_seconds=20, harness="omp")
+    assert (
+        cli._run_guard_execute_contained_test_command(
+            args, guard_home=tmp_path, workspace=tmp_path, context=SimpleNamespace(home_dir=tmp_path), store=object()
+        )
+        == 126
+    )
+    assert "Execution directory is unavailable" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("failure", ("missing", "allow", "block", "review", "profile", "reason", "watch"))
 def test_changed_or_missing_authority_never_starts_tests(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str

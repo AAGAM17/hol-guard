@@ -328,10 +328,24 @@ pub(super) fn safe_file_mutation_arguments(
             existing_regular_read_target(source, context.0, context.1)
                 && bounded_file_write_target(source, context.0, context.1)
                 && bounded_file_write_target(destination, context.0, context.1)
+                && absent_move_destination(destination, context)
                 && safe_copy_arguments(arguments, context)
         }
         _ => false,
     }
+}
+
+fn absent_move_destination(value: &str, context: (Option<&str>, Option<&str>)) -> bool {
+    let expanded = expand_home_read_path(value, context.0).unwrap_or_else(|| value.to_owned());
+    let supplied = std::path::Path::new(&expanded);
+    let target = if supplied.is_absolute() {
+        supplied.to_path_buf()
+    } else if let Some(cwd) = context.1 {
+        std::path::Path::new(cwd).join(supplied)
+    } else {
+        return false;
+    };
+    matches!(target.symlink_metadata(), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
 #[cfg(unix)]

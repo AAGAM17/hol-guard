@@ -10,6 +10,7 @@ fn routine_file_mutations_do_not_inherit_sensitive_or_directory_delete_access() 
     std::fs::create_dir_all(root.join("src")).unwrap();
     let root = std::fs::canonicalize(root).unwrap();
     std::fs::write(root.join("src/example.ts"), "ordinary source").unwrap();
+    std::fs::write(root.join("src/existing.ts"), "preserve destination").unwrap();
     std::fs::write(root.join(".env"), "synthetic secret").unwrap();
     std::os::unix::fs::symlink(root.join(".env"), root.join("src/alias.ts")).unwrap();
     for harness in ["omp", "zcode"] {
@@ -18,6 +19,8 @@ fn routine_file_mutations_do_not_inherit_sensitive_or_directory_delete_access() 
             ("mkdir --parents src", true),
             ("touch src/new.ts", true),
             ("mv src/example.ts src/renamed.ts", true),
+            ("mv src/example.ts src/existing.ts", false),
+            ("mv src/example.ts src", false),
             ("cp src/example.ts src", true),
             ("mkdir -p .git/hooks", false),
             ("mkdir -p ../outside", false),

@@ -166,7 +166,10 @@ def test_hook_worker_forwards_successful_provider_results_to_background_writer(t
             },
         )
         assert writer.stop(timeout_seconds=2)
-        assert store.list_local_cli_items()[0]["provider_catalog"]["known_count"] == 1
+        provider_catalog = next(
+            item["provider_catalog"] for item in store.list_local_cli_items() if "provider_catalog" in item
+        )
+        assert provider_catalog["known_count"] == 1
     finally:
         writer.stop(timeout_seconds=2)
         worker.close()

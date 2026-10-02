@@ -17,7 +17,7 @@ import os
 import secrets
 import stat
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -294,11 +294,24 @@ def restore_private_file(path: Path, payload: bytes | None) -> None:
     atomic_write_bytes(path, payload, mode=_PRIVATE_FILE_MODE, private=True)
 
 
-def atomic_write_text(path: Path, text: str, *, mode: int = _PRIVATE_FILE_MODE) -> None:
-    atomic_write_bytes(path, text.encode("utf-8"), mode=mode, private=False)
+def atomic_write_text(
+    path: Path,
+    text: str,
+    *,
+    mode: int = _PRIVATE_FILE_MODE,
+    on_publish: Callable[[tuple[int, int]], None] | None = None,
+) -> None:
+    atomic_write_bytes(path, text.encode("utf-8"), mode=mode, private=False, on_publish=on_publish)
 
 
-def atomic_write_bytes(path: Path, payload: bytes, *, mode: int, private: bool) -> None:
+def atomic_write_bytes(
+    path: Path,
+    payload: bytes,
+    *,
+    mode: int,
+    private: bool,
+    on_publish: Callable[[tuple[int, int]], None] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise CodexHookIntegrityError(
@@ -317,7 +330,10 @@ def atomic_write_bytes(path: Path, payload: bytes, *, mode: int, private: bool) 
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+            written = os.fstat(handle.fileno())
         os.replace(temporary_path, path)
+        if on_publish is not None:
+            on_publish((written.st_dev, written.st_ino))
         os.chmod(path, mode)
         _fsync_directory(path.parent)
     finally:

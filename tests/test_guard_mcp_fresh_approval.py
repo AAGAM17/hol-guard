@@ -110,6 +110,19 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
             "marker.write(json.dumps(message.get('params', {})) + '\\n')",
         )
     )
+    launch_identity = runtime._resolved_executable_identity(
+        command[0], launch_cwd=ctx.workspace_dir, launch_args=command[1:]
+    )
+    entrypoint = launch_identity.get("entrypoint", {})
+    assert launch_identity.get("status") == "verified", {
+        "executable_status": launch_identity.get("status"),
+        "file_format": launch_identity.get("file_format"),
+        "shebang_status": launch_identity.get("shebang_status"),
+    }
+    assert entrypoint.get("status") != "unproven", {
+        "entrypoint_status": entrypoint.get("status"),
+        "entrypoint_reason": entrypoint.get("reason"),
+    }
     proxy = OpenCodeMcpGuardProxy(
         server_name="synthetic-no-network",
         command=command,

@@ -125,13 +125,15 @@ def _digest(yaml: str) -> str:
     return policy_document_digest(document)
 
 
-_TOTP_REQUEST_ID = "FixturetotpRequestId0123456789AB"
+_FIXTURE_TOTP_REQUEST_ID = "FixturetotpRequestId0123456789AB"
 
 
 _CREDENTIAL_WORDS = ("password", "totp", "secret", "token", "credential", "passphrase")
+_REQUEST_ID_PATTERN = r"[A-Za-z0-9]{16,64}"
+_REQUEST_ID_FIELD = "requestId"
 
 
-@pytest.fixture(params=(None, _TOTP_REQUEST_ID), ids=("random-id", "totp-id"))
+@pytest.fixture(params=(None, _FIXTURE_TOTP_REQUEST_ID), ids=("random-id", "totp-id"))
 def opaque_request_id(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str | None:
     request_id = request.param
     if request_id is not None:
@@ -142,14 +144,14 @@ def opaque_request_id(request: pytest.FixtureRequest, monkeypatch: pytest.Monkey
 def _assert_no_policy_response_leaks(
     payload: dict[str, object], *, request_id: str, sensitive_values: tuple[str, ...] = ()
 ) -> None:
-    assert re.fullmatch(r"[A-Za-z0-9]{16,64}", request_id), "Invalid expected request ID"
-    assert payload.get("requestId") == request_id, "Response request ID changed"
+    assert re.fullmatch(_REQUEST_ID_PATTERN, request_id), "Invalid expected request ID"
+    assert payload.get(_REQUEST_ID_FIELD) == request_id, "Response request ID changed"
     serialized = json.dumps(payload, sort_keys=True)
     for value in sensitive_values:
         assert value and value not in serialized, "Response leaked sensitive value"
 
     # Only the verified root correlation ID may coincidentally contain a credential word.
-    checked_payload = {**payload, "requestId": ""}
+    checked_payload = {**payload, _REQUEST_ID_FIELD: ""}
     serialized = json.dumps(checked_payload, sort_keys=True)
     assert "apiVersion:" not in serialized, "Response leaked policy YAML"
     for field in ("canonicalPolicyYaml", "canonical_policy_yaml"):

@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from codex_plugin_scanner.guard.daemon.manager import load_guard_daemon_auth_token
 from codex_plugin_scanner.guard.mcp.policy_tools import decline_pending_policy_request, execute_create_policy
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.guard_mcp_policy_test_support import _BASIC_POLICY_YAML, _assert_no_policy_response_leaks, _digest
@@ -25,11 +32,6 @@ class TestDaemonMcpPolicyRequestSurface:
 
     @staticmethod
     def _dashboard_token(auth_token: str) -> str:
-        import base64
-        import hashlib
-        import hmac
-        from datetime import datetime, timezone
-
         from codex_plugin_scanner.guard.local_dashboard_session import (
             LOCAL_DASHBOARD_SESSION_AUDIENCE,
         )
@@ -50,8 +52,6 @@ class TestDaemonMcpPolicyRequestSurface:
 
     @staticmethod
     def _dashboard_token_for(store: GuardStore) -> str:
-        from codex_plugin_scanner.guard.daemon.manager import load_guard_daemon_auth_token
-
         auth_token = load_guard_daemon_auth_token(store.guard_home)
         assert auth_token is not None
         return TestDaemonMcpPolicyRequestSurface._dashboard_token(auth_token)
@@ -66,8 +66,6 @@ class TestDaemonMcpPolicyRequestSurface:
         token: str | None = None,
         origin: str | None = None,
     ) -> Any:
-        import urllib.request
-
         data = json.dumps(payload or {}).encode("utf-8") if method != "GET" else None
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if origin is not None:
@@ -86,9 +84,6 @@ class TestDaemonMcpPolicyRequestSurface:
 
     @staticmethod
     def _read_response(request: Any) -> tuple[int, dict[str, object]]:
-        import urllib.error
-        import urllib.request
-
         try:
             with urllib.request.urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read().decode("utf-8"))

@@ -141,7 +141,7 @@ def stress_request(endpoint: str, auth_token: str) -> float:
         method="POST",
     )
     last_error: BaseException | None = None
-    for _ in range(_STRESS_REQUEST_ATTEMPTS):
+    for attempt in range(_STRESS_REQUEST_ATTEMPTS):
         started = time.monotonic()
         try:
             with cast(HTTPResponse, urllib.request.urlopen(request, timeout=6)) as response:
@@ -156,7 +156,11 @@ def stress_request(endpoint: str, auth_token: str) -> float:
             if not isinstance(payload, dict):
                 raise RuntimeError("Hook response was not an object.")
             return (time.monotonic() - started) * 1000
-        except urllib.error.HTTPError:
+        except urllib.error.HTTPError as exc:
+            if exc.code == 503 and attempt + 1 < _STRESS_REQUEST_ATTEMPTS:
+                last_error = exc
+                time.sleep(0.05)
+                continue
             raise
         except json.JSONDecodeError as exc:
             last_error = exc

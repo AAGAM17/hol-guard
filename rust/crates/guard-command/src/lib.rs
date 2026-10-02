@@ -41,7 +41,16 @@ mod github_capability_contract_tests;
 mod github_command_capabilities_tests;
 mod github_capability_interaction;
 mod github_workflow_authorization;
+mod command_model;
+mod command_segment_parsing;
+mod data_flow;
+mod env_wrapper;
+mod command_structure;
+mod command_tokens;
+mod shell_command_wrappers;
 mod home_path_text;
+mod shell_read_literal_wrapper;
+mod shell_structure;
 mod parser_wrappers;
 pub mod pretool;
 
@@ -541,7 +550,7 @@ fn push_segment(
     Ok(())
 }
 
-fn shell_tokens(command: &str, preserve_backslash: bool) -> Result<Vec<String>, &'static str> {
+pub(crate) fn shell_tokens(command: &str, preserve_backslash: bool) -> Result<Vec<String>, &'static str> {
     let mut tokens = Vec::new();
     let mut token = String::new();
     let mut token_started = false;

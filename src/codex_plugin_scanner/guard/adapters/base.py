@@ -168,9 +168,12 @@ def _owned_adapter_mutation(method: Callable[..., _MutationResult]) -> Callable[
         from ..codex_install_transaction import codex_install_transaction
         from ..runtime_transition import assert_transition_mutation_allowed
 
-        with codex_install_transaction(
-            context.guard_home, context.guard_home / "managed", actor=f"adapter.{self.harness}.{method.__name__}"
-        ), ExitStack() as ownership:
+        with (
+            codex_install_transaction(
+                context.guard_home, context.guard_home / "managed", actor=f"adapter.{self.harness}.{method.__name__}"
+            ),
+            ExitStack() as ownership,
+        ):
             if self.harness == "codex":
                 from .codex_lifecycle_lock import codex_lifecycle_locks
 

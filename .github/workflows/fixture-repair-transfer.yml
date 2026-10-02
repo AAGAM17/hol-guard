@@ -20,4 +20,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PYTHONPATH: ${{ runner.temp }}/fixture-transfer-tools
-        run: python3 .repair-transfer/consumer_fix.py
+        run: python3 .repair-transfer/fixture_expectations.py

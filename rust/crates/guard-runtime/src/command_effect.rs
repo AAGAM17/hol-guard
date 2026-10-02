@@ -188,7 +188,7 @@ fn evaluate(
         }
         #[cfg(not(unix))]
         {
-            Vec::new()
+            return Err("native_command_effect_read_floors_unsupported".to_owned());
         }
     };
     guard_command::evaluate_command(

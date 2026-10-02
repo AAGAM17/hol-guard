@@ -39,7 +39,11 @@ fn shell_read_commands_share_the_structured_file_risk_boundary() {
     let outside = home.join("other");
     for directory in [&workspace, &outside] {
         std::fs::create_dir_all(directory).unwrap();
-        std::fs::write(directory.join("source.ts"), "protection-graph/ fixture").unwrap();
+        std::fs::write(
+            directory.join("auth_example.ts"),
+            "protection-graph/ fixture",
+        )
+        .unwrap();
         std::fs::write(directory.join(".env"), "SYNTHETIC=fixture").unwrap();
     }
     let commands = [
@@ -53,10 +57,10 @@ fn shell_read_commands_share_the_structured_file_risk_boundary() {
     ];
     for prefix in commands {
         for target in [
-            workspace.join("source.ts").display().to_string(),
-            outside.join("source.ts").display().to_string(),
-            "~/other/source.ts".to_owned(),
-            "source.ts".to_owned(),
+            workspace.join("auth_example.ts").display().to_string(),
+            outside.join("auth_example.ts").display().to_string(),
+            "~/other/auth_example.ts".to_owned(),
+            "auth_example.ts".to_owned(),
         ] {
             let command = format!("{prefix} '{target}'");
             let result = evaluate_pre_tool_envelope_with_context(

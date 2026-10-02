@@ -161,15 +161,8 @@ fn resolved_path_allowed(
         .iter()
         .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/")))
         || foreign_user_home(canonical, home_dir, cwd)
-        || super::sensitive_command(&rendered)
         || guard_secure_fs::sensitive_path_family(canonical).is_some()
-        || guard_secure_fs::sensitive_external_filename(canonical)
-        || canonical.components().any(|component| {
-            matches!(component, std::path::Component::Normal(part) if {
-                let part = part.to_string_lossy().to_ascii_lowercase();
-                guard_secure_fs::EXTERNAL_SENSITIVE_PARTS.contains(&part.as_str())
-            })
-        })
+        || guard_secure_fs::credential_named_path(canonical)
         || !(guard_secure_fs::hidden_read_parts_allowed(canonical)
             || guard_safety_doc(canonical, home_dir)
             || agent_skill_document(canonical, home_dir))

@@ -1703,9 +1703,9 @@ class CodexHarnessAdapter(HarnessAdapter):
         original_manifest = snapshot_regular_file(manifest_path)
         original_secret = snapshot_regular_file(secret_path)
         rendered_config = dump_toml(payload)
-        written_config_identity: tuple[int, int] | None = None
+        written_config_identity: tuple[int, int, int, int, int] | None = None
 
-        def remember_written_config(identity: tuple[int, int]) -> None:
+        def remember_written_config(identity: tuple[int, int, int, int, int]) -> None:
             nonlocal written_config_identity
             written_config_identity = identity
 

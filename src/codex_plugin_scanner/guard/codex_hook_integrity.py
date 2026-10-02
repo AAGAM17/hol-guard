@@ -299,7 +299,7 @@ def atomic_write_text(
     text: str,
     *,
     mode: int = _PRIVATE_FILE_MODE,
-    on_publish: Callable[[tuple[int, int]], None] | None = None,
+    on_publish: Callable[[tuple[int, int, int, int, int]], None] | None = None,
 ) -> None:
     atomic_write_bytes(path, text.encode("utf-8"), mode=mode, private=False, on_publish=on_publish)
 
@@ -310,7 +310,7 @@ def atomic_write_bytes(
     *,
     mode: int,
     private: bool,
-    on_publish: Callable[[tuple[int, int]], None] | None = None,
+    on_publish: Callable[[tuple[int, int, int, int, int]], None] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink() or (path.exists() and not path.is_file()):
@@ -332,9 +332,21 @@ def atomic_write_bytes(
             os.fsync(handle.fileno())
             written = os.fstat(handle.fileno())
         os.replace(temporary_path, path)
-        if on_publish is not None:
-            on_publish((written.st_dev, written.st_ino))
         os.chmod(path, mode)
+        if on_publish is not None:
+            published = path.lstat()
+            if (published.st_dev, published.st_ino, published.st_size, published.st_mtime_ns) != (
+                written.st_dev,
+                written.st_ino,
+                written.st_size,
+                written.st_mtime_ns,
+            ):
+                raise CodexHookIntegrityError(
+                    "codex_hook_transaction_target_changed", "Codex configuration changed during publication."
+                )
+            on_publish(
+                (published.st_dev, published.st_ino, published.st_size, published.st_mtime_ns, published.st_ctime_ns)
+            )
         _fsync_directory(path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)

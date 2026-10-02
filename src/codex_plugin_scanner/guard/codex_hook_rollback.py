@@ -18,14 +18,14 @@ def _state(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
     return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns
 
 
-def rollback_file_identity(path: Path) -> tuple[int, int] | None:
+def rollback_file_identity(path: Path) -> tuple[int, int, int, int, int] | None:
     try:
         metadata = path.lstat()
     except FileNotFoundError:
         return None
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
         raise _conflict()
-    return metadata.st_dev, metadata.st_ino
+    return _state(metadata)
 
 
 def require_unchanged_config_for_rollback(
@@ -33,8 +33,8 @@ def require_unchanged_config_for_rollback(
     original: bytes | None,
     written: bytes,
     *,
-    original_identity: tuple[int, int] | None,
-    written_identity: tuple[int, int] | None,
+    original_identity: tuple[int, int, int, int, int] | None,
+    written_identity: tuple[int, int, int, int, int] | None,
 ) -> None:
     """Check under the lifecycle lock; this does not fence non-cooperating writers."""
     try:
@@ -68,7 +68,7 @@ def require_unchanged_config_for_rollback(
             raise _conflict()
     except OSError as error:
         raise _conflict() from error
-    identity = after.st_dev, after.st_ino
+    identity = _state(after)
     if not (
         (original is not None and current == original and identity == original_identity)
         or (written_identity is not None and current == written and identity == written_identity)

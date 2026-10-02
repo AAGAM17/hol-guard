@@ -223,3 +223,19 @@ def test_invalid_utf8_snapshot_is_rejected_before_manifest_or_secret_writes(
     assert config_path.read_bytes() == b"\xff"
     assert manifest_path.read_bytes() == manifest_before
     assert secret_path.read_bytes() == secret_before
+
+
+def test_matching_bytes_and_inode_with_changed_timestamp_are_not_original_state(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_bytes(b"original")
+    before = path.stat()
+    original_identity = rollback.rollback_file_identity(path)
+    path.write_bytes(b"original")
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+    assert path.stat().st_ino == before.st_ino
+    assert path.stat().st_mtime_ns != before.st_mtime_ns
+    with pytest.raises(RuntimeError, match="codex_hook_rollback_conflict"):
+        rollback.require_unchanged_config_for_rollback(
+            path, b"original", b"candidate", original_identity=original_identity, written_identity=None
+        )
+    assert path.read_bytes() == b"original"

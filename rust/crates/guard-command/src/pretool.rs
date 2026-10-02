@@ -298,7 +298,17 @@ pub(crate) fn benign_command_segments(
         .iter()
         .enumerate()
         .filter_map(|(index, segment)| {
-            exact_safe_segment_with_context(model, segment, false, context).then_some(index)
+            let benign = exact_safe_segment_with_context(model, segment, false, context);
+            let path_free = matches!(
+                executable_basename(segment.executable.as_deref().unwrap_or("")),
+                "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "date"
+            ) || segment.arguments.is_empty();
+            let all_previous_benign = model.segments[..index].iter().all(|previous| {
+                exact_safe_segment_with_context(model, previous, false, context)
+            });
+            // Earlier extension-approved segments may rewrite the tree (checkout/pull);
+            // a pre-execution path proof only holds while every predecessor is benign.
+            (benign && (path_free || all_previous_benign)).then_some(index)
         })
         .collect()
 }

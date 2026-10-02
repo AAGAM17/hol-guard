@@ -91,7 +91,7 @@ def _queue_local_protect_approvals(
         evaluation={"artifacts": [approval_item]},
         store=store,
         approval_center_url=approval_center_url,
-        redaction_level=config.receipt_redaction_level,
+        redaction_level=config.receipt_redaction_level if config is not None else "full",
     )
     if not queued:
         return

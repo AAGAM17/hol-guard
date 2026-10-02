@@ -17,10 +17,14 @@ use serde::Deserialize;
 
 use crate::native_command_program::packaged_command_program;
 
-const EMBEDDED_CATALOG: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../contracts/extensions/command-catalog.v1.json"
-));
+#[cfg(not(guard_source_bootstrap))]
+const EMBEDDED_CATALOG: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/command-catalog.v1.json"));
+// The bootstrap shadow lib (guard-command-build) produces no packaged output;
+// an empty slice keeps `include_bytes!` valid and `from_embedded` fails closed
+// exactly like the `EMBEDDED_PROGRAM` bootstrap path.
+#[cfg(guard_source_bootstrap)]
+const EMBEDDED_CATALOG: &[u8] = &[];
 
 /// One rule's metadata — the fields `GeneratedCommandRule` exposes that the
 /// compiled `ProgramRule` does not carry.

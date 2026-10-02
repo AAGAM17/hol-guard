@@ -19,7 +19,25 @@ fn fixture(name: &str) -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("testdata")
         .join(name);
-    serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("json")
+    let mut fixture: Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("json");
+    // Binding digests rotate with the compiled program/catalog pair; substitute
+    // the live values so the fixture still exercises the binding check (each
+    // mismatched-field test overwrites its own leg afterward).
+    if let Some(catalog) = crate::native_command_catalog::packaged_command_catalog().ok() {
+        if let Some(binding) = fixture["payload"]["command_extensions"]["binding"].as_object_mut()
+        {
+            binding.insert(
+                "program_digest".into(),
+                Value::String(catalog.program_digest.clone()),
+            );
+            binding.insert(
+                "catalog_digest".into(),
+                Value::String(catalog.catalog_digest.clone()),
+            );
+        }
+    }
+    fixture
 }
 
 fn command_for(fixture: &Value) -> CanonicalCommand {

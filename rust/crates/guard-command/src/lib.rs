@@ -41,6 +41,7 @@ mod github_capability_contract_tests;
 mod github_command_capabilities_tests;
 mod github_capability_interaction;
 mod github_workflow_authorization;
+mod home_path_text;
 mod parser_wrappers;
 pub mod pretool;
 

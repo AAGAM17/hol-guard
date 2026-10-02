@@ -458,7 +458,7 @@ def mark_owned_hook_publication_conflict(home: Path, config: Path) -> None:
     payload = _load_record(home, live_config_conflict=True)
     if (
         payload.get("operation_id") != owner.operation_id
-        or payload.get("config_path") != canonical_path(config)
+        or hashlib.sha256(str(payload.get("config_path")).encode("utf-8")).hexdigest() != owner.target_id
         or payload.get("phase") != "prepared"
         or "repair_plan" in payload
     ):

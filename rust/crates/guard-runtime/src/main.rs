@@ -4,6 +4,7 @@ mod approval;
 mod archive_inspect;
 mod approval_reuse;
 mod approval_gate_grants;
+mod approval_gate_op;
 mod approval_gate_consumers;
 mod approval_gate_enrollment;
 mod approval_gate_settings;

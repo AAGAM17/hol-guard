@@ -21,7 +21,7 @@ use crate::approval_gate_state::{
     ApprovalGateFactor,
 };
 use crate::approval_gate_verify::{
-    input_from_mapping, invalidate_active_grants, rotate_authentication_state, token_urlsafe,
+    invalidate_active_grants, rotate_authentication_state, token_urlsafe,
     ApprovalGateInputV1,
 };
 use crate::totp::{

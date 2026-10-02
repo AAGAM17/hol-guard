@@ -96,15 +96,6 @@ fn cooldown_seconds(state: &Value) -> Result<i64, ApprovalGateErrorV1> {
         })
 }
 
-/// `_cooldown_expired` semantics: an active cooldown set before the last
-/// password verify is reusable. Returns Some(expires_at) when reusing.
-fn cooldown_reusable(state: &Value, now_epoch: f64) -> Option<String> {
-    if !cooldown_active(state, now_epoch) {
-        return None;
-    }
-    optional_string(state.get("cooldown_expires_at"))
-}
-
 /// `_current_totp_session_binding` (:1305-1321) — `sid`/`ppid`/`pid` +
 /// terminal env vars, sha256 hex of `"\0"`-joined signals.
 /// Read `ppid` (field 4) and `sid` (field 6) from `/proc/self/stat` without

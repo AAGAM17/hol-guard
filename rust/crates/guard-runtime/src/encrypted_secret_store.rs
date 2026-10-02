@@ -234,21 +234,88 @@ impl EncryptedFileSecretStore {
     }
 }
 
+/// Free `_atomic_write_bytes` for non-store callers (e.g. `TotpSecretStore`).
+/// `.name.<rand>.tmp`, fsync, chmod, rename.
+pub(crate) fn atomic_write_bytes(path: &Path, payload: &[u8], mode: u32) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_file_name(format!(
+        ".{}.{}.tmp",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("f"),
+        hex::encode(random_bytes(16))
+    ));
+    {
+        use std::io::Write;
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(payload)?;
+        f.flush()?;
+        f.sync_all()?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(mode));
+    }
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Free `_load_fernet_key` — read `key.bin`; if absent generate + persist a new
+/// 32-byte key (b64 on disk, decoded in memory). Raw 32-byte keys upgrade.
+/// Shared by `EncryptedFileSecretStore` and `TotpSecretStore`.
+pub(crate) fn load_or_create_fernet_key(key_path: &Path) -> std::io::Result<Vec<u8>> {
+    let existing = match fs::read(key_path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let existing: Vec<u8> = existing.iter().take(4096).copied().collect();
+    let mut stripped: Vec<u8> = existing
+        .iter()
+        .copied()
+        .skip_while(|b| b.is_ascii_whitespace())
+        .collect();
+    while matches!(stripped.last(), Some(b) if b.is_ascii_whitespace()) {
+        stripped.pop();
+    }
+    if !stripped.is_empty() {
+        if let Ok(decoded) = b64url_decode(&stripped) {
+            if decoded.len() == FERNET_KEY_LEN {
+                return Ok(decoded);
+            }
+        }
+        if stripped.len() == FERNET_KEY_LEN {
+            let upgraded = b64url_encode(&stripped);
+            let _ = atomic_write_bytes(key_path, upgraded.as_bytes(), 0o600);
+            return Ok(stripped);
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "encrypted Guard secret key is invalid",
+        ));
+    }
+    let raw = random_bytes(FERNET_KEY_LEN);
+    let encoded = b64url_encode(&raw);
+    atomic_write_bytes(key_path, encoded.as_bytes(), 0o600)?;
+    Ok(raw)
+}
+
 /// `Fernet.generate_key` equivalent — random 32-byte urlsafe-b64 key material.
-fn random_bytes(n: usize) -> Vec<u8> {
+pub(crate) fn random_bytes(n: usize) -> Vec<u8> {
     let mut buf = vec![0u8; n];
     getrandom::fill(&mut buf).expect("getrandom");
     buf
 }
 
-fn b64url_encode(b: &[u8]) -> String {
+pub(crate) fn b64url_encode(b: &[u8]) -> String {
     use base64ct::{Base64Url, Encoding};
     let mut buf = vec![0u8; ((b.len() + 2) / 3) * 4];
     let out = Base64Url::encode(b, &mut buf).expect("b64 encode");
     out.to_owned()
 }
 
-fn b64url_decode(b: &[u8]) -> Result<Vec<u8>, &'static str> {
+pub(crate) fn b64url_decode(b: &[u8]) -> Result<Vec<u8>, &'static str> {
     use base64ct::{Base64UrlUnpadded, Encoding};
     // Fernet uses urlsafe b64; Python's urlsafe_b64decode tolerates padding.
     let s = std::str::from_utf8(b).map_err(|_| "invalid b64")?;
@@ -275,7 +342,7 @@ fn expand_keystream(key: &[u8], nonce: &[u8], length: usize) -> Vec<u8> {
 }
 
 /// `Fernet._encrypt_from_parts` — 0x80 | ts8be | iv | AES-128-CBC-PKCS7 | HMAC.
-fn fernet_encrypt(key: &[u8], data: &[u8], current_time: u64) -> Result<String, &'static str> {
+pub(crate) fn fernet_encrypt(key: &[u8], data: &[u8], current_time: u64) -> Result<String, &'static str> {
     if key.len() != FERNET_KEY_LEN {
         return Err("fernet key must be 32 bytes");
     }
@@ -305,7 +372,7 @@ fn fernet_encrypt(key: &[u8], data: &[u8], current_time: u64) -> Result<String, 
 
 /// `Fernet._decrypt_data` — HMAC-verify then AES-128-CBC-PKCS7 decrypt.
 /// `ttl` enforces the `timestamp + ttl >= now` freshness window.
-fn fernet_decrypt(key: &[u8], token: &[u8], ttl: Option<u64>) -> Result<Vec<u8>, &'static str> {
+pub(crate) fn fernet_decrypt(key: &[u8], token: &[u8], ttl: Option<u64>) -> Result<Vec<u8>, &'static str> {
     if key.len() != FERNET_KEY_LEN {
         return Err("fernet key must be 32 bytes");
     }

@@ -31,6 +31,7 @@ mod resident_transport_service;
 #[cfg(unix)]
 mod state_directory_lock;
 mod strict_json;
+mod totp;
 
 pub(crate) use resident_protocol::{capabilities, encode_response, strict_json_value};
 pub(crate) use resident_transport::{

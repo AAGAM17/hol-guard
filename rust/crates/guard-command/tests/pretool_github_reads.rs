@@ -60,6 +60,8 @@ fn github_read_capabilities_have_a_benign_floor_but_mutations_do_not() {
             ("gh auth status --show-token", false),
             ("gh auth status -at", false),
             ("gh auth status -ta", false),
+            ("gh api repos/owner/repo --cache 1h", false),
+            ("gh api repos/owner/repo --cache=1h", false),
             ("gh pr view 1 --web", false),
             ("gh pr view 1 --web=true", false),
             ("gh pr view 1 -w", false),

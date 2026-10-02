@@ -238,15 +238,9 @@ fn exfiltration_command(value: &str) -> bool {
 }
 
 fn safe_gh_arguments(arguments: &[String]) -> bool {
-    match arguments {
-        [auth, status] if auth == "auth" && status == "status" => true,
-        [auth, status, flag]
-            if auth == "auth" && status == "status" && matches!(flag.as_str(), "--help" | "-h") =>
-        {
-            true
-        }
-        _ => false,
-    }
+    matches!(arguments, [auth, status, flag]
+        if auth == "auth" && status == "status" && matches!(flag.as_str(), "--help" | "-h"))
+        || crate::command_compatibility::github_arguments_are_read_only(arguments)
 }
 
 fn safe_directory_target(target: &str) -> bool {

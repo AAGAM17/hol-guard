@@ -125,8 +125,8 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         let conn = self.conn().ok()?;
         let mut stmt = conn
             .prepare(
-                "SELECT bundle_json FROM guard_supply_chain_bundles \
-                 WHERE workspace_id = ?1 ORDER BY fetched_at DESC LIMIT 1",
+                "SELECT response_json FROM guard_supply_chain_bundle_cache \
+                 WHERE workspace_id = ?1 LIMIT 1",
             )
             .ok()?;
         let mut rows = stmt.query([workspace_id]).ok()?;
@@ -1072,7 +1072,7 @@ impl StoreExtrasApi for ResidentStoreExtras {
         let conn = self.conn().ok()?;
         let mut stmt = conn
             .prepare(
-                "SELECT evaluation_json FROM guard_supply_chain_eval_cache \
+                "SELECT decision_json FROM guard_supply_chain_eval_cache \
                  WHERE workspace_id = ?1 AND package_intent_hash = ?2 \
                  AND feed_snapshot_hash = ?3 AND policy_hash = ?4 \
                  AND scoring_version = ?5 AND bundle_version = ?6 LIMIT 1",
@@ -1114,12 +1114,12 @@ impl StoreExtrasApi for ResidentStoreExtras {
             let _ = conn.execute(
                 "INSERT INTO guard_supply_chain_eval_cache \
                  (workspace_id, package_intent_hash, feed_snapshot_hash, \
-                  policy_hash, scoring_version, bundle_version, evaluation_json, cached_at) \
+                  policy_hash, scoring_version, bundle_version, decision_json, updated_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
                  ON CONFLICT(workspace_id, package_intent_hash, feed_snapshot_hash, \
                              policy_hash, scoring_version, bundle_version) \
-                 DO UPDATE SET evaluation_json = excluded.evaluation_json, \
-                               cached_at = excluded.cached_at",
+                 DO UPDATE SET decision_json = excluded.decision_json, \
+                               updated_at = excluded.updated_at",
                 rusqlite::params![
                     workspace_id,
                     package_intent_hash,

@@ -15,6 +15,7 @@ permissions:
 env:
   CI_PYTHON_VERSION: "3.12.14"
   PYTEST_COVERAGE_SHARD_COUNT: "128"
+  UV_HTTP_TIMEOUT: "300"
   CI_UV_CACHE_DEPENDENCY_GLOB: |
     pyproject.toml
     uv.lock
@@ -121,6 +122,16 @@ jobs:
             rust/target/release/hol-guard-runtime
           if-no-files-found: error
           retention-days: 1
+      - name: Upload matching native command projections
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pytest-native-command-projections
+          path: |
+            contracts/extensions/
+            contributions/extensions/
+            src/codex_plugin_scanner/guard/contracts/data/extensions/
+          if-no-files-found: error
+          retention-days: 1
 
   coverage-plan:
     runs-on: ubuntu-latest
@@ -173,6 +184,11 @@ jobs:
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
+      - name: Download matching native command projections
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pytest-native-command-projections
+          path: .
       - run: |
           chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
           echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
@@ -186,7 +202,8 @@ jobs:
           test -s "$shard_file"
           # Timing contracts run untraced in scheduling-sensitive with their original deadlines.
           PYTHONPATH=scripts/ci GUARD_PYTEST_DURATION_OUTPUT=pytest-durations.json GUARD_PYTEST_UNDER_COVERAGE=1 \
-            uv run --no-sync pytest -p pytest_duration_report "@$shard_file" --tb=short --durations=10 \
+            uv run --no-sync python scripts/ci/run_projection_shard.py "$shard_file" -- \
+            -p pytest_duration_report "@$shard_file" --tb=short --durations=10 \
             --deselect tests/test_guard_hook_process_runner.py::test_scheduler_and_runner_complete_48_routine_reviews_without_capacity_denial \
             --deselect tests/test_guard_daemon_storage_liveness.py::test_locked_storage_hook_burst_fails_safe_without_stranding_daemon \
             --deselect tests/test_guard_approval_store_scale.py::TestQueueScaleTargets::test_listing_first_queue_page_with_100k_rows_stays_under_100ms \
@@ -227,9 +244,10 @@ jobs:
       - name: Download pytest duration reports
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: pytest-durations-*
+          pattern: pytest-durations-${{ github.run_attempt }}-*
           path: duration-reports
       - name: Build duration manifest candidate
+        id: duration-manifest
         shell: bash
         run: |
           python3 scripts/ci/select_pytest_duration_reports.py \
@@ -242,7 +260,9 @@ jobs:
             --output pytest-duration-manifest-candidate.json.gz \
             --observed-at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \
             "${reports[@]}"
+          echo "complete=true" >> "$GITHUB_OUTPUT"
       - name: Upload pytest duration manifest candidate
+        if: steps.duration-manifest.outputs.complete == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pytest-duration-manifest-candidate
@@ -297,7 +317,7 @@ jobs:
         enable-cache: true
         cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
         save-cache: false
-    - run: uv sync --frozen --extra dev --python ${{ env.CI_PYTHON_VERSION }}
+    - run: uv sync --frozen --no-dev --group ci-test --python ${{ env.CI_PYTHON_VERSION }}
       if: steps.token-presence.outputs.has-token == 'true'
     - name: Cache Sonar analyzer downloads
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -344,9 +364,14 @@ jobs:
       if: steps.token-presence.outputs.has-token == 'true'
     - name: Analyze with SonarQube Cloud
       uses: sonarsource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f
+      with:
+        # The dedicated public Ubuntu runner has four logical CPUs.
+        args: -Dsonar.python.analysis.threads=4
       env:
         SONAR_USER_HOME: ${{ runner.temp }}/sonar
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        # The full scan reached a 4 GB heap; leave room for its live analysis graph.
+        SONAR_SCANNER_JAVA_OPTS: -Xmx6g
       if: steps.token-presence.outputs.has-token == 'true'
     - name: SonarQube Quality Gate check
       uses: sonarsource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa
@@ -376,6 +401,11 @@ jobs:
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
+      - name: Download matching native command projections
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pytest-native-command-projections
+          path: .
       - name: Bind the compiled native runtime
         run: |
           chmod 0755 rust/target/release/hol-guard-runtime
@@ -430,7 +460,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
-      - run: uv sync --frozen --extra dev --python ${{ matrix.python-version }}
+      - run: uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}
       - name: Run cross-version compatibility contracts
         run: >-
           uv run --no-sync pytest
@@ -465,7 +495,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
-      - run: uv sync --frozen --extra dev --python ${{ matrix.python-version }}
+      - run: uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}
       - name: Secure the CI virtualenv interpreter
         shell: bash
         run: |
@@ -485,6 +515,11 @@ jobs:
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
+      - name: Download matching native command projections
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pytest-native-command-projections
+          path: .
       - run: |
           chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
           echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
@@ -525,6 +560,11 @@ jobs:
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
+      - name: Download matching native command projections
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pytest-native-command-projections
+          path: .
       - run: |
           chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
           echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
@@ -660,7 +700,7 @@ jobs:
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           cache-suffix: cisco
       - run: python3.13 -m pip install --dry-run --no-deps --require-hashes -r docker-requirements.txt
-      - run: uv sync --frozen --extra dev --extra cisco --group cisco-mcp --python 3.13
+      - run: uv sync --frozen --no-dev --group ci-test --extra cisco --group cisco-mcp --python 3.13
       - run: uv run --no-sync pytest tests/test_cisco_install_surfaces.py tests/test_mcp_security.py tests/test_cli.py tests/test_action_runner.py tests/test_live_cisco_smoke.py --tb=short
 
   cross-platform:
@@ -693,7 +733,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
-      - run: uv sync --frozen --extra dev --python ${{ matrix.python-version }}
+      - run: uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}
       - name: Run cross-platform Guard regressions
         run: >-
           uv run --no-sync pytest
@@ -731,7 +771,7 @@ jobs:
           $spec = Join-Path $env:RUNNER_TEMP "hol-guard-frozen-spec"
           $versionFile = Join-Path $env:RUNNER_TEMP "hol-guard-version-info.txt"
           New-Item -ItemType Directory -Force -Path $dist, $work, $spec | Out-Null
-          uv sync --frozen --extra dev --extra mdm-build --python ${{ matrix.python-version }}
+          uv sync --frozen --no-dev --group ci-test --extra mdm-build --python ${{ matrix.python-version }}
           $version = (uv run --no-sync python scripts/sync_repo_version.py --check).Trim()
           uv run --no-sync python scripts/mdm/windows/write-version-info.py `
             --version $version --output $versionFile
@@ -786,7 +826,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
           save-cache: false
-      - run: uv sync --frozen --extra dev --python ${{ matrix.python-version }}
+      - run: uv sync --frozen --no-dev --group ci-test --python ${{ matrix.python-version }}
       - name: Run trusted updater and daemon regressions
         run: >-
           uv run --no-sync pytest

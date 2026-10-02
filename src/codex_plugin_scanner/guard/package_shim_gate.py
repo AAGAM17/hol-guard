@@ -99,7 +99,7 @@ def _parse_shim_package_intent(raw_command: str, *, workspace: Path | None = Non
             workspace=workspace,
             guard_home=resolve_guard_home(),
         )
-    except Exception:  # noqa: BLE001 - transport failures degrade to the Python parser
+    except Exception:  # transport failures degrade to the Python parser
         payload = None
     if isinstance(payload, dict):
         try:

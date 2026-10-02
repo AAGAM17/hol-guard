@@ -14,6 +14,7 @@ use crate::effect_decision::{DecisionBasis, DecisionFactor, DecisionFactorSource
 use crate::github_command_capabilities::classify_github_cli;
 use crate::CommandSegmentV1;
 
+#[allow(dead_code)]
 pub const VERIFIED_READ_CANDIDATE_VERSION: &str = "guard.verified-read-candidate.v1";
 
 fn count_re() -> &'static Regex {
@@ -26,6 +27,7 @@ fn sed_range_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"\A[0-9]{1,6}(?:,[0-9]{1,6})?p\z").unwrap())
 }
 
+#[allow(dead_code)]
 fn repository_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z").unwrap())

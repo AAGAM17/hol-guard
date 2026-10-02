@@ -57,6 +57,7 @@ fn snapshot_for(fixture: &Value) -> NativeCommandControlBindingV1 {
 /// Observation summary for oracle comparison: (extension_id, rule_id,
 /// severity, default_mode, uncertainty_reasons, safe_variant_ids,
 /// matcher_evidence_len).
+#[allow(clippy::type_complexity)]
 fn summarize(
     fixture_name: &str,
 ) -> Vec<(

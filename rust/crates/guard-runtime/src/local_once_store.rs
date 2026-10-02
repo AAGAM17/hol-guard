@@ -23,6 +23,7 @@ pub(crate) fn local_once_approval_is_reusable(artifact_id: &str) -> bool {
 
 /// `_workspace_policy_key` (`store_base.py:1371-1376`); callers that pass a
 /// raw workspace path get the stored `guard-workspace-policy:<sha256>` form.
+#[allow(dead_code)]
 pub fn workspace_policy_key(workspace: &str) -> Option<String> {
     let trimmed = workspace.trim();
     if trimmed.is_empty() {
@@ -35,6 +36,7 @@ pub fn workspace_policy_key(workspace: &str) -> Option<String> {
     Some(format!("guard-workspace-policy:{}", hex::encode(digest)))
 }
 
+#[allow(dead_code)]
 fn normalized_workspace_path(workspace: &str) -> String {
     // `_normalized_workspace_path` resolves the path; preserve the Python
     // "trailing-slash stripped absolute" contract minimally here.
@@ -42,7 +44,7 @@ fn normalized_workspace_path(workspace: &str) -> String {
 }
 
 /// `_row_value` — `NULL` → `Value::Null`.
-fn row_value<'a>(row: &'a Value, key: &str) -> Value {
+fn row_value(row: &Value, key: &str) -> Value {
     row.get(key).cloned().unwrap_or(Value::Null)
 }
 
@@ -90,6 +92,7 @@ fn verify_local_once_approval<'a>(
 }
 
 /// `_local_once_approval_integrity_failure` (:426-441).
+#[allow(dead_code)]
 fn local_once_approval_integrity_failure(
     row: &Value,
     result: &guard_policy_snapshot::local_authority_integrity::LocalAuthorityVerification,
@@ -278,6 +281,7 @@ pub fn claim_local_once_approval_by_id_locked(
 /// `artist` SELECT order is byte-identical to Python (`order by created_at
 /// desc, approval_id desc, limit 1`).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn peek_local_once_approval_lookup_locked(
     connection: &Connection,
     harness: &str,
@@ -357,6 +361,7 @@ pub fn peek_local_once_approval_lookup_locked(
 
 /// `_peek_local_once_approval_locked` (:110-134).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn peek_local_once_approval_locked(
     connection: &Connection,
     harness: &str,
@@ -384,6 +389,7 @@ pub fn peek_local_once_approval_locked(
 
 /// `_claim_local_once_approval_locked` (:219-256) — legacy replay path.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn claim_local_once_approval_locked(
     connection: &Connection,
     harness: &str,

@@ -75,6 +75,7 @@ static PROCESS_AUDIT_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         .collect()
 });
 
+#[allow(dead_code)]
 static REDACT_KEY_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH|NPM_TOKEN|NODE_AUTH|AWS_").unwrap()
 });
@@ -227,6 +228,7 @@ fn build_env(policy: EnvPolicy, private_root: &Path) -> BTreeMap<String, String>
 }
 
 /// `_redact_env` (:133-139).
+#[allow(dead_code)]
 fn redact_env(env: &BTreeMap<String, String>) -> BTreeMap<String, String> {
     env.iter()
         .map(|(key, value)| {

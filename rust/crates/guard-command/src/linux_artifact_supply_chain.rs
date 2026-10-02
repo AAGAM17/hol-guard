@@ -65,6 +65,7 @@ pub struct LinuxArtifactSupplyChainManifest {
 
 impl LinuxArtifactSupplyChainManifest {
     /// `__post_init__` (:31).
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         schema_version: i64,
         component_id: String,
@@ -175,6 +176,7 @@ pub struct LinuxArtifactSupplyChainReceipt {
 
 impl LinuxArtifactSupplyChainReceipt {
     /// `__post_init__` (:87) → `validate_provenance`.
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         component_id: String,
         version: String,
@@ -277,6 +279,7 @@ pub trait Ed25519Sign {
 }
 
 /// `create_linux_artifact_supply_chain_manifest` (:137).
+#[allow(clippy::too_many_arguments)]
 pub fn create_linux_artifact_supply_chain_manifest(
     component_id: &str,
     version: &str,
@@ -309,6 +312,7 @@ pub fn create_linux_artifact_supply_chain_manifest(
 }
 
 /// `verify_linux_artifact_supply_chain` (:166). Returns a validated receipt.
+#[allow(clippy::too_many_arguments)]
 pub fn verify_linux_artifact_supply_chain(
     manifest: &LinuxArtifactSupplyChainManifest,
     artifact: &[u8],
@@ -336,6 +340,7 @@ pub fn verify_linux_artifact_supply_chain(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn verify_linux_artifact_supply_chain_with(
     manifest: &LinuxArtifactSupplyChainManifest,
     artifact: &[u8],

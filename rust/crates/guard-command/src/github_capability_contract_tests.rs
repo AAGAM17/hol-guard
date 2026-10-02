@@ -12,6 +12,7 @@ fn cap(s: &str) -> GitHubCommandCapability {
 }
 
 #[test]
+#[allow(clippy::type_complexity)]
 fn contract_table_matches_python_oracle() {
     // [capability, permission_id, action_floor, workflow_authorizable,
     //  action_class, rule_id, risk_classes, risk_tier] — dumped from

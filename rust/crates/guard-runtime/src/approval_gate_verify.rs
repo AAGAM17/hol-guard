@@ -381,7 +381,7 @@ fn verify_password_stage(
         }
     };
     if !verify_password(password, verifier_payload) {
-        let _ = record_failed_attempt(guard_home, state, ApprovalGateFactor::Password, now);
+        record_failed_attempt(guard_home, state, ApprovalGateFactor::Password, now);
         return Err(err(
             "approval_gate_invalid_password",
             "Approval password is invalid.",
@@ -414,8 +414,7 @@ fn verify_totp_or_raise(
         Some(c) => Ok(c),
         None => {
             let now_iso = iso_from_epoch(now_epoch);
-            let _ =
-                record_failed_attempt(guard_home, state, ApprovalGateFactor::Totp, Some(&now_iso));
+            record_failed_attempt(guard_home, state, ApprovalGateFactor::Totp, Some(&now_iso));
             Err(err(
                 "approval_gate_totp_invalid",
                 "That authenticator code is wrong. Open your authenticator app and enter the current six-digit code.",

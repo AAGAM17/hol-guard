@@ -81,6 +81,7 @@ const FD_OPTION_VALUE_FLAGS: &[&str] = &[
     "--path-separator",
 ];
 
+#[allow(clippy::invalid_regex)]
 static SECRET_FILE_NAMES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)(?<![A-Za-z0-9_.-])(?:\.env(?:\.[A-Za-z0-9_-]+)?|\.npmrc|\.pypirc|\.netrc|\.git-credentials|id_rsa|id_ed25519|id_ecdsa|credentials|wallet\.key|private[_-]?key\.pem|terraform\.tfvars)(?![A-Za-z0-9_.-])",
@@ -104,10 +105,12 @@ static OUTPUT_REDIRECT_TO_EXFIL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)>\s*(?:/proc/\S+|/dev/tcp/|/dev/udp/)").expect("OUTPUT_REDIRECT_TO_EXFIL")
 });
 
+#[allow(clippy::invalid_regex)]
 static SHELL_CHAINING_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"&&|\|\||(?<!<);|(?:^|[\s])&(?![&|])(?:[\s]|$)").expect("SHELL_CHAINING_PATTERN")
 });
 
+#[allow(clippy::invalid_regex)]
 static OUTPUT_REDIRECT_TO_LOCAL_FILE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:^|[\s;&|])(?:\d+)?>>?\s*(?!&?\d\b|/dev/null(?:\s|$))\S+")
         .expect("OUTPUT_REDIRECT_TO_LOCAL_FILE")
@@ -129,6 +132,7 @@ static CURL_READ_ONLY_HTTP_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         .expect("CURL_READ_ONLY_HTTP_FETCH_PATTERN")
 });
 
+#[allow(clippy::invalid_regex)]
 static WGET_READ_ONLY_HTTP_FETCH_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)(?:^|[\s;&|])(?P<tool>wget)\b(?=[^\r\n;&|]*(?<!\S)--spider\b)[^\r\n;&|]*https?://",
@@ -278,6 +282,7 @@ static DOCS_EXAMPLE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     .expect("DOCS_EXAMPLE_CONTEXT")
 });
 
+#[allow(clippy::invalid_regex)]
 static VERSION_FILE_NAMES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)(?<![A-Za-z0-9_.-])(?:\.nvmrc|\.node-version|\.python-version|\.ruby-version|\.tool-versions|\.java-version)(?![A-Za-z0-9_.-])",
@@ -285,6 +290,7 @@ static VERSION_FILE_NAMES: LazyLock<Regex> = LazyLock::new(|| {
     .expect("VERSION_FILE_NAMES")
 });
 
+#[allow(clippy::invalid_regex)]
 static PACKAGE_METADATA_FILES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)(?<![A-Za-z0-9_.-])(?:package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|setup\.py|setup\.cfg|pyproject\.toml|Pipfile(?:\.lock)?|go\.(?:mod|sum)|Cargo\.(?:toml|lock)|composer\.json|Gemfile(?:\.lock)?)(?![A-Za-z0-9_.-])",
@@ -514,8 +520,8 @@ pub fn split_fd_args_and_exec(args: &[String]) -> Option<(Vec<String>, Vec<Strin
         if arg == "-x" || arg == "--exec" {
             return Some((args[..index].to_vec(), args[index + 1..].to_vec()));
         }
-        if arg.starts_with("-x") {
-            let exec_token = arg[2..].to_owned();
+        if let Some(exec_token) = arg.strip_prefix("-x") {
+            let exec_token = exec_token.to_owned();
             if exec_token.is_empty() {
                 return None;
             }

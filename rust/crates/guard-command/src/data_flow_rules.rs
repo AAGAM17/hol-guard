@@ -51,6 +51,7 @@ pub static CURL_DATA_FILE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     .expect("CURL_DATA_FILE_PATTERN")
 });
 
+#[allow(clippy::invalid_regex)]
 static CURL_DATA_STDIN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?s)(?:^|[\s;&|])(?i:curl|curl\.exe)\b[^\r\n;&|]*?(?:(?:--data(?:-binary|-raw|-urlencode)?|-d)\s*@-|(?:--form|-F)(?:=|\s*)[^\s;&|]*@[.-](?=$|[\s;&|])|--upload-file(?:=|\s+)[.-](?=$|[\s;&|])|-T\s*[.-](?=$|[\s;&|]))"#,
@@ -117,6 +118,7 @@ static SHELL_VARIABLE_EXPANSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     .expect("SHELL_VARIABLE_EXPANSION_PATTERN")
 });
 
+#[allow(clippy::invalid_regex)]
 static SECRET_PATH_TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)(?<![A-Za-z0-9_.-])(?P<path>\.env(?:\.[A-Za-z0-9_-]+)?|\.npmrc|\.pypirc|\.netrc|\.git-credentials|(?:~?/)?\.aws/credentials|(?:~?/)?\.ssh/id_(?:rsa|ed25519|ecdsa)|wallet\.key|private-key\.pem|terraform\.tfvars)(?![A-Za-z0-9_.-])",
@@ -985,8 +987,8 @@ fn curl_option_data_path(flag: &str, value: &str) -> Option<String> {
         return None;
     }
     if flag == "--data-urlencode" {
-        if normalized_value.starts_with('@') {
-            return Some(normalized_value[1..].to_owned());
+        if let Some(stripped) = normalized_value.strip_prefix('@') {
+            return Some(stripped.to_owned());
         }
         if !normalized_value.contains('@') {
             return None;
@@ -997,8 +999,8 @@ fn curl_option_data_path(flag: &str, value: &str) -> Option<String> {
         }
         return Some(file_candidate.to_owned());
     }
-    if normalized_value.starts_with('@') {
-        return Some(normalized_value[1..].to_owned());
+    if let Some(stripped) = normalized_value.strip_prefix('@') {
+        return Some(stripped.to_owned());
     }
     None
 }

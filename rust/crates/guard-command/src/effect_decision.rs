@@ -640,8 +640,8 @@ pub struct EffectDecision {
 ///
 /// Reproduces: reasons = factors→floor + request uncertainties→UNCERTAINTY_FLOOR
 /// + per-assessment uncertainties (EFFECT source); sort by `_reason_key`;
-/// `maximum_action_floor`; `controlling` = reasons at max severity;
-/// `proof_routes` = {proof.route for positive proofs}; `_disposition`.
+///   `maximum_action_floor`; `controlling` = reasons at max severity;
+///   `proof_routes` = {proof.route for positive proofs}; `_disposition`.
 ///
 /// The request must already satisfy the Python `__post_init__` invariants
 /// (factors sorted by `semantic_key`, no duplicate keys, deduped sorted

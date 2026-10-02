@@ -163,6 +163,7 @@ pub trait HarnessJsonResponse {
 
 /// `prepare_native_hook_policy` (:14-51). Apply the production native-policy
 /// barrier before hook admission.
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_native_hook_policy(
     handler: &dyn HookHandlerApi,
     daemon_server: &dyn DaemonServerApi,
@@ -229,10 +230,8 @@ fn _hook_harness_is_unmanaged(
         return false;
     };
     let canonical = _canonical_managed_harness(harness, adapters);
-    if let Some(managed) = store.get_managed_install(&canonical) {
-        if let Some(install) = managed {
-            return install.get("active") == Some(&Value::Bool(false));
-        }
+    if let Some(Some(install)) = store.get_managed_install(&canonical) {
+        return install.get("active") == Some(&Value::Bool(false));
     }
     let Some(installs) = store.list_managed_installs() else {
         return false;
@@ -504,10 +503,7 @@ pub fn harness_json_from_native_post_tool(
     if response.get("decision") == Some(&json!("allow"))
         && response.get("model_output_action") == Some(&json!("allow_original"))
     {
-        let action = match response.get("policy_action").and_then(Value::as_str) {
-            Some(action @ ("allow" | "warn")) => action,
-            _ => "allow",
-        };
+        let action = response.get("policy_action").and_then(Value::as_str).unwrap_or("allow");
         let mut output = json!({
             "policy_action": action,
             "hookSpecificOutput": {"hookEventName": "PostToolUse"},

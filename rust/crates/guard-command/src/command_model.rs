@@ -157,14 +157,10 @@ pub fn parse_shell_command(
         return uncertain(
             raw_text.clone(),
             Vec::new(),
-            &format!("unsupported_{}_{}", dialect, transport),
+            &format!("unsupported_{dialect}_{transport}"),
         );
     }
-    let command_bytes = if raw_text.len() > MAX_COMMAND_BYTES {
-        raw_text.len()
-    } else {
-        raw_text.as_bytes().len()
-    };
+    let command_bytes = raw_text.len();
     if command_bytes > MAX_COMMAND_BYTES {
         return uncertain(raw_text.clone(), Vec::new(), "command_byte_limit_exceeded");
     }
@@ -337,7 +333,7 @@ fn execution_segment_texts(
         }
         let source_offset = source_offset as usize;
         cursor = source_offset + command_segment.chars().count();
-        let execution_context = format!("{}:{}", context_prefix, group_index);
+        let execution_context = format!("{context_prefix}:{group_index}");
         let pipes = extract_pipes(command_segment);
         if pipes.is_empty() {
             let stripped = command_segment.trim();
@@ -409,7 +405,7 @@ fn embedded_execution(
                 append_substitution_execution(
                     &heredoc.body,
                     heredoc.body_start,
-                    &format!("heredoc:{}:substitution", index),
+                    &format!("heredoc:{index}:substitution"),
                     &[],
                     &mut embedded,
                     &mut segments,
@@ -421,7 +417,7 @@ fn embedded_execution(
             }
             continue;
         }
-        let context = format!("heredoc:{}", index);
+        let context = format!("heredoc:{index}");
         embedded.push(EmbeddedCommand {
             kind: "heredoc".to_owned(),
             text: heredoc.body.clone(),
@@ -439,7 +435,7 @@ fn embedded_execution(
         append_substitution_execution(
             &heredoc.body,
             heredoc.body_start,
-            &format!("{}:substitution", context),
+            &format!("{context}:substitution"),
             &[],
             &mut embedded,
             &mut segments,
@@ -482,7 +478,7 @@ fn append_substitution_execution(
         {
             continue;
         }
-        let context = format!("{}:{}", context_prefix, index);
+        let context = format!("{context_prefix}:{index}");
         embedded.push(EmbeddedCommand {
             kind: "substitution".to_owned(),
             text: substitution.body.clone(),
@@ -500,7 +496,7 @@ fn append_substitution_execution(
         append_substitution_execution(
             &substitution.body,
             absolute_start,
-            &format!("{}:nested", context),
+            &format!("{context}:nested"),
             &[],
             embedded,
             segments,

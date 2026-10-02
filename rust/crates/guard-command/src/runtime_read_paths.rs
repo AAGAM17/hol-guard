@@ -244,7 +244,7 @@ pub(crate) fn read_small_runtime_text_file(
     // which opens with O_NOFOLLOW; use `open_nofollow` via std `OpenOptions`
     // custom flag on unix).
     use std::os::unix::fs::OpenOptionsExt;
-    let mut file = std::fs::OpenOptions::new()
+    let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc_o_nofollow())
         .open(&runtime_entry)
@@ -254,7 +254,7 @@ pub(crate) fn read_small_runtime_text_file(
         return None;
     }
     let mut buffer = Vec::new();
-    file.take((MAX_DECODED_PAYLOAD_BYTES + 1) as u64)
+    file.take(MAX_DECODED_PAYLOAD_BYTES + 1)
         .read_to_end(&mut buffer)
         .ok()?;
     if buffer.len() as u64 > MAX_DECODED_PAYLOAD_BYTES {

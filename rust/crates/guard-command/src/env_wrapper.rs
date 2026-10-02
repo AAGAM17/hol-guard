@@ -12,6 +12,7 @@ pub const ENV_SPLIT_MAX_EXPANSIONS: usize = 4;
 pub const ENV_TOKEN_MAX_COUNT: usize = 256;
 
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
 pub struct EnvEnvironmentDelta {
     pub clear: bool,
     pub unset_names: Vec<String>,
@@ -19,6 +20,7 @@ pub struct EnvEnvironmentDelta {
 }
 
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
 pub struct EnvOptionEffects {
     pub ignore_environment: bool,
     pub unset_names: Vec<String>,
@@ -29,6 +31,7 @@ pub struct EnvOptionEffects {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct EnvSplitExpansion {
     pub payload: String,
     pub source_index: usize,
@@ -36,6 +39,7 @@ pub struct EnvSplitExpansion {
 }
 
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)]
 pub struct EnvWrapperParseResult {
     pub complete: bool,
     pub error: Option<String>,
@@ -296,7 +300,7 @@ pub fn parse_env_wrapper(
                 (attached_operand, 1usize, source_index)
             } else {
                 if index + 1 >= working.len() {
-                    return fail!(missing_operand_error(&format!("-{}", flag)));
+                    return fail!(missing_operand_error(&format!("-{flag}")));
                 }
                 (
                     working[index + 1].value.clone(),

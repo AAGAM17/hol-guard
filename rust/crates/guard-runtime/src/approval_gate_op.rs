@@ -429,8 +429,8 @@ mod tests {
         assert_eq!(r["status"].as_str().unwrap(), "ok");
         assert_eq!(r["schema"].as_str().unwrap(), APPROVAL_GATE_RESULT_SCHEMA);
         assert_eq!(r["request_id"].as_str().unwrap(), "req-1");
-        assert_eq!(r["payload"]["enabled"].as_bool().unwrap(), false);
-        assert_eq!(r["payload"]["totp_enabled"].as_bool().unwrap(), false);
+        assert!(!r["payload"]["enabled"].as_bool().unwrap());
+        assert!(!r["payload"]["totp_enabled"].as_bool().unwrap());
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -511,8 +511,8 @@ mod tests {
         assert_eq!(r["status"].as_str().unwrap(), "ok");
         let gate = &r["payload"]["approval_gate"];
         assert_eq!(gate["purpose"].as_str().unwrap(), "policy_write");
-        assert_eq!(gate["satisfied"].as_bool().unwrap(), false);
-        assert_eq!(gate["used_cooldown"].as_bool().unwrap(), false);
+        assert!(!gate["satisfied"].as_bool().unwrap());
+        assert!(!gate["used_cooldown"].as_bool().unwrap());
         let _ = std::fs::remove_dir_all(&home);
     }
 

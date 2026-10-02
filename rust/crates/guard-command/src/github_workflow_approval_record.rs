@@ -9,7 +9,7 @@
 //!
 //! Error strings match the Python `ValueError` messages verbatim.
 
-use guard_contracts::{WorkflowCapabilityBinding, WorkflowCapabilityError};
+use guard_contracts::WorkflowCapabilityBinding;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 

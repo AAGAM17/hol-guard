@@ -400,6 +400,7 @@ mod tests {
         h
     }
     const NOW: &str = "2026-10-02T00:00:00+00:00";
+    #[allow(dead_code)]
     const SECRET: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
     fn enabled_with_verifier(h: &Path) {

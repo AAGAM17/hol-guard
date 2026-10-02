@@ -19,11 +19,17 @@ use std::time::Instant;
 
 use sha2::{Digest, Sha256};
 
+#[allow(dead_code)]
 const MAX_HEALTH_ENTRIES: usize = 128;
+#[allow(dead_code)]
 const CIRCUIT_FAILURE_THRESHOLD: i64 = 3;
+#[allow(dead_code)]
 const CIRCUIT_COOLDOWN_SECONDS: f64 = 15.0;
+#[allow(dead_code)]
 const ONESHOT_RETRY_COOLDOWN_SECONDS: f64 = 0.05;
+#[allow(dead_code)]
 const GLOBAL_ONESHOT_LIMIT: i64 = 2;
+#[allow(dead_code)]
 const REASON_MAX_LENGTH: usize = 96;
 
 /// Aggregate-only native runtime health suitable for local diagnostics.
@@ -44,6 +50,7 @@ pub struct NativeRuntimeHealthSnapshot {
 
 /// `_MutableNativeRuntimeHealth` (`native_runtime_resilience.py:45`).
 #[derive(Debug)]
+#[allow(dead_code)]
 struct MutableNativeRuntimeHealth {
     state: String,
     reason: String,
@@ -80,11 +87,13 @@ impl Default for MutableNativeRuntimeHealth {
 
 /// Insertion-ordered health map preserving Python `OrderedDict` semantics:
 /// first-inserted is the eviction candidate; `move_to_end` on hit.
+#[allow(dead_code)]
 struct OrderedStates {
     order: Vec<String>,
     map: BTreeMap<String, MutableNativeRuntimeHealth>,
 }
 
+#[allow(dead_code)]
 impl OrderedStates {
     fn new() -> Self {
         Self {
@@ -159,6 +168,7 @@ fn global_oneshot_held() -> &'static AtomicI64 {
 
 /// `_privacy_safe_key` (`native_runtime_resilience.py:66`): sha256 of
 /// `identity_sha256[:128] + 0x00 + os.fsencode(resolved guard_home)`.
+#[allow(dead_code)]
 fn privacy_safe_key(identity_sha256: &str, guard_home: &Path) -> String {
     let mut digest = Sha256::new();
     let id_bytes: Vec<u8> = identity_sha256.bytes().filter(|b| b.is_ascii()).collect();
@@ -170,14 +180,16 @@ fn privacy_safe_key(identity_sha256: &str, guard_home: &Path) -> String {
 
 /// `os.fsencode(guard_home.expanduser().resolve(strict=False))` with fallback
 /// to `os.fsencode(str(guard_home))` on resolution failure.
+#[allow(dead_code)]
 fn normalize_guard_home(guard_home: &Path) -> Vec<u8> {
     let expanded = expanduser(guard_home);
     match std::fs::canonicalize(&expanded) {
         Ok(p) => path_bytes(&p),
-        Err(_) => path_bytes(&guard_home.to_path_buf()),
+        Err(_) => path_bytes(guard_home),
     }
 }
 
+#[allow(dead_code)]
 fn path_bytes(p: &Path) -> Vec<u8> {
     #[cfg(unix)]
     {
@@ -190,6 +202,7 @@ fn path_bytes(p: &Path) -> Vec<u8> {
     }
 }
 
+#[allow(dead_code)]
 fn expanduser(p: &Path) -> PathBuf {
     let s = p.as_os_str().to_string_lossy();
     if let Some(rest) = s.strip_prefix('~') {
@@ -208,6 +221,7 @@ fn expanduser(p: &Path) -> PathBuf {
 
 /// `_public_reason` (`native_runtime_resilience.py:80`): lowercase, strip,
 /// truncate to `_REASON_MAX_LENGTH`, accept only alnum + `_-.` else fallback.
+#[allow(dead_code)]
 fn public_reason(reason: &str, fallback: &str) -> String {
     let candidate: String = reason
         .trim()
@@ -225,18 +239,20 @@ fn public_reason(reason: &str, fallback: &str) -> String {
     fallback.to_string()
 }
 
+#[allow(dead_code)]
 fn monotonic() -> f64 {
     static START: OnceLock<Instant> = OnceLock::new();
     START.get_or_init(Instant::now).elapsed().as_secs_f64()
 }
 
+#[allow(dead_code)]
 fn state_for<'a>(
     states: &'a mut OrderedStates,
     identity_sha256: &str,
     guard_home: &Path,
 ) -> (String, &'a mut MutableNativeRuntimeHealth) {
     let key = privacy_safe_key(identity_sha256, guard_home);
-    if states.map.get(&key).is_none() {
+    if !states.map.contains_key(&key) {
         states.insert(key.clone(), MutableNativeRuntimeHealth::default());
         states.evict_if_needed();
     } else {
@@ -248,6 +264,7 @@ fn state_for<'a>(
 
 /// `_refresh_circuit` (`native_runtime_resilience.py:112`): half-open after
 /// cooldown unless permanently quarantined.
+#[allow(dead_code)]
 fn refresh_circuit(state: &mut MutableNativeRuntimeHealth, now: f64) {
     if state.permanently_quarantined || state.circuit_until <= 0.0 || now < state.circuit_until {
         return;
@@ -259,6 +276,7 @@ fn refresh_circuit(state: &mut MutableNativeRuntimeHealth, now: f64) {
 }
 
 /// `_record_failure` (`native_runtime_resilience.py:121`).
+#[allow(dead_code)]
 fn record_failure(
     state: &mut MutableNativeRuntimeHealth,
     reason: &str,
@@ -279,6 +297,7 @@ fn record_failure(
     }
 }
 
+#[allow(dead_code)]
 pub fn native_record_starting(identity_sha256: &str, guard_home: &Path) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -290,6 +309,7 @@ pub fn native_record_starting(identity_sha256: &str, guard_home: &Path) {
     state.reason = "native_starting".to_string();
 }
 
+#[allow(dead_code)]
 pub fn native_record_restart(identity_sha256: &str, guard_home: &Path) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -301,6 +321,7 @@ pub fn native_record_restart(identity_sha256: &str, guard_home: &Path) {
     state.reason = "native_recovering".to_string();
 }
 
+#[allow(dead_code)]
 pub fn native_record_resident_success(identity_sha256: &str, guard_home: &Path) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -313,6 +334,7 @@ pub fn native_record_resident_success(identity_sha256: &str, guard_home: &Path) 
     state.circuit_until = 0.0;
 }
 
+#[allow(dead_code)]
 pub fn native_record_resident_failure(identity_sha256: &str, guard_home: &Path, reason: &str) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -320,6 +342,7 @@ pub fn native_record_resident_failure(identity_sha256: &str, guard_home: &Path, 
     record_failure(state, reason, "native_resident_failed", monotonic());
 }
 
+#[allow(dead_code)]
 pub fn native_record_oneshot_success(identity_sha256: &str, guard_home: &Path) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -332,6 +355,7 @@ pub fn native_record_oneshot_success(identity_sha256: &str, guard_home: &Path) {
     state.circuit_until = 0.0;
 }
 
+#[allow(dead_code)]
 pub fn native_record_oneshot_failure(identity_sha256: &str, guard_home: &Path, reason: &str) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -339,6 +363,7 @@ pub fn native_record_oneshot_failure(identity_sha256: &str, guard_home: &Path, r
     record_failure(state, reason, "native_oneshot_failed", monotonic());
 }
 
+#[allow(dead_code)]
 pub fn native_record_overload(identity_sha256: &str, guard_home: &Path) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -350,6 +375,7 @@ pub fn native_record_overload(identity_sha256: &str, guard_home: &Path) {
     state.reason = "native_overloaded".to_string();
 }
 
+#[allow(dead_code)]
 pub fn native_record_integrity_failure(identity_sha256: &str, guard_home: &Path, reason: &str) {
     let mut states = states_lock();
     let (_, state) = state_for(&mut states, identity_sha256, guard_home);
@@ -361,6 +387,7 @@ pub fn native_record_integrity_failure(identity_sha256: &str, guard_home: &Path,
 }
 
 /// `native_runtime_health_snapshot` (`native_runtime_resilience.py:244`).
+#[allow(dead_code)]
 pub fn native_runtime_health_snapshot(
     identity_sha256: &str,
     guard_home: &Path,
@@ -398,6 +425,7 @@ pub struct OneshotLease {
     key: String,
 }
 
+#[allow(dead_code)]
 impl OneshotLease {
     pub fn granted(&self) -> bool {
         self.acquired_global && self.acquired_key
@@ -421,6 +449,7 @@ impl Drop for OneshotLease {
 /// `native_oneshot_lease` acquisition half. On global-capacity failure the
 /// per-key flag is rolled back and the state is marked overloaded
 /// (`native_oneshot_capacity`), matching the Python contextmanager.
+#[allow(dead_code)]
 pub fn native_oneshot_lease_acquire(identity_sha256: &str, guard_home: &Path) -> OneshotLease {
     let key = privacy_safe_key(identity_sha256, guard_home);
     let mut acquired_global = false;

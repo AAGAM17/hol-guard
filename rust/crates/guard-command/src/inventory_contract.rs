@@ -341,12 +341,12 @@ pub fn _inventory_contract_json(
     let findings_json: Vec<Value> = snapshot
         .findings
         .iter()
-        .map(|finding| _inventory_finding_json(finding))
+        .map(_inventory_finding_json)
         .collect();
     let sources_json: Vec<Value> = snapshot
         .sources
         .iter()
-        .map(|source| _inventory_source_json(source))
+        .map(_inventory_source_json)
         .collect();
     let mut out = Map::new();
     out.insert("snapshotId".into(), json!(snapshot.snapshot_id));
@@ -611,7 +611,7 @@ pub fn inventory_snapshot_from_detection(
     );
     GuardAgentInventorySnapshot {
         snapshot_id: format!("{}:snapshot:{}", harness, &snapshot_hash[..24]),
-        agent_id: format!("{}:local", harness),
+        agent_id: format!("{harness}:local"),
         agent_type: deps.agent_type._agent_type(&harness),
         generated_at: generated_at.to_string(),
         runtime_version: runtime_version.unwrap_or("").to_string(),
@@ -784,7 +784,7 @@ pub fn _cisco_inventory_findings(
                 confidence: "high".into(),
                 title,
                 artifact_id,
-                check_id: format!("aibom.{}.{}", source, rule_id),
+                check_id: format!("aibom.{source}.{rule_id}"),
                 summary: run_message.clone(),
                 evidence,
                 extra: Map::new(),
@@ -808,7 +808,7 @@ pub fn _cisco_inventory_sources(
         let run_status = run_str(run, "status").unwrap_or("unknown").to_string();
         let detail = deps.redaction._safe_source_detail(run);
         sources.push(GuardInventorySource {
-            source_id: format!("{}:source:{}", source, run_status),
+            source_id: format!("{source}:source:{run_status}"),
             source_type: source.to_string(),
             status: _source_status_for_cisco_status(&run_status).to_string(),
             detail,
@@ -860,10 +860,9 @@ pub fn _symlink_findings_from_items(
             confidence: "high".into(),
             title: format!("Symlink source {}", validation_state.replace('_', " ")),
             artifact_id: item.item_id.clone(),
-            check_id: format!("aibom.symlink.{}", validation_state),
+            check_id: format!("aibom.symlink.{validation_state}"),
             summary: format!(
-                "Inventory item references a symlink source in state {}.",
-                validation_state
+                "Inventory item references a symlink source in state {validation_state}."
             ),
             evidence,
             extra: Map::new(),

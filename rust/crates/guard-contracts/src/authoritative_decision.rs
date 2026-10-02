@@ -1582,7 +1582,7 @@ mod tests {
         trace.insert("configured_action".into(), json!("allow"));
         trace.insert("current_action".into(), json!("review"));
         let r = validate_composition_trace(GuardAction::Review, &trace);
-        assert!(r.is_ok(), "{:?}", r);
+        assert!(r.is_ok(), "{r:?}");
     }
 
     #[test]

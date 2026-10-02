@@ -104,6 +104,7 @@ impl GitHubCommandCapability {
 /// metadata (off the evaluate_command path); the contract carries the fields
 /// consumed by classification/floor logic.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct GitHubCapabilityContract {
     pub capability: GitHubCommandCapability,
     pub permission_id: &'static str,
@@ -147,6 +148,7 @@ const fn capability_floor(capability: GitHubCommandCapability) -> GuardAction {
 /// `_contract` (:105) — builds one contract entry. `prompt_free`/`local` select
 /// description/risk metadata which we elide (off the evaluate path) but keep
 /// the field selections that drive floors/permissions.
+#[allow(clippy::too_many_arguments)]
 const fn contract(
     capability: GitHubCommandCapability,
     permission_suffix: &'static str,
@@ -375,6 +377,7 @@ fn contract_entry(capability: GitHubCommandCapability) -> &'static GitHubCapabil
 /// `github_capability_contract` (:352) — the contract with `permission_id`/`rule_id`
 /// expanded to their full `command.github.permission.`/`command.github.` form.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ResolvedGitHubCapabilityContract {
     pub capability: GitHubCommandCapability,
     pub permission_id: String,
@@ -413,6 +416,7 @@ pub fn github_capability_contract(
 /// `GitHubCommandAssessment` (:316). `capabilities` is canonicalized to sorted
 /// unique order; `capability` is the strongest.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct GitHubCommandAssessment {
     pub capability: GitHubCommandCapability,
     pub reason_code: String,
@@ -478,6 +482,7 @@ pub fn github_cli_invocation_is_help(normalized: &[String]) -> bool {
 }
 
 /// `combine_github_assessments` (:387).
+#[allow(dead_code)]
 pub fn combine_github_assessments(
     assessments: &[GitHubCommandAssessment],
 ) -> Option<GitHubCommandAssessment> {

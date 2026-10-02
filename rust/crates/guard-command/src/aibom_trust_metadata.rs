@@ -239,7 +239,7 @@ fn meta_str<'a>(metadata: &'a Map<String, Value>, key: &str) -> Option<&'a str> 
     metadata.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())
 }
 
-fn run_meta<'a>(run: &'a Map<String, Value>) -> Option<&'a Map<String, Value>> {
+fn run_meta(run: &Map<String, Value>) -> Option<&Map<String, Value>> {
     run.get("metadata").and_then(Value::as_object)
 }
 
@@ -267,7 +267,7 @@ pub fn normalize_inventory_datetime(value: &Value) -> Value {
 }
 
 fn parse_iso8601(value: &str) -> Option<String> {
-    let text = value.trim().replace('Z', "+00:00").replace('z', "+00:00");
+    let text = value.trim().replace(['Z', 'z'], "+00:00");
     let (date_part, time_part) = match text
         .split_once('T')
         .or_else(|| text.split_once(' '))
@@ -283,7 +283,7 @@ fn parse_iso8601(value: &str) -> Option<String> {
         return None;
     }
     if time_part.is_empty() {
-        return Some(format!("{:04}-{:02}-{:02}T00:00:00Z", year, month, day));
+        return Some(format!("{year:04}-{month:02}-{day:02}T00:00:00Z"));
     }
     let (time_core, tz) = split_iso8601_tz(time_part);
     let mut time_seg = time_core.split(':');
@@ -339,12 +339,11 @@ fn parse_iso8601(value: &str) -> Option<String> {
         if micros == 0 {
             String::new()
         } else {
-            format!(".{:06}", micros)
+            format!(".{micros:06}")
         }
     };
     Some(format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}Z",
-        y, mo, d, h, m, s, frac
+        "{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}{frac}Z"
     ))
 }
 
@@ -519,6 +518,7 @@ fn _local_security_for_artifact(
 /// `_cisco_local_security_payload(run, findings, *, captured_at, scripts_total, extra_safety_fields=None)`
 ///
 /// Returns `(status, normalized_captured_at, findings, safety, metadata_payload)`.
+#[allow(clippy::type_complexity)]
 fn _cisco_local_security_payload(
     run: &Map<String, Value>,
     mut findings: Vec<Map<String, Value>>,
@@ -1005,7 +1005,7 @@ fn _local_trust_domain_for_artifact(
             let normalized_role = role
                 .filter(|r| !r.is_empty())
                 .map(str::to_string)
-                .unwrap_or_else(|| format!("{}_config", item_kind));
+                .unwrap_or_else(|| format!("{item_kind}_config"));
             deps.scoring
                 .build_instruction_domain(&trust_root, &normalized_role, item_kind)
         }
@@ -1094,11 +1094,11 @@ fn _skill_file_name_matches_root(artifact: &Map<String, Value>, root: &Path) -> 
         _ => return false,
     };
     let name = a_str(artifact, "name").unwrap_or("");
-    if !name.is_empty() && (name == root_name || name.starts_with(&format!("{}/", root_name))) {
+    if !name.is_empty() && (name == root_name || name.starts_with(&format!("{root_name}/"))) {
         return true;
     }
     let artifact_id = a_str(artifact, "artifact_id").unwrap_or("");
-    !artifact_id.is_empty() && artifact_id.contains(&format!(":{}:", root_name))
+    !artifact_id.is_empty() && artifact_id.contains(&format!(":{root_name}:"))
 }
 
 /// `_trust_layer_from_domain(domain, *, captured_at)`
@@ -1481,6 +1481,7 @@ fn _cisco_trust_layer(
 }
 
 /// `_cisco_evidence_payload(*, layer_id, label, status, message, captured_at, trust_score, trust_components, metadata)`
+#[allow(clippy::too_many_arguments)]
 fn _cisco_evidence_payload(
     layer_id: &str,
     label: &str,

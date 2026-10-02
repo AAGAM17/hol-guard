@@ -65,6 +65,7 @@ pub trait ResumeStore {
         request_id: &str,
     ) -> Option<Map<String, Value>>;
     /// `store.seed_request_resume(...)` (store_resume.py :93).
+    #[allow(clippy::too_many_arguments)]
     fn seed_request_resume(
         &self,
         request_id: &str,
@@ -407,9 +408,8 @@ pub fn defer_request_resume_to_live_hook(
         .or_else(|| metadata.get("event").filter(|v| truthy(v)))
         .map(py_str)
         .unwrap_or_default();
-    if !live_hook_wait_is_active(metadata, now, deps)
-        && !(event_name == "PreToolUse"
-            && pretool_bridge_wait_is_active(store, &operation, now, deps))
+    if !(live_hook_wait_is_active(metadata, now, deps)
+        || event_name == "PreToolUse" && pretool_bridge_wait_is_active(store, &operation, now, deps))
     {
         return Ok(None);
     }

@@ -310,7 +310,7 @@ fn vitest_result_arguments(tail: &[String]) -> (Vec<String>, bool) {
                 }
                 &tail[index]
             } else {
-                token.splitn(2, '=').nth(1).unwrap_or("")
+                token.split_once('=').map(|x| x.1).unwrap_or("")
             };
             if !STDOUT_REPORTERS.contains(&reporter) {
                 return (Vec::new(), false);
@@ -821,7 +821,7 @@ const MAX_ENTRIES: usize = 50_000;
 const CAPTURED_OUTPUT_MEDIA_TYPE: &str = "application/octet-stream";
 
 /// `OutputBoundaryError` (:12-14) → `Err(String)`.
-
+///
 /// `captured_file_output` (:28-80): read a bounded file, emit digest + bytes.
 fn captured_file_output(path: &Path) -> Result<(ContainmentCapturedOutput, Vec<u8>), String> {
     let meta = fs::symlink_metadata(path).map_err(|_| "output_unreadable".to_owned())?;
@@ -943,6 +943,7 @@ fn write_manifest_atomically(path: &Path, payload: &Value) -> Result<(), String>
 /// Platform-specific seatbelt/bwrap argv builders are retained as pure fns so
 /// the shell-out surface stays narrow; the launcher uses `std::process::Command`
 /// because the crate denies `unsafe`.
+#[allow(clippy::type_complexity)]
 pub fn execute_contained(
     request: &ContainmentRequest,
     policy: &ContainmentPolicy,
@@ -1102,13 +1103,13 @@ fn _darwin_seatbelt_argv(
         workspace.to_string_lossy()
     ));
     for path in &policy.workspace_read_paths {
-        profile.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", path));
+        profile.push_str(&format!("(allow file-read* (subpath \"{path}\"))\n"));
     }
     for path in &request.additional_read_paths {
-        profile.push_str(&format!("(allow file-read* (subpath \"{}\"))\n", path));
+        profile.push_str(&format!("(allow file-read* (subpath \"{path}\"))\n"));
     }
     for path in &policy.workspace_write_paths {
-        profile.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", path));
+        profile.push_str(&format!("(allow file-write* (subpath \"{path}\"))\n"));
     }
     profile.push_str(&format!(
         "(allow file-write* (subpath \"{}\"))\n",
@@ -1378,7 +1379,7 @@ pub fn build_local_package_script_evidence(
     if installed_version.is_none() {
         reasons.push("installed_package_missing".to_owned());
     }
-    if declared.as_deref() != installed_version.as_deref().map(|v| v) && declared.is_some() {
+    if declared.as_deref() != installed_version.as_deref() && declared.is_some() {
         // declared is `bun@x.y.z` packageManager spec; normalize
         let declared_bun = declared
             .as_deref()
@@ -1642,11 +1643,10 @@ pub fn reject_external_node_modules(
             .map_err(|_| "input_outside_workspace".to_owned())?;
         let mut parts = relative.components().peekable();
         if let Some(std::path::Component::Normal(first)) = parts.peek() {
-            if *first == "node_modules" {
-                if !resolved.starts_with(&canonical_package_root) {
+            if *first == "node_modules"
+                && !resolved.starts_with(&canonical_package_root) {
                     return Err("input_outside_package_root".to_owned());
                 }
-            }
         }
     }
     Ok(())
@@ -1899,8 +1899,8 @@ pub fn build_local_node_runner_evidence(
     if !bin_ok {
         reasons.push("executable_mismatch".to_owned());
     }
-    if declared.as_deref() != installed_version.as_deref() && declared.is_some() {
-        if !version_spec_matches(
+    if declared.as_deref() != installed_version.as_deref() && declared.is_some()
+        && !version_spec_matches(
             declared.as_deref(),
             installed_version.as_deref(),
             &SCRIPT_VERSION_RE,
@@ -1908,7 +1908,6 @@ pub fn build_local_node_runner_evidence(
         ) {
             reasons.push("declared_dependency_mismatch".to_owned());
         }
-    }
     if !version_spec_matches(
         installed_version.as_deref(),
         locked_version.as_deref(),
@@ -2202,15 +2201,13 @@ pub fn try_execute_contained_typescript(
     let (compiler_args, _explicit_package) = _compiler_args(&tokens);
     let mut sources: Vec<String> = Vec::new();
     for arg in &compiler_args {
-        if arg.ends_with(".ts")
+        if (arg.ends_with(".ts")
             || arg.ends_with(".tsx")
             || arg.ends_with(".cts")
-            || arg.ends_with(".mts")
-        {
-            if !arg.starts_with('-') {
+            || arg.ends_with(".mts"))
+            && !arg.starts_with('-') {
                 sources.push(arg.clone());
             }
-        }
     }
     if sources.is_empty() {
         return None;

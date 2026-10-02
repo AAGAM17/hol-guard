@@ -41,6 +41,7 @@ fn python_executable_re() -> &'static Regex {
         Regex::new(r"pythonw?(?:\d+(?:\.\d+)*)?(?:\.exe)?$").expect("python executable")
     })
 }
+#[allow(clippy::invalid_regex)]
 fn literal_read_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -50,6 +51,7 @@ fn literal_read_re() -> &'static Regex {
         .expect("literal read")
     })
 }
+#[allow(clippy::invalid_regex)]
 fn path_read_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -90,6 +92,7 @@ pub(crate) fn python_executable(name: &str) -> bool {
 // secret_sensitivity.py `classify_secret_path` (:221-288) + tables (:10-105).
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 const SECRET_PATH_TEXT_MARKERS: &[(&str, &str)] = &[
     (".env", "local .env file"),
     (".npmrc", "npm registry credentials"),
@@ -205,6 +208,7 @@ fn sensitive_path_reason(family: &str) -> &'static str {
 
 /// `SecretPathMatch` (:197-211).
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) struct SecretPathMatch {
     pub family: String,
     pub path: String,
@@ -336,6 +340,7 @@ const LONG_OPTIONS_WITH_VALUES: &[&str] = &["--init-file", "--rcfile"];
 
 /// `InterpreterFlagPayload` (:9-13).
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) struct InterpreterFlagPayload {
     pub script_text: String,
     pub tokens_consumed: usize,
@@ -417,6 +422,7 @@ pub(crate) fn shell_interpreter_command_payload(
 // (:184-197).
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub(crate) const SOURCE_INSPECTION_SENSITIVE_PARTS: &[&str] = &[
     ".aws",
     ".docker",
@@ -429,7 +435,9 @@ pub(crate) const SOURCE_INSPECTION_SENSITIVE_PARTS: &[&str] = &[
     ".ssh",
     "credentials",
 ];
+#[allow(dead_code)]
 pub(crate) const SOURCE_INSPECTION_BENIGN_DOTFILES: &[&str] = &[".nvmrc"];
+#[allow(dead_code)]
 const SOURCE_INSPECTION_PARTS: &[&str] = &[
     "docs",
     "doc",
@@ -447,10 +455,12 @@ const SOURCE_INSPECTION_PARTS: &[&str] = &[
     "samples",
     "sample",
 ];
+#[allow(dead_code)]
 const SOURCE_INSPECTION_EXTENSIONS: &[&str] = &[
     ".c", ".cc", ".cpp", ".css", ".go", ".h", ".hpp", ".html", ".java", ".js", ".jsx", ".json",
     ".md", ".mjs", ".py", ".rs", ".sh", ".toml", ".ts", ".tsx", ".yaml", ".yml",
 ];
+#[allow(dead_code)]
 const KNOWN_SKILL_DOC_ROOT_SUFFIXES: &[&str] = &[
     ".codex/superpowers/skills",
     ".codex/skills",
@@ -459,6 +469,7 @@ const KNOWN_SKILL_DOC_ROOT_SUFFIXES: &[&str] = &[
 ];
 
 /// `os.path.normpath` on `/`-separated text (POSIX-only semantics).
+#[allow(dead_code)]
 fn os_normpath(value: &str) -> String {
     let absolute = value.starts_with('/');
     let mut parts: Vec<&str> = Vec::new();
@@ -486,6 +497,7 @@ fn os_normpath(value: &str) -> String {
 }
 
 /// `_path_has_symlink_component` (:184-197).
+#[allow(dead_code)]
 fn path_has_symlink_component(normalized_target: &str, root: &str) -> bool {
     if Path::new(root).is_symlink() {
         return true;
@@ -510,6 +522,7 @@ fn path_has_symlink_component(normalized_target: &str, root: &str) -> bool {
 }
 
 /// `target_is_known_skill_doc_path` (:119-160).
+#[allow(dead_code)]
 fn target_is_known_skill_doc_path(target: &str, home_dir: Option<&Path>) -> bool {
     if target
         .chars()
@@ -588,6 +601,7 @@ fn target_is_known_skill_doc_path(target: &str, home_dir: Option<&Path>) -> bool
 // ---------------------------------------------------------------------------
 
 /// `_read_only_lookup_target_is_safe` (:376-400).
+#[allow(dead_code)]
 fn read_only_lookup_target_is_safe(
     target: &str,
     allow_dirs: bool,
@@ -618,7 +632,7 @@ fn read_only_lookup_target_is_safe(
     if parts.is_empty() {
         return allow_dirs;
     }
-    if parts.iter().any(|p| *p == "..")
+    if parts.contains(&"..")
         || stripped
             .chars()
             .any(|c| matches!(c, '*' | '?' | '[' | ']' | '{' | '}'))
@@ -665,9 +679,11 @@ fn read_only_lookup_target_is_safe(
 // local_read_operands.py (459 lines): operand extraction + containment.
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 const RG_SHORT_OPTIONS_WITH_VALUE: &[char] = &[
     'A', 'B', 'C', 'E', 'd', 'e', 'f', 'g', 'j', 'm', 'M', 'r', 'T', 't',
 ];
+#[allow(dead_code)]
 const RG_LONG_OPTIONS_WITH_VALUE: &[&str] = &[
     "--after-context",
     "--before-context",
@@ -688,6 +704,7 @@ const RG_LONG_OPTIONS_WITH_VALUE: &[&str] = &[
 ];
 
 /// `_ripgrep_args_expand_hidden_files` (:36-58).
+#[allow(dead_code)]
 fn ripgrep_args_expand_hidden_files(args: &[String]) -> bool {
     let mut expect_value = false;
     for arg in args {
@@ -745,6 +762,7 @@ pub(crate) fn shell_segment_file_operand_tokens(segment: &[String]) -> Vec<Strin
 }
 
 /// `_local_read_operands_resolve_safely` (:77-136).
+#[allow(dead_code)]
 pub(crate) fn local_read_operands_resolve_safely(
     command_name: &str,
     args: &[String],
@@ -820,6 +838,7 @@ pub(crate) fn local_read_operands_resolve_safely(
 /// `_bounded_local_read_glob_is_safe` (:139-212). `glob.glob` semantics —
 /// `*`/`?`/`[seq]` per component; no `**` (guarded by
 /// `search_glob_pattern_is_safe` upstream / globbing here is per-segment).
+#[allow(dead_code)]
 fn bounded_local_read_glob_is_safe(candidate: &Path, root: &Path, allow_dirs: bool) -> bool {
     let candidate_str = candidate.to_string_lossy();
     // Python glob with a metachar pattern walks the parent and fnmatches each
@@ -854,7 +873,7 @@ fn bounded_local_read_glob_is_safe(candidate: &Path, root: &Path, allow_dirs: bo
         let mut lookup_target = relative.to_string_lossy().into_owned();
         let literal_fallback = resolved != lexical;
         if literal_fallback {
-            lookup_target = lookup_target.replace('[', "").replace(']', "");
+            lookup_target = lookup_target.replace(['[', ']'], "");
         }
         if resolved != lexical
             || lookup_target.is_empty()
@@ -871,6 +890,7 @@ fn bounded_local_read_glob_is_safe(candidate: &Path, root: &Path, allow_dirs: bo
 }
 
 /// `fnmatch.fnmatchcase` (POSIX `*`/`?`/`[seq]`, no path separator semantics).
+#[allow(dead_code)]
 fn fnmatchcase(pattern: &str, name: &str) -> bool {
     fn rec(pat: &[char], text: &[char]) -> bool {
         if pat.is_empty() {
@@ -1038,6 +1058,7 @@ fn search_file_operand_tokens(command_name: &str, args: &[String]) -> Vec<String
 }
 
 /// `_search_concrete_file_operand_tokens` (:297-301).
+#[allow(dead_code)]
 pub(crate) fn search_concrete_file_operand_tokens(
     command_name: &str,
     args: &[String],
@@ -1050,6 +1071,7 @@ pub(crate) fn search_concrete_file_operand_tokens(
 }
 
 /// `search_operands_are_safe` (:303-317).
+#[allow(dead_code)]
 pub(crate) fn search_operands_are_safe(
     command_name: &str,
     args: &[String],
@@ -1173,6 +1195,7 @@ fn search_command_has_no_pattern(command_name: &str, args: &[String]) -> bool {
 }
 
 /// `_search_glob_pattern_is_safe` (:419-445).
+#[allow(dead_code)]
 fn search_glob_pattern_is_safe(pattern: &str, root: Option<&Path>) -> bool {
     let is_exclusion = pattern.starts_with('!');
     let effective_pattern = if is_exclusion { &pattern[1..] } else { pattern };
@@ -1598,7 +1621,7 @@ pub(crate) fn direct_secret_read_paths(
                 if ["-c", "-e", "--eval", "-p", "--print"].contains(&arg.as_str()) {
                     candidates.extend(literal_read_paths(&args[index + 1]));
                 } else if arg.starts_with("--eval=") || arg.starts_with("--print=") {
-                    candidates.extend(literal_read_paths(arg.splitn(2, '=').nth(1).unwrap_or("")));
+                    candidates.extend(literal_read_paths(arg.split_once('=').map(|x| x.1).unwrap_or("")));
                 }
             }
             // `--eval=`/`--print=` on the final arg are missed by `[:-1]`? No —
@@ -1824,6 +1847,7 @@ pub(crate) fn path_qualified(executable: &str) -> bool {
 }
 
 /// `_script_like_operand` (:436-443).
+#[allow(dead_code)]
 fn script_like_operand(operand: &str) -> bool {
     if operand.is_empty() || operand.starts_with('-') {
         return false;

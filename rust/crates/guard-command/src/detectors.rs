@@ -708,7 +708,7 @@ impl GuardDetector for FalsePositiveSuppressorDetector {
             }
             if let Some(tool) = classify_read_only_http_fetch(command) {
                 signals.push(RiskSignalV2 {
-                    signal_id: format!("fp:read-only-http-fetch:{}", tool),
+                    signal_id: format!("fp:read-only-http-fetch:{tool}"),
                     category: RiskSignalCategory::FalsePositive,
                     severity: RiskSeverityLabel::Info,
                     confidence: RiskConfidenceLabel::Strong,
@@ -770,8 +770,7 @@ impl GuardDetector for FalsePositiveSuppressorDetector {
                         title: "Access to docs or example file".to_string(),
                         plain_reason: "The file path points to documentation, examples, or fixture data, which rarely contains real credentials or sensitive content.".to_string(),
                         technical_detail: Some(format!(
-                            "matched docs/example path: {}",
-                            path
+                            "matched docs/example path: {path}"
                         )),
                         evidence_ref: Some("target_paths".to_string()),
                         redaction_level: RiskRedactionLevel::None,
@@ -996,8 +995,7 @@ impl GuardDetector for McpToolSchemaRiskDetector {
             detector: self.detector_id().to_string(),
             title: "MCP tool name suggests dangerous capability".to_string(),
             plain_reason: format!(
-                "The MCP tool '{}' has a name that suggests it can execute code, run shell commands, or exfiltrate credentials. Review the tool's actual implementation before approving.",
-                tool_name
+                "The MCP tool '{tool_name}' has a name that suggests it can execute code, run shell commands, or exfiltrate credentials. Review the tool's actual implementation before approving."
             ),
             technical_detail: Some(format!(
                 "tool name matched risky-capability pattern: {}",
@@ -1101,7 +1099,7 @@ impl GuardDetector for McpDescriptionDeceptionDetector {
         for i in 0..MCP_INJECTION_PATTERNS.len() {
             if let Some(m) = mcp_injection_match(i, excerpt) {
                 signals.push(RiskSignalV2 {
-                    signal_id: format!("mcp:desc-deception:p{}", i),
+                    signal_id: format!("mcp:desc-deception:p{i}"),
                     category: RiskSignalCategory::Prompt,
                     severity: RiskSeverityLabel::Critical,
                     confidence: RiskConfidenceLabel::Strong,
@@ -1284,7 +1282,7 @@ pub fn safe_decode_signals(
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            technical_detail: Some(format!("Detector: {}", detector_version)),
+            technical_detail: Some(format!("Detector: {detector_version}")),
             evidence_ref: None,
             redaction_level: RiskRedactionLevel::Summary,
             false_positive_hint: Some(
@@ -1477,8 +1475,8 @@ pub fn elapsed_ms(started_at: Instant, finished_at: Instant) -> i64 {
 }
 
 /// `_filter_signals` (:856-864).
-pub fn filter_signals<'a>(
-    signals: &'a [RiskSignalV2],
+pub fn filter_signals(
+    signals: &[RiskSignalV2],
     category_filter: Option<&std::collections::HashSet<RiskSignalCategory>>,
 ) -> Vec<RiskSignalV2> {
     match category_filter {
@@ -1495,8 +1493,7 @@ pub fn filter_signals<'a>(
 pub fn slug(value: &str) -> String {
     value
         .to_lowercase()
-        .replace('.', " ")
-        .replace('/', " ")
+        .replace(['.', '/'], " ")
         .split_whitespace()
         .filter(|p| !p.is_empty())
         .collect::<Vec<_>>()

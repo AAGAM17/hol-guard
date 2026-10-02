@@ -222,7 +222,7 @@ mod tests {
     use serde_json::{json, Value};
 
     fn digest64(seed: u8) -> String {
-        format!("{:02x}", seed).repeat(32)
+        format!("{seed:02x}").repeat(32)
     }
 
     fn valid_control_snapshot() -> NativeCommandControlBindingV1 {

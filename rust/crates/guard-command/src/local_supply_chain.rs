@@ -24,12 +24,11 @@
 //! fail-closed stubs for subprocess/network shells.
 //! No subprocess is spawned directly by this module.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use regex::Regex;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256, Sha512};
 
@@ -42,12 +41,9 @@ use crate::package_execution_context::{
 };
 use crate::package_intent_common::{
     build_package_request_artifact, composer_target, coordinate_target, js_target, python_target,
-    redact_package_request_token, version_target, write_spaced_sorted_json, GuardArtifact,
-    ManifestParseResult, PackageIntent, PackageIntentTarget,
+    redact_package_request_token, version_target, GuardArtifact, PackageIntent, PackageIntentTarget,
 };
-use crate::package_manifest_diff::{
-    parse_manifest_dependencies, parse_manifest_dependency_changes,
-};
+use crate::package_manifest_diff::parse_manifest_dependencies;
 
 pub const WORKSPACE_AUDIT_DISCOVERY_MAX_DEPTH: usize = 3;
 pub const DEFAULT_BUNDLE_REFRESH_INTERVAL_SECONDS: f64 = 15.0 * 60.0;
@@ -130,6 +126,7 @@ static MANIFEST_CANDIDATE_SET: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| MANIFEST_CANDIDATES.iter().copied().collect());
 static LOCKFILE_CANDIDATE_SET: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| LOCKFILE_CANDIDATES.iter().copied().collect());
+#[allow(dead_code)]
 static SKIP_DIR_SET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     WORKSPACE_AUDIT_DISCOVERY_SKIP_DIRS
         .iter()
@@ -238,6 +235,7 @@ static AUDIT_SENSITIVE_BASENAMES: LazyLock<HashSet<&'static str>> = LazyLock::ne
     .collect()
 });
 
+#[allow(dead_code)]
 static KNOWN_UNSUPPORTED_LOCKFILE_BASENAMES: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| ["bun.lockb"].into_iter().collect());
 
@@ -305,6 +303,7 @@ pub trait SupplyChainStore {
     /// `store.get_approval_request(request_id)` -> dict | None
     fn get_approval_request(&self, request_id: &str) -> Option<Value>;
     /// `store.resolve_policy_decision_lookup(...) -> (decision, ignored_local_integrity)`
+    #[allow(clippy::too_many_arguments)]
     fn resolve_policy_decision_lookup(
         &self,
         harness: &str,
@@ -919,10 +918,12 @@ impl PackageProtectAuthority {
 }
 
 /// `package_request_artifact_schema_version` — runtime-private metadata key.
+#[allow(dead_code)]
 fn runtime_private_metadata(artifact: &GuardArtifact) -> Option<&Map<String, Value>> {
     artifact.runtime_private_metadata.as_object()
 }
 
+#[allow(dead_code)]
 fn artifact_runtime_schema_version(artifact: &GuardArtifact) -> String {
     runtime_private_metadata(artifact)
         .and_then(|m| m.get("schema_version"))
@@ -931,6 +932,7 @@ fn artifact_runtime_schema_version(artifact: &GuardArtifact) -> String {
         .to_string()
 }
 
+#[allow(dead_code)]
 fn artifact_package_targets(artifact: &GuardArtifact) -> Vec<Value> {
     runtime_private_metadata(artifact)
         .and_then(|m| m.get("package_targets"))
@@ -939,6 +941,7 @@ fn artifact_package_targets(artifact: &GuardArtifact) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+#[allow(dead_code)]
 fn artifact_context_request_tokens(artifact: &GuardArtifact) -> Vec<Value> {
     artifact
         .metadata
@@ -948,6 +951,7 @@ fn artifact_context_request_tokens(artifact: &GuardArtifact) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+#[allow(dead_code)]
 fn artifact_context_token(artifact: &GuardArtifact) -> Option<String> {
     artifact
         .metadata
@@ -956,6 +960,7 @@ fn artifact_context_token(artifact: &GuardArtifact) -> Option<String> {
         .map(str::to_owned)
 }
 
+#[allow(dead_code)]
 fn artifact_launcher_policy_options(artifact: &GuardArtifact) -> Option<&Map<String, Value>> {
     artifact
         .metadata
@@ -1047,8 +1052,7 @@ impl Timestamp {
     pub fn isoformat(&self) -> String {
         let (y, m, d, h, mi, s, _) = self.utc_parts();
         format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
-            y, m, d, h, mi, s
+            "{y:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}+00:00"
         )
     }
 }
@@ -1179,6 +1183,7 @@ pub fn parse_timestamp(value: &str) -> Option<Timestamp> {
     ))
 }
 
+#[allow(dead_code)]
 fn isoformat_utc(t: Timestamp) -> String {
     t.isoformat()
 }
@@ -1255,6 +1260,7 @@ pub fn token_hex(nbytes: usize) -> String {
 // --- URL helpers (urllib.parse subset) --------------------------------------
 
 /// `str.partition(sep)` — (before, sep, after); after is empty when sep absent.
+#[allow(dead_code)]
 fn partition<'a>(value: &'a str, sep: &str) -> (&'a str, &'a str, &'a str) {
     match value.find(sep) {
         Some(i) => (
@@ -1386,6 +1392,7 @@ pub fn urlsplit(url: &str) -> UrlSplit {
 // Path helpers.
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn is_within(candidate: &Path, root: &Path) -> bool {
     let candidate = candidate
         .canonicalize()
@@ -1399,6 +1406,7 @@ fn basename(path: &str) -> &str {
 }
 
 /// `Path.is_relative_to` equivalent on uncanonicalized paths.
+#[allow(dead_code)]
 fn path_is_relative_to(candidate: &Path, root: &Path) -> bool {
     candidate.starts_with(root)
 }
@@ -1444,7 +1452,7 @@ pub fn write_package_firewall_refresh_state(guard_home: &Path, last_attempt: f64
         path.file_name().unwrap_or_default().to_string_lossy(),
         uuid4_hex()
     ));
-    let encoded = format!("{{\"last_refresh_attempt_at\":{:?}}}", last_attempt);
+    let encoded = format!("{{\"last_refresh_attempt_at\":{last_attempt:?}}}");
     let result = std::fs::write(&tmp_path, encoded).and_then(|_| std::fs::rename(&tmp_path, &path));
     let _ = result;
     if tmp_path.exists() {
@@ -1522,7 +1530,7 @@ static SUPPORT_ORDER: &[&str] = &[
 /// `ecosystem_support_metadata`.
 pub fn ecosystem_support_metadata(ecosystem: &str) -> Map<String, Value> {
     let (display_name, support_level, support_label) =
-        SUPPORT_LEVELS.get(ecosystem).copied().unwrap_or_else(|| {
+        SUPPORT_LEVELS.get(ecosystem).copied().unwrap_or({
             (
                 "", // computed below
                 "monitor-only",
@@ -1915,7 +1923,7 @@ pub fn build_local_supply_chain_posture(
     store: &dyn SupplyChainStore,
     config: &GuardConfig,
     synced_policy: &dyn SyncedPolicyApi,
-    entitlement_api: &dyn PackageFirewallEntitlementApi,
+    _entitlement_api: &dyn PackageFirewallEntitlementApi,
     shims: &dyn ShimsApi,
     now: Option<&str>,
 ) -> Map<String, Value> {
@@ -2075,7 +2083,7 @@ pub fn build_package_manager_protection(
     let status = dict_payload(Some(&shims.package_shim_dashboard_status(
         &home_dir,
         None,
-        &store.guard_home(),
+        store.guard_home(),
     )))
     .unwrap_or_default();
     let managed = status
@@ -2097,6 +2105,7 @@ pub fn build_package_manager_protection(
 
 /// `_call_sync_with_optional_auth_context` — retries with refreshed auth when
 /// the first attempt raises `GuardSyncAuthorizationExpiredError`.
+#[allow(clippy::type_complexity)]
 pub fn call_sync_with_optional_auth_context(
     store: &dyn SupplyChainStore,
     runner: &dyn RuntimeRunnerApi,
@@ -2385,6 +2394,7 @@ pub fn resolve_supply_chain_audit_workspace_dir(
 
 /// `_audit_lockfile_warnings` — `parse_manifest_dependencies` is the shared
 /// `package_manifest_diff` port; `path` is the relative lockfile path.
+#[allow(dead_code)]
 fn audit_lockfile_warnings(
     paths: &dyn PathSupportApi,
     workspace_dir: &Path,
@@ -2568,6 +2578,7 @@ fn enrich_package_with_advisory_aliases(
 }
 
 /// `_enrich_evaluation_packages_with_advisory_aliases`
+#[allow(dead_code)]
 fn enrich_evaluation_packages_with_advisory_aliases(
     evaluation: &Map<String, Value>,
     store: &dyn SupplyChainStore,
@@ -2758,6 +2769,7 @@ fn hash_existing_paths(
 }
 
 /// `_inventory_summary`
+#[allow(dead_code)]
 fn inventory_summary(inventory: &[Map<String, Value>]) -> Map<String, Value> {
     let direct_count = inventory
         .iter()
@@ -2979,11 +2991,9 @@ fn inventory_from_purl(purl: Option<&str>) -> Option<Map<String, Value>> {
     if remainder.is_empty() {
         return None;
     }
-    let package_ref = remainder
-        .splitn(2, '?')
+    let package_ref = remainder.split('?')
         .next()
-        .unwrap_or("")
-        .splitn(2, '#')
+        .unwrap_or("").split('#')
         .next()
         .unwrap_or("");
     let (package_path, package_version) = match package_ref.split_once('@') {
@@ -3075,16 +3085,16 @@ fn merge_inventory_item(
                 .unwrap_or(false);
             let i_direct = item.get("direct").and_then(Value::as_bool).unwrap_or(false);
             existing.insert("direct".into(), json!(e_direct || i_direct));
-            if existing.get("range").map_or(true, Value::is_null)
-                && !item.get("range").map_or(true, Value::is_null)
+            if existing.get("range").is_none_or(Value::is_null)
+                && !item.get("range").is_none_or(Value::is_null)
             {
                 existing.insert(
                     "range".into(),
                     item.get("range").cloned().unwrap_or(Value::Null),
                 );
             }
-            if existing.get("version").map_or(true, Value::is_null)
-                && !item.get("version").map_or(true, Value::is_null)
+            if existing.get("version").is_none_or(Value::is_null)
+                && !item.get("version").is_none_or(Value::is_null)
             {
                 existing.insert(
                     "version".into(),
@@ -3290,6 +3300,7 @@ fn inventory_from_sbom_text(text: &str) -> Result<Vec<Map<String, Value>>, Local
 // ---------------------------------------------------------------------------
 
 /// `_evaluation_uses_saved_package_approval` (:3073-3075).
+#[allow(dead_code)]
 fn evaluation_uses_saved_package_approval(evaluation: &PackageRequestEvaluation) -> bool {
     evaluation
         .reasons()
@@ -3298,6 +3309,7 @@ fn evaluation_uses_saved_package_approval(evaluation: &PackageRequestEvaluation)
 }
 
 /// `_package_approval_reuse_evidence` (:3077-3087).
+#[allow(dead_code)]
 fn package_approval_reuse_evidence(
     evaluation: &PackageRequestEvaluation,
 ) -> Vec<Map<String, Value>> {
@@ -3317,6 +3329,7 @@ fn package_approval_reuse_evidence(
 }
 
 /// `_approval_reuse_reason_message` (:2574-2601) — humanized reuse summary.
+#[allow(dead_code)]
 fn approval_reuse_reason_message(reuse: &ApprovalReuseDecision) -> String {
     match reuse.reason_code.as_str() {
         "approval_reuse_missing" => {
@@ -3341,6 +3354,7 @@ fn approval_reuse_reason_message(reuse: &ApprovalReuseDecision) -> String {
 }
 
 /// `_package_decision_for_action` — map a policy action to its package decision.
+#[allow(dead_code)]
 fn package_decision_for_action(action: &str) -> String {
     match action {
         "block" => "block",
@@ -3358,10 +3372,11 @@ fn package_decision_for_action(action: &str) -> String {
 /// `.local_supply_chain._stored_package_policy_is_stale_policy_bundle_family`
 /// (:1849-1864). Returns `true` when the stored override record describes a
 /// policy-bundle *family* stale override for the package-request family.
+#[allow(dead_code)]
 fn stored_package_policy_is_stale_policy_bundle_family(
     store: &dyn SupplyChainStore,
     matched_policy: &Value,
-    artifact: &GuardArtifact,
+    _artifact: &GuardArtifact,
 ) -> bool {
     let scope = matched_policy.get("scope").and_then(Value::as_str);
     if matched_policy.get("source").and_then(Value::as_str) != Some("policy-bundle") {
@@ -3392,6 +3407,7 @@ fn stored_package_policy_is_stale_policy_bundle_family(
 
 /// `.local_supply_chain._package_policy_workspace_candidates` (:2620-2637).
 /// Returns the ordered runtime workspace candidates for stored overrides.
+#[allow(dead_code)]
 fn package_policy_workspace_candidates(
     artifact: &GuardArtifact,
     artifact_hash: &str,
@@ -3416,9 +3432,10 @@ fn package_policy_workspace_candidates(
 
 /// `.local_supply_chain._saved_package_policy_clear_command` (:1867-1920).
 /// Builds the `hol-guard policies clear …` command matching one override.
+#[allow(dead_code)]
 fn saved_package_policy_clear_command(
     artifact: &GuardArtifact,
-    artifact_hash: &str,
+    _artifact_hash: &str,
     matched_policy: &Value,
     workspace_dir: &Path,
 ) -> String {
@@ -3479,6 +3496,7 @@ fn saved_package_policy_clear_command(
 }
 
 /// `.local_supply_chain._is_fresh_artifact_approval` (:2098-2118).
+#[allow(dead_code)]
 fn is_fresh_artifact_approval(store: &dyn SupplyChainStore, decision: &Value) -> bool {
     let approval_id = decision.get("approval_id").and_then(Value::as_str);
     let request_id = decision.get("request_id").and_then(Value::as_str);
@@ -3506,6 +3524,7 @@ fn is_fresh_artifact_approval(store: &dyn SupplyChainStore, decision: &Value) ->
 }
 
 /// `.local_supply_chain._is_durable_exact_artifact_approval` (:2121-2132).
+#[allow(dead_code)]
 fn is_durable_exact_artifact_approval(decision: &Value) -> bool {
     decision.get("scope").and_then(Value::as_str) == Some("artifact")
         && decision
@@ -3516,6 +3535,7 @@ fn is_durable_exact_artifact_approval(decision: &Value) -> bool {
 }
 
 /// `.local_supply_chain._is_legacy_package_local_approval` (:2135-2150).
+#[allow(dead_code)]
 fn is_legacy_package_local_approval(decision: &Value) -> bool {
     decision.get("artifact_type").and_then(Value::as_str) == Some("package_request")
         && decision.get("action").and_then(Value::as_str) == Some("allow")
@@ -3528,6 +3548,8 @@ fn is_legacy_package_local_approval(decision: &Value) -> bool {
 
 /// `.local_supply_chain._package_policy_override_evaluation` (:1867+ region).
 /// Produces an evaluation `replace`ed with the override fields.
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn package_policy_override_evaluation(
     evaluation: &PackageRequestEvaluation,
     decision: &str,
@@ -3600,6 +3622,7 @@ fn package_policy_override_evaluation(
     ])
 }
 
+#[allow(dead_code)]
 fn package_evaluation_with_rejected_reuse(
     eval_api: &dyn PackageEvalApi,
     evaluation: &PackageRequestEvaluation,
@@ -3665,6 +3688,7 @@ fn package_evaluation_with_rejected_reuse(
 }
 
 /// `_package_evaluation_with_current_policy_action` (:2474-2535).
+#[allow(dead_code)]
 fn package_evaluation_with_current_policy_action(
     eval_api: &dyn PackageEvalApi,
     evaluation: &PackageRequestEvaluation,
@@ -3841,7 +3865,7 @@ pub fn audit_receipt_metadata(
         .iter()
         .filter(|i| i.get("decision").and_then(Value::as_str) == Some("block"))
         .count();
-    let bundle = store.and_then(|s| cached_supply_chain_bundle_payload(s));
+    let bundle = store.and_then(cached_supply_chain_bundle_payload);
     let package_findings = audit_package_findings_for_receipt(&package_items, 100, bundle.as_ref());
     let package_inventory =
         audit_package_inventory_for_receipt(&package_items, 500, bundle.as_ref());
@@ -3915,12 +3939,14 @@ fn evaluation_exit_code(decision: &str) -> i64 {
 }
 
 /// `is_execution_permitted` — any action ≤ "require-reapproval" lets execution proceed.
+#[allow(dead_code)]
 fn is_execution_permitted(action: &GuardAction) -> bool {
     let action_value = action.as_str();
     !matches!(action_value, "sandbox-required" | "block")
 }
 
 /// `_protect_action_for_policy_action` (:4373-4374).
+#[allow(dead_code)]
 fn protect_action_for_policy_action(policy_action: Option<&Value>) -> GuardAction {
     normalize_guard_action(
         &policy_action.cloned().unwrap_or(Value::Null),
@@ -4022,7 +4048,7 @@ fn discover_workspace_audit_paths(workspace_dir: &Path) -> (Vec<String>, Vec<Str
 fn workspace_files(workspace_dir: &Path) -> (Vec<String>, Vec<String>) {
     let mut manifests: Vec<String> = Vec::new();
     let mut lockfiles: Vec<String> = Vec::new();
-    let mut packages = "packages/package.json".to_string();
+    let _packages = "packages/package.json".to_string();
     for name in MANIFEST_CANDIDATES {
         let rel = name.to_string();
         if workspace_dir.join(name).is_file() && !manifests.contains(&rel) {
@@ -4073,7 +4099,7 @@ fn workspace_inventory_from_paths(
 ) -> Vec<Map<String, Value>> {
     let mut inventory_map: BTreeMap<(String, Option<String>, String), Map<String, Value>> =
         BTreeMap::new();
-    let mut merged: Vec<Map<String, Value>> = Vec::new();
+    let _merged: Vec<Map<String, Value>> = Vec::new();
 
     for relative_path in manifest_paths {
         let text = match read_workspace_audit_text(paths, workspace_dir, relative_path) {
@@ -4161,13 +4187,11 @@ fn workspace_scan_intent(
     manifest_parser: &dyn ManifestParserApi,
 ) -> Option<PackageIntent> {
     let (resolved_manifest_paths, resolved_lockfile_paths) =
-        if manifest_paths.is_none() || lockfile_paths.is_none() {
-            workspace_files(workspace_dir)
-        } else {
-            (
-                manifest_paths.unwrap().to_vec(),
-                lockfile_paths.unwrap().to_vec(),
-            )
+        match (manifest_paths, lockfile_paths) {
+            (Some(manifest_paths), Some(lockfile_paths)) => {
+                (manifest_paths.to_vec(), lockfile_paths.to_vec())
+            }
+            _ => workspace_files(workspace_dir),
         };
     let resolved_inventory: Vec<Map<String, Value>> = match inventory {
         Some(items) => items.to_vec(),
@@ -4212,8 +4236,9 @@ fn workspace_scan_intent(
 }
 
 /// `_resolve_empty_audit_outcome` (:878-901).
+#[allow(dead_code)]
 fn resolve_empty_audit_outcome(
-    intent: &PackageIntent,
+    _intent: &PackageIntent,
     targets: &[PackageIntentTarget],
     store: &dyn SupplyChainStore,
 ) -> (&'static str, &'static str, &'static str, &'static str) {
@@ -4224,7 +4249,7 @@ fn resolve_empty_audit_outcome(
             has_package_findings = !list.is_empty();
         }
     }
-    let report_only = store.list_managed_installs().is_empty();
+    let _report_only = store.list_managed_installs().is_empty();
     if !targets.is_empty() {
         if has_package_findings {
             (
@@ -4511,7 +4536,7 @@ fn redacted_workspace_folder_path(workspace_dir: &Path) -> Option<String> {
 }
 
 /// `_read_git_origin_codebase` (:3785-3801).
-fn read_git_origin_codebase(workspace_dir: &Path, runner: &dyn RuntimeRunnerApi) -> Option<String> {
+fn read_git_origin_codebase(workspace_dir: &Path, _runner: &dyn RuntimeRunnerApi) -> Option<String> {
     let git_dir = workspace_dir.join(".git");
     let config_path = git_dir.join("config");
     let text = std::fs::read_to_string(config_path).ok()?;
@@ -4543,7 +4568,7 @@ fn codebase_label_from_remote(remote: &str) -> Option<String> {
         if rest.starts_with("//") {
             // https:// or ssh:// URL
             let without_scheme = normalized_remote.split("://").nth(1).unwrap_or(rest);
-            without_scheme.splitn(2, '/').nth(1).unwrap_or("")
+            without_scheme.split_once('/').map(|x| x.1).unwrap_or("")
         } else {
             rest
         }
@@ -4579,11 +4604,8 @@ fn normalized_supply_chain_batch_url(sync_url: &str, workspace_id: &str) -> Stri
             .unwrap_or(sync_url.len());
         &sync_url[..end]
     });
-    let next_path = if sync_path.ends_with("/receipts/sync") {
-        format!(
-            "{}/supply-chain/evaluate/batch",
-            &sync_path[..sync_path.len() - "/receipts/sync".len()]
-        )
+    let next_path = if let Some(stripped) = sync_path.strip_suffix("/receipts/sync") {
+        format!("{stripped}/supply-chain/evaluate/batch")
     } else {
         format!("{sync_path}/supply-chain/evaluate/batch")
     };
@@ -4598,7 +4620,7 @@ fn normalized_supply_chain_batch_url(sync_url: &str, workspace_id: &str) -> Stri
                 .join("&")
         })
         .unwrap_or_default();
-    let separator = if query_clean.is_empty() { "?" } else { "?&" };
+    let _separator = if query_clean.is_empty() { "?" } else { "?&" };
     format!(
         "{base}{next_path}?workspaceId={workspace_id}{}",
         if query_clean.is_empty() {
@@ -4768,6 +4790,7 @@ fn run_cloud_workspace_audit(
 }
 
 /// `_workspace_local_evaluation` (:1145-1175).
+#[allow(clippy::too_many_arguments)]
 fn workspace_local_evaluation(
     store: &dyn SupplyChainStore,
     workspace_dir: &Path,
@@ -4806,8 +4829,8 @@ fn workspace_local_evaluation(
 /// `build_workspace_scan_payload` (:993-1007).
 pub fn build_workspace_scan_payload(
     workspace_dir: &Path,
-    store: &dyn SupplyChainStore,
-    now: &str,
+    _store: &dyn SupplyChainStore,
+    _now: &str,
     paths: &dyn PathSupportApi,
     manifest_parser: &dyn ManifestParserApi,
 ) -> Map<String, Value> {
@@ -4823,7 +4846,7 @@ pub fn build_workspace_scan_payload(
     let mut out = Map::new();
     match intent {
         Some(intent) => {
-            let targets: Vec<&PackageIntentTarget> = intent.targets.iter().collect();
+            let _targets: Vec<&PackageIntentTarget> = intent.targets.iter().collect();
             out.insert(
                 "intent".into(),
                 json!({
@@ -4870,16 +4893,13 @@ pub fn build_workspace_audit_payload(
 ) -> Result<Map<String, Value>, LocalSupplyChainError> {
     let context =
         build_workspace_context_payload(workspace_dir, workspace_label, workspace_id, runner);
-    let diff_inventory = match before_workspace_dir {
-        Some(before_dir) => Some(workspace_diff_audit_inventory(
+    let diff_inventory = before_workspace_dir.map(|before_dir| workspace_diff_audit_inventory(
             before_dir,
             workspace_dir,
             sbom_paths,
             paths,
             manifest_parser,
-        )),
-        None => None,
-    };
+        ));
     let (manifest_paths, lockfile_paths, sbom_paths_resolved, package_items, summary) =
         match &diff_inventory {
             Some(inv) => (
@@ -4979,7 +4999,7 @@ pub fn build_workspace_audit_payload(
 
     let (evaluation, evaluation_error) = match evaluation_result {
         Some(cloud_response) => {
-            let decision = cloud_response
+            let _decision = cloud_response
                 .get("decision")
                 .and_then(Value::as_str)
                 .unwrap_or("monitor")
@@ -4987,7 +5007,7 @@ pub fn build_workspace_audit_payload(
             (Some(cloud_response), None::<String>)
         }
         None => {
-            let intent_val = match intent {
+            let _intent_val = match intent {
                 Some(intent) => intent,
                 None => {
                     return Err(LocalSupplyChainError::Runtime(
@@ -5070,7 +5090,7 @@ pub fn build_workspace_audit_payload(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let blocked_packages = packages
+    let _blocked_packages = packages
         .iter()
         .filter_map(|p| p.as_object())
         .filter(|p| {
@@ -5116,8 +5136,8 @@ pub fn build_workspace_audit_payload(
 pub fn build_supply_chain_explain_payload(
     workspace_dir: &Path,
     package_spec: Option<&str>,
-    store: &dyn SupplyChainStore,
-    now: &str,
+    _store: &dyn SupplyChainStore,
+    _now: &str,
     paths: &dyn PathSupportApi,
     manifest_parser: &dyn ManifestParserApi,
 ) -> Map<String, Value> {
@@ -5174,13 +5194,14 @@ pub fn build_supply_chain_explain_payload(
 }
 
 /// `_package_evaluation_requires_external_archive_binding` (:1263-1285).
+#[allow(dead_code)]
 fn package_evaluation_requires_external_archive_binding(
     evaluation: &PackageRequestEvaluation,
 ) -> bool {
     let source_hashes = evaluation.external_archive_source_hashes();
     if source_hashes
         .iter()
-        .any(|h| h.as_str().map_or(false, |s| s.len() == 64))
+        .any(|h| h.as_str().is_some_and(|s| s.len() == 64))
     {
         return true;
     }
@@ -5205,15 +5226,14 @@ fn package_evaluation_requires_external_archive_binding(
 }
 
 /// `_external_archive_downloads` — extract archive downloads from an evaluation.
+#[allow(dead_code)]
 fn external_archive_downloads(evaluation: &PackageRequestEvaluation) -> Vec<Value> {
     evaluation
-        .external_archive_downloads()
-        .iter()
-        .cloned()
-        .collect()
+        .external_archive_downloads().to_vec()
 }
 
 /// `_cleanup_external_archive_downloads` (:1258-1260).
+#[allow(dead_code)]
 fn cleanup_external_archive_downloads(evaluation: &PackageRequestEvaluation) {
     for download in external_archive_downloads(evaluation) {
         if let Some(cleanup_fn) = download.get("cleanup").and_then(Value::as_str) {
@@ -5227,16 +5247,14 @@ fn cleanup_external_archive_downloads(evaluation: &PackageRequestEvaluation) {
 }
 
 /// `_verified_external_archive_replacements` (:1288-1329).
+#[allow(dead_code)]
 fn verified_external_archive_replacements(
     evaluation: &PackageRequestEvaluation,
 ) -> Option<BTreeMap<String, String>> {
     let mut replacements = BTreeMap::new();
     for download in external_archive_downloads(evaluation) {
         let path_value = download.get("path").and_then(Value::as_str);
-        let path_value = match path_value {
-            Some(p) => p,
-            None => return None,
-        };
+        let path_value = path_value?;
         let sha256 = download.get("sha256").and_then(Value::as_str);
         let sha256 = match sha256 {
             Some(s) => s.to_string(),
@@ -5259,6 +5277,7 @@ fn verified_external_archive_replacements(
 }
 
 /// `_bound_external_archive_launch_command` (:1332-1352).
+#[allow(dead_code)]
 fn bound_external_archive_launch_command(
     launch_command: &[String],
     evaluation: &PackageRequestEvaluation,
@@ -5287,6 +5306,7 @@ fn bound_external_archive_launch_command(
 }
 
 /// `_package_manager_launch_environment` (:1355-1383).
+#[allow(dead_code)]
 fn package_manager_launch_environment(
     environment: &BTreeMap<String, String>,
     guard_home: &Path,
@@ -5330,6 +5350,7 @@ fn package_manager_launch_environment(
 
 /// `_build_package_protect_authority` (:1386-1494).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn build_package_protect_authority(
     command: &[String],
     store: &dyn SupplyChainStore,
@@ -5411,6 +5432,8 @@ fn build_package_protect_authority(
 
 /// `_final_package_protect_authority` (:1497-1694).
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+#[allow(dead_code)]
 fn final_package_protect_authority(
     initial: PackageProtectAuthority,
     initial_saved_evaluation: &PackageRequestEvaluation,
@@ -5511,7 +5534,7 @@ fn final_package_protect_authority(
 
     if config_refresh_failed {
         let existing = additional_action.take().unwrap_or(Value::Null);
-        let existing_action = normalize_guard_action(&existing, GuardAction::Block);
+        let _existing_action = normalize_guard_action(&existing, GuardAction::Block);
         additional_action = Some(Value::String(
             most_restrictive_guard_action(&[existing], GuardAction::Block)
                 .as_str()
@@ -5738,6 +5761,7 @@ fn final_package_protect_authority(
 /// `synced_policy.validated_synced_policy_bundle` — read the authenticated
 /// cached policy bundle from the store sync payload, or `None` when absent or
 /// invalid.
+#[allow(dead_code)]
 fn validated_synced_policy_bundle(store: &dyn SupplyChainStore) -> Option<Value> {
     let raw = store.get_sync_payload("policy_bundle")?;
     let bundle = raw.as_object()?.clone();
@@ -5754,6 +5778,7 @@ fn validated_synced_policy_bundle(store: &dyn SupplyChainStore) -> Option<Value>
 /// return the matcher families a rule can represent at saved-decision scope.
 /// For our purposes we only need the "package-request" check, but implement
 /// the full logic to stay faithful.
+#[allow(dead_code)]
 fn policy_bundle_rule_saved_decision_families(rule: &Value) -> Vec<String> {
     let Some(rule_obj) = rule.as_object() else {
         return Vec::new();
@@ -5792,6 +5817,7 @@ fn policy_bundle_rule_saved_decision_families(rule: &Value) -> Vec<String> {
     result
 }
 
+#[allow(dead_code)]
 const POLICY_BUNDLE_RULE_MATCHER_FAMILIES: &[&str] =
     &["package-request", "mcp", "tool-action", "file-read"];
 
@@ -5802,6 +5828,7 @@ const _ARTIFACT_TYPE_FAMILY: &[(&str, &str)] = &[
     ("tool_action_request", "tool-action"),
 ];
 
+#[allow(dead_code)]
 fn artifact_type_family(artifact_type: &str) -> Option<&'static str> {
     _ARTIFACT_TYPE_FAMILY
         .iter()
@@ -5809,6 +5836,7 @@ fn artifact_type_family(artifact_type: &str) -> Option<&'static str> {
         .map(|(_, v)| *v)
 }
 
+#[allow(dead_code)]
 fn non_empty_string(v: Option<&Value>) -> Option<&str> {
     v.and_then(Value::as_str).and_then(|s| {
         let t = s.trim();
@@ -5820,6 +5848,7 @@ fn non_empty_string(v: Option<&Value>) -> Option<&str> {
     })
 }
 
+#[allow(dead_code)]
 fn policy_bundle_rule_matcher_families(rule: &Map<String, Value>) -> Vec<String> {
     if let Some(explicit) = rule.get("matcherFamilies") {
         let arr = match explicit.as_array() {
@@ -5846,7 +5875,7 @@ fn policy_bundle_rule_matcher_families(rule: &Map<String, Value>) -> Vec<String>
         if scope
             .get("ecosystems")
             .and_then(Value::as_array)
-            .map_or(false, |a| !a.is_empty())
+            .is_some_and(|a| !a.is_empty())
         {
             derived.push("package-request".to_string());
         }
@@ -5875,6 +5904,7 @@ fn policy_bundle_rule_matcher_families(rule: &Map<String, Value>) -> Vec<String>
     derived
 }
 
+#[allow(dead_code)]
 fn policy_bundle_rule_declared_commands(rule: &Map<String, Value>) -> Option<Vec<String>> {
     let mut commands = Vec::new();
     for source in [rule.get("matcher"), rule.get("scope")] {
@@ -5891,6 +5921,7 @@ fn policy_bundle_rule_declared_commands(rule: &Map<String, Value>) -> Option<Vec
     Some(commands)
 }
 
+#[allow(dead_code)]
 fn policy_bundle_rule_declared_artifact_ids(rule: &Map<String, Value>) -> Option<Vec<String>> {
     let mut ids = Vec::new();
     if let Some(matcher) = rule.get("matcher").and_then(Value::as_object) {
@@ -5913,6 +5944,7 @@ fn policy_bundle_rule_declared_artifact_ids(rule: &Map<String, Value>) -> Option
 
 const _FAMILY_REPRESENTABLE_SCOPE_KEYS: &[&str] = &["ecosystems", "packageManagers", "registries"];
 
+#[allow(dead_code)]
 fn has_constraint(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -5946,6 +5978,7 @@ const _NON_SELECTOR_RULE_KEYS: &[&str] = &[
     "targets",
 ];
 
+#[allow(dead_code)]
 fn rule_scope_is_exactly_representable(rule: &Map<String, Value>) -> bool {
     let Some(scope) = rule.get("scope").and_then(Value::as_object) else {
         return false;
@@ -5962,7 +5995,7 @@ fn rule_scope_is_exactly_representable(rule: &Map<String, Value>) -> bool {
         };
         if arr
             .iter()
-            .any(|item| item.as_str().map_or(true, |s| s.trim().is_empty()))
+            .any(|item| item.as_str().is_none_or(|s| s.trim().is_empty()))
         {
             return false;
         }
@@ -5970,12 +6003,14 @@ fn rule_scope_is_exactly_representable(rule: &Map<String, Value>) -> bool {
     true
 }
 
+#[allow(dead_code)]
 fn rule_has_unknown_constraints(rule: &Map<String, Value>) -> bool {
     rule.iter().any(|(key, value)| {
         !_NON_SELECTOR_RULE_KEYS.contains(&key.as_str()) && has_constraint(value)
     })
 }
 
+#[allow(dead_code)]
 fn family_rule_metadata_is_exactly_representable(rule: &Map<String, Value>) -> bool {
     if rule_has_unknown_constraints(rule) {
         return false;
@@ -5998,6 +6033,7 @@ fn family_rule_metadata_is_exactly_representable(rule: &Map<String, Value>) -> b
 
 /// `package_execution_context.build_package_execution_context` — compute the
 /// execution-context fingerprint from workspace, artifact, and launch details.
+#[allow(dead_code)]
 fn build_package_execution_context(
     workspace_dir: &Path,
     artifact: &GuardArtifact,
@@ -6088,6 +6124,7 @@ fn build_package_execution_context(
 
 /// `approval_scope_support.package_request_runtime_workspace_scope` —
 /// return the only workspace identity valid for a package-policy lookup.
+#[allow(dead_code)]
 fn package_request_runtime_workspace_scope(
     artifact_id: Option<&str>,
     artifact_hash: Option<&str>,
@@ -6127,6 +6164,7 @@ fn package_request_runtime_workspace_scope(
 }
 
 /// `approval_scope_support.package_request_portable_workspace_scope`.
+#[allow(dead_code)]
 fn package_request_portable_workspace_scope(
     artifact_id: Option<&str>,
     artifact_hash: Option<&str>,
@@ -6159,11 +6197,12 @@ fn package_request_portable_workspace_scope(
 }
 
 /// `approval_scope_support._is_package_request_artifact`.
+#[allow(dead_code)]
 fn is_package_request_artifact(artifact_id: Option<&str>, artifact_type: Option<&str>) -> bool {
     if artifact_type == Some("package_request") {
         return true;
     }
-    artifact_id.map_or(false, |id| id.contains(":package-request:"))
+    artifact_id.is_some_and(|id| id.contains(":package-request:"))
 }
 
 // ---------------------------------------------------------------------------
@@ -6171,6 +6210,7 @@ fn is_package_request_artifact(artifact_id: Option<&str>, artifact_type: Option<
 // ---------------------------------------------------------------------------
 
 /// `runtime.package_protect_projection.resolve_local_supply_chain_harness`.
+#[allow(dead_code)]
 fn resolve_local_supply_chain_harness() -> String {
     resolve_environment_harness()
         .or_else(resolve_parent_process_harness)
@@ -6178,11 +6218,13 @@ fn resolve_local_supply_chain_harness() -> String {
 }
 
 /// `runtime.harness_attribution.resolve_environment_harness`.
+#[allow(dead_code)]
 fn resolve_environment_harness() -> Option<String> {
     let env: std::collections::HashMap<String, String> = std::env::vars().collect();
     resolve_environment_harness_from(&env)
 }
 
+#[allow(dead_code)]
 fn resolve_environment_harness_from(
     env: &std::collections::HashMap<String, String>,
 ) -> Option<String> {
@@ -6223,6 +6265,7 @@ fn resolve_environment_harness_from(
 /// `runtime.harness_attribution.resolve_parent_process_harness` — inspect the
 /// process tree for known harness executable names (best-effort, never used
 /// for authorization).
+#[allow(dead_code)]
 fn resolve_parent_process_harness() -> Option<String> {
     let output = std::process::Command::new("/bin/ps")
         .args(["-axo", "pid=,ppid=,comm="])
@@ -6391,6 +6434,7 @@ fn read_text_within_workspace(workspace_dir: &Path, relative_path: &str) -> Opti
 // ---------------------------------------------------------------------------
 
 /// `.local_supply_chain._compose_current_package_policy_action` (:2896+).
+#[allow(dead_code)]
 fn compose_current_package_policy_action(
     policy_action: Option<String>,
     additional_current_action: Option<&Value>,
@@ -6419,6 +6463,7 @@ fn compose_current_package_policy_action(
 // ---------------------------------------------------------------------------
 
 /// Result of `_resolve_stored_package_policy_override`.
+#[allow(dead_code)]
 struct StoredPackagePolicyResolution {
     evaluation: PackageRequestEvaluation,
     claim_disposition: Option<String>,
@@ -6427,6 +6472,8 @@ struct StoredPackagePolicyResolution {
 /// `_resolve_stored_package_policy_override` — attempt to claim a saved
 /// approval; on success the evaluation carries the saved-package-approval
 /// evidence. On failure the evaluation is unchanged.
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 fn resolve_stored_package_policy_override(
     evaluation: &PackageRequestEvaluation,
     store: &dyn SupplyChainStore,
@@ -6434,8 +6481,8 @@ fn resolve_stored_package_policy_override(
     artifact_hash: &str,
     workspace_dir: &Path,
     now: &str,
-    execution_context: Option<&PackageExecutionContext>,
-    current_action: Option<&Value>,
+    _execution_context: Option<&PackageExecutionContext>,
+    _current_action: Option<&Value>,
     claim_saved_approval: bool,
     _intent_parser: &dyn PackageIntentParserApi,
     _eval_api: &dyn PackageEvalApi,
@@ -6491,7 +6538,7 @@ fn resolve_stored_package_policy_override(
         };
     }
     // Apply the saved approval — rewrite decision fields.
-    let mut eval_mut = evaluation.clone();
+    let eval_mut = evaluation.clone();
     eval_mut.with_fields(&[
         ("decision", json!("allow")),
         ("policy_action", json!("allow")),
@@ -6506,6 +6553,8 @@ fn resolve_stored_package_policy_override(
 
 /// `_apply_stored_package_policy_override` — claim the saved approval when the
 /// content hash still matches; returns the possibly-updated evaluation.
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn apply_stored_package_policy_override(
     evaluation: &PackageRequestEvaluation,
     store: &dyn SupplyChainStore,
@@ -6556,6 +6605,7 @@ impl PackageExecutionContext {
 // ---------------------------------------------------------------------------
 
 /// `_package_execution_policy_action` (py:1697-1707).
+#[allow(dead_code)]
 fn package_execution_policy_action(
     authority: &PackageProtectAuthority,
     evaluation: &PackageRequestEvaluation,
@@ -6577,6 +6627,7 @@ fn package_execution_policy_action(
 /// `_package_execution_exit_code` (py:4369-4370).
 /// `is_execution_permitted` (runtime/package_execution_policy.py :8-15) permits
 /// exactly the strings `"allow"` and `"warn"`; all other values fail closed.
+#[allow(dead_code)]
 fn package_execution_exit_code(policy_action: &Value) -> i64 {
     let permitted = matches!(policy_action.as_str(), Some("allow") | Some("warn"));
     if permitted {
@@ -6588,6 +6639,7 @@ fn package_execution_exit_code(policy_action: &Value) -> i64 {
 
 /// `_package_target_identities` (py:2735-2761). `ProtectTargetIdentity` is
 /// unported; identities ride along as JSON for the `AdvisoryModelApi` seam.
+#[allow(dead_code)]
 fn package_target_identities(
     artifact: &GuardArtifact,
     advisory_model: &dyn AdvisoryModelApi,
@@ -6662,6 +6714,7 @@ fn package_target_identities(
 }
 
 /// `_package_matched_cached_advisory_ids` (py:2764-2775).
+#[allow(dead_code)]
 fn package_matched_cached_advisory_ids(
     store: &dyn SupplyChainStore,
     artifact: &GuardArtifact,
@@ -6686,6 +6739,7 @@ fn package_matched_cached_advisory_ids(
 }
 
 /// `_package_feed_snapshot_hash` (py:2778-2790).
+#[allow(dead_code)]
 fn package_feed_snapshot_hash(store: &dyn SupplyChainStore) -> Option<String> {
     let workspace_id = store.get_cloud_workspace_id()?;
     let cached_bundle = store.get_cached_supply_chain_bundle(&workspace_id)?;
@@ -6698,6 +6752,7 @@ fn package_feed_snapshot_hash(store: &dyn SupplyChainStore) -> Option<String> {
 }
 
 /// `_package_policy_gate_context` (py:2792-2811).
+#[allow(dead_code)]
 fn package_policy_gate_context(
     store: &dyn SupplyChainStore,
     artifact: &GuardArtifact,
@@ -6780,6 +6835,7 @@ fn package_policy_gate_context(
 /// local mirror does not model yet (`artifact_actions`, `publisher_actions`,
 /// `harness_actions`, `sandbox_analysis`, `resolve_action_override`, `mode`)
 /// ride through `config.extra` until the full config port lands.
+#[allow(dead_code)]
 fn package_config_policy_context(
     artifact: &GuardArtifact,
     config: Option<&GuardConfig>,
@@ -6865,6 +6921,7 @@ fn package_config_policy_context(
 
 /// `compose_current_package_policy_action` (py:2852-2870) — compose feed and
 /// effective Guard configuration before approval reuse.
+#[allow(dead_code)]
 fn compose_current_package_policy_action_with_config(
     artifact: &GuardArtifact,
     evaluation: &PackageRequestEvaluation,
@@ -6889,6 +6946,7 @@ fn compose_current_package_policy_action_with_config(
 }
 
 /// `_package_current_policy_context` (py:2873-2894).
+#[allow(dead_code)]
 fn package_current_policy_context(
     artifact: &GuardArtifact,
     store: &dyn SupplyChainStore,
@@ -6932,6 +6990,7 @@ fn package_current_policy_context(
 }
 
 /// `_package_launch_approval_identity` (py:2974-2990).
+#[allow(dead_code)]
 fn package_launch_approval_identity(
     launch_identity: Option<&Map<String, Value>>,
 ) -> Map<String, Value> {
@@ -6961,6 +7020,7 @@ fn package_launch_approval_identity(
 }
 
 /// `_package_approval_identity` (py:2992-3052).
+#[allow(dead_code)]
 fn package_approval_identity(
     artifact: &GuardArtifact,
     evaluation: &PackageRequestEvaluation,
@@ -7062,6 +7122,8 @@ fn package_approval_identity(
 }
 
 /// `_package_request_artifact_hash` (py:2896-2972).
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 fn package_request_artifact_hash(
     artifact: &GuardArtifact,
     workspace_dir: &Path,
@@ -7236,6 +7298,7 @@ fn package_request_artifact_hash(
 }
 
 /// `Option<String>` → JSON (`None` → `Value::Null`).
+#[allow(dead_code)]
 fn option_json(value: Option<String>) -> Value {
     value.map(Value::String).unwrap_or(Value::Null)
 }
@@ -7247,6 +7310,7 @@ fn option_json(value: Option<String>) -> Value {
 /// `PackageProtectVerdictContext` — verdict presentation plus the stored
 /// receipt for one protect projection (py `runtime/package_protect_projection.py`).
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PackageProtectVerdictContext {
     matched_advisories: Vec<Value>,
     observe_projected: bool,
@@ -7261,6 +7325,7 @@ struct PackageProtectVerdictContext {
 
 /// `PackageProtectProjection` — returned by `_apply_package_protect_projection`.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PackageProtectProjection {
     receipt: Value,
     receipt_policy_metadata: Map<String, Value>,
@@ -7270,6 +7335,7 @@ struct PackageProtectProjection {
 
 /// `_evaluation_risk_signals` (py:extracted) — collect signal codes from an
 /// evaluation's `risk_signals` array.
+#[allow(dead_code)]
 fn evaluation_risk_signals(evaluation: &PackageRequestEvaluation) -> Vec<String> {
     evaluation
         .risk_signals()
@@ -7285,6 +7351,7 @@ fn evaluation_risk_signals(evaluation: &PackageRequestEvaluation) -> Vec<String>
 
 /// `_matched_advisories` — advisory dicts that matched any target in the
 /// evaluation's `packages` (each package may carry `matched_advisories`).
+#[allow(dead_code)]
 fn matched_advisories(evaluation: &PackageRequestEvaluation) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
     for package in evaluation.packages() {
@@ -7306,6 +7373,7 @@ fn matched_advisories(evaluation: &PackageRequestEvaluation) -> Vec<Value> {
 }
 
 /// `_protect_target_payload` — build the public target payload dict.
+#[allow(dead_code)]
 fn protect_target_payload(target: &PackageIntentTarget, harness: &str) -> Value {
     let public_target = target.to_dict();
     let raw_spec = public_target
@@ -7338,6 +7406,7 @@ fn protect_target_payload(target: &PackageIntentTarget, harness: &str) -> Value 
 }
 
 /// `_package_protect_verdict_context` (py:1709).
+#[allow(dead_code)]
 fn package_protect_verdict_context(
     authority: &PackageProtectAuthority,
     evaluation: &PackageRequestEvaluation,
@@ -7470,6 +7539,7 @@ fn package_protect_verdict_context(
 }
 
 /// `_apply_package_protect_projection` (py:1779).
+#[allow(dead_code)]
 fn apply_package_protect_projection(
     payload: &mut Map<String, Value>,
     authority: &PackageProtectAuthority,
@@ -7562,6 +7632,7 @@ fn apply_package_protect_projection(
 }
 
 /// `_install_time_event_payload` (py:1837).
+#[allow(dead_code)]
 fn install_time_event_payload(
     authority: &PackageProtectAuthority,
     command: &[String],
@@ -7580,6 +7651,7 @@ fn install_time_event_payload(
 }
 
 /// `_package_protect_denied_after_final_boundary` (py:1857).
+#[allow(dead_code)]
 fn package_protect_denied_after_final_boundary(
     payload: &mut Map<String, Value>,
     authority: &PackageProtectAuthority,
@@ -7618,6 +7690,8 @@ fn package_protect_denied_after_final_boundary(
 
 /// `build_package_protect_payload` (py:1892).
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+#[allow(dead_code)]
 fn build_package_protect_payload(
     command: &[String],
     store: &dyn SupplyChainStore,
@@ -7926,6 +8000,7 @@ fn build_package_protect_payload(
 
 /// `_stored_package_policy_evaluation_requires_review` — check whether a
 /// stored package policy evaluation requires re-review.
+#[allow(dead_code)]
 fn stored_package_policy_evaluation_requires_review(evaluation: &PackageRequestEvaluation) -> bool {
     evaluation.reasons().iter().any(|r| {
         r.get("code").and_then(Value::as_str) == Some("saved_package_approval")
@@ -7939,6 +8014,7 @@ fn stored_package_policy_evaluation_requires_review(evaluation: &PackageRequestE
 /// `recompute_package_protect_artifact_hash` — recompute the artifact hash
 /// for a given artifact + workspace context (mirrors `package_request_artifact_hash`).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn recompute_package_protect_artifact_hash(
     artifact: &GuardArtifact,
     workspace_dir: &Path,
@@ -7976,6 +8052,7 @@ fn recompute_package_protect_artifact_hash(
 /// `package_request_policy_hash` — stable digest of the policy inputs for a
 /// package request (artifact_id + policy_context material).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn package_request_policy_hash(
     artifact: &GuardArtifact,
     store: &dyn SupplyChainStore,
@@ -8520,7 +8597,7 @@ fn cloud_audit_workspace_context(
     );
     out.insert(
         "lockfilePaths".into(),
-        json!(lockfile_paths.iter().cloned().collect::<Vec<String>>()),
+        json!(lockfile_paths.to_vec()),
     );
     out.insert(
         "machine".into(),
@@ -8528,7 +8605,7 @@ fn cloud_audit_workspace_context(
     );
     out.insert(
         "manifestPaths".into(),
-        json!(manifest_paths.iter().cloned().collect::<Vec<String>>()),
+        json!(manifest_paths.to_vec()),
     );
     out.insert(
         "packageManager".into(),
@@ -8566,6 +8643,7 @@ fn read_git_origin_codebase_untracked(workspace_dir: &Path) -> Option<String> {
 
 /// `_build_cloud_audit_payload` (:3841-3899) — the job-mode request body sent
 /// to the batch endpoint for managed workspace sync.
+#[allow(clippy::too_many_arguments)]
 fn build_cloud_audit_job_payload(
     workspace_dir: &Path,
     workspace_id: &str,
@@ -8596,7 +8674,7 @@ fn build_cloud_audit_job_payload(
         Some(size) if size > 0 => size,
         _ => inventory.len(),
     };
-    let page_size_value = effective_page.max(1).min(CLOUD_AUDIT_PAGE_SIZE);
+    let page_size_value = effective_page.clamp(1, CLOUD_AUDIT_PAGE_SIZE);
     let packages: Vec<Value> = inventory
         .iter()
         .map(|item| {
@@ -8679,6 +8757,7 @@ enum WorkspaceAuditJobOutcome {
 /// workspace, build the request payload, enqueue the batch job, and poll to a
 /// terminal status. Mirrors the per-candidate `try` body of
 /// `sync_managed_workspace_audits` (:4197-4267); returns the result row.
+#[allow(clippy::too_many_arguments)]
 fn run_managed_workspace_audit_job(
     store: &dyn SupplyChainStore,
     resolved_auth_context: &Map<String, Value>,
@@ -8780,18 +8859,12 @@ fn run_managed_workspace_audit_job(
     row.insert(
         "manifest_paths".into(),
         json!(inventory
-            .manifest_paths
-            .iter()
-            .cloned()
-            .collect::<Vec<String>>()),
+            .manifest_paths.to_vec()),
     );
     row.insert(
         "lockfile_paths".into(),
         json!(inventory
-            .lockfile_paths
-            .iter()
-            .cloned()
-            .collect::<Vec<String>>()),
+            .lockfile_paths.to_vec()),
     );
     row.insert("message".into(), message.unwrap_or(Value::Null));
     Ok((outcome, row))

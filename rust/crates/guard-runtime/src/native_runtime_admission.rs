@@ -32,12 +32,16 @@ use guard_secure_fs::{read_bounded, SecureReadError};
 use crate::hook_process_spawn::{isolated_hook_environment, run_isolated_hook_process};
 
 /// `_NATIVE_MANIFEST_NAME` (`native_runtime.py:57`).
+#[allow(dead_code)]
 pub const NATIVE_MANIFEST_NAME: &str = "runtime-manifest.json";
 /// `_NATIVE_MANIFEST_SCHEMA` (`native_runtime.py:58`).
+#[allow(dead_code)]
 pub const NATIVE_MANIFEST_SCHEMA: &str = "hol-guard-native-runtime.v1";
 /// `_MAX_MANIFEST_BYTES` (`native_runtime.py:59`).
+#[allow(dead_code)]
 pub const MAX_MANIFEST_BYTES: usize = 16 * 1024;
 /// `_NATIVE_PROTOCOL_VERSION` — keep in lockstep with the resident protocol.
+#[allow(dead_code)]
 pub const NATIVE_MANIFEST_PROTOCOL_VERSION: i64 = 1;
 
 /// Caller-supplied runtime identity, mirroring `NativeRuntimeIdentity`
@@ -54,6 +58,7 @@ pub struct RuntimeIdentity {
 /// The reason-code contract is stable across the Python/Rust boundary —
 /// `native_runtime_status` surfaces these to `integrity reasons`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ManifestReject {
     /// `native_manifest_missing`
     Missing,
@@ -65,6 +70,7 @@ pub enum ManifestReject {
     VersionMismatch,
 }
 
+#[allow(dead_code)]
 impl ManifestReject {
     /// Python reason string (`native_runtime_values.py:_INTEGRITY_FAILURE_REASONS`).
     pub fn reason(self) -> &'static str {
@@ -84,6 +90,7 @@ impl ManifestReject {
 /// version cross-check exactly as Python does. Returns the decoded manifest or
 /// a stable reject reason. Fail-closed: any malformed/oversized/wrong-owner
 /// manifest rejects before decode.
+#[allow(dead_code)]
 pub fn manifest_for_bundled_identity(
     identity: &RuntimeIdentity,
     package_version: Option<&str>,
@@ -155,6 +162,7 @@ pub fn manifest_for_bundled_identity(
 }
 
 #[cfg(unix)]
+#[allow(dead_code)]
 fn map_err(e: &std::io::Error) -> ManifestReject {
     if e.kind() == std::io::ErrorKind::NotFound {
         ManifestReject::Missing
@@ -166,6 +174,7 @@ fn map_err(e: &std::io::Error) -> ManifestReject {
 /// `_is_bundled_candidate` (`native_runtime.py:184-188`). `bundled` is the
 /// resolved `_bundled_runtime_candidate()` path supplied by the caller —
 /// resolving `__file__` is a Python-packaging detail that stays host-side.
+#[allow(dead_code)]
 pub fn is_bundled_candidate(candidate: &Path, bundled: &Path) -> bool {
     match (
         candidate
@@ -180,6 +189,7 @@ pub fn is_bundled_candidate(candidate: &Path, bundled: &Path) -> bool {
     }
 }
 
+#[allow(dead_code)]
 fn expanduser(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
@@ -190,6 +200,7 @@ fn expanduser(p: &Path) -> PathBuf {
 /// already has exec, has write bits, is a symlink/non-regular, or is owned by
 /// someone else. Fail-silent like Python.
 #[cfg(unix)]
+#[allow(dead_code)]
 pub fn restore_bundled_runtime_execute_bit(path: &Path, bundled: &Path) {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     if !is_bundled_candidate(path, bundled) {
@@ -261,6 +272,7 @@ pub fn windows_native_dll_directories(base_prefix: Option<&Path>, bundled: &Path
     unique
 }
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub fn windows_native_dll_directories(_bp: Option<&Path>, _bundled: &Path) -> Vec<String> {
     Vec::new()
 }
@@ -270,6 +282,7 @@ pub fn windows_native_dll_directories(_bp: Option<&Path>, _bundled: &Path) -> Ve
 /// child never inherits user PATH/LD_*/credential env. On Windows the only
 /// PATH the child sees is the CRT search dirs (DLL isolation); POSIX children
 /// get no PATH at all (spawn resolves the binary by absolute path).
+#[allow(dead_code)]
 pub fn isolated_environment(
     base_env: &BTreeMap<String, String>,
     base_prefix: Option<&Path>,
@@ -316,17 +329,24 @@ pub fn isolated_environment(
 // poison every later native check, and a caller-supplied deadline caps how
 // long the probe may run so a one-shot request never overspends its budget.
 
+#[allow(dead_code)]
 const CAPABILITIES_PROBE_TIMEOUT: f64 = 5.0;
+#[allow(dead_code)]
 const CAPABILITIES_RETRY_BACKOFF: Duration = Duration::from_millis(250);
+#[allow(dead_code)]
 const CAPABILITIES_CACHE_MAX: usize = 16;
+#[allow(dead_code)]
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+#[allow(dead_code)]
 const RESIDENT_PROTOCOL_FEATURE: &str = "resident-protocol-v2";
+#[allow(dead_code)]
 const NATIVE_PROTOCOL_VERSION: i64 = 1;
 
 /// `_run_native_process` (`native_runtime.py:267-284`): launch `path args`
 /// through the isolated kernel with the runtime's own allowlist env, bounded
 /// output and a deadline; `None` on any transport/limit/containment failure
 /// or a non-zero exit.
+#[allow(dead_code)]
 pub fn run_native_process(
     path: &Path,
     args: &[&str],
@@ -361,6 +381,7 @@ pub fn run_native_process(
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(dead_code)]
 struct ProbeKey {
     path: String,
     size: i64,
@@ -371,11 +392,13 @@ struct ProbeKey {
 /// `_capabilities_probe_lock`/`_capabilities_cache`/`_capabilities_retry_after`
 /// — one global probe per binary identity. Bounded at `CAPABILITIES_CACHE_MAX`
 /// entries; the oldest entry is evicted on insert (Python pops `next(iter(..))`).
+#[allow(dead_code)]
 pub struct CapabilitiesProbe {
     cache: Mutex<BTreeMap<ProbeKey, NativeRuntimeCapabilitiesV1>>,
     retry_after: Mutex<BTreeMap<ProbeKey, Instant>>,
 }
 
+#[allow(dead_code)]
 impl CapabilitiesProbe {
     fn global() -> &'static Self {
         static PROBE: OnceLock<CapabilitiesProbe> = OnceLock::new();
@@ -405,6 +428,7 @@ impl CapabilitiesProbe {
 /// version, missing resident feature) — those are permanent compatibility
 /// rejects the status walker surfaces verbatim. Transport/decode misses and
 /// cached-miss backoffs are `Ok(None)`.
+#[allow(dead_code)]
 pub fn capabilities_for_identity(
     identity: &RuntimeIdentity,
     deadline: Option<Instant>,
@@ -486,6 +510,7 @@ pub fn capabilities_for_identity(
 /// capabilities, and apply mode-aware compatibility. `candidates` is the
 /// resolved list (`_runtime_candidates` order) — path resolution is
 /// host-side. `package_version` is `_python_package_version()`.
+#[allow(dead_code)]
 pub fn native_runtime_status(
     mode: NativeMode,
     candidates: &[RuntimeIdentity],
@@ -767,7 +792,7 @@ mod tests {
         base.insert("LC_ALL".to_string(), "C".to_string());
         base.insert("TMPDIR".to_string(), "/tmp".to_string());
         let env = isolated_environment(&base, None, Path::new("/bundled"));
-        assert!(env.get("PATH").is_none() || cfg!(windows));
+        assert!(!env.contains_key("PATH") || cfg!(windows));
         assert!(!env.contains_key("LD_PRELOAD"));
         assert!(!env.contains_key("AWS_SECRET"));
         assert_eq!(env.get("HOME").map(String::as_str), Some("/u"));
@@ -798,7 +823,7 @@ mod tests {
     fn write_fake_runtime(dir: &Path, capabilities_json: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let bin = dir.join("hol-guard-runtime");
-        let script = format!("#!/bin/sh\nprintf '%s' '{}'\n", capabilities_json);
+        let script = format!("#!/bin/sh\nprintf '%s' '{capabilities_json}'\n");
         fs::write(&bin, script).unwrap();
         let mut perm = fs::metadata(&bin).unwrap().permissions();
         perm.set_mode(0o555);
@@ -963,7 +988,7 @@ mod tests {
             &empty_env(),
             None,
         );
-        assert!(status.available, "expected native_ready, got {:?}", status);
+        assert!(status.available, "expected native_ready, got {status:?}");
         assert!(status.compatible);
         assert_eq!(status.reason, "native_ready");
         assert_eq!(
@@ -1050,7 +1075,7 @@ mod tests {
         let bin = dir.join("hol-guard-runtime-env");
         {
             use std::os::unix::fs::PermissionsExt;
-            let script = format!("#!/bin/sh\nprintf '%s' '{}'\n", caps);
+            let script = format!("#!/bin/sh\nprintf '%s' '{caps}'\n");
             fs::write(&bin, script).unwrap();
             let mut perm = fs::metadata(&bin).unwrap().permissions();
             perm.set_mode(0o555);

@@ -526,6 +526,7 @@ fn pr_create_has_static_inline_content(args: &[String]) -> bool {
 }
 
 /// `static_markdown_pr_body_file_operand` (:321).
+#[allow(dead_code)]
 pub fn static_markdown_pr_body_file_operand(args: &[String]) -> Option<String> {
     const INCOMPATIBLE: &[&str] = &[
         "--body",
@@ -913,7 +914,7 @@ pub fn is_routine_squash_merge(args: &[String]) -> bool {
             if repository.is_some() {
                 return false;
             }
-            let v = argument.splitn(2, '=').nth(1).unwrap_or("").to_string();
+            let v = argument.split_once('=').map(|x| x.1).unwrap_or("").to_string();
             repository = Some(v.clone());
             if !is_static_repository(&v) {
                 return false;
@@ -1637,8 +1638,7 @@ fn routine_review_thread_literal_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(&format!(
-            r#"\A\s*mutation\s*\{{\s*resolveReviewThread\s*\(\s*input\s*:\s*\{{\s*threadId\s*:\s*"PRRT_[A-Za-z0-9_-]{{8,}}"\s*\}}\s*\)\s*\{{\s*thread\s*\{{\s*{}\s*\}}\s*\}}\s*\}}\s*\z"#,
-            REVIEW_THREAD_SELECTION
+            r#"\A\s*mutation\s*\{{\s*resolveReviewThread\s*\(\s*input\s*:\s*\{{\s*threadId\s*:\s*"PRRT_[A-Za-z0-9_-]{{8,}}"\s*\}}\s*\)\s*\{{\s*thread\s*\{{\s*{REVIEW_THREAD_SELECTION}\s*\}}\s*\}}\s*\}}\s*\z"#
         ))
         .unwrap()
     })
@@ -1647,8 +1647,7 @@ fn routine_review_thread_variable_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(&format!(
-            r#"\A\s*mutation\s*\(\s*\$threadId\s*:\s*ID!\s*\)\s*\{{\s*resolveReviewThread\s*\(\s*input\s*:\s*\{{\s*threadId\s*:\s*\$threadId\s*\}}\s*\)\s*\{{\s*thread\s*\{{\s*{}\s*\}}\s*\}}\s*\}}\s*\z"#,
-            REVIEW_THREAD_SELECTION
+            r#"\A\s*mutation\s*\(\s*\$threadId\s*:\s*ID!\s*\)\s*\{{\s*resolveReviewThread\s*\(\s*input\s*:\s*\{{\s*threadId\s*:\s*\$threadId\s*\}}\s*\)\s*\{{\s*thread\s*\{{\s*{REVIEW_THREAD_SELECTION}\s*\}}\s*\}}\s*\}}\s*\z"#
         ))
         .unwrap()
     })
@@ -1669,7 +1668,7 @@ fn word_re(word: &'static str) -> &'static Regex {
     } else {
         &MUTATION
     };
-    slot.get_or_init(|| Regex::new(&format!(r"\b{}\b", word)).unwrap())
+    slot.get_or_init(|| Regex::new(&format!(r"\b{word}\b")).unwrap())
 }
 
 fn is_word_char(c: char) -> bool {
@@ -2000,9 +1999,7 @@ fn strip_strings_and_comments(document: &str) -> String {
                 }
                 end += 1;
             }
-            for _ in 0..(end + 3 - index) {
-                output.push(' ');
-            }
+            output.resize(output.len() + (end + 3 - index), ' ');
             index = end + 3;
             continue;
         }

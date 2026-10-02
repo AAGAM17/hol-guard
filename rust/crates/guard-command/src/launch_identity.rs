@@ -185,7 +185,7 @@ fn with_launch_cwd(mut identity: Value, effective_cwd: Option<&Path>) -> Value {
 // with absolute() fallback. POSIX: `Path::expanduser` is `~` → `$HOME`.
 fn normalized_launch_cwd(cwd: Option<&Path>) -> PathBuf {
     let candidate = cwd
-        .map(|p| expand_user(p))
+        .map(expand_user)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     candidate.canonicalize().unwrap_or_else(|_| {
         if candidate.is_absolute() {
@@ -219,10 +219,10 @@ fn runtime_path_with_trusted_home(command: &str, home_dir: Option<&Path>) -> Opt
     if command == "~" {
         return home_dir.map(|p| p.to_path_buf());
     }
-    if command.starts_with("~/") {
+    if let Some(stripped) = command.strip_prefix("~/") {
         // POSIX: `os.name == "nt"` gate is false; `~\` is not trusted-home.
         let home = home_dir?;
-        let relative_tail = command[2..].trim_start_matches(['/', '\\']);
+        let relative_tail = stripped.trim_start_matches(['/', '\\']);
         if relative_tail.is_empty() {
             return None;
         }
@@ -818,6 +818,7 @@ pub fn resolved_runtime_launch_argv(identity: &Value, args: &[String]) -> Option
 }
 
 // `runtime_launch_identity_matches` (:757-806).
+#[allow(clippy::too_many_arguments)]
 pub fn runtime_launch_identity_matches(
     expected_identity: &Value,
     command: &Value,
@@ -912,6 +913,7 @@ fn env_shebang_command(args: &[String]) -> Option<(String, Vec<String>)> {
 }
 
 // `build_runtime_launch_identity` (:562-663).
+#[allow(clippy::too_many_arguments)]
 pub fn build_runtime_launch_identity(
     command: &Value,
     args: &[Value],
@@ -995,22 +997,24 @@ pub fn build_runtime_launch_identity(
     }
     let raw_command = command_str.trim_start();
     let raw_current_user_tilde = raw_command.starts_with("~/");
-    let executable_identity: Value;
-    if !structured_command && executable.starts_with('~') && !raw_current_user_tilde {
-        executable_identity = unreusable_executable_identity(
+    let executable_identity: Value = if !structured_command
+        && executable.starts_with('~')
+        && !raw_current_user_tilde
+    {
+        unreusable_executable_identity(
             &Value::String(executable.clone()),
             "ambiguous_tilde_syntax",
             None,
-        );
+        )
     } else {
-        executable_identity = build_runtime_executable_identity(
+        build_runtime_executable_identity(
             &Value::String(executable.clone()),
             search_path,
             Some(&effective_cwd),
             home_dir,
             true,
-        );
-    }
+        )
+    };
     let (executable_shebang, executable_shebang_status) =
         raw_shebang_for_identity(&executable_identity);
     let entrypoint = runtime_entrypoint_identity(
@@ -1213,16 +1217,13 @@ fn direct_executable_runtime_entrypoint_identity(
         None => {
             return unproven_runtime_entrypoint(
                 "direct-script",
-                &format!("shebang_{}", executable_shebang_status),
+                &format!("shebang_{executable_shebang_status}"),
                 None,
             )
         }
         Some(s) => s,
     };
-    let shebang_tokens = match shell_tokens(shebang, true) {
-        Ok(t) => t,
-        Err(_) => Vec::new(),
-    };
+    let shebang_tokens = shell_tokens(shebang, true).unwrap_or_default();
     if shebang_tokens.is_empty() {
         return unproven_runtime_entrypoint(
             "direct-script",
@@ -1297,11 +1298,10 @@ fn direct_executable_runtime_entrypoint_identity(
         let nested_identity = nested_shebang_interpreter_identity(
             &launcher_name,
             &shebang_args,
-            &executable_identity
+            executable_identity
                 .get("path")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+                .unwrap_or(""),
             launch_cwd,
             launch_env,
         );
@@ -1382,11 +1382,10 @@ fn direct_executable_runtime_entrypoint_identity(
     let nested_identity = nested_shebang_interpreter_identity(
         &interpreter_name,
         &interpreter_args,
-        &executable_identity
+        executable_identity
             .get("path")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+            .unwrap_or(""),
         launch_cwd,
         launch_env,
     );
@@ -1780,7 +1779,7 @@ fn node_runtime_entrypoint_identity(
         }
         if HARMLESS_FLAGS
             .iter()
-            .any(|f| argument == *f || argument.starts_with(&format!("{}=", f)))
+            .any(|f| argument == *f || argument.starts_with(&format!("{f}=")))
         {
             index += 1;
             continue;
@@ -1823,53 +1822,52 @@ fn shell_runtime_entrypoint_identity(
     });
     if has_startup_env {
         return unproven_runtime_entrypoint(
-            &format!("{}-launch", shell),
+            &format!("{shell}-launch"),
             "shell_startup_unresolved",
             None,
         );
     }
-    let mut index = 0usize;
-    while index < args.len() {
+    let index = 0usize;
+    if index < args.len() {
         let argument = args[index].as_str();
         if argument == "-c" {
             if index + 1 >= args.len() {
                 return unproven_runtime_entrypoint(
-                    &format!("{}-inline", shell),
+                    &format!("{shell}-inline"),
                     "missing_inline_code",
                     None,
                 );
             }
-            return inline_runtime_entrypoint(&format!("{}-inline", shell), &args[index + 1]);
+            return inline_runtime_entrypoint(&format!("{shell}-inline"), &args[index + 1]);
         }
         if argument.starts_with('-') {
             return unproven_runtime_entrypoint(
-                &format!("{}-script", shell),
+                &format!("{shell}-script"),
                 "unsupported_interpreter_option",
                 Some(std::slice::from_ref(&args[index])),
             );
         }
-        break;
     }
     if index >= args.len() {
         return unproven_runtime_entrypoint(
-            &format!("{}-stdin", shell),
+            &format!("{shell}-stdin"),
             "stdin_code_unprovable",
             None,
         );
     }
-    file_runtime_entrypoint(&format!("{}-script", shell), &args[index], launch_cwd)
+    file_runtime_entrypoint(&format!("{shell}-script"), &args[index], launch_cwd)
 }
 
 // `_simple_runtime_entrypoint_identity` (:1557-1569).
 fn simple_runtime_entrypoint_identity(launcher: &str, args: &[String], launch_cwd: &Path) -> Value {
     if args.is_empty() || args[0].starts_with('-') {
         return unproven_runtime_entrypoint(
-            &format!("{}-script", launcher),
+            &format!("{launcher}-script"),
             "entrypoint_unresolved",
             Some(&args[..args.len().min(1)]),
         );
     }
-    file_runtime_entrypoint(&format!("{}-script", launcher), &args[0], launch_cwd)
+    file_runtime_entrypoint(&format!("{launcher}-script"), &args[0], launch_cwd)
 }
 
 // `_javascript_runtime_entrypoint_identity` (:1578-1604).
@@ -1897,12 +1895,12 @@ fn javascript_runtime_entrypoint_identity(
     }
     if args.is_empty() || args[0].starts_with('-') {
         return unproven_runtime_entrypoint(
-            &format!("{}-script", launcher),
+            &format!("{launcher}-script"),
             "entrypoint_unresolved",
             Some(&args[..args.len().min(1)]),
         );
     }
-    file_runtime_entrypoint(&format!("{}-script", launcher), &args[0], launch_cwd)
+    file_runtime_entrypoint(&format!("{launcher}-script"), &args[0], launch_cwd)
 }
 
 // `_java_runtime_entrypoint_identity` (:1606-1619).

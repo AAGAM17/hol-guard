@@ -1975,9 +1975,9 @@ fn rebase_intent_paths(
                             .canonicalize()
                             .or_else(|_| Ok(absolute.clone()))
                             .and_then(|p| {
-                                p.strip_prefix(&expand_resolve(workspace))
+                                p.strip_prefix(expand_resolve(workspace))
                                     .map(|r| r.to_path_buf())
-                                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, ""))
+                                    .map_err(|_| std::io::Error::other(""))
                             }) {
                             Ok(rel) => rel.to_string_lossy().into_owned(),
                             Err(_) => path.clone(),
@@ -2183,7 +2183,7 @@ fn path_identity(path: &Path) -> Option<String> {
 
 // package_intent_parser.py `_execution_display_path`
 fn execution_display_path(workspace: &Path, path: &Path) -> String {
-    match path.strip_prefix(&expand_resolve(workspace)) {
+    match path.strip_prefix(expand_resolve(workspace)) {
         Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
         Err(_) => path.to_string_lossy().into_owned(),
     }
@@ -2826,10 +2826,7 @@ fn execution_file_evidence(path: &Path, display_path: &str) -> PackageExecutionF
 // `shlex` with `punctuation_chars=";&|"`, `whitespace_split=True`, `commenters=""`.
 #[allow(dead_code)]
 fn split_shell_tokens_local(command_text: &str) -> Vec<String> {
-    match split_shell_tokens(command_text) {
-        Ok(tokens) => tokens,
-        Err(_) => Vec::new(),
-    }
+    split_shell_tokens(command_text).unwrap_or_default()
 }
 
 /// `os.defpath` equivalent — POSIX standard PATH fallback.

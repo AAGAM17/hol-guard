@@ -27,12 +27,15 @@ pub const APPROVAL_GATE_GRANT_TTL_SECONDS: u64 = 30;
 pub const APPROVAL_GATE_HASH_ITERATIONS: u32 = 310_000;
 pub const APPROVAL_GATE_TOTP_SKEW_STEPS: i64 = 1;
 pub const APPROVAL_GATE_TOTP_PENDING_TTL_SECONDS: u64 = 600;
+#[allow(dead_code)]
 pub const APPROVAL_GATE_TOTP_RECENT_TTL_SECONDS: u64 = 60;
+#[allow(dead_code)]
 pub const APPROVAL_GATE_HASH_ALGORITHM: &str = "pbkdf2_sha256";
 pub const APPROVAL_GATE_MIN_PASSWORD_LENGTH: usize = 8;
 
 /// RFC 6238 forbidden `counter` — `-for_counter` must be a non-negative int.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct TotpError(pub String);
 
 fn hmac_sha1(key: &[u8], msg: &[u8]) -> [u8; 20] {
@@ -46,8 +49,7 @@ fn hmac_sha1(key: &[u8], msg: &[u8]) -> [u8; 20] {
 fn normalize_base32(value: &str) -> String {
     let normalized: String = value
         .trim()
-        .replace(' ', "")
-        .replace('-', "")
+        .replace([' ', '-'], "")
         .to_uppercase();
     let pad = (8 - normalized.len() % 8) % 8;
     format!("{}{}", normalized, "=".repeat(pad))
@@ -134,7 +136,7 @@ pub fn verify_totp_code(
 /// `urlencode(quote_via=quote)` → space encodes as `%20`, not `+`.
 pub fn build_otpauth_uri(secret: &str, device_label: &str) -> String {
     use std::fmt::Write;
-    let label = format!("{}:{}", TOTP_ISSUER, device_label);
+    let label = format!("{TOTP_ISSUER}:{device_label}");
     let safe_label = quote_label(&label);
     let params = format!(
         "secret={}&issuer={}&algorithm={}&digits={}&period={}",
@@ -145,7 +147,7 @@ pub fn build_otpauth_uri(secret: &str, device_label: &str) -> String {
         TOTP_PERIOD_SECONDS
     );
     let mut uri = String::with_capacity(96);
-    let _ = write!(uri, "otpauth://totp/{}?{}", safe_label, params);
+    let _ = write!(uri, "otpauth://totp/{safe_label}?{params}");
     uri
 }
 
@@ -160,7 +162,7 @@ fn quote_label(s: &str) -> String {
             }
             _ => {
                 out.push('%');
-                out.push_str(&format!("{:02X}", b));
+                out.push_str(&format!("{b:02X}"));
             }
         }
     }
@@ -177,7 +179,7 @@ fn quote_param(s: &str) -> String {
             }
             _ => {
                 out.push('%');
-                out.push_str(&format!("{:02X}", b));
+                out.push_str(&format!("{b:02X}"));
             }
         }
     }
@@ -192,6 +194,7 @@ fn quote_param(s: &str) -> String {
 // TOTP concern. See `APPROVAL_GATE_HASH_ITERATIONS` above.
 
 /// Length-aware constant-time equality — XOR-fold, no early exit.
+#[allow(dead_code)]
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -241,7 +244,7 @@ impl TotpSecretStore {
 
     fn path_for(&self, secret_id: &str) -> PathBuf {
         let safe = sanitize_secret_id(secret_id);
-        self.base_dir.join(format!("{}.secret", safe))
+        self.base_dir.join(format!("{safe}.secret"))
     }
 
     /// Read `key.bin` via the shared Fernet loader (raw 32-byte key decoded

@@ -575,7 +575,7 @@ mod tests {
     const TS: &str = "2026-10-02T00:00:00.000000Z";
 
     fn state() -> WorkflowCapabilityAuthorityState {
-        WorkflowCapabilityAuthorityState::new("cap-1", &"a".repeat(64), 0, TS, 0, None, None)
+        WorkflowCapabilityAuthorityState::new("cap-1", "a".repeat(64), 0, TS, 0, None, None)
             .unwrap()
     }
 
@@ -597,7 +597,7 @@ mod tests {
     fn authority_state_revocation_incomplete_rejected() {
         let res = WorkflowCapabilityAuthorityState::new(
             "cap-1",
-            &"a".repeat(64),
+            "a".repeat(64),
             0,
             TS,
             0,
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn revocation_sign_verify_round_trip() {
         let r =
-            WorkflowCapabilityRevocation::new("rev-1", "cap-1", &"a".repeat(64), "consumed", TS)
+            WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "consumed", TS)
                 .unwrap();
         let s = sign_revocation(r, &key(), KEY_ID).unwrap();
         verify_revocation(&s, &key(), KEY_ID).unwrap();
@@ -622,7 +622,7 @@ mod tests {
     #[test]
     fn revocation_encode_decode_canonical() {
         let r =
-            WorkflowCapabilityRevocation::new("rev-1", "cap-1", &"a".repeat(64), "consumed", TS)
+            WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "consumed", TS)
                 .unwrap();
         let s = sign_revocation(r, &key(), KEY_ID).unwrap();
         let enc = encode_signed_revocation(&s).unwrap();
@@ -633,7 +633,7 @@ mod tests {
     #[test]
     fn revocation_bad_reason_code_rejected() {
         let res =
-            WorkflowCapabilityRevocation::new("rev-1", "cap-1", &"a".repeat(64), "BAD CODE", TS);
+            WorkflowCapabilityRevocation::new("rev-1", "cap-1", "a".repeat(64), "BAD CODE", TS);
         assert_eq!(
             res.unwrap_err(),
             WorkflowCapabilityError("invalid_reason_code")

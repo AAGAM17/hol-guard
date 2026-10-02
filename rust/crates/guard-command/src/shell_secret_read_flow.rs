@@ -60,7 +60,7 @@ pub(crate) fn segment_may_touch_local_data(execution: &ShellExecutionSegment) ->
     // emulate the Python (?!<) lookahead: the char after `<` must not be `<`.
     let has_input_redirect = execution.tokens.iter().any(|item| {
         if let Some(m) = input_redirect_re().find(item) {
-            item[m.end()..].chars().next() != Some('<')
+            !item[m.end()..].starts_with('<')
         } else {
             false
         }

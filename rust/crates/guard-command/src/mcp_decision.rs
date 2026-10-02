@@ -359,7 +359,7 @@ pub fn package_source_token(command: &str, args: &[String]) -> String {
         let value = python_strip(&args[index]).to_owned();
         let mut matched = false;
         for flag in PACKAGE_SOURCE_FLAGS {
-            let equals = format!("{}=", flag);
+            let equals = format!("{flag}=");
             if value == *flag && index + 1 < args.len() {
                 sources.push(format!("{}={}", flag, python_strip(&args[index + 1])));
                 index += 2;
@@ -497,7 +497,7 @@ fn split_package_token(value: &str) -> (Option<String>, Option<String>) {
         } else {
             Some(version.to_owned())
         };
-        return (Some(format!("{}/{}", scope, name)), version);
+        return (Some(format!("{scope}/{name}")), version);
     }
     if value.contains("://") {
         return (Some(sanitize_package_url(value)), None);
@@ -563,7 +563,7 @@ fn split_pip_style_specifier(value: &str) -> (Option<String>, Option<String>) {
         }
         return (
             Some(normalized_name.to_owned()),
-            Some(format!("{}{}", separator, normalized_version)),
+            Some(format!("{separator}{normalized_version}")),
         );
     }
     (None, None)

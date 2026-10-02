@@ -39,6 +39,7 @@ pub struct EncryptedFileSecretStore {
     fernet_key: Option<Vec<u8>>,
 }
 
+#[allow(dead_code)]
 impl EncryptedFileSecretStore {
     /// `__init__` — `base_dir = guard_home / "secrets"`, `key_path = key.bin`.
     pub fn new(guard_home: &Path) -> Self {
@@ -167,7 +168,7 @@ impl EncryptedFileSecretStore {
     /// `_encrypt_fernet` → `{version:"fernet-v1", ciphertext:<token>}`.
     fn encrypt_fernet(&self, value: &str) -> std::io::Result<Value> {
         let key = self.fernet_key.as_ref().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::Other, "secret store is not initialized")
+            std::io::Error::other("secret store is not initialized")
         })?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -309,7 +310,7 @@ pub(crate) fn random_bytes(n: usize) -> Vec<u8> {
 
 pub(crate) fn b64url_encode(b: &[u8]) -> String {
     use base64ct::{Base64Url, Encoding};
-    let mut buf = vec![0u8; ((b.len() + 2) / 3) * 4];
+    let mut buf = vec![0u8; b.len().div_ceil(3) * 4];
     let out = Base64Url::encode(b, &mut buf).expect("b64 encode");
     out.to_owned()
 }
@@ -422,7 +423,7 @@ pub(crate) fn fernet_decrypt(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
+    
 
     const ORACLE: &str = include_str!("../testdata/secret_store_oracle.json");
 

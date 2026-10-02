@@ -241,7 +241,6 @@ fn unwrap_lean_ctx(parts: &[String]) -> Option<(String, Vec<String>)> {
     while index < parts.len() {
         let token = &parts[index];
         if token == "--" {
-            index += 1;
             break;
         }
         if token == "-c" || token == "--command" {
@@ -261,7 +260,6 @@ fn unwrap_shell_string_wrapper(parts: &[String]) -> Option<(String, Vec<String>)
     while index < parts.len() {
         let token = &parts[index];
         if token == "--" {
-            index += 1;
             break;
         }
         if token.starts_with('-') && !token.starts_with("--") && token[1..].contains('c') {
@@ -480,7 +478,7 @@ fn stable_non_writable_path(path: &Path) -> bool {
 
 /// `_root_owned_path_chain` (:365-366).
 fn root_owned_path_chain(path: &Path) -> bool {
-    path.ancestors().all(|c| path_is_root_owned(c))
+    path.ancestors().all(path_is_root_owned)
 }
 
 /// `_path_is_under_trusted_install_dir` (:369-371).

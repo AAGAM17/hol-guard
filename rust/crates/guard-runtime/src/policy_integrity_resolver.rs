@@ -24,6 +24,7 @@ pub const POLICY_INTEGRITY_CONTROL_REF: &str = "guard-policy-integrity-control";
 /// `_POLICY_INTEGRITY_CONTROL_VERSION` (`store_base.py:272`).
 pub const POLICY_INTEGRITY_CONTROL_VERSION: i64 = 1;
 /// `_POLICY_INTEGRITY_STATE_KEY` (`store_base.py:271`) — `sync_state` row key.
+#[allow(dead_code)]
 pub const POLICY_INTEGRITY_STATE_KEY: &str = "policy_integrity";
 
 /// `_build_scoped_secret_ref` (:192-195) — `{prefix}:{sha256(resolved_home)[:16]}`.
@@ -78,7 +79,7 @@ pub fn normalize_policy_integrity_control_state(payload: &Value) -> Option<Value
         return None;
     }
     let generation = payload.get("generation")?.as_i64()?;
-    if generation < 0 || payload.get("generation").map_or(false, Value::is_boolean) {
+    if generation < 0 || payload.get("generation").is_some_and(Value::is_boolean) {
         return None;
     }
     let pending_generation = match payload.get("pending_generation") {
@@ -194,7 +195,7 @@ mod tests {
         // normalize: valid
         let norm = normalize_policy_integrity_control_state(&oracle["control"]).unwrap();
         assert_eq!(norm["generation"].as_i64().unwrap(), 3);
-        assert_eq!(norm["cutover_complete"].as_bool().unwrap(), true);
+        assert!(norm["cutover_complete"].as_bool().unwrap());
         assert!(norm["pending_generation"].is_null());
         // normalize: rejects
         assert!(normalize_policy_integrity_control_state(&oracle["bad_version"]).is_none());

@@ -24,6 +24,7 @@ use sha2::{Digest, Sha256};
 use crate::command_launcher_floors::{shlex_join, shlex_split};
 use crate::npm_source_spec::{parse_npm_source_spec, NpmSourceSpec};
 
+#[allow(dead_code)]
 type IntentResult<T> = Result<T, &'static str>;
 
 static EXTRAS_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -919,7 +920,7 @@ fn package_request_summary(intent: &PackageIntent) -> String {
 
 /// `package_runtime_summary` (:271-281).
 fn package_runtime_summary(intent: &PackageIntent) -> String {
-    if intent.local_executions.first().is_some() {
+    if !intent.local_executions.is_empty() {
         return format!(
             "Executes a project package through {} using an exact local execution identity.",
             intent.package_manager
@@ -1199,14 +1200,10 @@ pub fn js_target(spec: &str) -> PackageIntentTarget {
         }
     }
     let parsed_source = parse_npm_source_spec(Some(&normalized_spec));
-    if parsed_source.is_some() && is_unnamed_js_source_spec(&normalized_spec) {
-        return js_source_target(
-            spec,
-            &normalized_spec,
-            parsed_source.as_ref().unwrap(),
-            None,
-            alias,
-        );
+    if let Some(source) = parsed_source.as_ref() {
+        if is_unnamed_js_source_spec(&normalized_spec) {
+            return js_source_target(spec, &normalized_spec, source, None, alias);
+        }
     }
     let (named_source_package, source_url) = split_js_named_source_spec(&normalized_spec);
     if let Some(source_url) = source_url {
@@ -1225,14 +1222,8 @@ pub fn js_target(spec: &str) -> PackageIntentTarget {
     }
     let (package_name, requested_specifier) = split_package_token(&normalized_spec);
     let parsed_source = parse_npm_source_spec(requested_specifier.as_deref());
-    if requested_specifier.is_some() && parsed_source.is_some() {
-        return js_source_target(
-            spec,
-            requested_specifier.as_ref().unwrap(),
-            parsed_source.as_ref().unwrap(),
-            package_name,
-            alias,
-        );
+    if let (Some(specifier), Some(source)) = (requested_specifier.as_ref(), parsed_source.as_ref()) {
+        return js_source_target(spec, specifier, source, package_name, alias);
     }
     PackageIntentTarget {
         ecosystem: "npm".to_owned(),
@@ -1382,7 +1373,7 @@ fn split3<'a>(text: &'a str, sep: &'a str) -> (&'a str, &'a str, &'a str) {
 }
 
 /// `str.rpartition` three-tuple on the last `sep` occurrence.
-fn rsplit3<'a>(text: &'a str, sep: char) -> (&'a str, &'a str, &'a str) {
+fn rsplit3(text: &str, sep: char) -> (&str, &str, &str) {
     match text.rfind(sep) {
         Some(index) => (&text[..index], &text[index..index + 1], &text[index + 1..]),
         None => ("", "", text),
@@ -1841,7 +1832,7 @@ fn partition3_str<'a>(text: &'a str, sep: &str) -> (&'a str, &'a str, &'a str) {
 }
 
 /// `str.rpartition` on a single char separator: no match → `("", "", text)`.
-fn rpartition3_str<'a>(text: &'a str, sep: char) -> (&'a str, &'a str, &'a str) {
+fn rpartition3_str(text: &str, sep: char) -> (&str, &str, &str) {
     match text.rfind(sep) {
         Some(index) => (&text[..index], &text[index..index + 1], &text[index + 1..]),
         None => ("", "", text),
@@ -1851,6 +1842,435 @@ fn rpartition3_str<'a>(text: &'a str, sep: char) -> (&'a str, &'a str, &'a str) 
 // keep BTreeMap import used in later chunks (manifest diff consolidation)
 #[allow(dead_code)]
 fn _unused(_: BTreeMap<String, String>) {}
+
+/// `homebrew_tap_target` (:518-520).
+pub fn homebrew_tap_target(spec: &str, source_url: Option<&str>) -> PackageIntentTarget {
+    PackageIntentTarget {
+        ecosystem: "homebrew-tap".to_owned(),
+        package_name: if spec.is_empty() {
+            None
+        } else {
+            Some(spec.to_owned())
+        },
+        raw_spec: spec.to_owned(),
+        requested_specifier: None,
+        source_url: source_url.map(str::to_owned),
+        source_kind: None,
+        source_repository: None,
+        source_revision_kind: None,
+        source_identity: None,
+        source_invalid_reason: None,
+        alias: None,
+        dependency_group: None,
+        extras: Vec::new(),
+        editable: false,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// mcp_protection.py command/selector helpers (:154-321, :384-499) + protect.py
+// `_collect_package_specs` (:828-850) + secret_file_requests candidate helpers
+// (`_SHELL_TOOL_NAMES`/`_normalize_tool_name`/`_candidate_command_texts`) —
+// `pub(crate)` so `package_intent_parser` and the eventual `mcp_protection.rs`
+// port can reuse them; consolidated here because they share the URL/token
+// primitives above.
+
+/// `_PACKAGE_LAUNCHERS` (mcp_protection.py :151) — narrower than
+/// `package_execution_context::PACKAGE_LAUNCHERS` (launch_identity_binding.py
+/// :41-58); the two sets are intentionally distinct upstream.
+#[allow(dead_code)]
+pub(crate) const MCP_PACKAGE_LAUNCHERS: &[&str] =
+    &["bunx", "npm", "npx", "pnpm", "uvx", "yarn", "pipx"];
+
+/// `_command_name` (mcp_protection.py :317-321):
+/// `PurePath(value.replace("\\", "/")).name.lower()`, stripping
+/// `.cmd`/`.exe`/`.bat`/`.ps1` suffix.
+pub(crate) fn command_name(value: &str) -> String {
+    let normalized = value.replace('\\', "/");
+    let base = normalized.rsplit('/').next().unwrap_or("").to_lowercase();
+    for suffix in [".cmd", ".exe", ".bat", ".ps1"] {
+        if let Some(stem) = base.strip_suffix(suffix) {
+            return stem.to_owned();
+        }
+    }
+    base
+}
+
+/// `package_launcher_name` (mcp_protection.py :154-158).
+#[allow(dead_code)]
+pub(crate) fn package_launcher_name(command: &str) -> Option<String> {
+    let name = command_name(command);
+    if MCP_PACKAGE_LAUNCHERS.contains(&name.as_str()) {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+/// `_launcher_subcommands` (mcp_protection.py :393-400).
+#[allow(dead_code)]
+pub(crate) fn launcher_subcommands(command_name: &str) -> &'static [&'static str] {
+    match command_name {
+        "npm" => &["exec", "x"],
+        "pipx" => &["run"],
+        "pnpm" => &["dlx"],
+        "yarn" => &["dlx"],
+        _ => &[],
+    }
+}
+
+/// `_launcher_non_package_subcommands` (mcp_protection.py :403-409).
+#[allow(dead_code)]
+pub(crate) fn launcher_non_package_subcommands(command_name: &str) -> &'static [&'static str] {
+    match command_name {
+        "npm" => &["ci", "install", "run", "start", "stop", "restart", "test"],
+        "pnpm" => &["exec", "run"],
+        "yarn" => &["exec", "run"],
+        _ => &[],
+    }
+}
+
+/// `_package_selector_flags` (mcp_protection.py :412-419).
+#[allow(dead_code)]
+pub(crate) fn package_selector_flags(command_name: &str) -> &'static [&'static str] {
+    match command_name {
+        "bunx" => &["--package", "-p"],
+        "npm" => &["--package"],
+        "npx" => &["--package", "-p"],
+        "pnpm" => &["--package"],
+        _ => &[],
+    }
+}
+
+/// `_value_options_for_command` (mcp_protection.py :422-489): `common` union
+/// with the command-specific set.
+#[allow(dead_code)]
+pub(crate) fn value_options_for_command(command_name: &str) -> Vec<&'static str> {
+    const COMMON: &[&str] = &[
+        "--cache",
+        "--cache-dir",
+        "--call",
+        "--cwd",
+        "--prefix",
+        "--python",
+        "--registry",
+        "--userconfig",
+    ];
+    let mut out: Vec<&'static str> = COMMON.to_vec();
+    let extra: &[&str] = match command_name {
+        "bunx" => &["-c", "--config", "--package"],
+        "npm" => &["-c", "-w", "--workspace"],
+        "npx" => &["-c", "-w", "--workspace"],
+        "pipx" => &["-i", "--index-url", "--pip-args", "--suffix", "--with"],
+        "pnpm" => &["-C", "--allow-build", "--dir", "--filter", "--reporter"],
+        "uvx" => &[
+            "-P",
+            "-b",
+            "-C",
+            "-c",
+            "-f",
+            "-i",
+            "-p",
+            "-w",
+            "--allow-insecure-host",
+            "--cache-dir",
+            "--color",
+            "--config-file",
+            "--config-setting",
+            "--config-settings-package",
+            "--default-index",
+            "--build-constraints",
+            "--constraints",
+            "--directory",
+            "--env-file",
+            "--extra-index-url",
+            "--exclude-newer",
+            "--exclude-newer-package",
+            "--find-links",
+            "--fork-strategy",
+            "--from",
+            "--index",
+            "--index-url",
+            "--index-strategy",
+            "--keyring-provider",
+            "--link-mode",
+            "--no-binary-package",
+            "--no-build-isolation-package",
+            "--no-build-package",
+            "--no-sources-package",
+            "--overrides",
+            "--prerelease",
+            "--project",
+            "--python-platform",
+            "--refresh-package",
+            "--reinstall-package",
+            "--resolution",
+            "--torch-backend",
+            "--upgrade-package",
+            "--with",
+            "--with-editable",
+            "--with-requirements",
+        ],
+        "yarn" => &["--cwd", "--use-yarnrc"],
+        _ => &[],
+    };
+    for flag in extra {
+        if !out.contains(flag) {
+            out.push(flag);
+        }
+    }
+    out
+}
+
+/// `_option_takes_value` (mcp_protection.py :384-390).
+#[allow(dead_code)]
+pub(crate) fn option_takes_value(command_name: &str, option: &str) -> bool {
+    let option_name = option.trim();
+    if !option_name.starts_with('-') {
+        return false;
+    }
+    if option_name.starts_with("--") && option_name.contains('=') {
+        return false;
+    }
+    value_options_for_command(command_name).contains(&option_name)
+}
+
+/// `_looks_like_runtime_path` (mcp_protection.py :492-499).
+#[allow(dead_code)]
+pub(crate) fn looks_like_runtime_path(value: &str) -> bool {
+    let normalized = value.trim().replace('\\', "/");
+    if normalized.starts_with("./")
+        || normalized.starts_with("../")
+        || normalized.starts_with("~/")
+        || normalized.starts_with('/')
+    {
+        return true;
+    }
+    // `PurePath(normalized).suffix.lower()` → last dotted suffix.
+    let base = normalized.rsplit('/').next().unwrap_or("");
+    let suffix = base
+        .rfind('.')
+        .map(|idx| base[idx..].to_lowercase())
+        .unwrap_or_default();
+    if !matches!(
+        suffix.as_str(),
+        ".cjs" | ".js" | ".json" | ".mjs" | ".py" | ".ts"
+    ) {
+        return false;
+    }
+    normalized.contains('/') && !normalized.starts_with('@')
+}
+
+/// `_package_token` (mcp_protection.py :244-294).
+#[allow(dead_code)]
+pub(crate) fn package_token(command_name: &str, args: &[String]) -> Option<String> {
+    let mut index = 0usize;
+    let mut positional_index = 0usize;
+    let package_selector_flags = package_selector_flags(command_name);
+    let mut selected_package: Option<String> = None;
+    while index < args.len() {
+        let value = args[index].trim();
+        if value.is_empty() {
+            index += 1;
+            continue;
+        }
+        if positional_index == 0 && launcher_non_package_subcommands(command_name).contains(&value)
+        {
+            return None;
+        }
+        if positional_index == 0 && launcher_subcommands(command_name).contains(&value) {
+            index += 1;
+            positional_index += 1;
+            continue;
+        }
+        if package_selector_flags.contains(&value) && index + 1 < args.len() {
+            let next = args[index + 1].trim();
+            if !next.is_empty() {
+                selected_package = Some(next.to_owned());
+            }
+            index += 2;
+            continue;
+        }
+        if package_selector_flags.contains(&"--package") && value.starts_with("--package=") {
+            let package = value.split_once('=').map(|x| x.1).unwrap_or("").trim();
+            if !package.is_empty() {
+                selected_package = Some(package.to_owned());
+            }
+            index += 1;
+            continue;
+        }
+        if option_takes_value(command_name, value) {
+            index += 2;
+            continue;
+        }
+        if value.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        if positional_index == 0 && looks_like_runtime_path(value) {
+            return None;
+        }
+        if positional_index == 0 {
+            return Some(value.to_owned());
+        }
+        index += 1;
+    }
+    selected_package
+}
+
+/// `_collect_package_specs` (protect.py :828-850).
+pub(crate) fn collect_package_specs(values: &[String]) -> Vec<String> {
+    const VALUE_OPTIONS: &[&str] = &[
+        "-r",
+        "--extra-index-url",
+        "--index-url",
+        "--prefix",
+        "--registry",
+        "--requirement",
+    ];
+    let mut specs: Vec<String> = Vec::new();
+    let mut skip_next = false;
+    for (index, value) in values.iter().enumerate() {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if value.starts_with('-') {
+            if VALUE_OPTIONS.contains(&value.as_str()) {
+                skip_next = true;
+            }
+            continue;
+        }
+        if index > 0 && matches!(values[index - 1].as_str(), "-r" | "--requirement") {
+            continue;
+        }
+        specs.push(value.clone());
+    }
+    specs
+}
+
+// ---------------------------------------------------------------------------
+// secret_file_requests candidate helpers — used by package_intent_parser's
+// tool-action detection (:235-237). Source module lives at
+// `runtime/secret_file_request_services/` (48 files); only these three
+// constants/helpers are needed today.
+
+/// `_SHELL_TOOL_NAMES` (secret_file_request_services/constants_core.py :266-280).
+pub(crate) const SHELL_TOOL_NAMES: &[&str] = &[
+    "ash",
+    "bash",
+    "cmd",
+    "dash",
+    "powershell",
+    "pwsh",
+    "run_command",
+    "run_terminal_command",
+    "shell",
+    "sh",
+    "terminal",
+    "zsh",
+];
+
+/// `_normalize_tool_name` (request_models.py :277-280).
+pub(crate) fn normalize_tool_name(tool_name: &str) -> Option<String> {
+    let trimmed = tool_name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_lowercase())
+}
+
+const COMMAND_KEYS: &[&str] = &[
+    "command",
+    "cmd",
+    "shell_command",
+    "shellCommand",
+    "pattern",
+    "query",
+    "search",
+    "regex",
+];
+const COMMAND_LIST_KEYS: &[&str] = &["argv", "command_args", "commandArgs"];
+const COMMAND_SEQUENCE_KEYS: &[&str] = &["commands"];
+
+/// `command_list_candidate_texts` (request_artifacts.py :177-189).
+pub(crate) fn command_list_candidate_texts(values: &[Value], preserve_items: bool) -> Vec<String> {
+    let string_values: Vec<String> = values
+        .iter()
+        .filter_map(|v| v.as_str())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if string_values.is_empty() {
+        return Vec::new();
+    }
+    if preserve_items {
+        return string_values;
+    }
+    if string_values.len() == 1 {
+        return vec![string_values[0].clone()];
+    }
+    vec![shlex_join(&string_values)]
+}
+
+/// `_candidate_command_texts` (request_artifacts.py :171-174).
+pub(crate) fn candidate_command_texts(value: &Value) -> Vec<String> {
+    let mut results: Vec<String> = Vec::new();
+    collect_candidate_commands(value, &mut results, 0);
+    results
+}
+
+/// `_collect_candidate_commands` (request_artifacts.py :192-220).
+fn collect_candidate_commands(value: &Value, results: &mut Vec<String>, depth: usize) {
+    if depth > 4 {
+        return;
+    }
+    if let Some(s) = value.as_str() {
+        let stripped = s.trim();
+        if !stripped.is_empty() {
+            results.push(stripped.to_owned());
+        }
+        return;
+    }
+    if let Some(list) = value.as_array() {
+        results.extend(command_list_candidate_texts(list, false));
+        for child in list {
+            if child.is_object() || child.is_array() {
+                collect_candidate_commands(child, results, depth + 1);
+            }
+        }
+        return;
+    }
+    let Some(dict) = value.as_object() else {
+        return;
+    };
+    for key in COMMAND_KEYS {
+        if let Some(candidate) = dict.get(*key).and_then(|v| v.as_str()) {
+            let trimmed = candidate.trim();
+            if !trimmed.is_empty() {
+                results.push(trimmed.to_owned());
+            }
+        }
+    }
+    for key in COMMAND_LIST_KEYS.iter().chain(COMMAND_SEQUENCE_KEYS.iter()) {
+        if let Some(candidate) = dict.get(*key).and_then(|v| v.as_array()) {
+            results.extend(command_list_candidate_texts(
+                candidate,
+                COMMAND_SEQUENCE_KEYS.contains(key),
+            ));
+        }
+    }
+    for (key, child) in dict {
+        if COMMAND_LIST_KEYS.contains(&key.as_str())
+            || COMMAND_SEQUENCE_KEYS.contains(&key.as_str())
+        {
+            continue;
+        }
+        if child.is_object() || child.is_array() {
+            collect_candidate_commands(child, results, depth + 1);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -2018,429 +2438,8 @@ mod tests {
             artifact.to_dict()["metadata"]
                 .get("package_targets")
                 .is_none()
-                || !artifact.to_dict().get("runtime_private_metadata").is_some()
+                || artifact.to_dict().get("runtime_private_metadata").is_none()
         );
         assert!(artifact.to_dict().get("runtime_private_metadata").is_none());
-    }
-}
-
-/// `homebrew_tap_target` (:518-520).
-pub fn homebrew_tap_target(spec: &str, source_url: Option<&str>) -> PackageIntentTarget {
-    PackageIntentTarget {
-        ecosystem: "homebrew-tap".to_owned(),
-        package_name: if spec.is_empty() {
-            None
-        } else {
-            Some(spec.to_owned())
-        },
-        raw_spec: spec.to_owned(),
-        requested_specifier: None,
-        source_url: source_url.map(str::to_owned),
-        source_kind: None,
-        source_repository: None,
-        source_revision_kind: None,
-        source_identity: None,
-        source_invalid_reason: None,
-        alias: None,
-        dependency_group: None,
-        extras: Vec::new(),
-        editable: false,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// mcp_protection.py command/selector helpers (:154-321, :384-499) + protect.py
-// `_collect_package_specs` (:828-850) + secret_file_requests candidate helpers
-// (`_SHELL_TOOL_NAMES`/`_normalize_tool_name`/`_candidate_command_texts`) —
-// `pub(crate)` so `package_intent_parser` and the eventual `mcp_protection.rs`
-// port can reuse them; consolidated here because they share the URL/token
-// primitives above.
-
-/// `_PACKAGE_LAUNCHERS` (mcp_protection.py :151) — narrower than
-/// `package_execution_context::PACKAGE_LAUNCHERS` (launch_identity_binding.py
-/// :41-58); the two sets are intentionally distinct upstream.
-pub(crate) const MCP_PACKAGE_LAUNCHERS: &[&str] =
-    &["bunx", "npm", "npx", "pnpm", "uvx", "yarn", "pipx"];
-
-/// `_command_name` (mcp_protection.py :317-321):
-/// `PurePath(value.replace("\\", "/")).name.lower()`, stripping
-/// `.cmd`/`.exe`/`.bat`/`.ps1` suffix.
-pub(crate) fn command_name(value: &str) -> String {
-    let normalized = value.replace('\\', "/");
-    let base = normalized.rsplit('/').next().unwrap_or("").to_lowercase();
-    for suffix in [".cmd", ".exe", ".bat", ".ps1"] {
-        if let Some(stem) = base.strip_suffix(suffix) {
-            return stem.to_owned();
-        }
-    }
-    base
-}
-
-/// `package_launcher_name` (mcp_protection.py :154-158).
-pub(crate) fn package_launcher_name(command: &str) -> Option<String> {
-    let name = command_name(command);
-    if MCP_PACKAGE_LAUNCHERS.contains(&name.as_str()) {
-        Some(name)
-    } else {
-        None
-    }
-}
-
-/// `_launcher_subcommands` (mcp_protection.py :393-400).
-pub(crate) fn launcher_subcommands(command_name: &str) -> &'static [&'static str] {
-    match command_name {
-        "npm" => &["exec", "x"],
-        "pipx" => &["run"],
-        "pnpm" => &["dlx"],
-        "yarn" => &["dlx"],
-        _ => &[],
-    }
-}
-
-/// `_launcher_non_package_subcommands` (mcp_protection.py :403-409).
-pub(crate) fn launcher_non_package_subcommands(command_name: &str) -> &'static [&'static str] {
-    match command_name {
-        "npm" => &["ci", "install", "run", "start", "stop", "restart", "test"],
-        "pnpm" => &["exec", "run"],
-        "yarn" => &["exec", "run"],
-        _ => &[],
-    }
-}
-
-/// `_package_selector_flags` (mcp_protection.py :412-419).
-pub(crate) fn package_selector_flags(command_name: &str) -> &'static [&'static str] {
-    match command_name {
-        "bunx" => &["--package", "-p"],
-        "npm" => &["--package"],
-        "npx" => &["--package", "-p"],
-        "pnpm" => &["--package"],
-        _ => &[],
-    }
-}
-
-/// `_value_options_for_command` (mcp_protection.py :422-489): `common` union
-/// with the command-specific set.
-pub(crate) fn value_options_for_command(command_name: &str) -> Vec<&'static str> {
-    const COMMON: &[&str] = &[
-        "--cache",
-        "--cache-dir",
-        "--call",
-        "--cwd",
-        "--prefix",
-        "--python",
-        "--registry",
-        "--userconfig",
-    ];
-    let mut out: Vec<&'static str> = COMMON.to_vec();
-    let extra: &[&str] = match command_name {
-        "bunx" => &["-c", "--config", "--package"],
-        "npm" => &["-c", "-w", "--workspace"],
-        "npx" => &["-c", "-w", "--workspace"],
-        "pipx" => &["-i", "--index-url", "--pip-args", "--suffix", "--with"],
-        "pnpm" => &["-C", "--allow-build", "--dir", "--filter", "--reporter"],
-        "uvx" => &[
-            "-P",
-            "-b",
-            "-C",
-            "-c",
-            "-f",
-            "-i",
-            "-p",
-            "-w",
-            "--allow-insecure-host",
-            "--cache-dir",
-            "--color",
-            "--config-file",
-            "--config-setting",
-            "--config-settings-package",
-            "--default-index",
-            "--build-constraints",
-            "--constraints",
-            "--directory",
-            "--env-file",
-            "--extra-index-url",
-            "--exclude-newer",
-            "--exclude-newer-package",
-            "--find-links",
-            "--fork-strategy",
-            "--from",
-            "--index",
-            "--index-url",
-            "--index-strategy",
-            "--keyring-provider",
-            "--link-mode",
-            "--no-binary-package",
-            "--no-build-isolation-package",
-            "--no-build-package",
-            "--no-sources-package",
-            "--overrides",
-            "--prerelease",
-            "--project",
-            "--python-platform",
-            "--refresh-package",
-            "--reinstall-package",
-            "--resolution",
-            "--torch-backend",
-            "--upgrade-package",
-            "--with",
-            "--with-editable",
-            "--with-requirements",
-        ],
-        "yarn" => &["--cwd", "--use-yarnrc"],
-        _ => &[],
-    };
-    for flag in extra {
-        if !out.contains(flag) {
-            out.push(flag);
-        }
-    }
-    out
-}
-
-/// `_option_takes_value` (mcp_protection.py :384-390).
-pub(crate) fn option_takes_value(command_name: &str, option: &str) -> bool {
-    let option_name = option.trim();
-    if !option_name.starts_with('-') {
-        return false;
-    }
-    if option_name.starts_with("--") && option_name.contains('=') {
-        return false;
-    }
-    value_options_for_command(command_name).contains(&option_name)
-}
-
-/// `_looks_like_runtime_path` (mcp_protection.py :492-499).
-pub(crate) fn looks_like_runtime_path(value: &str) -> bool {
-    let normalized = value.trim().replace('\\', "/");
-    if normalized.starts_with("./")
-        || normalized.starts_with("../")
-        || normalized.starts_with("~/")
-        || normalized.starts_with('/')
-    {
-        return true;
-    }
-    // `PurePath(normalized).suffix.lower()` → last dotted suffix.
-    let base = normalized.rsplit('/').next().unwrap_or("");
-    let suffix = base
-        .rfind('.')
-        .map(|idx| base[idx..].to_lowercase())
-        .unwrap_or_default();
-    if !matches!(
-        suffix.as_str(),
-        ".cjs" | ".js" | ".json" | ".mjs" | ".py" | ".ts"
-    ) {
-        return false;
-    }
-    normalized.contains('/') && !normalized.starts_with('@')
-}
-
-/// `_package_token` (mcp_protection.py :244-294).
-pub(crate) fn package_token(command_name: &str, args: &[String]) -> Option<String> {
-    let mut index = 0usize;
-    let mut positional_index = 0usize;
-    let package_selector_flags = package_selector_flags(command_name);
-    let mut selected_package: Option<String> = None;
-    while index < args.len() {
-        let value = args[index].trim();
-        if value.is_empty() {
-            index += 1;
-            continue;
-        }
-        if positional_index == 0 && launcher_non_package_subcommands(command_name).contains(&value)
-        {
-            return None;
-        }
-        if positional_index == 0 && launcher_subcommands(command_name).contains(&value) {
-            index += 1;
-            positional_index += 1;
-            continue;
-        }
-        if package_selector_flags.contains(&value) && index + 1 < args.len() {
-            let next = args[index + 1].trim();
-            if !next.is_empty() {
-                selected_package = Some(next.to_owned());
-            }
-            index += 2;
-            continue;
-        }
-        if package_selector_flags.contains(&"--package") && value.starts_with("--package=") {
-            let package = value.splitn(2, '=').nth(1).unwrap_or("").trim();
-            if !package.is_empty() {
-                selected_package = Some(package.to_owned());
-            }
-            index += 1;
-            continue;
-        }
-        if option_takes_value(command_name, value) {
-            index += 2;
-            continue;
-        }
-        if value.starts_with('-') {
-            index += 1;
-            continue;
-        }
-        if positional_index == 0 && looks_like_runtime_path(value) {
-            return None;
-        }
-        if positional_index == 0 {
-            positional_index += 1;
-            return Some(value.to_owned());
-        }
-        index += 1;
-    }
-    selected_package
-}
-
-/// `_collect_package_specs` (protect.py :828-850).
-pub(crate) fn collect_package_specs(values: &[String]) -> Vec<String> {
-    const VALUE_OPTIONS: &[&str] = &[
-        "-r",
-        "--extra-index-url",
-        "--index-url",
-        "--prefix",
-        "--registry",
-        "--requirement",
-    ];
-    let mut specs: Vec<String> = Vec::new();
-    let mut skip_next = false;
-    for (index, value) in values.iter().enumerate() {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if value.starts_with('-') {
-            if VALUE_OPTIONS.contains(&value.as_str()) {
-                skip_next = true;
-            }
-            continue;
-        }
-        if index > 0 && matches!(values[index - 1].as_str(), "-r" | "--requirement") {
-            continue;
-        }
-        specs.push(value.clone());
-    }
-    specs
-}
-
-// ---------------------------------------------------------------------------
-// secret_file_requests candidate helpers — used by package_intent_parser's
-// tool-action detection (:235-237). Source module lives at
-// `runtime/secret_file_request_services/` (48 files); only these three
-// constants/helpers are needed today.
-
-/// `_SHELL_TOOL_NAMES` (secret_file_request_services/constants_core.py :266-280).
-pub(crate) const SHELL_TOOL_NAMES: &[&str] = &[
-    "ash",
-    "bash",
-    "cmd",
-    "dash",
-    "powershell",
-    "pwsh",
-    "run_command",
-    "run_terminal_command",
-    "shell",
-    "sh",
-    "terminal",
-    "zsh",
-];
-
-/// `_normalize_tool_name` (request_models.py :277-280).
-pub(crate) fn normalize_tool_name(tool_name: &str) -> Option<String> {
-    let trimmed = tool_name.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    Some(trimmed.to_lowercase())
-}
-
-const COMMAND_KEYS: &[&str] = &[
-    "command",
-    "cmd",
-    "shell_command",
-    "shellCommand",
-    "pattern",
-    "query",
-    "search",
-    "regex",
-];
-const COMMAND_LIST_KEYS: &[&str] = &["argv", "command_args", "commandArgs"];
-const COMMAND_SEQUENCE_KEYS: &[&str] = &["commands"];
-
-/// `command_list_candidate_texts` (request_artifacts.py :177-189).
-pub(crate) fn command_list_candidate_texts(values: &[Value], preserve_items: bool) -> Vec<String> {
-    let string_values: Vec<String> = values
-        .iter()
-        .filter_map(|v| v.as_str())
-        .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if string_values.is_empty() {
-        return Vec::new();
-    }
-    if preserve_items {
-        return string_values;
-    }
-    if string_values.len() == 1 {
-        return vec![string_values[0].clone()];
-    }
-    vec![shlex_join(&string_values)]
-}
-
-/// `_candidate_command_texts` (request_artifacts.py :171-174).
-pub(crate) fn candidate_command_texts(value: &Value) -> Vec<String> {
-    let mut results: Vec<String> = Vec::new();
-    collect_candidate_commands(value, &mut results, 0);
-    results
-}
-
-/// `_collect_candidate_commands` (request_artifacts.py :192-220).
-fn collect_candidate_commands(value: &Value, results: &mut Vec<String>, depth: usize) {
-    if depth > 4 {
-        return;
-    }
-    if let Some(s) = value.as_str() {
-        let stripped = s.trim();
-        if !stripped.is_empty() {
-            results.push(stripped.to_owned());
-        }
-        return;
-    }
-    if let Some(list) = value.as_array() {
-        results.extend(command_list_candidate_texts(list, false));
-        for child in list {
-            if child.is_object() || child.is_array() {
-                collect_candidate_commands(child, results, depth + 1);
-            }
-        }
-        return;
-    }
-    let Some(dict) = value.as_object() else {
-        return;
-    };
-    for key in COMMAND_KEYS {
-        if let Some(candidate) = dict.get(*key).and_then(|v| v.as_str()) {
-            let trimmed = candidate.trim();
-            if !trimmed.is_empty() {
-                results.push(trimmed.to_owned());
-            }
-        }
-    }
-    for key in COMMAND_LIST_KEYS.iter().chain(COMMAND_SEQUENCE_KEYS.iter()) {
-        if let Some(candidate) = dict.get(*key).and_then(|v| v.as_array()) {
-            results.extend(command_list_candidate_texts(
-                candidate,
-                COMMAND_SEQUENCE_KEYS.contains(key),
-            ));
-        }
-    }
-    for (key, child) in dict {
-        if COMMAND_LIST_KEYS.contains(&key.as_str())
-            || COMMAND_SEQUENCE_KEYS.contains(&key.as_str())
-        {
-            continue;
-        }
-        if child.is_object() || child.is_array() {
-            collect_candidate_commands(child, results, depth + 1);
-        }
     }
 }

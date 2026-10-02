@@ -200,6 +200,6 @@ fn framed_sha256(purpose: &str, payload: &Value) -> WfResult<String> {
     Ok(hasher
         .finalize()
         .iter()
-        .map(|b| format!("{:02x}", b))
+        .map(|b| format!("{b:02x}"))
         .collect())
 }

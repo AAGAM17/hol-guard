@@ -233,9 +233,7 @@ pub fn validated_continuation_snapshot(snapshot: &Value) -> Option<Map<String, V
         return None;
     }
     if capability == "session-resume" {
-        if target.is_none() {
-            return None;
-        }
+        target?;
     } else if target.is_some() {
         return None;
     }
@@ -832,6 +830,7 @@ fn binding_for_append(
 
 /// `append_request_snapshot_event` — append a request snapshot without
 /// replacing any unacknowledged event.
+#[allow(clippy::too_many_arguments)]
 pub fn append_request_snapshot_event(
     connection: &mut dyn Connection,
     request_id: &str,
@@ -1014,6 +1013,7 @@ pub fn recover_review_snapshot_sequences(
 
 /// `requeue_pending_request_events` — append `snapshot_requeued` events for
 /// pending requests that still need an unacknowledged snapshot.
+#[allow(clippy::too_many_arguments)]
 pub fn requeue_pending_request_events(
     connection: &mut dyn Connection,
     source: &str,
@@ -1392,6 +1392,7 @@ pub fn decode_stored_review_event(
 
 /// `list_pending_review_request_ids` — `approval_requests` joined to the
 /// sequence ledger, ordered by request id.
+#[allow(clippy::too_many_arguments)]
 pub fn list_pending_review_request_ids(
     connection: &mut dyn Connection,
     source: &str,
@@ -1497,7 +1498,7 @@ pub fn repair_rejected_review_correlation(
 ) -> Result<i64, String> {
     let _ = connection.execute("begin immediate", &[]);
     let current_binding = load_review_oauth_binding(connection, source);
-    let mismatch = current_binding.as_ref().map_or(true, |current| {
+    let mismatch = current_binding.as_ref().is_none_or(|current| {
         BINDING_FIELDS.iter().any(|key| {
             current.get(*key).and_then(Value::as_str) != binding.get(*key).and_then(Value::as_str)
         })

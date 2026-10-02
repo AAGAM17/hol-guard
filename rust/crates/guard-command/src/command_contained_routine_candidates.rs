@@ -5,6 +5,7 @@ use crate::command_candidate_common::command_has_exact_plain_shell_shape;
 use crate::effect_decision::{DecisionBasis, DecisionFactor, DecisionFactorSource, GuardAction};
 use crate::CommandSegmentV1;
 
+#[allow(dead_code)]
 pub const CONTAINED_ROUTINE_CANDIDATE_VERSION: &str = "guard.contained-routine-candidate.v1";
 
 /// `contained_routine_candidate_factor` (:16).
@@ -52,10 +53,10 @@ pub fn contained_routine_candidate_operation(command: &CanonicalCommand) -> Opti
     if eq(&actual, &test) {
         return Some("test");
     }
-    if eq(&actual, &vec![("ruff", vec!["check", "src", "tests"])]) {
+    if eq(&actual, &[("ruff", vec!["check", "src", "tests"])]) {
         return Some("lint");
     }
-    if eq(&actual, &vec![("bun", vec!["run", "build"])]) {
+    if eq(&actual, &[("bun", vec!["run", "build"])]) {
         return Some("build");
     }
     for s in [
@@ -74,7 +75,7 @@ pub fn contained_routine_candidate_operation(command: &CanonicalCommand) -> Opti
     }
     if eq(
         &actual,
-        &vec![(
+        &[(
             "find",
             vec![
                 "src",

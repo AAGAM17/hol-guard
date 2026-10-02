@@ -610,7 +610,7 @@ pub(crate) fn split_url(url: &str) -> SplitUrl {
     // netloc only when `//` follows.
     if let Some(after_slashes) = rest.strip_prefix("//") {
         let netloc_end = after_slashes
-            .find(|c| c == '/' || c == '?' || c == '#')
+            .find(['/', '?', '#'])
             .unwrap_or(after_slashes.len());
         out.netloc = after_slashes[..netloc_end].to_string();
         out.path = after_slashes[netloc_end..].to_string();

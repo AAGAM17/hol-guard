@@ -17,6 +17,7 @@ use crate::effect_decision::{
 };
 use crate::CommandSegmentV1;
 
+#[allow(dead_code)]
 pub const WORKSPACE_WRITE_CANDIDATE_VERSION: &str = "guard.workspace-write-candidate.v1";
 
 /// `workspace_write_candidate_factors` (:26).
@@ -90,7 +91,7 @@ pub fn workspace_write_candidate_operation(command: &CanonicalCommand) -> Option
     let args = operation.arguments.as_slice();
     if op_name == "git"
         && args.len() == 3
-        && &args[..2] == ["apply", "--check"]
+        && args[..2] == ["apply", "--check"]
         && plain_value(&args[2])
     {
         return Some("patch-check");

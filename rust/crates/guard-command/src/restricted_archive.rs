@@ -314,8 +314,7 @@ fn split_netloc(netloc: &str) -> (Option<&str>, &str, Option<&str>) {
             Some(close) => {
                 let host = &hostport[..close + 2]; // include brackets
                 let port = hostport[close + 2..]
-                    .strip_prefix(':')
-                    .map(|value| &value[..]);
+                    .strip_prefix(':');
                 return (userinfo, host, port);
             }
             None => return (userinfo, hostport, None),
@@ -357,7 +356,7 @@ fn urlsplit(url: &str) -> (String, String, String, String) {
     // Netloc — `//` authority extends to the next `/`, `?`, or `#`.
     let (netloc, path_query) = if let Some(stripped) = rest.strip_prefix("//") {
         let end = stripped
-            .find(|c| matches!(c, '/' | '?' | '#'))
+            .find(['/', '?', '#'])
             .unwrap_or(stripped.len());
         (stripped[..end].to_string(), &stripped[end..])
     } else {
@@ -423,7 +422,7 @@ pub fn canonical_destination(url: &str) -> Result<CanonicalDestination, Restrict
     }
     let port: u16 = match port_text {
         None => 443,
-        Some(text) if text.is_empty() => 443,
+        Some("") => 443,
         Some(text) => match text.parse::<u16>() {
             Ok(value) => value,
             Err(_) => return Err(rejected()),
@@ -799,7 +798,7 @@ fn validate_response_headers(response: &dyn ReadableResponse) -> Result<(), Rest
         if !name_valid || !value_valid {
             return Err(invalid());
         }
-        total_bytes += name.as_bytes().len() as u64 + value.as_bytes().len() as u64 + 4;
+        total_bytes += name.len() as u64 + value.len() as u64 + 4;
         if total_bytes > MAX_RESPONSE_HEADER_BYTES {
             return Err(invalid());
         }

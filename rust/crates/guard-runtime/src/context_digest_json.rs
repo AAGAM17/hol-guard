@@ -36,6 +36,7 @@ pub(super) fn write_json_string(text: &str, out: &mut Vec<u8>) {
 }
 
 /// Format a finite float exactly as CPython `repr()`/`json.dumps` does.
+#[allow(dead_code)]
 pub(super) fn python_float_repr(value: f64) -> String {
     guard_contracts::python_float_repr(value)
 }

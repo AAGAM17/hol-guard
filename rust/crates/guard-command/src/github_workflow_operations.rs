@@ -235,6 +235,7 @@ fn graphql_thread_input_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"\binput\s*:\s*\{\s*threadId\s*:\s*\$threadId\s*\}").unwrap())
 }
 
+#[allow(clippy::invalid_regex)]
 fn graphql_operation(
     arguments: &[String],
     repository: Option<&str>,
@@ -325,7 +326,7 @@ fn cli_operation(
     }
     Some((
         kind,
-        format!("github-{}", group),
+        format!("github-{group}"),
         resource_id.clone(),
         repository,
     ))
@@ -436,5 +437,5 @@ fn hmac_compare_digest(a: &str, b: &str) -> bool {
 }
 
 fn hex_lower(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

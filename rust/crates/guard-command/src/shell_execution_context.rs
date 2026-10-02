@@ -355,6 +355,7 @@ pub fn validate_shell_execution_segment(
 }
 
 /// `shell_execution_segment_hash` (:277-290).
+#[allow(dead_code)]
 pub fn shell_execution_segment_hash(
     context: &ShellExecutionContext,
     segment: &ShellExecutionSegment,
@@ -385,6 +386,7 @@ pub fn shell_execution_context_hash(context: &ShellExecutionContext) -> String {
 }
 
 /// `shell_execution_context_metadata` (:307-317).
+#[allow(dead_code)]
 pub fn shell_execution_context_metadata(context: &ShellExecutionContext) -> Value {
     let effective_cwds: Vec<String> = context
         .effective_cwds()
@@ -414,10 +416,8 @@ fn apply_group_boundaries_before_segment(
             ")" => {
                 if group_states.last().map(|(g, _)| g.as_str()) != Some("(") {
                     reason = Some(SHELL_CWD_UNRESOLVED_SYNTAX);
-                } else if let Some((_g, saved)) = group_states.pop() {
-                    if let Some(saved) = saved {
-                        state = saved;
-                    }
+                } else if let Some((_g, Some(saved))) = group_states.pop() {
+                    state = saved;
                 }
             }
             "}" => {

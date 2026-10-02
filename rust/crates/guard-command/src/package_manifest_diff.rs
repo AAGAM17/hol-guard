@@ -236,7 +236,7 @@ fn py_find_from(text: &str, needle: &str, start: isize) -> isize {
 }
 
 /// `value.split(sep, 1)[0]` — first field of a maxsplit-1 split.
-fn split_head<'a>(text: &'a str, sep: char) -> &'a str {
+fn split_head(text: &str, sep: char) -> &str {
     match text.find(sep) {
         Some(index) => &text[..index],
         None => text,

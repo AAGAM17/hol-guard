@@ -258,7 +258,7 @@ pub fn assess_shell_reads(
             let effective_cwd = execution.effective_cwd.clone();
             for substitution in &owned_substitutions {
                 if depth >= MAX_DEPTH
-                    || substitution.text.as_bytes().len() > MAX_INLINE_SCRIPT_BYTES
+                    || substitution.text.len() > MAX_INLINE_SCRIPT_BYTES
                 {
                     requested = true;
                     incomplete = true;
@@ -302,7 +302,7 @@ pub fn assess_shell_reads(
             for heredoc in &owned_heredocs {
                 if SHELLS.contains(&name.as_str()) {
                     requested = true;
-                    if depth >= MAX_DEPTH || heredoc.body.as_bytes().len() > MAX_INLINE_SCRIPT_BYTES
+                    if depth >= MAX_DEPTH || heredoc.body.len() > MAX_INLINE_SCRIPT_BYTES
                     {
                         incomplete = true;
                     } else {
@@ -338,7 +338,7 @@ pub fn assess_shell_reads(
                 requested = true;
                 match payload {
                     Some(p)
-                        if p.as_bytes().len() <= MAX_INLINE_SCRIPT_BYTES && depth < MAX_DEPTH =>
+                        if p.len() <= MAX_INLINE_SCRIPT_BYTES && depth < MAX_DEPTH =>
                     {
                         pending.push((p, effective_cwd.clone(), depth + 1));
                     }
@@ -447,7 +447,7 @@ pub fn assess_shell_reads(
                 incomplete = true;
                 continue;
             };
-            let encoded_len = payload.as_bytes().len();
+            let encoded_len = payload.len();
             total_bytes += encoded_len;
             if total_bytes > MAX_TOTAL_BYTES {
                 incomplete = true;

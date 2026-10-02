@@ -179,7 +179,7 @@ pub fn write_state(guard_home: &Path, state: &Value, now: Option<&str>) -> std::
     let body = json_dumps_sorted_indent2(&payload);
     let path = state_path(guard_home);
     let tmp = path.with_extension("json.tmp"); // `with_suffix(".json.tmp")`
-    fs::write(&tmp, format!("{}\n", body))?;
+    fs::write(&tmp, format!("{body}\n"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -280,12 +280,12 @@ fn dumps_string(s: &str) -> String {
                 // ensure_ascii=True → BMP as \uXXXX, astral as surrogate pair.
                 let cp = c as u32;
                 if cp <= 0xFFFF {
-                    out.push_str(&format!("\\u{:04x}", cp));
+                    out.push_str(&format!("\\u{cp:04x}"));
                 } else {
                     let v = cp - 0x1_0000;
                     let hi = 0xD800 + (v >> 10);
                     let lo = 0xDC00 + (v & 0x3FF);
-                    out.push_str(&format!("\\u{:04x}\\u{:04x}", hi, lo));
+                    out.push_str(&format!("\\u{hi:04x}\\u{lo:04x}"));
                 }
             }
         }
@@ -417,8 +417,8 @@ pub fn epoch(value: Option<&str>) -> f64 {
     match value {
         None => now_epoch_seconds(),
         Some(v) => {
-            let normalized = if v.ends_with('Z') {
-                format!("{}+00:00", &v[..v.len() - 1])
+            let normalized = if let Some(stripped) = v.strip_suffix('Z') {
+                format!("{stripped}+00:00")
             } else {
                 v.to_owned()
             };
@@ -523,6 +523,7 @@ pub fn optional_int(value: Option<&Value>) -> Option<i64> {
 
 /// `optional_float` (`approval_gate_state.py:187-196`) — bool→float, int/float,
 /// or numeric str.
+#[allow(dead_code)]
 pub fn optional_float(value: Option<&Value>) -> Option<f64> {
     match value {
         Some(Value::Bool(b)) => Some(if *b { 1.0 } else { 0.0 }),
@@ -543,6 +544,7 @@ pub fn optional_float(value: Option<&Value>) -> Option<f64> {
 /// whose `expires_epoch <= now`. Operates on the `_ACTIVE_GRANTS` dict shape
 /// (`{grant_id: {expires_epoch, ...}}`); the Rust grant table manages its own
 /// pruning, so this is provided for parity with callers that pass a plain map.
+#[allow(dead_code)]
 pub fn prune_grants(grants: &mut Map<String, Value>, now_epoch: f64) {
     grants.retain(|_, metadata| {
         optional_float(metadata.get("expires_epoch")).unwrap_or(0.0) > now_epoch

@@ -169,6 +169,7 @@ mod tests {
 
     /// The merged decision dict (`policy_row_payload` + integrity fields +
     /// authority revision) the resolver emits for a selected allow.
+    #[allow(dead_code)]
     fn selected_allow(conn: &rusqlite::Connection, did: i64, seed: &Value) -> Value {
         let key = hex::decode(seed["key"].as_str().unwrap()).unwrap();
         let key_id = seed["key_id"].as_str().unwrap();
@@ -331,7 +332,7 @@ mod tests {
             result["schema"].as_str().unwrap(),
             CLAIM_APPROVAL_REUSE_RESULT_SCHEMA
         );
-        assert_eq!(result["payload"]["claimed"].as_bool().unwrap(), true);
+        assert!(result["payload"]["claimed"].as_bool().unwrap());
         // source="local", expires_at=null -> disposition "retained": the row is
         // NOT deleted (retained rows stay for re-claim); the applied event fires.
         let conn2 = rusqlite::Connection::open(&store_path).unwrap();

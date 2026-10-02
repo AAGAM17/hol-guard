@@ -213,6 +213,7 @@ fn executable_file(candidate: &Path) -> bool {
 /// only when the effective owner check can be resolved without unsafe —
 /// i.e. we treat "non-root owner" as "current uid" for workspace launchers,
 /// matching the deployed shape where the hook runs as the user.
+#[allow(dead_code)]
 fn current_uid() -> i64 {
     // `os.getuid()` equivalent without unsafe: the process uid is exposed via
     // /proc on linux; on macOS the hook always runs as a non-root user whose
@@ -242,6 +243,7 @@ fn current_uid() -> i64 {
 
 /// `os.getgroups()` — fail-closed empty set (Python falls back to `set()` when
 /// unavailable); group-writable checks then require literal group bits.
+#[allow(dead_code)]
 fn current_groups() -> HashSet<u32> {
     #[cfg(target_os = "linux")]
     {
@@ -275,7 +277,7 @@ pub fn normalized_command(command: &[String]) -> Result<Vec<String>, RestrictedP
     if normalized.first().map(|s| s.as_str()) == Some("--") {
         normalized.remove(0);
     }
-    let total_bytes: usize = normalized.iter().map(|item| item.as_bytes().len()).sum();
+    let total_bytes: usize = normalized.iter().map(|item| item.len()).sum();
     if normalized.is_empty() || normalized.len() > MAX_ARG_COUNT || total_bytes > MAX_ARG_BYTES {
         return Err(RestrictedPytestError::new(
             PYTEST_INVALID_COMMAND_REASON_CODE,
@@ -364,6 +366,7 @@ fn workspace_is_broad_or_sensitive(workspace: &Path) -> bool {
 }
 
 /// `_resolve_cwd` (:105-121).
+#[allow(dead_code)]
 fn resolve_cwd(cwd: &Path, workspace: &Path) -> Result<PathBuf, RestrictedPytestError> {
     let resolved = expand_user(cwd)
         .canonicalize()
@@ -566,7 +569,7 @@ pub fn select_backend(
             "linux-bubblewrap",
             backend_executable
                 .map(|p| p.to_path_buf())
-                .or_else(|| located.map(PathBuf::from))
+                .or(located)
                 .unwrap_or_else(|| PathBuf::from("/usr/bin/bwrap")),
         )
     } else {
@@ -1041,7 +1044,7 @@ fn host_home_directory() -> Option<PathBuf> {
     // path is used for all platforms here.
     let home = env::var_os("HOME")
         .map(PathBuf::from)
-        .or_else(|| dirs_home())?;
+        .or_else(dirs_home)?;
     home.canonicalize().ok()
 }
 

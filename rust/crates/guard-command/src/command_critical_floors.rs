@@ -213,6 +213,7 @@ fn inner(
 }
 
 /// `_github_factor` (:175).
+#[allow(clippy::too_many_arguments)]
 fn github_factor(
     command: &CanonicalCommand,
     index: usize,
@@ -270,7 +271,7 @@ fn github_factor(
 }
 
 /// `_critical_floor` (:217).
-fn critical_floor<'a>(
+fn critical_floor(
     command: &CanonicalCommand,
     segment: &CommandSegmentV1,
     executable: &str,
@@ -637,8 +638,8 @@ fn shell_command_text(arguments: &[String]) -> Option<String> {
         if argument == "--" {
             return None;
         }
-        if argument.starts_with('-') {
-            if !argument.starts_with("--") && argument[1..].contains('c') {
+        if let Some(stripped) = argument.strip_prefix('-') {
+            if !argument.starts_with("--") && stripped.contains('c') {
                 return arguments.get(index + 1).cloned();
             }
             index += 1;

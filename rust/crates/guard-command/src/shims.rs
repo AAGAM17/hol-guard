@@ -963,22 +963,21 @@ pub fn package_shim_status(context: &HarnessContext, path_env: Option<&str>) -> 
         let shim_path = shim_dir.join(command);
         let exists = shim_path.exists();
         let path_status = get_path_order_status(context, manager, path_env);
-        let integrity: String;
-        if exists {
+        let integrity: String = if exists {
             active_managers.push(manager.clone());
             let python_source = build_package_manager_python_shim(context, command);
             let installed_wrapper = fs::read(&shim_path).unwrap_or_default();
-            integrity = classify_installed_package_shim_integrity(
+            classify_installed_package_shim_integrity(
                 &python_source,
                 &shim_dir,
                 command,
                 &installed_wrapper,
                 stored_hashes.get(manager).map(|s| s.as_str()),
-            );
+            )
         } else {
             missing_managers.push(manager.clone());
-            integrity = "missing".to_owned();
-        }
+            "missing".to_owned()
+        };
         let mut detail = obj();
         detail.insert("integrity".into(), v_str(&integrity));
         detail.insert(
@@ -1649,10 +1648,7 @@ fn strip_managed_marker_blocks(content: &str, marker: &str) -> String {
             let prev_kept_blank = keep.last().map(|l| l.trim().is_empty()).unwrap_or(false);
             let prev_dropped = index > 0 && drop_indices.contains(&(index - 1));
             let next_dropped = index + 1 < lines.len() && drop_indices.contains(&(index + 1));
-            if (prev_dropped && next_dropped)
-                || (prev_dropped && keep.is_empty())
-                || (prev_kept_blank && prev_dropped)
-            {
+            if (prev_kept_blank || keep.is_empty() || next_dropped) && prev_dropped {
                 continue;
             }
         }
@@ -1944,7 +1940,7 @@ fn python_version_at_least(major: u32, minor: u32) -> bool {
     match output {
         Ok(out) => {
             let s = String::from_utf8_lossy(&out.stdout);
-            let parts: Vec<&str> = s.trim().split_whitespace().collect();
+            let parts: Vec<&str> = s.split_whitespace().collect();
             if let Some(ver) = parts.get(1) {
                 let nums: Vec<u32> = ver.split('.').filter_map(|p| p.parse().ok()).collect();
                 if let (Some(&maj), Some(&min)) = (nums.first(), nums.get(1)) {
@@ -1964,7 +1960,7 @@ fn normalize_package_shim_managers(managers: Option<&[&str]>) -> Vec<String> {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-        Some(list) if list.is_empty() => package_shim_supported_managers()
+        Some([]) => package_shim_supported_managers()
             .iter()
             .map(|s| s.to_string())
             .collect(),
@@ -2274,10 +2270,7 @@ pub fn probe_package_shim_intercepts(
         let result = match child_result {
             Ok(child) => {
                 let output = child.wait_with_output();
-                match output {
-                    Ok(out) => Some(out),
-                    Err(_) => None,
-                }
+                output.ok()
             }
             Err(_) => None,
         };
@@ -2368,6 +2361,7 @@ pub fn probe_package_shim_intercepts(
 // Internal dependency stubs matching Python seams.
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn build_harness_shim(
     python: &str,
     harness: &str,

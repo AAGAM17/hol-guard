@@ -315,7 +315,7 @@ pub fn _artifact_rows_from_store(
             .unwrap_or_default();
         let mut row = _redact_inventory_store_item(&item, deps, &context.home_dir);
         row.insert("trust_verdict".into(), json!(trust_verdict));
-        let key = format!("{}\u{1f}{}", harness, artifact_id);
+        let key = format!("{harness}\u{1f}{artifact_id}");
         let mut extensions = metadata_by_artifact
             .get(&key)
             .and_then(Value::as_object)
@@ -326,7 +326,7 @@ pub fn _artifact_rows_from_store(
             None
         };
         let config_path_exists = config_path.as_ref().map(|p| p.exists());
-        if extensions.as_ref().map_or(true, Map::is_empty) {
+        if extensions.as_ref().is_none_or(Map::is_empty) {
             extensions = {
                 let ext = _store_only_artifact_metadata_extensions(
                     &row,
@@ -508,7 +508,7 @@ pub fn _aibom_connection_status(deps: &ReportingDeps<'_>) -> String {
     if sync_summary.get("synced").and_then(Value::as_bool) == Some(true)
         && sync_summary
             .get("synced_at")
-            .is_some_and(|v| !v.is_null() && v.as_str().map_or(true, |s| !s.is_empty()))
+            .is_some_and(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.is_empty()))
     {
         return "synced".to_string();
     }

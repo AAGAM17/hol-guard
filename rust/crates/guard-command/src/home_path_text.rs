@@ -8,7 +8,7 @@ pub fn expand_home(value: &str, home_dir: Option<&Path>) -> String {
     if value == "~" {
         return home_dir
             .map(|h| h.to_string_lossy().into_owned())
-            .unwrap_or_else(|| default_home());
+            .unwrap_or_else(default_home);
     }
     if value.starts_with("~/") || value.starts_with("~\\") {
         let base = home_dir
@@ -90,7 +90,7 @@ fn normpath(path: &str) -> String {
         comps.push(comp);
     }
     let joined = comps.join("/");
-    format!("{}{}", prefix, joined)
+    format!("{prefix}{joined}")
 }
 
 #[cfg(test)]

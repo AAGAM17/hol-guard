@@ -381,7 +381,7 @@ impl<'a> PairParser<'a> {
         let text: String = self.chars[start..self.index].iter().collect();
         text.parse::<f64>()
             .map(JsoncPairs::Number)
-            .map_err(|_| JsoncError::Decode(format!("Expecting value: char {}", start)))
+            .map_err(|_| JsoncError::Decode(format!("Expecting value: char {start}")))
     }
 
     fn string(&mut self) -> Result<String, JsoncError> {

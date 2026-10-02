@@ -628,11 +628,10 @@ pub fn resolve_extension_controls(
     let mut failures: BTreeSet<ControlResolverFailure> =
         composed.failures.iter().copied().collect();
 
-    if authority_failure.is_some() && surface != ControlSurface::TrustedLocalProof {
-        failures.insert(ControlResolverFailure::new(
-            authority_failure.unwrap(),
-            None,
-        ));
+    if let Some(failure) = authority_failure.filter(|_| {
+        surface != ControlSurface::TrustedLocalProof
+    }) {
+        failures.insert(ControlResolverFailure::new(failure, None));
     }
 
     let input_limit_exceeded = layer_values.len() > MAX_CONTROL_LAYERS
@@ -777,6 +776,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn perm_control(id: &str, state: ControlState) -> ExtensionControl {
         ExtensionControl {
             target: target(ControlTargetKind::Permission, id),

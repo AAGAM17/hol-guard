@@ -69,7 +69,7 @@ fn int_or_none(value: &Value) -> Option<i64> {
 }
 
 /// `_mapping_value` / `row[key] -> None` on missing.
-fn mapping_value<'a>(row: &'a Value, key: &str) -> Value {
+fn mapping_value(row: &Value, key: &str) -> Value {
     row.get(key).cloned().unwrap_or(Value::Null)
 }
 

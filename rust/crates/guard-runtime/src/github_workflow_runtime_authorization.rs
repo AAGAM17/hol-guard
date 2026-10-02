@@ -26,11 +26,13 @@ use crate::workflow_capability_store::{
     claim_workflow_capability, issue_workflow_capability, CapabilityStoreHooks,
 };
 
+#[allow(dead_code)]
 type WfResult<T> = Result<T, WorkflowCapabilityError>;
 
 /// `issue_github_workflow_capability` (:158) — build the binding from the
 /// operation + ambient context, then delegate to the binding-level issue.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn issue_github_workflow_capability(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -74,6 +76,7 @@ pub fn issue_github_workflow_capability(
 /// `issue_github_workflow_capability_binding` (:194) — assemble the claim,
 /// sign it with the host key, persist via the store substrate.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn issue_github_workflow_capability_binding(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -123,6 +126,7 @@ pub fn issue_github_workflow_capability_binding(
 /// `_compatibility_action_class` private; the wire row is the faithful public
 /// projection — `sealed: true` stands in for `_AUTHORIZATION_SEAL`.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn claim_github_workflow_authorization(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -198,6 +202,7 @@ pub fn claim_github_workflow_authorization(
 }
 
 /// `_framed_sha256` — sha256 of the canonical framed payload.
+#[allow(dead_code)]
 fn framed_sha256(purpose: &str, payload: &Value) -> WfResult<String> {
     let framed = canonical_framed_payload(purpose, payload)
         .map_err(|_| WorkflowCapabilityError("invalid_canonical_payload"))?;

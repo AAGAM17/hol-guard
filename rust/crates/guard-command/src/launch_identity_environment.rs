@@ -382,7 +382,7 @@ mod tests {
             plan.executable_environment.get("BAR"),
             Some(&"2".to_string())
         );
-        assert!(plan.executable_environment.get("HOME").is_none());
+        assert!(!plan.executable_environment.contains_key("HOME"));
         assert_eq!(
             plan.wrapper_environments.first().map(|w| w.name.as_str()),
             Some("env")

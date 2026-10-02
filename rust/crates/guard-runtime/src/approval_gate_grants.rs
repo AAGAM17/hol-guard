@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// `APPROVAL_GATE_GRANT_TTL_SECONDS = 30` (`approval_gate.py:70`).
+#[allow(dead_code)]
 pub const APPROVAL_GATE_GRANT_TTL_SECONDS: f64 = 30.0;
 /// Capacity bound — mirrors `NATIVE_APPROVAL_REPLAY_MEMORY_MAX_ENTRIES`.
 /// Python has no bound; the port adds one to cap unbounded in-memory growth.
@@ -143,6 +144,7 @@ pub(crate) struct ApprovalGateGrants {
     state: Mutex<GrantState>,
 }
 
+#[allow(dead_code)]
 impl ApprovalGateGrants {
     pub(crate) fn new() -> Self {
         Self {
@@ -491,7 +493,7 @@ mod tests {
             password_verified: true,
             totp_verified: false,
             factor_generation: 1,
-            grant_id: format!("grant-{}", purpose),
+            grant_id: format!("grant-{purpose}"),
             subject_token: "tok-subj".into(),
             nonce_token: "tok-nonce".into(),
         }

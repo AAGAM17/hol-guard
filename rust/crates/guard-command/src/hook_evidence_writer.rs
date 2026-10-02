@@ -49,6 +49,7 @@ pub trait EvidenceStoreApi {
     /// `store.guard_home`.
     fn guard_home(&self) -> PathBuf;
     /// `store.record_command_activity(...)` — `Err` = persistence failure.
+    #[allow(clippy::too_many_arguments)]
     fn record_command_activity(
         &self,
         correlation: Option<&CorrelationHandle>,
@@ -125,6 +126,7 @@ pub trait CorrelationApi {
     /// `build_policy_only_pre_hook_evidence(*, activity_id, occurred_at,
     /// harness, policy_action, request_correlation, receipt_id, prompted,
     /// approval_reuse_status)`.
+    #[allow(clippy::too_many_arguments)]
     fn build_policy_only_pre_hook_evidence(
         &self,
         activity_id: &str,
@@ -916,6 +918,7 @@ pub struct RuntimeHookEvidenceWriter {
     thread: Mutex<Option<JoinHandle<()>>>,
 }
 
+#[allow(dead_code)]
 impl RuntimeHookEvidenceWriter {
     /// `__init__` (:75-135). `journal_path` falls back to
     /// `guard_home / "runtime-hook-evidence.jsonl"`.
@@ -963,6 +966,7 @@ impl RuntimeHookEvidenceWriter {
     }
 
     /// `submit_command_activity` (:137-177).
+    #[allow(clippy::too_many_arguments)]
     pub fn submit_command_activity(
         &self,
         harness: &str,
@@ -1648,6 +1652,7 @@ enum PersistOutcome {
 
 /// Worker half of [`RuntimeHookEvidenceWriter`] — owns `_run` on its thread
 /// without an `Arc<Self>` cycle.
+#[allow(dead_code)]
 struct EvidenceWorker {
     store: Arc<dyn EvidenceStoreApi + Send + Sync>,
     deps: Arc<EvidenceWriterDeps>,

@@ -87,7 +87,7 @@ pub(crate) fn create_verifier(password: &str) -> Result<Value, ApprovalGateError
 
 fn b64_std_encode(b: &[u8]) -> String {
     use base64ct::{Base64, Encoding};
-    let mut buf = vec![0u8; ((b.len() + 2) / 3) * 4];
+    let mut buf = vec![0u8; b.len().div_ceil(3) * 4];
     Base64::encode(b, &mut buf).expect("b64 encode").to_owned()
 }
 

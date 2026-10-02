@@ -7,8 +7,8 @@
 //!   - `guard_events` insert + `_workflow_capability_event_payload` /
 //!     `_private_reference` / `_canonical_json` (`capability_canonical_json`).
 //!   - `build/append_authority_transition` + `validate_global_authority_ledger`
-//!     + `validate_capability_transition_projection` — the append-only
-//!     hash-chain ledger the control plane recomputes on every op.
+//!       + `validate_capability_transition_projection` — the append-only
+//!         hash-chain ledger the control plane recomputes on every op.
 //!   - `WorkflowCapabilityControl` two-phase commit (`load_validate_and_observe`
 //!     / `prepare` / `finalize`) over a host-owned control blob.
 //!   - `create/load_and_validate/advance_authority_state`, `append_revocation`.
@@ -34,25 +34,32 @@ use guard_contracts::{
     sign_workflow_capability_receipt, utc_timestamp_micros,
     validate_workflow_capability_identifier, verify_authority_state, verify_authority_transition,
     verify_revocation, verify_workflow_capability_receipt, workflow_capability_claim_sha256,
-    SignedAuthorityState, SignedAuthorityTransition, SignedRevocation, SignedWorkflowCapability,
+    SignedAuthorityState, SignedAuthorityTransition, SignedWorkflowCapability,
     SignedWorkflowCapabilityReceipt, WorkflowCapabilityAuthorityState,
     WorkflowCapabilityAuthorityTransition, WorkflowCapabilityBinding, WorkflowCapabilityError,
     WorkflowCapabilityReceipt, WorkflowCapabilityRevocation,
 };
 
+#[allow(dead_code)]
 const ZERO_TRANSITION_SHA256: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
+#[allow(dead_code)]
 const WORKFLOW_CAPABILITY_MIGRATION_VERSION: i64 = 14;
+#[allow(dead_code)]
 const RECEIPT_EVENT_INDEX_MIGRATION_VERSION: i64 = 22;
+#[allow(dead_code)]
 const RETIRED_RECEIPT_EVENT_INDEX: &str = "idx_guard_workflow_receipt_event";
 
+#[allow(dead_code)]
 type StoreResult<T> = Result<T, WorkflowCapabilityError>;
+#[allow(dead_code)]
 fn err<T>(reason: &'static str) -> StoreResult<T> {
     Err(WorkflowCapabilityError(reason))
 }
 
 /// `CapabilityStoreHooks` — the `_ControlStore` host callbacks plus the
 /// policy-integrity key material the Python mixins pulled from `self`.
+#[allow(dead_code)]
 pub trait CapabilityStoreHooks {
     /// `_policy_integrity_secret_material(create)` → `(key, key_id)`;
     /// `Ok(None)` = unavailable (maps to `capability_key_unavailable`).
@@ -67,6 +74,7 @@ pub trait CapabilityStoreHooks {
 }
 
 /// `_require_store_key`.
+#[allow(dead_code)]
 fn require_store_key(
     hooks: &dyn CapabilityStoreHooks,
     create: bool,
@@ -78,6 +86,7 @@ fn require_store_key(
 
 // ─── schema ──────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 const SCHEMA_STATEMENTS: &[&str] = &[
     "create table if not exists guard_workflow_capabilities (
       capability_id text primary key,
@@ -200,6 +209,7 @@ const SCHEMA_STATEMENTS: &[&str] = &[
     end",
 ];
 
+#[allow(dead_code)]
 const OBJECT_NAMES: &[(&str, &str)] = &[
     ("table", "guard_workflow_capabilities"),
     ("table", "guard_workflow_capability_authority_state"),
@@ -226,6 +236,7 @@ const OBJECT_NAMES: &[(&str, &str)] = &[
 
 /// `_normalized_sql` — collapse whitespace runs, lowercase, strip
 /// ` if not exists`.
+#[allow(dead_code)]
 fn normalized_sql(statement: &str) -> String {
     let mut out = String::with_capacity(statement.len());
     let mut last_space = false;
@@ -245,6 +256,7 @@ fn normalized_sql(statement: &str) -> String {
 
 /// `_validate_schema_objects` — strict owned-object equality on normalized
 /// DDL against `sqlite_master`.
+#[allow(dead_code)]
 fn validate_schema_objects(connection: &Connection) -> StoreResult<()> {
     let expected: std::collections::HashMap<(&str, &str), String> = OBJECT_NAMES
         .iter()
@@ -296,6 +308,7 @@ fn validate_schema_objects(connection: &Connection) -> StoreResult<()> {
 
 /// `ensure_workflow_capability_schema` — apply migrations, drop the retired
 /// receipt-event index, validate owned objects, record migration version.
+#[allow(dead_code)]
 pub fn ensure_workflow_capability_schema(
     connection: &Connection,
     applied_at: &str,
@@ -304,7 +317,7 @@ pub fn ensure_workflow_capability_schema(
     // rollback can't resurrect it.
     connection
         .execute(
-            &format!("drop index if exists {}", RETIRED_RECEIPT_EVENT_INDEX),
+            &format!("drop index if exists {RETIRED_RECEIPT_EVENT_INDEX}"),
             [],
         )
         .map_err(|_| WorkflowCapabilityError("invalid_workflow_capability_schema:migration"))?;
@@ -365,9 +378,10 @@ pub fn ensure_workflow_capability_schema(
 // ─── events ──────────────────────────────────────────────────────────────
 
 /// `_private_reference` — sha256 of the framed `audit-{purpose}` value.
+#[allow(dead_code)]
 fn private_reference(purpose: &str, value: &str) -> StoreResult<String> {
     let framed = canonical_framed_payload(
-        &format!("audit-{}", purpose),
+        &format!("audit-{purpose}"),
         &Value::String(value.to_string()),
     )
     .map_err(|e| WorkflowCapabilityError(e.0))?;
@@ -375,6 +389,7 @@ fn private_reference(purpose: &str, value: &str) -> StoreResult<String> {
 }
 
 /// `_workflow_capability_event_payload` — the event extras the store emits.
+#[allow(dead_code)]
 fn workflow_capability_event_payload(
     capability_id: &str,
     invocation_id: Option<&str>,
@@ -402,6 +417,7 @@ fn workflow_capability_event_payload(
 
 /// `_insert_workflow_capability_event` — append to `guard_events`, return
 /// `event_id`.
+#[allow(dead_code)]
 fn insert_workflow_capability_event(
     connection: &Connection,
     event_name: &str,
@@ -426,6 +442,7 @@ fn insert_workflow_capability_event(
 
 // ─── transitions / ledger ────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn sha256_of_json(signed: &SignedAuthorityState) -> StoreResult<String> {
     let encoded =
         encode_signed_authority_state(signed).map_err(|e| WorkflowCapabilityError(e.0))?;
@@ -434,6 +451,7 @@ fn sha256_of_json(signed: &SignedAuthorityState) -> StoreResult<String> {
     Ok(hex_lower(&Sha256::digest(&framed)))
 }
 
+#[allow(dead_code)]
 fn event_payload_sha256(payload: &Value) -> StoreResult<String> {
     let framed = canonical_framed_payload("authority-event-digest", payload)
         .map_err(|e| WorkflowCapabilityError(e.0))?;
@@ -442,6 +460,7 @@ fn event_payload_sha256(payload: &Value) -> StoreResult<String> {
 
 /// `build_authority_transition`.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn build_authority_transition(
     signed_claim: &SignedWorkflowCapability,
     signed_state: &SignedAuthorityState,
@@ -479,6 +498,7 @@ pub fn build_authority_transition(
 }
 
 /// `append_authority_transition` — insert into the ledger table.
+#[allow(dead_code)]
 pub fn append_authority_transition(
     connection: &Connection,
     signed: &SignedAuthorityTransition,
@@ -507,6 +527,7 @@ pub fn append_authority_transition(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn validate_transition_event(
     connection: &Connection,
     transition: &WorkflowCapabilityAuthorityTransition,
@@ -541,6 +562,8 @@ fn validate_transition_event(
 }
 
 /// `validate_global_authority_ledger` → `(committed_sequence, committed_head)`.
+#[allow(clippy::type_complexity)]
+#[allow(dead_code)]
 pub fn validate_global_authority_ledger(
     connection: &Connection,
     key: &[u8],
@@ -635,6 +658,7 @@ pub fn validate_global_authority_ledger(
 // ─── authority state ─────────────────────────────────────────────────────
 
 /// `_write_state` — insert or update the authority-state row.
+#[allow(dead_code)]
 fn write_state(
     connection: &Connection,
     signed: &SignedAuthorityState,
@@ -682,6 +706,7 @@ fn write_state(
 }
 
 /// `create_authority_state`.
+#[allow(dead_code)]
 pub fn create_authority_state(
     connection: &Connection,
     signed_claim: &SignedWorkflowCapability,
@@ -706,6 +731,7 @@ pub fn create_authority_state(
 }
 
 /// `append_revocation`.
+#[allow(dead_code)]
 pub fn append_revocation(
     connection: &Connection,
     signed_claim: &SignedWorkflowCapability,
@@ -745,6 +771,7 @@ pub fn append_revocation(
 
 // ─── helpers ─────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn hex_lower(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -758,6 +785,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 // ═══ control plane (store_workflow_capability_control.py) ═════════════════
 
 /// `_CONTROL_VERSION` — persisted control blob schema version.
+#[allow(dead_code)]
 pub const WORKFLOW_CAPABILITY_CONTROL_VERSION: i64 = 1;
 
 /// `WorkflowCapabilityControl` — the monotonic committed/pending ledger head.
@@ -771,6 +799,7 @@ pub struct WorkflowCapabilityControl {
     pub observed_at: String,
 }
 
+#[allow(dead_code)]
 impl WorkflowCapabilityControl {
     fn new(
         version: i64,
@@ -814,6 +843,7 @@ impl WorkflowCapabilityControl {
 }
 
 /// `_digest` — 64-char lowercase-hex field validator for the control blob.
+#[allow(dead_code)]
 fn control_digest(name: &'static str, value: &str) -> StoreResult<()> {
     let ok = value.len() == 64
         && value
@@ -832,6 +862,7 @@ fn control_digest(name: &'static str, value: &str) -> StoreResult<()> {
 
 /// `_encode_control` — canonical `{committed_head_sha256, committed_sequence,
 /// observed_at, pending_head_sha256, pending_sequence, version}`.
+#[allow(dead_code)]
 fn encode_control(control: &WorkflowCapabilityControl) -> StoreResult<String> {
     let mut m = Map::new();
     m.insert(
@@ -866,6 +897,7 @@ fn encode_control(control: &WorkflowCapabilityControl) -> StoreResult<String> {
 }
 
 /// `_decode_control` — strict canonical blob → `WorkflowCapabilityControl`.
+#[allow(dead_code)]
 fn decode_control(encoded: &str) -> StoreResult<WorkflowCapabilityControl> {
     let payload: Value = serde_json::from_str(encoded)
         .map_err(|_| WorkflowCapabilityError("capability_control_invalid"))?;
@@ -915,6 +947,7 @@ fn decode_control(encoded: &str) -> StoreResult<WorkflowCapabilityControl> {
 }
 
 /// `_store_control` — persist; `false` host ack → `capability_control_unavailable`.
+#[allow(dead_code)]
 fn store_control(
     hooks: &dyn CapabilityStoreHooks,
     control: &WorkflowCapabilityControl,
@@ -926,6 +959,7 @@ fn store_control(
 }
 
 /// `_has_authority_data` — any row already present in the ledger/state tables.
+#[allow(dead_code)]
 fn has_authority_data(connection: &Connection) -> StoreResult<bool> {
     let mut count = 0i64;
     for table in [
@@ -936,7 +970,7 @@ fn has_authority_data(connection: &Connection) -> StoreResult<bool> {
         "guard_workflow_capability_revocations",
     ] {
         count += connection
-            .query_row(&format!("select count(*) from {}", table), [], |r| {
+            .query_row(&format!("select count(*) from {table}"), [], |r| {
                 r.get::<_, i64>(0)
             })
             .map_err(|_| WorkflowCapabilityError("capability_control_invalid"))?;
@@ -946,6 +980,7 @@ fn has_authority_data(connection: &Connection) -> StoreResult<bool> {
 
 /// `load_validate_and_observe_control` — reconcile persisted control head with
 /// the global authority ledger; write back when head/clock advances.
+#[allow(dead_code)]
 pub fn load_validate_and_observe_control(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -987,6 +1022,7 @@ pub fn load_validate_and_observe_control(
 }
 
 /// `prepare_control_transition` — fold an appended transition into pending head.
+#[allow(dead_code)]
 pub fn prepare_control_transition(
     hooks: &dyn CapabilityStoreHooks,
     control: &WorkflowCapabilityControl,
@@ -1017,6 +1053,7 @@ pub fn prepare_control_transition(
 }
 
 /// `finalize_control_transition` — promote pending head to committed.
+#[allow(dead_code)]
 pub fn finalize_control_transition(
     hooks: &dyn CapabilityStoreHooks,
     pending: &WorkflowCapabilityControl,
@@ -1041,6 +1078,7 @@ pub fn finalize_control_transition(
 
 /// `validate_monotonic_workflow_capability_time` — reject rollback, report
 /// whether the external high-water must advance.
+#[allow(dead_code)]
 fn validate_monotonic_workflow_capability_time(now: &str, observed_at: &str) -> StoreResult<bool> {
     let current =
         utc_timestamp_micros(now).ok_or(WorkflowCapabilityError("invalid_canonical_timestamp"))?;
@@ -1055,6 +1093,7 @@ fn validate_monotonic_workflow_capability_time(now: &str, observed_at: &str) -> 
 // ═══ authority read/advance + receipt history (store_workflow_capability_authority.py) ═══
 
 /// `_load_revocation` — the persisted revocation bound to this claim, or `None`.
+#[allow(dead_code)]
 fn load_revocation(
     connection: &Connection,
     signed_claim: &SignedWorkflowCapability,
@@ -1108,6 +1147,7 @@ fn load_revocation(
 
 /// `_claim_event_extra` — `{approval_provenance_ref, receipt_ref, task_ref,
 /// use_number}`.
+#[allow(dead_code)]
 fn claim_event_extra(
     approval_provenance_id: &str,
     receipt_id: &str,
@@ -1135,6 +1175,7 @@ fn claim_event_extra(
 }
 
 /// `_claim_event_payload` — `{capability_ref, invocation_ref, **_claim_event_extra}`.
+#[allow(dead_code)]
 fn claim_event_payload(receipt: &WorkflowCapabilityReceipt) -> StoreResult<Value> {
     let mut m = Map::new();
     m.insert(
@@ -1159,6 +1200,7 @@ fn claim_event_payload(receipt: &WorkflowCapabilityReceipt) -> StoreResult<Value
 
 /// `_validate_receipt_history` — receipts + claimed-events all verify; return
 /// the receipt count.
+#[allow(dead_code)]
 fn validate_receipt_history(
     connection: &Connection,
     signed_claim: &SignedWorkflowCapability,
@@ -1243,6 +1285,7 @@ fn validate_receipt_history(
 }
 
 /// `_decode_signed_receipt` — strict canonical decode.
+#[allow(dead_code)]
 fn decode_signed_receipt(encoded: &str) -> StoreResult<SignedWorkflowCapabilityReceipt> {
     let payload: Value = serde_json::from_str(encoded)
         .map_err(|_| WorkflowCapabilityError("receipt_payload_invalid"))?;
@@ -1277,11 +1320,13 @@ fn decode_signed_receipt(encoded: &str) -> StoreResult<SignedWorkflowCapabilityR
 }
 
 /// `_decode_signed_claim` — strict canonical decode.
+#[allow(dead_code)]
 fn decode_signed_claim(encoded: &str) -> StoreResult<SignedWorkflowCapability> {
     SignedWorkflowCapability::from_canonical_json(encoded).map_err(|e| WorkflowCapabilityError(e.0))
 }
 
 /// `_validate_claim_row` — persisted projection columns must equal the claim.
+#[allow(dead_code)]
 fn validate_claim_row(
     signed: &SignedWorkflowCapability,
     row: &rusqlite::Row<'_>,
@@ -1324,6 +1369,7 @@ fn validate_claim_row(
 
 /// `_verify_persisted_claim_signature` — signature-only check for a row loaded
 /// straight from the table.
+#[allow(dead_code)]
 fn verify_persisted_claim_signature(
     signed: &SignedWorkflowCapability,
     key: &[u8],
@@ -1341,6 +1387,7 @@ fn verify_persisted_claim_signature(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -1350,6 +1397,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// `validate_capability_transition_projection` — the transition chain must
 /// replay onto `signed_state` and the ledger-kind cardinality must match.
+#[allow(dead_code)]
 pub fn validate_capability_transition_projection(
     connection: &Connection,
     signed_claim: &SignedWorkflowCapability,
@@ -1424,6 +1472,7 @@ pub fn validate_capability_transition_projection(
 
 /// `load_and_validate_authority` — state row must bind to the claim and the
 /// receipt/revocation history must reconcile.
+#[allow(dead_code)]
 pub fn load_and_validate_authority(
     connection: &Connection,
     signed_claim: &SignedWorkflowCapability,
@@ -1517,6 +1566,8 @@ pub fn load_and_validate_authority(
 }
 
 /// `advance_authority_state` — apply the deltas and persist the new signed state.
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 pub fn advance_authority_state(
     connection: &Connection,
     state: &WorkflowCapabilityAuthorityState,
@@ -1556,6 +1607,7 @@ pub fn advance_authority_state(
 
 /// `load_validated_workflow_capability` — row → claim must verify against the
 /// persisted projection and the authority ledger.
+#[allow(dead_code)]
 pub fn load_validated_workflow_capability(
     connection: &Connection,
     capability_id: &str,
@@ -1606,6 +1658,7 @@ pub fn load_validated_workflow_capability(
 }
 
 /// `require_validated_workflow_capability` — `None` → `receipt_claim_missing`.
+#[allow(dead_code)]
 pub fn require_validated_workflow_capability(
     connection: &Connection,
     capability_id: &str,
@@ -1619,6 +1672,7 @@ pub fn require_validated_workflow_capability(
 /// `_row_ref_for_claim` — adapt a materialized tuple into the shape
 /// `validate_claim_row` expects (row position 0 = signed_claim_json; claim row
 /// checks read positions 1..7). We pass the tuple in as `&ClaimRowRef`.
+#[allow(dead_code)]
 struct ClaimRowRef {
     approval_provenance_id: String,
     nonce: String,
@@ -1629,6 +1683,8 @@ struct ClaimRowRef {
     max_uses: i64,
 }
 
+#[allow(clippy::type_complexity)]
+#[allow(dead_code)]
 fn row_ref_for_claim(
     row: &(
         String,
@@ -1657,6 +1713,8 @@ fn row_ref_for_claim(
 
 /// `_validate_claim_row` over the materialized tuple (positions shifted by 1:
 /// index 0 = signed_claim_json, claim fields are 1..7).
+#[allow(dead_code)]
+#[allow(clippy::eq_op)]
 fn validate_claim_row_tuple(
     signed: &SignedWorkflowCapability,
     row: &ClaimRowRef,
@@ -1692,6 +1750,8 @@ fn validate_claim_row_tuple(
 /// `issue_workflow_capability` — insert the signed claim, emit the issued
 /// event, seed authority state, and chain the first transition.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::eq_op)]
+#[allow(dead_code)]
 pub fn issue_workflow_capability(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -1791,6 +1851,7 @@ pub fn issue_workflow_capability(
 /// `claim_workflow_capability` — CAS-consume one use, persist the receipt,
 /// emit the claimed event, and chain the claimed transition.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn claim_workflow_capability(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -2007,6 +2068,7 @@ pub fn claim_workflow_capability(
 /// `revoke_workflow_capability` — append the revocation + emit the revoked
 /// event + advance state; `false` when the capability is unknown or already
 /// revoked.
+#[allow(dead_code)]
 pub fn revoke_workflow_capability(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -2137,6 +2199,7 @@ pub fn revoke_workflow_capability(
 }
 
 /// `lookup_workflow_capability` — load + fully validate one capability.
+#[allow(dead_code)]
 pub fn lookup_workflow_capability(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -2153,6 +2216,7 @@ pub fn lookup_workflow_capability(
 
 /// `lookup_workflow_capability_receipt` — exactly one of `receipt_id` /
 /// `invocation_id`; receipt + claim + event all must bind.
+#[allow(dead_code)]
 pub fn lookup_workflow_capability_receipt(
     hooks: &dyn CapabilityStoreHooks,
     connection: &Connection,
@@ -2259,6 +2323,7 @@ pub fn lookup_workflow_capability_receipt(
 
 // ─── helpers for the ops ─────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn verify_workflow_capability_signature_only(
     signed: &SignedWorkflowCapability,
     key: &[u8],
@@ -2276,6 +2341,7 @@ fn verify_workflow_capability_signature_only(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn validate_reason_code(value: &str) -> StoreResult<()> {
     let ok = !value.is_empty()
         && value.len() <= 64
@@ -2289,6 +2355,7 @@ fn validate_reason_code(value: &str) -> StoreResult<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn new_receipt_id() -> StoreResult<String> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes)

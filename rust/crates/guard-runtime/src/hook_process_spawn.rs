@@ -21,16 +21,23 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[allow(dead_code)]
 const HOOK_SUBPROCESS_OUTPUT_LIMIT: usize = 1_000_000;
+#[allow(dead_code)]
 const REAP_TIMEOUT: Duration = Duration::from_millis(200);
+#[allow(dead_code)]
 const FINAL_REAP_TIMEOUT: Duration = Duration::from_millis(100);
+#[allow(dead_code)]
 const IO_JOIN_TIMEOUT: Duration = Duration::from_millis(50);
+#[allow(dead_code)]
 const FINAL_IO_JOIN_TIMEOUT: Duration = Duration::from_millis(1000);
+#[allow(dead_code)]
 const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// `_HOOK_ENVIRONMENT_KEYS` (`codex_hook_launch_runtime.py:30-52`): the only
 /// base-env keys forwarded to a contained hook process. `LC_*` is a prefix
 /// allowlist on top.
+#[allow(dead_code)]
 const HOOK_ENVIRONMENT_KEYS: [&str; 18] = [
     "CODEX_HOME",
     "COMSPEC",
@@ -53,6 +60,7 @@ const HOOK_ENVIRONMENT_KEYS: [&str; 18] = [
     "HOL_GUARD_RUNTIME_DIR",
 ];
 
+#[allow(dead_code)]
 fn env_key_allowed(name: &str) -> bool {
     let upper = name.to_uppercase();
     HOOK_ENVIRONMENT_KEYS.iter().any(|k| upper == *k) || upper.starts_with("LC_")
@@ -70,6 +78,7 @@ pub struct BoundedHookProcessResult {
 }
 
 /// `isolated_hook_environment` (`codex_hook_launch_runtime.py:216-224`).
+#[allow(dead_code)]
 pub fn isolated_hook_environment(source: &BTreeMap<String, String>) -> BTreeMap<String, String> {
     source
         .iter()
@@ -80,6 +89,7 @@ pub fn isolated_hook_environment(source: &BTreeMap<String, String>) -> BTreeMap<
 
 /// `isolated_guard_cli_command` (`codex_hook_launch_runtime.py:171-184`):
 /// the exact isolated fallback contract pinned to one package root.
+#[allow(dead_code)]
 pub fn isolated_guard_cli_command(
     python_executable: &str,
     package_root: &Path,
@@ -101,6 +111,7 @@ pub fn isolated_guard_cli_command(
 
 /// `isolated_daemon_start_command` (`codex_hook_launch_runtime.py:187-213`).
 /// `home_dir` is the authenticated canonical home; `None` = `Path.home()`.
+#[allow(dead_code)]
 pub fn isolated_daemon_start_command(
     python_executable: &str,
     package_root: &Path,
@@ -130,6 +141,7 @@ schedule_guard_daemon_recovery(Path({}),home_dir=Path({}),failure_kind=failure_k
     ]
 }
 
+#[allow(dead_code)]
 fn home_fallback() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -137,11 +149,13 @@ fn home_fallback() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
+#[allow(dead_code)]
 fn canonical_or_self(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
 /// Python `repr()` of a path string — `Path('…')` needs a quoted literal.
+#[allow(dead_code)]
 fn py_repr(p: &Path) -> String {
     let s = p.as_os_str().to_string_lossy();
     let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
@@ -151,6 +165,7 @@ fn py_repr(p: &Path) -> String {
 /// `private_hook_runtime_cwd` (`codex_hook_launch_runtime.py:227-247`):
 /// return the authenticated manifest's private Guard-owned directory.
 /// Errors map to `Err("…")` mirroring the Python `ValueError` messages.
+#[allow(dead_code)]
 pub fn private_hook_runtime_cwd(manifest_path: &Path) -> Result<PathBuf, String> {
     let parent = manifest_path
         .parent()
@@ -191,20 +206,24 @@ pub fn private_hook_runtime_cwd(manifest_path: &Path) -> Result<PathBuf, String>
 /// A child that could not be proven contained — retained so the next call can
 /// retry containment before admitting a new process. Mirrors
 /// `_HOOK_PROCESS_QUARANTINE` (`codex_hook_launch_runtime.py:99`).
+#[allow(dead_code)]
 struct Quarantined {
     child: Child,
     readers_done: Arc<AtomicBool>,
 }
 
+#[allow(dead_code)]
 fn quarantine() -> &'static Mutex<Vec<Quarantined>> {
     static Q: OnceLock<Mutex<Vec<Quarantined>>> = OnceLock::new();
     Q.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+#[allow(dead_code)]
 fn quarantine_lock() -> MutexGuard<'static, Vec<Quarantined>> {
     quarantine().lock().unwrap_or_else(|e| e.into_inner())
 }
 
+#[allow(dead_code)]
 fn containment_failed_flag() -> &'static AtomicBool {
     static F: OnceLock<AtomicBool> = OnceLock::new();
     F.get_or_init(|| AtomicBool::new(false))
@@ -213,6 +232,7 @@ fn containment_failed_flag() -> &'static AtomicBool {
 /// `_retry_quarantined_hook_processes` (`codex_hook_launch_runtime.py:102`).
 /// Re-kill each quarantined child; drop only provably-contained entries.
 /// Returns true when the quarantine drains clean.
+#[allow(dead_code)]
 fn retry_quarantined() -> bool {
     let mut q = quarantine_lock();
     let mut survivors = Vec::new();
@@ -239,6 +259,7 @@ fn retry_quarantined() -> bool {
     drained
 }
 
+#[allow(dead_code)]
 fn quarantine_child(child: Child, readers_done: Arc<AtomicBool>) {
     let mut q = quarantine_lock();
     q.push(Quarantined {
@@ -252,6 +273,7 @@ fn quarantine_child(child: Child, readers_done: Arc<AtomicBool>) {
 /// process group. `process_group(0)` at spawn makes the child PID the group
 /// ID, so `killpg(pid)` reaches the whole tree.
 #[cfg(unix)]
+#[allow(dead_code)]
 fn kill_process_group(child: &mut Child) -> bool {
     use nix::sys::signal::{kill, Signal};
     use nix::unistd::Pid;
@@ -279,12 +301,14 @@ fn kill_process_group(child: &mut Child) -> bool {
 
 /// Shared output counters across the two drain readers — Python's
 /// `output_count`/`output_lock`/`output_limit_exceeded`.
+#[allow(dead_code)]
 struct OutputBound {
     count: AtomicU64,
     limit: u64,
     exceeded: AtomicBool,
 }
 
+#[allow(dead_code)]
 impl OutputBound {
     fn take(&self, chunk_len: usize) -> usize {
         // Reserve up-front so two readers cannot both pass under the limit.
@@ -298,6 +322,7 @@ impl OutputBound {
 }
 
 /// Drain one stream into `target`, accepting only up to the shared limit.
+#[allow(dead_code)]
 fn drain_stream<R: Read + Send + 'static>(
     mut stream: R,
     target: Arc<Mutex<Vec<u8>>>,
@@ -324,6 +349,7 @@ fn drain_stream<R: Read + Send + 'static>(
 }
 
 /// Write `input_text` into the child's stdin then close it.
+#[allow(dead_code)]
 fn write_input(mut stream: std::process::ChildStdin, input: Vec<u8>) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let _ = stream.write_all(&input);
@@ -334,6 +360,7 @@ fn write_input(mut stream: std::process::ChildStdin, input: Vec<u8>) -> JoinHand
 
 /// `_truncate_decoded_output` (`codex_hook_launch_runtime.py:55-61`):
 /// keep the decoded UTF-8 within `limit` bytes after replacement decoding.
+#[allow(dead_code)]
 fn truncate_decoded(value: String, limit: usize) -> String {
     let encoded = value.as_bytes();
     if encoded.len() <= limit {
@@ -345,6 +372,7 @@ fn truncate_decoded(value: String, limit: usize) -> String {
 
 /// `_decode_combined_output` (`codex_hook_launch_runtime.py:64-75`): decode
 /// both streams preserving their shared byte bound (stdout consumes first).
+#[allow(dead_code)]
 fn decode_combined_output(stdout: &[u8], stderr: &[u8], output_limit: usize) -> (String, String) {
     let remaining = output_limit;
     let stdout_str = truncate_decoded(String::from_utf8_lossy(stdout).into_owned(), remaining);
@@ -355,6 +383,7 @@ fn decode_combined_output(stdout: &[u8], stderr: &[u8], output_limit: usize) -> 
 
 /// Extension: bounded `wait` on a `Child` with a `Duration` — returns
 /// `Some(status)` if reaped, `None` on timeout.
+#[allow(dead_code)]
 trait WaitTimeout {
     fn wait_timeout(&mut self, timeout: Duration) -> Option<ExitStatus>;
 }
@@ -382,6 +411,8 @@ impl WaitTimeout for Child {
 /// stream cleanup consume the caller's existing budget; `timeout_seconds` is
 /// used only when no absolute deadline is supplied. `stop_event` lets a
 /// long-lived reviewed helper terminate through the same group-kill path.
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn run_isolated_hook_process(
     command: &[String],
     input_text: &str,
@@ -511,7 +542,6 @@ pub fn run_isolated_hook_process(
     let returncode = match child.wait_timeout(REAP_TIMEOUT) {
         Some(s) => s.code(),
         None => {
-            termination_requested = true;
             containment_confirmed = kill_process_group(&mut child) && containment_confirmed;
             match child.wait_timeout(FINAL_REAP_TIMEOUT) {
                 Some(s) => s.code(),
@@ -547,6 +577,7 @@ pub fn run_isolated_hook_process(
         if !termination_requested || !containment_confirmed {
             termination_requested = true;
             containment_confirmed = kill_process_group(&mut child) && containment_confirmed;
+            let _ = termination_requested;
         }
         let final_join_deadline = Instant::now() + FINAL_IO_JOIN_TIMEOUT;
         for h in &io_handles {
@@ -592,6 +623,7 @@ pub fn run_isolated_hook_process(
 /// Join a `JoinHandle` by polling `is_finished` until `deadline`. Returns
 /// `true` if the thread finished in time. (`JoinHandle::join` blocks
 /// unconditionally; we only need the finish signal within the budget.)
+#[allow(dead_code)]
 fn wait_handle(h: &JoinHandle<()>, deadline: Instant) -> bool {
     while !h.is_finished() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(1));

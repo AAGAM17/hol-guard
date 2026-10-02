@@ -44,7 +44,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use std::time::Duration;
 
 use regex::{Regex, RegexBuilder};
 use serde_json::{json, Map, Value};
@@ -52,12 +51,11 @@ use serde_json::{json, Map, Value};
 use crate::action_lattice::{normalize_guard_action_result, UNKNOWN_GUARD_ACTION_REASON};
 use crate::effect_decision::GuardAction;
 use crate::local_supply_chain::{
-    resolve_risk_action, stable_digest_hex, stable_digest_hex_len, GuardConfig, PackageEvalApi,
-    PackageRequestEvaluation, SupplyChainStore, Timestamp,
+    resolve_risk_action, stable_digest_hex, stable_digest_hex_len, GuardConfig, SupplyChainStore,
 };
 use crate::npm_source_spec::{parse_npm_source_spec, NpmSourceSpec};
 use crate::package_intent_common::{
-    resolve_path_within_workspace, split_python_extras, write_spaced_sorted_json, GuardArtifact,
+    resolve_path_within_workspace, split_python_extras, GuardArtifact,
 };
 
 // ---------------------------------------------------------------------------
@@ -77,6 +75,7 @@ fn decision_rank_map() -> &'static HashMap<&'static str, u8> {
     &MAP
 }
 
+#[allow(dead_code)]
 fn severity_rank_map() -> &'static HashMap<&'static str, u8> {
     static MAP: LazyLock<HashMap<&'static str, u8>> = LazyLock::new(|| {
         HashMap::from([
@@ -90,7 +89,9 @@ fn severity_rank_map() -> &'static HashMap<&'static str, u8> {
     &MAP
 }
 
+#[allow(dead_code)]
 const TIMEOUT_SECONDS: u64 = 1;
+#[allow(dead_code)]
 const RETRY_TIMEOUT_SECONDS: u64 = 1;
 
 static CLOUD_INBOX_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -123,32 +124,49 @@ static LOCAL_APPROVAL_REQUEST_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("LOCAL_APPROVAL_REQUEST_URL_RE")
 });
 
+#[allow(dead_code)]
 static NAMED_SOURCE_SEPARATOR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\s+(?:from|via|using|through)\s+").expect("NAMED_SOURCE_SEPARATOR_RE")
 });
 
+#[allow(dead_code)]
 const LOCKFILE_PARSE_BUDGET_SECONDS: f64 = 0.5;
+#[allow(dead_code)]
 const LOCKFILE_PARSE_BUDGET_PER_MIB_SECONDS: f64 = 0.75;
+#[allow(dead_code)]
 const LOCKFILE_PARSE_MAX_BUDGET_SECONDS: f64 = 1.5;
 
+#[allow(dead_code)]
 const TRANSITIVE_BLOCK_CONFIDENCE_THRESHOLD: u32 = 900;
+#[allow(dead_code)]
 const NPM_REGISTRY_METADATA_BASE_URL: &str = "https://registry.npmjs.org";
+#[allow(dead_code)]
 const PYPI_REGISTRY_METADATA_BASE_URL: &str = "https://pypi.org/pypi";
+#[allow(dead_code)]
 const TARBALL_SCAN_TIMEOUT_SECONDS: u64 = 2;
+#[allow(dead_code)]
 const TARBALL_SCAN_MAX_BYTES: u64 = 6 * 1024 * 1024;
+#[allow(dead_code)]
 const TARBALL_SCAN_MAX_FILES: usize = 500;
+#[allow(dead_code)]
 const TARBALL_SCAN_MAX_PACKAGE_JSON_BYTES: u64 = 256 * 1024;
+#[allow(dead_code)]
 const EXTERNAL_ARCHIVE_MAX_TARGETS: usize = 4;
+#[allow(dead_code)]
 const EXTERNAL_ARCHIVE_MAX_AGGREGATE_BYTES: u64 = 12 * 1024 * 1024;
+#[allow(dead_code)]
 const EXTERNAL_ARCHIVE_REQUEST_TIMEOUT_SECONDS: f64 = 8.0;
+#[allow(dead_code)]
 const CLOUD_VALIDATION_ERROR_CACHE_TTL_SECONDS: f64 = 15.0 * 60.0;
 
+#[allow(dead_code)]
 fn registry_default_ranges() -> &'static HashMap<&'static str, &'static str> {
     static MAP: LazyLock<HashMap<&'static str, &'static str>> =
         LazyLock::new(|| HashMap::from([("npm", "latest"), ("pypi", ">=0")]));
     &MAP
 }
 
+#[allow(dead_code)]
 fn dist_tag_range_ecosystems() -> &'static HashSet<&'static str> {
     static SET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| HashSet::from(["npm"]));
     &SET
@@ -197,6 +215,7 @@ fn dict_items(value: Option<&Value>) -> Vec<Map<String, Value>> {
     }
 }
 
+#[allow(dead_code)]
 fn string_tuple(value: Option<&Value>) -> Vec<String> {
     match value {
         Some(Value::Array(items)) => items
@@ -208,6 +227,7 @@ fn string_tuple(value: Option<&Value>) -> Vec<String> {
     }
 }
 
+#[allow(dead_code)]
 fn map_insert_if_some(map: &mut Map<String, Value>, key: &str, value: Option<String>) {
     if let Some(v) = value {
         map.insert(key.to_string(), Value::String(v));
@@ -226,6 +246,7 @@ fn value_str<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)
 }
 
+#[allow(dead_code)]
 fn now_seconds(now: &str) -> f64 {
     crate::local_supply_chain::parse_timestamp(now)
         .map(|t| t.unix_seconds() as f64)
@@ -255,6 +276,7 @@ fn ensure_terminal_punctuation(message: &str) -> String {
 // build/consume the exact dict shapes.
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn user_copy_to_dict(copy: &Map<String, Value>) -> Value {
     json_obj(vec![
         ("title", copy.get("title").cloned().unwrap_or(Value::Null)),
@@ -635,7 +657,7 @@ impl std::fmt::Display for EvalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Validation(m) | Self::NotFound(m) | Self::Internal(m) => f.write_str(m),
-            Self::HttpStatus(code, m) => write!(f, "HTTP {}: {}", code, m),
+            Self::HttpStatus(code, m) => write!(f, "HTTP {code}: {m}"),
         }
     }
 }
@@ -1055,6 +1077,7 @@ pub trait NativeArchiveApi {
     /// max_decompression_ratio=, max_nested_archives=, max_path_depth=)`
     /// (native_archive_inspection.py:101) -> `ArchiveInspectionResult` dict
     /// mirror.
+    #[allow(clippy::too_many_arguments)]
     fn inspect_archive_native(
         &self,
         path: &Path,
@@ -1108,6 +1131,7 @@ pub trait StoreExtrasApi {
     ) -> Option<Map<String, Value>>;
     /// `deps.store_extras.cache_supply_chain_evaluation(...)` (store_cloud_events.py:144)
     /// — persist a `PackageRequestEvaluation.to_cache_dict()` payload.
+    #[allow(clippy::too_many_arguments)]
     fn cache_supply_chain_evaluation(
         &self,
         workspace_id: &str,
@@ -1254,12 +1278,14 @@ fn decision_to_guard_action_variant(decision: &str) -> GuardAction {
 
 /// `_decision_rank` (:4945-4946).
 // supply_chain_package_eval.py:4945-4946
+#[allow(dead_code)]
 fn decision_rank(value: &str) -> u8 {
     decision_rank_map().get(value).copied().unwrap_or(1)
 }
 
 /// `_severity_rank_value` (:4828-4829).
 // supply_chain_package_eval.py:4828-4829
+#[allow(dead_code)]
 fn severity_rank_value(value: &str) -> u8 {
     severity_rank_map()
         .get(value.trim().to_ascii_lowercase().as_str())
@@ -1269,6 +1295,7 @@ fn severity_rank_value(value: &str) -> u8 {
 
 /// `_reason_severity` (:5044-5052).
 // supply_chain_package_eval.py:5044-5052
+#[allow(dead_code)]
 fn reason_severity(package: &Map<String, Value>) -> String {
     if let Some(reasons) = package.get("reasons") {
         if let Some(items) = reasons.as_array() {
@@ -1286,6 +1313,7 @@ fn reason_severity(package: &Map<String, Value>) -> String {
 
 /// `_normalize_package_name` (:4998-5002).
 // supply_chain_package_eval.py:4998-5002
+#[allow(dead_code)]
 fn normalize_package_name(
     deps: &SupplyChainEvalDeps<'_>,
     ecosystem: &str,
@@ -1303,6 +1331,7 @@ fn normalize_package_name(
 /// `local_supply_chain.py`) which normalizes "Z" → "+00:00" and converts to
 /// UTC epoch seconds.
 // supply_chain_package_eval.py:2803-2807
+#[allow(dead_code)]
 fn normalize_evaluation_timestamp(now_value: &str) -> Option<f64> {
     crate::local_supply_chain::parse_timestamp(now_value).map(|t| t.unix_seconds() as f64)
 }
@@ -1310,12 +1339,14 @@ fn normalize_evaluation_timestamp(now_value: &str) -> Option<f64> {
 /// `_parse_evaluation_timestamp` (:2803-2807) — alias kept for callers that
 /// expect the private name.
 // supply_chain_package_eval.py:2803-2807
+#[allow(dead_code)]
 fn parse_evaluation_timestamp(now_value: &str) -> Option<f64> {
     normalize_evaluation_timestamp(now_value)
 }
 
 /// `_artifact_has_flag` (:3489-3491).
 // supply_chain_package_eval.py:3489-3491
+#[allow(dead_code)]
 fn artifact_has_flag(artifact: &GuardArtifact, flag: &str) -> bool {
     artifact
         .metadata
@@ -1326,6 +1357,7 @@ fn artifact_has_flag(artifact: &GuardArtifact, flag: &str) -> bool {
 
 /// `_has_non_empty_string_item` (:788-791).
 // supply_chain_package_eval.py:788-791
+#[allow(dead_code)]
 fn has_non_empty_string_item(value: Option<&Value>) -> bool {
     match value {
         Some(Value::Array(items)) => items
@@ -1337,6 +1369,7 @@ fn has_non_empty_string_item(value: Option<&Value>) -> bool {
 
 /// `_artifact_has_package_material` (:780-785).
 // supply_chain_package_eval.py:780-785
+#[allow(dead_code)]
 fn artifact_has_package_material(artifact: &GuardArtifact, targets: &[Map<String, Value>]) -> bool {
     if !targets.is_empty() {
         return true;
@@ -1348,6 +1381,7 @@ fn artifact_has_package_material(artifact: &GuardArtifact, targets: &[Map<String
 /// `_empty_package_material_result` (:794-827).
 // supply_chain_package_eval.py:794-827
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn empty_package_material_result(
     _artifact: &GuardArtifact,
     workspace_id: Option<&str>,
@@ -1424,6 +1458,7 @@ fn empty_package_material_result(
 /// reasons and no packages, used when the request artifact yields nothing to
 /// evaluate.
 // supply_chain_package_eval.py:794-827
+#[allow(dead_code)]
 fn empty_evaluation(
     _artifact: &GuardArtifact,
     package_intent_hash: &str,
@@ -1464,6 +1499,7 @@ fn empty_evaluation(
 /// `_no_change_evaluation` — derived: produces a `monitor`-decision result
 /// when the package material has not changed since the last evaluation.
 // supply_chain_package_eval.py:794-827
+#[allow(dead_code)]
 fn no_change_evaluation(
     _artifact: &GuardArtifact,
     package_intent_hash: &str,
@@ -1506,6 +1542,7 @@ fn no_change_evaluation(
 /// `_evaluation_has_reason_code` (:851-855 on `_cached_eval_has_reason_code`
 /// but operates on a `PackageRequestEvaluation` payload map).
 // supply_chain_package_eval.py:851-855
+#[allow(dead_code)]
 fn evaluation_has_reason_code(evaluation: &Value, code: &str) -> bool {
     evaluation
         .get("reasons")
@@ -1523,6 +1560,7 @@ fn evaluation_has_reason_code(evaluation: &Value, code: &str) -> bool {
 
 /// `_cached_eval_has_reason_code` (:851-855).
 // supply_chain_package_eval.py:851-855
+#[allow(dead_code)]
 fn cached_eval_has_reason_code(cached: &Map<String, Value>, code: &str) -> bool {
     cached
         .get("reasons")
@@ -1540,6 +1578,7 @@ fn cached_eval_has_reason_code(cached: &Map<String, Value>, code: &str) -> bool 
 
 /// `_cached_supply_chain_eval_is_reusable` (:830-848).
 // supply_chain_package_eval.py:830-848
+#[allow(dead_code)]
 fn cached_supply_chain_eval_is_reusable(
     cached: &Map<String, Value>,
     now_timestamp: Option<f64>,
@@ -1564,6 +1603,7 @@ fn cached_supply_chain_eval_is_reusable(
 /// `_cache_reusable_cloud_validation_error` (:858-882).
 // supply_chain_package_eval.py:858-882
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn cache_reusable_cloud_validation_error(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_id: Option<&str>,
@@ -1599,6 +1639,7 @@ fn cache_reusable_cloud_validation_error(
 /// uncached. We return `true` when the cached eval has a
 /// `cloud_validation_error` reason and is past the TTL.
 // supply_chain_package_eval.py:885-897
+#[allow(dead_code)]
 fn cached_cloud_validation_error_requires_uncached_retry(
     cached: &Map<String, Value>,
     now_timestamp: Option<f64>,
@@ -1612,6 +1653,7 @@ fn cached_cloud_validation_error_requires_uncached_retry(
 /// the cached decision dict carries a non-empty `policy_action` value,
 /// meaning a previously persisted policy decision exists.
 // supply_chain_package_eval.py:898-913
+#[allow(dead_code)]
 fn cached_cloud_validation_error_has_saved_policy(cached: &Map<String, Value>) -> bool {
     optional_string(cached.get("policy_action")).is_some()
 }
@@ -1620,6 +1662,7 @@ fn cached_cloud_validation_error_has_saved_policy(cached: &Map<String, Value>) -
 /// into its canonical action rank bucket ("allow" | "monitor" | "warn" |
 /// "ask" | "block"). Unknown values map to "monitor".
 // supply_chain_package_eval.py:114
+#[allow(dead_code)]
 fn normalize_evaluation_action(value: &str) -> String {
     if decision_rank_map().contains_key(value) {
         value.to_string()
@@ -1631,6 +1674,7 @@ fn normalize_evaluation_action(value: &str) -> String {
 /// `_evaluation_action_rank` — derived: numeric rank of a normalized
 /// evaluation action string.
 // supply_chain_package_eval.py:114
+#[allow(dead_code)]
 fn evaluation_action_rank(value: &str) -> u8 {
     decision_rank(&normalize_evaluation_action(value))
 }
@@ -1638,10 +1682,11 @@ fn evaluation_action_rank(value: &str) -> u8 {
 /// `_highest_risk_action` — derived: pick the most restrictive normalized
 /// action from a list of candidate decision strings.
 // supply_chain_package_eval.py:114
+#[allow(dead_code)]
 fn highest_risk_action<'a>(actions: impl IntoIterator<Item = &'a str>) -> String {
     actions
         .into_iter()
-        .map(|s| normalize_evaluation_action(s))
+        .map(normalize_evaluation_action)
         .max_by_key(|a| decision_rank(a))
         .unwrap_or_else(|| "monitor".to_string())
 }
@@ -1650,6 +1695,7 @@ fn highest_risk_action<'a>(actions: impl IntoIterator<Item = &'a str>) -> String
 /// for a package result by combining the normalized decision and any
 /// policy-sourced overrides already on the package payload.
 // supply_chain_package_eval.py:154-160
+#[allow(dead_code)]
 fn resolve_package_action(package: &Map<String, Value>) -> GuardAction {
     let decision =
         optional_string(package.get("decision")).unwrap_or_else(|| "monitor".to_string());
@@ -1660,12 +1706,14 @@ fn resolve_package_action(package: &Map<String, Value>) -> GuardAction {
 /// `_risk_to_action` — derived: map a normalized decision string to the
 /// `GuardAction` lattice value used for evidence.
 // supply_chain_package_eval.py:154-160
+#[allow(dead_code)]
 fn risk_to_action(decision: &str) -> GuardAction {
     decision_to_guard_action_variant(&normalize_evaluation_action(decision))
 }
 
 /// `_severity_rank` — alias kept for callers expecting the private name.
 // supply_chain_package_eval.py:4828-4829
+#[allow(dead_code)]
 fn severity_rank(value: &str) -> u8 {
     severity_rank_value(value)
 }
@@ -1673,6 +1721,7 @@ fn severity_rank(value: &str) -> u8 {
 /// `_normalize_package_action` — derived: normalize the `decision` field on a
 /// single package dict to the canonical five-value set.
 // supply_chain_package_eval.py:114
+#[allow(dead_code)]
 fn normalize_package_action(package: &Map<String, Value>) -> String {
     optional_string(package.get("decision"))
         .map(|s| normalize_evaluation_action(&s))
@@ -1682,6 +1731,7 @@ fn normalize_package_action(package: &Map<String, Value>) -> String {
 /// `_normalize_package_decision` — derived: same normalization as
 /// `_normalize_package_action` but returns the raw decision string.
 // supply_chain_package_eval.py:114
+#[allow(dead_code)]
 fn normalize_package_decision(package: &Map<String, Value>) -> String {
     normalize_package_action(package)
 }
@@ -1736,7 +1786,7 @@ fn normalize_package_user_copy(
             .to_ascii_lowercase()
             .contains("review this request in hol guard, then retry.")
     {
-        harness_message = format!("{} {}", harness_message, LOCAL_REVIEW_INSTRUCTION)
+        harness_message = format!("{harness_message} {LOCAL_REVIEW_INSTRUCTION}")
             .trim()
             .to_string();
     }
@@ -2058,7 +2108,7 @@ fn finalize_evaluation(
     let packages: Vec<Map<String, Value>> = draft
         .packages
         .iter()
-        .map(|p| with_support_metadata(p))
+        .map(with_support_metadata)
         .collect();
     let primary_package: Map<String, Value> = packages.first().cloned().unwrap_or_default();
     let package_display = package_display_name(&primary_package);
@@ -2144,7 +2194,7 @@ fn finalize_evaluation(
             .iter()
             .skip(1)
             .take(2)
-            .map(|p| package_display_name(p))
+            .map(package_display_name)
             .collect();
         let others_joined = others.join(", ");
         if !others_joined.is_empty() {
@@ -2239,6 +2289,7 @@ impl EvaluationDraft {
 /// `errorPayload` body (may be absent); `status` is the HTTP status code.
 // supply_chain_package_eval.py:1543-1593
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn cloud_http_fail_closed_evaluation(
     status: u16,
     payload: Option<&Map<String, Value>>,
@@ -2281,6 +2332,7 @@ fn cloud_http_fail_closed_evaluation(
 /// one fail-closed draft without artifact/workspace context).
 // supply_chain_package_eval.py:1596-1655
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn cloud_fail_closed_evaluation(
     decision: &str,
     reason_code: &str,
@@ -2312,6 +2364,7 @@ fn cloud_fail_closed_evaluation(
 /// heuristic per-target results (or the unidentified-package fallback) plus
 /// the cloud fallback reason.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn cloud_fail_closed_evaluation_full(
     deps: &SupplyChainEvalDeps<'_>,
     code: &str,
@@ -2387,6 +2440,7 @@ fn cloud_fail_closed_evaluation_full(
 /// `_with_cloud_auth_reconnect_copy` (:1658-1683) — append a reconnect prompt
 /// to the user copy when the cloud auth token is expired/invalid.
 // supply_chain_package_eval.py:1658-1683
+#[allow(dead_code)]
 fn with_cloud_auth_reconnect_copy(
     mut draft: EvaluationDraft,
     reconnect_required: bool,
@@ -2402,12 +2456,14 @@ fn with_cloud_auth_reconnect_copy(
 
 /// `_cloud_fallback_requires_reconnect_copy` (:1686-1687).
 // supply_chain_package_eval.py:1686-1687
+#[allow(dead_code)]
 fn cloud_fallback_requires_reconnect_copy(reason: &Map<String, Value>) -> bool {
     optional_string(reason.get("code")).as_deref() == Some("cloud_auth_error")
 }
 
 /// `_cloud_fail_closed_decision` (:1690-1697).
 // supply_chain_package_eval.py:1690-1697
+#[allow(dead_code)]
 fn cloud_fail_closed_decision(
     deps: &SupplyChainEvalDeps<'_>,
     store: &dyn SupplyChainStore,
@@ -2430,6 +2486,7 @@ fn cloud_fail_closed_decision(
 
 /// `_unidentified_packages_fail_closed` (:1700-1702).
 // supply_chain_package_eval.py:1700-1702
+#[allow(dead_code)]
 fn unidentified_packages_fail_closed(
     deps: &SupplyChainEvalDeps<'_>,
     store: &dyn SupplyChainStore,
@@ -2444,6 +2501,7 @@ fn unidentified_packages_fail_closed(
 
 /// `_unidentified_package_decision` (:1705-1716).
 // supply_chain_package_eval.py:1705-1716
+#[allow(dead_code)]
 fn unidentified_package_decision(
     ecosystem: &str,
     fail_closed: bool,
@@ -2470,6 +2528,7 @@ fn unidentified_package_decision(
 /// cached/advisory bundle payload and produce a draft.
 // supply_chain_package_eval.py:1719-1877
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn evaluate_with_bundle(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
@@ -2585,11 +2644,11 @@ fn evaluate_with_bundle(
             packages.push(package);
         }
     }
-    let direct_identities: HashSet<String> = packages
+    let _direct_identities: HashSet<String> = packages
         .iter()
         .map(|p| {
             let id = result_package_identity(deps, p);
-            format!("{:?}", id)
+            format!("{id:?}")
         })
         .collect();
     for transitive in transitive_lockfile_results(deps, workspace_dir, artifact, targets) {
@@ -2657,6 +2716,7 @@ fn evaluate_with_bundle(
 
 /// `_primary_bundle_advisory_id` (:1880-1895).
 // supply_chain_package_eval.py:1880-1895
+#[allow(dead_code)]
 fn primary_bundle_advisory_id(
     bundle_response: &SupplyChainBundleResponse,
     package: &Map<String, Value>,
@@ -2708,6 +2768,7 @@ fn primary_bundle_advisory_id(
 
 /// `_bundle_advisory_aliases` (:1898-1923).
 // supply_chain_package_eval.py:1898-1923
+#[allow(dead_code)]
 fn bundle_advisory_aliases(
     bundle_response: &SupplyChainBundleResponse,
     package: &Map<String, Value>,
@@ -2780,6 +2841,7 @@ fn bundle_advisory_aliases(
 /// integrity checks.
 // supply_chain_package_eval.py:1926-2121
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn heuristic_result(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
@@ -2922,15 +2984,15 @@ fn heuristic_result(
         policy_version: "local:none".to_string(),
         external_archive_downloads,
         external_archive_source_hashes,
-        ..Default::default()
     })
 }
 
 /// `_persist_evidence` (:2124-2164).
 // supply_chain_package_eval.py:2124-2164
+#[allow(dead_code)]
 fn persist_evidence(
     deps: &SupplyChainEvalDeps<'_>,
-    store: &dyn SupplyChainStore,
+    _store: &dyn SupplyChainStore,
     artifact: &GuardArtifact,
     evaluation: &PackageEvalResult,
     now: &str,
@@ -3086,6 +3148,7 @@ fn persist_evidence(
 
 /// `_evaluation_targets` (:2167-2175).
 // supply_chain_package_eval.py:2167-2175
+#[allow(dead_code)]
 fn evaluation_targets(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
@@ -3101,6 +3164,7 @@ fn evaluation_targets(
 
 /// `_cloud_evaluation_targets` (:2178-2187).
 // supply_chain_package_eval.py:2178-2187
+#[allow(dead_code)]
 fn cloud_evaluation_targets(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
@@ -3116,6 +3180,7 @@ fn cloud_evaluation_targets(
 
 /// `_targets_from_artifact` (:2190-2254).
 // supply_chain_package_eval.py:2190-2254
+#[allow(dead_code)]
 fn targets_from_artifact(artifact: &GuardArtifact) -> Vec<Map<String, Value>> {
     let public_targets = artifact.metadata.get("targets");
     let Some(public_arr) = public_targets.and_then(Value::as_array) else {
@@ -3184,9 +3249,11 @@ fn targets_from_artifact(artifact: &GuardArtifact) -> Vec<Map<String, Value>> {
         if let Some(spec) = &source_spec {
             target.insert(
                 "source_kind".to_string(),
-                spec.is_git()
-                    .then_some(Value::String("git".into()))
-                    .unwrap_or(Value::Null),
+                if spec.is_git() {
+                    Value::String("git".into())
+                } else {
+                    Value::Null
+                },
             );
             target.insert(
                 "source_repository".to_string(),
@@ -3269,6 +3336,7 @@ fn targets_from_artifact(artifact: &GuardArtifact) -> Vec<Map<String, Value>> {
 
 /// `_private_package_targets_match_public` (:2257-2300).
 // supply_chain_package_eval.py:2257-2300
+#[allow(dead_code)]
 fn private_package_targets_match_public(
     private_targets: &[Value],
     public_targets: &[Value],
@@ -3330,6 +3398,7 @@ fn private_package_targets_match_public(
 
 /// `_public_package_targets_are_self_consistent` (:2303-2321).
 // supply_chain_package_eval.py:2303-2321
+#[allow(dead_code)]
 fn public_package_targets_are_self_consistent(public_targets: &[Value]) -> bool {
     for target in public_targets {
         let Some(map) = target.as_object() else {
@@ -3357,6 +3426,7 @@ fn public_package_targets_are_self_consistent(public_targets: &[Value]) -> bool 
 
 /// `_bundle_meta` (:2324-2332).
 // supply_chain_package_eval.py:2324-2332
+#[allow(dead_code)]
 fn bundle_meta(bundle_payload: &Map<String, Value>) -> BTreeMap<String, String> {
     let Some(bundle) = bundle_payload.get("bundle").and_then(Value::as_object) else {
         return BTreeMap::new();
@@ -3377,6 +3447,7 @@ fn bundle_meta(bundle_payload: &Map<String, Value>) -> BTreeMap<String, String> 
 
 /// `_lockfile_parse_results` (:2335-2344).
 // supply_chain_package_eval.py:2335-2344
+#[allow(dead_code)]
 fn lockfile_parse_results(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: &Path,
@@ -3394,6 +3465,7 @@ fn lockfile_parse_results(
 /// `_parse_lockfile_text_result` (:2347-2370) — dispatch to the per-format
 /// lockfile parser over raw bytes.
 // supply_chain_package_eval.py:2347-2370
+#[allow(dead_code)]
 fn parse_lockfile_text_result(
     deps: &SupplyChainEvalDeps<'_>,
     path: &str,
@@ -3405,12 +3477,14 @@ fn parse_lockfile_text_result(
 
 /// `_lockfile_parse_budget_seconds` (:2373-2378).
 // supply_chain_package_eval.py:2373-2378
+#[allow(dead_code)]
 fn lockfile_parse_budget_seconds() -> Option<f64> {
     Some(LOCKFILE_PARSE_BUDGET_SECONDS)
 }
 
 /// `_first_incomplete_lockfile_result` (:2381-2385).
 // supply_chain_package_eval.py:2381-2385
+#[allow(dead_code)]
 fn first_incomplete_lockfile_result(
     results: &[LockfileParseResult],
 ) -> Option<&LockfileParseResult> {
@@ -3420,14 +3494,15 @@ fn first_incomplete_lockfile_result(
 /// `_finalize_incomplete_lockfile_evaluation` (:2388-2431).
 // supply_chain_package_eval.py:2388-2431
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn finalize_incomplete_lockfile_evaluation(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
-    store: &dyn SupplyChainStore,
+    _store: &dyn SupplyChainStore,
     parse_result: &LockfileParseResult,
-    workspace_id: Option<&str>,
+    _workspace_id: Option<&str>,
     workspace_fingerprint: &str,
-    now: &str,
+    _now: &str,
 ) -> PackageEvalResult {
     let package = incomplete_lockfile_package_result(artifact, parse_result);
     let mut reasons = Vec::new();
@@ -3475,6 +3550,7 @@ fn finalize_incomplete_lockfile_evaluation(
 
 /// `_incomplete_lockfile_package_result` (:2434-2456).
 // supply_chain_package_eval.py:2434-2456
+#[allow(dead_code)]
 fn incomplete_lockfile_package_result(
     artifact: &GuardArtifact,
     parse_result: &LockfileParseResult,
@@ -3555,6 +3631,7 @@ fn incomplete_lockfile_package_result(
 
 /// `_workspace_fingerprint` (:2459-2477).
 // supply_chain_package_eval.py:2459-2477
+#[allow(dead_code)]
 fn workspace_fingerprint(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_id: &str,
@@ -3601,6 +3678,7 @@ fn workspace_fingerprint(
 /// `_build_request_payload` (:2480-2527).
 // supply_chain_package_eval.py:2480-2527
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn build_request_payload(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
@@ -3712,6 +3790,7 @@ fn build_request_payload(
 
 /// `_lockfile_context` (:2530-2563).
 // supply_chain_package_eval.py:2530-2563
+#[allow(dead_code)]
 fn lockfile_context(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -3814,10 +3893,12 @@ fn lockfile_context(
 // npm_policy_range.py. Access bundle/packages/rules via Map<String, Value>.
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn optional_string_map(map: &Map<String, Value>, key: &str) -> Option<String> {
     optional_string(map.get(key))
 }
 
+#[allow(dead_code)]
 fn value_to_plain_string(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
@@ -3828,15 +3909,18 @@ fn value_to_plain_string(value: &Value) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn first_dict_item(value: Option<&Value>) -> Option<Map<String, Value>> {
     dict_items(value).into_iter().next()
 }
 
+#[allow(dead_code)]
 fn stable_hash(value: &Value) -> String {
     let canonical = serde_json::to_string(value).unwrap_or_default();
     stable_digest_hex(canonical.as_bytes())
 }
 
+#[allow(dead_code)]
 fn hash_paths(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -3859,6 +3943,7 @@ fn hash_paths(
     out
 }
 
+#[allow(dead_code)]
 fn split_namespace_name(package_name: &str, _ecosystem: &str) -> (Option<String>, String) {
     if let Some(rest) = package_name.strip_prefix('@') {
         if let Some(slash) = rest.find('/') {
@@ -3871,6 +3956,7 @@ fn split_namespace_name(package_name: &str, _ecosystem: &str) -> (Option<String>
     (None, package_name.to_string())
 }
 
+#[allow(dead_code)]
 fn npm_source_spec(value: Option<&str>, ecosystem: &str) -> Option<NpmSourceSpec> {
     if ecosystem.eq_ignore_ascii_case("npm") {
         parse_npm_source_spec(value)
@@ -3879,6 +3965,7 @@ fn npm_source_spec(value: Option<&str>, ecosystem: &str) -> Option<NpmSourceSpec
     }
 }
 
+#[allow(dead_code)]
 fn lockfile_target_key(target: &Map<String, Value>) -> Option<String> {
     let eco = optional_string(target.get("ecosystem"))?;
     let name = optional_string(target.get("package_name"))
@@ -3886,6 +3973,7 @@ fn lockfile_target_key(target: &Map<String, Value>) -> Option<String> {
     Some(format!("{eco}:{name}"))
 }
 
+#[allow(dead_code)]
 fn exact_version(spec: &str) -> Option<String> {
     let s = spec.trim();
     if s.is_empty() {
@@ -3898,6 +3986,7 @@ fn exact_version(spec: &str) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 fn registry_resolved_target_version(
     _deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -3906,6 +3995,7 @@ fn registry_resolved_target_version(
     None
 }
 
+#[allow(dead_code)]
 fn resolved_target_version(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -3929,10 +4019,12 @@ fn resolved_target_version(
     registry_resolved_target_version(deps, target)
 }
 
+#[allow(dead_code)]
 fn bundle_package_index(bundle_response: &SupplyChainBundleResponse) -> Vec<Map<String, Value>> {
     dict_items(bundle_response.bundle.get("packages"))
 }
 
+#[allow(dead_code)]
 fn bundle_package_name_matches(pkg: &Map<String, Value>, name: &str) -> bool {
     let pkg_name = optional_string_map(pkg, "name").unwrap_or_default();
     let normalized = pkg_name.trim().to_lowercase();
@@ -3940,6 +4032,7 @@ fn bundle_package_name_matches(pkg: &Map<String, Value>, name: &str) -> bool {
     normalized == needle || pkg_name.eq_ignore_ascii_case(name)
 }
 
+#[allow(dead_code)]
 fn bundle_package_from_index(
     index: &[Map<String, Value>],
     target: &Map<String, Value>,
@@ -3958,6 +4051,7 @@ fn bundle_package_from_index(
     None
 }
 
+#[allow(dead_code)]
 fn bundle_package(
     bundle_response: &SupplyChainBundleResponse,
     target: &Map<String, Value>,
@@ -3973,12 +4067,14 @@ fn bundle_package(
     Some(pkg)
 }
 
+#[allow(dead_code)]
 fn bundle_package_label(pkg: &Map<String, Value>) -> String {
     optional_string_map(pkg, "packageName")
         .or_else(|| optional_string_map(pkg, "name"))
         .unwrap_or_else(|| "package".to_string())
 }
 
+#[allow(dead_code)]
 fn is_bundle_stale(
     _deps: &SupplyChainEvalDeps<'_>,
     bundle_response: &SupplyChainBundleResponse,
@@ -3988,6 +4084,7 @@ fn is_bundle_stale(
     false
 }
 
+#[allow(dead_code)]
 fn policy_rule_get_str(rule: &Map<String, Value>, key: &str) -> Option<String> {
     rule.get(key).and_then(|v| match v {
         Value::String(s) => {
@@ -4002,6 +4099,7 @@ fn policy_rule_get_str(rule: &Map<String, Value>, key: &str) -> Option<String> {
     })
 }
 
+#[allow(dead_code)]
 fn matching_policy_rule(
     bundle_response: &SupplyChainBundleResponse,
     target: &Map<String, Value>,
@@ -4035,7 +4133,7 @@ fn matching_policy_rule(
         .into_iter()
         .collect();
 
-    let now_ts = std::time::SystemTime::now()
+    let _now_ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
@@ -4064,6 +4162,7 @@ fn matching_policy_rule(
     None
 }
 
+#[allow(dead_code)]
 fn target_for_resolved_npm_policy_match(
     target: &Map<String, Value>,
     resolved_version: Option<&str>,
@@ -4075,6 +4174,7 @@ fn target_for_resolved_npm_policy_match(
     t
 }
 
+#[allow(dead_code)]
 fn policy_package_result(
     target: &Map<String, Value>,
     decision: &str,
@@ -4110,6 +4210,7 @@ fn policy_package_result(
     package_target_result(target, decision, vec![reason], rule_id.as_deref())
 }
 
+#[allow(dead_code)]
 fn bind_resolved_npm_policy_result(
     result: Map<String, Value>,
     resolved_version: Option<&str>,
@@ -4121,6 +4222,7 @@ fn bind_resolved_npm_policy_result(
     r
 }
 
+#[allow(dead_code)]
 fn dependency_confusion_policy_package_result(
     bundle_response: &SupplyChainBundleResponse,
     target: &Map<String, Value>,
@@ -4172,6 +4274,7 @@ fn dependency_confusion_policy_package_result(
     None
 }
 
+#[allow(dead_code)]
 fn dependency_confusion_selector_matches(
     target: &Map<String, Value>,
     rule: &Map<String, Value>,
@@ -4194,6 +4297,7 @@ fn dependency_confusion_selector_matches(
     name.trim().to_lowercase() == sel
 }
 
+#[allow(dead_code)]
 fn emergency_deny_bundle_message(target: &Map<String, Value>) -> String {
     format!(
         "Emergency deny rule blocks {}.",
@@ -4203,6 +4307,7 @@ fn emergency_deny_bundle_message(target: &Map<String, Value>) -> String {
     )
 }
 
+#[allow(dead_code)]
 fn package_target_result(
     target: &Map<String, Value>,
     decision: &str,
@@ -4268,6 +4373,7 @@ fn package_target_result(
     r
 }
 
+#[allow(dead_code)]
 fn heuristic_package_result(
     target: &Map<String, Value>,
     decision: &str,
@@ -4282,6 +4388,7 @@ fn heuristic_package_result(
     package_target_result(target, decision, vec![reason], None)
 }
 
+#[allow(dead_code)]
 fn lockfile_dependency_versions(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -4312,6 +4419,7 @@ fn lockfile_dependency_versions(
     out
 }
 
+#[allow(dead_code)]
 fn transitive_lockfile_results(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -4335,10 +4443,12 @@ fn transitive_lockfile_results(
         .collect()
 }
 
+#[allow(dead_code)]
 fn transitive_lockfile_decision(_results: &[Map<String, Value>]) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
 fn target_is_external_https_archive(target: &Map<String, Value>) -> bool {
     let Some(url) = optional_string(target.get("source_url")) else {
         return false;
@@ -4350,6 +4460,7 @@ fn target_is_external_https_archive(target: &Map<String, Value>) -> bool {
             || url.ends_with(".zip"))
 }
 
+#[allow(dead_code)]
 fn external_tarball_dependency_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -4429,8 +4540,7 @@ fn external_tarball_dependency_result(
             reason.insert(
                 "message".to_string(),
                 Value::String(format!(
-                    "External archive {} downloaded for inspection.",
-                    source_url
+                    "External archive {source_url} downloaded for inspection."
                 )),
             );
             reason.insert("severity".to_string(), Value::String("info".into()));
@@ -4462,6 +4572,7 @@ fn external_tarball_dependency_result(
     }
 }
 
+#[allow(dead_code)]
 fn lockfile_parse_warning_result(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -4491,14 +4602,18 @@ fn lockfile_parse_warning_result(
     Some(pkg)
 }
 
+#[allow(dead_code)]
 fn lockfile_ecosystem(file_name: &str) -> String {
     let name = std::path::Path::new(file_name)
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    if name.contains("package-lock") || name.contains("npm-shrinkwrap") {
-        "npm".into()
-    } else if name.contains("pnpm") || name.contains("yarn") || name.contains("bun") {
+    if name.contains("package-lock")
+        || name.contains("npm-shrinkwrap")
+        || name.contains("pnpm")
+        || name.contains("yarn")
+        || name.contains("bun")
+    {
         "npm".into()
     } else if name.contains("cargo") {
         "cargo".into()
@@ -4513,6 +4628,7 @@ fn lockfile_ecosystem(file_name: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn package_has_incomplete_lockfile(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -4527,6 +4643,7 @@ fn package_has_incomplete_lockfile(
 }
 
 // `block_package_from_offline` — builds a block result from the offline bundle evaluation.
+#[allow(dead_code)]
 fn block_package_from_offline(
     offline: &Map<String, Value>,
     bundle_response: &SupplyChainBundleResponse,
@@ -4542,6 +4659,7 @@ fn block_package_from_offline(
 }
 
 // `_bundle_package_result` — build a package result from a bundle package match.
+#[allow(dead_code)]
 fn bundle_package_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -4579,6 +4697,7 @@ fn bundle_package_result(
 }
 
 // `_incomplete_lockfile_fallback_target`
+#[allow(dead_code)]
 fn incomplete_lockfile_fallback_target(parse_result: &LockfileParseResult) -> Map<String, Value> {
     let mut target = Map::new();
     target.insert(
@@ -4608,6 +4727,7 @@ fn incomplete_lockfile_fallback_target(parse_result: &LockfileParseResult) -> Ma
 /// resolve under: alias, qualified `namespace/name`, its normalized form, then
 /// raw `package_name` and its normalized form.
 // supply_chain_package_eval.py:5005-5025
+#[allow(dead_code)]
 fn target_candidate_names(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -4645,6 +4765,7 @@ fn target_candidate_names(
 /// `version` field to a canonical exact version, `None` on non-string or
 /// invalid input.
 // supply_chain_package_eval.py:5027-5041
+#[allow(dead_code)]
 fn python_lockfile_version(
     deps: &SupplyChainEvalDeps<'_>,
     value: Option<&Value>,
@@ -4666,6 +4787,7 @@ fn python_lockfile_version(
 /// `_with_additional_reason` (:5102-5119) — append one reason dict to the
 /// evaluation's `reasons` list.
 // supply_chain_package_eval.py:5102-5119
+#[allow(dead_code)]
 fn with_additional_reason(
     mut evaluation: EvaluationDraft,
     reason: Map<String, Value>,
@@ -4678,6 +4800,7 @@ fn with_additional_reason(
 /// result carrying an auth/http/timeout fallback reason should yield to the
 /// stricter local bundle decision.
 // supply_chain_package_eval.py:5123-5137
+#[allow(dead_code)]
 fn cloud_result_should_defer_to_bundle(
     evaluation: &EvaluationDraft,
     bundle_evaluation: &EvaluationDraft,
@@ -4706,6 +4829,7 @@ fn cloud_result_should_defer_to_bundle(
 /// `_cloud_fallback_reason` (:5141-5147) — reason dict recorded when cloud
 /// validation could not run and the result fell back to local heuristics.
 // supply_chain_package_eval.py:5141-5147
+#[allow(dead_code)]
 fn cloud_fallback_reason(code: &str, message: &str) -> Map<String, Value> {
     let mut reason = Map::new();
     reason.insert("code".into(), Value::String(code.to_string()));
@@ -4718,6 +4842,7 @@ fn cloud_fallback_reason(code: &str, message: &str) -> Map<String, Value> {
 /// `_bundle_reason_message` (:5166-5186) — human-readable message for a bundle
 /// package decision reason.
 // supply_chain_package_eval.py:5166-5186
+#[allow(dead_code)]
 fn bundle_reason_message(
     package: &Map<String, Value>,
     decision: &str,
@@ -4751,6 +4876,7 @@ fn bundle_reason_message(
 /// `_pypi_caret_specifier` (:4542-4560) — map a `^x.y.z` requested range to the
 /// equivalent PEP-440 `>=base,<upper` specifier.
 // supply_chain_package_eval.py:4542-4560
+#[allow(dead_code)]
 fn pypi_caret_specifier(deps: &SupplyChainEvalDeps<'_>, value: &str) -> Option<String> {
     let base = {
         let v = value.trim();
@@ -4778,6 +4904,7 @@ fn pypi_caret_specifier(deps: &SupplyChainEvalDeps<'_>, value: &str) -> Option<S
 /// `_pypi_tilde_specifier` (:4563-4574) — map a `~x.y` requested range to the
 /// equivalent PEP-440 `>=base,<upper` specifier.
 // supply_chain_package_eval.py:4563-4574
+#[allow(dead_code)]
 fn pypi_tilde_specifier(deps: &SupplyChainEvalDeps<'_>, value: &str) -> Option<String> {
     let base = {
         let v = value.trim();
@@ -4801,6 +4928,7 @@ fn pypi_tilde_specifier(deps: &SupplyChainEvalDeps<'_>, value: &str) -> Option<S
 /// `_normalized_pypi_requested_range` (:4529-4539) — normalize a requested pypi
 /// range: pass through `~=`/exact specifiers, translate `^`/`~` shorthands.
 // supply_chain_package_eval.py:4529-4539
+#[allow(dead_code)]
 fn normalized_pypi_requested_range(
     deps: &SupplyChainEvalDeps<'_>,
     requested_range: &str,
@@ -4824,6 +4952,7 @@ fn normalized_pypi_requested_range(
 /// `_registry_package_name` (:4452-4457) — qualified `namespace/name` for
 /// registry lookups, or the bare name.
 // supply_chain_package_eval.py:4452-4457
+#[allow(dead_code)]
 fn registry_package_name(target: &Map<String, Value>) -> Option<String> {
     let package_name = optional_string(target.get("name"))?;
     match optional_string(target.get("namespace")) {
@@ -4835,6 +4964,7 @@ fn registry_package_name(target: &Map<String, Value>) -> Option<String> {
 /// `_dependency_package_name` (:4403-4412) — leaf package name for a lockfile
 /// dependency path.
 // supply_chain_package_eval.py:4403-4412
+#[allow(dead_code)]
 fn dependency_package_name(dependency_path: &str) -> Option<String> {
     let normalized = dependency_path.trim_matches('/').to_lowercase();
     if normalized.is_empty() {
@@ -4852,6 +4982,7 @@ fn dependency_package_name(dependency_path: &str) -> Option<String> {
 /// `_target_versions_from_direct_map` (:4371-4383) — resolve each target's
 /// version from a `{candidate_name: version}` direct map.
 // supply_chain_package_eval.py:4371-4383
+#[allow(dead_code)]
 fn target_versions_from_direct_map(
     deps: &SupplyChainEvalDeps<'_>,
     targets: &[Map<String, Value>],
@@ -4875,6 +5006,7 @@ fn target_versions_from_direct_map(
 /// `_direct_lockfile_version` (:4386-4400) — extract an exact version from a
 /// lockfile value that may be a range, alias (`npm:`), or `name@version`.
 // supply_chain_package_eval.py:4386-4400
+#[allow(dead_code)]
 fn direct_lockfile_version(value: &str) -> Option<String> {
     let mut normalized = value.split('(').next().unwrap_or("").trim().to_string();
     if let Some(rest) = normalized.strip_prefix("npm:") {
@@ -4896,6 +5028,7 @@ fn direct_lockfile_version(value: &str) -> Option<String> {
 /// `_source_url_from_specifier` (:4647-4655) — return the specifier when it is
 /// already a usable source URL/spec.
 // supply_chain_package_eval.py:4647-4655
+#[allow(dead_code)]
 fn source_url_from_specifier(specifier: Option<&str>) -> Option<String> {
     let specifier = specifier?;
     if parse_npm_source_spec(Some(specifier)).is_some() {
@@ -4921,6 +5054,7 @@ fn source_url_from_specifier(specifier: Option<&str>) -> Option<String> {
 /// `_source_url_from_raw_spec` (:4659-4671) — pull a source URL out of a raw
 /// install spec, stripping a leading named-source separator if present.
 // supply_chain_package_eval.py:4659-4671
+#[allow(dead_code)]
 fn source_url_from_raw_spec(raw_spec: &str) -> Option<String> {
     let candidate = match NAMED_SOURCE_SEPARATOR_RE.find(raw_spec) {
         Some(m) => &raw_spec[m.end()..],
@@ -4952,6 +5086,7 @@ fn source_url_from_raw_spec(raw_spec: &str) -> Option<String> {
 /// `_manifest_exact_version` (:4733-4743) — extract an exact pinned version
 /// from a manifest specifier for the given ecosystem.
 // supply_chain_package_eval.py:4733-4743
+#[allow(dead_code)]
 fn manifest_exact_version(
     deps: &SupplyChainEvalDeps<'_>,
     ecosystem: &str,
@@ -4967,12 +5102,13 @@ fn manifest_exact_version(
         }
         return None;
     }
-    value.and_then(|v| exact_version(v))
+    value.and_then(exact_version)
 }
 
 /// `_with_package_reason` (:4754-4761) — clone a package result dict and append
 /// one reason.
 // supply_chain_package_eval.py:4754-4761
+#[allow(dead_code)]
 fn with_package_reason(
     package: &Map<String, Value>,
     reason: Map<String, Value>,
@@ -4994,6 +5130,7 @@ fn with_package_reason(
 /// `_default_registry_range` (:4924-4925) — default registry range for an
 /// ecosystem (`latest` for npm, `>=0` for pypi).
 // supply_chain_package_eval.py:4924-4925
+#[allow(dead_code)]
 fn default_registry_range(ecosystem: &str) -> Option<&'static str> {
     registry_default_ranges().get(ecosystem).copied()
 }
@@ -5001,6 +5138,7 @@ fn default_registry_range(ecosystem: &str) -> Option<&'static str> {
 /// `_requested_specifier_is_range` (:4928-4934) — whether a requested specifier
 /// is a non-exact range (or a dist-tag for npm).
 // supply_chain_package_eval.py:4928-4934
+#[allow(dead_code)]
 fn requested_specifier_is_range(value: Option<&str>, ecosystem: &str) -> bool {
     let Some(normalized) = value.map(str::to_string) else {
         return false;
@@ -5026,6 +5164,7 @@ fn requested_specifier_is_range(value: Option<&str>, ecosystem: &str) -> bool {
 /// `_normalized_supply_chain_evaluate_url` (:4840-4858) — rewrite a receipts
 /// sync URL into the supply-chain evaluate URL for `workspace_id`.
 // supply_chain_package_eval.py:4840-4858
+#[allow(dead_code)]
 fn normalized_supply_chain_evaluate_url(
     deps: &SupplyChainEvalDeps<'_>,
     sync_url: &str,
@@ -5062,6 +5201,7 @@ fn normalized_supply_chain_evaluate_url(
 /// `_safe_dependency_map_result_for_path` (:4686-4697) — parse a lockfile/
 /// manifest file's dependency map under a deadline, surfacing parse errors.
 // supply_chain_package_eval.py:4686-4697
+#[allow(dead_code)]
 fn safe_dependency_map_result_for_path(
     deps: &SupplyChainEvalDeps<'_>,
     path: &str,
@@ -5103,10 +5243,12 @@ fn safe_dependency_map_result_for_path(
 
 /// `monotonic_seconds` — the monotonic clock used by the Python `time.monotonic`
 /// deadline model (:4686, :4134, ...). Expressed in seconds.
+#[allow(dead_code)]
 fn monotonic_seconds() -> f64 {
     std::time::Instant::now().elapsed().as_secs_f64() + *MONOTONIC_EPOCH
 }
 
+#[allow(dead_code)]
 static MONOTONIC_EPOCH: LazyLock<f64> = LazyLock::new(|| {
     // Anchor Instant's epoch at first use; Instant has no defined epoch so we
     // record the offset once. Only relative deltas are consumed by deadlines.
@@ -5114,6 +5256,7 @@ static MONOTONIC_EPOCH: LazyLock<f64> = LazyLock::new(|| {
     0.0
 });
 
+#[allow(dead_code)]
 fn path_format_label(path: &str) -> String {
     Path::new(path)
         .file_name()
@@ -5124,6 +5267,7 @@ fn path_format_label(path: &str) -> String {
 /// `_safe_dependency_map_for_path` (:4681-4683) — convenience returning just
 /// the dependency map.
 // supply_chain_package_eval.py:4681-4683
+#[allow(dead_code)]
 fn safe_dependency_map_for_path(
     deps: &SupplyChainEvalDeps<'_>,
     path: &str,
@@ -5140,6 +5284,7 @@ fn safe_dependency_map_for_path(
 /// `_package_lock_entries` (:4057-4082) — `node_modules/<path>` → `(dep_path,
 /// pkg_name, version, direct)` entries from a package-lock.json text.
 // supply_chain_package_eval.py:4057-4082
+#[allow(dead_code)]
 fn package_lock_entries(text: &str, deadline: Option<f64>) -> Vec<(String, String, String, bool)> {
     let payload: Value = serde_json::from_str(text).unwrap_or_else(|_| json!({}));
     let mut entries: Vec<(String, String, String, bool)> = Vec::new();
@@ -5170,6 +5315,7 @@ fn package_lock_entries(text: &str, deadline: Option<f64>) -> Vec<(String, Strin
 
 /// `_walk_package_lock_entries` (:4085-4095) — alias over `package_lock_entries`.
 // supply_chain_package_eval.py:4085-4095
+#[allow(dead_code)]
 fn walk_package_lock_entries(
     text: &str,
     deadline: Option<f64>,
@@ -5180,6 +5326,7 @@ fn walk_package_lock_entries(
 /// `_package_lock_candidate_names` (:4098-4106) — candidate dependency paths +
 /// normalized name for matching a target against package-lock entries.
 // supply_chain_package_eval.py:4098-4106
+#[allow(dead_code)]
 fn package_lock_candidate_names(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -5196,6 +5343,7 @@ fn package_lock_candidate_names(
 /// `_package_lock_target_versions_from_entries` (:4038-4054) — resolve each
 /// target's version from package-lock entries.
 // supply_chain_package_eval.py:4038-4054
+#[allow(dead_code)]
 fn package_lock_target_versions_from_entries(
     deps: &SupplyChainEvalDeps<'_>,
     parse_result: &LockfileParseResult,
@@ -5225,6 +5373,7 @@ fn package_lock_target_versions_from_entries(
 /// `_package_lock_target_versions` (:4019-4035) — package-lock.json target
 /// versions via the parsed result.
 // supply_chain_package_eval.py:4019-4035
+#[allow(dead_code)]
 fn package_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     parse_result: &LockfileParseResult,
@@ -5237,6 +5386,7 @@ fn package_lock_target_versions(
 /// manifest path; pip falls back to `requirements.txt` when the manifest has
 /// no deps.
 // supply_chain_package_eval.py:4007-4017
+#[allow(dead_code)]
 fn artifact_manifest_dependency_map(
     deps: &SupplyChainEvalDeps<'_>,
     package_manager: &str,
@@ -5263,6 +5413,7 @@ fn artifact_manifest_dependency_map(
 /// `_manifest_direct_dependency_names` (:3933-3962) — normalized direct
 /// dependency names across the artifact's manifests for `ecosystem`.
 // supply_chain_package_eval.py:3933-3962
+#[allow(dead_code)]
 fn manifest_direct_dependency_names(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -5307,6 +5458,7 @@ fn manifest_direct_dependency_names(
 /// `_manifest_dependency_versions` (:3965-4004) — resolve each target's exact
 /// version from manifest specifiers across the artifact's manifests.
 // supply_chain_package_eval.py:3965-4004
+#[allow(dead_code)]
 fn manifest_dependency_versions(
     deps: &SupplyChainEvalDeps<'_>,
     workspace_dir: Option<&Path>,
@@ -5377,6 +5529,7 @@ fn manifest_dependency_versions(
 
 /// `_composer_lock_target_versions` (:4134-4144).
 // supply_chain_package_eval.py:4134-4144
+#[allow(dead_code)]
 fn composer_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5389,6 +5542,7 @@ fn composer_lock_target_versions(
 
 /// `_gemfile_lock_target_versions` (:4147-4156).
 // supply_chain_package_eval.py:4147-4156
+#[allow(dead_code)]
 fn gemfile_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5401,6 +5555,7 @@ fn gemfile_lock_target_versions(
 
 /// `_cargo_lock_target_versions` (:4109-4115).
 // supply_chain_package_eval.py:4109-4115
+#[allow(dead_code)]
 fn cargo_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5414,6 +5569,7 @@ fn cargo_lock_target_versions(
 /// `_pnpm_lock_target_versions` (:4159-4231) — parse pnpm-lock.yaml direct
 /// dependency versions (top-level + `importers.`/default blocks).
 // supply_chain_package_eval.py:4159-4231
+#[allow(dead_code)]
 fn pnpm_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5460,9 +5616,7 @@ fn pnpm_lock_target_versions(
                 continue;
             }
             if dependency_name.is_some() && indent >= 4 && stripped.starts_with("version:") {
-                let v = stripped
-                    .splitn(2, ':')
-                    .nth(1)
+                let v = stripped.split_once(':').map(|x| x.1)
                     .unwrap_or("")
                     .trim()
                     .trim_matches('"')
@@ -5529,9 +5683,7 @@ fn pnpm_lock_target_versions(
             continue;
         }
         if dependency_name.is_some() && indent >= 8 && stripped.starts_with("version:") {
-            let v = stripped
-                .splitn(2, ':')
-                .nth(1)
+            let v = stripped.split_once(':').map(|x| x.1)
                 .unwrap_or("")
                 .trim()
                 .trim_matches('"')
@@ -5550,6 +5702,7 @@ fn pnpm_lock_target_versions(
 /// `_expected_yarn_selectors` (:4258-4267) — yarn.lock selector spellings a
 /// target may appear under.
 // supply_chain_package_eval.py:4258-4267
+#[allow(dead_code)]
 fn expected_yarn_selectors(target: &Map<String, Value>) -> Vec<String> {
     let requested =
         optional_string(target.get("version")).or_else(|| optional_string(target.get("range")));
@@ -5574,6 +5727,7 @@ fn expected_yarn_selectors(target: &Map<String, Value>) -> Vec<String> {
 /// `_yarn_lock_target_versions` (:4234-4255) — resolve yarn.lock `version`
 /// lines by matching a target's expected selectors.
 // supply_chain_package_eval.py:4234-4255
+#[allow(dead_code)]
 fn yarn_lock_target_versions(
     text: &str,
     targets: &[Map<String, Value>],
@@ -5637,6 +5791,7 @@ fn yarn_lock_target_versions(
 /// `_bun_lock_target_versions` (:4270-4290) — resolve bun.lock targets via
 /// unique-per-name versions, disambiguated by the requested range.
 // supply_chain_package_eval.py:4270-4290
+#[allow(dead_code)]
 fn bun_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     parse_result: &LockfileParseResult,
@@ -5681,6 +5836,7 @@ fn bun_lock_target_versions(
 /// `_toml_lock_direct_versions` (:4300-4319) — direct `{normalized_name:
 /// version}` map from a `[[package]]` TOML lockfile (poetry/uv shape).
 // supply_chain_package_eval.py:4300-4319
+#[allow(dead_code)]
 fn toml_lock_direct_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5714,6 +5870,7 @@ fn toml_lock_direct_versions(
 
 /// `_poetry_lock_direct_versions` (:4321) — alias over toml parser.
 // supply_chain_package_eval.py:4321
+#[allow(dead_code)]
 fn poetry_lock_direct_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5724,6 +5881,7 @@ fn poetry_lock_direct_versions(
 
 /// `_uv_lock_direct_versions` (:4322) — alias over toml parser.
 // supply_chain_package_eval.py:4322
+#[allow(dead_code)]
 fn uv_lock_direct_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5734,6 +5892,7 @@ fn uv_lock_direct_versions(
 
 /// `_poetry_lock_target_versions` (:4292-4298).
 // supply_chain_package_eval.py:4292-4298
+#[allow(dead_code)]
 fn poetry_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5749,6 +5908,7 @@ fn poetry_lock_target_versions(
 
 /// `_uv_lock_target_versions` (:4325-4332).
 // supply_chain_package_eval.py:4325-4332
+#[allow(dead_code)]
 fn uv_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5764,6 +5924,7 @@ fn uv_lock_target_versions(
 
 /// `_pipfile_lock_target_versions` (:4334-4341).
 // supply_chain_package_eval.py:4334-4341
+#[allow(dead_code)]
 fn pipfile_lock_target_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5780,6 +5941,7 @@ fn pipfile_lock_target_versions(
 /// `_pipfile_lock_direct_versions` (:4354-4368) — direct pypi deps from
 /// Pipfile.lock `default`/`develop` sections.
 // supply_chain_package_eval.py:4354-4368
+#[allow(dead_code)]
 fn pipfile_lock_direct_versions(
     deps: &SupplyChainEvalDeps<'_>,
     text: &str,
@@ -5813,6 +5975,7 @@ fn pipfile_lock_direct_versions(
 
 /// `_is_git_source_url` (:3648-3650).
 // supply_chain_package_eval.py:3648-3650
+#[allow(dead_code)]
 fn is_git_source_url(source_url: &str) -> bool {
     parse_npm_source_spec(Some(source_url))
         .map(|s| s.is_git())
@@ -5824,6 +5987,7 @@ fn is_git_source_url(source_url: &str) -> bool {
 /// in a known tarball/archive suffix (or is a non-registry source URL) is an
 /// externally-hosted archive subject to restricted-download rules.
 // restricted_archive_destination.py
+#[allow(dead_code)]
 fn is_external_https_archive_source(source_url: &str) -> bool {
     let lower = source_url.trim().to_lowercase();
     if !lower.starts_with("https://") {
@@ -5846,16 +6010,19 @@ fn is_external_https_archive_source(source_url: &str) -> bool {
 
 /// `_is_external_https_tarball_source` (:3651-3652).
 // supply_chain_package_eval.py:3651-3652
+#[allow(dead_code)]
 fn is_external_https_tarball_source(source_url: &str) -> bool {
     is_external_https_archive_source(source_url)
 }
 
 /// `_FIRST_PARTY_PYPI_PACKAGES` (:3031).
+#[allow(dead_code)]
 static FIRST_PARTY_PYPI_PACKAGES: LazyLock<BTreeSet<&'static str>> =
     LazyLock::new(|| ["hol-guard", "plugin-scanner"].into_iter().collect());
 
 /// `_own_package_name` (:3094-3110).
 // supply_chain_package_eval.py:3094-3110
+#[allow(dead_code)]
 fn own_package_name(deps: &SupplyChainEvalDeps<'_>, target: &Map<String, Value>) -> Option<String> {
     if optional_string(target.get("ecosystem")).as_deref() != Some("pypi") {
         return None;
@@ -5891,6 +6058,7 @@ fn own_package_name(deps: &SupplyChainEvalDeps<'_>, target: &Map<String, Value>)
 
 /// `_manifest_package_name` (:3469-3475).
 // supply_chain_package_eval.py:3469-3475
+#[allow(dead_code)]
 fn manifest_package_name(manifest_text: &str) -> Option<String> {
     let payload: Value = serde_json::from_str(if manifest_text.is_empty() {
         "{}"
@@ -5908,6 +6076,7 @@ fn manifest_package_name(manifest_text: &str) -> Option<String> {
 
 /// `_python_setup_script_looks_suspicious` (:3464-3468).
 // supply_chain_package_eval.py:3464-3468
+#[allow(dead_code)]
 fn python_setup_script_looks_suspicious(content: &str) -> bool {
     static SUSPICIOUS_RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
@@ -5922,6 +6091,7 @@ fn python_setup_script_looks_suspicious(content: &str) -> bool {
 
 /// `_local_python_path_text` (:3460-3461).
 // supply_chain_package_eval.py:3460-3461
+#[allow(dead_code)]
 fn local_python_path_text(raw_spec: &str) -> String {
     let trimmed = raw_spec.trim();
     // Strip a `file:` prefix if present.
@@ -5933,6 +6103,7 @@ fn local_python_path_text(raw_spec: &str) -> String {
 
 /// `_looks_like_explicit_local_python_path` (:3424-3434).
 // supply_chain_package_eval.py:3424-3434
+#[allow(dead_code)]
 fn looks_like_explicit_local_python_path(raw_spec: &str) -> bool {
     static DRIVE_RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^[A-Za-z]:[\\\\/]").expect("DRIVE_RE"));
@@ -5956,6 +6127,7 @@ fn looks_like_explicit_local_python_path(raw_spec: &str) -> bool {
 
 /// `_local_python_project_path` (:3438-3462).
 // supply_chain_package_eval.py:3438-3462
+#[allow(dead_code)]
 fn local_python_project_path(target: &Map<String, Value>, workspace_dir: &Path) -> Option<PathBuf> {
     let mut raw_spec = optional_string(target.get("raw_spec"));
     let source_url = optional_string(target.get("source_url"));
@@ -6025,6 +6197,7 @@ fn local_python_project_path(target: &Map<String, Value>, workspace_dir: &Path) 
 }
 
 /// Expand a leading `~` like Python's `Path.expanduser` (RuntimeError -> literal).
+#[allow(dead_code)]
 fn expand_user_path(text: &str) -> PathBuf {
     if let Some(rest) = text.strip_prefix("~/") {
         if let Some(home) = std::env::var_os("HOME") {
@@ -6039,6 +6212,7 @@ fn expand_user_path(text: &str) -> PathBuf {
 }
 
 /// `str.partition(sep)` — (before, sep, after); after is empty when sep absent.
+#[allow(dead_code)]
 fn py_partition<'a>(value: &'a str, sep: &str) -> (&'a str, &'a str, &'a str) {
     match value.find(sep) {
         Some(index) => (
@@ -6052,6 +6226,7 @@ fn py_partition<'a>(value: &'a str, sep: &str) -> (&'a str, &'a str, &'a str) {
 
 /// `_own_package_review_message` (:3148-3153).
 // supply_chain_package_eval.py:3148-3153
+#[allow(dead_code)]
 fn own_package_review_message(package_name: &str) -> String {
     format!(
         "HOL Guard cannot automatically allow this {package_name} install. \
@@ -6067,6 +6242,7 @@ fn own_package_review_message(package_name: &str) -> String {
 /// installed value we can resolve (via `CARGO_PKG_VERSION`), validated to a
 /// canonical PEP-440 release (no local segment).
 // supply_chain_package_eval.py:3075-3088
+#[allow(dead_code)]
 fn installed_project_version(deps: &SupplyChainEvalDeps<'_>, project_name: &str) -> Option<String> {
     // Only the guard's own distribution can be resolved without a Python
     // interpreter; anything else reports not-found.
@@ -6085,6 +6261,7 @@ fn installed_project_version(deps: &SupplyChainEvalDeps<'_>, project_name: &str)
 
 /// `_installed_release_reinstall_result` (:3112-3145).
 // supply_chain_package_eval.py:3112-3145
+#[allow(dead_code)]
 fn installed_release_reinstall_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -6113,6 +6290,7 @@ fn installed_release_reinstall_result(
 
 /// `_unknown_package_result` (:3157-3202).
 // supply_chain_package_eval.py:3157-3202
+#[allow(dead_code)]
 fn unknown_package_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -6188,6 +6366,7 @@ fn unknown_package_result(
 
 /// `_system_package_monitor_result` (:2893-2902).
 // supply_chain_package_eval.py:2893-2902
+#[allow(dead_code)]
 fn system_package_monitor_result(target: &Map<String, Value>) -> Map<String, Value> {
     heuristic_package_result(
         target,
@@ -6201,6 +6380,7 @@ fn system_package_monitor_result(target: &Map<String, Value>) -> Map<String, Val
 
 /// `_homebrew_package_monitor_result` (:2906-2926).
 // supply_chain_package_eval.py:2906-2926
+#[allow(dead_code)]
 fn homebrew_package_monitor_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -6242,6 +6422,7 @@ fn homebrew_package_monitor_result(
 
 /// `_unsupported_ecosystem_result` (:2929-2942).
 // supply_chain_package_eval.py:2929-2942
+#[allow(dead_code)]
 fn unsupported_ecosystem_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -6289,6 +6470,7 @@ fn unsupported_ecosystem_result(
 
 /// `_local_source_dependency_result` (:2944-2954).
 // supply_chain_package_eval.py:2944-2954
+#[allow(dead_code)]
 fn local_source_dependency_result(target: &Map<String, Value>) -> Option<Map<String, Value>> {
     let source_url = optional_string(target.get("source_url"))?;
     if !source_url.starts_with("file:") {
@@ -6305,6 +6487,7 @@ fn local_source_dependency_result(target: &Map<String, Value>) -> Option<Map<Str
 
 /// `_package_from_cloud_result` (:2984-3001).
 // supply_chain_package_eval.py:2984-3001
+#[allow(dead_code)]
 fn package_from_cloud_result(item: &Map<String, Value>) -> Map<String, Value> {
     let dependency_path = optional_string(item.get("dependencyPath"));
     let direct = match item.get("direct").and_then(Value::as_bool) {
@@ -6372,6 +6555,7 @@ fn package_from_cloud_result(item: &Map<String, Value>) -> Map<String, Value> {
 }
 
 /// `_ALTERNATE_PACKAGE_INDEX_FLAGS` (:3032-3043).
+#[allow(dead_code)]
 static ALTERNATE_PACKAGE_INDEX_FLAGS: LazyLock<BTreeSet<&'static str>> = LazyLock::new(|| {
     [
         "--index-url",
@@ -6389,6 +6573,7 @@ static ALTERNATE_PACKAGE_INDEX_FLAGS: LazyLock<BTreeSet<&'static str>> = LazyLoc
 });
 
 /// `_PACKAGE_SOURCE_ENV_NAMES` (:3044-3056).
+#[allow(dead_code)]
 static PACKAGE_SOURCE_ENV_NAMES: LazyLock<BTreeSet<&'static str>> = LazyLock::new(|| {
     [
         "PIP_EXTRA_INDEX_URL",
@@ -6408,6 +6593,7 @@ static PACKAGE_SOURCE_ENV_NAMES: LazyLock<BTreeSet<&'static str>> = LazyLock::ne
 
 /// `_command_uses_alternate_package_index` (:3059-3067).
 // supply_chain_package_eval.py:3059-3067
+#[allow(dead_code)]
 fn command_uses_alternate_package_index(artifact: &GuardArtifact) -> bool {
     let flags: BTreeSet<String> = string_tuple(artifact.metadata.get("flags"))
         .into_iter()
@@ -6437,6 +6623,7 @@ fn command_uses_alternate_package_index(artifact: &GuardArtifact) -> bool {
 
 /// `_bun_lockfile_binary_fallback_packages` (:3254-3300).
 // supply_chain_package_eval.py:3254-3300
+#[allow(dead_code)]
 fn bun_lockfile_binary_fallback_packages(
     targets: &[Map<String, Value>],
     artifact: &GuardArtifact,
@@ -6447,7 +6634,7 @@ fn bun_lockfile_binary_fallback_packages(
         return Vec::new();
     };
     let Some(Value::Array(lockfile_paths)) =
-        artifact.metadata.get("lockfile_paths").cloned().into()
+        artifact.metadata.get("lockfile_paths").cloned()
     else {
         return Vec::new();
     };
@@ -6515,6 +6702,7 @@ fn bun_lockfile_binary_fallback_packages(
 
 /// `_local_package_manifest_path` (:3354-3372).
 // supply_chain_package_eval.py:3354-3372
+#[allow(dead_code)]
 fn local_package_manifest_path(
     target: &Map<String, Value>,
     workspace_dir: Option<&Path>,
@@ -6562,6 +6750,7 @@ fn local_package_manifest_path(
 
 /// `_local_package_manifest_result` (:3303-3351).
 // supply_chain_package_eval.py:3303-3351
+#[allow(dead_code)]
 fn local_package_manifest_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -6624,6 +6813,7 @@ fn local_package_manifest_result(
 
 /// `_local_python_build_result` (:3375-3417).
 // supply_chain_package_eval.py:3375-3417
+#[allow(dead_code)]
 fn local_python_build_result(
     target: &Map<String, Value>,
     workspace_dir: Option<&Path>,
@@ -6673,6 +6863,7 @@ fn local_python_build_result(
 
 /// `_go_mod_replace_map` (:3630-3645).
 // supply_chain_package_eval.py:3630-3645
+#[allow(dead_code)]
 fn go_mod_replace_map(deps: &SupplyChainEvalDeps<'_>, text: &str) -> BTreeMap<String, String> {
     let mut replacements: BTreeMap<String, String> = BTreeMap::new();
     let mut in_replace_block = false;
@@ -6697,7 +6888,6 @@ fn go_mod_replace_map(deps: &SupplyChainEvalDeps<'_>, text: &str) -> BTreeMap<St
         let (original, _sep, replacement) = py_partition(&line, "=>");
         let normalized_original = original.split_whitespace().next().unwrap_or("").to_string();
         let normalized_replacement = replacement
-            .trim()
             .split_whitespace()
             .next()
             .unwrap_or("")
@@ -6714,6 +6904,7 @@ fn go_mod_replace_map(deps: &SupplyChainEvalDeps<'_>, text: &str) -> BTreeMap<St
 
 /// `_go_replace_result` (:3598-3628).
 // supply_chain_package_eval.py:3598-3628
+#[allow(dead_code)]
 fn go_replace_result(
     deps: &SupplyChainEvalDeps<'_>,
     target: &Map<String, Value>,
@@ -6778,6 +6969,7 @@ fn go_replace_result(
 
 /// `_target_requires_npm_source_review` (:3691-3693).
 // supply_chain_package_eval.py:3691-3693
+#[allow(dead_code)]
 fn target_requires_npm_source_review(target: &Map<String, Value>) -> bool {
     (optional_string(target.get("ecosystem"))
         .unwrap_or_default()
@@ -6792,6 +6984,7 @@ fn target_requires_npm_source_review(target: &Map<String, Value>) -> bool {
 
 /// `_external_archive_request_timeout_result` (:3849-3855).
 // supply_chain_package_eval.py:3849-3855
+#[allow(dead_code)]
 fn external_archive_request_timeout_result() -> Map<String, Value> {
     let mut r = Map::new();
     r.insert("decision".to_string(), Value::String("block".to_string()));
@@ -6812,6 +7005,7 @@ fn external_archive_request_timeout_result() -> Map<String, Value> {
 /// `_download_external_tarball` (:3858-3867).
 /// `download_restricted_archive(source_url, max_bytes=, timeout_seconds=)`.
 // supply_chain_package_eval.py:3858-3867
+#[allow(dead_code)]
 fn download_external_tarball(
     deps: &SupplyChainEvalDeps<'_>,
     source_url: &str,
@@ -6834,6 +7028,7 @@ fn download_external_tarball(
 /// the download path only when `retain_download` requests it; otherwise the
 /// seam-owned temp file is dropped (Python `downloaded.cleanup()`).
 // supply_chain_package_eval.py:3779-3846
+#[allow(dead_code)]
 fn scan_external_tarball(
     deps: &SupplyChainEvalDeps<'_>,
     source_url: &str,
@@ -6941,6 +7136,7 @@ fn scan_external_tarball(
 
 /// `_fallback_package_results` (:3205-3253).
 // supply_chain_package_eval.py:3205-3253
+#[allow(dead_code)]
 fn fallback_package_results(
     deps: &SupplyChainEvalDeps<'_>,
     targets: &[Map<String, Value>],
@@ -6997,6 +7193,7 @@ fn fallback_package_results(
 /// `_with_cloud_auth_reconnect_copy` (:1658-1683) — result-level variant:
 /// appends the `hol-guard connect` reconnect prompt to the user copy and
 /// re-normalizes it against the current policy action.
+#[allow(dead_code)]
 fn with_cloud_auth_reconnect_copy_result(mut evaluation: PackageEvalResult) -> PackageEvalResult {
     let reconnect_command = "hol-guard connect";
     let reconnect_summary = "Guard Cloud needs a fresh sign-in before shared review can resume.";
@@ -7038,6 +7235,7 @@ fn with_cloud_auth_reconnect_copy_result(mut evaluation: PackageEvalResult) -> P
 
 /// `_resolve_guard_sync_context` — derive `(auth_context, sync_url,
 /// workspace_id)` for the Cloud evaluation request.
+#[allow(dead_code)]
 fn resolve_guard_sync_context(
     deps: &SupplyChainEvalDeps<'_>,
     store: &dyn SupplyChainStore,
@@ -7064,6 +7262,7 @@ fn resolve_guard_sync_context(
 
 /// `_fetch_package_evaluation_response` — POST the evaluation request with the
 /// DPoP 401-forced-refresh retry semantics of `_evaluate_with_cloud` (:1336-1380).
+#[allow(dead_code)]
 fn fetch_package_evaluation_response(
     deps: &SupplyChainEvalDeps<'_>,
     store: &dyn SupplyChainStore,
@@ -7116,6 +7315,7 @@ fn fetch_package_evaluation_response(
 /// finalized `PackageEvalResult` (or `None` when `fail_closed_decision` is not
 /// `block` and status is not 403).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn cloud_http_fail_closed_evaluation_full(
     deps: &SupplyChainEvalDeps<'_>,
     status_code: u16,
@@ -7176,6 +7376,7 @@ fn cloud_http_fail_closed_evaluation_full(
 /// Returns `(evaluation, cloud_fallback_reason)`; `None` evaluation means the
 /// caller should fall back to local/bundle evaluation.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn evaluate_with_cloud(
     deps: &SupplyChainEvalDeps<'_>,
     store: &dyn SupplyChainStore,
@@ -7454,6 +7655,7 @@ fn evaluate_with_cloud(
 /// human-readable note when the result was served from the early-exit paths
 /// (parity with the Python early-return tuple shape).
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn evaluate_package_request_artifact_uncached(
     deps: &SupplyChainEvalDeps<'_>,
     artifact: &GuardArtifact,
@@ -8037,6 +8239,7 @@ fn evaluate_package_request_artifact_uncached(
 
 /// Convert a finalized `PackageEvalResult` back to the `EvaluationDraft` fields
 /// used by `cloud_result_should_defer_to_bundle` (which operates on drafts).
+#[allow(dead_code)]
 fn evaluation_to_draft(evaluation: &PackageEvalResult) -> EvaluationDraft {
     EvaluationDraft {
         decision: evaluation.decision.clone(),

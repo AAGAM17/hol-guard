@@ -67,6 +67,7 @@ struct ReadFactorRow {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ReadBasis {
     action_floor: String,
     proof_route: Option<String>,

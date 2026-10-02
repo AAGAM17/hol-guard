@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 
 use guard_contracts::canonical_utc_timestamp;
 use guard_policy_snapshot::policy_integrity::{
-    is_remote_policy_source, PolicyIntegrityVerification, POLICY_INTEGRITY_VERSION,
+    is_remote_policy_source, PolicyIntegrityVerification,
 };
 
 use crate::local_once_store::{
@@ -66,7 +66,7 @@ pub fn approval_reuse_claim_disposition(decision: &Value) -> Option<&'static str
         return None;
     }
     if decision.get("source").and_then(Value::as_str) == Some(APPROVAL_GATE_POLICY_SOURCE)
-        && !decision.get("expires_at").map_or(true, Value::is_null)
+        && !decision.get("expires_at").is_none_or(Value::is_null)
     {
         return Some("consumed");
     }
@@ -431,7 +431,7 @@ pub fn claim_approval_reuse_decisions(
         let decision_id = decision.get("decision_id");
         let key = if approval_id
             .and_then(Value::as_str)
-            .map_or(false, |s| !s.is_empty())
+            .is_some_and(|s| !s.is_empty())
         {
             ("approval_id", approval_id.cloned().unwrap_or(Value::Null))
         } else if decision_id.and_then(Value::as_i64).is_some() {

@@ -677,7 +677,7 @@ impl SupplyChainBundle {
                 parsed_packages.push(SupplyChainBundlePackage::from_dict(map)?);
             }
         }
-        let packages = deduplicate_bundle_packages(parsed_packages.iter().cloned().collect())?;
+        let packages = deduplicate_bundle_packages(parsed_packages.to_vec())?;
         let mut advisories = Vec::with_capacity(advisories_list.len());
         for item in &advisories_list {
             if let Value::Object(map) = item {
@@ -882,8 +882,7 @@ pub fn check_supply_chain_bundle_freshness(
     let age = current_time - generated_at_timestamp;
     if age > BUNDLE_MAX_AGE_SECONDS {
         return Err(SupplyChainBundleError::Expired(format!(
-            "Bundle age {:.0}s exceeds maximum allowed age of {:.0}s",
-            age, BUNDLE_MAX_AGE_SECONDS
+            "Bundle age {age:.0}s exceeds maximum allowed age of {BUNDLE_MAX_AGE_SECONDS:.0}s"
         )));
     }
     Ok(())
@@ -1090,11 +1089,7 @@ fn load_rsa_public_key_der(pem: &str) -> Result<Vec<u8>, SupplyChainBundleError>
     ];
     let is_rsa = if label == "PUBLIC KEY" {
         der.windows(RSA_OID_DER.len()).any(|w| w == RSA_OID_DER)
-    } else if label == "RSA PUBLIC KEY" {
-        true
-    } else {
-        false
-    };
+    } else { label == "RSA PUBLIC KEY" };
     if !is_rsa {
         return Err(SupplyChainBundleError::Signature(
             "Verification key must be RSA".to_string(),

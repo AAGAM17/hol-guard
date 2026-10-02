@@ -16,6 +16,7 @@ pub struct ShellPipe {
 }
 
 /// `_INPUT_REDIRECT_PATTERN`.
+#[allow(clippy::invalid_regex)]
 fn input_redirect_pattern() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {

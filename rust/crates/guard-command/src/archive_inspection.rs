@@ -157,6 +157,7 @@ fn is_lower_hex64(value: &str) -> bool {
 }
 
 /// `inspect_archive_native` (native_archive_inspection.py:101).
+#[allow(clippy::too_many_arguments)]
 pub fn inspect_archive_native(
     path: &Path,
     expected_sha256: &str,
@@ -367,7 +368,7 @@ pub fn inspect_archive_native(
     if completed.returncode != Some(0)
         || completed.output_limit_exceeded
         || completed.containment_failed
-        || completed.stdout.as_bytes().len() > RESULT_MAX_BYTES
+        || completed.stdout.len() > RESULT_MAX_BYTES
     {
         return result(
             "incomplete",
@@ -440,13 +441,11 @@ pub fn inspect_archive_native(
             status_value.as_deref(),
             Some("clean" | "blocked" | "incomplete")
         )
-        || code.as_deref().map(|c| c.len() > 0 && c.len() <= MAX_CODE_CHARS).unwrap_or(false)
-            == false
-        || message
+        || !code.as_deref().map(|c| !c.is_empty() && c.len() <= MAX_CODE_CHARS).unwrap_or(false)
+        || !message
             .as_deref()
-            .map(|m| m.len() > 0 && m.len() <= MAX_MESSAGE_CHARS)
+            .map(|m| !m.is_empty() && m.len() <= MAX_MESSAGE_CHARS)
             .unwrap_or(false)
-            == false
         || !matches!(
             severity.as_deref(),
             Some("low" | "medium" | "high" | "critical")

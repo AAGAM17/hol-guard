@@ -53,7 +53,6 @@ pub mod jsonc;
 #[cfg(unix)]
 pub mod launch_identity;
 #[cfg(unix)]
-#[cfg(unix)]
 pub mod launch_identity_binding;
 pub mod launch_identity_environment;
 pub mod native_command_catalog;
@@ -1012,9 +1011,6 @@ pub mod review_event_outbox_schema;
 pub mod sandbox;
 pub mod shims;
 pub mod signals;
-pub mod aibom_reporting;
-pub mod aibom_trust_metadata;
-pub mod inventory_contract;
 pub mod linux_artifact_supply_chain;
 pub mod supply_chain_bundle;
 pub mod supply_chain_package_identity;

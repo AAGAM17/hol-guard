@@ -1066,7 +1066,7 @@ fn temp_dir() -> PathBuf {
 fn semver_parse_version(text: &str) -> Option<(u64, u64, u64)> {
     let text = text.strip_prefix('v').unwrap_or(text);
     let core = text
-        .split(|ch| ch == '-' || ch == '+')
+        .split(['-', '+'])
         .next()
         .unwrap_or_default();
     let parts: Vec<&str> = core.split('.').collect();
@@ -1087,6 +1087,7 @@ fn semver_wildcard(text: &str) -> bool {
     matches!(text, "*" | "x" | "X")
 }
 
+#[allow(dead_code)]
 fn semver_partial_bounds(text: &str) -> Option<(u64, u64, u64, usize)> {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"^v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?").unwrap()

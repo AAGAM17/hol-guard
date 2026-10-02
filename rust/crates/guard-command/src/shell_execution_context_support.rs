@@ -576,6 +576,7 @@ fn punctuation_shlex(command: &str) -> Result<Vec<String>, String> {
 
 /// `ordered_segments` (:313-335) → `(segments, pending_controls)` where each
 /// segment is `(tokens, controls_before)`.
+#[allow(clippy::type_complexity)]
 pub fn ordered_segments(tokens: &[String]) -> (Vec<(Vec<String>, Vec<String>)>, Vec<String>) {
     let mut segments: Vec<(Vec<String>, Vec<String>)> = Vec::new();
     let mut current: Vec<String> = Vec::new();
@@ -699,7 +700,7 @@ fn segment_has_unmodeled_parent_cwd_effect(tokens: &[String]) -> bool {
             upper.strip_prefix("SIG").unwrap_or(&upper).to_owned()
         })
         .collect();
-    signals.contains("DEBUG") && handler != "" && handler != "-"
+    signals.contains("DEBUG") && !handler.is_empty() && handler != "-"
 }
 
 /// `_is_unknown_control_token` (:400-401).

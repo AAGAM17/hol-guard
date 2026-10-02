@@ -4,6 +4,7 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
+#[allow(clippy::invalid_regex)]
 fn heredoc_operator_pattern() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -30,6 +31,7 @@ pub struct ShellHeredoc {
 
 /// `ShellCommandSubstitution` (:25-34).
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct ShellCommandSubstitution {
     pub kind: &'static str, // "dollar" | "backtick"
     pub body: String,
@@ -174,9 +176,9 @@ pub fn mask_heredoc_bodies(command: &str, heredocs: &[ShellHeredoc]) -> String {
     }
     let mut characters: Vec<char> = command.chars().collect();
     for heredoc in heredocs {
-        for index in heredoc.body_start..heredoc.end {
-            if characters[index] != '\n' {
-                characters[index] = ' ';
+        for character in characters.iter_mut().take(heredoc.end).skip(heredoc.body_start) {
+            if *character != '\n' {
+                *character = ' ';
             }
         }
     }
@@ -184,12 +186,17 @@ pub fn mask_heredoc_bodies(command: &str, heredocs: &[ShellHeredoc]) -> String {
 }
 
 /// `mask_complete_heredocs` (:145-153).
+#[allow(dead_code)]
 pub fn mask_complete_heredocs(command: &str, heredocs: &[ShellHeredoc]) -> String {
     let mut characters: Vec<char> = mask_heredoc_bodies(command, heredocs).chars().collect();
     for heredoc in heredocs {
-        for index in heredoc.operator_start..heredoc.declaration_end {
-            if characters[index] != '\n' {
-                characters[index] = ' ';
+        for character in characters
+            .iter_mut()
+            .take(heredoc.declaration_end)
+            .skip(heredoc.operator_start)
+        {
+            if *character != '\n' {
+                *character = ' ';
             }
         }
     }

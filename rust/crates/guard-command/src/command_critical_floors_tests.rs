@@ -98,6 +98,7 @@ fn to_v1(row: &V1Row) -> CanonicalCommandV1 {
 }
 
 #[test]
+#[allow(clippy::type_complexity)]
 fn critical_floor_factors_match_python_oracle() {
     let raw = include_str!("../testdata/critical_floors_oracle.json");
     let rows: Vec<OracleRow> = serde_json::from_str(raw).expect("oracle parses");

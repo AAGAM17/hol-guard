@@ -184,12 +184,12 @@ def codex_install_transaction(
     # Same-home callers contend on this lock before any target file lock.
     # The home directory is created only after the configuration lock is held,
     # so a competing path cannot leave a new home behind.
-    with _home_owner_lock(guard_home, deadline=deadline):
-        with (
-            codex_configuration_lock(config_path, deadline=deadline),
-            _guard_home_install_transaction(guard_home, config_path, actor=actor, deadline=deadline) as owner,
-        ):
-            yield owner
+    with (
+        _home_owner_lock(guard_home, deadline=deadline),
+        codex_configuration_lock(config_path, deadline=deadline),
+        _guard_home_install_transaction(guard_home, config_path, actor=actor, deadline=deadline) as owner,
+    ):
+        yield owner
 
 
 @contextmanager

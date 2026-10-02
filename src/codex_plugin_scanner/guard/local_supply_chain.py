@@ -261,6 +261,10 @@ def _package_intent_parser_module():
     return importlib.import_module(".runtime.package_intent_parser", __package__)
 
 
+def _native_package_authority_module():
+    return importlib.import_module(".native_package_authority", __package__)
+
+
 def _supply_chain_package_eval_module():
     return importlib.import_module(".runtime.supply_chain_package_eval", __package__)
 
@@ -286,7 +290,77 @@ def _resolve_guard_sync_auth_context(store: GuardStore):
 
 
 def evaluate_package_request_artifact(*args: object, **kwargs: object):
+    native = _evaluate_package_request_artifact_native(args, kwargs)
+    if native is not None:
+        return native
     return _supply_chain_package_eval_module().evaluate_package_request_artifact(*args, **kwargs)
+
+
+def _parse_package_intent_native(
+    raw_command: str,
+    *,
+    environment: Mapping[str, str] | None,
+    workspace: Path | None,
+    harness: str,
+) -> PackageIntent | None:
+    """Try the resident ``package_intent_parse`` op; ``None`` falls back to
+    the Python parser."""
+    try:
+        payload = _native_package_authority_module().package_intent_parse_native(
+            command=raw_command,
+            cwd=str(workspace if workspace is not None else Path.cwd()),
+            env=dict(environment) if environment is not None else None,
+            harness=harness,
+            workspace=workspace,
+        )
+    except Exception:  # noqa: BLE001 - transport/contract failures degrade to the Python parser
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return PackageIntent.from_dict(payload)
+    except (TypeError, ValueError):
+        return None
+
+
+def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:
+    """Best-effort native evaluation through the resident package authority.
+
+    ``None`` means transport failure (or an unsupported call shape), so the
+    caller falls back to the Python evaluator. Business errors propagate.
+    """
+    if args:
+        return None
+    artifact = kwargs.get("artifact")
+    store = kwargs.get("store")
+    if artifact is None or store is None:
+        return None
+    to_dict = getattr(artifact, "to_dict", None)
+    if not callable(to_dict):
+        return None
+    guard_home = getattr(store, "guard_home", None)
+    store_path = getattr(store, "path", None)
+    if not isinstance(guard_home, Path) or not isinstance(store_path, Path):
+        return None
+    workspace_dir = kwargs.get("workspace_dir")
+    if workspace_dir is not None and not isinstance(workspace_dir, Path):
+        return None
+    now = kwargs.get("now")
+    if now is not None and not isinstance(now, str):
+        return None
+    native_authority = _native_package_authority_module()
+    payload = native_authority.supply_chain_eval_native(
+        artifact=to_dict(),
+        guard_home=guard_home,
+        store_path=store_path,
+        workspace_dir=workspace_dir,
+        now=now,
+        external_archive_network_authorized=bool(kwargs.get("external_archive_network_authorized", False)),
+        retain_external_archive_blob=bool(kwargs.get("retain_external_archive_blob", False)),
+    )
+    if payload is None:
+        return None
+    return native_authority.evaluation_from_native_payload(payload)
 
 
 def _is_package_request_evaluation(value: object) -> TypeGuard[Any]:
@@ -1406,11 +1480,18 @@ def _build_package_protect_authority(
         guard_home=store.guard_home,
         launch_cwd=launch_cwd,
     )
-    intent = _package_intent_parser_module().parse_package_intent(
+    intent = _parse_package_intent_native(
         shlex.join(command),
-        workspace=launch_cwd,
         environment=launch_environment,
+        workspace=launch_cwd,
+        harness=invoking_harness or _LOCAL_SUPPLY_CHAIN_HARNESS,
     )
+    if intent is None:
+        intent = _package_intent_parser_module().parse_package_intent(
+            shlex.join(command),
+            workspace=launch_cwd,
+            environment=launch_environment,
+        )
     if intent is None:
         return None
     sanitized_intent = replace(intent, redacted_command=shlex.join(redacted_command_tokens(command)))

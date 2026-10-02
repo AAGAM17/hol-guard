@@ -72,7 +72,7 @@ from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identit
 from ..runtime.package_execution_policy import is_execution_permitted
 from ..runtime.package_intent import build_package_request_artifact, extract_package_intent_request
 from ..runtime.signals import RiskSeverityLabel, RiskSignalV2
-from ..runtime.supply_chain_package_eval import evaluate_package_request_artifact
+from ..local_supply_chain import evaluate_package_request_artifact
 from ..runtime.surface_server import GuardSurfaceRuntime
 from ..store import GuardStore
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _tool_decision_scanner_evidence

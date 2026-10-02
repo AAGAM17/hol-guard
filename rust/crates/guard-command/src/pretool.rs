@@ -305,7 +305,15 @@ pub(crate) fn benign_command_segments(
                 && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments);
             let path_free = matches!(
                 basename,
-                "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "date"
+                "pwd"
+                    | "true"
+                    | "echo"
+                    | "printf"
+                    | "which"
+                    | "whoami"
+                    | "uname"
+                    | "date"
+                    | "sleep"
             ) || segment.arguments.is_empty()
                 || stdin_filter;
             let all_previous_benign = model.segments[..index]
@@ -348,6 +356,7 @@ fn exact_safe_segment_with_context(
         }
         "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "stat" => true,
         "date" => safe_reads::safe_date_arguments(&segment.arguments),
+        "sleep" => safe_reads::safe_sleep_arguments(&segment.arguments),
         "ls" => safe_reads::safe_listing_arguments(&segment.arguments, context),
         "cat" => safe_reads::safe_plain_file_arguments(&segment.arguments, context),
         "cp" => {

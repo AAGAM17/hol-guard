@@ -1,3 +1,21 @@
+pub(super) fn safe_sleep_arguments(arguments: &[String]) -> bool {
+    let [duration] = arguments else {
+        return false;
+    };
+    if duration.is_empty()
+        || duration.len() > 16
+        || !duration
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b'.')
+        || duration.bytes().filter(|byte| *byte == b'.').count() > 1
+    {
+        return false;
+    }
+    duration
+        .parse::<f64>()
+        .is_ok_and(|seconds| (0.0..=3600.0).contains(&seconds))
+}
+
 pub(super) fn safe_date_arguments(arguments: &[String]) -> bool {
     let mut saw_format = false;
     let mut expect_epoch = false;

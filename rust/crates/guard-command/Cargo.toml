@@ -19,6 +19,7 @@ toml.workspace = true
 roxmltree.workspace = true
 getrandom.workspace = true
 ring.workspace = true
+rsa.workspace = true
 base64ct.workspace = true
 
 [build-dependencies]

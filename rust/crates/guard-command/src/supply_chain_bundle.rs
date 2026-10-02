@@ -7,15 +7,20 @@
 //!     fail-closed error strings verbatim.
 //!   - `supply_chain_bundle_runtime.py` (:349) — verification and offline
 //!     evaluation. RSA-PSS-SHA256 signature verification is a crypto seam
-//!     (`RsaPssVerify`) since `ring` lacks DER-key loading; the default
-//!     implementation uses `ring::signature::UnparsedPublicKey` over the
-//!     SPKI DER recovered from the advertised PEM.
+//!     (`RsaPssVerify`) since the default implementation must support
+//!     maximum-length RSA-PSS salts and both SPKI and PKCS#1 public keys.
 
 use std::collections::HashMap;
 use std::fmt;
 
 use base64ct::{Base64, Encoding};
 use guard_contracts::write_canonical_json;
+use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::pkcs8::DecodePublicKey;
+use rsa::pss::{Signature as RsaPssSignature, VerifyingKey as RsaPssVerifyingKey};
+use rsa::signature::Verifier;
+use rsa::traits::PublicKeyParts;
+use rsa::RsaPublicKey;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -1014,8 +1019,7 @@ pub trait RsaPssVerify {
     ) -> Result<(), String>;
 }
 
-/// Default seam — `ring::signature::UnparsedPublicKey` with
-/// `RSA_PSS_2048_8192_SHA256` (auto salt length ↔ `PSS.MAX_LENGTH`).
+/// Default seam — verifies RSA-PSS-SHA256 with a maximum-length salt.
 pub struct RingRsaPssVerify;
 
 impl RsaPssVerify for RingRsaPssVerify {
@@ -1025,13 +1029,24 @@ impl RsaPssVerify for RingRsaPssVerify {
         payload: &[u8],
         signature: &[u8],
     ) -> Result<(), String> {
-        let public_key = ring::signature::UnparsedPublicKey::new(
-            &ring::signature::RSA_PSS_2048_8192_SHA256,
-            public_key_der,
-        );
-        public_key
-            .verify(payload, signature)
-            .map_err(|_| "ring rejected the signature".to_string())
+        let public_key = match RsaPublicKey::from_public_key_der(public_key_der) {
+            Ok(key) => key,
+            Err(_) => RsaPublicKey::from_pkcs1_der(public_key_der)
+                .map_err(|_| "failed to parse RSA public key".to_string())?,
+        };
+        let modulus_bits = public_key.n().bits();
+        if !(2048..=8192).contains(&modulus_bits) {
+            return Err("RSA modulus must be between 2048 and 8192 bits".to_string());
+        }
+        let encoded_message_len = ((modulus_bits - 1).div_ceil(8)) as usize;
+        let salt_len = encoded_message_len - Sha256::output_size() - 2;
+        let verifying_key =
+            RsaPssVerifyingKey::<Sha256>::new_with_salt_len(public_key, salt_len);
+        let signature = RsaPssSignature::try_from(signature)
+            .map_err(|_| "invalid RSA-PSS signature".to_string())?;
+        verifying_key
+            .verify(payload, &signature)
+            .map_err(|_| "RSA-PSS verification failed".to_string())
     }
 }
 
@@ -1226,6 +1241,7 @@ pub fn evaluate_cached_supply_chain_bundle(
     }
     let package = matches
         .iter()
+        .rev()
         .max_by_key(|item| item.risk_score)
         .expect("non-empty matches");
     if let Some(blocking_reason) = blocking_bundle_reason(package) {

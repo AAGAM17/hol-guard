@@ -1092,15 +1092,17 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 expired = [request for request, deadline in self.unclassified_connections.values() if deadline <= now]
             for request in expired:
                 headers_complete = self._buffered_request_headers_complete(request)
-                # The handler can classify a request after the expiry snapshot.
-                # Recheck ownership and close under the classification lock.
                 with self.unclassified_connections_lock:
                     current = self.unclassified_connections.get(id(request))
                     if current is None or current[0] is not request or current[1] > now:
                         continue
-                    self.unclassified_connections.pop(id(request))
-                    if not headers_complete:
-                        self._close_unclassified_socket(request)
+                    owned_by_pending = id(request) in self.pending_classifications
+                    if not owned_by_pending:
+                        self.unclassified_connections.pop(id(request))
+                        if not headers_complete:
+                            self._close_unclassified_socket(request)
+                if owned_by_pending:
+                    self._discard_request(request)
 
     def _advance_pending_classifications(self) -> None:
         with self.unclassified_connections_lock:

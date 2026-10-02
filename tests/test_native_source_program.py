@@ -87,8 +87,6 @@ def example(compiler: Path, build: dict) -> dict:
 @requires_fresh_decision_diff
 def test_checked_in_program_matches_native_authoring(compiler: Path, compiled: dict) -> None:
     checked_in = json.loads((ROOT / "contracts/extensions/native-command-program.v1.json").read_bytes())
-    if checked_in.get("implementation_digest") != compiled["implementation_digest"]:
-        pytest.skip("native implementation inputs changed; maintainer-owned projections are regenerated after merge")
     assert checked_in == compiled["program"]
     result = subprocess.run(
         [str(compiler), "evaluate-batch"],

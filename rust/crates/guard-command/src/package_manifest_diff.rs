@@ -1698,9 +1698,10 @@ mod tests {
             ("package-lock.json", r#"{"dependencies":{"left":{"version":"1.0","dependencies":{"nested":{"version":"2.0"}}},"right":{"version":"3.0"}}}"#),
             ("requirements.txt", "flask==2.0 # comment\nrequests>=2\n-e ./local\n-r other.txt\nurllib3 @ https://example.com/u.whl --hash=sha256:ab\n"),
         ];
+        let python_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src");
         for (path, text) in fixtures {
             let output = Command::new("python3")
-                .env("PYTHONPATH", "/tmp/hg-rtm008/src")
+                .env("PYTHONPATH", python_path.as_os_str())
                 .args(["-c", ORACLE_SCRIPT, path, text])
                 .output()
                 .expect("python3 must exist for oracle test");

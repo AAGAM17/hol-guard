@@ -222,36 +222,34 @@ pub struct InventoryDeps<'a> {
 
 /// `_AIBOM_METADATA_KEYS` — keys extracted verbatim into AIBOM metadata.
 pub static AIBOM_METADATA_KEYS: &[&str] = &[
-    "sourceOfTruth",
-    "sourceLinks",
     "instructionRole",
-    "serverCommand",
-    "serverUrl",
-    "serverTransport",
-    "toolName",
-    "artifactType",
-    "pluginRoot",
+    "localSecurity",
+    "registryIdentity",
+    "skillDirectoryIdentity",
+    "sourceLinks",
+    "sourceOfTruth",
+    "trustLayers",
+    "trustResolution",
+    "unverifiedAdapterEvidence",
+    "versionInfo",
 ];
 
 /// `_FREE_FORM_RECORD_KEYS` — passthrough metadata keys.
-pub static FREE_FORM_RECORD_KEYS: &[&str] = &["localSecurity", "trustResolution", "trustLayers"];
+pub static FREE_FORM_RECORD_KEYS: &[&str] = &["metadata", "evidence"];
 
 /// `_INVENTORY_DATETIME_KEYS` — fields normalized through
 /// `_normalize_inventory_datetime`.
-pub static INVENTORY_DATETIME_KEYS: &[&str] = &["capturedAt"];
+pub static INVENTORY_DATETIME_KEYS: &[&str] = &[
+    "capturedAt",
+    "completedAt",
+    "firstSeenAt",
+    "generatedAt",
+    "lastSeenAt",
+    "startedAt",
+];
 
 /// `_OPTIONAL_ONLY_CONTRACT_KEYS` — AIBOM metadata keys emitted only when set.
-pub static OPTIONAL_ONLY_CONTRACT_KEYS: &[&str] = &[
-    "sourceOfTruth",
-    "sourceLinks",
-    "instructionRole",
-    "serverCommand",
-    "serverUrl",
-    "serverTransport",
-    "toolName",
-    "artifactType",
-    "pluginRoot",
-];
+pub static OPTIONAL_ONLY_CONTRACT_KEYS: &[&str] = &["summary"];
 
 // ---------------------------------------------------------------------------
 // Small helpers.
@@ -421,6 +419,9 @@ fn _inventory_source_json(source: &GuardInventorySource) -> Value {
     obj.insert("sourceType".into(), json!(source.source_type));
     obj.insert("status".into(), json!(source.status));
     obj.insert("detail".into(), json!(source.detail));
+    if !source.captured_at.is_empty() {
+        obj.insert("capturedAt".into(), json!(source.captured_at));
+    }
     for (k, v) in &source.extra {
         obj.insert(_snake_to_camel_case_key(k), v.clone());
     }

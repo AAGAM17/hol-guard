@@ -48,6 +48,7 @@ pub mod github_workflow_authorization;
 pub mod github_workflow_operations;
 pub mod command_model;
 mod command_segment_parsing;
+pub mod launch_identity_binding;
 mod data_flow;
 mod env_wrapper;
 mod command_structure;

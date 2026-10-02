@@ -1238,16 +1238,23 @@ pub fn evaluate_package_request_artifact(
     external_archive_network_authorized: bool,
     retain_external_archive_blob: bool,
 ) -> EvalResult<PackageEvalResult> {
-    let _ = (
+    // Python wraps the call in `_LOCKFILE_PARSE_CACHE` contextvar scope; the
+    // Rust equivalent is the seam-owned cache inside `deps.lockfile`, so the
+    // wrapper is a straight delegation.
+    let (result, error) = evaluate_package_request_artifact_uncached(
+        deps,
         artifact,
         store,
-        deps,
         workspace_dir,
         now,
         external_archive_network_authorized,
         retain_external_archive_blob,
     );
-    Err(EvalError::Internal("not implemented".into()))
+    match (result, error) {
+        (Some(result), _) => Ok(result),
+        (None, Some(message)) => Err(EvalError::Internal(message)),
+        (None, None) => Err(EvalError::Internal("evaluate_package_request_artifact: no result".into())),
+    }
 }
 
 // ---------------------------------------------------------------------------

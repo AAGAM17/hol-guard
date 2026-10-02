@@ -1712,15 +1712,20 @@ class CodexHarnessAdapter(HarnessAdapter):
                 )
             return state
         except BaseException:
-            require_unchanged_config_for_rollback(config_path, original_config, rendered_config.encode("utf-8"))
+            conflict: RuntimeError | None = None
+            try:
+                require_unchanged_config_for_rollback(config_path, original_config, rendered_config.encode("utf-8"))
+            except RuntimeError as exc:
+                conflict = exc
             rollback_error: BaseException | None = None
             try:
-                if original_config is None:
-                    if config_path.is_symlink():
-                        raise RuntimeError("Guard refused to unlink a symlink while rolling back Codex config.")
-                    config_path.unlink(missing_ok=True)
-                else:
-                    atomic_write_text(config_path, original_config.decode("utf-8"), mode=0o600)
+                if conflict is None:
+                    if original_config is None:
+                        if config_path.is_symlink():
+                            raise RuntimeError("Guard refused to unlink a symlink while rolling back Codex config.")
+                        config_path.unlink(missing_ok=True)
+                    else:
+                        atomic_write_text(config_path, original_config.decode("utf-8"), mode=0o600)
                 restore_private_file(manifest_path, original_manifest)
                 restore_private_file(secret_path, original_secret)
             except BaseException as exc:  # pragma: no cover - catastrophic local I/O failure
@@ -1729,6 +1734,8 @@ class CodexHarnessAdapter(HarnessAdapter):
                 raise RuntimeError(
                     "Codex hook transaction failed and rollback could not be completed."
                 ) from rollback_error
+            if conflict is not None:
+                raise conflict
             raise
 
     @staticmethod

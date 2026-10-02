@@ -982,8 +982,16 @@ mod tests {
     fn status_rejects_manifest_field_mismatch() {
         CapabilitiesProbe::clear();
         for (idx, (rule_digest, build_sha, want)) in [
-            ("x".repeat(64), "e".repeat(40), "native_manifest_rule_mismatch"),
-            ("d".repeat(64), "x".repeat(40), "native_manifest_build_mismatch"),
+            (
+                "x".repeat(64),
+                "e".repeat(40),
+                "native_manifest_rule_mismatch",
+            ),
+            (
+                "d".repeat(64),
+                "x".repeat(40),
+                "native_manifest_build_mismatch",
+            ),
         ]
         .into_iter()
         .enumerate()

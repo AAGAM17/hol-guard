@@ -32,17 +32,19 @@ def test_config_edit_during_failed_write_survives_rollback(
     original_write = adapter_module.atomic_write_text
     concurrent_text = 'model = "user-selected-model"\n'
     injected = False
-    transaction_files: dict[Path, bytes] = {}
+    # Snapshot transaction participants before the transaction begins so the
+    # pre-transaction state (not the post-manifest-write state) is the baseline.
+    transaction_files: dict[Path, bytes | None] = {}
+    for participant in (
+        hook_manifest_path(context.guard_home, config_path),
+        hook_secret_path(context.guard_home),
+    ):
+        transaction_files[participant] = participant.read_bytes() if participant.exists() else None
 
     def interrupted_write(path: Path, text: str, *, mode: int = 0o600, on_publish=None) -> None:
         nonlocal injected
         if path == config_path and not injected:
             injected = True
-            for participant in (
-                hook_manifest_path(context.guard_home, config_path),
-                hook_secret_path(context.guard_home),
-            ):
-                transaction_files[participant] = participant.read_bytes()
             original_write(path, concurrent_text, mode=mode)
             raise OSError("injected configuration write failure after another writer")
         original_write(path, text, mode=mode, on_publish=on_publish)
@@ -55,9 +57,48 @@ def test_config_edit_during_failed_write_survives_rollback(
     assert config_path.is_file()
     assert config_path.read_text(encoding="utf-8") == concurrent_text
     assert not adapter_module.codex_native_hook_state(context)["protection_active"]
-    assert transaction_files
     for participant, snapshot in transaction_files.items():
-        assert participant.read_bytes() == snapshot
+        if snapshot is None:
+            assert not participant.exists()
+        else:
+            assert participant.read_bytes() == snapshot
+
+
+def test_deleted_config_after_publish_still_rolls_back_manifest_and_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = tmp_path / "account-profile"
+    profile.mkdir(mode=0o700)
+    monkeypatch.setattr(locks, "_account_home", lambda: profile)
+    context = HarnessContext(
+        home_dir=tmp_path / "home",
+        workspace_dir=None,
+        guard_home=tmp_path / "guard-home",
+    )
+    adapter = CodexHarnessAdapter()
+    config_path = adapter._hook_config_path(context)
+    original_write = adapter_module.atomic_write_text
+    injected = False
+
+    def deleting_write(path: Path, text: str, *, mode: int = 0o600, on_publish=None) -> None:
+        nonlocal injected
+        if path == config_path and not injected:
+            injected = True
+            original_write(path, text, mode=mode, on_publish=on_publish)
+            path.unlink()
+            raise OSError("injected configuration write failure after a competing deletion")
+        original_write(path, text, mode=mode, on_publish=on_publish)
+
+    monkeypatch.setattr(adapter_module, "atomic_write_text", deleting_write)
+    with pytest.raises(RuntimeError, match="codex_hook_rollback_conflict"):
+        adapter.install(context)
+
+    assert injected
+    assert not config_path.exists()
+    assert not hook_manifest_path(context.guard_home, config_path).exists()
+    assert not hook_secret_path(context.guard_home).exists()
+    assert not adapter_module.codex_native_hook_state(context)["protection_active"]
+
 
 
 @pytest.mark.parametrize(

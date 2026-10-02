@@ -40,7 +40,7 @@ def require_unchanged_config_for_rollback(
     try:
         before = path.lstat()
     except FileNotFoundError:
-        if original is None:
+        if original is None and written_identity is None:
             return
         raise _conflict() from None
     except OSError as error:

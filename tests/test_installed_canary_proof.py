@@ -289,6 +289,10 @@ def test_verified_wheel_detects_payload_tamper_even_when_installed_record_is_rew
     cache_dir = package / "__pycache__"
     cache_dir.mkdir()
     malicious_cache = cache_dir / f"__init__.{sys.implementation.cache_tag}.pyc"
+    import py_compile
+
+    py_compile.compile(str(module), cfile=str(malicious_cache), doraise=True)
+    assert verify_wheel_payloads(distribution, wheel) == 2
     source_stat = module.stat()
     malicious_code = compile("INJECTED = True\n", str(module), "exec")
     header = importlib.util.MAGIC_NUMBER + struct.pack("<III", 0, int(source_stat.st_mtime), source_stat.st_size)

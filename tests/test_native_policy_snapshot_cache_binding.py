@@ -6,7 +6,9 @@ import os
 import secrets
 import time
 from collections.abc import Mapping
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -81,8 +83,9 @@ def _write_resident_authority(guard_home: Path, snapshot: Mapping[str, object], 
     path = guard_home / "native-runtime" / "policy-snapshot-v3.json"
     if os.name == "nt":
         from codex_plugin_scanner.guard import native_policy_snapshot as api
-        from codex_plugin_scanner.guard.native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_BYTES
+        from codex_plugin_scanner.guard.native_policy_snapshot_constants import POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES
 
+        # chmod does not create the protected DACL required by the Windows reader.
         with api._windows_private_state_binding(guard_home) as binding:
             api._windows_write_private_file_atomic(
                 parent_path=binding.path,
@@ -91,7 +94,7 @@ def _write_resident_authority(guard_home: Path, snapshot: Mapping[str, object], 
                 temporary_name=f".policy-snapshot-v3.json.{secrets.token_hex(16)}.tmp",
                 destination_name=path.name,
                 payload=_canonical_json_bytes_v3(record),
-                maximum_bytes=POLICY_SNAPSHOT_MAX_BYTES,
+                maximum_bytes=POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES,
                 kind="cache",
             )
         return
@@ -105,6 +108,27 @@ def _write_lifecycle_generation(guard_home: Path, generation: object) -> None:
     resident = guard_home / "native-runtime" / "resident-v3-test"
     resident.mkdir(parents=True, exist_ok=True)
     (resident / f"generation-{generation:020d}.json").write_text("{}", encoding="utf-8")
+
+
+def test_windows_authority_fixture_uses_protected_atomic_file_writer(tmp_path, monkeypatch):
+    from codex_plugin_scanner.guard import native_policy_snapshot as api
+    from codex_plugin_scanner.guard.native_policy_snapshot_constants import POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES
+
+    snapshot = {"generation": 1, "policy_digest": "b" * 64}
+    binding = SimpleNamespace(path=tmp_path / "native-runtime", handle=object(), handles=[])
+    calls = []
+    monkeypatch.setattr("tests.test_native_policy_snapshot_cache_binding.os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(api, "_windows_private_state_binding", lambda root: nullcontext(binding))
+    monkeypatch.setattr(api, "_windows_write_private_file_atomic", lambda **kwargs: calls.append(kwargs))
+    _write_resident_authority(tmp_path, snapshot, b"m" * 32)
+    assert len(calls) == 1
+    assert calls[0]["parent_path"] == binding.path
+    assert calls[0]["parent_handle"] is binding.handle
+    assert calls[0]["directory_handles"] is binding.handles
+    assert calls[0]["destination_name"] == "policy-snapshot-v3.json"
+    assert calls[0]["maximum_bytes"] == POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES
+    assert b'"floor_mac"' in calls[0]["payload"]
+    assert not binding.path.exists()
 
 
 def _ready_worker(

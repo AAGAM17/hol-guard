@@ -1,4 +1,4 @@
-//! Native-runtime admission value models + bounded decoders.
+//! Structured values shared across the Python/Rust native-runtime boundary.
 //!
 //! Port of `native_runtime_values.py` — the manifest/capabilities admission
 //! contract and the output-digest/parity oracles. These decoders are the
@@ -7,11 +7,16 @@
 //! validated before it is trusted. Malformed payloads decode to `None`
 //! (fail-closed), never panic.
 //!
+//! Everything here is pure: no IO, no spawn, no env. FS/launch admission
+//! lives in `guard-runtime::native_runtime_admission`; process-local health
+//! lives in `guard-runtime::native_runtime_resilience`.
 //! `_python_package_version` stays Python-side (importlib introspection);
 //! the Rust side takes the version as a string input and owns only the
 //! comparison.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 
 /// `NativeRuntimeManifest` (`native_runtime_values.py:76-85`). The validated
 /// admission contract for a bundled/discovered runtime artifact.
@@ -232,6 +237,45 @@ pub fn identity_key(identity_sha256: Option<&str>) -> String {
     match identity_sha256 {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => "0".repeat(64),
+    }
+}
+
+/// `NativeRuntimeStatus` (`native_runtime_values.py:89-99`): the status
+/// object surfaced to `native_runtime_status()`. `identity`/`capabilities`/
+/// `manifest` are `Option`s mirroring the Python `| None = None` defaults.
+/// `identity` carries the validated identity's path (as a string — the wire
+/// keeps Path types host-side) + size + mtime_ns + sha256.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NativeRuntimeStatusV1 {
+    pub mode: NativeMode,
+    pub available: bool,
+    pub compatible: bool,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<RuntimeIdentityV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<NativeRuntimeCapabilitiesV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<NativeRuntimeManifestV1>,
+}
+
+/// Wire-shape of `NativeRuntimeIdentity` for status/report surfaces —
+/// `path` is the platform-path string, not a `Path`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeIdentityV1 {
+    pub path: String,
+    pub size: i64,
+    pub mtime_ns: u64,
+    pub sha256: String,
+}
+
+/// `_identity_key(status)` — the status's content key when an identity is
+/// present, else the 64-zero sentinel. Same contract as `identity_key` but
+/// on the status object (Python takes `NativeRuntimeStatus`).
+pub fn status_identity_key(status: &NativeRuntimeStatusV1) -> String {
+    match &status.identity {
+        Some(id) => id.sha256.clone(),
+        None => "0".repeat(64),
     }
 }
 

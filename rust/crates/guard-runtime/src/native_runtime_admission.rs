@@ -10,15 +10,28 @@
 //! runtime's `FileIdentity` and the caller-supplied package version.
 //!
 //! The isolated spawn environment lives here too so a one-shot runtime launch
-//! never inherits user-controlled PATH/loader vars. The capabilities-probe
-//! spawn leg (`_run_native_process` / `_capabilities_for_identity`) stays in
-//! Python until the `run_isolated_hook_process` kernel lands (RTM-011).
+//! never inherits user-controlled PATH/loader vars.
+//!
+//! The capabilities-probe + status walker land below: `run_native_process`
+//! routes a bounded launch through `hook_process_spawn::run_isolated_hook_
+//! process`; `CapabilitiesProbe` caches successful probes per binary identity
+//! and applies a short retry backoff on failure; `native_runtime_status`
+//! walks the candidate list to a mode-aware `NativeRuntimeStatusV1`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 
-use guard_contracts::{decode_runtime_manifest, NativeRuntimeManifestV1};
+use guard_contracts::{
+    decode_native_capabilities, decode_runtime_manifest, NativeMode,
+    NativeRuntimeCapabilitiesV1, NativeRuntimeManifestV1, NativeRuntimeStatusV1,
+    RuntimeIdentityV1,
+};
 use guard_secure_fs::{read_bounded, SecureReadError};
+
+use crate::hook_process_spawn::{isolated_hook_environment, run_isolated_hook_process};
+
 
 /// `_NATIVE_MANIFEST_NAME` (`native_runtime.py:57`).
 pub const NATIVE_MANIFEST_NAME: &str = "runtime-manifest.json";
@@ -293,6 +306,271 @@ pub fn isolated_environment(
     environment
 }
 
+// ─── capabilities probe + status walker ─────────────────────────────────
+// `_run_native_process` / `_capabilities_for_identity` / `native_runtime_
+// status` (`native_runtime.py:267-439`). The probe caches only successful
+// decodes; failures carry a short retry backoff so a cold-start miss cannot
+// poison every later native check, and a caller-supplied deadline caps how
+// long the probe may run so a one-shot request never overspends its budget.
+
+const CAPABILITIES_PROBE_TIMEOUT: f64 = 5.0;
+const CAPABILITIES_RETRY_BACKOFF: Duration = Duration::from_millis(250);
+const CAPABILITIES_CACHE_MAX: usize = 16;
+const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const RESIDENT_PROTOCOL_FEATURE: &str = "resident-protocol-v2";
+const NATIVE_PROTOCOL_VERSION: i64 = 1;
+
+/// `_run_native_process` (`native_runtime.py:267-284`): launch `path args`
+/// through the isolated kernel with the runtime's own allowlist env, bounded
+/// output and a deadline; `None` on any transport/limit/containment failure
+/// or a non-zero exit.
+pub fn run_native_process(
+    path: &Path,
+    args: &[&str],
+    input_text: &str,
+    timeout_seconds: f64,
+    base_env: &BTreeMap<String, String>,
+    base_prefix: Option<&Path>,
+) -> Option<String> {
+    let mut command = Vec::with_capacity(args.len() + 1);
+    command.push(path.to_string_lossy().to_string());
+    command.extend(args.iter().map(|s| s.to_string()));
+    let cwd = path.parent().unwrap_or_else(|| Path::new("."));
+    let environment = isolated_environment(base_env, base_prefix, path);
+    let result = run_isolated_hook_process(
+        &command,
+        input_text,
+        cwd,
+        &environment,
+        Some(timeout_seconds),
+        Some(MAX_RESPONSE_BYTES),
+        None,
+        None,
+    );
+    if result.returncode != Some(0)
+        || result.timed_out
+        || result.output_limit_exceeded
+        || result.containment_failed
+    {
+        return None;
+    }
+    Some(result.stdout)
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ProbeKey {
+    path: String,
+    size: i64,
+    mtime_ns: u64,
+    sha256: String,
+}
+
+/// `_capabilities_probe_lock`/`_capabilities_cache`/`_capabilities_retry_after`
+/// — one global probe per binary identity. Bounded at `CAPABILITIES_CACHE_MAX`
+/// entries; the oldest entry is evicted on insert (Python pops `next(iter(..))`).
+pub struct CapabilitiesProbe {
+    cache: Mutex<BTreeMap<ProbeKey, NativeRuntimeCapabilitiesV1>>,
+    retry_after: Mutex<BTreeMap<ProbeKey, Instant>>,
+}
+
+impl CapabilitiesProbe {
+    fn global() -> &'static Self {
+        static PROBE: OnceLock<CapabilitiesProbe> = OnceLock::new();
+        PROBE.get_or_init(|| CapabilitiesProbe {
+            cache: Mutex::new(BTreeMap::new()),
+            retry_after: Mutex::new(BTreeMap::new()),
+        })
+    }
+
+    fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+        m.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// `_clear_capabilities_probe_state` (`native_runtime.py:299-302`) —
+    /// test hook parity; called by `native_runtime_status` only in tests.
+    pub fn clear() {
+        let p = Self::global();
+        Self::lock(&p.cache).clear();
+        Self::lock(&p.retry_after).clear();
+    }
+}
+
+/// `_capabilities_for_identity` (`native_runtime.py:307-353`): probe once
+/// per `(path,size,mtime_ns,sha256)`; cache successes, apply a short retry
+/// backoff to failures, and cap the spawn at the caller's remaining budget.
+/// Returns `Err(reason)` only for protocol-level mismatches (bad protocol
+/// version, missing resident feature) — those are permanent compatibility
+/// rejects the status walker surfaces verbatim. Transport/decode misses and
+/// cached-miss backoffs are `Ok(None)`.
+pub fn capabilities_for_identity(
+    identity: &RuntimeIdentity,
+    deadline: Option<Instant>,
+    base_env: &BTreeMap<String, String>,
+    base_prefix: Option<&Path>,
+) -> Result<Option<NativeRuntimeCapabilitiesV1>, &'static str> {
+    let key = ProbeKey {
+        path: identity.path.to_string_lossy().to_string(),
+        size: identity.size,
+        mtime_ns: identity.mtime_ns,
+        sha256: identity.sha256.clone(),
+    };
+    let probe = CapabilitiesProbe::global();
+    let now = Instant::now();
+    {
+        let cache = CapabilitiesProbe::lock(&probe.cache);
+        let retry = CapabilitiesProbe::lock(&probe.retry_after);
+        if let Some(hit) = cache.get(&key) {
+            return Ok(Some(hit.clone()));
+        }
+        if let Some(&until) = retry.get(&key) {
+            if now < until {
+                return Ok(None);
+            }
+        }
+    }
+    let mut timeout = CAPABILITIES_PROBE_TIMEOUT;
+    if let Some(dl) = deadline {
+        let remaining = dl.saturating_duration_since(now).as_secs_f64();
+        if remaining <= 0.0 {
+            // The caller's budget is already spent; starting a fresh probe
+            // would overshoot the request deadline.
+            return Ok(None);
+        }
+        timeout = timeout.min(remaining);
+    }
+    let output = run_native_process(
+        &identity.path,
+        &["capabilities", "--json"],
+        "",
+        timeout,
+        base_env,
+        base_prefix,
+    );
+    let capabilities = output
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|payload| decode_native_capabilities(&payload));
+    if capabilities.is_none() {
+        CapabilitiesProbe::lock(&probe.retry_after)
+            .insert(key, now + CAPABILITIES_RETRY_BACKOFF);
+        return Ok(None);
+    }
+    let capabilities = capabilities.unwrap();
+    if capabilities.protocol_version != NATIVE_PROTOCOL_VERSION {
+        return Err("native_capabilities_protocol_version_mismatch");
+    }
+    if !capabilities
+        .features
+        .iter()
+        .any(|f| f == RESIDENT_PROTOCOL_FEATURE)
+    {
+        return Err("native_capabilities_missing_resident_protocol");
+    }
+    {
+        let mut cache = CapabilitiesProbe::lock(&probe.cache);
+        if cache.len() >= CAPABILITIES_CACHE_MAX {
+            let oldest = cache.keys().next().cloned();
+            if let Some(k) = oldest {
+                cache.remove(&k);
+            }
+        }
+        cache.insert(key.clone(), capabilities.clone());
+        CapabilitiesProbe::lock(&probe.retry_after).remove(&key);
+    }
+    Ok(Some(capabilities))
+}
+
+/// `native_runtime_status` (`native_runtime.py:355-439`): walk the bundled +
+/// env-runtime candidates, admit the first manifest-clean identity, probe
+/// capabilities, and apply mode-aware compatibility. `candidates` is the
+/// resolved list (`_runtime_candidates` order) — path resolution is
+/// host-side. `package_version` is `_python_package_version()`.
+pub fn native_runtime_status(
+    mode: NativeMode,
+    candidates: &[RuntimeIdentity],
+    package_version: Option<&str>,
+    env_binary: Option<&RuntimeIdentity>,
+    deadline: Option<Instant>,
+    base_env: &BTreeMap<String, String>,
+    base_prefix: Option<&Path>,
+) -> NativeRuntimeStatusV1 {
+    if mode == NativeMode::Off {
+        return NativeRuntimeStatusV1 {
+            mode,
+            available: false,
+            compatible: false,
+            reason: "native_disabled".to_string(),
+            identity: None,
+            capabilities: None,
+            manifest: None,
+        };
+    }
+    for identity in candidates {
+        let bundled = env_binary.map(|e| e != identity).unwrap_or(true);
+        let manifest = if bundled {
+            match manifest_for_bundled_identity(identity, package_version) {
+                Ok(m) => Some(m),
+                Err(_) => continue,
+            }
+        } else {
+            None
+        };
+        let capabilities = match capabilities_for_identity(
+            identity,
+            deadline,
+            base_env,
+            base_prefix,
+        ) {
+            Ok(c) => c,
+            // Probe gave a permanent reject (protocol mismatch / missing
+            // resident feature): still walk to the next candidate — this
+            // identity is not compatible.
+            Err(_) => continue,
+        };
+        let Some(capabilities) = capabilities else {
+            continue;
+        };
+        // Compatibility is transport-level (protocol + resident feature).
+        // Package-version equality is advisory: shadow/force downgrade it to
+        // a non-blocking `native_version_mismatch`; auto still enforces.
+        let version_compatible =
+            package_version.map(|v| v == capabilities.runtime_version).unwrap_or(false);
+        let compatible = version_compatible || matches!(mode, NativeMode::Shadow | NativeMode::Force);
+        return NativeRuntimeStatusV1 {
+            mode,
+            available: true,
+            compatible,
+            reason: if compatible {
+                "native_ready".to_string()
+            } else {
+                "native_version_mismatch".to_string()
+            },
+            identity: Some(RuntimeIdentityV1 {
+                path: identity.path.to_string_lossy().to_string(),
+                size: identity.size,
+                mtime_ns: identity.mtime_ns,
+                sha256: identity.sha256.clone(),
+            }),
+            capabilities: Some(capabilities),
+            manifest,
+        };
+    }
+    NativeRuntimeStatusV1 {
+        mode,
+        available: false,
+        compatible: false,
+        reason: "native_unavailable".to_string(),
+        identity: None,
+        capabilities: None,
+        manifest: None,
+    }
+}
+
+// `isolated_hook_environment` is re-exported for callers that want the hook
+// launch's (broader) allowlist; `isolated_environment` is the runtime's
+// narrower manifest-admission env. Both are consumed by the spawn kernel.
+#[allow(unused_imports)]
+use isolated_hook_environment as _isolated_hook_environment;
+
 
 #[cfg(test)]
 mod tests {
@@ -486,5 +764,231 @@ mod tests {
         assert_eq!(ManifestReject::Invalid.reason(), "native_manifest_invalid");
         assert_eq!(ManifestReject::RuntimeMismatch.reason(), "native_manifest_runtime_mismatch");
         assert_eq!(ManifestReject::VersionMismatch.reason(), "native_manifest_version_mismatch");
+    }
+
+    // ─── capabilities probe + status walker ─────────────────────────────
+
+    /// Write an executable shell script that prints the capabilities JSON —
+    /// the probe only requires `run_native_process` to return `Some(text)`
+    /// that decodes through `decode_native_capabilities`.
+    #[cfg(unix)]
+    fn write_fake_runtime(dir: &Path, capabilities_json: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = dir.join("hol-guard-runtime");
+        let script = format!("#!/bin/sh\nprintf '%s' '{}'\n", capabilities_json);
+        fs::write(&bin, script).unwrap();
+        let mut perm = fs::metadata(&bin).unwrap().permissions();
+        perm.set_mode(0o555);
+        fs::set_permissions(&bin, perm).unwrap();
+        bin
+    }
+
+    fn empty_env() -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capabilities_probe_caches_success() {
+        CapabilitiesProbe::clear();
+        let dir = tmp_dir("cap");
+        let caps = serde_json::json!({
+            "protocol_version": 1,
+            "runtime_version": "3.16.5",
+            "rule_digest": "d".repeat(64),
+            "build_sha": "e".repeat(40),
+            "target": "aarch64-apple-darwin",
+            "features": ["resident-protocol-v2"],
+        });
+        let bin = write_fake_runtime(&dir, &caps.to_string());
+        let id = identity_of(&bin);
+        let first =
+            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe");
+        let caps = first.expect("capabilities");
+        assert_eq!(caps.protocol_version, 1);
+        assert!(caps.features.iter().any(|f| f == "resident-protocol-v2"));
+        // Second call hits the cache: no spawn, same object.
+        let second =
+            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe2");
+        assert_eq!(second, Some(caps));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capabilities_probe_rejects_bad_protocol() {
+        CapabilitiesProbe::clear();
+        let dir = tmp_dir("capbad");
+        let caps = serde_json::json!({
+            "protocol_version": 99,
+            "runtime_version": "3.16.5",
+            "rule_digest": "d".repeat(64),
+            "build_sha": "e".repeat(40),
+            "target": "aarch64-apple-darwin",
+            "features": ["resident-protocol-v2"],
+        });
+        let bin = write_fake_runtime(&dir, &caps.to_string());
+        let id = identity_of(&bin);
+        let err =
+            capabilities_for_identity(&id, None, &empty_env(), None).unwrap_err();
+        assert_eq!(err, "native_capabilities_protocol_version_mismatch");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capabilities_probe_rejects_missing_resident_feature() {
+        CapabilitiesProbe::clear();
+        let dir = tmp_dir("capfeat");
+        let caps = serde_json::json!({
+            "protocol_version": 1,
+            "runtime_version": "3.16.5",
+            "rule_digest": "d".repeat(64),
+            "build_sha": "e".repeat(40),
+            "target": "aarch64-apple-darwin",
+            "features": ["some-other-feature"],
+        });
+        let bin = write_fake_runtime(&dir, &caps.to_string());
+        let id = identity_of(&bin);
+        let err =
+            capabilities_for_identity(&id, None, &empty_env(), None).unwrap_err();
+        assert_eq!(err, "native_capabilities_missing_resident_protocol");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capabilities_probe_transport_failure_backoff() {
+        CapabilitiesProbe::clear();
+        let dir = tmp_dir("capdead");
+        // Script that never produces JSON — exits non-zero.
+        use std::os::unix::fs::PermissionsExt;
+        let bin = dir.join("hol-guard-runtime");
+        fs::write(&bin, "#!/bin/sh\nexit 7\n").unwrap();
+        let mut perm = fs::metadata(&bin).unwrap().permissions();
+        perm.set_mode(0o555);
+        fs::set_permissions(&bin, perm).unwrap();
+        let id = identity_of(&bin);
+        let first =
+            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe");
+        assert!(first.is_none());
+        // Immediate second call is inside the retry backoff — returns None
+        // without respawning.
+        let second =
+            capabilities_for_identity(&id, None, &empty_env(), None).expect("probe2");
+        assert!(second.is_none());
+    }
+
+    #[test]
+    fn status_native_disabled_when_off() {
+        let status = native_runtime_status(
+            NativeMode::Off,
+            &[],
+            Some("3.16.5"),
+            None,
+            None,
+            &empty_env(),
+            None,
+        );
+        assert_eq!(status.mode, NativeMode::Off);
+        assert!(!status.available);
+        assert!(!status.compatible);
+        assert_eq!(status.reason, "native_disabled");
+    }
+
+    #[test]
+    fn status_unavailable_with_no_candidates() {
+        let status = native_runtime_status(
+            NativeMode::Auto,
+            &[],
+            Some("3.16.5"),
+            None,
+            None,
+            &empty_env(),
+            None,
+        );
+        assert!(!status.available);
+        assert_eq!(status.reason, "native_unavailable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn status_ready_with_valid_manifest_and_capabilities() {
+        CapabilitiesProbe::clear();
+        let dir = tmp_dir("status");
+        let caps = serde_json::json!({
+            "protocol_version": 1,
+            "runtime_version": "3.16.5",
+            "rule_digest": "d".repeat(64),
+            "build_sha": "e".repeat(40),
+            "target": "aarch64-apple-darwin",
+            "features": ["resident-protocol-v2"],
+        });
+        let bin = write_fake_runtime(&dir, &caps.to_string());
+        let id = identity_of(&bin);
+        // Write the admission manifest that matches the binary's identity.
+        let manifest = serde_json::json!({
+            "schema": NATIVE_MANIFEST_SCHEMA,
+            "protocol_version": NATIVE_MANIFEST_PROTOCOL_VERSION,
+            "package_version": "3.16.5",
+            "target": "aarch64-apple-darwin",
+            "platform_tag": "macosx_14_0_arm64",
+            "source_sha": "a".repeat(40),
+            "rule_digest": "b".repeat(64),
+            "runtime_sha256": id.sha256,
+            "runtime_size": id.size,
+        });
+        write_readonly(&dir, NATIVE_MANIFEST_NAME, manifest.to_string().as_bytes());
+        // No env_binary → this identity is bundled → manifest admission runs.
+        let status = native_runtime_status(
+            NativeMode::Auto,
+            &[id.clone()],
+            Some("3.16.5"),
+            None,
+            None,
+            &empty_env(),
+            None,
+        );
+        assert!(status.available, "expected native_ready, got {:?}", status);
+        assert!(status.compatible);
+        assert_eq!(status.reason, "native_ready");
+        assert_eq!(
+            status.identity.as_ref().map(|i| i.sha256.as_str()),
+            Some(id.sha256.as_str())
+        );
+        assert!(status.manifest.is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn status_env_candidate_skips_manifest() {
+        CapabilitiesProbe::clear();
+        let dir = tmp_dir("statusenv");
+        let caps = serde_json::json!({
+            "protocol_version": 1,
+            "runtime_version": "3.16.5",
+            "rule_digest": "d".repeat(64),
+            "build_sha": "e".repeat(40),
+            "target": "aarch64-apple-darwin",
+            "features": ["resident-protocol-v2"],
+        });
+        let bin = dir.join("hol-guard-runtime-env");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let script = format!("#!/bin/sh\nprintf '%s' '{}'\n", caps);
+            fs::write(&bin, script).unwrap();
+            let mut perm = fs::metadata(&bin).unwrap().permissions();
+            perm.set_mode(0o555);
+            fs::set_permissions(&bin, perm).unwrap();
+        }
+        let id = identity_of(&bin);
+        let status = native_runtime_status(
+            NativeMode::Auto,
+            &[id.clone()],
+            Some("3.16.5"),
+            Some(&id), // marks this identity as the env-override candidate
+            None,
+            &empty_env(),
+            None,
+        );
+        assert!(status.available);
+        assert!(status.manifest.is_none());
     }
 }

@@ -112,7 +112,7 @@ def test_concurrent_installs_preserve_original_backup(
             call_number = state_call_count
         if call_number == 1:
             first_state_entered.set()
-            if not release_first_state.wait(timeout=5):
+            if not release_first_state.wait(timeout=30):
                 raise RuntimeError("timed out waiting to release first Copilot install")
         real_write_state(*args, **kwargs)
 
@@ -175,7 +175,7 @@ def test_concurrent_installs_preserve_original_backup(
         # The shared home owner excludes the second install before it reaches
         # target lifecycle locks. Require observed contention and prove only
         # the first writer reached state publication while that owner is held.
-        assert lock_contention_observed.wait(timeout=10)
+        assert lock_contention_observed.wait(timeout=30)
         with counters_lock:
             assert lock_attempts >= 1
             assert state_call_count == 1

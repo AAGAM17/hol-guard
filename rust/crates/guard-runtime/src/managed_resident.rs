@@ -431,10 +431,7 @@ pub(crate) fn supervise_managed_for_owner(
                 if watcher_done.load(Ordering::Acquire) {
                     break;
                 }
-                // PyInstaller removes a onefile extraction when its launcher
-                // exits. Leases must not keep an undiscoverable owner locked.
                 if !executable.is_file() {
-                    drop(liveness_writer);
                     break;
                 }
                 let owner_alive = owner_start_marker.as_deref().is_some_and(|expected| {

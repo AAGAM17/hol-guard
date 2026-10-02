@@ -183,8 +183,15 @@ fn resolved_path_allowed(
     true
 }
 
-pub(super) fn bounded_file_write_target(value: &str, cwd: Option<&str>) -> bool {
-    let Some(workspace) = cwd.and_then(|root| std::fs::canonicalize(root).ok()) else {
+pub(super) fn bounded_file_write_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    let Some(workspace) = cwd.and_then(|root| {
+        let expanded = expand_home_read_path(root, home_dir).unwrap_or_else(|| root.to_owned());
+        std::fs::canonicalize(expanded).ok()
+    }) else {
         return false;
     };
     if value.is_empty()
@@ -196,7 +203,11 @@ pub(super) fn bounded_file_write_target(value: &str, cwd: Option<&str>) -> bool 
     {
         return false;
     }
-    let supplied = std::path::Path::new(value);
+    if value.starts_with('~') && expand_home_read_path(value, home_dir).is_none() {
+        return false;
+    }
+    let expanded = expand_home_read_path(value, home_dir).unwrap_or_else(|| value.to_owned());
+    let supplied = std::path::Path::new(&expanded);
     let target = if supplied.is_absolute() {
         supplied.to_path_buf()
     } else {
@@ -223,8 +234,9 @@ pub(super) fn bounded_file_write_target(value: &str, cwd: Option<&str>) -> bool 
             parent.join(name)
         }
     };
-    canonical.starts_with(&workspace)
-        && resolved_path_allowed(&canonical, None, cwd)
+    (canonical.starts_with(&workspace)
+        || super::worktree_writes::same_repository_worktree(&workspace, &canonical))
+        && resolved_path_allowed(&canonical, home_dir, workspace.to_str())
         && !autostart_write_target(&canonical)
 }
 

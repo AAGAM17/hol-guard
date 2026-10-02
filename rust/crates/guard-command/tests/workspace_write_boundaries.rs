@@ -2,6 +2,101 @@ use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
 #[test]
+fn zcode_home_relative_edits_accept_only_registered_repository_worktrees() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/worktree-write-fixtures")
+        .join(format!("run-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let home = std::fs::canonicalize(root).unwrap();
+    let workspace = home.join("project");
+    let linked = home.join("linked");
+    let hooks = home.join("empty-fixture-hooks");
+    std::fs::create_dir_all(&hooks).unwrap();
+    std::fs::create_dir_all(&workspace).unwrap();
+    let git = |arguments: &[&str]| {
+        let output = std::process::Command::new("git")
+            .current_dir(&workspace)
+            .arg("-c")
+            .arg(format!("core.hooksPath={}", hooks.display()))
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "--quiet"]);
+    git(&[
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        "fixture",
+    ]);
+    git(&[
+        "worktree",
+        "add",
+        "--quiet",
+        "--detach",
+        linked.to_str().unwrap(),
+    ]);
+    for directory in [&workspace, &linked, &home.join("unrelated")] {
+        std::fs::create_dir_all(directory.join("src")).unwrap();
+        std::fs::write(directory.join("src/example.ts"), "fixture").unwrap();
+    }
+    for (path, allowed) in [
+        ("~/project/src/example.ts", true),
+        ("~/linked/src/example.ts", true),
+        ("~/linked/src/new.ts", true),
+        ("~/linked/.env", false),
+        ("~/linked/.git", false),
+        ("~/unrelated/src/example.ts", false),
+        ("~other/project/src/example.ts", false),
+    ] {
+        let result = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"toolName": "Edit", "toolInput": {"file_path": path, "old_string": "fixture", "new_string": "updated"}}),
+            None,
+            None,
+            home.to_str(),
+            Some("~/project"),
+        );
+        assert_eq!(
+            result.minimum_action == "allow",
+            allowed,
+            "{path}: {}",
+            result.reason_code
+        );
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(
+            home.join("unrelated/src/example.ts"),
+            linked.join("src/escape.ts"),
+        )
+        .unwrap();
+        let result = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"toolName": "Edit", "toolInput": {"file_path": "~/linked/src/escape.ts", "new_string": "updated"}}),
+            None,
+            None,
+            home.to_str(),
+            Some("~/project"),
+        );
+        assert_ne!(result.minimum_action, "allow");
+    }
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn routine_workspace_writes_keep_sensitive_and_destructive_boundaries() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/workspace-write-fixtures")

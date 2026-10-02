@@ -386,13 +386,13 @@ fn evaluate_signals(
         && signals.url_values.is_empty()
         && signals.command.is_none()
         && signals.path_values.len() == 1
-        && super::safe_reads::bounded_file_write_target(&signals.path_values[0], cwd)
+        && super::safe_reads::bounded_file_write_target(&signals.path_values[0], home_dir, cwd)
     {
         return generic_result(
             action,
             "allow",
             "native_exact_safe_file_write",
-            "The Rust authority proved this ordinary file write stays inside the verified workspace.",
+            "The Rust authority proved this ordinary file write stays inside the verified workspace or a registered worktree of the same repository.",
         );
     }
     let (reason_code, reason) = review_reason(action_type);

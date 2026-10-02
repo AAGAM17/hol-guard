@@ -7,6 +7,7 @@ mod pure_expression;
 mod restricted_tests;
 mod safe_reads;
 mod search;
+mod worktree_writes;
 
 use search::safe_search_arguments;
 

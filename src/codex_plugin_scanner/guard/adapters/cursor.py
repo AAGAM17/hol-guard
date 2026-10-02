@@ -254,6 +254,17 @@ class CursorHarnessAdapter(HarnessAdapter):
             raise RuntimeError(f"Guard refused to overwrite non-object Cursor editor config at {target}")
         detection = self.detect(context, config_contents=contents)
         managed_servers = managed_stdio_servers(detection)
+        previous = _json_payload(state_path)
+        previous_origins = previous.get("managed_origins")
+        origins = dict(cast(dict[str, list[str]], previous_origins)) if isinstance(previous_origins, dict) else {}
+        for server in observable_stdio_servers_with_proxy(detection):
+            if server.source_scope == "project":
+                origins[server.name] = [server.source_scope, server.config_path]
+        for server in managed_servers:
+            if server.source_scope == "project":
+                origins[server.name] = [server.source_scope, server.config_path]
+            else:
+                origins.pop(server.name, None)
         servers = payload.get("mcpServers")
         normalized = dict(servers) if isinstance(servers, dict) else {}
         for name, config in tuple(normalized.items()):
@@ -273,6 +284,7 @@ class CursorHarnessAdapter(HarnessAdapter):
             "backup_path": str(backup),
             "surface": "editor",
             "workspace_dir": str(context.workspace_dir.resolve()) if context.workspace_dir is not None else None,
+            "managed_origins": origins,
         }
         after = {
             target: (json.dumps(payload, indent=2) + "\n").encode("utf-8"),

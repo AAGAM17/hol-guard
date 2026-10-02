@@ -176,21 +176,18 @@ fn evaluate(
         .map(|v| serde_json::from_value(v.clone()))
         .transpose()
         .map_err(|_| "native_command_effect_invalid_workflow_authorization".to_owned())?;
-    let read_factors = {
-        #[cfg(unix)]
-        {
-            shell_read_floor_factors(
-                &request.command_text,
-                &canonical.security_identity,
-                Some(&cwd),
-                Some(&home_dir),
-            )
-        }
-        #[cfg(not(unix))]
-        {
-            return Err("native_command_effect_read_floors_unsupported".to_owned());
-        }
-    };
+    // Read-floor factors are POSIX-only (shell path identity relies on stat
+    // fields); fail closed on non-unix before binding `read_factors` so the
+    // diverging branch never reaches `evaluate_command`'s slice coercion.
+    #[cfg(not(unix))]
+    return Err("native_command_effect_read_floors_unsupported".to_owned());
+    #[cfg(unix)]
+    let read_factors = shell_read_floor_factors(
+        &request.command_text,
+        &canonical.security_identity,
+        Some(&cwd),
+        Some(&home_dir),
+    );
     guard_command::evaluate_command(
         &canonical,
         &request.native_extension_evidence,

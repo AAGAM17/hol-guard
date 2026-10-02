@@ -32,13 +32,13 @@ _RESIDENT_PROTOCOL_FEATURE = "resident-protocol-v2"
 _PACKAGE_AUTHORITY_FEATURE = "package-authority-v1"
 _REQUEST_SCHEMA = "guard-package-authority-request.v1"
 _RESULT_SCHEMA = "guard-package-authority-result.v1"
-_REQUEST_COUNTER = 0
+_request_counter = 0
 
 
 def _request_id() -> str:
-    global _REQUEST_COUNTER
-    _REQUEST_COUNTER += 1
-    return f"package-authority-{_REQUEST_COUNTER}-{time.monotonic_ns()}"
+    global _request_counter
+    _request_counter += 1
+    return f"package-authority-{_request_counter}-{time.monotonic_ns()}"
 
 
 def _resident_request(
@@ -208,12 +208,14 @@ def evaluation_from_native_payload(payload: Mapping[str, object]) -> Any:
 
     data = dict(payload)
     bundle_version = data.get("bundle_version")
+    raw_workspace_fingerprint = data.get("workspace_fingerprint")
+    workspace_fingerprint: str | None = (
+        raw_workspace_fingerprint if isinstance(raw_workspace_fingerprint, str) else None
+    )
     return PackageRequestEvaluation.from_cache_dict(
         data,
         package_intent_hash=str(data.get("package_intent_hash") or ""),
         policy_version=str(data.get("policy_version") or ""),
         bundle_version=bundle_version if isinstance(bundle_version, str) else None,
-        workspace_fingerprint=(
-            data.get("workspace_fingerprint") if isinstance(data.get("workspace_fingerprint"), str) else None
-        ),
+        workspace_fingerprint=workspace_fingerprint,
     )

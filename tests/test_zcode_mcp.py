@@ -43,7 +43,7 @@ class TestZCodeMcpToolCoverage:
     def test_install_installs_mcp_pretooluse_hook(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)
         monkeypatch.setattr(
-            "codex_plugin_scanner.guard.adapters.zcode.install_guard_shim",
+            "codex_plugin_scanner.guard.adapters.zcode.prepare_guard_shim",
             lambda *args, **kwargs: {"shim_path": str(ctx.guard_home / "bin" / "guard-zcode"), "notes": []},
         )
         ZCodeHarnessAdapter().install(ctx)

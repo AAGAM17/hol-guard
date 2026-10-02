@@ -10,6 +10,7 @@ from codex_plugin_scanner.guard.adapters import codex as adapter_module
 from codex_plugin_scanner.guard.adapters import codex_lifecycle_lock as locks
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
+from codex_plugin_scanner.guard.codex_hook_file_integrity import CodexHookIntegrityError
 from codex_plugin_scanner.guard.codex_hook_integrity import hook_manifest_path, hook_secret_path
 
 
@@ -136,7 +137,7 @@ def test_failed_write_preserves_substituted_config_targets(
         original_write(path, text, mode=mode, on_publish=on_publish)
 
     monkeypatch.setattr(adapter_module, "atomic_write_text", interrupted_write)
-    with pytest.raises(RuntimeError, match="codex_hook_rollback_conflict"):
+    with pytest.raises(CodexHookIntegrityError, match="Codex publication needs recovery"):
         adapter.install(context)
 
     assert injected

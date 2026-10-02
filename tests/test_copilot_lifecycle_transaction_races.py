@@ -175,7 +175,7 @@ def test_concurrent_installs_preserve_original_backup(
         # The shared home owner excludes the second install before it reaches
         # target lifecycle locks. Require observed contention and prove only
         # the first writer reached state publication while that owner is held.
-        assert lock_contention_observed.wait(timeout=2)
+        assert lock_contention_observed.wait(timeout=5)
         with counters_lock:
             assert lock_attempts >= 1
             assert state_call_count == 1

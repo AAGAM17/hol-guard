@@ -1731,8 +1731,9 @@ class CodexHarnessAdapter(HarnessAdapter):
                 )
             return state
         except BaseException as transaction_error:
-            # An unknown config cannot safely be paired with the old manifest.
-            # Preserve participant files and report the unresolved transaction.
+            # Never overwrite a config changed by another writer. Manifest and
+            # secret are still restored so the unknown config fails closed
+            # against the pre-transaction authentication state.
             rollback_conflict: BaseException | None = None
             try:
                 require_unchanged_config_for_rollback(

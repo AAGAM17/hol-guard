@@ -694,7 +694,7 @@ pub fn build_package_request_artifact(
 /// `json.dumps(value, sort_keys=True)` with default separators `(", ", ": ")`
 /// and `ensure_ascii=True` — the non-compact sibling of the canonical codec.
 /// `serde_json::Value::Object` is already key-sorted.
-fn write_spaced_sorted_json(value: &Value, out: &mut String) {
+pub(crate) fn write_spaced_sorted_json(value: &Value, out: &mut String) {
     match value {
         Value::Null => out.push_str("null"),
         Value::Bool(true) => out.push_str("true"),

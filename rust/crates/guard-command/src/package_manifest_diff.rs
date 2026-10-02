@@ -6,9 +6,8 @@
 //! `"byte_limit_exceeded"` | `"deadline_exceeded"` | `"parse_error"`).
 //!
 //! `ManifestParseResult` / `ManifestDependencyChange` / `PackageIntentTarget` /
-//! `python_target` live in `runtime/package_intent_common.py`; local Rust
-//! equivalents are defined here until the `package_intent_common` port lands
-//! and consolidates them. Field order matches the Python dataclasses.
+//! `python_target` are imported from `crate::package_intent_common` (the port
+//! of `runtime/package_intent_common.py`), not redefined here.
 //!
 //! Divergence notes (fail-closed — differences only make Rust *reject* input
 //! that Python would parse, never the reverse):
@@ -37,7 +36,7 @@ use std::time::{Duration, Instant};
 use regex::Regex;
 use serde_json::Value;
 
-use crate::jsonc::{loads_jsonc_pairs, JsoncPairs};
+use crate::jsonc::{loads_jsonc_pairs_checked, JsoncPairs};
 // ---------------------------------------------------------------------------
 // Shared types come from `crate::package_intent_common` (canonical port of
 // package_intent_common.py:28-141).
@@ -55,7 +54,7 @@ static GRADLE_DEP_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"([A-Za-z0-9_.-]+):([A-Za-z0-9_.-]+):([A-Za-z0-9+_.-]+)").unwrap()
 });
 static GEMFILE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&r#"gem[PYWS]+["']([^"']+)["'](?:[PYWS]+,[PYWS]+["']([^"']+)["'])?"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap()
+    Regex::new(&r#"gem[PYWS]+["']([^"']+)["'](?:[PYWS]*,[PYWS]*["']([^"']+)["'])?"#.replace("PYWS", r"\s\x1c-\x1f")).unwrap()
 });
 static GO_REQUIRE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&r"^[PYWS]*([A-Za-z0-9./_-]+)[PYWS]+(v[^PYWS]+)[PYWS]*$".replace("PYWS", r"\s\x1c-\x1f")).unwrap());
@@ -752,10 +751,16 @@ fn bun_lock_package_versions(
     deadline: &Deadline,
 ) -> ParseResult<BTreeMap<String, Vec<String>>> {
     deadline.ensure()?;
-    // loads_jsonc(text or "{}", deadline_check=...) (:292) — the deadline
-    // closure maps onto JsoncError::Deadline, normalized back below.
+    // loads_jsonc(text or "{}", deadline_check=...) (:292) — thread the
+    // deadline into normalize_jsonc_checked so the check fires mid-pass.
     let source = if text.is_empty() { "{}" } else { text };
-    let payload = loads_jsonc_pairs(source).map_err(|error| match error {
+    let deadline_ref = deadline;
+    let payload = loads_jsonc_pairs_checked(source, &mut || {
+        deadline_ref
+            .ensure()
+            .map_err(|_| crate::jsonc::JsoncError::Deadline("deadline_exceeded".to_string()))
+    })
+    .map_err(|error| match error {
         crate::jsonc::JsoncError::Deadline(_) => ParseFailure::Deadline,
         crate::jsonc::JsoncError::Decode(_) => ParseFailure::Error,
     })?;
@@ -1684,7 +1689,6 @@ mod tests {
             Some(&"33.0.0".to_string())
         );
     }
-}
 
     /// Temporary Python-oracle check (RTM-026): compare `_dependency_map_for_path`
     /// output against the Rust port for package.json, package-lock.json

@@ -449,7 +449,12 @@ name = "guard-scanner"
 version = "0.1.0"
 dependencies = [
  "guard-rules",
+ "hex",
+ "hmac",
  "regex",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

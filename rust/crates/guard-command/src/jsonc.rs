@@ -41,6 +41,16 @@ pub fn loads_jsonc_pairs(text: &str) -> Result<JsoncPairs, JsoncError> {
     parse_pairs(&normalized)
 }
 
+/// `loads_jsonc_pairs` with `deadline_check` — same periodic-check cadence as
+/// `loads_jsonc_with_deadline` during normalization, preserving object pairs.
+pub fn loads_jsonc_pairs_checked<F>(text: &str, deadline_check: &mut F) -> Result<JsoncPairs, JsoncError>
+where
+    F: FnMut() -> Result<(), JsoncError>,
+{
+    let normalized = normalize_jsonc_checked(text, deadline_check)?;
+    parse_pairs(&normalized)
+}
+
 /// Error surface: `JsoncError::Decode` carries the `json.JSONDecodeError`
 /// message shape (unterminated block comment reuses Python's exact message).
 #[derive(Debug)]

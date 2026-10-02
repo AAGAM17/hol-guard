@@ -38,6 +38,7 @@ pub struct ShellExecutionSegment {
 }
 
 impl ShellExecutionSegment {
+    #[allow(dead_code)] // consumed by unix read-floor callers gated off on Windows
     pub fn command_text(&self) -> String {
         crate::command_launcher_floors::shlex_join(&self.tokens)
     }
@@ -56,6 +57,7 @@ pub struct ShellExecutionContext {
     pub segments: Vec<ShellExecutionSegment>,
     pub complete: bool,
     pub reason_code: Option<String>,
+    #[allow(dead_code)] // consumed by unix read-floor callers gated off on Windows
     pub directory_change_present: bool,
 }
 

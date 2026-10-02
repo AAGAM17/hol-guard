@@ -244,16 +244,20 @@ jobs:
       - name: Download pytest duration reports
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: pytest-durations-${{ github.run_attempt }}-*
+          pattern: pytest-durations-*
           path: duration-reports
       - name: Build duration manifest candidate
         id: duration-manifest
         shell: bash
         run: |
-          python3 scripts/ci/select_pytest_duration_reports.py \
+          if ! python3 scripts/ci/select_pytest_duration_reports.py \
             --root duration-reports \
             --expected-shards "$PYTEST_COVERAGE_SHARD_COUNT" \
-            --output duration-reports/selected-reports.txt
+            --output duration-reports/selected-reports.txt; then
+            echo "Incomplete attempt reports; retain the previous duration manifest."
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mapfile -t reports < duration-reports/selected-reports.txt
           test "${#reports[@]}" -eq "$PYTEST_COVERAGE_SHARD_COUNT"
           python3 scripts/ci/build_pytest_duration_manifest.py \

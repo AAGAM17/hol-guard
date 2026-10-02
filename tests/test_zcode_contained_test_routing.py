@@ -33,6 +33,8 @@ def test_zcode_routes_multifile_vitest_to_authenticated_sink(tmp_path, monkeypat
     request = Path(argv[argv.index("--request-file") + 1])
     digest = argv[argv.index("--request-sha256") + 1]
     try:
+        assert request.parent.stat().st_mode & 0o777 == 0o700
+        assert request.stat().st_mode & 0o777 == 0o600
         assert hashlib.sha256(request.read_bytes()).hexdigest() == digest
         snapshot = read_contained_test_request(request, digest, workspace=tmp_path)
         assert snapshot["tool_input"] == payload["toolInput"]

@@ -104,7 +104,8 @@ def harness_json_from_native_pre_tool(harness: str, response: Mapping[str, objec
             }
             if canonical == "zcode":
                 receipt["hookSpecificOutput"] = {
-                    "hookEventName": "PreToolUse", "permissionDecision": "deny",
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
                     "permissionDecisionReason": reason,
                 }
             return receipt

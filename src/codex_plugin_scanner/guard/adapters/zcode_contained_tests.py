@@ -118,7 +118,7 @@ def contained_zcode_response(
         if len(serialized) > 1_048_576:
             return None
         directory = Path(tempfile.mkdtemp(prefix="hol-guard-contained-test-"))
-        os.chmod(directory, 0o700)
+        # mkdtemp creates an owner-only directory; do not widen its permissions.
         request = directory / "request.json"
         descriptor = os.open(request, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as stream:

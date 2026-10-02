@@ -1766,7 +1766,9 @@ class CodexHarnessAdapter(HarnessAdapter):
                     "Codex hook transaction failed and rollback could not be completed: "
                     f"{type(rollback_error).__name__}: {rollback_error}"
                 )
-                failure.add_note(f"rollback error: {rollback_error!r}")
+                add_note = getattr(failure, "add_note", None)
+                if callable(add_note):
+                    add_note(f"rollback error: {rollback_error!r}")
                 raise failure from transaction_error
             raise
 

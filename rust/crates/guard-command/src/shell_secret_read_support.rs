@@ -1509,7 +1509,11 @@ pub(crate) fn direct_secret_read_paths_from_tokens(
     }
     for token in &args_list {
         if let Some(m) = redirect_embedded_re().captures(token) {
-            candidates.push(m[1].to_owned());
+            // emulate the Python (?!<) lookahead: reject `<<` embedded forms.
+            let captured = &m[1];
+            if !captured.starts_with('<') {
+                candidates.push(captured.to_owned());
+            }
         }
     }
     let mut deduped: Vec<String> = Vec::new();
@@ -1530,7 +1534,7 @@ fn redirect_operand_re() -> &'static Regex {
 
 fn redirect_embedded_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^\d*<(?!<)(.+)$").expect("redirect embedded"))
+    RE.get_or_init(|| Regex::new(r"^\d*<(.+)$").expect("redirect embedded"))
 }
 
 /// `direct_secret_read_paths` (:236-274).

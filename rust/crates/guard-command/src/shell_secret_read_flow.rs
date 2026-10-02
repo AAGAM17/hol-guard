@@ -15,7 +15,7 @@ use crate::shell_secret_read_support::{
 
 fn input_redirect_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^\d*<(?!<)").expect("input redirect"))
+    RE.get_or_init(|| Regex::new(r"^\d*<").expect("input redirect"))
 }
 
 /// `_parse_execution_segment` (:23-49).
@@ -57,10 +57,14 @@ pub(crate) fn segment_may_touch_local_data(execution: &ShellExecutionSegment) ->
     let token = &execution.tokens[0];
     let executable = command_name_for(token);
     let args = &execution.tokens[1..];
-    let has_input_redirect = execution
-        .tokens
-        .iter()
-        .any(|item| input_redirect_re().is_match(item));
+    // emulate the Python (?!<) lookahead: the char after `<` must not be `<`.
+    let has_input_redirect = execution.tokens.iter().any(|item| {
+        if let Some(m) = input_redirect_re().find(item) {
+            item[m.end()..].chars().next() != Some('<')
+        } else {
+            false
+        }
+    });
     if has_input_redirect {
         return true;
     }

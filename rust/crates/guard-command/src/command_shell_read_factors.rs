@@ -43,3 +43,60 @@ pub fn shell_read_floor_factors(
         proof: None,
     }]
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::shell_read_floor_factors;
+    use std::path::PathBuf;
+
+    const ORACLE: &[(&str, Option<&str>)] = &[
+        ("ls -la", None),
+        ("cat ~/.ssh/id_rsa", Some("critical.local-secret-read")),
+        ("cat ~/.env", Some("critical.local-secret-read")),
+        ("cat .env", Some("critical.local-secret-read")),
+        ("bash script.sh", Some("critical.local-script-execution")),
+        ("sh -c 'echo hi'", None),
+        ("echo hello", None),
+        ("cat ~/.ssh/id_rsa && ls", Some("critical.local-secret-read")),
+        ("python script.py", Some("critical.local-script-execution")),
+        ("cat /tmp/nonexistent_file_xyz", None),
+        ("cat ~/.aws/credentials", Some("critical.local-secret-read")),
+        ("head -1 ~/.ssh/id_ed25519", Some("critical.local-secret-read")),
+        ("cat ~/.netrc", Some("critical.local-secret-read")),
+        ("source ~/.zshrc", Some("critical.local-script-execution")),
+        (". ./config.sh", Some("critical.local-script-execution")),
+        ("cat ~/secrets/token.txt", None),
+        ("sleep 1 && cat ~/.ssh/id_rsa", Some("critical.local-secret-read")),
+        ("cat $(echo ~/.ssh/id_rsa)", Some("critical.local-script-execution")),
+        ("bash -c 'cat ~/.ssh/id_rsa'", Some("critical.local-secret-read")),
+        ("cat ~/.ssh/id_rsa | wc -l", Some("critical.local-secret-read")),
+    ];
+
+    #[test]
+    fn shell_read_floor_factors_python_oracle() {
+        let home = PathBuf::from("/tmp/rtm008-home");
+        std::fs::create_dir_all(home.join(".ssh")).ok();
+        std::fs::write(home.join(".env"), "SECRET=x").ok();
+        std::fs::write(home.join(".ssh/id_rsa"), "KEY").ok();
+        std::fs::write(home.join("script.sh"), "echo hi").ok();
+        std::fs::create_dir_all("/tmp/.ssh").ok();
+        std::fs::write("/tmp/.env", "SECRET=x").ok();
+        std::fs::write("/tmp/script.sh", "echo hi").ok();
+        std::fs::write("/tmp/.zshrc", "echo z").ok();
+        std::fs::write("/tmp/config.sh", "echo c").ok();
+        std::fs::create_dir_all("/tmp/secrets").ok();
+        std::fs::write("/tmp/secrets/token.txt", "t").ok();
+
+        let cwd = PathBuf::from("/tmp");
+        for (command, want_reason) in ORACLE {
+            let factors =
+                shell_read_floor_factors(command, "guard:shell", Some(&cwd), Some(&home));
+            let got_reason = factors.first().map(|f| f.reason_code.as_str());
+            assert_eq!(
+                got_reason, *want_reason,
+                "parity mismatch for {command:?}: got {factors:?}"
+            );
+        }
+    }
+}

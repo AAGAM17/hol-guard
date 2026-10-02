@@ -34,6 +34,27 @@ def assert_admission(cases: list[WorkflowCase], results: list[dict[str, object]]
         raise AssertionError("\n".join(failures))
 
 
+def _review(worker, case, *, session, home, guard_home, workspace):
+    before = worker.store.count_approval_requests(status=None)
+    result = worker.review_http_payload(
+        payload={
+            "hook_event_name": "PreToolUse",
+            "tool_name": "bash",
+            "tool_input": {"command": case.command},
+            "session_id": session,
+            "tool_call_id": case.name,
+        },
+        params={},
+        default_harness="omp",
+        home_dir=home,
+        guard_home=guard_home,
+        workspace=workspace,
+    )
+    if case.quiet and worker.store.count_approval_requests(status=None) != before:
+        raise AssertionError(f"unexpected approval: {case.name}")
+    return result
+
+
 def assert_execution(cases: list[WorkflowCase], events: list[dict[str, object]]) -> None:
     starts = [event for event in events if event.get("type") == "tool_execution_start"]
     ends = [event for event in events if event.get("type") == "tool_execution_end"]
@@ -215,17 +236,11 @@ def main() -> int:
                 ]
                 probe._prepare_installed_daemon_workspace(daemon, project)
                 protected_results = [
-                    worker.review_http_payload(
-                        payload={
-                            "hook_event_name": "PreToolUse",
-                            "tool_name": "bash",
-                            "tool_input": {"command": case.command},
-                            "session_id": "workflow-matrix-tests",
-                            "tool_call_id": case.name,
-                        },
-                        params={},
-                        default_harness="omp",
-                        home_dir=home,
+                    _review(
+                        worker,
+                        case,
+                        session="workflow-matrix-tests",
+                        home=home,
                         guard_home=guard_home,
                         workspace=project,
                     )
@@ -261,17 +276,11 @@ def main() -> int:
                     ]
                 ]
                 cross_results = [
-                    worker.review_http_payload(
-                        payload={
-                            "hook_event_name": "PreToolUse",
-                            "tool_name": "bash",
-                            "tool_input": {"command": case.command},
-                            "session_id": "workflow-matrix-cross",
-                            "tool_call_id": case.name,
-                        },
-                        params={},
-                        default_harness="omp",
-                        home_dir=home,
+                    _review(
+                        worker,
+                        case,
+                        session="workflow-matrix-cross",
+                        home=home,
                         guard_home=guard_home,
                         workspace=workspace,
                     )

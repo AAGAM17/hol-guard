@@ -10,6 +10,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::git_read::{run_git, GIT_TIMEOUT_SECONDS};
+#[cfg(unix)]
+use crate::git_read::run_git_os;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
 use crate::repository_scanner::{
     bounded_positive, expand_tilde, scan_blob, RepositorySecretScanResult, DEFAULT_MAX_FILES,
     DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FINDINGS, DEFAULT_MAX_TOTAL_BYTES,
@@ -76,10 +80,11 @@ fn git_repository_root(root: &Path) -> Option<PathBuf> {
 
 /// Python `_git_staged_paths`:
 /// `git diff --cached --name-only --diff-filter=ACMR -z --` split on NUL.
-/// Python decodes with `surrogateescape`; Rust strings cannot hold lone
-/// surrogates, so `from_utf8_lossy` substitutes `U+FFFD` — byte-identical for
-/// all valid UTF-8 paths.
-fn git_staged_paths(root: &Path) -> Option<Vec<String>> {
+/// Python decodes with `surrogateescape`, so non-UTF-8 staged paths still
+/// reach `git cat-file :<path>` byte-exact. Rust keeps raw bytes and converts
+/// to `OsString` only at the subprocess boundary so non-UTF-8 paths are
+/// scanned, never silently skipped.
+fn git_staged_paths(root: &Path) -> Option<Vec<Vec<u8>>> {
     let result = run_git(
         root,
         &[
@@ -98,9 +103,45 @@ fn git_staged_paths(root: &Path) -> Option<Vec<String>> {
             .stdout
             .split(|byte| *byte == 0)
             .filter(|item| !item.is_empty())
-            .map(|item| String::from_utf8_lossy(item).into_owned())
+            .map(|item| item.to_vec())
             .collect(),
     )
+}
+
+/// Build `["cat-file", "-s"|"blob", ":<path>"]` argv. Byte-exact on unix via
+/// `OsString`; on non-unix `OsString::from_vec` is unavailable, so decode
+/// lossily (matches the rare-path substitute — a non-UTF-8 staged path on
+/// Windows still resolves via git's own argv decoding).
+fn staged_blob_args(path: &[u8], op: &str) -> Vec<std::ffi::OsString> {
+    let mut spec = b":".to_vec();
+    spec.extend_from_slice(path);
+    #[cfg(unix)]
+    let spec_arg = std::ffi::OsString::from_vec(spec);
+    #[cfg(not(unix))]
+    let spec_arg = std::ffi::OsString::from(String::from_utf8_lossy(&spec).into_owned());
+    vec![
+        std::ffi::OsString::from("cat-file"),
+        std::ffi::OsString::from(op),
+        spec_arg,
+    ]
+}
+
+#[cfg(unix)]
+fn run_git_blob(
+    root: &Path,
+    args: &[std::ffi::OsString],
+) -> Result<crate::git_read::CompletedOutput, crate::git_read::GitError> {
+    run_git_os(root, args, GIT_TIMEOUT_SECONDS)
+}
+
+#[cfg(not(unix))]
+fn run_git_blob(
+    root: &Path,
+    args: &[std::ffi::OsString],
+) -> Result<crate::git_read::CompletedOutput, crate::git_read::GitError> {
+    let str_args: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+    let borrowed: Vec<&str> = str_args.iter().map(String::as_str).collect();
+    run_git(root, &borrowed, GIT_TIMEOUT_SECONDS)
 }
 
 /// Python `_git_staged_blob`: size check via `git cat-file -s :<path>` then
@@ -109,13 +150,9 @@ fn git_staged_paths(root: &Path) -> Option<Vec<String>> {
 /// staged object itself exceeds `max_file_bytes`; every other failure
 /// mirrors the Python `except`/`returncode` early exits as `(None, false)`
 /// so the caller records `git_staged_blob_failed`.
-fn git_staged_blob(root: &Path, path: &str, max_file_bytes: usize) -> (Option<Vec<u8>>, bool) {
-    let spec = format!(":{path}");
-    let Ok(size_result) = run_git(
-        root,
-        &["cat-file", "-s", spec.as_str()],
-        GIT_TIMEOUT_SECONDS,
-    ) else {
+fn git_staged_blob(root: &Path, path: &[u8], max_file_bytes: usize) -> (Option<Vec<u8>>, bool) {
+    let spec_args = staged_blob_args(path, "-s");
+    let Ok(size_result) = run_git_blob(root, &spec_args) else {
         return (None, false);
     };
     // `int(size_result.stdout.strip())`; invalid output mirrors `ValueError`.
@@ -128,11 +165,7 @@ fn git_staged_blob(root: &Path, path: &str, max_file_bytes: usize) -> (Option<Ve
     if size < 0 || size > max_file_bytes as i64 {
         return (None, true);
     }
-    let Ok(blob_result) = run_git(
-        root,
-        &["cat-file", "blob", spec.as_str()],
-        GIT_TIMEOUT_SECONDS,
-    ) else {
+    let Ok(blob_result) = run_git_blob(root, &staged_blob_args(path, "blob")) else {
         return (None, false);
     };
     if blob_result.stdout.len() > max_file_bytes {
@@ -234,7 +267,9 @@ pub fn scan_staged_secrets(root: &Path, options: &StagedScanOptions) -> Reposito
             truncated = true;
             break;
         }
-        let normalized = relative_path.replace('\\', "/");
+        // Display/label strings use lossy UTF-8 (surrogateescape-parity);
+        // the blob lookup itself still consumes the raw `relative_path` bytes.
+        let normalized = String::from_utf8_lossy(relative_path).replace('\\', "/");
         let (data, too_large) = git_staged_blob(&git_root, relative_path, max_file_bytes);
         if too_large {
             truncated = true;

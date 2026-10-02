@@ -582,6 +582,11 @@ jobs:
       - name: Verify native command program is current
         shell: bash
         env:
+          HOL_GUARD_BUILD_SHA: ${{ needs.build.outputs.source_sha }}
+          HOL_GUARD_PACKAGE_VERSION: ${{ needs.build.outputs.version }}
+          HOL_GUARD_APPROVAL_ENROLLMENT_ROOT_HEX: ${{ vars.HOL_GUARD_APPROVAL_ENROLLMENT_ROOT_HEX }}
+          HOL_GUARD_APPROVAL_ENROLLMENT_ROOT_FINGERPRINT_HEX: ${{ vars.HOL_GUARD_APPROVAL_ENROLLMENT_ROOT_FINGERPRINT_HEX }}
+          RUSTFLAGS: ${{ matrix.rustflags }}
           SOURCE_COMPILER: ${{ matrix.source_compiler }}
         run: |
           arguments=(--compiler "$SOURCE_COMPILER")

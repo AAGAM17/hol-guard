@@ -1,0 +1,324 @@
+//! Bounded leaked-secret scanning for the Git staging index.
+//!
+//! Port of `codex_plugin_scanner.guard.secrets.secret_staged_scanner`
+//! (RTM-032). Scanning is local and read-only: staged blob content is fetched
+//! through Git plumbing (`diff --cached`, `cat-file`) and never written back
+//! to disk or sent over the network. Until the `git_read` helpers land the
+//! subprocess entry points fail closed, matching the Python `except`/
+//! non-zero-returncode behavior.
+
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use crate::repository_scanner::{
+    bounded_positive, expand_tilde, scan_blob, RepositorySecretScanResult, DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_FILES, DEFAULT_MAX_FINDINGS, DEFAULT_MAX_TOTAL_BYTES,
+};
+use crate::secret_detection::SecretFinding;
+
+/// Keyword options mirroring `scan_staged_secrets(root, *, max_files=...,
+/// max_file_bytes=..., max_total_bytes=..., max_findings=...)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedScanOptions {
+    pub max_files: usize,
+    pub max_file_bytes: usize,
+    pub max_total_bytes: usize,
+    pub max_findings: usize,
+}
+
+impl Default for StagedScanOptions {
+    fn default() -> Self {
+        Self {
+            max_files: DEFAULT_MAX_FILES,
+            max_file_bytes: DEFAULT_MAX_FILE_BYTES,
+            max_total_bytes: DEFAULT_MAX_TOTAL_BYTES,
+            max_findings: DEFAULT_MAX_FINDINGS,
+        }
+    }
+}
+
+// --- git subprocess helpers -------------------------------------------------
+// TODO(deps): each helper is a thin wrapper over `repository_scanner::run_git`
+// (Python `_run_git`). They currently fail closed — return `None` — which is
+// equivalent to the Python `except (OSError, subprocess.SubprocessError)` and
+// `returncode != 0` early exits, so callers degrade exactly as Python does.
+
+/// Python `_git_repository_root`: `git rev-parse --show-toplevel` then
+/// `Path(raw).resolve()`.
+fn git_repository_root(_root: &Path) -> Option<PathBuf> {
+    None
+}
+
+/// Python `_git_staged_paths`:
+/// `git diff --cached --name-only --diff-filter=ACMR -z --` split on NUL,
+/// decoded with surrogateescape semantics.
+fn git_staged_paths(_root: &Path) -> Option<Vec<String>> {
+    None
+}
+
+/// Python `_git_staged_blob`: size check via `git cat-file -s :<path>` then
+/// payload via `git cat-file blob :<path>` bounded by `max_file_bytes`.
+/// Returns `(Option<bytes>, blob_too_large)` — `too_large` only when the
+/// staged object itself exceeds `max_file_bytes`.
+fn git_staged_blob(_root: &Path, _path: &str, _max_file_bytes: usize) -> (Option<Vec<u8>>, bool) {
+    (None, false)
+}
+// ---------------------------------------------------------------------------
+
+/// Empty-result constructor for the fail-closed early exits, mirroring the
+/// literal `RepositorySecretScanResult(...)` built inside each Python branch.
+fn failed_result(error: &str) -> RepositorySecretScanResult {
+    RepositorySecretScanResult {
+        findings: Vec::new(),
+        files_scanned: 0,
+        commits_scanned: 0,
+        bytes_scanned: 0,
+        history_enabled: false,
+        truncated: true,
+        errors: vec![error.to_string()],
+        // Python `scan_staged_secrets` never passes `truncation_reasons`;
+        // the dataclass default is `()`.
+        truncation_reasons: Vec::new(),
+    }
+}
+
+/// Dedup/ordering block shared by all staged findings: keyed on
+/// `(path, line, candidate)` with the higher `confidence_score` winning, then
+/// sorted by `(path, line, rule_id)` and capped at `max_findings`. Returns the
+/// ordered findings plus whether the cap dropped entries.
+fn dedup_findings(findings: Vec<SecretFinding>, max_findings: usize) -> (Vec<SecretFinding>, bool) {
+    let mut deduped: HashMap<(String, usize, String), SecretFinding> = HashMap::new();
+    for finding in findings {
+        let key = (
+            finding.path.clone(),
+            finding.line,
+            finding.candidate.clone(),
+        );
+        match deduped.entry(key) {
+            Entry::Occupied(mut slot) => {
+                if finding.confidence_score > slot.get().confidence_score {
+                    slot.insert(finding);
+                }
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(finding);
+            }
+        }
+    }
+    let mut ordered: Vec<SecretFinding> = deduped.into_values().collect();
+    ordered.sort_by(|a, b| (a.path.as_str(), a.line, a.rule_id).cmp(&(b.path.as_str(), b.line, b.rule_id)));
+    let deduped_len = ordered.len();
+    ordered.truncate(max_findings);
+    let dropped = deduped_len > ordered.len();
+    (ordered, dropped)
+}
+
+/// Scan only content currently staged in a Git index.
+/// Mirrors `scan_staged_secrets(root, *, max_files=..., max_file_bytes=...,
+/// max_total_bytes=..., max_findings=...)`.
+pub fn scan_staged_secrets(root: &Path, options: &StagedScanOptions) -> RepositorySecretScanResult {
+    // `Path(root).expanduser().resolve()`; Python's resolve is non-strict, so
+    // a missing root resolves to itself and falls into the git_root failure
+    // branch rather than raising.
+    let expanded_root = expand_tilde(root);
+    let resolved_root = expanded_root
+        .canonicalize()
+        .unwrap_or_else(|_| expanded_root.clone());
+    let Some(git_root) = git_repository_root(&resolved_root) else {
+        return failed_result("git_repository_root_failed");
+    };
+    let Some(staged_paths) = git_staged_paths(&git_root) else {
+        return failed_result("git_staged_enumeration_failed");
+    };
+
+    let max_files = bounded_positive(options.max_files, DEFAULT_MAX_FILES, 100_000);
+    let max_file_bytes =
+        bounded_positive(options.max_file_bytes, DEFAULT_MAX_FILE_BYTES, 32 * 1024 * 1024);
+    let max_total_bytes = bounded_positive(
+        options.max_total_bytes,
+        DEFAULT_MAX_TOTAL_BYTES,
+        4 * 1024 * 1024 * 1024,
+    );
+    let max_findings = bounded_positive(options.max_findings, DEFAULT_MAX_FINDINGS, 10_000);
+
+    let mut findings: Vec<SecretFinding> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    let mut files_scanned = 0usize;
+    let mut bytes_scanned = 0usize;
+    let mut truncated = false;
+
+    for relative_path in &staged_paths {
+        if files_scanned >= max_files || bytes_scanned >= max_total_bytes {
+            truncated = true;
+            break;
+        }
+        let normalized = relative_path.replace('\\', "/");
+        let (data, too_large) = git_staged_blob(&git_root, relative_path, max_file_bytes);
+        if too_large {
+            truncated = true;
+            continue;
+        }
+        let Some(data) = data else {
+            errors.push("git_staged_blob_failed".to_string());
+            continue;
+        };
+        if bytes_scanned + data.len() > max_total_bytes {
+            truncated = true;
+            break;
+        }
+        let (found, scanned_bytes) = scan_blob(
+            &data,
+            &normalized,
+            "staged",
+            None,
+            max_findings.saturating_sub(findings.len()),
+        );
+        files_scanned += 1;
+        bytes_scanned += scanned_bytes;
+        findings.extend(found);
+        if findings.len() >= max_findings {
+            truncated = true;
+            break;
+        }
+    }
+
+    let (ordered, dropped) = dedup_findings(findings, max_findings);
+    if dropped {
+        truncated = true;
+    }
+
+    RepositorySecretScanResult {
+        findings: ordered,
+        files_scanned,
+        commits_scanned: 0,
+        bytes_scanned,
+        history_enabled: false,
+        truncated,
+        errors: {
+            errors.sort();
+            errors
+        },
+        truncation_reasons: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // Known detector oracle: `github-token` strong-format rule (same fixture
+    // line as the repository_scanner tests).
+    const SECRET_LINE: &str = "GH_TOKEN = ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345";
+
+    fn temp_root(tag: &str) -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "guard-scanner-staged-{tag}-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn finding(path: &str, line: usize, candidate: &str, confidence_score: f64) -> SecretFinding {
+        SecretFinding {
+            rule_id: "github-token",
+            family: "GitHub token",
+            severity: "critical",
+            confidence: "high",
+            confidence_score,
+            line,
+            path: path.to_string(),
+            source: "staged".to_string(),
+            commit: None,
+            validation: "github",
+            entropy: 5.0,
+            context_reasons: vec!["provider-format"],
+            candidate: candidate.to_string(),
+        }
+    }
+
+    #[test]
+    fn missing_root_fails_closed_like_python() {
+        // Python `resolve()` is non-strict: the path resolves to itself, the
+        // git root lookup fails, and the result carries
+        // `git_repository_root_failed`.
+        let result = scan_staged_secrets(
+            Path::new("/nonexistent/rtm032-staged-root"),
+            &StagedScanOptions::default(),
+        );
+        assert!(result.truncated);
+        assert_eq!(result.errors, ["git_repository_root_failed"]);
+        assert!(result.findings.is_empty());
+        assert_eq!(result.files_scanned, 0);
+        assert_eq!(result.commits_scanned, 0);
+        assert_eq!(result.bytes_scanned, 0);
+        assert!(!result.history_enabled);
+        assert!(result.truncation_reasons.is_empty());
+    }
+
+    #[test]
+    fn non_git_directory_reports_no_staged_findings() {
+        let dir = temp_root("nogit");
+        fs::write(dir.join("staged.env"), SECRET_LINE).unwrap();
+        let result = scan_staged_secrets(&dir, &StagedScanOptions::default());
+        // Working-tree files are never inspected; only index content counts.
+        assert!(result.findings.is_empty());
+        assert_eq!(result.errors, ["git_repository_root_failed"]);
+        assert!(result.truncated);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn option_defaults_match_python_module() {
+        let options = StagedScanOptions::default();
+        assert_eq!(options.max_files, 5_000);
+        assert_eq!(options.max_file_bytes, 2 * 1024 * 1024);
+        assert_eq!(options.max_total_bytes, 128 * 1024 * 1024);
+        assert_eq!(options.max_findings, 500);
+    }
+
+    #[test]
+    fn dedup_prefers_confidence_and_orders_like_python() {
+        // Same (path, line, candidate) key twice: higher confidence wins.
+        // Then findings sort by (path, line, rule_id).
+        let findings = vec![
+            finding("b.env", 4, "tok-c", 0.5),
+            finding("a.env", 7, "tok-a", 0.9),
+            finding("b.env", 2, "tok-b", 0.6),
+            finding("a.env", 7, "tok-a", 0.4), // duplicate key, weaker
+        ];
+        let (ordered, dropped) = dedup_findings(findings, 10);
+        assert!(!dropped);
+        assert_eq!(ordered.len(), 3);
+        let keys: Vec<(&str, usize, &str)> = ordered
+            .iter()
+            .map(|f| (f.path.as_str(), f.line, f.candidate.as_str()))
+            .collect();
+        assert_eq!(
+            keys,
+            [("a.env", 7, "tok-a"), ("b.env", 2, "tok-b"), ("b.env", 4, "tok-c")]
+        );
+        assert_eq!(ordered[0].confidence_score.to_bits(), 0.9f64.to_bits());
+    }
+
+    #[test]
+    fn dedup_cap_reports_truncation() {
+        let findings = vec![
+            finding("a.env", 1, "tok-1", 0.5),
+            finding("a.env", 2, "tok-2", 0.5),
+            finding("a.env", 3, "tok-3", 0.5),
+        ];
+        let (ordered, dropped) = dedup_findings(findings, 2);
+        assert!(dropped);
+        assert_eq!(ordered.len(), 2);
+        // Sorted by (path, line, rule_id): first two lines survive.
+        assert_eq!(ordered[0].line, 1);
+        assert_eq!(ordered[1].line, 2);
+    }
+}

@@ -191,7 +191,7 @@ impl RepositorySecretScanResult {
 /// Python `_bounded_positive`. The `int(value)` coercion can only fail for
 /// non-int inputs in Python; the Rust signature is already `usize`, so only
 /// the `parsed <= 0` guard survives.
-fn bounded_positive(value: usize, default: usize, maximum: usize) -> usize {
+pub(crate) fn bounded_positive(value: usize, default: usize, maximum: usize) -> usize {
     if value == 0 {
         return default;
     }
@@ -330,7 +330,7 @@ fn git_blob(_root: &Path, _commit: &str, _path: &str, _max_file_bytes: usize) ->
 // ---------------------------------------------------------------------------
 
 /// Python `_scan_blob`.
-fn scan_blob(
+pub(crate) fn scan_blob(
     data: &[u8],
     path: &str,
     source: &str,
@@ -368,7 +368,7 @@ fn read_working_file(
 
 /// Minimal `Path.expanduser()` parity: expands a leading `~` or `~/` via
 /// `$HOME`; the `~user` form is left intact (not needed by callers).
-fn expand_tilde(path: &Path) -> PathBuf {
+pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     if let Some(home) = std::env::var_os("HOME") {
         if text == "~" {

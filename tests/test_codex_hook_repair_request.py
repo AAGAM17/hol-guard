@@ -55,8 +55,10 @@ def _resign(plan, path, payload, *, purpose="codex-authority-repair-request"):
     return hashlib.sha256(raw).hexdigest()
 
 
-def test_exact_roundtrip_is_read_only_except_private_request(captured, tmp_path):
+def test_exact_roundtrip_is_read_only_except_private_request(captured, tmp_path, monkeypatch):
     _context, _config, manifest, plan, path = captured
+    now = time.monotonic()
+    monkeypatch.setattr(requests.time, "monotonic", lambda: now)
     before = _tree(tmp_path)
     digest = _write(plan, path)
     assert path.stat().st_mode & 0o777 == 0o600

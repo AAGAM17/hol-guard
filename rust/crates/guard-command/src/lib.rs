@@ -56,6 +56,8 @@ pub mod package_execution_context;
 pub mod jsonc;
 pub mod package_intent_common;
 pub mod package_manager_command;
+pub mod typescript_launch_evidence;
+pub mod package_manifest_diff;
 pub mod homebrew_intent;
 mod data_flow;
 mod env_wrapper;

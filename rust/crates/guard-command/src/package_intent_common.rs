@@ -53,7 +53,7 @@ pub type EvidenceStatus = &'static str;
 // PackageIntentTarget (:27-65)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PackageIntentTarget {
     pub ecosystem: String,
     pub package_name: Option<String>,

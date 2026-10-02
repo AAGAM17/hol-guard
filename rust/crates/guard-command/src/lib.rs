@@ -5,7 +5,11 @@ mod command_contained_routine_candidates;
 mod command_common_cli_matchers;
 pub mod command_compatibility;
 mod command_database_matchers;
+mod command_launcher_floors;
 pub mod command_evaluation;
+mod command_critical_floors;
+#[cfg(test)]
+mod command_critical_floors_tests;
 pub mod command_decision_adapter;
 mod command_operand_matchers;
 mod command_option_parsing;
@@ -30,7 +34,10 @@ mod github_capability_contract;
 mod github_command_capabilities;
 #[cfg(test)]
 mod github_capability_contract_tests;
+#[cfg(test)]
 mod github_command_capabilities_tests;
+mod github_capability_interaction;
+mod github_workflow_authorization;
 mod parser_wrappers;
 pub mod pretool;
 

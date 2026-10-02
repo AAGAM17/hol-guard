@@ -46,6 +46,9 @@ pub use workflow_capability::*;
 mod signal_contract;
 pub use signal_contract::*;
 
+mod decision_lattice;
+pub use decision_lattice::*;
+
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";
 pub const GUARD_HOOK_EDGE_RESULT_V2_SCHEMA: &str = "guard-hook-edge-result.v2";

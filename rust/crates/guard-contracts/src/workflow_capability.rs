@@ -80,6 +80,34 @@ fn validate_identifier(v: &str) -> WfResult<()> {
     }
 }
 
+/// `validate_workflow_capability_identifier(name, value)` — the named-export
+/// validator used across the authority-state/transition modules; rejects with
+/// `invalid_{name}` (a per-field reason), not `invalid_identifier`.
+pub(crate) fn validate_workflow_capability_identifier(
+    name: &'static str,
+    v: &str,
+) -> WfResult<()> {
+    let valid = !v.is_empty()
+        && v.len() <= 256
+        && !v.contains('*')
+        && v.chars().next().map_or(false, |c| c.is_ascii_alphanumeric())
+        && v.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-')
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(WorkflowCapabilityError(match name {
+            "capability_id" => "invalid_capability_id",
+            "revocation_id" => "invalid_revocation_id",
+            "receipt_id" => "invalid_receipt_id",
+            "key_id" => "invalid_key_id",
+            _ => "invalid_identifier",
+        }))
+    }
+}
+
 /// `_TIMESTAMP_PATTERN`: `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$`.
 fn is_canonical_timestamp(v: &str) -> bool {
     let b = v.as_bytes();

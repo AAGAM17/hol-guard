@@ -42,6 +42,10 @@ pub use generic_hook_payload::*;
 
 mod workflow_capability;
 pub use workflow_capability::*;
+mod workflow_capability_transitions;
+pub use workflow_capability_transitions::*;
+mod workflow_capability_authority_state;
+pub use workflow_capability_authority_state::*;
 
 mod signal_contract;
 pub use signal_contract::*;

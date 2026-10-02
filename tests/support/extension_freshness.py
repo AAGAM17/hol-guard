@@ -33,9 +33,7 @@ def pending_contribution_regen() -> bool:
         BUILT_IN_COMMAND_EXTENSION_REGISTRY,
     )
 
-    registry_ids = {
-        extension.extension_id for extension in BUILT_IN_COMMAND_EXTENSION_REGISTRY.extensions
-    }
+    registry_ids = {extension.extension_id for extension in BUILT_IN_COMMAND_EXTENSION_REGISTRY.extensions}
     return bool(contribution_ids() - registry_ids)
 
 
@@ -81,18 +79,21 @@ def _projection_base_sha() -> str | None:
 def _pr_diff_paths() -> list[str] | None:
     """Paths this ref changes relative to its captured base, or None locally."""
 
-    is_pull_request = os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or bool(
-        os.environ.get("GITHUB_BASE_REF")
-    )
+    is_pull_request = os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or bool(os.environ.get("GITHUB_BASE_REF"))
     base_sha = _projection_base_sha()
     if base_sha is None:
         return None
 
     result = _git("diff", "--name-only", base_sha, "HEAD")
     if result.returncode:
-        if is_pull_request:
+        if not is_pull_request:
+            return None
+        fetched = _git("fetch", "--depth=1", "origin", base_sha)
+        if fetched.returncode:
             raise RuntimeError("Cannot determine pull-request diff")
-        return None
+        result = _git("diff", "--name-only", base_sha, "HEAD")
+        if result.returncode:
+            raise RuntimeError("Cannot determine pull-request diff")
     return [path for path in result.stdout.splitlines() if path]
 
 
@@ -114,11 +115,7 @@ def _regen_paths_absent(*paths: str) -> bool:
         return bool(os.environ.get("GITHUB_BASE_REF"))
     if not os.environ.get("GITHUB_BASE_REF") and not diff:
         return False
-    return not any(
-        changed == path or changed.startswith(path.rstrip("/") + "/")
-        for changed in diff
-        for path in paths
-    )
+    return not any(changed == path or changed.startswith(path.rstrip("/") + "/") for changed in diff for path in paths)
 
 
 _NATIVE_PROJECTION_PATHS: tuple[str, ...] = (
@@ -169,10 +166,7 @@ def pending_native_projection_regen() -> bool:
 
 requires_fresh_projections = pytest.mark.skipif(
     pending_native_projection_regen(),
-    reason=(
-        "checked-in projections are regen-owned; "
-        "freshness is enforced on main and after maintainer regeneration"
-    ),
+    reason=("checked-in projections are regen-owned; freshness is enforced on main and after maintainer regeneration"),
 )
 
 requires_fresh_decision_diff = pytest.mark.skipif(

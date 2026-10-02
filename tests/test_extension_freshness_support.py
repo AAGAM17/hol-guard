@@ -97,3 +97,32 @@ def test_pull_request_diff_uses_captured_base_not_moving_branch_tip(
 
     assert extension_freshness._pr_diff_paths() == ["tests/guard_command_decision_diff.py"]
     assert calls == [("diff", "--name-only", base_sha, "HEAD")]
+
+
+def test_pull_request_diff_fetches_captured_base_when_checkout_is_shallow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_sha = "a" * 40
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("HOL_GUARD_BASE_SHA", base_sha)
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+    responses = iter(
+        (
+            subprocess.CompletedProcess([], 128, "", "missing base"),
+            subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 0, "tests/guard_command_decision_diff.py\n", ""),
+        )
+    )
+
+    def git(*arguments: str) -> subprocess.CompletedProcess[str]:
+        calls.append(arguments)
+        return next(responses)
+
+    monkeypatch.setattr(extension_freshness, "_git", git)
+
+    assert extension_freshness._pr_diff_paths() == ["tests/guard_command_decision_diff.py"]
+    assert calls == [
+        ("diff", "--name-only", base_sha, "HEAD"),
+        ("fetch", "--depth=1", "origin", base_sha),
+        ("diff", "--name-only", base_sha, "HEAD"),
+    ]

@@ -4,7 +4,7 @@
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use crate::shell_structure::{extract_heredocs, mask_heredoc_bodies};
+use crate::shell_structure::extract_heredocs;
 
 pub const SHELL_CWD_UNRESOLVED_EXPRESSION: &str = "shell_cwd_unresolved_expression";
 pub const SHELL_CWD_MISSING_DIRECTORY: &str = "shell_cwd_missing_directory";

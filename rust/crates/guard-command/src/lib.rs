@@ -8,7 +8,7 @@ mod command_database_matchers;
 mod command_launcher_floors;
 pub mod command_evaluation;
 mod command_critical_floors;
-mod command_shell_read_factors;
+pub mod command_shell_read_factors;
 #[cfg(test)]
 mod command_critical_floors_tests;
 #[cfg(test)]
@@ -41,8 +41,8 @@ mod github_capability_contract_tests;
 #[cfg(test)]
 mod github_command_capabilities_tests;
 mod github_capability_interaction;
-mod github_workflow_authorization;
-mod command_model;
+pub mod github_workflow_authorization;
+pub mod command_model;
 mod command_segment_parsing;
 mod data_flow;
 mod env_wrapper;
@@ -53,13 +53,16 @@ mod shell_execution_context;
 mod shell_secret_read_flow;
 mod shell_secret_read_support;
 mod runtime_read_paths;
-mod shell_secret_reads;
+pub mod shell_secret_reads;
 mod shell_execution_context_support;
 mod home_path_text;
 mod shell_read_literal_wrapper;
 mod shell_structure;
 mod parser_wrappers;
 pub mod pretool;
+
+pub use command_evaluation::{evaluate_command, CompositeCommandEvaluation};
+pub use command_model::parse_shell_command;
 
 use serde::{Deserialize, Serialize};
 

@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import sqlite3
 import sys
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
@@ -681,11 +683,10 @@ def _headless_approval_resolver(
                     approval_center_url=approval_center_url,
                     now=_now(),
                 )
-            except Exception as queue_error:
-                # A fatal store error (e.g. a quarantined SQLite store) must not
-                # abort the deny path: still emit an explicit, empty approval
-                # queue so callers always find the key and the action stays
-                # blocked pending manual resolution.
+            except (sqlite3.Error, OSError) as queue_error:
+                logging.getLogger(__name__).warning(
+                    "Guard approval queue unavailable: %s", queue_error, exc_info=True
+                )
                 queued = []
                 payload["approval_queue_unavailable"] = type(queue_error).__name__
             payload["approval_requests"] = queued

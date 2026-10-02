@@ -401,7 +401,9 @@ fn safe_rg_arguments(arguments: &[String], context: ReadContext<'_>) -> bool {
             continue;
         }
         if paths_only || pattern_supplied {
-            if unsafe_search_value(SearchValueRole::Path, argument, context) {
+            if unsafe_search_value(SearchValueRole::Path, argument, context)
+                && !tree::safe_recursive_target(argument, context)
+            {
                 return false;
             }
         } else {

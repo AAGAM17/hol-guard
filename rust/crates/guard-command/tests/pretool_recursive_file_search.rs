@@ -49,6 +49,14 @@ fn recursive_search_checks_every_reachable_path() {
             ("grep -Rn ordinary __tests__/".to_owned(), true),
             ("grep --recursive ordinary __tests__/".to_owned(), true),
             ("grep -rn ordinary unsafe-tests/".to_owned(), false),
+            (
+                format!("rg -n ordinary {}/__tests__/", root.display()),
+                true,
+            ),
+            (
+                format!("rg -n ordinary {}/unsafe-tests/", root.display()),
+                false,
+            ),
             ("grep -Rn ordinary test-alias/".to_owned(), false),
             ("grep -rn ordinary __tests__/ src/".to_owned(), false),
             ("grep -rn -e ordinary __tests__/".to_owned(), true),

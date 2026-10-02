@@ -25,6 +25,7 @@ pub use crypto::{
 };
 
 pub mod local_authority_integrity;
+pub mod policy_integrity;
 
 #[cfg(test)]
 #[path = "policy_snapshot_tests.rs"]

@@ -17,7 +17,7 @@ use guard_policy_snapshot::local_authority_integrity::{
 pub const LOCAL_ONCE_INTEGRITY_PURPOSE: &str = "guard-local-once-approval";
 
 /// `_local_once_approval_is_reusable` (:28-29).
-fn local_once_approval_is_reusable(artifact_id: &str) -> bool {
+pub(crate) fn local_once_approval_is_reusable(artifact_id: &str) -> bool {
     artifact_id.contains(":package-request:")
 }
 
@@ -165,7 +165,7 @@ const CLAIM_COLUMNS: &str = "approval_id, request_id, harness, artifact_id, arti
 
 /// Convert a `rusqlite::Row` into the `Value` object the helpers consume.
 /// Column order must match `CLAIM_COLUMNS`.
-fn row_to_value(row: &rusqlite::Row) -> rusqlite::Result<Value> {
+pub(crate) fn row_to_value(row: &rusqlite::Row) -> rusqlite::Result<Value> {
     let get = |i: usize| -> rusqlite::Result<Value> {
         let v: Option<Value> = row.get::<_, Option<String>>(i)?.map(Value::String);
         Ok(v.unwrap_or(Value::Null))

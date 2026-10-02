@@ -71,7 +71,7 @@ def test_checkout_import_invalidates_installed_evidence(
     monkeypatch.setattr(runner, "verify_install", lambda *_args: {"outside_checkout": True})
 
     def injected_run(_arguments, *, plugins):
-        plugins[0].passed = 42
+        plugins[0].passed = 45
         module = ModuleType("codex_plugin_scanner.fixture_source_injection")
         module.__file__ = str(tmp_path / "src" / "fixture.py")
         monkeypatch.setitem(sys.modules, module.__name__, module)

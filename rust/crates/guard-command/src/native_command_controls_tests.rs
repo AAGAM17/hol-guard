@@ -189,10 +189,29 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
         "native_command_explicit_permission_allow"
     );
     for command in [
+        "pwd; git push origin main",
+        "echo ready && git push origin main",
+        "git push origin main || echo failed",
+        "git push origin main | head -1",
+        "pwd; git push origin main; echo done",
+        "gh pr view 1 --json title; git push origin main",
+    ] {
+        assert_eq!(
+            evaluate(&controls, command).minimum_action,
+            "allow",
+            "{command}"
+        );
+    }
+    for command in [
         "git push origin main; python3 project.py",
+        "git push origin main; git commit -m changed",
         "git push origin main; rm -rf /",
         "git push origin main; cat .env",
         "git push origin main; echo $(whoami)",
+        "git push origin main || cat .env",
+        "git push origin main | python3 project.py",
+        "cd /tmp; git push origin main; cat relative.txt",
+        "git push origin main; echo done > .env",
     ] {
         assert_ne!(
             evaluate(&controls, command).minimum_action,
@@ -200,6 +219,25 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             "{command}"
         );
     }
+    let mut mixed = binding.clone();
+    mixed.layers[0].controls.push(
+        serde_json::from_value(serde_json::json!({
+            "target_kind": "permission",
+            "target_id": "command.github.permission.read-remote",
+            "state": "disabled"
+        }))
+        .unwrap(),
+    );
+    mixed.effective_digest = mixed.compute_effective_digest().unwrap();
+    let mixed_controls = CompiledNativeCommandControls::new(&mixed).unwrap();
+    assert_eq!(
+        evaluate(
+            &mixed_controls,
+            "git push origin main; gh pr view 1 --json title"
+        )
+        .minimum_action,
+        "block"
+    );
     let mut disabled = binding.clone();
     disabled.layers[0].controls[0].state = "disabled".into();
     disabled.effective_digest = disabled.compute_effective_digest().unwrap();
@@ -208,6 +246,16 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
         evaluate(&controls, "git push origin main").minimum_action,
         "block"
     );
+    for command in [
+        "pwd; git push origin main",
+        "git push origin main | head -1",
+    ] {
+        assert_eq!(
+            evaluate(&controls, command).minimum_action,
+            "block",
+            "{command}"
+        );
+    }
 
     let mut delegated = binding.clone();
     delegated.layers[0].controls[0].target_id =
@@ -225,6 +273,10 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
     let controls = CompiledNativeCommandControls::new(&binding).unwrap();
     assert_eq!(
         evaluate(&controls, "git push origin main").minimum_action,
+        "block"
+    );
+    assert_eq!(
+        evaluate(&controls, "pwd; git push origin main; echo done").minimum_action,
         "block"
     );
 }

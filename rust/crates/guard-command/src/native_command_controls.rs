@@ -363,7 +363,9 @@ impl CompiledNativeCommandControls {
         {
             return false;
         }
-        let mut covered = BTreeSet::new();
+        let mut covered: BTreeSet<_> = crate::pretool::benign_command_segments(command)
+            .into_iter()
+            .collect();
         for observation in &batch.observations {
             if observation.effective_segment_indexes.is_empty() {
                 continue;
@@ -375,13 +377,20 @@ impl CompiledNativeCommandControls {
                 .explicitly_enabled_permissions
                 .contains(&self.program.rules[*index].permission_id)
             {
+                if observation
+                    .effective_segment_indexes
+                    .iter()
+                    .all(|index| covered.contains(index))
+                {
+                    continue;
+                }
                 return false;
             }
             covered.extend(observation.effective_segment_indexes.iter().copied());
         }
         // Delegated package-firewall ownership is not execution consent. Only
-        // verified rule observations can cover a segment; an extra unclassified
-        // command in a shell chain must retain its own review.
+        // verified rule observations or the native benign proof can cover a
+        // segment; an extra unclassified command retains its own review.
         (0..command.segments.len()).all(|index| covered.contains(&index))
     }
 }

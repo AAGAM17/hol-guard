@@ -4,6 +4,7 @@ mod approval;
 mod archive_inspect;
 mod approval_reuse;
 mod approval_gate_grants;
+mod approval_gate_settings;
 mod approval_gate_state;
 mod approval_gate_verify;
 mod archive_inspect_containment;

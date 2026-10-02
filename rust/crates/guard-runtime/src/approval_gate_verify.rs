@@ -19,7 +19,6 @@
 
 use std::path::Path;
 
-use guard_contracts::timestamp_has_expired;
 use guard_policy_snapshot::local_authority_integrity::{
     sign_local_authority_payload, verify_local_authority_payload,
 };
@@ -130,7 +129,7 @@ fn proc_self_ppid_sid() -> (i64, i64) {
 }
 
 #[cfg(unix)]
-fn current_totp_session_binding() -> Option<String> {
+pub(crate) fn current_totp_session_binding() -> Option<String> {
     let mut signals: Vec<String> = Vec::new();
     let (_ppid, sid) = proc_self_ppid_sid();
     if sid >= 0 {
@@ -265,7 +264,7 @@ fn record_recent_totp_satisfaction(
 }
 
 /// `_recent_totp_satisfied_locked` (:1256-1303).
-fn recent_totp_satisfied_locked(
+pub(crate) fn recent_totp_satisfied_locked(
     guard_home: &Path,
     state: &Value,
     now_epoch: f64,
@@ -450,7 +449,46 @@ pub(crate) fn invalidate_active_grants(grants: &ApprovalGateGrants, guard_home: 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ApprovalGateInputV1 {
     pub password: Option<String>,
+    pub new_password: Option<String>,
+    pub confirm_password: Option<String>,
     pub totp_code: Option<String>,
+    pub use_cooldown: Option<bool>,
+    pub revoke_cooldown: bool,
+    pub require_fresh_totp: bool,
+}
+
+/// `input_from_mapping` (:161-178) — daemon/dashboard payload -> gate input.
+/// Reads `approval_gate` sub-mapping plus top-level `approval_password` /
+/// `approval_totp_code` / `approval_gate_use_cooldown` fallbacks.
+pub fn input_from_mapping(payload: Option<&Value>) -> Option<ApprovalGateInputV1> {
+    let payload = payload?.as_object()?;
+    let gate = payload
+        .get("approval_gate")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let opt_str = |m: &Map<String, Value>, k: &str| optional_string(m.get(k));
+    let password = opt_str(payload, "approval_password").or_else(|| opt_str(&gate, "password"));
+    let current_password = opt_str(&gate, "current_password");
+    let totp_code =
+        opt_str(payload, "approval_totp_code").or_else(|| opt_str(&gate, "totp_code"));
+    let use_cooldown = payload
+        .get("approval_gate_use_cooldown")
+        .and_then(|v| v.as_bool())
+        .or_else(|| gate.get("use_cooldown").and_then(|v| v.as_bool()));
+    let revoke_cooldown = gate
+        .get("revoke_cooldown")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    Some(ApprovalGateInputV1 {
+        password: current_password.or(password),
+        new_password: opt_str(&gate, "new_password"),
+        confirm_password: opt_str(&gate, "confirm_password"),
+        totp_code,
+        use_cooldown,
+        revoke_cooldown,
+        require_fresh_totp: false,
+    })
 }
 
 /// `_verify_or_raise_locked` (:963-1058). Pure on `state`; the caller supplies
@@ -681,6 +719,7 @@ mod tests {
         ApprovalGateInputV1 {
             password: password.map(str::to_owned),
             totp_code: code.map(str::to_owned),
+            ..Default::default()
         }
     }
 

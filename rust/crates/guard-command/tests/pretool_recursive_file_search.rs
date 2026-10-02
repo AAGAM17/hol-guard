@@ -4,7 +4,7 @@ use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
 #[test]
-fn recursion_flags_on_explicit_files_do_not_authorize_directory_walks() {
+fn recursive_search_checks_every_reachable_path() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/recursive-file-search")
         .join(format!("fixture-{}", std::process::id()));
@@ -12,8 +12,17 @@ fn recursion_flags_on_explicit_files_do_not_authorize_directory_walks() {
     let root = std::fs::canonicalize(root).unwrap();
     std::fs::write(root.join("src/one.ts"), "ordinary source").unwrap();
     std::fs::write(root.join("src/two.ts"), "ordinary source").unwrap();
+    std::fs::create_dir_all(root.join("__tests__/nested")).unwrap();
+    std::fs::write(
+        root.join("__tests__/nested/canary.test.ts"),
+        "ordinary source",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("unsafe-tests")).unwrap();
+    std::fs::write(root.join("unsafe-tests/.env"), "synthetic secret").unwrap();
     std::fs::write(root.join(".env"), "synthetic secret").unwrap();
     std::os::unix::fs::symlink(root.join(".env"), root.join("src/alias.ts")).unwrap();
+    std::os::unix::fs::symlink(root.join("__tests__"), root.join("test-alias")).unwrap();
     for harness in ["omp", "zcode"] {
         for (command, expected) in [
             ("grep -rn ordinary src/one.ts src/two.ts".to_owned(), true),
@@ -32,6 +41,19 @@ fn recursion_flags_on_explicit_files_do_not_authorize_directory_walks() {
                 true,
             ),
             ("grep -rn ordinary src".to_owned(), false),
+            ("grep -rn ordinary __tests__/".to_owned(), true),
+            (
+                format!("grep -rn ordinary {}/__tests__/", root.display()),
+                true,
+            ),
+            ("grep -Rn ordinary __tests__/".to_owned(), true),
+            ("grep --recursive ordinary __tests__/".to_owned(), true),
+            ("grep -rn ordinary unsafe-tests/".to_owned(), false),
+            ("grep -Rn ordinary test-alias/".to_owned(), false),
+            ("grep -rn ordinary __tests__/ src/".to_owned(), false),
+            ("grep -rn -e ordinary __tests__/".to_owned(), true),
+            ("grep -rn -- ordinary __tests__/".to_owned(), true),
+            ("grep -rn ordinary .".to_owned(), false),
             ("grep -rn ordinary".to_owned(), false),
             ("grep -rn ordinary src/missing.ts".to_owned(), false),
             ("grep -rn ordinary src/alias.ts".to_owned(), false),

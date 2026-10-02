@@ -4,6 +4,7 @@ use std::collections::{HashSet, VecDeque};
 mod glob_class;
 mod hint;
 mod options;
+mod tree;
 use options::unsafe_search_value;
 fn glob_matches(pattern: &[u8], value: &[u8]) -> bool {
     let mut previous = vec![false; value.len() + 1];
@@ -497,7 +498,9 @@ fn safe_grep_arguments(arguments: &[String], context: ReadContext<'_>) -> bool {
         }
         if pattern_supplied {
             targets.push(argument.as_str());
-            if unsafe_search_value(SearchValueRole::Path, argument, context) {
+            if unsafe_search_value(SearchValueRole::Path, argument, context)
+                && !(recursive && tree::safe_recursive_target(argument, context))
+            {
                 return false;
             }
         } else {
@@ -507,7 +510,7 @@ fn safe_grep_arguments(arguments: &[String], context: ReadContext<'_>) -> bool {
     pending_value.is_none()
         && (!recursive
             || (!targets.is_empty()
-                && targets.iter().all(|target| {
-                    super::safe_reads::existing_regular_read_target(target, context.0, context.1)
-                })))
+                && targets
+                    .iter()
+                    .all(|target| tree::safe_recursive_target(target, context))))
 }

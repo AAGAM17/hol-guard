@@ -10,12 +10,14 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard import native_context
 from codex_plugin_scanner.guard.approval_gate import ApprovalGateError, ApprovalGateInput, require_approval_decision
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution, bulk_allow_read_only_once
 from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.daemon import GuardDaemonServer
 from codex_plugin_scanner.guard.mcp_tool_calls import evaluate_tool_call
 from codex_plugin_scanner.guard.models import PolicyDecision
+from codex_plugin_scanner.guard.native_resident_client import native_resident_client_failure_code
 from codex_plugin_scanner.guard.proxy import OpenCodeMcpGuardProxy
 from codex_plugin_scanner.guard.proxy import runtime_mcp as runtime
 from codex_plugin_scanner.guard.store import GuardStore
@@ -77,6 +79,16 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     direct: bool = False,
 ) -> None:
     install_fake_system_keyring()
+    resident_failures = []
+    real_resident_request = native_context.native_resident_client_request
+
+    def observe_resident_request(*args, **kwargs):
+        result = real_resident_request(*args, **kwargs)
+        if result is None:
+            resident_failures.append(native_resident_client_failure_code())
+        return result
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", observe_resident_request)
     ctx = _context(tmp_path)
     store = GuardStore(ctx.guard_home)
     _enable_gate(store)
@@ -247,7 +259,12 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
             arguments=arguments,
             fresh_authority_provider=fresh_authority,
         )
-        assert decision.action == "allow", decision
+        assert decision.action == "allow", {
+            "action": decision.action,
+            "reuse_status": decision.approval_reuse_status,
+            "reuse_reason": decision.approval_reuse_reason_code,
+            "resident_failures": resident_failures,
+        }
         assert decision.post_claim_revalidated
         assert (
             evaluate_tool_call(
@@ -266,12 +283,15 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
         assert not marker.exists(), second["events"][2]
         assert "error" in second["responses"][2]
         if mutation in {"deny-after-claim", "final-catalog", "postclaim-config"}:
-            assert mutation_applied == [True]
+            assert mutation_applied == [True], {
+                "event": second["events"][2],
+                "resident_failures": resident_failures,
+            }
         if mutation == "final-catalog":
             evidence = second["events"][2]["scanner_evidence"][-1]
             assert evidence["phase"] == "immediately_before_forward"
         return
-    assert marker.exists(), second["events"][2].get("scanner_evidence")
+    assert marker.exists(), {"event": second["events"][2], "resident_failures": resident_failures}
     assert second["responses"][2]["result"]["content"][0]["text"] == "forwarded"
     marker_before = marker.read_bytes()
     messages[2]["id"] = 4

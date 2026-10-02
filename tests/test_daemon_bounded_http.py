@@ -287,7 +287,7 @@ def test_real_daemon_subclass_enforces_bounded_admission(monkeypatch, tmp_path) 
     daemon.start()
     held = socket.create_connection(("127.0.0.1", daemon.port), timeout=1)
     try:
-        held.sendall(b"POST /v1/health HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n")
+        held.sendall(b"POST /v1/health HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n\r\n")
         deadline = time.monotonic() + 1
         while daemon_admission_snapshot()["active"] < 1 and time.monotonic() < deadline:
             time.sleep(0.01)

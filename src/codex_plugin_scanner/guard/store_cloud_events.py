@@ -101,7 +101,7 @@ class StoreCloudEventsMixin:
                         manifest_json = excluded.manifest_json, updated_at = excluded.updated_at""",
                         (
                             harness,
-                            int(replacement["active"]),
+                            1 if replacement["active"] else 0,
                             replacement["workspace"],
                             json.dumps(replacement["manifest"]),
                             replacement["updated_at"],

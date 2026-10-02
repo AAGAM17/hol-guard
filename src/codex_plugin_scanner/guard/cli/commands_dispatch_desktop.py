@@ -575,17 +575,26 @@ def _run_guard_desktop_command(
         if context is None or store is None:
             raise RuntimeError("Guard owned qualification requires local Guard context")
         return run_desktop_owned_qualification(
-            args, context=context, store=store, output_stream=output_stream or sys.stdout,
+            args,
+            context=context,
+            store=store,
+            output_stream=output_stream or sys.stdout,
         )
     if getattr(args, "desktop_command", None) in {
-        "transition-status", "transition-recover", "transition-activate", "transition-finalize",
+        "transition-status",
+        "transition-recover",
+        "transition-activate",
+        "transition-finalize",
     }:
         from .desktop_runtime_transition import run_desktop_runtime_transition
 
         if context is None or store is None:
             raise RuntimeError("Guard transition requires local Guard context")
         return run_desktop_runtime_transition(
-            args, context=context, store=store, output_stream=output_stream or sys.stdout,
+            args,
+            context=context,
+            store=store,
+            output_stream=output_stream or sys.stdout,
         )
     if getattr(args, "desktop_command", None) == "qualify":
         from .desktop_qualification import run_desktop_qualification

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod repository_scanner;
 pub mod secret_detection;
 
 use guard_rules::{CONTEXT_CHARS, MAX_MATCHES, MAX_SCAN_BYTES};

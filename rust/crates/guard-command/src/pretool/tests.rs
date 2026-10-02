@@ -32,6 +32,10 @@ fn permits_only_standalone_plain_directory_changes() {
         "cd ./project?",
         "cd ./[project]",
         "cd -",
+        "cd ~+",
+        "cd ~-",
+        "cd ~+/project",
+        "cd ~-/project",
     ] {
         let result = evaluate_pre_tool(&request(command));
         assert!(

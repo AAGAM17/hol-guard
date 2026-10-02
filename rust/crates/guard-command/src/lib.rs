@@ -55,6 +55,8 @@ pub mod launch_identity;
 pub mod package_execution_context;
 pub mod jsonc;
 pub mod package_intent_common;
+pub mod package_manager_command;
+pub mod homebrew_intent;
 mod data_flow;
 mod env_wrapper;
 mod command_structure;

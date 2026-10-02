@@ -123,9 +123,21 @@ pub(crate) fn evaluate_approval_gate_request(
     request: &ApprovalGateRequestV1,
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest(request).map_err(str::to_owned)?;
-    let (status, code, error_status, payload) = match evaluate(request) {
-        Ok(payload) => ("ok".to_owned(), "ok".to_owned(), None, Some(payload)),
-        Err(e) => ("error".to_owned(), e.code, Some(e.status), None),
+    let (status, code, error_status, message, payload) = match evaluate(request) {
+        Ok(payload) => (
+            "ok".to_owned(),
+            "ok".to_owned(),
+            None,
+            None,
+            Some(payload),
+        ),
+        Err(e) => (
+            "error".to_owned(),
+            e.code,
+            Some(e.status),
+            Some(e.message),
+            None,
+        ),
     };
     let result = ApprovalGateResultV1 {
         schema: APPROVAL_GATE_RESULT_SCHEMA.to_owned(),
@@ -134,6 +146,7 @@ pub(crate) fn evaluate_approval_gate_request(
         status,
         code,
         error_status,
+        message,
         payload,
     };
     crate::encode_response(&result)

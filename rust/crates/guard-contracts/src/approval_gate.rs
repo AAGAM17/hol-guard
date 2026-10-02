@@ -169,6 +169,9 @@ pub struct ApprovalGateResultV1 {
     /// Python `ApprovalGateError.status` (HTTP-ish) on error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_status: Option<u16>,
+    /// Python `ApprovalGateError` message on error (empty on success).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
     /// Method result payload — config dict, grant dict, enrollment dict, or a
     /// `{"satisfied":bool}`/`{"grant":..}`/`{"skipped":true}` envelope.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -33,6 +33,9 @@ pub use canonical_json::*;
 mod utc_timestamp;
 pub use utc_timestamp::*;
 
+mod native_runtime_values;
+pub use native_runtime_values::*;
+
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";
 pub const GUARD_HOOK_EDGE_RESULT_V2_SCHEMA: &str = "guard-hook-edge-result.v2";

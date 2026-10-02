@@ -23,6 +23,7 @@ mod encrypted_secret_store;
 mod local_once_store;
 mod policy_integrity_resolver;
 mod native_hook_receipt;
+mod native_runtime_admission;
 mod oneshot;
 mod policy_enforcement;
 mod policy_store;

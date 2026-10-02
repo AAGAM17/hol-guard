@@ -525,11 +525,6 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || needs.build.outputs.source_sha }}
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
-        if: github.event_name == 'pull_request'
-        with:
-          version: "0.9.26"
-          enable-cache: true
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: distributions

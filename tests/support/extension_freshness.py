@@ -16,12 +16,16 @@ the artifacts) and deferred for every ref whose diff omits them.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from scripts.ci.detect_pending_extension_regen import contribution_ids
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def pending_contribution_regen() -> bool:
@@ -36,24 +40,60 @@ def pending_contribution_regen() -> bool:
 
 
 def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
+    command = ["git", *arguments]
     try:
         return subprocess.run(
-            ["git", *arguments], check=False, capture_output=True, text=True
+            command,
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
-    except OSError:
-        return subprocess.CompletedProcess(["git", *arguments], 1, "", "")
+    except (OSError, subprocess.TimeoutExpired):
+        return subprocess.CompletedProcess(command, 1, "", "")
+
+
+def _projection_base_sha() -> str | None:
+    """Return the captured base revision for this ref, failing closed in PR CI."""
+
+    base_sha = os.environ.get("HOL_GUARD_BASE_SHA") or os.environ.get("GITHUB_BASE_SHA")
+    if base_sha:
+        return base_sha
+
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if event_path:
+        try:
+            event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+            base_sha = event["pull_request"]["base"]["sha"]
+        except (OSError, UnicodeError, KeyError, TypeError, ValueError):
+            base_sha = None
+        if isinstance(base_sha, str) and base_sha:
+            return base_sha
+
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+        raise RuntimeError("Cannot determine pull-request base revision")
+
+    result = _git("merge-base", "HEAD", "main")
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _pr_diff_paths() -> list[str] | None:
-    """Paths this ref changes relative to the base branch, or None on failure.
+    """Paths this ref changes relative to its captured base, or None locally."""
 
-    Delegates to the shared detector: PR CI diffs against a depth-1 fetch of
-    ``GITHUB_BASE_REF``; local runs fall back to the ``main`` merge-base.
-    """
+    is_pull_request = os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or bool(
+        os.environ.get("GITHUB_BASE_REF")
+    )
+    base_sha = _projection_base_sha()
+    if base_sha is None:
+        return None
 
-    from scripts.ci.detect_pending_extension_regen import pr_diff_paths
-
-    return pr_diff_paths()
+    result = _git("diff", "--name-only", base_sha, "HEAD")
+    if result.returncode:
+        if is_pull_request:
+            raise RuntimeError("Cannot determine pull-request diff")
+        return None
+    return [path for path in result.stdout.splitlines() if path]
 
 
 def _regen_paths_absent(*paths: str) -> bool:

@@ -71,7 +71,7 @@ def run_synthetic_command(
             "synthetic evaluation setup is unavailable",
             status=setup.report.status,
         )
-        if setup.root_path is not None:
+        if setup.root_path is not None and setup.marker_token is not None:
             target_scope = cast(Mapping[str, object], profile.data["targetScope"])
             try:
                 _write_recovery_token(setup, declared_parent=Path(cast(str, target_scope["rootPath"])))

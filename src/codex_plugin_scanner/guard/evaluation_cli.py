@@ -223,7 +223,7 @@ def _run_preflight(args: argparse.Namespace) -> int:
             )
             report = setup.to_dict()
             cleanup: dict[str, object] | None = None
-            if setup.root_path is not None:
+            if setup.root_path is not None and setup.marker_token is not None:
                 try:
                     target_scope = cast(Mapping[str, object], profile.data["targetScope"])
                     declared_parent = Path(cast(str, target_scope["rootPath"]))

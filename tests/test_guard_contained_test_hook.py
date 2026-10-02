@@ -54,6 +54,7 @@ def required_profile() -> dict[str, object]:
 
 def test_execution_authority_uses_the_prepared_test_working_directory(tmp_path, monkeypatch):
     import argparse
+
     from codex_plugin_scanner.guard.cli import commands_dispatch_local as cli
     from codex_plugin_scanner.guard.cli import commands_hook_native_authority as authority
 

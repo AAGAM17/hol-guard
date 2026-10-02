@@ -86,7 +86,11 @@ pub(crate) fn validate_package_process_identity(
         .and_then(fs::canonicalize)
         .map_err(|_| "native_resident_runtime_path_failed".to_owned())?;
     if process_path != expected_path {
-        return Err("native_resident_process_identity_mismatch".to_owned());
+        // Onefile launchers extract identical signed runtimes into distinct
+        // directories. Bind to the runtime bytes, not that temporary path.
+        if executable_digest(&process_path)? != crate::resident_state::runtime_digest()? {
+            return Err("native_resident_process_identity_mismatch".to_owned());
+        }
     }
     validate_process_start_marker(process_id, expected_start_marker)
 }

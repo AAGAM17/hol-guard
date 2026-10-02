@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
 
+import pytest
 from native_hook_client_support import (
     _invoke,
     _request,
@@ -17,6 +20,72 @@ from native_hook_client_support import (
 from native_hook_client_support import native_runtime as _native_runtime_fixture  # noqa: F401
 
 from ci.native_runtime.native_process_test_support import process_is_alive
+
+
+@pytest.mark.parametrize("event", ["PreToolUse", "UserPromptSubmit"])
+def test_same_runtime_in_distinct_frozen_extractions_reuses_resident(
+    native_runtime: tuple[Path, Path],
+    tmp_path: Path,
+    event: str,
+) -> None:
+    runtime, state_dir = native_runtime
+    first = tmp_path / "extraction-first" / runtime.name
+    second = tmp_path / "extraction-second" / runtime.name
+    first.parent.mkdir()
+    second.parent.mkdir()
+    shutil.copy2(runtime, first)
+    shutil.copy2(runtime, second)
+    request = _request(runtime, tmp_path)
+    if event == "UserPromptSubmit":
+        envelope = json.loads(request)
+        envelope["harness"] = "zcode"
+        envelope["event"] = event
+        envelope["raw_payload"] = {
+            "hookEventName": event,
+            "userPrompt": "Summarize the README without changing files.",
+        }
+        request = json.dumps(envelope).encode()
+    assert _result(_invoke(first, state_dir, request))["minimum_action"] == "allow"
+    initial = _state_files(state_dir)
+    assert _result(_invoke(second, state_dir, request))["minimum_action"] == "allow"
+    assert _state_files(state_dir) == initial
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not unlink running executables")
+def test_removed_frozen_extraction_releases_owner_even_with_live_client(
+    native_runtime: tuple[Path, Path],
+    tmp_path: Path,
+) -> None:
+    runtime, state_dir = native_runtime
+    extracted = tmp_path / "extraction" / runtime.name
+    extracted.parent.mkdir()
+    shutil.copy2(runtime, extracted)
+    request = _request(runtime, tmp_path)
+    assert _result(_invoke(extracted, state_dir, request))["minimum_action"] == "allow"
+    state = json.loads(_state_files(state_dir)[0].read_text())
+    # Keep a real client lease alive while its resident's onefile extraction disappears.
+    client = subprocess.Popen(
+        (str(extracted), "resident-client-stream", "--stdin", str(state_dir)),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert client.stdin is not None and client.stdout is not None
+        client.stdin.write(len(request).to_bytes(4, "big") + request)
+        client.stdin.flush()
+        size = int.from_bytes(client.stdout.read(4), "big")
+        assert size > 0
+        assert _result(json.loads(client.stdout.read(size)))["minimum_action"] == "allow"
+        extracted.unlink()
+        deadline = time.monotonic() + 3
+        while process_is_alive(state["process_id"]) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not process_is_alive(state["process_id"])
+        assert _result(_invoke(runtime, state_dir, request))["minimum_action"] == "allow"
+    finally:
+        client.terminate()
+        client.communicate(timeout=3)
 
 
 def test_native_hook_client_reuses_one_authenticated_generation(

@@ -6,7 +6,7 @@ use std::fs;
 const NOW_MS: u64 = 2_000;
 
 #[test]
-fn legacy_history_allows_fresh_claim_and_backfills_semantics_on_exact_replay() {
+fn legacy_history_rejects_fresh_claim_and_backfills_semantics_on_exact_replay() {
     let (root, authority, values, retry_scope) = setup();
     let context = context(&values, &retry_scope);
     let first = signed_envelope(
@@ -43,12 +43,13 @@ fn legacy_history_allows_fresh_claim_and_backfills_semantics_on_exact_replay() {
         "deny",
         &super::renewal_tests::REVIEW_SEED,
     );
-    // A genuinely new claim_id is not a replay of the semantic-less legacy
-    // entry, so it must be consumed rather than rejected as a replay. The
-    // legacy entry still blocks its own claim_id via the tombstone path.
+    // An un-backfilled legacy entry conservatively blocks fresh claim IDs
+    // until the original envelope can recover its semantic digest.
     assert_eq!(
-        verify_and_claim_at(&root, &fresh, &context, NOW_MS).unwrap().replayed,
-        false
+        verify_and_claim_at(&root, &fresh, &context, NOW_MS)
+            .err()
+            .as_deref(),
+        Some("native_workspace_review_decision_replay")
     );
     assert!(
         verify_and_claim_at(&root, &first, &context, NOW_MS)

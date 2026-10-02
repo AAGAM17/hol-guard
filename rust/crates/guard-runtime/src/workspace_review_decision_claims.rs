@@ -66,16 +66,14 @@ pub(super) fn consume_or_replay_claim(
         }
         return Err("native_workspace_review_decision_replay".to_owned());
     }
-    // A legacy claim that predates semantic digests has
-    // `semantic_decision_digest: None`. Replaying it is still blocked by its
-    // claim_id tombstone above (lines 45-67), so an un-backfilled legacy entry
-    // must NOT reject a *new* claim_id: a new claim_id cannot be a semantic
-    // replay of a claim we cannot yet name. Rejecting on `is_none()` here
-    // permanently wedged pre-index installs whose original envelope was gone.
     if state
         .consumed_claims
         .iter()
         .any(|claim| claim.semantic_decision_digest.as_deref() == Some(semantic_digest))
+        || state
+            .consumed_claims
+            .iter()
+            .any(|claim| claim.semantic_decision_digest.is_none())
     {
         return Err("native_workspace_review_decision_replay".to_owned());
     }

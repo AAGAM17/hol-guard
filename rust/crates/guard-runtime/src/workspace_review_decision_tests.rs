@@ -256,7 +256,7 @@ fn rejects_wall_clock_rollback_before_replay_lookup() {
 }
 
 #[test]
-fn legacy_expiry_claims_seed_a_clock_floor_capped_at_wall_clock() {
+fn legacy_expiry_claims_seed_a_clock_floor_from_full_expiry() {
     let root = test_root();
     let authority = install_authority(&root);
     let values = bindings();
@@ -284,15 +284,20 @@ fn legacy_expiry_claims_seed_a_clock_floor_capped_at_wall_clock() {
         61_000,
         NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN,
     );
-    // The migration floor is capped at the honest wall clock (min(legacy
-    // expiry, now_ms) = NOW_MS), so a fresh decision at now_ms is consumed
-    // rather than rejected as a rollback. The stored floor still cannot move
-    // backward, preserving rollback protection for later decisions.
-    verify_and_claim_at(&root, &envelope, &context, NOW_MS).unwrap();
+    // The migration floor is the latest legacy expiry, so a decision before
+    // that time is rejected as a clock rollback. Once the wall clock reaches
+    // the migrated floor, the fresh decision can be consumed.
+    assert_eq!(
+        verify_and_claim_at(&root, &envelope, &context, NOW_MS)
+            .err()
+            .as_deref(),
+        Some("native_workspace_review_clock_rollback")
+    );
+    verify_and_claim_at(&root, &envelope, &context, NOW_MS + 100).unwrap();
     let state = super::super::workspace_review_secure_state::load(&root)
         .unwrap()
         .unwrap();
-    assert_eq!(state.last_observed_time_ms, NOW_MS);
+    assert_eq!(state.last_observed_time_ms, NOW_MS + 100);
     fs::remove_dir_all(root).unwrap();
 }
 

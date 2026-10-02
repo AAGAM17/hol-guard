@@ -185,33 +185,11 @@ fn quote_param(s: &str) -> String {
 }
 
 // ---- PBKDF2 password verifier ------------------------------------------------
-// `approval_gate.py:806-827` `verify_password`.
-
-/// `verify_password` — PBKDF2-HMAC-SHA256, `hash == stored_hash` after
-/// `pbkdf2(password, salt, iterations)`. `salt`/`hash` are hex strings.
-/// Caller supplies `expected_hash_hex` (the stored `verifier["hash"]`) and
-/// `salt_hex`/`iterations` from the verifier record. Constant-time compare.
-pub fn verify_pbkdf2_sha256(
-    password: &str,
-    salt_hex: &str,
-    iterations: u32,
-    expected_hash_hex: &str,
-) -> bool {
-    let salt = match hex::decode(salt_hex) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-    let expected = match hex::decode(expected_hash_hex) {
-        Ok(e) => e,
-        Err(_) => return false,
-    };
-    if expected.is_empty() {
-        return false;
-    }
-    let mut derived = vec![0u8; expected.len()];
-    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(password.as_bytes(), &salt, iterations, &mut derived);
-    constant_time_eq(&derived, &expected)
-}
+// `approval_gate_state.py:85-96` `verify_password` is ported in
+// `crate::approval_gate_state::verify_password` (PBKDF2-HMAC-SHA256, base64
+// salt/hash, 310_000 iterations, constant-time compare). It lives there — not
+// here — because the verifier record is an approval-gate state concern, not a
+// TOTP concern. See `APPROVAL_GATE_HASH_ITERATIONS` above.
 
 /// Length-aware constant-time equality — XOR-fold, no early exit.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -402,20 +380,6 @@ mod tests {
         assert!(uri.contains("period=30"));
     }
 
-    #[test]
-    fn pbkdf2_sha256_known_vector() {
-        // Python: hashlib.pbkdf2_hmac("sha256", b"password", bytes.fromhex(salt), it).hex()
-        // salt "00112233", iterations 1 → deterministic digest.
-        use pbkdf2::pbkdf2_hmac;
-        let mut out = [0u8; 32];
-        pbkdf2_hmac::<sha2::Sha256>(b"password", &hex::decode("00112233").unwrap(), 1, &mut out);
-        let expected = hex::encode(out);
-        assert!(verify_pbkdf2_sha256("password", "00112233", 1, &expected));
-        assert!(!verify_pbkdf2_sha256("wrong", "00112233", 1, &expected));
-        // Bad hex inputs fail closed.
-        assert!(!verify_pbkdf2_sha256("password", "zz", 1, &expected));
-        assert!(!verify_pbkdf2_sha256("password", "00112233", 1, "zz"));
-    }
 
     #[test]
     fn totp_secret_store_round_trip() {

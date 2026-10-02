@@ -20,8 +20,6 @@ from codex_plugin_scanner.guard.models import GuardReceipt
 from codex_plugin_scanner.guard.redaction import redact_text
 from codex_plugin_scanner.guard.store import GuardStore
 
-pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
-
 
 def _seed_guard_cloud(store, *, workspace_id=None, sync_url=None, token="demo-token", now="2026-05-19T00:00:00Z"):
     """Seed OAuth credentials (replaces legacy set_sync_credentials scaffolding).
@@ -1290,6 +1288,7 @@ class TestGuardProtect:
         synced_advisories = GuardStore(home_dir).list_cached_advisories(limit=None)
         assert any(item.get("id") == "adv-sync-block" for item in synced_advisories)
 
+    @pytest.mark.usefixtures("approval_questionnaire_mode")
     def test_guard_protect_trusted_session_failure_keeps_approval_link_actionable(
         self,
         tmp_path,

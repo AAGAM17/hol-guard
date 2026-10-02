@@ -44,6 +44,7 @@ def test_cancelled_spawn_keeps_actual_worker_owned_when_cleanup_raises(
     finally:
         # Even the pre-fix counterexample must clean up its exact generated
         # child. Restore only that fixture's lost owner before real retirement.
+        # On fixed code this assignment preserves the existing owner unchanged.
         for slot in spawned:
             with runner._state_lock:
                 runner._all_slots[slot.process.pid or id(slot)] = slot

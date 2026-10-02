@@ -50,6 +50,8 @@ def start_hook_worker_slot(
                 if not runner._retire_slot(slot):
                     runner._mark_containment_failed()
             except BaseException:
+                # KeyboardInterrupt and SystemExit must retain child ownership
+                # just like ordinary cleanup failures.
                 # Retain the exact child for later containment; never turn a
                 # cleanup interruption into untracked worker capacity.
                 runner._mark_containment_failed()

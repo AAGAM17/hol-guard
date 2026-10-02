@@ -281,7 +281,10 @@ fn exact_safe_command_with_context(
     })
 }
 
-pub(crate) fn benign_command_segments(model: &CanonicalCommandV1) -> Vec<usize> {
+pub(crate) fn benign_command_segments(
+    model: &CanonicalCommandV1,
+    context: (Option<&str>, Option<&str>),
+) -> Vec<usize> {
     if model.confidence != "exact"
         || model.path_overridden
         || !model.wrapper_chain.is_empty()
@@ -295,7 +298,7 @@ pub(crate) fn benign_command_segments(model: &CanonicalCommandV1) -> Vec<usize> 
         .iter()
         .enumerate()
         .filter_map(|(index, segment)| {
-            exact_safe_segment_with_context(model, segment, false, (None, None)).then_some(index)
+            exact_safe_segment_with_context(model, segment, false, context).then_some(index)
         })
         .collect()
 }

@@ -281,7 +281,11 @@ def main(
                         )
                         + "\n"
                     )
-                if any(cause["reason_code"] == "codex_hook_validation_deadline_expired" for cause in failure_causes):
+                if any(
+                    isinstance(cause, dict)
+                    and cause.get("reason_code") == "codex_hook_validation_deadline_expired"
+                    for cause in failure_causes
+                ):
                     response = _unavailable_response(
                         event_name,
                         "HOL Guard could not finish hook identity verification before the deadline. "

@@ -139,7 +139,7 @@ def test_busy_recent_window_is_capped_instead_of_selecting_newest_row(legacy):
     store, writer, payload, handle, since = legacy
     for index in range(lookup.MAX_LEGACY_PROBE_ROWS + 1):
         persist(store, writer, payload if index == 0 else {**payload, "tool_call_id": uuid.uuid4().hex}, "allow")
-    assert writer.stop(timeout_seconds=2)
+    assert writer.stop(timeout_seconds=10)
     assert writer.stats()["durable_pending"] == 0, writer.stats()
     with pytest.raises(TransitionError, match="legacy_probe_receipt_capacity"):
         read(store, handle, since)

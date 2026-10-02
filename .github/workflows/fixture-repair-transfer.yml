@@ -14,7 +14,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           persist-credentials: false
+      - name: Install the exact local source formatter
+        run: python3 -m pip install --target "$RUNNER_TEMP/fixture-transfer-tools" ruff==0.15.17
       - name: Verify and upload source blobs without changing refs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 .repair-transfer/transfer.py
+          PYTHONPATH: ${{ runner.temp }}/fixture-transfer-tools
+        run: python3 .repair-transfer/consumer_fix.py

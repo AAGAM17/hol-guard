@@ -11,8 +11,8 @@
 //! :1140-1144).
 //!
 //! All state transitions are **in-memory on the caller's `state: &mut Value`**
-//! (the `approval-gate.json` dict); the caller owns `load_state`/`write_state`
-//! around the whole verify under the process lock. The resident grant table is
+//! (the `approval-gate.json` dict) plus the success-path `_write_state` persist
+//! (`approval_gate.py:1284`) just before `_register_grant`. The resident grant
 //! `crate::approval_gate_grants` (the one-table `_ACTIVE_GRANTS` port).
 
 #![forbid(unsafe_code)]
@@ -30,7 +30,7 @@ use crate::approval_gate_grants::{
 use crate::approval_gate_state::{
     coerce_cooldown_seconds, constant_time_eq, cooldown_active, epoch, is_future, iso_from_epoch,
     optional_int, optional_string, record_failed_attempt, reset_failed_attempts, verifier,
-    verify_password, ApprovalGateFactor,
+    verify_password, write_state, ApprovalGateFactor,
 };
 use crate::encrypted_secret_store::{b64url_encode, random_bytes};
 use crate::totp::{verify_totp_code, TotpSecretStore, APPROVAL_GATE_TOTP_SKEW_STEPS};
@@ -605,6 +605,7 @@ pub(crate) fn verify_or_raise_locked(
     } else {
         vec!["password".into()]
     };
+    let _ = write_state(guard_home, state, now);
     register_grant(
         guard_home,
         state,

@@ -122,7 +122,7 @@ fn drain(reader: Option<JoinHandle<io::Result<Vec<u8>>>>) -> Result<Vec<u8>, Git
 fn run_program(
     program: &str,
     root: &Path,
-    args: &[&str],
+    args: &[std::ffi::OsString],
     timeout_secs: u64,
 ) -> Result<CompletedOutput, GitError> {
     let mut child = Command::new(program)
@@ -176,7 +176,7 @@ fn run_program(
     let stderr = drain(stderr_reader)?;
     let completed = CompletedOutput {
         args: std::iter::once(program.to_string())
-            .chain(args.iter().map(|arg| (*arg).to_string()))
+            .chain(args.iter().map(|arg| arg.to_string_lossy().into_owned()))
             .collect(),
         returncode: raw_returncode(&status),
         stdout,
@@ -200,6 +200,19 @@ fn run_program(
 /// callers keep Python's `except (OSError, subprocess.SubprocessError)` /
 /// `returncode != 0` degradation.
 pub fn run_git(root: &Path, args: &[&str], timeout_secs: u64) -> Result<CompletedOutput, GitError> {
+    let owned: Vec<std::ffi::OsString> = args.iter().map(std::ffi::OsString::from).collect();
+    run_program("git", root, &owned, timeout_secs)
+}
+
+/// Byte-exact argument variant for staged/path specs: `git` accepts arbitrary
+/// non-NUL bytes in argv on POSIX, which preserves `surrogateescape` parity
+/// for non-UTF-8 staged paths that `&str` cannot represent.
+#[cfg(unix)]
+pub fn run_git_os(
+    root: &Path,
+    args: &[std::ffi::OsString],
+    timeout_secs: u64,
+) -> Result<CompletedOutput, GitError> {
     run_program("git", root, args, timeout_secs)
 }
 
@@ -241,7 +254,7 @@ mod tests {
     #[test]
     fn sleeping_child_is_killed_at_deadline() {
         let start = Instant::now();
-        let error = run_program("sleep", &workdir(), &["30"], 1).unwrap_err();
+        let error = run_program("sleep", &workdir(), &["30".into()], 1).unwrap_err();
         assert!(matches!(error, GitError::Timeout));
         // Poll cadence + kill should land well under the sleep duration.
         assert!(start.elapsed() < Duration::from_secs(10));

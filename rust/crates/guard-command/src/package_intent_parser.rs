@@ -6,7 +6,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -2134,6 +2137,7 @@ fn unique_joined_tokens(values: &[String]) -> Vec<String> {
 }
 
 // package_intent_parser.py `_stat_identity`
+#[cfg(unix)]
 fn stat_identity(result: &std::fs::Metadata) -> String {
     [
         result.dev(),
@@ -2142,6 +2146,27 @@ fn stat_identity(result: &std::fs::Metadata) -> String {
         result.size(),
         result.mtime_nsec() as u64,
         result.ctime_nsec() as u64,
+    ]
+    .iter()
+    .map(|value| value.to_string())
+    .collect::<Vec<_>>()
+    .join(":")
+}
+
+#[cfg(windows)]
+fn stat_identity(result: &std::fs::Metadata) -> String {
+    // Stable std surface only: `size`/`last_write_time` live on `MetadataExt`;
+    // `file_attributes` mirrors st_mode bits used downstream. We keep the
+    // tuple shape identical so the identity string remains a positional
+    // contract — digests diverge across OSes either way, which Python already
+    // tolerates (stat fields differ across platforms).
+    [
+        0u64, // no stable volume-serial equivalent
+        0u64, // no stable file-index equivalent
+        result.file_attributes() as u64 & 0o7777,
+        result.len(),
+        result.last_write_time(),
+        result.last_write_time(),
     ]
     .iter()
     .map(|value| value.to_string())
@@ -2477,7 +2502,14 @@ fn is_executable(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
-    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+    #[cfg(unix)]
+    {
+        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        metadata.is_file()
+    }
 }
 
 // package_intent_parser.py `_manager_evidence_is_guard_shim`

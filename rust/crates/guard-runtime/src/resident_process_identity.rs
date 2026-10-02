@@ -9,6 +9,12 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 const MAX_RUNTIME_BYTES: u64 = 128 * 1024 * 1024;
 
+#[cfg(not(windows))]
+pub(crate) fn executable_missing(path: &Path) -> bool {
+    path.metadata()
+        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+}
+
 #[cfg(windows)]
 pub(crate) fn process_start_marker(process_id: u32) -> Result<String, String> {
     guard_runtime_windows_process::process_start_marker(process_id)

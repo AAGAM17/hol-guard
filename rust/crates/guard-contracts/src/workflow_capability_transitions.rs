@@ -65,6 +65,7 @@ pub struct WorkflowCapabilityAuthorityTransition {
 
 impl WorkflowCapabilityAuthorityTransition {
     /// `__post_init__` — validate every field on construction.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         sequence: i64,
         capability_id: impl Into<String>,

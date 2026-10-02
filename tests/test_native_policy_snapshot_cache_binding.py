@@ -24,6 +24,7 @@ from codex_plugin_scanner.guard.native_policy_snapshot_constants import (
     POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES,
     POLICY_SNAPSHOT_AUTHORITY_SCHEMA,
 )
+from codex_plugin_scanner.guard.native_policy_snapshot_windows_state import _WindowsDirectoryBinding
 from codex_plugin_scanner.guard.store import GuardStore
 
 from .native_policy_snapshot_test_fixtures import _config
@@ -118,7 +119,7 @@ def test_resident_authority_fixture_uses_private_windows_writer(tmp_path, monkey
         rule_digest="b" * 64,
         policy_integrity_key=master,
     )
-    binding = SimpleNamespace(path=tmp_path / "native-runtime", handle=1, handles=(2, 3))
+    binding = _WindowsDirectoryBinding(path=tmp_path / "native-runtime", handles=[(0, 1)])
     writes = []
     monkeypatch.setattr(sys.modules[__name__], "sys", SimpleNamespace(platform="win32"))
     monkeypatch.setattr(snapshot_api, "_windows_private_state_binding", lambda home: nullcontext(binding))
@@ -132,6 +133,8 @@ def test_resident_authority_fixture_uses_private_windows_writer(tmp_path, monkey
     assert writes[0]["directory_handles"] == binding.handles
     assert writes[0]["destination_name"] == "policy-snapshot-v3.json"
     assert writes[0]["maximum_bytes"] == POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES
+    assert writes[0]["temporary_name"] == ".test-authority.tmp"
+    assert writes[0]["kind"] == "cache"
     assert b'"schema":"' in writes[0]["payload"]
 
 

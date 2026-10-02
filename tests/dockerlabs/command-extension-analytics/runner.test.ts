@@ -236,8 +236,8 @@ describe("command extension analytics Dockerlabs orchestration", () => {
     expect(dockerignore).toContain("tcp_relay.py");
     expect(compose).not.toContain("../../src");
     expect(compose).toContain("internal: true");
-    expect(compose).toContain('HOL_GUARD_NATIVE: "off"');
-    expect(compose).toContain('HOL_GUARD_PYTHON_ORACLE: "1"');
+    expect(compose).toContain('HOL_GUARD_NATIVE: "auto"');
+    expect(compose).not.toContain("HOL_GUARD_PYTHON_ORACLE");
     expect(compose).toContain("no-new-privileges:true");
     expect(compose).not.toContain("SYS_ADMIN");
     expect(compose).not.toContain("seccomp:unconfined");

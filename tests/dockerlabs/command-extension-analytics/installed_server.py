@@ -103,6 +103,8 @@ def _safe_hook_response_summary(value: str) -> str:
         {
             "keys": sorted(payload),
             "policy_action": payload.get("policy_action"),
+            "decision_reason_code": payload.get("decision_reason_code"),
+            "reason_code": payload.get("reason_code"),
             "approval_reuse": {
                 "status": reuse.get("status"),
                 "reason_code": reuse.get("reason_code"),
@@ -137,7 +139,7 @@ def _run_installed_hook(
     *,
     expected_status: int = 0,
     policy_action: str | None = None,
-) -> None:
+) -> str:
     command = [
         "hol-guard",
         "hook",
@@ -184,6 +186,7 @@ def _run_installed_hook(
             + f"stderr={_safe_hook_diagnostic(completed.stderr)!r}"
         )
         raise RuntimeError(diagnostic)
+    return _safe_hook_response_summary(completed.stdout)
 
 
 def _invoke_real_harnesses() -> int:
@@ -228,7 +231,7 @@ def _pending_workflow_request(store: GuardStore) -> dict[str, object]:
         "tool_input": {"command": _WORKFLOW_COMMAND},
         "tool_call_id": "codex_lab_workflow_initial_0001",
     }
-    _run_installed_hook("codex", payload, expected_status=1)
+    hook_summary = _run_installed_hook("codex", payload, expected_status=1)
     all_pending = store.list_approval_requests(status="pending")
     pending = [
         request
@@ -245,7 +248,7 @@ def _pending_workflow_request(store: GuardStore) -> dict[str, object]:
             }
             for request in all_pending
         ]
-        raise RuntimeError(f"workflow approval request mismatch: {summary!r}")
+        raise RuntimeError(f"workflow approval request mismatch: {summary!r}; hook={hook_summary}")
     contract = request_scope_contract(pending[0])
     if not contract.task_capability_eligible or "artifact" not in contract.allow_scopes:
         raise RuntimeError("workflow request did not expose the exact task-capability contract")

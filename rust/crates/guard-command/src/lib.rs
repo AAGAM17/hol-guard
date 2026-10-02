@@ -12,6 +12,9 @@ mod command_option_parsing;
 mod command_specialized_matchers;
 mod command_structured_matchers;
 pub mod effect_decision;
+mod command_verified_read_candidates;
+#[cfg(test)]
+mod command_verified_read_candidates_tests;
 pub mod canonical_command;
 pub mod extension_evidence;
 pub mod native_command_extension_evidence;

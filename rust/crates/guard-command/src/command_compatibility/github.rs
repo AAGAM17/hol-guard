@@ -39,7 +39,10 @@ pub(super) fn arguments_are_read_only(arguments: &[String]) -> bool {
             || (argument.starts_with('-')
                 && !argument.starts_with("--")
                 && !argument.starts_with("-R")
-                && argument[1..].split('=').next().is_some_and(|flags| flags.contains('w')))
+                && argument[1..]
+                    .split('=')
+                    .next()
+                    .is_some_and(|flags| flags.contains('w')))
     }) && classify(arguments).is_some_and(|capabilities| {
         !capabilities.is_empty()
             && capabilities

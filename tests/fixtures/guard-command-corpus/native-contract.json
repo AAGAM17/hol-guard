@@ -1359,8 +1359,8 @@
         "baseline_git_blob": "0f7c32c741bb0fee2ff9fcf98b58246033b4cac9",
         "baseline_sha256": "6794dc442c50c98f991edce4e4539bbf3e2fa5f681e0af4f208a2058e4c85cc4",
         "byte_identical": false,
-        "candidate_git_blob": "32ffcbc570a410a7015464450b5767d300107a8b",
-        "candidate_sha256": "1daf253084d6332d00469497f8995bad7cde6ecc73db25c0bbe22ced0f58731f",
+        "candidate_git_blob": "d80b906beb918903a991204aaf2065adc82a43d9",
+        "candidate_sha256": "5d7acd4f981ac3458038e263e841556b14b8e98189a81925287a239c54a2edd3",
         "reviewed_change": "Reuse closed GitHub read capabilities for benign admission; reject browser-opening flags and retain remote-read permission checks for authenticated status."
       },
       "rust/crates/guard-command/src/command_compatibility/github_api.rs": {

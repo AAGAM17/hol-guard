@@ -25,8 +25,7 @@ fn fixture(name: &str) -> Value {
     // the live values so the fixture still exercises the binding check (each
     // mismatched-field test overwrites its own leg afterward).
     if let Ok(catalog) = crate::native_command_catalog::packaged_command_catalog() {
-        if let Some(binding) = fixture["payload"]["command_extensions"]["binding"].as_object_mut()
-        {
+        if let Some(binding) = fixture["payload"]["command_extensions"]["binding"].as_object_mut() {
             binding.insert(
                 "program_digest".into(),
                 Value::String(catalog.program_digest.clone()),

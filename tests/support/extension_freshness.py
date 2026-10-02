@@ -26,6 +26,25 @@ from scripts.ci.detect_pending_extension_regen import (
 )
 
 
+def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """Run bounded Git inspection without exposing process or path details."""
+
+    command = ["git", *arguments]
+    try:
+        return subprocess.run(
+            command,
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except OSError:
+        return subprocess.CompletedProcess(command, 1, "", "git process unavailable")
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, 1, "", "git timeout")
+
+
 def pending_contribution_regen() -> bool:
     from codex_plugin_scanner.guard.runtime.command_extensions import (
         BUILT_IN_COMMAND_EXTENSION_REGISTRY,
@@ -55,15 +74,11 @@ def _projection_base_sha() -> str | None:
             raise RuntimeError(f"Pull-request event {event_path!r} has no base revision")
         return base_sha.strip()
 
-    completed = subprocess.run(
-        ["git", "merge-base", "HEAD", "origin/main"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    completed = _git("merge-base", "HEAD", "origin/main")
     if completed.returncode == 0 and completed.stdout.strip():
         return completed.stdout.strip()
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or os.environ.get("GITHUB_BASE_REF"):
+        raise RuntimeError("Could not determine pull-request base revision from available Git refs")
     return None
 
 
@@ -80,13 +95,6 @@ def pending_source_regen() -> bool:
     except GitDiffError as error:
         raise RuntimeError(f"Could not qualify generated-artifact freshness: {error}") from error
     return bool(changed.contribution_paths or changed.implementation_paths)
-
-
-def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
-    try:
-        return subprocess.run(["git", *arguments], check=False, capture_output=True, text=True)
-    except OSError:
-        return subprocess.CompletedProcess(["git", *arguments], 1, "", "")
 
 
 def _pr_diff_paths() -> list[str] | None:
@@ -109,9 +117,11 @@ def _pr_diff_paths() -> list[str] | None:
             f"+refs/heads/{base_ref}:refs/remotes/pending-diff/base",
         ]
         if _git(*fetch).returncode:
-            return None
+            raise RuntimeError("Could not determine pull-request diff: fetching the base ref failed")
         result = _git("diff", "--name-only", "pending-diff/base", "HEAD")
-        return result.stdout.splitlines() if result.returncode == 0 else None
+        if result.returncode:
+            raise RuntimeError("Could not determine pull-request diff after fetching the base ref")
+        return result.stdout.splitlines()
     for base_ref in ("main", "origin/main"):
         if _git("rev-parse", "--verify", base_ref).returncode != 0:
             continue

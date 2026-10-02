@@ -84,14 +84,18 @@ def test_rebuild_uses_original_compiler_target(verifier, compiler, target, relea
 
 @pytest.mark.parametrize("pending", [True, False])
 def test_preparation_retains_generated_outputs_and_checks_after_rebuild(verifier, monkeypatch, pending):
-    import types
+    class Inputs:
+        contribution_paths = ()
+        implementation_paths = ("rust/Cargo.lock",) if pending else ()
+        report_paths = ()
 
-    detector = types.SimpleNamespace(
-        ContributionDiffError=RuntimeError,
-        _contributions_changed=lambda base: ["rust/Cargo.lock"] if pending else [],
-        catalog_ids=lambda: {"command.example"},
-        contribution_ids=lambda: {"command.example"},
-    )
+    class Detector:
+        ContributionDiffError = RuntimeError
+        changed_regen_inputs = staticmethod(lambda base: Inputs())
+        catalog_ids = staticmethod(lambda: {"command.example"})
+        contribution_ids = staticmethod(lambda: {"command.example"})
+
+    detector = Detector()
     monkeypatch.setitem(sys.modules, "detect_pending_extension_regen", detector)
     monkeypatch.setattr(
         sys, "argv", ["verify", "--compiler", "rust/target/release/guard-command-source", "--changed-from", "a" * 40]

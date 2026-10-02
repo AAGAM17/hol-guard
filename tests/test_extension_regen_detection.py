@@ -51,6 +51,8 @@ def test_changed_regen_inputs_classifies_native_bound_and_unrelated_paths(monkey
     assert not detector.is_native_implementation_input("README.md")
     assert detector.is_decision_report_input("src/codex_plugin_scanner/guard/runtime/deleted.py")
     assert detector.is_decision_report_input("tests/guard_command_corpus_deleted.py")
+    assert not detector.is_decision_report_input("contracts/extensions/command-catalog.v1.json")
+    assert not detector.is_decision_report_input("contracts/extensions/native-command-program.v1.json")
     assert not detector.is_decision_report_input("src/codex_plugin_scanner/guard/runtime/nested/deleted.py")
     assert not detector.is_decision_report_input("tests/support/extension_freshness.py")
 

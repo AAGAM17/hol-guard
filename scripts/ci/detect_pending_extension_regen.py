@@ -57,8 +57,6 @@ _GENERATED_OUTPUTS = frozenset(
 
 _DECISION_REPORT_FIXED_INPUTS = frozenset(
     {
-        "contracts/extensions/command-catalog.v1.json",
-        "contracts/extensions/native-command-program.v1.json",
         "docs/guard/native-command-corpus-contract.md",
         "docs/guard/declarative-authoring-adr.md",
         "rust/crates/guard-command/src/native_command_source_evaluation_batch.rs",
@@ -175,7 +173,7 @@ def _git_changed_paths(base_sha: str, *, pathspec: tuple[str, ...] = (), nul: bo
             if fetched.returncode:
                 raise GitDiffError(
                     "Could not determine changed files: Cannot compare contribution sources: "
-                    "fetching the PR base failed"
+                    "fetching the base commit failed"
                 )
             completed = _diff()
     except subprocess.TimeoutExpired:
@@ -187,7 +185,7 @@ def _git_changed_paths(base_sha: str, *, pathspec: tuple[str, ...] = (), nul: bo
     if completed.returncode:
         raise GitDiffError(
             "Could not determine changed files: Cannot compare contribution sources: "
-            "Git diff failed after fetching the PR base"
+            "Git diff failed after fetching the base commit"
         )
     output = completed.stdout or ""
     paths = output.split("\0") if nul else output.splitlines()

@@ -81,11 +81,6 @@ def main() -> int:
         from detect_pending_extension_regen import changed_regen_inputs
     except ImportError:
         changed_regen_inputs = None
-    try:
-        from detect_pending_extension_regen import _contributions_changed
-    except ImportError:
-        _contributions_changed = None
-
     pending = sorted(contribution_ids() - catalog_ids())
     changed = []
     changed_implementation = []
@@ -97,10 +92,8 @@ def main() -> int:
                 changed = list(inputs.contribution_paths)
                 changed_implementation = list(inputs.implementation_paths)
                 changed_report = list(inputs.report_paths)
-            elif _contributions_changed is not None:
-                changed = list(_contributions_changed(args.changed_from))
             else:
-                raise GitDiffError("The regeneration detector does not expose a comparison helper")
+                raise GitDiffError("The regeneration detector does not expose the exact changed-input classifier")
         except GitDiffError as error:
             print(str(error), file=sys.stderr)
             return 1

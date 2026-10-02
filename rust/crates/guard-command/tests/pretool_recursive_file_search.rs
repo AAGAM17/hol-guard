@@ -3,11 +3,24 @@
 use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
+struct FixtureDirectory(std::path::PathBuf);
+
+impl Drop for FixtureDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn recursive_search_checks_every_reachable_path() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/recursive-file-search")
-        .join(format!("fixture-{}", std::process::id()));
+        .join(format!("fixture-{}-{nonce}", std::process::id()));
+    let _fixture = FixtureDirectory(root.clone());
     std::fs::create_dir_all(root.join("src")).unwrap();
     let root = std::fs::canonicalize(root).unwrap();
     std::fs::write(root.join("src/one.ts"), "ordinary source").unwrap();

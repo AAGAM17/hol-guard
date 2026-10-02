@@ -114,7 +114,7 @@ pub fn shell_tokens(command: &str) -> (Vec<String>, bool) {
 }
 
 /// `_ENV_ASSIGNMENT_PATTERN.fullmatch` — `^[A-Za-z_][A-Za-z0-9_]*=.*$` DOTALL.
-fn env_assignment_name(token: &str) -> Option<&str> {
+pub(crate) fn env_assignment_name(token: &str) -> Option<&str> {
     let eq = token.find('=')?;
     let name = &token[..eq];
     if name.is_empty() {

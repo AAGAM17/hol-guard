@@ -344,7 +344,6 @@ impl CompiledNativeCommandControls {
             result.minimum_action = "allow".into();
             result.policy_action = "allow".into();
             result.decision = "allow".into();
-            result.explicitly_benign = true;
             result.reason_code = "native_command_explicit_permission_allow".into();
             result.reason =
                 "This command is allowed by its authenticated extension permissions.".into();

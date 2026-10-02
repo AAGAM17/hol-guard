@@ -605,7 +605,13 @@ pub(crate) fn verify_or_raise_locked(
     } else {
         vec!["password".into()]
     };
-    let _ = write_state(guard_home, state, now);
+    write_state(guard_home, state, now).map_err(|_| {
+        err(
+            "approval_gate_state_io",
+            "Could not persist approval gate state.",
+            500,
+        )
+    })?;
     register_grant(
         guard_home,
         state,

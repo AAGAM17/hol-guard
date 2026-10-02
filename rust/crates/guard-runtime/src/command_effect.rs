@@ -21,8 +21,10 @@ use guard_command::extension_control::{
     ControlLayerKind, ControlState, ControlTarget, ControlTargetKind, ExtensionControl,
     ExtensionControlLayer,
 };
+#[cfg(unix)]
+use guard_command::command_shell_read_factors::shell_read_floor_factors;
 use guard_command::{
-    canonical_command::CanonicalCommand, command_shell_read_factors::shell_read_floor_factors,
+    canonical_command::CanonicalCommand,
     github_workflow_authorization::GitHubWorkflowAuthorizationV1,
     native_command_catalog::packaged_command_catalog, parse_shell_command, CanonicalCommandV1,
     CommandModelRequestV1,
@@ -174,12 +176,21 @@ fn evaluate(
         .map(|v| serde_json::from_value(v.clone()))
         .transpose()
         .map_err(|_| "native_command_effect_invalid_workflow_authorization".to_owned())?;
-    let read_factors = shell_read_floor_factors(
-        &request.command_text,
-        &canonical.security_identity,
-        Some(&cwd),
-        Some(&home_dir),
-    );
+    let read_factors = {
+        #[cfg(unix)]
+        {
+            shell_read_floor_factors(
+                &request.command_text,
+                &canonical.security_identity,
+                Some(&cwd),
+                Some(&home_dir),
+            )
+        }
+        #[cfg(not(unix))]
+        {
+            Vec::new()
+        }
+    };
     guard_command::evaluate_command(
         &canonical,
         &request.native_extension_evidence,

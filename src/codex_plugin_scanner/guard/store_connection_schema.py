@@ -14,6 +14,8 @@ from uuid import uuid4
 from . import store_connection_scope, store_native_decision_receipts, store_review_event_outbox_schema
 from .fork_safety import forget_in_child
 from .mcp.policy_store import ensure_mcp_policy_request_schema
+from .sqlite_deadline_connection import DeadlineConnection
+from .sqlite_errors import sqlite_error_is_fatal, sqlite_error_is_io
 from .sqlite_profile import (
     SQLiteMigrationGateReport,
     SQLiteProfiler,
@@ -26,13 +28,11 @@ from .sqlite_quarantine_forensics import (
     write_quarantine_forensics,
 )
 from .sqlite_recovery import (
-    FATAL_SQLITE_ERROR_MARKERS,
-    SQLITE_IO_ERROR_MARKER,
     restore_readable_sqlite_store,
     salvage_local_cli_state,
-    sqlite_error_is_io,
     sqlite_store_probe_detail,
 )
+from .sqlite_tuning import sqlite_operation_deadline_monotonic
 
 # ruff: noqa: F403,F405
 from .store_base import *
@@ -210,9 +210,7 @@ class StoreConnectionSchemaMixin:
 
     @staticmethod
     def _is_fatal_sqlite_error(error: BaseException) -> bool:
-        return isinstance(error, sqlite3.DatabaseError) and any(
-            marker in str(error).lower() for marker in FATAL_SQLITE_ERROR_MARKERS
-        )
+        return sqlite_error_is_fatal(error)
 
     @contextmanager
     def _hold_storage_gate(self, *, exclusive: bool) -> Iterator[None]:
@@ -543,10 +541,15 @@ class StoreConnectionSchemaMixin:
     @contextmanager
     def _connect_once(self) -> Iterator[sqlite3.Connection]:
         connect_timeout_seconds = sqlite_connect_timeout_seconds()
+        if connect_timeout_seconds <= 0:
+            raise TimeoutError("Guard storage operation deadline expired.")
         profiler = self._sqlite_profiler()
         connect_started = time.monotonic()
         try:
-            connection = sqlite3.connect(self.path, timeout=connect_timeout_seconds)
+            if sqlite_operation_deadline_monotonic() is None:
+                connection = sqlite3.connect(self.path, timeout=connect_timeout_seconds)
+            else:
+                connection = sqlite3.connect(self.path, timeout=connect_timeout_seconds, factory=DeadlineConnection)
         except sqlite3.OperationalError as error:
             profiler.record_connect((time.monotonic() - connect_started) * 1000)
             if sqlite_error_is_busy_locked(error):
@@ -579,7 +582,7 @@ class StoreConnectionSchemaMixin:
             if sqlite_error_is_busy_locked(error):
                 profiler.record_busy_locked()
             raise
-        except sqlite3.DatabaseError:
+        except BaseException:
             database_failed = True
             raise
         finally:
@@ -701,7 +704,7 @@ class StoreConnectionSchemaMixin:
             self._initialize_serialized_once()
         except sqlite3.DatabaseError as error:
             schema_current = self._schema_is_current()
-            fatal = self._is_fatal_sqlite_error(error) or SQLITE_IO_ERROR_MARKER in str(error).lower()
+            fatal = self._is_fatal_sqlite_error(error) or sqlite_error_is_io(error)
             # Recovery declining after a transient means the store is healthy.
             # Re-raise only when the schema is not already current.
             if (fatal or not schema_current) and not self._recover_fatal_sqlite_store(error) and not schema_current:

@@ -79,6 +79,25 @@ def _json_object(text: str) -> dict[str, object] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _write_transition_observation(data: str, response: Mapping[str, object]) -> None:
+    envelope = response.get("guard_transition_observation")
+    if not isinstance(envelope, dict):
+        return
+    from codex_plugin_scanner.guard.runtime_transition_hook_probe import (
+        transition_hook_observation,
+    )
+
+    payload = _json_object(data)
+    if payload is None:
+        return
+    validated = transition_hook_observation(payload, envelope.get("native_receipt"))
+    if validated is None or envelope != validated:
+        return
+    # Diagnostics must never interfere with the app's enforcement response.
+    with suppress(OSError, ValueError):
+        sys.stderr.write(json.dumps(validated, sort_keys=True, separators=(",", ":")) + "\n")
+
+
 def _event_name(data: str) -> str:
     payload = _json_object(data)
     if payload is None:
@@ -262,10 +281,19 @@ def main(
                         )
                         + "\n"
                     )
-                response = _launcher_integrity_response(event_name, data)
+                if any(cause["reason_code"] == "codex_hook_validation_deadline_expired" for cause in failure_causes):
+                    response = _unavailable_response(
+                        event_name,
+                        "HOL Guard could not finish hook identity verification before the deadline. "
+                        "Retry this action after local review recovers.",
+                        data,
+                    )
+                else:
+                    response = _launcher_integrity_response(event_name, data)
             else:
                 failure_reason = _OVERLOAD_REASON if daemon_overloaded else _FAIL_CLOSED_REASON
                 response = _unavailable_response(event_name, failure_reason, data)
+        _write_transition_observation(data, response)
         sys.stdout.write(
             _bridge_output(
                 response,

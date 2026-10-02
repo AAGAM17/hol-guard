@@ -7,11 +7,12 @@ import os
 import shlex
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, wraps
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from ...path_support import resolves_within_root
 from ..models import GuardArtifact, HarnessDetection
@@ -20,6 +21,7 @@ from .diagnostic_probes import skipped_command_probe
 
 if TYPE_CHECKING:
     from ..inventory_contract import GuardAgentInventorySnapshot
+    from ..runtime_transition import TransitionFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +34,30 @@ class HarnessContext:
     executable_overrides: Mapping[str, str] = field(default_factory=dict[str, str])
     home_override_explicit: bool = False
     workspace_override_explicit: bool = False
+
+
+@dataclass(frozen=True)
+class PreparedHarnessInstall:
+    files: tuple[TransitionFile, ...]
+    manifest: dict[str, object]
+
+    def publish(self, guard_home: Path) -> dict[str, object]:
+        """Publish an ordinary install under ownership; pending transitions use their signed plan."""
+        from ..codex_install_transaction import require_codex_install_owner
+        from ..runtime_transition import RuntimeTransition, TransitionError, assert_transition_mutation_allowed
+
+        require_codex_install_owner(guard_home)
+        assert_transition_mutation_allowed(guard_home)
+        if any(change.kind != "binding" or (change.after is None and change.before != change.after)
+               for change in self.files):
+            raise TransitionError("adapter_install_plan_invalid")
+        changes: dict[str, object] = {"files": [change.payload() for change in self.files]}
+        RuntimeTransition._compare(changes, "before")
+        for change in self.files:
+            RuntimeTransition._compare({"files": [change.payload()]}, "before")
+            RuntimeTransition._write_file(change.payload(), "after")
+        RuntimeTransition._compare(changes, "after")
+        return self.manifest
 
 
 def _json_payload(path: Path) -> dict[str, object]:
@@ -116,6 +142,32 @@ def _ensure_path_within_root(root: Path, path: Path, *, label: str) -> None:
         raise ValueError(f"{label} settings path escapes the managed root")
 
 
+_MutationResult = TypeVar("_MutationResult")
+
+
+def _owned_adapter_mutation(method: Callable[..., _MutationResult]) -> Callable[..., _MutationResult]:
+    @wraps(method)
+    def owned(self: HarnessAdapter, context: HarnessContext, *args: object, **kwargs: object) -> _MutationResult:
+        from ..codex_install_transaction import codex_install_transaction
+        from ..runtime_transition import assert_transition_mutation_allowed
+
+        with ExitStack() as ownership:
+            if self.harness == "codex":
+                from .codex_lifecycle_lock import codex_lifecycle_locks
+
+                ownership.enter_context(codex_lifecycle_locks(context))
+            assert_transition_mutation_allowed(context.guard_home)
+            self.preflight_management(context, operation=method.__name__)
+            with codex_install_transaction(
+                context.guard_home, context.guard_home / "managed", actor=f"adapter.{self.harness}.{method.__name__}"
+            ):
+                assert_transition_mutation_allowed(context.guard_home)
+                return method(self, context, *args, **kwargs)
+
+    owned.__dict__["_guard_mutation_owned"] = True
+    return owned
+
+
 class HarnessAdapter:
     """Common interface shared by harness adapters."""
 
@@ -130,8 +182,35 @@ class HarnessAdapter:
     approval_prompt_channel = "browser"
     approval_auto_open_browser = True
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        # Apply the shared mutation contract to overrides as well as defaults.
+        # Direct adapter callers must not bypass CLI transition ownership.
+        for name in ("install", "uninstall"):
+            method = cls.__dict__.get(name)
+            if method is not None:
+                setattr(cls, name, _owned_adapter_mutation(method))
+
     def detect(self, context: HarnessContext) -> HarnessDetection:
         raise NotImplementedError
+
+    def preflight_management(self, context: HarnessContext, *, operation: str) -> None:
+        """Reject invalid targets without writes; mutation must recheck under ownership."""
+
+    def prepare_install(self, context: HarnessContext) -> PreparedHarnessInstall:
+        """Prepare a complete default install; native overrides must supply their own plan."""
+        from ..runtime_transition import TransitionError
+        from ..shims import prepare_guard_shim
+
+        if type(self).install is not HarnessAdapter.install:
+            # Never pass a partial launcher plan off as a native hook install.
+            raise TransitionError("adapter_preparation_unavailable")
+        prepared = prepare_guard_shim(self.harness, context)
+        return PreparedHarnessInstall(
+            prepared.files,
+            {"harness": self.harness, "active": True,
+             "config_path": prepared.manifest["shim_path"], **prepared.manifest},
+        )
 
     def inventory_snapshot(
         self,
@@ -163,6 +242,7 @@ class HarnessAdapter:
             ),
         )
 
+    @_owned_adapter_mutation
     def install(self, context: HarnessContext) -> dict[str, object]:
         from ..shims import install_guard_shim
 
@@ -174,6 +254,7 @@ class HarnessAdapter:
             **shim_manifest,
         }
 
+    @_owned_adapter_mutation
     def uninstall(self, context: HarnessContext) -> dict[str, object]:
         from ..shims import remove_guard_shim
 

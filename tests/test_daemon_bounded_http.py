@@ -213,6 +213,9 @@ def test_bounded_server_recovers_after_client_abort() -> None:
 
 
 def test_bounded_server_returns_fast_retryable_overload(monkeypatch) -> None:
+    # This assertion measures this server's bounded window, not the process-wide
+    # high-water mark left by previously completed daemon fixtures.
+    monkeypatch.setattr(bounded_http, "_METRICS", bounded_http._Metrics())
     monkeypatch.setenv("HOL_GUARD_DAEMON_MAX_ACTIVE_REQUESTS", "2")
     _Handler.release.clear()
     _Handler.entered.clear()

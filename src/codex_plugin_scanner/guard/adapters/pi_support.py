@@ -96,6 +96,15 @@ def resolve_configured_paths(settings_path: Path, value: str) -> tuple[Path, ...
 def enable_managed_extension(*, settings_path: Path, extension_path: Path) -> None:
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     payload = json_payload(settings_path) if settings_path.is_file() else {}
+    settings_path.write_bytes(
+        managed_extension_settings(payload, settings_path=settings_path, extension_path=extension_path)
+    )
+
+
+def managed_extension_settings(payload: dict[str, object], *, settings_path: Path, extension_path: Path) -> bytes:
+    """Render the managed reference without publishing extension or settings files."""
+
+    payload = dict(payload)
     raw_extensions = payload.get("extensions")
     extensions = [item for item in raw_extensions if isinstance(item, str)] if isinstance(raw_extensions, list) else []
     extension_value = str(extension_path)
@@ -107,7 +116,7 @@ def enable_managed_extension(*, settings_path: Path, extension_path: Path) -> No
     if extension_value not in extensions:
         extensions.append(extension_value)
     payload["extensions"] = extensions
-    settings_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
 
 
 def _is_managed_extension_reference(value: str, *, settings_path: Path) -> bool:

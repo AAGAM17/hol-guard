@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import os
+import time
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -14,9 +16,20 @@ _SQLITE_CONNECT_TIMEOUT_OVERRIDE: ContextVar[float | None] = ContextVar(
     "guard_sqlite_connect_timeout_override",
     default=None,
 )
+_SQLITE_OPERATION_DEADLINE: ContextVar[float | None] = ContextVar("guard_sqlite_operation_deadline", default=None)
+
+
+def sqlite_operation_deadline_monotonic() -> float | None:
+    return _SQLITE_OPERATION_DEADLINE.get()
 
 
 def sqlite_connect_timeout_seconds(environment: Mapping[str, str] | None = None) -> float:
+    timeout = _sqlite_wait_limit_seconds(environment)
+    deadline = _SQLITE_OPERATION_DEADLINE.get()
+    return timeout if deadline is None else min(timeout, max(0.0, deadline - time.monotonic()))
+
+
+def _sqlite_wait_limit_seconds(environment: Mapping[str, str] | None = None) -> float:
     override = _SQLITE_CONNECT_TIMEOUT_OVERRIDE.get()
     if override is not None:
         return override
@@ -34,14 +47,31 @@ def sqlite_connect_timeout_seconds(environment: Mapping[str, str] | None = None)
 
 
 @contextmanager
+def sqlite_operation_deadline(deadline_monotonic: float) -> Generator[None]:
+    """Compose all storage waits with the caller's original operation clock."""
+
+    if not math.isfinite(deadline_monotonic):
+        raise ValueError("SQLite deadline must be finite")
+    parent = _SQLITE_OPERATION_DEADLINE.get()
+    token = _SQLITE_OPERATION_DEADLINE.set(
+        deadline_monotonic if parent is None else min(parent, deadline_monotonic)
+    )
+    try:
+        yield
+    finally:
+        _SQLITE_OPERATION_DEADLINE.reset(token)
+
+
+@contextmanager
 def sqlite_connect_timeout_override(timeout_seconds: float) -> Generator[None]:
     """Bound SQLite waits for one thread-local operation."""
 
-    if timeout_seconds <= 0:
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("SQLite timeout override must be positive")
     token = _SQLITE_CONNECT_TIMEOUT_OVERRIDE.set(timeout_seconds)
     try:
-        yield
+        with sqlite_operation_deadline(time.monotonic() + timeout_seconds):
+            yield
     finally:
         _SQLITE_CONNECT_TIMEOUT_OVERRIDE.reset(token)
 

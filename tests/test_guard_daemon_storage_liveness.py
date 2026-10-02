@@ -272,7 +272,7 @@ def test_internal_hook_sqlite_timeout_is_bounded_without_changing_default() -> N
 def test_sqlite_timeout_override_is_scoped_to_current_context() -> None:
     assert sqlite_connect_timeout_seconds({}) == 30.0
     with sqlite_connect_timeout_override(0.05):
-        assert sqlite_connect_timeout_seconds({}) == 0.05
+        assert 0 < sqlite_connect_timeout_seconds({}) <= 0.05
     assert sqlite_connect_timeout_seconds({}) == 30.0
 
 

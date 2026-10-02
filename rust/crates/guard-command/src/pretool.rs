@@ -249,9 +249,15 @@ fn safe_gh_arguments(arguments: &[String]) -> bool {
 }
 
 fn safe_directory_target(target: &str) -> bool {
+    let tilde_head = target
+        .strip_prefix('~')
+        .map(|rest| rest.split('/').next().unwrap_or(""));
+    let directory_history = tilde_head.is_some_and(|head| {
+        head.starts_with(['+', '-'])
+            || (!head.is_empty() && head.bytes().all(|byte| byte.is_ascii_digit()))
+    });
     crate::is_plain_cd_target(target)
-        && !target.starts_with("~+")
-        && !target.starts_with("~-")
+        && !directory_history
         && !target.contains(['*', '?', '[', ']', '\\'])
         && !sensitive_command(target)
         && !normalized_haystack(target)

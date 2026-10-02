@@ -228,7 +228,14 @@ pub(crate) fn record_claim(
     let mut candidate = state.clone();
     // Move one legacy record per decision, not the entire history while the
     // resident lock is held. Both representations commit in one secure record.
-    let migrated = candidate.consumed_claims.pop();
+    // A claim still missing its semantic digest cannot enter the dual-key
+    // index; leave it inline where its claim_id tombstone still applies until
+    // an exact legacy replay backfills the digest, then migrate it later.
+    let migrated = candidate
+        .consumed_claims
+        .iter()
+        .rposition(|claim| claim.semantic_decision_digest.is_some())
+        .map(|index| candidate.consumed_claims.remove(index));
     for previous in migrated.iter().chain(std::iter::once(&claim)) {
         root = Some(super::workspace_review_claim_index::insert_claim(
             state_base,

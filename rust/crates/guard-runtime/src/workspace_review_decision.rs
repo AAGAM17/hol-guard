@@ -319,8 +319,13 @@ fn verify_and_claim_at(
     let mut floor_changed = false;
     if state.last_observed_time_ms == 0 {
         // A v1 state created before the floor existed still carries expiry
-        // timestamps. Treat the latest one as the conservative migration
-        // floor instead of allowing a rollback to replay an old claim.
+        // timestamps. Seed the observation floor from the latest consumed
+        // expiry so a v1 history cannot replay under a rolled-back clock, but
+        // never anchor it beyond the honest wall clock: a floor set to a
+        // future expiry would reject every decision as clock_rollback until
+        // that expiry elapsed. Replay is already blocked by the claim
+        // tombstones and the envelope expiry check, so capping at now_ms
+        // preserves rollback protection without the upgrade lockout.
         let migrated_floor = state
             .consumed_claims
             .iter()
@@ -328,7 +333,7 @@ fn verify_and_claim_at(
             .max()
             .unwrap_or(0);
         if migrated_floor != 0 {
-            state.last_observed_time_ms = migrated_floor;
+            state.last_observed_time_ms = migrated_floor.min(now_ms);
             floor_changed = true;
         }
     }

@@ -36,6 +36,8 @@ pub(super) fn arguments_are_read_only(arguments: &[String]) -> bool {
     !arguments.iter().any(|argument| {
         argument == "--web"
             || argument.starts_with("--web=")
+            || argument == "--cache"
+            || argument.starts_with("--cache=")
             || (argument.starts_with('-')
                 && !argument.starts_with("--")
                 && !argument.starts_with("-R")

@@ -133,7 +133,7 @@ def run_authorized_contained_test(
     )
     git = bool(command) and Path(command[0]).name == "git"
     node_tool = (
-        not vitest
+        restricted_vitest.bun_vitest_invocation(command) is None
         and bool(command)
         and (
             Path(command[0]).name in {"eslint", "tsc", "vite", "bun", "npm", "pnpm"}

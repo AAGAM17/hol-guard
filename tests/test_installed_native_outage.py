@@ -59,7 +59,7 @@ def test_skipped_cases_cannot_produce_complete_evidence(
     monkeypatch.setattr(runner.pytest, "main", partial_run)
     assert runner.main() == 1
     assert not output.exists()
-    assert "all 42 cases" in capsys.readouterr().err
+    assert "all 45 cases" in capsys.readouterr().err
 
 
 def test_checkout_import_invalidates_installed_evidence(

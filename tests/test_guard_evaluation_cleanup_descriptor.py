@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import signal
 import stat
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,42 @@ from codex_plugin_scanner.guard.evaluation_preflight import (
 from tests.test_guard_evaluation_preflight import _artifact, _artifact_paths, _fake_host, _profile
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="descriptor-bound cleanup requires POSIX")
+
+
+def test_nested_cleanup_finishes_reading_entries_before_removing_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(preflight_module, "check_host_version", lambda *_args, **_kwargs: (True, "host_version_match"))
+    _, setup = _setup(tmp_path)
+    nested = setup.root_path / "nested"
+    nested.mkdir()
+    (nested / "first.bin").write_bytes(b"first")
+    (nested / "second.bin").write_bytes(b"second")
+    identity = nested.stat().st_dev, nested.stat().st_ino
+    original_scandir = cleanup_module.os.scandir
+
+    @contextmanager
+    def mutation_sensitive_scandir(descriptor):
+        with original_scandir(descriptor) as entries:
+            details = os.fstat(descriptor)
+            if (details.st_dev, details.st_ino) == identity:
+                first = next(entries)
+
+                def remaining_entries():
+                    yield first
+                    # Model a filesystem iterator which skips later entries
+                    # when its directory changes during the read.
+                    if (nested / first.name).exists():
+                        yield from entries
+
+                yield remaining_entries()
+            else:
+                yield entries
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cleanup_module.os, "scandir", mutation_sensitive_scandir)
+        assert setup.cleanup() is True
+    assert not setup.root_path.exists()
 
 
 def _setup(tmp_path: Path):

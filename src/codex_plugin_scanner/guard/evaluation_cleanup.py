@@ -122,8 +122,9 @@ def _remove_descriptor_tree(directory_descriptor: int, entry_name: str) -> None:
         if not stat.S_ISDIR(opened_details.st_mode) or (opened_details.st_dev, opened_details.st_ino) != identity:
             raise EvaluationContractError("evaluation setup entry changed during cleanup")
         with os.scandir(child_descriptor) as entries:
-            for child in entries:
-                _remove_descriptor_tree(child_descriptor, child.name)
+            child_names = [child.name for child in entries]
+        for child_name in child_names:
+            _remove_descriptor_tree(child_descriptor, child_name)
         try:
             current_details = os.stat(entry_name, dir_fd=directory_descriptor, follow_symlinks=False)
         except FileNotFoundError as exc:

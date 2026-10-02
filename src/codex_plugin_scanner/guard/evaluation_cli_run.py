@@ -67,7 +67,7 @@ def run_synthetic_command(
         token_retained = False
         cleanup_removed = False
         setup_error = _CliError(
-            "setup_unavailable",
+            setup.report.reason or "setup_unavailable",
             "synthetic evaluation setup is unavailable",
             status=setup.report.status,
         )
@@ -77,13 +77,17 @@ def run_synthetic_command(
                 _write_recovery_token(setup, declared_parent=Path(cast(str, target_scope["rootPath"])))
                 token_retained = True
             except _CliError as error:
-                setup_error = error
+                setup_error = _CliError(error.code, error.message, status=setup.report.status)
                 with contextlib.suppress(EvaluationContractError):
                     cleanup_removed = setup.cleanup()
+        cleanup: dict[str, object] = {"removed": cleanup_removed, "recoveryTokenRetained": token_retained}
+        if setup.root_path is not None and not cleanup_removed:
+            cleanup["ownedRoot"] = str(setup.root_path)
+            cleanup["reason"] = "cleanup_incomplete"
         return SyntheticCommandResult(
             status=setup.report.status,
             run=_empty_report(setup.report.status, reason=setup.report.reason),
-            cleanup={"removed": cleanup_removed, "recoveryTokenRetained": token_retained},
+            cleanup=cleanup,
             error=setup_error,
         )
 

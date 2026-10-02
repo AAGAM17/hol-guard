@@ -57,6 +57,7 @@ def main() -> int:
             "evaluation_cli_fixtures.py",
             "test_guard_evaluation_cleanup_descriptor.py",
             "test_guard_evaluation_cli.py",
+            "test_guard_evaluation_cli_recovery.py",
             "test_guard_evaluation_cli_package.py",
             "test_guard_evaluation_preflight.py",
             "test_guard_evaluation_runner.py",

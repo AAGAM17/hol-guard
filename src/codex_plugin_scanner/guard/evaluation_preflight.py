@@ -7,7 +7,6 @@ read user configuration or credentials, install hooks, or change policy.
 
 from __future__ import annotations
 
-import contextlib
 import copy
 import hashlib
 import os
@@ -22,11 +21,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, cast
 
-from .evaluation_contracts import (
-    EvaluationContractError,
-    EvaluationProfile,
-    validate_evaluation_profile,
-)
+from . import evaluation_cleanup as _cleanup
+from .evaluation_contracts import EvaluationContractError, EvaluationProfile, validate_evaluation_profile
 from .evaluation_host_probe import check_host_version
 from .evaluation_scope import _safe_temp_parent
 
@@ -35,8 +31,7 @@ EvaluationPhase = Literal["preflight", "setup"]
 EvaluationExecutionMode = Literal["installed", "synthetic_adapter"]
 EVALUATION_SETUP_SCHEMA_VERSION = "guard.evaluation-setup.v1"
 
-_OWNED_ROOT_PREFIX = "hol-guard-eval-"
-_MARKER_NAME = ".hol-guard-evaluation-owned"
+_DESCRIPTOR_CLEANUP_UNAVAILABLE_REASON = "descriptor_cleanup_unavailable"
 
 
 def _check(
@@ -121,7 +116,11 @@ class EvaluationSetup:
 
         if self.root_path is None or self.marker_token is None:
             return False
-        return _remove_owned_root(self.root_path, self.marker_token)
+        return _cleanup.remove_owned_root(
+            self.root_path,
+            self.marker_token,
+            expected_root_identity=self.root_identity,
+        )
 
 
 def _profile_payload(profile: object) -> dict[str, object]:
@@ -415,29 +414,6 @@ def preflight_evaluation(
     return _report("passed", "preflight", profile_id, checks)
 
 
-def _remove_owned_root(root_path: Path, marker_token: str) -> bool:
-    try:
-        if root_path.name.startswith(_OWNED_ROOT_PREFIX) is False:
-            raise EvaluationContractError("evaluation setup path has an invalid ownership name")
-        if not _safe_temp_parent(root_path.parent):
-            raise EvaluationContractError("evaluation setup path is outside a temporary root")
-        if root_path.is_symlink():
-            raise EvaluationContractError("evaluation setup path must not be a symlink")
-        if not root_path.exists():
-            return False
-        marker = root_path / _MARKER_NAME
-        if not marker.is_file() or marker.is_symlink():
-            raise EvaluationContractError("evaluation setup ownership marker is missing")
-        if marker.read_text(encoding="utf-8") != marker_token:
-            raise EvaluationContractError("evaluation setup ownership marker does not match")
-        if hasattr(os, "getuid") and root_path.stat().st_uid != os.getuid():
-            raise EvaluationContractError("evaluation setup is owned by another user")
-        shutil.rmtree(root_path)
-        return True
-    except (OSError, UnicodeError) as exc:
-        raise EvaluationContractError("unable to clean up evaluation setup") from exc
-
-
 def setup_evaluation(
     profile: EvaluationProfile | Mapping[str, object],
     *,
@@ -458,6 +434,22 @@ def setup_evaluation(
     )
     if preflight.status != "passed":
         return EvaluationSetup(report=replace(preflight, phase="setup"))
+    if not _cleanup.descriptor_cleanup_supported():
+        report = replace(
+            preflight,
+            phase="setup",
+            status="blocked_environment",
+            reason=_DESCRIPTOR_CLEANUP_UNAVAILABLE_REASON,
+            checks=(
+                *preflight.checks,
+                _check(
+                    "setup_cleanup",
+                    "blocked_environment",
+                    reason=_DESCRIPTOR_CLEANUP_UNAVAILABLE_REASON,
+                ),
+            ),
+        )
+        return EvaluationSetup(report=report)
 
     try:
         payload = _profile_payload(profile)
@@ -485,18 +477,22 @@ def setup_evaluation(
         return EvaluationSetup(report=report)
 
     root_path: Path | None = None
+    root_identity: tuple[int, int] | None = None
+    marker_established = False
     marker_token = secrets.token_hex(16)
     try:
-        root_path = Path(tempfile.mkdtemp(prefix=_OWNED_ROOT_PREFIX, dir=base))
+        root_path = Path(tempfile.mkdtemp(prefix=_cleanup.OWNED_ROOT_PREFIX, dir=base))
+        root_info = root_path.stat(follow_symlinks=False)
+        root_identity = (root_info.st_dev, root_info.st_ino)
         _ = root_path.chmod(0o700)
-        marker = root_path / _MARKER_NAME
+        marker = root_path / _cleanup.MARKER_NAME
         _ = marker.write_text(marker_token, encoding="utf-8")
         _ = marker.chmod(0o600)
+        marker_established = True
         guard_home = root_path / "guard-home"
         workspace = root_path / "workspace"
         guard_home.mkdir(mode=0o700)
         workspace.mkdir(mode=0o700)
-        root_info = root_path.stat(follow_symlinks=False)
         workspace_info = workspace.stat(follow_symlinks=False)
         report = replace(
             preflight,
@@ -514,18 +510,36 @@ def setup_evaluation(
             workspace_identity=(workspace_info.st_dev, workspace_info.st_ino),
         )
     except (OSError, RuntimeError) as exc:
+        retained_root = False
         if root_path is not None and root_path.exists():
-            with contextlib.suppress(EvaluationContractError):
-                _ = _remove_owned_root(root_path, marker_token)
+            try:
+                _ = _cleanup.remove_owned_root(
+                    root_path,
+                    marker_token,
+                    expected_root_identity=root_identity,
+                )
+            except EvaluationContractError:
+                retained_root = True
+        reason = "setup_unavailable"
+        if retained_root:
+            reason = "setup_cleanup_incomplete" if marker_established else "setup_recovery_unavailable"
         report = replace(
             preflight,
             phase="setup",
             status="blocked_environment",
-            reason="setup_unavailable",
-            checks=(*preflight.checks, _check("setup", "blocked_environment", reason="setup_unavailable")),
+            reason=reason,
+            owned_root=str(root_path) if retained_root else None,
+            checks=(*preflight.checks, _check("setup", "blocked_environment", reason=reason)),
         )
         del exc
-        return EvaluationSetup(report=report)
+        # Preserve the capability so CLI owners can retain a private recovery
+        # token even when allocating the remaining setup directories failed.
+        return EvaluationSetup(
+            report=report,
+            root_path=root_path if retained_root else None,
+            marker_token=marker_token if retained_root and marker_established else None,
+            root_identity=root_identity if retained_root else None,
+        )
 
 
 def cleanup_interrupted_evaluation_setup(
@@ -553,7 +567,21 @@ def cleanup_interrupted_evaluation_setup(
     candidate_parent = os.path.normcase(os.path.realpath(candidate.parent))
     if candidate_parent != declared_path:
         raise EvaluationContractError("evaluation recovery path is outside the profile target scope")
-    return _remove_owned_root(candidate, marker_token)
+    if candidate.is_symlink():
+        raise EvaluationContractError("evaluation setup path must not be a symlink")
+    try:
+        candidate_details = candidate.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise EvaluationContractError("unable to inspect evaluation setup path") from exc
+    if not stat.S_ISDIR(candidate_details.st_mode):
+        raise EvaluationContractError("evaluation setup path is not a directory")
+    return _cleanup.remove_owned_root(
+        candidate,
+        marker_token,
+        expected_root_identity=(candidate_details.st_dev, candidate_details.st_ino),
+    )
 
 
 __all__ = [

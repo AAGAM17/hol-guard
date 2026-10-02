@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -63,15 +64,27 @@ def run_synthetic_command(
 
     setup = setup_evaluation(profile, allow_host_execution=False, execution_mode="synthetic_adapter")
     if setup.report.status != "passed":
+        token_retained = False
+        cleanup_removed = False
+        setup_error = _CliError(
+            "setup_unavailable",
+            "synthetic evaluation setup is unavailable",
+            status=setup.report.status,
+        )
+        if setup.root_path is not None:
+            target_scope = cast(Mapping[str, object], profile.data["targetScope"])
+            try:
+                _write_recovery_token(setup, declared_parent=Path(cast(str, target_scope["rootPath"])))
+                token_retained = True
+            except _CliError as error:
+                setup_error = error
+                with contextlib.suppress(EvaluationContractError):
+                    cleanup_removed = setup.cleanup()
         return SyntheticCommandResult(
             status=setup.report.status,
             run=_empty_report(setup.report.status, reason=setup.report.reason),
-            cleanup={"removed": False, "recoveryTokenRetained": False},
-            error=_CliError(
-                "setup_unavailable",
-                "synthetic evaluation setup is unavailable",
-                status=setup.report.status,
-            ),
+            cleanup={"removed": cleanup_removed, "recoveryTokenRetained": token_retained},
+            error=setup_error,
         )
 
     target_scope = cast(Mapping[str, object], profile.data["targetScope"])

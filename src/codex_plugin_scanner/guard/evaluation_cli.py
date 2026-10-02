@@ -223,17 +223,28 @@ def _run_preflight(args: argparse.Namespace) -> int:
             )
             report = setup.to_dict()
             cleanup: dict[str, object] | None = None
-            if setup.report.status == "passed":
+            if setup.root_path is not None:
                 try:
                     target_scope = cast(Mapping[str, object], profile.data["targetScope"])
                     declared_parent = Path(cast(str, target_scope["rootPath"]))
                     _write_recovery_token(setup, declared_parent=declared_parent)
                 except _CliError as error:
+                    removed = False
                     with contextlib.suppress(EvaluationContractError):
-                        setup.cleanup()
-                    _emit(_result("preflight", error.status, report=report, error=error))
+                        removed = setup.cleanup()
+                    _emit(
+                        _result(
+                            "preflight",
+                            error.status,
+                            report=report,
+                            error=error,
+                            cleanup={"removed": removed, "recoveryTokenRetained": False, "available": False},
+                        )
+                    )
                     return _exit_code(error.status)
                 cleanup = {"available": True, "tokenLocation": "declared_parent"}
+                if setup.report.status != "passed":
+                    cleanup.update(removed=False, recoveryTokenRetained=True)
             _emit(_result("preflight", setup.report.status, report=report, cleanup=cleanup))
             return _exit_code(setup.report.status)
         report = preflight_evaluation(

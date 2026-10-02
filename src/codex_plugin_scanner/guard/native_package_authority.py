@@ -207,11 +207,12 @@ def evaluation_from_native_payload(payload: Mapping[str, object]) -> Any:
     from .runtime.supply_chain_package_eval import PackageRequestEvaluation
 
     data = dict(payload)
+    bundle_version = data.get("bundle_version")
     return PackageRequestEvaluation.from_cache_dict(
         data,
         package_intent_hash=str(data.get("package_intent_hash") or ""),
         policy_version=str(data.get("policy_version") or ""),
-        bundle_version=data.get("bundle_version") if isinstance(data.get("bundle_version"), str) else None,
+        bundle_version=bundle_version if isinstance(bundle_version, str) else None,
         workspace_fingerprint=(
             data.get("workspace_fingerprint") if isinstance(data.get("workspace_fingerprint"), str) else None
         ),

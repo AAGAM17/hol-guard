@@ -12,7 +12,7 @@ import threading
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from .approval_gate_state import (
     APPROVAL_GATE_ALLOWED_COOLDOWNS,
@@ -166,7 +166,7 @@ def _grant_from_wire(payload: object) -> ApprovalGateGrant | None:
     try:
         return ApprovalGateGrant(
             grant_id=str(payload["grant_id"]),
-            purpose=str(payload["purpose"]),
+            purpose=cast(ApprovalGatePurpose, str(payload["purpose"])),
             issued_at=str(payload["issued_at"]),
             expires_at=str(payload["expires_at"]),
             action=str(payload["action"]),

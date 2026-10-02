@@ -37,7 +37,7 @@ _APPROVAL_GATE_FEATURE = "approval-gate-v1"
 _REQUEST_SCHEMA = "guard-approval-gate-request.v1"
 _RESULT_SCHEMA = "guard-approval-gate-result.v1"
 
-_REQUEST_COUNTER = 0
+_request_counter = 0
 
 
 def _gate_error_cls():
@@ -107,7 +107,7 @@ def approval_gate_native(
     a business-rule rejection, and returns ``None`` when the resident cannot
     service the call (caller falls back to the Python implementation).
     """
-    global _REQUEST_COUNTER
+    global _request_counter
     status = native_runtime_status()
     if (
         status.mode == "off"
@@ -122,11 +122,11 @@ def approval_gate_native(
 
     request: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
-        "request_id": f"ag-{_REQUEST_COUNTER}",
+        "request_id": f"ag-{_request_counter}",
         "guard_home": str(guard_home),
         "method": method,
     }
-    _REQUEST_COUNTER += 1
+    _request_counter += 1
     if params:
         request["params"] = dict(params)
     input_wire = _input_to_wire(approval_gate_input)

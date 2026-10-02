@@ -37,7 +37,7 @@ pub(super) fn same_repository_worktree(workspace: &Path, target: &Path) -> bool 
     let Some((source_root, source)) = repository_common_directory(workspace) else {
         return false;
     };
-    let Some((root, admin)) = target.ancestors().skip(1).find_map(|root| {
+    let Some((root, admin)) = target.ancestors().find_map(|root| {
         let text = bounded_git_metadata(&root.join(".git"))?;
         let path = text.trim().strip_prefix("gitdir: ")?;
         let admin = std::fs::canonicalize(root.join(path)).ok()?;

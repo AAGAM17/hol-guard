@@ -1725,6 +1725,8 @@ class CodexHarnessAdapter(HarnessAdapter):
                 )
             return state
         except BaseException:
+            # An unknown config cannot safely be paired with the old manifest.
+            # Preserve participant files and report the unresolved transaction.
             require_unchanged_config_for_rollback(
                 config_path,
                 original_config,

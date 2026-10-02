@@ -116,7 +116,12 @@ jobs:
       - name: Verify native public directory projections
         run: |
           uv run --no-sync python scripts/ci/verify_native_command_program.py --compiler "$HOL_GUARD_NATIVE_SOURCE_COMPILER"
-          uv run --no-sync python scripts/prepare_extension_contribution.py --compiler "$HOL_GUARD_NATIVE_SOURCE_COMPILER"
+          # Fixture/source agreement is reviewed input validation, not artifact freshness.
+          arguments=()
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            arguments+=(--changed-from "${{ github.event.pull_request.base.sha }}")
+          fi
+          uv run --no-sync python scripts/prepare_extension_contribution.py --compiler "$HOL_GUARD_NATIVE_SOURCE_COMPILER" "${arguments[@]}"
           uv run --no-sync python scripts/render_command_extension_directory.py
           uv run --no-sync python scripts/prepare_extension_contribution.py --check --compiler "$HOL_GUARD_NATIVE_SOURCE_COMPILER"
           uv run --no-sync python scripts/render_command_extension_directory.py --check

@@ -69,7 +69,7 @@ def input_paths(root: Path) -> list[Path]:
                 paths.add(crate / name)
         if (crate / "src").is_dir():
             paths.update(p for p in (crate / "src").rglob("*") if p.suffix in (".rs", ".json"))
-    return sorted(paths)
+    return sorted(paths, key=lambda path: path.relative_to(root).as_posix())
 
 
 def input_digest(root: Path) -> str:
@@ -223,7 +223,7 @@ def _build_compiler(root: Path) -> Path:
         "guard-command-source",
         "--message-format=json",
     ]
-    completed = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, text=True, timeout=900, check=False)
+    completed = subprocess.run(command, cwd=root / "rust", stdout=subprocess.PIPE, text=True, timeout=900, check=False)
     if completed.returncode:
         raise RuntimeError("native source compiler build failed")
     for line in completed.stdout.splitlines():

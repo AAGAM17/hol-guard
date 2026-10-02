@@ -10,7 +10,7 @@ import argparse
 import hashlib
 import json
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePath
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT = ROOT / "contracts/extensions/native-command-program.v1.json"
@@ -66,6 +66,11 @@ def build_request() -> dict:
     }
 
 
+def implementation_path_key(path: PurePath, workspace: PurePath) -> str:
+    """Match native UTF-8 relative-name order, including on case-folding Windows paths."""
+    return path.relative_to(workspace).as_posix()
+
+
 def implementation_digest() -> str:
     """Mirror the Rust build fingerprint, not its compilation or admission logic."""
     workspace = ROOT / "rust"
@@ -78,7 +83,7 @@ def implementation_digest() -> str:
             paths.update(path for path in (crate / "src").rglob("*") if path.suffix in (".rs", ".json"))
     paths.update((workspace / "build_support").glob("*.rs"))
     digest = hashlib.sha256(b"hol-guard.native-source-implementation.v1\0")
-    for path in sorted(paths):
+    for path in sorted(paths, key=lambda item: implementation_path_key(item, workspace)):
         if path.is_symlink() or not path.is_file():
             raise ValueError("invalid native implementation input")
         name = path.relative_to(workspace).as_posix().encode()

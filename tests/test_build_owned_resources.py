@@ -217,3 +217,49 @@ def test_derived_files_are_not_source_inputs(path: str) -> None:
 def test_authored_expectations_stay_reviewable(path: str) -> None:
     """Authored security and cryptographic expectations are not build-owned."""
     assert tracked_derived_paths([path]) == []
+
+
+def test_native_build_discovers_the_workspace_toolchain(tree: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rustup must see rust/rust-toolchain.toml, not an unrelated global default."""
+    import subprocess
+
+    observed = []
+    expected = tree / "rust/target/debug/guard-command-source"
+    monkeypatch.setattr(resources.shutil, "which", lambda _: "/usr/bin/cargo")
+
+    def execute(command, **kwargs):
+        observed.append((command, kwargs))
+        record = {
+            "reason": "compiler-artifact",
+            "target": {"name": "guard-command-source"},
+            "executable": str(expected),
+        }
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(record) + "\n")
+
+    monkeypatch.setattr(resources.subprocess, "run", execute)
+    assert resources._build_compiler(tree) == expected
+    assert observed[0][1]["cwd"] == tree / "rust"
+    assert "--locked" in observed[0][0]
+    assert "--message-format=json" in observed[0][0]
+
+
+def test_implementation_order_is_identical_on_windows_and_posix() -> None:
+    """Case-folded Windows Path ordering must not alter the implementation hash."""
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    from scripts.build_native_command_program import implementation_path_key
+
+    relative = [
+        "crates/example/build.rs",
+        "crates/example/Cargo.toml",
+        "Cargo.lock",
+        "crates/example/src/Z.rs",
+        "crates/example/src/a.rs",
+    ]
+    observed = []
+    for kind, base in ((PurePosixPath, "/checkout/rust"), (PureWindowsPath, "C:/checkout/rust")):
+        root = kind(base)
+        paths = [root / name for name in relative]
+        ordered = sorted(paths, key=lambda path: implementation_path_key(path, root))
+        observed.append([implementation_path_key(path, root) for path in ordered])
+    assert observed[0] == observed[1] == sorted(relative)

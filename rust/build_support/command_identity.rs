@@ -47,7 +47,13 @@ pub fn emit(root: &Path) -> String {
         }
     }
     collect(&root.join("build_support"), &mut files);
-    files.sort();
+    files.sort_by_cached_key(|path| {
+        path.strip_prefix(root)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace('\\', "/")
+    });
     files.dedup();
     let mut hasher = Sha256::new();
     hasher.update(b"hol-guard.native-source-implementation.v1\0");

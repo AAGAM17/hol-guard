@@ -21,8 +21,7 @@ static STABLE_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\A[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*\z").unwrap());
 static SEMANTIC_VERSION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\
-(?:-[0-9a-z]+(?:[.-][0-9a-z]+)*)?(?:\+[0-9a-z]+(?:[.-][0-9a-z]+)*)?\z",
+        r"\A(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9a-z]+(?:[.-][0-9a-z]+)*)?(?:\+[0-9a-z]+(?:[.-][0-9a-z]+)*)?\z",
     )
     .unwrap()
 });

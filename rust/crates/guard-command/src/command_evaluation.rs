@@ -131,6 +131,14 @@ impl NativeSafeVariantObservation {
 }
 
 /// `NativeCommandExtensionObservation` (native_command_extension_evidence.py:42).
+///
+/// The Python observation carries `.extension`/`.rule` objects; Rust flattens
+/// the rule metadata the adapter reads (`severity`, `default_mode`,
+/// `risk_classes`, `action_classes`) + `extension.required`/`extension.version`
+/// so `legacy_rule_floor`, `_effect_claims`, and `interaction_policy_factors`
+/// are byte-identical without a full registry round-trip at factor time.
+/// These are resolved from the bound `CommandCatalog` when the observation is
+/// materialized.
 #[derive(Debug, Clone)]
 pub struct NativeCommandExtensionObservation {
     pub extension_id: String,
@@ -138,6 +146,14 @@ pub struct NativeCommandExtensionObservation {
     pub extension_required: bool,
     pub rule_id: String,
     pub rule_version: String,
+    /// `rule.severity` (catalog).
+    pub rule_severity: String,
+    /// `rule.default_mode` (catalog).
+    pub rule_default_mode: String,
+    /// `rule.risk_classes` (catalog) — feeds `_effect_claims`.
+    pub rule_risk_classes: Vec<String>,
+    /// `rule.action_classes` (catalog) — `interaction_policy_factors` gate.
+    pub rule_action_classes: Vec<String>,
     pub matcher_evidence: Vec<NativeMatcherEvidence>,
     pub safe_variants: Vec<NativeSafeVariantObservation>,
     pub uncertainty_reasons: Vec<UncertaintyKind>,
@@ -820,6 +836,10 @@ mod tests {
             extension_required: true,
             rule_id: "r".to_owned(),
             rule_version: "1".to_owned(),
+            rule_severity: "high".to_owned(),
+            rule_default_mode: "review".to_owned(),
+            rule_risk_classes: vec![],
+            rule_action_classes: vec![],
             matcher_evidence: vec![
                 NativeMatcherEvidence {
                     segment_index: 0,

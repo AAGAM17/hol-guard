@@ -4,6 +4,7 @@ mod command_common_cli_matchers;
 pub mod command_compatibility;
 mod command_database_matchers;
 pub mod command_evaluation;
+pub mod command_decision_adapter;
 mod command_operand_matchers;
 mod command_option_parsing;
 mod command_specialized_matchers;

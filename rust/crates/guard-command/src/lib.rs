@@ -1,81 +1,87 @@
 #![forbid(unsafe_code)]
 pub mod action_lattice;
 pub mod approval_reuse;
-pub mod canonical_command;
 mod command_ascii_comparison;
 mod command_candidate_common;
+mod command_contained_routine_candidates;
 mod command_common_cli_matchers;
 pub mod command_compatibility;
-mod command_contained_routine_candidates;
+mod command_database_matchers;
+mod command_launcher_floors;
+pub mod command_evaluation;
 mod command_critical_floors;
+#[cfg(unix)]
+pub mod command_shell_read_factors;
 #[cfg(test)]
 mod command_critical_floors_tests;
-mod command_database_matchers;
-pub mod command_decision_adapter;
-pub mod command_evaluation;
 #[cfg(test)]
 mod command_evaluation_tests;
-mod command_launcher_floors;
-pub mod command_model;
+pub mod command_decision_adapter;
 mod command_operand_matchers;
 mod command_option_parsing;
-mod command_segment_parsing;
-pub mod command_shell_read_factors;
 mod command_specialized_matchers;
-mod command_structure;
 mod command_structured_matchers;
-mod command_tokens;
+pub mod effect_decision;
 mod command_verified_read_candidates;
+mod command_workspace_write_candidates;
 #[cfg(test)]
 mod command_verified_read_candidates_tests;
-mod command_workspace_write_candidates;
-mod data_flow;
-pub mod effect_decision;
-mod env_wrapper;
-mod executable_flag_contract;
-pub mod extension_control;
+pub mod canonical_command;
 pub mod extension_evidence;
-pub mod extension_trust;
-mod github_capability_contract;
-#[cfg(test)]
-mod github_capability_contract_tests;
-mod github_capability_interaction;
-mod github_command_capabilities;
-#[cfg(test)]
-mod github_command_capabilities_tests;
-pub mod github_workflow_approval_record;
-pub mod github_workflow_authorization;
-pub mod github_workflow_operations;
-mod home_path_text;
-pub mod homebrew_intent;
-pub mod jsonc;
-pub mod launch_identity;
-pub mod launch_identity_binding;
-pub mod launch_identity_environment;
-pub mod native_command_catalog;
-pub mod native_command_controls;
 pub mod native_command_extension_evidence;
 #[cfg(test)]
 mod native_command_extension_evidence_tests;
+mod executable_flag_contract;
+pub mod extension_control;
+pub mod extension_trust;
+pub mod native_command_controls;
+pub mod native_command_catalog;
 pub mod native_command_program;
+mod github_capability_contract;
+mod github_command_capabilities;
+#[cfg(test)]
+mod github_capability_contract_tests;
+#[cfg(test)]
+mod github_command_capabilities_tests;
+mod github_capability_interaction;
+pub mod github_workflow_approval_record;
+pub mod github_workflow_authorization;
+pub mod github_workflow_operations;
+pub mod command_model;
+mod command_segment_parsing;
+#[cfg(unix)]
+#[cfg(unix)]
+pub mod launch_identity_binding;
 pub mod npm_source_spec;
+pub mod launch_identity_environment;
+#[cfg(unix)]
+pub mod launch_identity;
 pub mod package_execution_context;
+pub mod jsonc;
 pub mod package_intent_common;
 pub mod package_intent_parser;
 pub mod package_manager_command;
+pub mod typescript_launch_evidence;
 pub mod package_manifest_diff;
-mod parser_wrappers;
-pub mod pretool;
-mod runtime_read_paths;
+pub mod homebrew_intent;
+mod data_flow;
+mod env_wrapper;
+mod command_structure;
+mod command_tokens;
 mod shell_command_wrappers;
 mod shell_execution_context;
-mod shell_execution_context_support;
-mod shell_read_literal_wrapper;
 mod shell_secret_read_flow;
 mod shell_secret_read_support;
+#[cfg(unix)]
+mod runtime_read_paths;
+#[cfg(unix)]
 pub mod shell_secret_reads;
+mod shell_execution_context_support;
+mod home_path_text;
+mod shell_read_literal_wrapper;
 mod shell_structure;
-pub mod typescript_launch_evidence;
+mod parser_wrappers;
+pub mod pretool;
 
 pub use command_evaluation::{evaluate_command, CompositeCommandEvaluation};
 pub use command_model::parse_shell_command;
@@ -576,10 +582,7 @@ fn push_segment(
     Ok(())
 }
 
-pub(crate) fn shell_tokens(
-    command: &str,
-    preserve_backslash: bool,
-) -> Result<Vec<String>, &'static str> {
+pub(crate) fn shell_tokens(command: &str, preserve_backslash: bool) -> Result<Vec<String>, &'static str> {
     let mut tokens = Vec::new();
     let mut token = String::new();
     let mut token_started = false;

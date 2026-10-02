@@ -1,10 +1,22 @@
 //! Private lexer and path helpers for shell execution-context modeling
 //! (`runtime/_shell_execution_context_support.py`, 595 lines — verbatim).
 
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use crate::shell_structure::extract_heredocs;
+
+#[cfg(unix)]
+fn stat_mode(m: &std::fs::Metadata) -> u32 {
+    m.mode()
+}
+#[cfg(not(unix))]
+fn stat_mode(m: &std::fs::Metadata) -> u32 {
+    m.file_attributes()
+}
 
 pub const SHELL_CWD_UNRESOLVED_EXPRESSION: &str = "shell_cwd_unresolved_expression";
 pub const SHELL_CWD_MISSING_DIRECTORY: &str = "shell_cwd_missing_directory";
@@ -86,6 +98,7 @@ pub struct ShellPathIdentity {
 }
 
 impl ShellPathIdentity {
+    #[cfg(unix)]
     pub fn from_stat(m: &std::fs::Metadata) -> Self {
         ShellPathIdentity {
             device: m.dev(),
@@ -98,6 +111,27 @@ impl ShellPathIdentity {
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_nanos() as i64)
                 .unwrap_or(0),
+        }
+    }
+
+    /// Windows has no POSIX st_dev/st_ino/ctime — map volume serial, file
+    /// index and change time into the same tuple shape so identity digests
+    /// stay deterministic per-platform (Python falls back to `st_dev`/`st_ino`
+    /// via `os.stat` which Windows reports as volume/index anyway).
+    #[cfg(windows)]
+    pub fn from_stat(m: &std::fs::Metadata) -> Self {
+        let write_ns = (m.last_write_time() / 100) as i64;
+        ShellPathIdentity {
+            device: 0,
+            inode: 0,
+            mode: (m.file_attributes() as u32) & 0o170000,
+            change_time_ns: write_ns,
+            creation_time_ns: m
+                .created()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos() as i64)
+                .unwrap_or(write_ns),
         }
     }
 }
@@ -870,7 +904,7 @@ pub fn resolve_directory_operand(
     if !value_stat.is_dir() {
         return (None, None, None, Some(SHELL_CWD_NOT_DIRECTORY));
     }
-    if !directory_is_readable(&resolved, value_stat.mode()) {
+    if !directory_is_readable(&resolved, stat_mode(&value_stat)) {
         return (None, None, None, Some(SHELL_CWD_UNREADABLE_DIRECTORY));
     }
     if !is_within(&resolved, workspace_root) {
@@ -931,7 +965,7 @@ pub fn existing_directory(
     if !value_stat.is_dir() {
         return (None, None, Some(SHELL_CWD_NOT_DIRECTORY));
     }
-    if !directory_is_readable(&resolved, value_stat.mode()) {
+    if !directory_is_readable(&resolved, stat_mode(&value_stat)) {
         return (None, None, Some(SHELL_CWD_UNREADABLE_DIRECTORY));
     }
     (
@@ -943,9 +977,12 @@ pub fn existing_directory(
 
 /// `_directory_is_readable` (:559-565).
 fn directory_is_readable(path: &Path, mode: u32) -> bool {
+    #[cfg(unix)]
     if mode & 0o444 == 0 || mode & 0o111 == 0 {
         return false;
     }
+    #[cfg(not(unix))]
+    let _ = mode;
     // `os.access(path, R_OK|X_OK, effective_ids=True)` — eaccess equivalent.
     check_eaccess(path)
 }

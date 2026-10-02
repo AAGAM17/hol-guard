@@ -1,6 +1,7 @@
 //! Normalize transparent shell wrappers before Guard evaluates a command
 //! (`runtime/shell_command_wrappers.py`, 426 lines — verbatim).
 
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
@@ -506,10 +507,21 @@ fn resolve(path: &Path) -> PathBuf {
 }
 
 /// `_path_is_root_owned` (:384-385). Missing path → not root-owned.
+/// POSIX-only concept; Windows ACLs have no st_uid — treat as not root-owned
+/// so downstream checks fall to the non-writable leg (fail-closed parity with
+/// the Python early-exit on non-POSIX).
 fn path_is_root_owned(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .map(|m| m.uid() == 0)
-        .unwrap_or(false)
+    #[cfg(unix)]
+    {
+        std::fs::metadata(path)
+            .map(|m| m.uid() == 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
 }
 
 /// `_trusted_symlink_component` (:388-397).
@@ -517,9 +529,12 @@ fn trusted_symlink_component(path: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return false;
     };
+    #[cfg(unix)]
     if meta.uid() != 0 {
         return false;
     }
+    #[cfg(not(unix))]
+    let _ = &meta;
     let Ok(resolved) = std::fs::canonicalize(path) else {
         return false;
     };
@@ -528,9 +543,18 @@ fn trusted_symlink_component(path: &Path) -> bool {
 
 /// `_path_is_non_writable` (:400-401).
 fn path_is_non_writable(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .map(|m| m.mode() & 0o022 == 0)
-        .unwrap_or(false)
+    #[cfg(unix)]
+    {
+        std::fs::metadata(path)
+            .map(|m| m.mode() & 0o022 == 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::metadata(path)
+            .map(|m| m.permissions().readonly())
+            .unwrap_or(false)
+    }
 }
 
 /// `_env_assignments_override_path` (:404-405).

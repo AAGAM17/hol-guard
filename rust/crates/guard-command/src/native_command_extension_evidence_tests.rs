@@ -16,7 +16,7 @@ use crate::native_command_extension_evidence::{
 use guard_contracts::NativeCommandControlBindingV1;
 
 fn fixture(name: &str) -> Value {
-    let path = PathBuf::from("/tmp").join(name);
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata").join(name);
     serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("json")
 }
 

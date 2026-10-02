@@ -188,12 +188,21 @@ def approval_gate_native(
         return None
 
     native_record_resident_success(status.identity.sha256, guard_home)
-    if envelope.get("status") == "error":
+    envelope_status = envelope.get("status")
+    if envelope_status == "error":
         error_cls = _gate_error_cls()
         raise error_cls(
             str(envelope.get("code") or "approval_gate_required"),
             str(envelope.get("message") or "Approval gate check failed."),
             status=int(envelope.get("error_status") or 403),
         )
+    # Fail-closed on any status other than "ok": a typo'd or future status
+    # (e.g. "denied") must not be treated as a successful gate pass — a
+    # `-> None` caller would otherwise proceed unauthenticated.
+    if envelope_status != "ok":
+        native_record_resident_failure(
+            status.identity.sha256, guard_home, reason="native_approval_gate_bad_status"
+        )
+        return None
     payload = envelope.get("payload")
-    return payload if isinstance(payload, dict) else {}
+    return payload if isinstance(payload, dict) else None

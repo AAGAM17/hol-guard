@@ -696,7 +696,16 @@ def require_approval_decision(
         now=now,
     )
     if native is not None:
-        return _grant_from_wire(native.get("grant"))
+        # "grant" present-and-null = resident answered "no gate required".
+        # Absent key or a malformed grant dict is NOT that answer — fall
+        # through to the fail-closed Python body rather than treat a
+        # decode failure as authorization.
+        grant_payload = native.get("grant")
+        if grant_payload is None and "grant" in native:
+            return None
+        grant = _grant_from_wire(grant_payload)
+        if grant is not None:
+            return grant
     state = _load_state(guard_home)
     if not _requires_decision_gate(state, action=action, scope=scope):
         return None
@@ -838,7 +847,12 @@ def require_high_risk(
         now=now,
     )
     if native is not None:
-        return _grant_from_wire(native.get("grant"))
+        grant_payload = native.get("grant")
+        if grant_payload is None and "grant" in native:
+            return None
+        grant = _grant_from_wire(grant_payload)
+        if grant is not None:
+            return grant
     state = _load_state(guard_home)
     if not _enabled(state):
         return None

@@ -985,6 +985,8 @@ pub mod local_supply_chain;
 pub mod supply_chain_package_eval;
 
 // RTM-014/017/020/023 pending modules — compile signal only until legs complete.
+pub mod aibom_reporting;
+pub mod aibom_trust_metadata;
 pub mod archive_inspection;
 pub mod command_operation_classification;
 pub mod composition_rules;
@@ -998,6 +1000,7 @@ pub mod direct_vitest;
 pub mod false_positive_rules;
 pub mod hook_evidence_writer;
 pub mod hook_responses;
+pub mod inventory_contract;
 pub mod mcp_decision;
 pub mod restricted_archive;
 #[cfg(unix)]

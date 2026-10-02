@@ -236,6 +236,7 @@ pub(super) fn bounded_file_write_target(
     };
     (canonical.starts_with(&workspace)
         || super::worktree_writes::same_repository_worktree(&workspace, &canonical))
+        && guard_secure_fs::hidden_read_parts_allowed(&canonical)
         && resolved_path_allowed(&canonical, home_dir, workspace.to_str())
         && !autostart_write_target(&canonical)
 }

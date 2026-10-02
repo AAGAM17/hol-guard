@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -70,6 +71,11 @@ def test_regen_trigger_covers_every_decision_diff_input() -> None:
         path.relative_to(REPO_ROOT).as_posix()
         for path in (*_EVIDENCE_SOURCE_PATHS, KNOWN_GAPS_PATH, MANIFEST_PATH, PAIRS_PATH, NATIVE_CONTRACT_PATH)
     }
+    # Native-contract inputs affect the report indirectly and must be watched
+    # independently of whether the broad rust/** pattern remains in place.
+    native_contract = json.loads(NATIVE_CONTRACT_PATH.read_text(encoding="utf-8"))
+    inputs.update(native_contract["inherited_source_identities"]["sources"])
+    inputs.update(native_contract["immutable_input_sha256"])
     assert len(inputs) >= MIN_REPORT_INPUTS
     missing = sorted(path for path in inputs if not any(_matches(path, pattern) for pattern in patterns))
     assert not missing, "Report inputs missing from the regeneration trigger:\n" + "\n".join(missing)

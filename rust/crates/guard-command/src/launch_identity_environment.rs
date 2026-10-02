@@ -169,19 +169,45 @@ pub fn plan_launch_environment(
     }
 }
 
+/// Segment surface `plan_command_segment_environment` consumes — both
+/// `CommandSegment` (internal model) and `CommandSegmentV1` (wire) carry the
+/// same `tokens`/`execution_context` pair.
+pub trait SegmentEnvView {
+    fn tokens(&self) -> &[String];
+    fn execution_context(&self) -> &str;
+}
+
+impl SegmentEnvView for CommandSegmentV1 {
+    fn tokens(&self) -> &[String] {
+        &self.tokens
+    }
+    fn execution_context(&self) -> &str {
+        &self.execution_context
+    }
+}
+
+impl SegmentEnvView for crate::command_model::CommandSegment {
+    fn tokens(&self) -> &[String] {
+        &self.tokens
+    }
+    fn execution_context(&self) -> &str {
+        &self.execution_context
+    }
+}
+
 /// `plan_command_segment_environment` (:116-134).
 ///
 /// `embedded_commands` is kept for parity with the Python signature; the
 /// CanonicalCommandV1 wire never carries embedded commands, so callers pass
 /// `&[]` on the native path.
 pub fn plan_command_segment_environment(
-    segment: &CommandSegmentV1,
+    segment: &impl SegmentEnvView,
     embedded_commands: &[EmbeddedCommand],
     inherited: &BTreeMap<String, String>,
 ) -> LaunchEnvironmentPlan {
     let embedded = embedded_commands.iter().find(|embedded| {
         segment
-            .execution_context
+            .execution_context()
             .starts_with(&format!("{}:", embedded.execution_context))
     });
     if let Some(embedded) = embedded {
@@ -191,7 +217,7 @@ pub fn plan_command_segment_environment(
         let (embedded_tokens, _exact) = shell_tokens(&embedded.text);
         let outer = plan_launch_environment(&embedded_tokens, inherited, true);
         let normalized =
-            plan_launch_environment(&segment.tokens, &outer.executable_environment, true);
+            plan_launch_environment(segment.tokens(), &outer.executable_environment, true);
         let mut wrapper_environments = outer.wrapper_environments;
         wrapper_environments.extend(normalized.wrapper_environments);
         return LaunchEnvironmentPlan {
@@ -200,7 +226,7 @@ pub fn plan_command_segment_environment(
             complete: outer.complete && normalized.complete,
         };
     }
-    plan_launch_environment(&segment.tokens, inherited, true)
+    plan_launch_environment(segment.tokens(), inherited, true)
 }
 
 /// `launch_search_path` (:137-139).

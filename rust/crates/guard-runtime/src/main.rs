@@ -13,6 +13,7 @@ mod managed_resident;
 mod claim_reuse;
 mod encrypted_secret_store;
 mod local_once_store;
+mod policy_integrity_resolver;
 mod native_hook_receipt;
 mod oneshot;
 mod policy_enforcement;

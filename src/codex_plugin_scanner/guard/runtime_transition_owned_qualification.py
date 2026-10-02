@@ -38,15 +38,19 @@ class OwnedNativeQualification:
 
 
 def qualify_owned_codex_native(
-    *, operation_id: str, artifact_generation: str, expected_artifact: DaemonArtifactBinding,
-    context: HarnessContext, store: GuardStore, deadline_monotonic: float,
+    *,
+    operation_id: str,
+    artifact_generation: str,
+    expected_artifact: DaemonArtifactBinding,
+    context: HarnessContext,
+    store: GuardStore,
+    deadline_monotonic: float,
 ) -> OwnedNativeQualification:
     """Pin ownership around fresh allow/deny receipts under one parent deadline."""
     deadline = deadline_monotonic
 
     def check() -> None:
-        if (isinstance(deadline, bool) or not math.isfinite(deadline)
-                or not 0 < deadline - time.monotonic() <= 60):
+        if isinstance(deadline, bool) or not math.isfinite(deadline) or not 0 < deadline - time.monotonic() <= 60:
             raise TransitionError("owned_qualification_deadline")
 
     check()
@@ -55,16 +59,19 @@ def qualify_owned_codex_native(
             raise ValueError
     except (ValueError, AttributeError, TypeError):
         raise TransitionError("operation_id_invalid") from None
-    if (len(artifact_generation) != 64
-            or any(value not in "0123456789abcdef" for value in artifact_generation)):
+    if len(artifact_generation) != 64 or any(value not in "0123456789abcdef" for value in artifact_generation):
         raise TransitionError("artifact_generation_invalid")
     home = context.guard_home.resolve(strict=True)
     if Path(store.guard_home).resolve(strict=True) != home:
         raise TransitionError("owned_qualification_store_mismatch")
     check()
     # Same lock order as activation/recovery. No start/stop/publication follows.
-    with codex_install_transaction(home, home / "owned-native-qualification", actor="desktop-native-qualification",
-                                   deadline=deadline), guard_daemon_start_lock(home, deadline=deadline):
+    with (
+        codex_install_transaction(
+            home, home / "owned-native-qualification", actor="desktop-native-qualification", deadline=deadline
+        ),
+        guard_daemon_start_lock(home, deadline=deadline),
+    ):
         rows = deepcopy(store.list_managed_installs())
         check()
         active = [row for row in rows if row.get("active") is True]
@@ -72,8 +79,9 @@ def qualify_owned_codex_native(
             raise TransitionError("installed_hook_observer_unavailable")
         row = active[0]
         manifest = row.get("manifest")
-        config = (cast(dict[str, object], manifest).get("managed_hook_config_path")
-                  if isinstance(manifest, dict) else None)
+        config = (
+            cast(dict[str, object], manifest).get("managed_hook_config_path") if isinstance(manifest, dict) else None
+        )
         workspace = row.get("workspace")
         if not isinstance(config, str) or not Path(config).is_absolute():
             raise TransitionError("installed_hook_binding_missing")
@@ -82,23 +90,32 @@ def qualify_owned_codex_native(
         try:
             before = capture_owned_native_candidate(home, expected_artifact, deadline_monotonic=deadline)
             proof = observe_configured_codex_hook(
-                operation_id=operation_id, artifact_generation=artifact_generation, expected_runtime=before.identity,
-                guard_home=home, config_path=Path(config),
+                operation_id=operation_id,
+                artifact_generation=artifact_generation,
+                expected_runtime=before.identity,
+                guard_home=home,
+                config_path=Path(config),
                 workspace=Path(workspace) if isinstance(workspace, str) else context.home_dir,
-                deadline_monotonic=deadline, artifact_binding=expected_artifact, receipt_store=store,
+                deadline_monotonic=deadline,
+                artifact_binding=expected_artifact,
+                receipt_store=store,
             )
             payload = verified_admission_payload(proof)
             evidence = payload.get("installed_hook_evidence")
-            if (proof.operation_id != operation_id or proof.artifact_generation != artifact_generation
-                    or proof.runtime_identity != before.identity or proof.guard_home != home
-                    or not isinstance(evidence, dict) or cast(dict[str, object], evidence).get("harness") != "codex"):
+            if (
+                proof.operation_id != operation_id
+                or proof.artifact_generation != artifact_generation
+                or proof.runtime_identity != before.identity
+                or proof.guard_home != home
+                or not isinstance(evidence, dict)
+                or cast(dict[str, object], evidence).get("harness") != "codex"
+            ):
                 raise TransitionError("owned_qualification_proof_mismatch")
             check()
             after = capture_owned_native_candidate(home, expected_artifact, deadline_monotonic=deadline)
         except NativeCaptureError as error:
             raise TransitionError(str(error)) from error
-        if (before.identity != after.identity or before.daemon != after.daemon
-                or store.list_managed_installs() != rows):
+        if before.identity != after.identity or before.daemon != after.daemon or store.list_managed_installs() != rows:
             raise TransitionError("owned_qualification_generation_changed")
         check()
         return OwnedNativeQualification(after, proof)

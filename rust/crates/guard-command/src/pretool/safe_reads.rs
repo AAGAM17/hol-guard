@@ -295,7 +295,7 @@ fn expand_home_read_path(path: &str, home_dir: Option<&str>) -> Option<String> {
         return None;
     }
     let home = home_dir?.trim().trim_end_matches('/');
-    if home.is_empty() || !home.starts_with('/') {
+    if home.is_empty() || !std::path::Path::new(home).is_absolute() {
         return None;
     }
     Some(format!("{home}{rest}"))

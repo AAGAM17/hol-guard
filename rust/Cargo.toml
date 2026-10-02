@@ -31,6 +31,8 @@ nix = { version = "0.31.3", features = ["fs", "poll", "process", "signal", "sock
 regex = "1.11.2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.219", features = ["derive"] }
+idna = "1.0"
+percent-encoding = "2.3"
 serde_json = "1.0.143"
 aes = "0.8.4"
 base64ct = { version = "1.7.3", features = ["alloc"] }

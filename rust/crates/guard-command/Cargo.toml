@@ -13,6 +13,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true
+idna.workspace = true
+percent-encoding.workspace = true
 
 [build-dependencies]
 sha2.workspace = true

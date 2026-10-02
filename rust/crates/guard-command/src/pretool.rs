@@ -299,13 +299,18 @@ pub(crate) fn benign_command_segments(
         .enumerate()
         .filter_map(|(index, segment)| {
             let benign = exact_safe_segment_with_context(model, segment, false, context);
+            let basename = executable_basename(segment.executable.as_deref().unwrap_or(""));
+            let stdin_filter = segment.pipeline_index > 0
+                && matches!(basename, "head" | "tail")
+                && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments);
             let path_free = matches!(
-                executable_basename(segment.executable.as_deref().unwrap_or("")),
+                basename,
                 "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "date"
-            ) || segment.arguments.is_empty();
-            let all_previous_benign = model.segments[..index].iter().all(|previous| {
-                exact_safe_segment_with_context(model, previous, false, context)
-            });
+            ) || segment.arguments.is_empty()
+                || stdin_filter;
+            let all_previous_benign = model.segments[..index]
+                .iter()
+                .all(|previous| exact_safe_segment_with_context(model, previous, false, context));
             // Earlier extension-approved segments may rewrite the tree (checkout/pull);
             // a pre-execution path proof only holds while every predecessor is benign.
             (benign && (path_free || all_previous_benign)).then_some(index)

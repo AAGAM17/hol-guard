@@ -212,6 +212,8 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
         "git push origin main | python3 project.py",
         "cd /tmp; git push origin main; cat relative.txt",
         "git push origin main; echo done > .env",
+        "git push origin main | head -1 ordinary.txt",
+        "git push origin main | head -1 -- ordinary.txt",
     ] {
         assert_ne!(
             evaluate(&controls, command).minimum_action,
@@ -237,7 +239,7 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
                 "omp",
                 "PreToolUse",
                 &serde_json::json!({"tool_name":"bash", "tool_input":{
-                    "command":format!("git push origin main; cat {path}")
+                    "command":format!("cat {path}; git push origin main")
                 }}),
                 Some(&controls),
                 None,
@@ -246,6 +248,21 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             );
             assert_eq!(result.minimum_action == "allow", expected, "{path}");
         }
+        let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
+            "omp",
+            "PreToolUse",
+            &serde_json::json!({"tool_name":"bash", "tool_input":{
+                "command":"git push origin main; cat ordinary.txt"
+            }}),
+            Some(&controls),
+            None,
+            root.to_str(),
+            root.to_str(),
+        );
+        assert_ne!(
+            result.minimum_action, "allow",
+            "earlier approved execution may change a file target"
+        );
     }
     let mut mixed = binding.clone();
     mixed.layers[0].controls.push(

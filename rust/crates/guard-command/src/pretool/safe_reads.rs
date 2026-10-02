@@ -646,6 +646,19 @@ pub(super) fn safe_head_tail_arguments(
     piped_input: bool,
     context: (Option<&str>, Option<&str>),
 ) -> bool {
+    safe_head_tail_with_targets(arguments, piped_input, context, true)
+}
+
+pub(super) fn safe_head_tail_stdin_arguments(arguments: &[String]) -> bool {
+    safe_head_tail_with_targets(arguments, true, (None, None), false)
+}
+
+fn safe_head_tail_with_targets(
+    arguments: &[String],
+    piped_input: bool,
+    context: (Option<&str>, Option<&str>),
+    allow_target: bool,
+) -> bool {
     let mut saw_target = false;
     let mut expect_count = false;
     let mut after_options = false;
@@ -661,7 +674,11 @@ pub(super) fn safe_head_tail_arguments(
             continue;
         }
         if after_options {
-            if argument == "-" || !command_read_target(argument, context, false) || saw_target {
+            if !allow_target
+                || argument == "-"
+                || !command_read_target(argument, context, false)
+                || saw_target
+            {
                 return false;
             }
             saw_target = true;
@@ -697,7 +714,7 @@ pub(super) fn safe_head_tail_arguments(
         if argument.starts_with('-') {
             return false;
         }
-        if !command_read_target(argument, context, false) {
+        if !allow_target || !command_read_target(argument, context, false) {
             return false;
         }
         if saw_target {

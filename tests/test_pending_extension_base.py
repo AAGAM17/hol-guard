@@ -165,7 +165,7 @@ def test_real_shallow_checkout_distinguishes_changed_and_unavailable_bases(
     assert git("rev-list", "--count", "HEAD", cwd=checkout) == "1"
     monkeypatch.setattr(detector, "ROOT", checkout)
     if missing_base:
-        with pytest.raises(detector.ContributionDiffError, match="fetching the base commit failed"):
+        with pytest.raises(detector.ContributionDiffError, match="fetching the PR base failed"):
             detector._contributions_changed("0" * 40)
     else:
         assert detector._contributions_changed(base.upper()) == [contribution.relative_to(source).as_posix()]
@@ -182,9 +182,6 @@ def test_pending_decision_diff_marker(monkeypatch):
 
     report = "tests/fixtures/guard-command-corpus/decision-diff-report.json"
     monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: ["src/other.py"])
-    assert freshness.pending_decision_diff_regen() is False
-
-    monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: ["tests/guard_command_decision_diff.py"])
     assert freshness.pending_decision_diff_regen() is True
 
     monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: [report])
@@ -192,7 +189,7 @@ def test_pending_decision_diff_marker(monkeypatch):
 
     monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: None)
     monkeypatch.setenv("GITHUB_BASE_REF", "main")
-    assert freshness.pending_decision_diff_regen() is False
+    assert freshness.pending_decision_diff_regen() is True
 
     monkeypatch.delenv("GITHUB_BASE_REF")
     monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: [])

@@ -10,6 +10,7 @@ mod command_specialized_matchers;
 mod command_structured_matchers;
 pub mod effect_decision;
 mod executable_flag_contract;
+pub mod extension_control;
 pub mod native_command_controls;
 pub mod native_command_program;
 mod parser_wrappers;

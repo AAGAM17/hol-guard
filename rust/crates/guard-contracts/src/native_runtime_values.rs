@@ -182,6 +182,59 @@ pub fn parity_signature(input: &ParityInputV1) -> serde_json::Value {
     ])
 }
 
+/// `NativeMode` (`native_runtime_values.py:18`) —
+/// `Literal["off","shadow","auto","force"]`. Serde snake_case matches the
+/// wire strings byte-for-byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NativeMode {
+    Off,
+    Shadow,
+    Auto,
+    Force,
+}
+
+/// `_resolve_native_mode` (`native_runtime_values.py:48-54`): strip/lower the
+/// raw env value; anything outside the four-mode set falls back to the
+/// caller's default (fail-to-default, never panic).
+pub fn resolve_native_mode(raw_value: Option<&str>, default: NativeMode) -> NativeMode {
+    match raw_value {
+        None => default,
+        Some(v) => match v.trim().to_lowercase().as_str() {
+            "off" => NativeMode::Off,
+            "shadow" => NativeMode::Shadow,
+            "auto" => NativeMode::Auto,
+            "force" => NativeMode::Force,
+            _ => default,
+        },
+    }
+}
+
+/// `_INTEGRITY_FAILURE_REASONS` (`native_runtime_values.py:20-30`): every
+/// manifest-admission failure class that permanently quarantines the
+/// identity. Includes the protocol/rule/build mismatches surfaced by the
+/// capabilities compatibility leg (admission emits only the 4 manifest
+/// variants).
+pub const INTEGRITY_FAILURE_REASONS: [&str; 7] = [
+    "native_manifest_invalid",
+    "native_manifest_missing",
+    "native_manifest_runtime_mismatch",
+    "native_manifest_version_mismatch",
+    "native_manifest_protocol_mismatch",
+    "native_manifest_rule_mismatch",
+    "native_manifest_build_mismatch",
+];
+
+/// `_identity_key` (`native_runtime_values.py:102-103`): the runtime's
+/// content key is its sha256; a missing identity collapses to the 64-zero
+/// sentinel so cache/state maps never carry a null key.
+pub fn identity_key(identity_sha256: Option<&str>) -> String {
+    match identity_sha256 {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => "0".repeat(64),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,5 +360,37 @@ mod tests {
         let mut no = input.clone();
         no.reviewed_excerpt = None;
         assert_eq!(parity_signature(&no).as_array().unwrap()[7], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn resolve_native_mode_defaults_and_parses() {
+        assert_eq!(resolve_native_mode(None, NativeMode::Auto), NativeMode::Auto);
+        assert_eq!(resolve_native_mode(Some(" FORCE "), NativeMode::Auto), NativeMode::Force);
+        assert_eq!(resolve_native_mode(Some("shadow"), NativeMode::Force), NativeMode::Shadow);
+        assert_eq!(resolve_native_mode(Some("bogus"), NativeMode::Off), NativeMode::Off);
+        assert_eq!(resolve_native_mode(Some(""), NativeMode::Shadow), NativeMode::Shadow);
+    }
+
+    #[test]
+    fn native_mode_serde_lowercase() {
+        assert_eq!(serde_json::to_string(&NativeMode::Force).unwrap(), "\"force\"");
+        assert_eq!(
+            serde_json::from_str::<NativeMode>("\"shadow\"").unwrap(),
+            NativeMode::Shadow
+        );
+    }
+
+    #[test]
+    fn identity_key_zero_sentinel() {
+        assert_eq!(identity_key(None), "0".repeat(64));
+        assert_eq!(identity_key(Some("")), "0".repeat(64));
+        assert_eq!(identity_key(Some("abc")), "abc");
+    }
+
+    #[test]
+    fn integrity_reasons_cover_manifest_and_compat() {
+        assert_eq!(INTEGRITY_FAILURE_REASONS.len(), 7);
+        assert!(INTEGRITY_FAILURE_REASONS.contains(&"native_manifest_protocol_mismatch"));
+        assert!(INTEGRITY_FAILURE_REASONS.contains(&"native_manifest_missing"));
     }
 }

@@ -4,6 +4,7 @@ use guard_contracts::{
     ApprovalConsumeRequestV4, ApprovalGateRequestV1, ApprovalReuseRequestV1,
     ApprovalValidateRequestV3, ApprovalValidateRequestV4, ClaimApprovalReuseDecisionsRequestV1,
     CommandEffectRequestV1, ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1,
+    PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, SupplyChainEvalRequestV1,
     RuntimeCapabilitiesV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES,
     NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION,
     NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
@@ -36,6 +37,9 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalReuseDecide(ApprovalReuseRequestV1),
     ClaimApprovalReuseDecisions(ClaimApprovalReuseDecisionsRequestV1),
     ApprovalGate(ApprovalGateRequestV1),
+    PackageIntentParse(PackageIntentParseRequestV1),
+    SupplyChainEval(SupplyChainEvalRequestV1),
+    PackageAuthorityDecide(PackageAuthorityDecideRequestV1),
     Health(Value),
     Shutdown(Value),
 }
@@ -110,6 +114,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         guard_contracts::APPROVAL_REUSE_FEATURE.into(),
         guard_contracts::CLAIM_APPROVAL_REUSE_FEATURE.into(),
         guard_contracts::APPROVAL_GATE_FEATURE.into(),
+        guard_contracts::PACKAGE_AUTHORITY_FEATURE.into(),
     ];
     if cfg!(windows) {
         features.push("authenticated-loopback-resident-v1".into());
@@ -296,6 +301,15 @@ pub(crate) fn evaluate_resident_bytes(
             }
             ResidentOperationV1::ApprovalGate(request) => {
                 crate::approval_gate_op::evaluate_approval_gate_request(&request)
+            }
+            ResidentOperationV1::PackageIntentParse(request) => {
+                crate::package_authority_op::evaluate_package_intent_parse(&request)
+            }
+            ResidentOperationV1::SupplyChainEval(request) => {
+                crate::package_authority_op::evaluate_supply_chain_eval(&request)
+            }
+            ResidentOperationV1::PackageAuthorityDecide(request) => {
+                crate::package_authority_op::evaluate_package_authority_decide(&request)
             }
             ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
                 "status": "ready",

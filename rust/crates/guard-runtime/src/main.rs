@@ -27,6 +27,7 @@ mod native_hook_receipt;
 mod native_runtime_admission;
 mod native_runtime_resilience;
 mod oneshot;
+mod package_authority_op;
 mod policy_enforcement;
 mod policy_integrity_resolver;
 mod policy_store;

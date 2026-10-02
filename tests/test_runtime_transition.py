@@ -1742,6 +1742,42 @@ def test_prepare_recovery_failure_still_retires_the_candidate(transition, monkey
     assert any(cause["code"] == "OSError" for cause in result.recovery_causes)
 
 
+def test_prepare_recovery_failure_stays_visible_when_recording_is_rejected(transition, monkeypatch):
+    from codex_plugin_scanner.guard.runtime_transition_coordinator import RuntimeTransitionCoordinator
+
+    runtime, plan, *_ = transition
+    events = []
+
+    class Driver:
+        def stop(self, artifact, *, deadline_monotonic):
+            events.append("stop_candidate" if artifact == plan.candidate else "stop_predecessor")
+
+        def start(self, artifact, *, deadline_monotonic):
+            events.append("start_candidate")
+            raise TransitionError("candidate_start_failed")
+
+        def observe_protection(self, *_args, **_kwargs):
+            pytest.fail("observation is not reached")
+
+    def broken(_operation_id, *, first_cause):
+        raise OSError("journal unavailable")
+
+    def refuse(*_args, **_kwargs):
+        raise TransitionError("recovery_owner_changed")
+
+    monkeypatch.setattr(runtime, "prepare_recovery", broken)
+    monkeypatch.setattr(runtime, "record_recovery_failure", refuse)
+    with pytest.raises(OSError, match="journal unavailable") as caught:
+        RuntimeTransitionCoordinator(runtime, Driver()).activate(
+            plan,
+            authority_home=plan.guard_home,
+            grant=None,
+        )
+    assert events == ["stop_predecessor", "start_candidate", "stop_candidate"]
+    assert isinstance(caught.value.__cause__, TransitionError)
+    assert caught.value.__cause__.reason == "recovery_owner_changed"
+
+
 def test_transition_begin_dependency_wait_consumes_original_coordinator_deadline(transition, monkeypatch):
     from codex_plugin_scanner.guard import runtime_transition as module
 

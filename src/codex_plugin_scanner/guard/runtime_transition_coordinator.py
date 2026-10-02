@@ -132,14 +132,19 @@ class RuntimeTransitionCoordinator:
             self._check_deadline(deadline)
             self.runtime.finish_rollback(operation_id, functional_proof=observation)
         except Exception as error:
-            if persistence_error is not None:
-                raise persistence_error from error
-            if (
-                not inverse_attempted
-                or inverse_completed
-                or self.runtime.status(operation_id).phase != "RecoveryRequired"
-            ):
-                self.runtime.record_recovery_failure(operation_id, first_cause=cause, error=error)
+            try:
+                if persistence_error is not None and persistence_error is not error:
+                    self.runtime.record_recovery_failure(operation_id, first_cause=cause, error=persistence_error)
+                if (
+                    not inverse_attempted
+                    or inverse_completed
+                    or self.runtime.status(operation_id).phase != "RecoveryRequired"
+                ):
+                    self.runtime.record_recovery_failure(operation_id, first_cause=cause, error=error)
+            except Exception as recording_error:
+                if persistence_error is not None:
+                    raise persistence_error from recording_error
+                raise
         return self.runtime.status(operation_id)
 
     def activate(
@@ -227,20 +232,31 @@ class RuntimeTransitionCoordinator:
                     self._check_deadline(deadline)
                     self.runtime.finish_rollback(plan.operation_id, functional_proof=observation)
                 except Exception as recovery_error:
-                    if persistence_error is not None:
-                        raise persistence_error from recovery_error
-                    if retirement_error is not None and retirement_error is not recovery_error:
-                        self.runtime.record_recovery_failure(
-                            plan.operation_id,
-                            first_cause=cause,
-                            error=retirement_error,
-                        )
-                    # The inverse writer already records its own failures.
-                    # Lifecycle failures need their own durable observation.
-                    if (
-                        not inverse_attempted
-                        or inverse_completed
-                        or self.runtime.status(plan.operation_id).phase != "RecoveryRequired"
-                    ):
-                        self.runtime.record_recovery_failure(plan.operation_id, first_cause=cause, error=recovery_error)
+                    try:
+                        if retirement_error is not None and retirement_error is not recovery_error:
+                            self.runtime.record_recovery_failure(
+                                plan.operation_id,
+                                first_cause=cause,
+                                error=retirement_error,
+                            )
+                        if persistence_error is not None and persistence_error is not recovery_error:
+                            self.runtime.record_recovery_failure(
+                                plan.operation_id,
+                                first_cause=cause,
+                                error=persistence_error,
+                            )
+                        # The inverse writer already records its own failures.
+                        # Lifecycle failures need their own durable observation.
+                        if (
+                            not inverse_attempted
+                            or inverse_completed
+                            or self.runtime.status(plan.operation_id).phase != "RecoveryRequired"
+                        ):
+                            self.runtime.record_recovery_failure(
+                                plan.operation_id, first_cause=cause, error=recovery_error
+                            )
+                    except Exception as recording_error:
+                        if persistence_error is not None:
+                            raise persistence_error from recording_error
+                        raise
             return self.runtime.status(plan.operation_id)

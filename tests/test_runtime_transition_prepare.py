@@ -166,6 +166,48 @@ def test_ordinary_install_restores_files_written_before_a_later_write_fails(tmp_
     assert second.read_bytes() == b"old-second"
 
 
+def test_ordinary_install_leaves_a_concurrent_edit_in_place(tmp_path: Path, monkeypatch):
+    from codex_plugin_scanner.guard.adapters.base import PreparedHarnessInstall
+    from codex_plugin_scanner.guard.runtime_transition import RuntimeTransition, TransitionFile
+
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_bytes(b"old-first")
+    second.write_bytes(b"old-second")
+    first.chmod(0o600)
+    second.chmod(0o600)
+    install = PreparedHarnessInstall(
+        (
+            TransitionFile(first, b"old-first", b"new-first"),
+            TransitionFile(second, b"old-second", b"new-second"),
+        ),
+        {"ok": True},
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.codex_install_transaction.require_codex_install_owner",
+        lambda _home: None,
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.runtime_transition.assert_transition_mutation_allowed",
+        lambda _home: None,
+    )
+    original = RuntimeTransition._write_file
+
+    def write(change, generation):
+        if generation == "after" and str(change["path"]).endswith("second.txt"):
+            first.write_bytes(b"user-edit")
+            raise TransitionError("publication_failed")
+        original(change, generation)
+
+    monkeypatch.setattr(RuntimeTransition, "_write_file", staticmethod(write))
+    with pytest.raises(TransitionError, match="generation_changed") as caught:
+        install.publish(tmp_path)
+    assert isinstance(caught.value.__cause__, TransitionError)
+    assert caught.value.__cause__.reason == "publication_failed"
+    assert first.read_bytes() == b"user-edit"
+    assert second.read_bytes() == b"old-second"
+
+
 def test_preparation_refuses_unsupported_active_harness_before_publication(preparation, monkeypatch):
     module, _, _, store, bindings, _ = preparation
     store.set_managed_install("hermes", True, None, {}, "old-time")

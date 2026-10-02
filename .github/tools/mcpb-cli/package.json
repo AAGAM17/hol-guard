@@ -5,7 +5,6 @@
     "@anthropic-ai/mcpb": "2.1.2"
   },
   "overrides": {
-    "tmp": "0.2.7",
-    "node-forge": "https://codeload.github.com/digitalbazaar/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65"
+    "tmp": "0.2.7"
   }
 }

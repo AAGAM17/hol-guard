@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import secrets
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -77,6 +79,22 @@ def _write_resident_authority(guard_home: Path, snapshot: Mapping[str, object], 
         "snapshot": snapshot,
     }
     path = guard_home / "native-runtime" / "policy-snapshot-v3.json"
+    if os.name == "nt":
+        from codex_plugin_scanner.guard import native_policy_snapshot as api
+        from codex_plugin_scanner.guard.native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_BYTES
+
+        with api._windows_private_state_binding(guard_home) as binding:
+            api._windows_write_private_file_atomic(
+                parent_path=binding.path,
+                parent_handle=binding.handle,
+                directory_handles=binding.handles,
+                temporary_name=f".policy-snapshot-v3.json.{secrets.token_hex(16)}.tmp",
+                destination_name=path.name,
+                payload=_canonical_json_bytes_v3(record),
+                maximum_bytes=POLICY_SNAPSHOT_MAX_BYTES,
+                kind="cache",
+            )
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(_canonical_json_bytes_v3(record))
     path.chmod(0o600)

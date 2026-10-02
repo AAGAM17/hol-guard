@@ -85,6 +85,7 @@ def test_disabled_native_harness_records_prevention(monkeypatch: pytest.MonkeyPa
     def capture_native_hook(command: list[str], **kwargs):
         is_hook = command[:3] == [sys.executable, "-m", "codex_plugin_scanner.cli"]
         if is_hook:
+            assert kwargs["env"]["PYTHONDONTWRITEBYTECODE"] == "1"
             assert kwargs["env"]["HOL_GUARD_NATIVE"] == "off"
             assert kwargs["env"]["PYTHONPATH"] == ""
             assert "HOL_GUARD_PYTHON_ORACLE" not in kwargs["env"]

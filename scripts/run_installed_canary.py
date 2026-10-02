@@ -110,6 +110,7 @@ def _run_corpus(repo_root: Path) -> dict[str, object]:
     if not runtime.is_file() or not compiler.is_file():
         raise InstalledCanaryError("Installed Guard package is missing native corpus binaries")
     environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["HOL_GUARD_NATIVE_BINARY"] = str(runtime)
     environment["HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER"] = str(compiler)
     started = time.perf_counter()
@@ -205,6 +206,7 @@ def _no_post_execution_proof_smoke() -> dict[str, object]:
         # A bundled runtime can initialize a fresh home's policy. Exercise an
         # explicit fail-safe outage rather than relying on source-only absence.
         hook_env = dict(os.environ)
+        hook_env["PYTHONDONTWRITEBYTECODE"] = "1"
         hook_env["HOL_GUARD_NATIVE"] = "off"
         hook_env["PYTHONPATH"] = ""
         hook_env.pop("HOL_GUARD_PYTHON_ORACLE", None)

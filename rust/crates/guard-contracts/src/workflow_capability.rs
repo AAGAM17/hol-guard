@@ -186,7 +186,9 @@ pub struct WorkflowCapabilityBinding {
 }
 
 impl WorkflowCapabilityBinding {
-    fn validate(&self) -> WfResult<()> {
+    /// `__post_init__` — Python validates at construction; the Rust binding is
+    /// a plain struct so callers invoke this before persisting/signing.
+    pub fn validate(&self) -> WfResult<()> {
         for id in [
             &self.operation_id,
             &self.resource_type,

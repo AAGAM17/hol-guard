@@ -46,6 +46,23 @@ impl GitHubWorkflowOperationKind {
             Self::MarkPrDraft => "mark-pr-draft",
         }
     }
+
+    /// Inverse of `as_str` for persisted `operation_kind` values.
+    pub fn from_kind_str(value: &str) -> Option<Self> {
+        Some(match value {
+            "resolve-review-thread" => Self::ResolveReviewThread,
+            "unresolve-review-thread" => Self::UnresolveReviewThread,
+            "lock-issue" => Self::LockIssue,
+            "unlock-issue" => Self::UnlockIssue,
+            "pin-issue" => Self::PinIssue,
+            "unpin-issue" => Self::UnpinIssue,
+            "lock-pr" => Self::LockPr,
+            "unlock-pr" => Self::UnlockPr,
+            "mark-pr-ready" => Self::MarkPrReady,
+            "mark-pr-draft" => Self::MarkPrDraft,
+            _ => return None,
+        })
+    }
 }
 
 /// `GitHubWorkflowOperation` — the six binding fields plus the derived digest.

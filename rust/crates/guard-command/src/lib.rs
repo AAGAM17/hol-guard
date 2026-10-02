@@ -43,6 +43,7 @@ mod github_capability_contract_tests;
 #[cfg(test)]
 mod github_command_capabilities_tests;
 mod github_capability_interaction;
+pub mod github_workflow_approval_record;
 pub mod github_workflow_authorization;
 pub mod github_workflow_operations;
 pub mod command_model;

@@ -294,11 +294,23 @@ fn expand_home_read_path(path: &str, home_dir: Option<&str>) -> Option<String> {
     if !rest.is_empty() && !rest.starts_with('/') {
         return None;
     }
-    let home = home_dir?.trim().trim_end_matches('/');
+    let home = home_dir?.trim();
     if home.is_empty() || !std::path::Path::new(home).is_absolute() {
         return None;
     }
-    Some(format!("{home}{rest}"))
+    if rest.is_empty() {
+        return Some(home.to_owned());
+    }
+    #[cfg(windows)]
+    let rest = rest.trim_start_matches('/').replace('/', "\\");
+    #[cfg(not(windows))]
+    let rest = rest.trim_start_matches('/');
+    Some(
+        std::path::Path::new(home)
+            .join(rest)
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 fn lexical_read_path(value: &str) -> Option<String> {

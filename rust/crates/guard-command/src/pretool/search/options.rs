@@ -12,7 +12,12 @@ pub(super) fn unsafe_search_value(
             if (context.0.is_some() || context.1.is_some())
                 && !value.contains(['*', '?', '[', ']', '{', '}']) =>
         {
-            !super::super::safe_reads::bounded_read_target(value, context.0, context.1, true)
+            // Recursive searchers walk directories; only prove regular files canonically.
+            !super::super::safe_reads::bounded_read_target(value, context.0, context.1, false)
+                && (value.starts_with(['/', '~'])
+                    || value.split(['/', '\\']).any(|part| part == "..")
+                    || sensitive_path_argument(value)
+                    || glob_can_select_sensitive_path(value))
         }
         SearchValueRole::Glob | SearchValueRole::Path => {
             value.starts_with(['/', '~'])

@@ -51,6 +51,7 @@ mod command_segment_parsing;
 pub mod launch_identity_binding;
 pub mod npm_source_spec;
 pub mod launch_identity_environment;
+pub mod package_execution_context;
 mod data_flow;
 mod env_wrapper;
 mod command_structure;

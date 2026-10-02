@@ -35,6 +35,8 @@ pub use utc_timestamp::*;
 
 mod native_runtime_values;
 pub use native_runtime_values::*;
+mod install_checks;
+pub use install_checks::*;
 
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";

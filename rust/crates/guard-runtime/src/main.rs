@@ -24,6 +24,7 @@ mod local_once_store;
 mod policy_integrity_resolver;
 mod native_hook_receipt;
 mod native_runtime_admission;
+mod native_runtime_resilience;
 mod oneshot;
 mod policy_enforcement;
 mod policy_store;

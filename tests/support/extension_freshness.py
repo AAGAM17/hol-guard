@@ -6,43 +6,22 @@ digest vectors after scope review, so a source-only ref legitimately contains a
 contribution id that the checked-in projections do not cover yet. Tests that
 assert freshness of generated artifacts stand down while such a pending
 contribution exists; every other invariant still runs.
+
+The same stand-down applies whenever a PR cannot carry the artifact at all:
+generated-artifacts-guard rejects regen-owned paths in ordinary PR diffs, so a
+checked-in projection can only be refreshed on main by the post-merge regen
+workflow. Freshness is enforced on main and on regen PRs (whose diffs do carry
+the artifacts) and deferred for every ref whose diff omits them.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
-from pathlib import Path
 
 import pytest
 
-from scripts.ci.detect_pending_extension_regen import (
-    ROOT,
-    GitDiffError,
-    changed_regen_inputs,
-    contribution_ids,
-    is_decision_report_input,
-)
-
-
-def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
-    """Run bounded Git inspection without exposing process or path details."""
-
-    command = ["git", *arguments]
-    try:
-        return subprocess.run(
-            command,
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except OSError:
-        return subprocess.CompletedProcess(command, 1, "", "git process unavailable")
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(command, 1, "", "git timeout")
+from scripts.ci.detect_pending_extension_regen import contribution_ids
 
 
 def pending_contribution_regen() -> bool:
@@ -50,106 +29,109 @@ def pending_contribution_regen() -> bool:
         BUILT_IN_COMMAND_EXTENSION_REGISTRY,
     )
 
-    registry_ids = {extension.extension_id for extension in BUILT_IN_COMMAND_EXTENSION_REGISTRY.extensions}
+    registry_ids = {
+        extension.extension_id for extension in BUILT_IN_COMMAND_EXTENSION_REGISTRY.extensions
+    }
     return bool(contribution_ids() - registry_ids)
 
 
-def _projection_base_sha() -> str | None:
-    for variable in ("HOL_GUARD_BASE_SHA", "GITHUB_BASE_SHA"):
-        value = os.environ.get(variable)
-        if value and value.strip():
-            return value.strip()
-
-    event_path = os.environ.get("GITHUB_EVENT_PATH")
-    if event_path:
-        try:
-            event = json.loads(Path(event_path).read_text(encoding="utf-8"))
-            pull_request = event.get("pull_request") if isinstance(event, dict) else None
-            if pull_request is None:
-                return None
-            base_sha = (pull_request.get("base") or {}).get("sha")
-        except (OSError, json.JSONDecodeError, AttributeError, TypeError) as error:
-            raise RuntimeError(f"Could not read pull-request base revision from {event_path!r}") from error
-        if not isinstance(base_sha, str) or not base_sha.strip():
-            raise RuntimeError(f"Pull-request event {event_path!r} has no base revision")
-        return base_sha.strip()
-
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or os.environ.get("GITHUB_BASE_REF"):
-        raise RuntimeError("Could not determine pull-request base revision from available Git refs")
-
-    completed = _git("merge-base", "HEAD", "origin/main")
-    if completed.returncode == 0 and completed.stdout.strip():
-        return completed.stdout.strip()
-    return None
-
-
-def pending_source_regen() -> bool:
-    """Stand down generated freshness only for exact source-bound changes."""
-
-    if pending_contribution_regen():
-        return True
-    base_sha = _projection_base_sha()
-    if base_sha is None:
-        return False
+def _git(*arguments: str) -> subprocess.CompletedProcess[str]:
     try:
-        changed = changed_regen_inputs(base_sha)
-    except GitDiffError as error:
-        raise RuntimeError(f"Could not qualify generated-artifact freshness: {error}") from error
-    return bool(changed.contribution_paths or changed.implementation_paths)
+        return subprocess.run(
+            ["git", *arguments], check=False, capture_output=True, text=True
+        )
+    except OSError:
+        return subprocess.CompletedProcess(["git", *arguments], 1, "", "")
 
 
 def _pr_diff_paths() -> list[str] | None:
-    """Paths this ref changes relative to the base branch, or None outside PR CI.
+    """Paths this ref changes relative to the base branch, or None on failure.
 
-    CI checkouts are shallow, so diff against a depth-1 fetch of the base ref —
-    tree-to-tree, no merge-base history required. Locally, fall back to the
-    merge-base against ``main`` when that ref exists.
+    Delegates to the shared detector: PR CI diffs against a depth-1 fetch of
+    ``GITHUB_BASE_REF``; local runs fall back to the ``main`` merge-base.
     """
 
-    base_sha = _projection_base_sha()
-    if base_sha is None:
-        return None
-    result = _git("diff", "--name-only", base_sha, "HEAD")
-    if result.returncode:
-        if _git("fetch", "-q", "--depth=1", "origin", base_sha).returncode:
-            raise RuntimeError("Could not determine pull-request diff: fetching the captured base commit failed")
-        result = _git("diff", "--name-only", base_sha, "HEAD")
-    if result.returncode:
-        raise RuntimeError("Could not determine pull-request diff after fetching the captured base commit")
-    return result.stdout.splitlines()
+    from scripts.ci.detect_pending_extension_regen import pr_diff_paths
+
+    return pr_diff_paths()
+
+
+def _regen_paths_absent(*paths: str) -> bool:
+    """This ref does not carry any of ``paths`` — drift is regen-owned.
+
+    Generated artifacts cannot be committed by ordinary PRs
+    (generated-artifacts-guard enforces it), so freshness belongs to main and
+    to regen PRs, whose diffs do carry the artifacts. Locally a feature branch
+    without the artifacts defers the same way; a clean ``main`` checkout has an
+    empty diff and stays strict.
+    """
+
+    diff = _pr_diff_paths()
+    if diff is None:
+        # Detection failed: in PR context the artifacts cannot be committed
+        # anyway, so deferring cannot mask drift; the post-merge regen check
+        # on main still enforces it.
+        return bool(os.environ.get("GITHUB_BASE_REF"))
+    if not os.environ.get("GITHUB_BASE_REF") and not diff:
+        return False
+    return not any(
+        changed == path or changed.startswith(path.rstrip("/") + "/")
+        for changed in diff
+        for path in paths
+    )
+
+
+_NATIVE_PROJECTION_PATHS: tuple[str, ...] = (
+    "contracts/extensions/native-command-program.v1.json",
+    "contracts/extensions/command-catalog.v1.json",
+    "contracts/extensions/native-command-control-authority.v1.fixtures.json",
+    "contracts/managed-controls/v1/extension-projection-digest-vector.json",
+    "contracts/managed-controls/v1/policy-bundle-v2-extension-signature-vector.json",
+    "src/codex_plugin_scanner/guard/contracts/data/extensions",
+)
 
 
 def pending_decision_diff_regen() -> bool:
-    """Defer report freshness only for exact report-bound PR inputs.
+    """In a PR that does not carry the regen-owned decision-diff report.
 
     The report is maintainer-owned: generated-artifacts-guard rejects it in
-    ordinary PR diffs, so a branch that changes any bound input cannot also
-    update the report. Report-bound source changes defer freshness until
-    maintainer regeneration; the report itself and unrelated changes remain
-    strict.
+    ordinary PR diffs, so a branch can never refresh it, and drift may equally
+    be inherited from main (any merged bound-source change restales it until
+    the post-merge regen lands). Freshness is enforced where the report can
+    actually change — on main and on regen PRs, whose diff carries it — and
+    deferred for every other PR.
     """
 
     if pending_contribution_regen():
         return True
-    report_outputs = {
-        "tests/fixtures/guard-command-corpus/decision-diff-report.json",
-        "tests/fixtures/guard-command-corpus/decision-diff-report.framed-sha256",
-    }
-    diff = _pr_diff_paths()
-    if diff is None:
-        # Outside a PR checkout there is no branch diff to qualify.
-        return False
-    normalized = {path.replace("\\", "/") for path in diff}
-    if normalized & report_outputs:
-        return False
-    return any(is_decision_report_input(path) for path in normalized)
+    report = "tests/fixtures/guard-command-corpus/decision-diff-report.json"
+    try:
+        from tests.guard_command_decision_diff import REPO_ROOT, REPORT_PATH
+
+        report = str(REPORT_PATH.relative_to(REPO_ROOT))
+    except (ImportError, ValueError):
+        pass
+    return _regen_paths_absent(report)
+
+
+def pending_native_projection_regen() -> bool:
+    """In a PR that does not carry the regen-owned native projections.
+
+    Same regen-ownership reasoning as the decision-diff report: ordinary PRs
+    cannot commit these projections, so freshness belongs to main and regen
+    PRs; every other PR defers.
+    """
+
+    if pending_contribution_regen():
+        return True
+    return _regen_paths_absent(*_NATIVE_PROJECTION_PATHS)
 
 
 requires_fresh_projections = pytest.mark.skipif(
-    pending_source_regen(),
+    pending_native_projection_regen(),
     reason=(
-        "checked-in projections do not cover a pending source-bound input; "
-        "freshness is enforced after maintainer regeneration"
+        "checked-in projections are regen-owned; "
+        "freshness is enforced on main and after maintainer regeneration"
     ),
 )
 

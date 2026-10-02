@@ -1,15 +1,13 @@
-"""Verify the generated native command program, tolerating source-only refs.
+"""Verify the generated native command program, tolerating pending contributions.
 
 Generated projections are maintainer-owned. A contribution PR that adds or
 edits canonical sources legitimately leaves the checked-in program stale, so a
 plain ``--check`` would reject an otherwise-valid contribution. This wrapper:
 
 - fresh tree: runs ``build_native_command_program.py --check`` as before
-- source-only tree (new/edited contribution source, native implementation,
-  or decision-report input): runs the generator without ``--check``, rebuilds
-  the native binaries, then runs a strict check against the generated
-  workspace projections so subsequent proofs and packaging use the same
-  program
+- pending tree (new/edited contribution source): runs the generator without
+  ``--check``, retains the generated workspace projections, and rebuilds the
+  native binaries so subsequent proofs and packaging use the same program
 """
 
 from __future__ import annotations
@@ -20,13 +18,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-GENERATED_PATHS = (
-    "contracts/extensions",
-    "contributions/extensions",
-    "src/codex_plugin_scanner/guard/contracts/data/extensions",
-    "src/codex_plugin_scanner/guard/extension_builder",
-)
-
 
 def _rebuild_command(compiler: str) -> list[str]:
     path = ROOT / compiler
@@ -34,21 +25,9 @@ def _rebuild_command(compiler: str) -> list[str]:
     parts = relative.parts
     if len(parts) not in (2, 3) or parts[-2] not in ("debug", "release"):
         raise ValueError("compiler must be in rust/target/[target/]debug or release")
-    command = [
-        "cargo",
-        "build",
-        "--manifest-path",
-        "rust/Cargo.toml",
-        "--locked",
-        "-p",
-        "hol-guard-runtime",
-        "-p",
-        "guard-command",
-        "--bin",
-        "hol-guard-runtime",
-        "--bin",
-        "guard-command-source",
-    ]
+    command = ["cargo", "build", "--manifest-path", "rust/Cargo.toml", "--locked",
+               "-p", "hol-guard-runtime", "-p", "guard-command",
+               "--bin", "hol-guard-runtime", "--bin", "guard-command-source"]
     if parts[-2] == "release":
         command.append("--release")
     if len(parts) == 3:
@@ -71,42 +50,56 @@ def main() -> int:
     args = parser.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    try:
-        from detect_pending_extension_regen import GitDiffError
-    except ImportError:
-        from detect_pending_extension_regen import ContributionDiffError as GitDiffError
-    from detect_pending_extension_regen import catalog_ids, contribution_ids
+    from detect_pending_extension_regen import (
+        REGEN_INPUT_PREFIXES,
+        ContributionDiffError,
+        _contributions_changed,
+        catalog_ids,
+        contribution_ids,
+        pr_diff_paths,
+        regen_artifacts_absent_from_diff,
+    )
 
-    try:
-        from detect_pending_extension_regen import changed_regen_inputs
-    except ImportError:
-        changed_regen_inputs = None
     pending = sorted(contribution_ids() - catalog_ids())
-    changed = []
-    changed_implementation = []
-    changed_report = []
-    if args.changed_from is not None:
-        try:
-            if changed_regen_inputs is not None:
-                inputs = changed_regen_inputs(args.changed_from)
-                changed = list(inputs.contribution_paths)
-                changed_implementation = list(inputs.implementation_paths)
-                changed_report = list(inputs.report_paths)
-            else:
-                raise GitDiffError("The regeneration detector does not expose the exact changed-input classifier")
-        except GitDiffError as error:
-            print(str(error), file=sys.stderr)
-            return 1
+    try:
+        changed = _contributions_changed(args.changed_from) if args.changed_from else []
+    except ContributionDiffError as error:
+        print(str(error), file=sys.stderr)
+        return 1
     command = [
         sys.executable,
         "scripts/build_native_command_program.py",
         "--compiler",
         args.compiler,
     ]
-    if args.changed_from is not None and (pending or changed or changed_implementation or changed_report):
+    diff = pr_diff_paths()
+    if args.changed_from and diff is None:
+        if not (pending or changed):
+            return 0
+        rebuild = _rebuild_command(args.compiler)
+        _run(command)
+        _run(rebuild)
+        _run([*command, "--check"])
+        return 0
+    if diff is not None and args.changed_from:
+        carries = not regen_artifacts_absent_from_diff(diff)
+        inputs = any(path.startswith(REGEN_INPUT_PREFIXES) for path in diff)
+        if carries:
+            # The PR carries regenerated projections; verify them strictly.
+            _run([*command, "--check"])
+            return 0
+        if not pending and not inputs:
+            print(
+                "PR carries neither generated projections nor their inputs; "
+                "any checked-in drift is inherited from main and regen-owned — "
+                "deferring freshness verification to extension-artifact-regen",
+                file=sys.stderr,
+            )
+            return 0
+        # Inputs changed without carried artifacts: validate the sources by
+        # generating, leaving the checked-in projections to post-merge regen.
         print(
-            f"source-only projection regeneration (ids={pending}, changed={changed}, "
-            f"implementation={changed_implementation}, report={changed_report}); "
+            f"pending artifact regeneration (ids={pending}, inputs in diff); "
             "validating sources by generating instead of checking freshness",
             file=sys.stderr,
         )

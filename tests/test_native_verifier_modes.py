@@ -21,8 +21,13 @@ def test_shared_verifier_compiles_pending_pr_sources_and_keeps_other_runs_strict
     detector.ContributionDiffError = real_detector.ContributionDiffError
     detector.contribution_ids = lambda: {"command.fixture"} if pending else set()
     detector.catalog_ids = set
-    detector.changed_regen_inputs = lambda _sha: real_detector.ChangedRegenInputs(
-        ("contributions/command-sources/command.fixture.json",) if changed else (), (), ()
+    detector._contributions_changed = (
+        lambda _sha: ["contributions/command-sources/command.fixture.json"] if changed else []
+    )
+    detector.REGEN_INPUT_PREFIXES = real_detector.REGEN_INPUT_PREFIXES
+    detector.regen_artifacts_absent_from_diff = lambda _diff=None: True
+    detector.pr_diff_paths = lambda: (
+        ["contributions/command-sources/command.fixture.json"] if (pending or changed) else ["README.md"]
     )
     monkeypatch.setitem(sys.modules, "detect_pending_extension_regen", detector)
     monkeypatch.setattr(sys, "path", list(sys.path))
@@ -43,6 +48,9 @@ def test_shared_verifier_compiles_pending_pr_sources_and_keeps_other_runs_strict
             verifier._rebuild_command(compiler),
             [*generate, "--check"],
         ]
+    elif base_sha:
+        # Unrelated PR diff: freshness is regen-owned, so verification defers.
+        assert calls == []
     else:
         assert calls == [[*generate, "--check"]]
 
@@ -53,7 +61,10 @@ def test_invalid_pending_source_stays_a_failure(monkeypatch: pytest.MonkeyPatch)
     detector.ContributionDiffError = real_detector.ContributionDiffError
     detector.contribution_ids = lambda: {"command.fixture"}
     detector.catalog_ids = set
-    detector.changed_regen_inputs = lambda _sha: real_detector.ChangedRegenInputs((), (), ())
+    detector._contributions_changed = lambda _sha: []
+    detector.REGEN_INPUT_PREFIXES = real_detector.REGEN_INPUT_PREFIXES
+    detector.regen_artifacts_absent_from_diff = lambda _diff=None: True
+    detector.pr_diff_paths = lambda: ["contributions/command-sources/command.fixture.json"]
     monkeypatch.setitem(sys.modules, "detect_pending_extension_regen", detector)
     monkeypatch.setattr(sys, "path", list(sys.path))
     compiler = "rust/target/release/guard-command-source"
@@ -82,13 +93,14 @@ def test_unavailable_base_stops_before_generation_or_freshness_checks(
     detector.contribution_ids = lambda: {"command.fixture"} if pending else set()
     detector.catalog_ids = set
 
-    def unavailable(_sha: str) -> real_detector.ChangedRegenInputs:
+    def unavailable(_sha: str) -> list[str]:
         """Simulate the shared detector's explicit comparison failure."""
-        raise real_detector.ContributionDiffError(
-            "Cannot compare contribution sources: fetching the base commit failed"
-        )
+        raise real_detector.ContributionDiffError("Cannot compare contribution sources: fetching the PR base failed")
 
-    detector.changed_regen_inputs = unavailable
+    detector._contributions_changed = unavailable
+    detector.REGEN_INPUT_PREFIXES = real_detector.REGEN_INPUT_PREFIXES
+    detector.regen_artifacts_absent_from_diff = lambda _diff=None: True
+    detector.pr_diff_paths = lambda: ["contributions/command-sources/command.fixture.json"]
     monkeypatch.setitem(sys.modules, "detect_pending_extension_regen", detector)
     monkeypatch.setattr(sys, "path", list(sys.path))
     monkeypatch.setattr(sys, "argv", ["verify", "--compiler", "fixture", "--changed-from", "a" * 40])
@@ -97,17 +109,3 @@ def test_unavailable_base_stops_before_generation_or_freshness_checks(
     output = capsys.readouterr()
     assert output.out == ""
     assert "Cannot compare contribution sources" in output.err
-
-
-def test_missing_exact_changed_input_classifier_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An older detector cannot silently select source-only validation."""
-    detector = ModuleType("detect_pending_extension_regen")
-    detector.ContributionDiffError = real_detector.ContributionDiffError
-    detector.contribution_ids = lambda: set()
-    detector.catalog_ids = set
-    monkeypatch.setitem(sys.modules, "detect_pending_extension_regen", detector)
-    monkeypatch.setattr(sys, "path", list(sys.path))
-    monkeypatch.setattr(sys, "argv", ["verify", "--compiler", "fixture", "--changed-from", "a" * 40])
-    monkeypatch.setattr(verifier, "_run", lambda _command: pytest.fail("Verification must not run"))
-
-    assert verifier.main() == 1

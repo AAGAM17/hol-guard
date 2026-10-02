@@ -38,7 +38,10 @@ def _queue_local_protect_approvals(
         return
     from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
 
-    config = load_guard_config(guard_home)
+    try:
+        config = load_guard_config(guard_home)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        config = None
     if not asks_for_approval(config):
         verdict = response_payload.get("verdict")
         reason = verdict.get("reason") if isinstance(verdict, dict) else None
@@ -83,13 +86,12 @@ def _queue_local_protect_approvals(
         config_paths=(artifact.config_path,),
         artifacts=(artifact,),
     )
-    _protect_config = load_guard_config(guard_home)
     queued = queue_blocked_approvals(
         detection=detection,
         evaluation={"artifacts": [approval_item]},
         store=store,
         approval_center_url=approval_center_url,
-        redaction_level=_protect_config.receipt_redaction_level,
+        redaction_level=config.receipt_redaction_level,
     )
     if not queued:
         return

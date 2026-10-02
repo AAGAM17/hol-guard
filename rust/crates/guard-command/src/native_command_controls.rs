@@ -468,3 +468,7 @@ fn strengthen(result: &mut PreToolResultV1, action: &str, reason: &str) {
 #[cfg(test)]
 #[path = "native_command_controls_tests.rs"]
 mod review_regressions;
+
+#[cfg(test)]
+#[path = "native_command_compound_controls_tests.rs"]
+mod compound_regressions;

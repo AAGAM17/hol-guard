@@ -131,7 +131,8 @@ def _run_guard_execute_contained_test_command(
         return run_authorized_contained_test(
             payload, workspace=workspace, timeout_seconds=int(args.timeout_seconds),
             authorize=lambda original: try_native_hook_authority(
-                payload=original, harness=str(getattr(args, "harness", "omp")), home_dir=context.home_dir,
+                payload={**original, "guard_containment_receipt_only": True},
+                harness=str(getattr(args, "harness", "omp")), home_dir=context.home_dir,
                 guard_home=guard_home, workspace=workspace, store=store,
             ),
         )

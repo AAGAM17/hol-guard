@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_plugin_scanner.guard.adapters.zcode_contained_tests import contained_zcode_response
+from codex_plugin_scanner.guard.adapters.zcode_contained_tests import contained_zcode_response, route_zcode_containment
 from codex_plugin_scanner.guard.runtime.contained_test_hook import read_contained_test_request
 
 
@@ -51,3 +51,15 @@ def test_zcode_does_not_rewrite_unproven_or_denied_requests(tmp_path, monkeypatc
                "reason_code": "native_vitest_readonly_containment_required",
                "required_execution_profile": "vitest-readonly-v1", **change}
     assert contained_zcode_response(receipt, input_text="{}", config={"harness": "zcode"}, cli_args=[]) is None
+
+
+def test_execution_sink_receives_original_containment_receipt(tmp_path):
+    receipt = {"decision": "deny", "policy_action": "sandbox-required",
+               "reason_code": "native_vitest_readonly_containment_required",
+               "required_execution_profile": "vitest-readonly-v1"}
+    result = route_zcode_containment(
+        receipt, harness="zcode", payload={"guard_containment_receipt_only": True},
+        guard_home=tmp_path / "guard", home_dir=tmp_path, workspace=tmp_path,
+    )
+    assert result is receipt
+    assert result["decision"] == "deny"

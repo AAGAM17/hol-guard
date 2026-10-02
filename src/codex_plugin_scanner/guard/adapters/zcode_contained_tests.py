@@ -31,7 +31,9 @@ def route_zcode_containment(
     guard_home: Path, home_dir: Path, workspace: Path | None,
 ) -> dict[str, object]:
     """Rewrite at the authority edge so frozen/stdlib hook clients also work."""
-    if harness != "zcode" or workspace is None:
+    # The execution sink needs the denial/profile receipt, not another rewrite.
+    # An untrusted caller setting this flag only keeps its original call denied.
+    if harness != "zcode" or workspace is None or payload.get("guard_containment_receipt_only") is True:
         return response
     config = {
         "harness": "zcode", "guard_home": str(guard_home), "python_executable": sys.executable,

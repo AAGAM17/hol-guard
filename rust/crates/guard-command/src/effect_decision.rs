@@ -978,12 +978,32 @@ mod tests {
         }
     }
 
+    /// Permissive-floor factor with a matching Verified proof (satisfies the
+    /// `proof_route == proof.route` invariant for allow/warn floors).
+    fn verified_factor(
+        source: DecisionFactorSource,
+        code: &str,
+        floor: GuardAction,
+    ) -> DecisionFactor {
+        let mut f = factor(source, code, floor);
+        f.proof = Some(PositiveProof {
+            route: f
+                .basis
+                .proof_route
+                .expect("permissive factor must set proof_route"),
+            binding_digest: "b".repeat(64),
+            satisfied_requirements: vec![],
+            enforced: false,
+        });
+        f
+    }
+
     #[test]
     fn max_floor_composes_across_factors_and_uncertainties() {
         let req = EffectDecisionRequest {
             factors: vec![
                 factor(DecisionFactorSource::Match, "a", GuardAction::Review),
-                factor(DecisionFactorSource::Policy, "b", GuardAction::Allow),
+                verified_factor(DecisionFactorSource::Policy, "b", GuardAction::Allow),
             ],
             uncertainties: vec![UncertaintyKind::MatcherFailure], // floor = block
             schema_version: EFFECT_DECISION_SCHEMA_VERSION.to_owned(),
@@ -996,6 +1016,7 @@ mod tests {
     #[test]
     fn allow_with_workflow_proof_disposes_workflow_authorized() {
         let mut f = factor(DecisionFactorSource::Match, "ok", GuardAction::Allow);
+        f.basis.proof_route = Some(ProofRoute::WorkflowAuthorized);
         f.proof = Some(PositiveProof {
             route: ProofRoute::WorkflowAuthorized,
             binding_digest: "a".repeat(64),

@@ -114,7 +114,11 @@ jobs:
             tests/test_guard_mcp_server_contribution.py \
             --junitxml=builder-evidence/tests.xml --tb=short
       - name: Verify native public directory projections
-        env: { HEAD_REF: ${{ github.head_ref }}, HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}, PR_AUTHOR: ${{ github.event.pull_request.user.login }}, AUTOMATION_LOGIN: ${{ vars.GUARD_AUTOMATION_LOGIN }} }
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTOMATION_LOGIN: ${{ vars.GUARD_AUTOMATION_LOGIN }}
         run: |
           detect=(--flag)
           arguments=(--compiler "$HOL_GUARD_NATIVE_SOURCE_COMPILER")

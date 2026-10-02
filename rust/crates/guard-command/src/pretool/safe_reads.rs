@@ -122,7 +122,7 @@ pub(super) fn bounded_file_read_target(
         return safe_read_target(path);
     };
     if let Ok(canonical) = std::fs::canonicalize(&candidate) {
-        return resolved_file_read_allowed(&canonical, home_dir);
+        return resolved_file_read_allowed(&canonical, home_dir, cwd);
     }
     // An unresolvable absolute or `~` target cannot prove a bounded file;
     // a workspace-relative spelling keeps the pre-existing lexical floor.
@@ -132,10 +132,24 @@ pub(super) fn bounded_file_read_target(
     safe_read_target(path)
 }
 
-/// Location outside the workspace is not itself a risk. The resolved regular
-/// file must still clear every sensitive-path screen.
-fn resolved_file_read_allowed(canonical: &std::path::Path, home_dir: Option<&str>) -> bool {
+/// The resolved regular file must be within a verified root and clear every
+/// sensitive-path screen.
+fn resolved_file_read_allowed(
+    canonical: &std::path::Path,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
     if !canonical.is_file() {
+        return false;
+    }
+    let under_root = [home_dir, cwd]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|root| root.starts_with('/'))
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .any(|root| canonical.starts_with(root));
+    if !under_root {
         return false;
     }
     let rendered = canonical.to_string_lossy().replace('\\', "/");

@@ -158,3 +158,30 @@ def test_real_shallow_checkout_distinguishes_changed_and_unavailable_bases(
     else:
         assert detector._contributions_changed(base.upper()) == [contribution.relative_to(source).as_posix()]
         assert git("cat-file", "-t", base, cwd=checkout) == "commit"
+
+
+def test_pending_decision_diff_marker(monkeypatch):
+    """Only exact report inputs defer; unrelated or unavailable diffs stay strict."""
+    import tests.support.extension_freshness as freshness
+
+    monkeypatch.setattr(freshness, "pending_contribution_regen", lambda: False)
+    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+
+    report = "tests/fixtures/guard-command-corpus/decision-diff-report.json"
+    monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: ["src/other.py"])
+    assert freshness.pending_decision_diff_regen() is False
+
+    monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: ["tests/guard_command_decision_diff.py"])
+    assert freshness.pending_decision_diff_regen() is True
+
+    monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: [report])
+    assert freshness.pending_decision_diff_regen() is False
+
+    monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: None)
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+    assert freshness.pending_decision_diff_regen() is False
+
+    monkeypatch.delenv("GITHUB_BASE_REF")
+    monkeypatch.setattr(freshness, "_pr_diff_paths", lambda: [])
+    assert freshness.pending_decision_diff_regen() is False

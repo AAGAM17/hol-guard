@@ -4,6 +4,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   regen-owned-paths:

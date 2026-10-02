@@ -74,11 +74,12 @@ def _projection_base_sha() -> str | None:
             raise RuntimeError(f"Pull-request event {event_path!r} has no base revision")
         return base_sha.strip()
 
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or os.environ.get("GITHUB_BASE_REF"):
+        raise RuntimeError("Could not determine pull-request base revision from available Git refs")
+
     completed = _git("merge-base", "HEAD", "origin/main")
     if completed.returncode == 0 and completed.stdout.strip():
         return completed.stdout.strip()
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request" or os.environ.get("GITHUB_BASE_REF"):
-        raise RuntimeError("Could not determine pull-request base revision from available Git refs")
     return None
 
 
@@ -105,38 +106,27 @@ def _pr_diff_paths() -> list[str] | None:
     merge-base against ``main`` when that ref exists.
     """
 
-    base_ref = os.environ.get("GITHUB_BASE_REF")
-    if base_ref:
-        probe = _git("rev-parse", "--is-shallow-repository")
-        shallow = probe.returncode != 0 or probe.stdout.strip() == "true"
-        fetch = [
-            "fetch",
-            "-q",
-            *(["--depth=1"] if shallow else []),
-            "origin",
-            f"+refs/heads/{base_ref}:refs/remotes/pending-diff/base",
-        ]
-        if _git(*fetch).returncode:
-            raise RuntimeError("Could not determine pull-request diff: fetching the base ref failed")
-        result = _git("diff", "--name-only", "pending-diff/base", "HEAD")
-        if result.returncode:
-            raise RuntimeError("Could not determine pull-request diff after fetching the base ref")
-        return result.stdout.splitlines()
-    for base_ref in ("main", "origin/main"):
-        if _git("rev-parse", "--verify", base_ref).returncode != 0:
-            continue
-        result = _git("diff", "--name-only", f"{base_ref}...HEAD")
-        return result.stdout.splitlines() if result.returncode == 0 else None
-    return None
+    base_sha = _projection_base_sha()
+    if base_sha is None:
+        return None
+    result = _git("diff", "--name-only", base_sha, "HEAD")
+    if result.returncode:
+        if _git("fetch", "-q", "--depth=1", "origin", base_sha).returncode:
+            raise RuntimeError("Could not determine pull-request diff: fetching the captured base commit failed")
+        result = _git("diff", "--name-only", base_sha, "HEAD")
+    if result.returncode:
+        raise RuntimeError("Could not determine pull-request diff after fetching the captured base commit")
+    return result.stdout.splitlines()
 
 
 def pending_decision_diff_regen() -> bool:
-    """The branch changes report-bound inputs but leaves the report to regen.
+    """Defer report freshness only for exact report-bound PR inputs.
 
-    The decision-diff report is regen-owned: generated-artifacts-guard rejects
-    it in PR diffs, so a branch that changes any bound input cannot also update
-    the report. Freshness is enforced on main and on regen PRs — whose diff
-    does carry the report — and deferred here.
+    The report is maintainer-owned: generated-artifacts-guard rejects it in
+    ordinary PR diffs, so a branch that changes any bound input cannot also
+    update the report. Report-bound source changes defer freshness until
+    maintainer regeneration; the report itself and unrelated changes remain
+    strict.
     """
 
     if pending_contribution_regen():

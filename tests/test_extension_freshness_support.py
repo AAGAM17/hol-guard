@@ -64,6 +64,7 @@ def test_pull_request_without_a_base_fails_closed(monkeypatch: pytest.MonkeyPatc
 
 
 def test_pull_request_diff_fetch_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOL_GUARD_BASE_SHA", "a" * 40)
     monkeypatch.setenv("GITHUB_BASE_REF", "main")
     monkeypatch.setattr(
         extension_freshness,
@@ -73,3 +74,26 @@ def test_pull_request_diff_fetch_failure_fails_closed(monkeypatch: pytest.Monkey
 
     with pytest.raises(RuntimeError, match="pull-request diff"):
         extension_freshness._pr_diff_paths()
+
+
+def test_pull_request_diff_uses_captured_base_not_moving_branch_tip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_sha = "a" * 40
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("HOL_GUARD_BASE_SHA", base_sha)
+    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+
+    def git(*arguments: str) -> subprocess.CompletedProcess[str]:
+        calls.append(arguments)
+        return subprocess.CompletedProcess(
+            ["git", *arguments],
+            0,
+            "tests/guard_command_decision_diff.py\n",
+            "",
+        )
+
+    monkeypatch.setattr(extension_freshness, "_git", git)
+
+    assert extension_freshness._pr_diff_paths() == ["tests/guard_command_decision_diff.py"]
+    assert calls == [("diff", "--name-only", base_sha, "HEAD")]

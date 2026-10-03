@@ -64,13 +64,21 @@ fn py_float_repr(number: f64) -> String {
         return if number < 0.0 { "-inf" } else { "inf" }.to_string();
     }
     if number == 0.0 {
-        return if number.is_sign_negative() { "-0.0" } else { "0.0" }.to_string();
+        return if number.is_sign_negative() {
+            "-0.0"
+        } else {
+            "0.0"
+        }
+        .to_string();
     }
     let scientific = format!("{number:e}");
     let (mantissa, exponent_text) = scientific.split_once('e').unwrap_or(("0", "0"));
     let exponent: i32 = exponent_text.parse().unwrap_or(0);
     let negative = mantissa.starts_with('-');
-    let digits: String = mantissa.chars().filter(|c| *c != '-' && *c != '.').collect();
+    let digits: String = mantissa
+        .chars()
+        .filter(|c| *c != '-' && *c != '.')
+        .collect();
     let digit_count = digits.len() as i32;
     let mut out = String::new();
     if negative {
@@ -184,7 +192,10 @@ fn py_str(value: &Value) -> String {
 /// `str(value or default)` — truthiness-gated `str()` coercion. The default is
 /// already a `&str`, matching every oracle call site.
 fn py_str_or_default(value: Option<&Value>, default: &str) -> String {
-    value.filter(|v| py_truthy(v)).map(py_str).unwrap_or_else(|| default.to_string())
+    value
+        .filter(|v| py_truthy(v))
+        .map(py_str)
+        .unwrap_or_else(|| default.to_string())
 }
 
 /// `str(item.get(key) or default)` for a dict member.
@@ -358,8 +369,10 @@ fn resolve_advisory_aliases_from_bundle(
                             .map(str::to_owned),
                     );
                 }
-                let upper_tuple: Vec<String> =
-                    alias_tuple.iter().map(|alias| alias.to_uppercase()).collect();
+                let upper_tuple: Vec<String> = alias_tuple
+                    .iter()
+                    .map(|alias| alias.to_uppercase())
+                    .collect();
                 lookup.insert(advisory_id.to_uppercase(), upper_tuple.clone());
                 for alias in &alias_tuple {
                     lookup
@@ -370,9 +383,7 @@ fn resolve_advisory_aliases_from_bundle(
         }
     }
     for advisory_id in advisory_ids {
-        let add_alias = |value: &str,
-                             aliases: &mut Vec<String>,
-                             seen: &mut HashSet<String>| {
+        let add_alias = |value: &str, aliases: &mut Vec<String>, seen: &mut HashSet<String>| {
             let trimmed = value.trim().to_uppercase();
             if trimmed.is_empty() || seen.contains(&trimmed) {
                 return;
@@ -537,12 +548,8 @@ pub fn incomplete_audit_receipt_metadata(
     let outcome = py_str_or_default(result.get("audit_outcome"), "incomplete");
     let manifest_paths = string_items(result.get("manifest_paths"));
     let lockfile_paths = string_items(result.get("lockfile_paths"));
-    let (manifest_hashes, lockfile_hashes) = workspace_audit_path_hashes(
-        paths_api,
-        workspace_dir,
-        &manifest_paths,
-        &lockfile_paths,
-    );
+    let (manifest_hashes, lockfile_hashes) =
+        workspace_audit_path_hashes(paths_api, workspace_dir, &manifest_paths, &lockfile_paths);
     let policy_decision = match outcome.as_str() {
         "sync_required" | "inventory_empty" | "no_project_files" => GuardAction::Review,
         _ => GuardAction::Warn,
@@ -626,12 +633,8 @@ pub fn audit_receipt_metadata(
         result.get("inventory").and_then(Value::as_object);
     let manifest_paths = string_items(result.get("manifest_paths"));
     let lockfile_paths = string_items(result.get("lockfile_paths"));
-    let (manifest_hashes, lockfile_hashes) = workspace_audit_path_hashes(
-        paths_api,
-        workspace_dir,
-        &manifest_paths,
-        &lockfile_paths,
-    );
+    let (manifest_hashes, lockfile_hashes) =
+        workspace_audit_path_hashes(paths_api, workspace_dir, &manifest_paths, &lockfile_paths);
     // `inventory_summary.get("total_packages", len(package_items))` — the raw
     // JSON value passes through (Python does not coerce it); the f-string
     // renders it with `str()`.
@@ -695,7 +698,6 @@ pub fn audit_receipt_metadata(
     receipt.insert("scanner_evidence".into(), Value::Object(scanner_evidence));
     receipt
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -853,11 +855,7 @@ mod tests {
             ));
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join("package.json"), br#"{"name": "fixture"}"#).unwrap();
-            std::fs::write(
-                dir.join("package-lock.json"),
-                br#"{"lockfileVersion": 3}"#,
-            )
-            .unwrap();
+            std::fs::write(dir.join("package-lock.json"), br#"{"lockfileVersion": 3}"#).unwrap();
             Self(dir)
         }
     }
@@ -927,9 +925,7 @@ mod tests {
             let bundle = case.get("bundle").and_then(Value::as_object);
             let actual = match kind {
                 "audit" => audit_receipt_metadata(&paths, result, workspace_dir, bundle),
-                "incomplete" => {
-                    incomplete_audit_receipt_metadata(&paths, result, workspace_dir)
-                }
+                "incomplete" => incomplete_audit_receipt_metadata(&paths, result, workspace_dir),
                 other => panic!("unknown case kind {other}"),
             };
             let actual = Value::Object(actual);

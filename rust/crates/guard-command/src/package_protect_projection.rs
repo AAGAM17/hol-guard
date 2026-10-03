@@ -825,9 +825,13 @@ mod tests {
         let auth = authority(&pypi_intent, &artifact, &cx, false);
         let mut payload = Map::new();
         apply_package_protect_projection(
-            &mut payload, &auth, &evaln,
-            &[],  // empty command → executor falls back to "guard-cli"
-            true, false, None,
+            &mut payload,
+            &auth,
+            &evaln,
+            &[], // empty command → executor falls back to "guard-cli"
+            true,
+            false,
+            None,
         );
         assert_eq!(
             payload["request"]["command"],

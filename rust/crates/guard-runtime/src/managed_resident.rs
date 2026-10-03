@@ -483,11 +483,7 @@ pub(crate) fn parse_process_id(value: &str) -> Result<u32, String> {
 pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
     let budget = crate::strict_json_value(payload)
         .ok()
-        .and_then(|value| {
-            value
-                .get("deadline_budget_ms")
-                .and_then(serde_json::Value::as_u64)
-        })
+        .and_then(|value| value.get("deadline_budget_ms")?.as_u64())
         .unwrap_or(750)
         .clamp(1, 9_000);
     Duration::from_millis(budget)

@@ -99,6 +99,7 @@ mod tests {
         let path = state.join(RESIDENT_UPDATE_LOCK_FILE_NAME);
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(path)
@@ -135,6 +136,7 @@ mod tests {
         let path = state.join(RESIDENT_UPDATE_LOCK_FILE_NAME);
         let mut file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(path)

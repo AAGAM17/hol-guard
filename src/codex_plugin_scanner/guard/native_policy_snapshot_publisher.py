@@ -155,24 +155,49 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             self._thread.start()
         self.request_publish()
 
-    def close(self, *, timeout_seconds: float = 1.0) -> None:
-        with self._condition:
-            if self._closed:
-                return
-            self._closed = True
+    def close(self, *, timeout_seconds: float = 1.0, deadline_monotonic: float | None = None) -> bool:
+        return self.close_contained(timeout_seconds=timeout_seconds, deadline_monotonic=deadline_monotonic)
+
+    def close_contained(self, *, timeout_seconds: float = 1.0, deadline_monotonic: float | None = None) -> bool:
+        """Retain publication ownership until the publisher thread exits."""
+        deadline = self._monotonic_clock() + max(0.0, timeout_seconds)
+        if deadline_monotonic is not None:
+            deadline = min(deadline, deadline_monotonic)
+
+        def remaining() -> float:
+            return max(0.0, deadline - self._monotonic_clock())
+
+        # Retire before waiting for a contended condition. A failed bounded
+        # close must not permit another publication or a new start.
+        self._closed = True
+        self._publish_event.set()
+        if not self._condition.acquire(timeout=remaining()):
+            return False
+        try:
             self._acked = False
             self._condition.notify_all()
-        self._publish_event.set()
+        finally:
+            self._condition.release()
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=max(0.0, timeout_seconds))
+            thread.join(timeout=remaining())
+        if thread is not None and thread.is_alive():
+            # Keep the registry and thread handles until a recovery close
+            # confirms retirement; callers must retain the isolated home.
+            return False
         api = _snapshot_api()
-        with api._PUBLISHER_LOCK:
+        if not api._PUBLISHER_LOCK.acquire(timeout=remaining()):
+            return False
+        try:
             publishers = api._PUBLISHERS.get(api._publisher_key(self.guard_home))
             if publishers is not None:
                 publishers.discard(self)
                 if not publishers:
                     api._PUBLISHERS.pop(api._publisher_key(self.guard_home), None)
+            self._thread = None
+            return True
+        finally:
+            api._PUBLISHER_LOCK.release()
 
     def request_publish(self) -> None:
         with self._condition:
@@ -399,6 +424,11 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             return self._acked and self._snapshot is not None and not self._closed
 
     def _run(self) -> None:
+        # ContextVar bindings from the starting thread do not propagate here;
+        # rebind so observed-identity digests resolve this store's resident.
+        from .native_context import bind_context_digest_home
+
+        bind_context_digest_home(self.guard_home)
         while True:
             with self._condition:
                 if self._closed:

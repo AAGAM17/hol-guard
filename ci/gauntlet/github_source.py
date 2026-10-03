@@ -19,7 +19,11 @@ def source_manifest(api: Any, source: str, candidate: str) -> dict[str, Any]:
     commit = api.request("/git/commits/" + source)
     if commit.get("sha") != source:
         raise ValueError("GitHub returned a different source commit")
-    parents = [row["sha"] for row in commit["parents"]]
+    parents = [row.get("sha") for row in commit.get("parents", [])]
+    if any(not isinstance(parent, str) or SHA.fullmatch(parent) is None for parent in parents):
+        raise ValueError("GitHub returned malformed source parents")
+    if source != candidate and (len(parents) != 2 or candidate not in parents):
+        raise ValueError("source is not the candidate or its exact two-parent test merge")
     rows = api.request("/contents/ci/gauntlet?ref=" + source)
     if not isinstance(rows, list) or not 1 <= len(rows) <= 64:
         raise ValueError("candidate Gauntlet directory inventory is missing or exceeds its bound")

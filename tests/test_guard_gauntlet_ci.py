@@ -260,3 +260,16 @@ def test_inline_submission_rejects_ambiguous_malformed_or_oversized_data(inputs)
 
     with pytest.raises(ValueError):
         submitted_archive(inputs)
+
+
+@pytest.mark.parametrize("parents", [["b" * 40], ["b" * 40, "c" * 40], ["bad-parent"], [None]])
+def test_github_manifest_rejects_unrelated_or_malformed_parentage_before_reading_blobs(parents):
+    from ci.gauntlet.github_source import source_manifest
+
+    class API:
+        def request(self, path):
+            assert path == "/git/commits/" + "d" * 40
+            return {"sha": "d" * 40, "parents": [{"sha": p} for p in parents]}
+
+    with pytest.raises(ValueError):
+        source_manifest(API(), "d" * 40, "a" * 40)

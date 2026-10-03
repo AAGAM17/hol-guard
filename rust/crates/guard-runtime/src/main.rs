@@ -33,6 +33,7 @@ mod package_authority_op;
 mod policy_enforcement;
 mod policy_integrity_resolver;
 mod policy_store;
+mod prompt_analyze_op;
 mod resident_client;
 mod resident_endpoint;
 mod resident_process_identity;

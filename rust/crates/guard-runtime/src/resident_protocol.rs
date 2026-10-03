@@ -7,10 +7,10 @@ use guard_contracts::{
     ContainedPackageScriptExecuteRequestV1, ContainedTestHookRequestV1,
     ContainedTypescriptExecuteRequestV1, ContainedWorkspaceWriteExecuteRequestV1,
     ContextDigestRequestV1, GuardHookEnvelopeV2, McpStdioProbeRequestV1, NativeHookRequestV1,
-    PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, RuntimeCapabilitiesV1,
-    ShimAdminRequestV1, SupplyChainEvalRequestV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA,
-    MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES,
-    NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, PromptAnalyzeRequestV1,
+    RuntimeCapabilitiesV1, ShimAdminRequestV1, SupplyChainEvalRequestV1,
+    GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
+    NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use guard_hook_core::review_post_tool;
 use guard_policy_snapshot::canonical_json_bytes;
@@ -51,6 +51,7 @@ pub(crate) enum ResidentOperationV1 {
     ContainedTestHook(ContainedTestHookRequestV1),
     ShimAdmin(ShimAdminRequestV1),
     McpStdioProbe(McpStdioProbeRequestV1),
+    PromptAnalyze(PromptAnalyzeRequestV1),
     Health(Value),
     Shutdown(Value),
 }
@@ -130,6 +131,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         guard_contracts::CONTAINED_EXECUTION_FEATURE.into(),
         guard_contracts::SHIM_ADMIN_FEATURE.into(),
         guard_contracts::MCP_STDIO_PROBE_FEATURE.into(),
+        guard_contracts::PROMPT_ANALYZE_FEATURE.into(),
     ];
     if cfg!(windows) {
         features.push("authenticated-loopback-resident-v1".into());
@@ -354,6 +356,9 @@ pub(crate) fn evaluate_resident_bytes(
             }
             ResidentOperationV1::McpStdioProbe(request) => {
                 crate::mcp_probe_op::evaluate_mcp_stdio_probe(&request)
+            }
+            ResidentOperationV1::PromptAnalyze(request) => {
+                crate::prompt_analyze_op::evaluate_prompt_analyze(&request)
             }
             ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
                 "status": "ready",

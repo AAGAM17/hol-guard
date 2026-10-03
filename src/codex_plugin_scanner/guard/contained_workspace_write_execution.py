@@ -96,12 +96,14 @@ def try_execute_contained_workspace_write(
 ) -> ContainedWorkspaceWriteResult | None:
     """Execute one exact operation and promote at most one declared output."""
 
-    _argv = _invocation(operation, source, target, workspace, environment or dict(os.environ))[1]
-    _command_text = " ".join(_argv)
     native_result = _native_execution.contained_workspace_write_execute_native(
         workspace,
-        _command_text,
         guard_home=guard_home,
+        operation=operation,
+        source=source,
+        target=target,
+        environment=_clean_environment(environment or dict(os.environ)),
+        timeout_seconds=timeout_seconds,
     )
     if native_result is not None:
         return native_result

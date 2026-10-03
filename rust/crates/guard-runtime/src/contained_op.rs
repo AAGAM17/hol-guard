@@ -108,16 +108,31 @@ pub(crate) fn evaluate_contained_workspace_write_execute(
     }
     let workspace = PathBuf::from(&request.workspace);
     let guard_home = PathBuf::from(&request.guard_home);
-    let tokens: Vec<String> = request
-        .command_text
-        .split_whitespace()
-        .map(str::to_owned)
-        .collect();
-    let result = contained_execution::try_execute_contained_workspace_write_with_intent(
-        &workspace,
-        &tokens,
-        &guard_home,
-    );
+    // Structured semantic op (`patch-check`/`patch-apply`/`format-write`/
+    // `copy-generated`) takes precedence over the legacy token path.
+    let result = if let (Some(operation), Some(source)) =
+        (request.operation.as_deref(), request.source.as_deref())
+    {
+        contained_execution::try_execute_contained_workspace_write_semantic(
+            &workspace,
+            operation,
+            source,
+            request.target.as_deref(),
+            request.environment.as_ref(),
+            request.timeout_seconds,
+            &guard_home,
+        )
+    } else {
+        let tokens = match contained_execution::shlex_split(&request.command_text) {
+            Some(t) => t,
+            None => vec![],
+        };
+        contained_execution::try_execute_contained_workspace_write_with_intent(
+            &workspace,
+            &tokens,
+            &guard_home,
+        )
+    };
     let payload = result.map(|r| r.to_dict());
     crate::encode_response(&ContainedWorkspaceWriteExecuteResultV1 {
         schema: CONTAINED_WORKSPACE_WRITE_EXECUTE_RESULT_SCHEMA.to_owned(),

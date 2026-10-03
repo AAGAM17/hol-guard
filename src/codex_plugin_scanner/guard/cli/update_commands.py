@@ -352,13 +352,12 @@ def run_guard_update(
             guard_home=guard_home,
             include_alpha=include_alpha,
         )
-    resolved_guard_home = (
-        guard_home.expanduser().resolve()
-        if guard_home is not None
-        else context.guard_home.expanduser().resolve()
-        if context is not None
-        else resolve_guard_home()
-    )
+    if guard_home is not None:
+        resolved_guard_home = guard_home.expanduser().resolve()
+    elif context is not None:
+        resolved_guard_home = context.guard_home.expanduser().resolve()
+    else:
+        resolved_guard_home = resolve_guard_home()
     try:
         with hold_native_resident_update_lock(
             resolved_guard_home,

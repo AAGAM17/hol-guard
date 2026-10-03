@@ -293,6 +293,7 @@ pub(crate) fn benign_command_segments(
     {
         return Vec::new();
     }
+    let mut all_previous_benign = true;
     model
         .segments
         .iter()
@@ -308,12 +309,11 @@ pub(crate) fn benign_command_segments(
                 "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "date"
             ) || segment.arguments.is_empty()
                 || stdin_filter;
-            let all_previous_benign = model.segments[..index]
-                .iter()
-                .all(|previous| exact_safe_segment_with_context(model, previous, false, context));
             // Earlier extension-approved segments may rewrite the tree (checkout/pull);
             // a pre-execution path proof only holds while every predecessor is benign.
-            (benign && (path_free || all_previous_benign)).then_some(index)
+            let covered = benign && (path_free || all_previous_benign);
+            all_previous_benign = all_previous_benign && benign;
+            covered.then_some(index)
         })
         .collect()
 }

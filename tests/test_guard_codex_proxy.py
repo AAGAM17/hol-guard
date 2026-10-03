@@ -19,6 +19,8 @@ from codex_plugin_scanner.guard.proxy.stdio import ProxyIoTimeoutError, _readlin
 from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_tool_identity
 from codex_plugin_scanner.guard.store import GuardStore
 
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
+
 
 def _child_command(marker_path: Path, tool_name: str = "dangerous_delete") -> list[str]:
     return [

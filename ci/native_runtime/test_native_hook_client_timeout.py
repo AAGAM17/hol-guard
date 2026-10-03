@@ -70,6 +70,7 @@ def test_native_hook_client_start_timeout_contains_new_managed_processes(
         assert result.stderr in {
             b"native_client_deadline_exceeded\n",
             b"native_resident_start_timeout\n",
+            b"native_resident_lease_busy\n",
         }
     for _ in range(20):
         if not any(process_is_executing(process_id) for process_id in observed_process_ids):

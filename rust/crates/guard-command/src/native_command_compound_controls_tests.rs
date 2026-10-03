@@ -83,19 +83,37 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             "{command}"
         );
     }
+    for command in [
+        "cat ordinary.txt; git push origin main",
+        "cat alias.txt; git push origin main",
+        "ls ordinary.txt; git push origin main",
+        "ls; git push origin main",
+        "stat ordinary.txt; git push origin main",
+    ] {
+        assert_ne!(
+            evaluate(&controls, command).minimum_action,
+            "allow",
+            "context-free wrappers cannot prove file targets: {command}"
+        );
+    }
     #[cfg(unix)]
     {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/compound-context")
-            .join(format!("fixture-{}", std::process::id()));
+            .join(format!(
+                "fixture-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("ordinary.txt"), "fixture").unwrap();
         std::fs::write(root.join(".env"), "SYNTHETIC_ONLY=fixture").unwrap();
         let root = std::fs::canonicalize(root).unwrap();
         let alias = root.join("alias.txt");
-        if !alias.exists() {
-            std::os::unix::fs::symlink(root.join(".env"), &alias).unwrap();
-        }
+        std::os::unix::fs::symlink(root.join(".env"), &alias).unwrap();
         for (path, expected) in [("ordinary.txt", true), ("alias.txt", false)] {
             let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
                 "omp",
@@ -125,6 +143,84 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             result.minimum_action, "allow",
             "earlier approved execution may change a file target"
         );
+        for (command, expected) in [
+            ("ls -la; git push origin main", false),
+            ("ls -la ordinary.txt; git push origin main", true),
+        ] {
+            let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
+                "omp",
+                "PreToolUse",
+                &serde_json::json!({"tool_name":"bash", "tool_input":{"command":command}}),
+                Some(&controls),
+                None,
+                root.to_str(),
+                root.to_str(),
+            );
+            assert_eq!(result.minimum_action == "allow", expected, "{command}");
+        }
+        for (path, expected) in [("ordinary.txt", true), ("alias.txt", false)] {
+            let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
+                "omp",
+                "PreToolUse",
+                &serde_json::json!({"tool_name":"bash", "tool_input":{
+                    "command":format!("stat {path}; git push origin main")
+                }}),
+                Some(&controls),
+                None,
+                root.to_str(),
+                root.to_str(),
+            );
+            assert_eq!(result.minimum_action == "allow", expected, "stat {path}");
+        }
+        let home_only = crate::pretool::evaluate_pre_tool_envelope_with_context(
+            "omp",
+            "PreToolUse",
+            &serde_json::json!({"tool_name":"bash", "tool_input":{
+                "command":"cat alias.txt; git push origin main"
+            }}),
+            Some(&controls),
+            None,
+            root.to_str(),
+            None,
+        );
+        assert_ne!(
+            home_only.minimum_action, "allow",
+            "home-only context cannot prove relative symlink targets"
+        );
+        for cwd in [".", ""] {
+            let relative_context = crate::pretool::evaluate_pre_tool_envelope_with_context(
+                "omp",
+                "PreToolUse",
+                &serde_json::json!({"tool_name":"bash", "tool_input":{
+                    "command":"cat alias.txt; git push origin main"
+                }}),
+                Some(&controls),
+                None,
+                root.to_str(),
+                Some(cwd),
+            );
+            assert_ne!(
+                relative_context.minimum_action, "allow",
+                "relative or empty cwd cannot prove path targets: {cwd:?}"
+            );
+        }
+        let missing_cwd = root.join("missing-context-root");
+        let unresolved_context = crate::pretool::evaluate_pre_tool_envelope_with_context(
+            "omp",
+            "PreToolUse",
+            &serde_json::json!({"tool_name":"bash", "tool_input":{
+                "command":"cat alias.txt; git push origin main"
+            }}),
+            Some(&controls),
+            None,
+            root.to_str(),
+            missing_cwd.to_str(),
+        );
+        assert_ne!(
+            unresolved_context.minimum_action, "allow",
+            "unresolvable cwd cannot prove path targets"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
     let mut mixed = binding.clone();
     mixed.layers[0].controls.push(

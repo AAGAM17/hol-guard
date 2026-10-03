@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from codex_plugin_scanner.cli import main
-from codex_plugin_scanner.guard.cli import commands_dispatch_local
-from codex_plugin_scanner.guard.cli import render
+from codex_plugin_scanner.guard.cli import commands_dispatch_local, render
 from codex_plugin_scanner.guard.cli.render import emit_guard_payload
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.test_guard_package_shims import WORKSPACE_ID
 from tests.test_guard_protect import _seed_guard_cloud
+
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
 
 
 def test_guard_protect_human_output_signs_loopback_link_without_persisting_token(

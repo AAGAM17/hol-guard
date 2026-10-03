@@ -123,10 +123,7 @@ pub(crate) fn evaluate_contained_workspace_write_execute(
             &guard_home,
         )
     } else {
-        let tokens = match contained_execution::shlex_split(&request.command_text) {
-            Some(t) => t,
-            None => vec![],
-        };
+        let tokens = contained_execution::shlex_split(&request.command_text).unwrap_or_default();
         contained_execution::try_execute_contained_workspace_write_with_intent(
             &workspace,
             &tokens,

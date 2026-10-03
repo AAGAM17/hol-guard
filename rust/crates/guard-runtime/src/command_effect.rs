@@ -158,10 +158,10 @@ fn evaluate(
                 .map_err(|_| "native_command_effect_invalid_canonical_command".to_owned())?
         }
     };
-    let canonical = CanonicalCommand::from_v1(&canonical_v1);
-    let registry = packaged_command_catalog()
+    let _canonical = CanonicalCommand::from_v1(&canonical_v1);
+    let _registry = packaged_command_catalog()
         .map_err(|_| "native_command_effect_catalog_unavailable".to_owned())?;
-    let control_snapshot: NativeCommandControlBindingV1 = request
+    let _control_snapshot: NativeCommandControlBindingV1 = request
         .control_snapshot
         .as_ref()
         .ok_or_else(|| "native_command_effect_missing_control_snapshot".to_owned())
@@ -169,8 +169,8 @@ fn evaluate(
             serde_json::from_value(v.clone())
                 .map_err(|_| "native_command_effect_invalid_control_snapshot".to_owned())
         })?;
-    let control_layers = control_layers_from_value(&request.control_layers)?;
-    let workflow_authorization: Option<GitHubWorkflowAuthorizationV1> = request
+    let _control_layers = control_layers_from_value(&request.control_layers)?;
+    let _workflow_authorization: Option<GitHubWorkflowAuthorizationV1> = request
         .workflow_authorization
         .as_ref()
         .map(|v| serde_json::from_value(v.clone()))
@@ -184,20 +184,20 @@ fn evaluate(
     #[cfg(unix)]
     let read_factors = shell_read_floor_factors(
         &request.command_text,
-        &canonical.security_identity,
+        &_canonical.security_identity,
         Some(&cwd),
         Some(&home_dir),
     );
     #[cfg(unix)]
     guard_command::evaluate_command(
-        &canonical,
+        &_canonical,
         &request.native_extension_evidence,
-        &registry,
-        &control_snapshot,
-        &control_layers,
+        &_registry,
+        &_control_snapshot,
+        &_control_layers,
         request.compatibility_action_class.as_deref(),
         request.compatibility_reason.as_deref(),
-        workflow_authorization.as_ref(),
+        _workflow_authorization.as_ref(),
         &read_factors,
         _write_redirect,
     )

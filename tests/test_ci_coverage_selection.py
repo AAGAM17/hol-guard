@@ -15,7 +15,7 @@ SHA = "a" * 40
 BASE = f"/repos/{REPOSITORY}/actions/runs/{RUN}"
 
 
-def job(name, number, *, attempt=1, inherited=False):
+def job(name, number, *, attempt=1):
     return {
         "id": number,
         "name": name,
@@ -24,7 +24,7 @@ def job(name, number, *, attempt=1, inherited=False):
         "head_sha": SHA,
         "status": "completed",
         "conclusion": "success",
-        "created_at": "2026-10-03T12:00:00Z" if not inherited else "2026-10-03T13:00:00Z",
+        "created_at": "2026-10-03T12:00:00Z",
         "started_at": "2026-10-03T12:00:10Z",
         "completed_at": "2026-10-03T12:01:00Z",
     }
@@ -77,7 +77,12 @@ def fetcher(data):
             return run
         page = int(path.rsplit("=", 1)[1])
         field = "artifacts" if "/artifacts?" in path else "jobs"
-        values = artifacts if field == "artifacts" else old if "/attempts/1/" in path else current
+        if field == "artifacts":
+            values = artifacts
+        elif "/attempts/1/" in path:
+            values = old
+        else:
+            values = current
         return {"total_count": len(values), field: values[(page - 1) * 100 : page * 100]}
 
     return fetch, calls
@@ -348,3 +353,50 @@ def test_extra_downloaded_artifact_cannot_enter_coverage_combine(tmp_path):
     (tmp_path / "pytest-coverage-1-999").mkdir()
     with pytest.raises(ValueError, match="inventory"):
         selection.verify_downloads(result, tmp_path)
+
+
+@pytest.mark.parametrize("inventory", ["/attempts/2/jobs", "/artifacts"])
+def test_decreasing_page_count_retries_the_whole_inventory(inventory):
+    fetch, calls = fetcher(fixture())
+    truncated, delays = [], []
+
+    def changing(path, timeout):
+        result = fetch(path, timeout)
+        if inventory + "?" in path and path.endswith("page=2") and not truncated:
+            truncated.append(path)
+            field = "artifacts" if inventory == "/artifacts" else "jobs"
+            return {"total_count": 100, field: []}
+        return result
+
+    result = selection.select_with_retries(REPOSITORY, RUN, 2, fetch=changing, sleep=delays.append)
+    assert len(result["shards"]) == 128
+    assert delays == [1.0]
+    assert len(truncated) == 1
+    assert calls.count(BASE + inventory + "?per_page=100&page=1") == 2
+
+
+@pytest.mark.parametrize("name", ["GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"])
+@pytest.mark.parametrize("value", [None, "", "not-an-integer", "0", "-1"])
+def test_cli_identifies_invalid_environment_variable(name, value, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_RUN_ID", str(RUN))
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    if value is None:
+        monkeypatch.delenv(name)
+    else:
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(selection.barrier, "wait_for_shards", lambda *a, **kw: pytest.fail("must not call API"))
+    assert selection.main([]) == 1
+    assert name in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("error", [KeyError("programming defect"), TypeError("programming defect")])
+def test_cli_does_not_mask_programming_errors(error, monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", str(RUN))
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+
+    def broken(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(selection.barrier, "wait_for_shards", broken)
+    with pytest.raises(type(error), match="programming defect"):
+        selection.main([])

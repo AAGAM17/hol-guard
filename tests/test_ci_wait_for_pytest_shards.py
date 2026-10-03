@@ -93,6 +93,7 @@ def test_default_wait_covers_existing_producer_limits(monkeypatch: pytest.Monkey
     captured: dict[str, float] = {}
 
     def capture_wait(_repository: str, _run_id: int, _attempt: int, **kwargs: float) -> None:
+        assert (_repository, _run_id, _attempt) == ("owner/repo", _RUN_ID, 2)
         captured.update(kwargs)
 
     monkeypatch.setattr(barrier, "wait_for_shards", capture_wait)
@@ -115,6 +116,7 @@ def test_cli_accepts_one_second_poll_without_changing_producer_validation(monkey
     captured: dict[str, float] = {}
 
     def capture_wait(_repository: str, _run_id: int, _attempt: int, **kwargs: float) -> None:
+        assert (_repository, _run_id, _attempt) == ("owner/repo", _RUN_ID, 2)
         captured.update(kwargs)
 
     monkeypatch.setattr(barrier, "wait_for_shards", capture_wait)
@@ -411,7 +413,7 @@ def test_api_redirect_is_rejected() -> None:
 
 
 def test_sonar_accepts_only_complete_coverage_from_verified_same_run_executions() -> None:
-    """Verify sonar accepts only complete coverage from successful current attempt."""
+    """Verify Sonar accepts complete coverage from verified same-run executions."""
     root = Path(__file__).resolve().parents[1]
     workflow = expand_ci_job_actions(yaml.safe_load((root / ".github/workflows/ci.yml").read_text()))
     jobs = workflow["jobs"]

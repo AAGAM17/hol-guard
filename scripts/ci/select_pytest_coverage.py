@@ -20,6 +20,8 @@ from scripts.ci import wait_for_pytest_shards as barrier
 
 SCHEMA = "hol-guard.pytest-coverage-selection.v1"
 MAX_ATTEMPTS = 51
+# This is a provenance boundary, not a user-configurable workflow selector.
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 Fetch = Callable[[str, float], object]
@@ -39,6 +41,7 @@ def _pages(path: str, field: str, fetch: Fetch) -> list[dict]:
     result: list[dict] = []
     seen: set[int] = set()
     maximum = 20_000 if field == "artifacts" else 1000
+    expected_total: int | None = None
     for page in range(1, maximum // 100 + 1):
         payload = fetch(f"{path}?per_page=100&page={page}", 10.0)
         if not isinstance(payload, dict) or type(payload.get("total_count")) is not int:
@@ -46,6 +49,9 @@ def _pages(path: str, field: str, fetch: Fetch) -> list[dict]:
         total, entries = payload["total_count"], payload.get(field)
         if not 0 <= total <= maximum or not isinstance(entries, list) or len(entries) > 100:
             raise ValueError("Coverage API inventory exceeds its bound")
+        if expected_total is not None and total != expected_total:
+            raise _InventoryPendingError("Coverage API inventory changed during pagination")
+        expected_total = total
         for item in entries:
             if not isinstance(item, dict) or type(item.get("id")) is not int or item["id"] <= 0:
                 raise ValueError("Invalid coverage API identity")
@@ -78,20 +84,21 @@ def _original_executions(base: str, run_id: int, attempt: int, head_sha: str, fe
     shard_names = [f"coverage (3.12, {index})" for index in range(barrier.SHARD_COUNT)]
     required = {*shard_names, "coverage-plan", "native-command-evaluators"}
     current: dict[str, dict] = {}
+    intervals: dict[str, tuple[datetime, datetime]] = {}
+    origins: dict[str, tuple[int, dict]] = {}
     for job in _pages(f"{base}/attempts/{attempt}/jobs", "jobs", fetch):
         name = job.get("name")
         if name not in required:
             continue
         if name in current:
             raise ValueError("Duplicate coverage producer name")
-        _execution(job, run_id, attempt, head_sha)
+        started, completed, executed = _execution(job, run_id, attempt, head_sha)
         current[name] = job
+        intervals[name] = (started, completed)
+        if executed:
+            origins[name] = (attempt, job)
     if current.keys() != required:
         raise ValueError("Missing coverage producer or prerequisite")
-    origins: dict[str, tuple[int, dict]] = {}
-    for name, job in current.items():
-        if _execution(job, run_id, attempt, head_sha)[2]:
-            origins[name] = (attempt, job)
     for earlier in range(attempt - 1, 0, -1):
         if origins.keys() == required:
             break
@@ -104,8 +111,7 @@ def _original_executions(base: str, run_id: int, attempt: int, head_sha: str, fe
             if job.get("status") != "completed" or job.get("conclusion") != "success":
                 continue
             started, completed, executed = _execution(job, run_id, earlier, head_sha)
-            original = current[name]
-            if not executed or (started, completed) != (_time(original["started_at"]), _time(original["completed_at"])):
+            if not executed or (started, completed) != intervals[name]:
                 continue
             if name in candidates:
                 raise ValueError("Ambiguous original coverage execution")
@@ -164,7 +170,7 @@ def _coverage_artifacts(base: str, run_id: int, head_sha: str, origins: dict, fe
 
 def select_coverage(repository: str, run_id: int, attempt: int, *, fetch: Fetch = barrier.github_json) -> dict:
     """Reuse only exact inherited successes; never fall back from a newer failure."""
-    if barrier._REPOSITORY.fullmatch(repository) is None or any(p in {".", ".."} for p in repository.split("/")):
+    if barrier.REPOSITORY_PATTERN.fullmatch(repository) is None or any(p in {".", ".."} for p in repository.split("/")):
         raise ValueError("Invalid coverage repository")
     if type(run_id) is not int or run_id <= 0 or type(attempt) is not int or not 1 <= attempt <= MAX_ATTEMPTS:
         raise ValueError("Invalid coverage run or attempt")
@@ -174,7 +180,7 @@ def select_coverage(repository: str, run_id: int, attempt: int, *, fetch: Fetch 
         not isinstance(run, dict)
         or run.get("id") != run_id
         or run.get("run_attempt") != attempt
-        or run.get("path") != ".github/workflows/ci.yml"
+        or run.get("path") != CI_WORKFLOW_PATH
         or not isinstance(run.get("head_sha"), str)
         or SHA.fullmatch(run["head_sha"]) is None
         or not isinstance(run.get("repository"), dict)
@@ -211,7 +217,7 @@ def select_with_retries(
     for retry in range(4):
         try:
             return select_coverage(repository, run_id, attempt, fetch=fetch)
-        except (_InventoryPendingError, barrier._TransientApiError):
+        except (_InventoryPendingError, barrier.TransientApiError):
             if retry == 3:
                 raise
             sleep(float(2**retry))
@@ -239,6 +245,19 @@ def verify_downloads(selection: dict, directory: Path) -> None:
             raise ValueError("Selected coverage database is missing, linked or empty")
 
 
+def _positive_integer_env(name: str) -> int:
+    value = os.environ.get(name)
+    if not value:
+        raise ValueError(f"{name} environment variable is not set")
+    try:
+        number = int(value)
+    except ValueError:
+        raise ValueError(f"{name} must be a positive integer") from None
+    if number <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return number
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("coverage-selection.json"))
@@ -249,7 +268,8 @@ def main(argv: list[str] | None = None) -> int:
             verify_downloads(json.loads(args.output.read_text()), args.verify_downloads)
             return 0
         repository = os.environ.get("GITHUB_REPOSITORY", "")
-        run_id, attempt = int(os.environ.get("GITHUB_RUN_ID", "0")), int(os.environ.get("GITHUB_RUN_ATTEMPT", "0"))
+        run_id = _positive_integer_env("GITHUB_RUN_ID")
+        attempt = _positive_integer_env("GITHUB_RUN_ATTEMPT")
         # The barrier still requires all latest results to succeed. The selector
         # below then resolves inherited results to their actual source executions.
         barrier.wait_for_shards(
@@ -262,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
                 stream.write("artifact-ids=" + ",".join(str(s["artifact_id"]) for s in selection["shards"]) + "\n")
         reused = sum(s["attempt"] < attempt for s in selection["shards"])
         print(f"Selected {barrier.SHARD_COUNT} successful same-run shards; reused {reused} proven earlier executions")
-    except (ValueError, OSError, KeyError, TypeError, barrier.ShardWaitError) as error:
+    except (ValueError, OSError, barrier.ShardWaitError) as error:
         print(f"Coverage selection failed: {error}", file=sys.stderr)
         return 1
     return 0

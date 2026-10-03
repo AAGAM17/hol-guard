@@ -40,10 +40,15 @@ use crate::package_execution_context::{
     PackageExecutionContext, PackageExecutionContextComponent, PACKAGE_EXECUTION_CONTEXT_VERSION,
 };
 use crate::package_intent_common::{
-    build_package_request_artifact, composer_target, coordinate_target, js_target, python_target,
-    version_target, GuardArtifact, PackageIntent, PackageIntentTarget,
+    build_package_request_artifact, GuardArtifact, PackageIntent, PackageIntentTarget,
 };
 use crate::package_manifest_diff::parse_manifest_dependencies;
+use crate::workspace_inventory::{
+    inventory_from_sbom_payload, merge_inventory_item, package_manager_for_scan,
+    split_namespace_name, target_for_package_spec, target_from_inventory_item,
+    target_from_manifest_dependency, InventoryMap, ECOSYSTEM_BY_LOCKFILE,
+    ECOSYSTEM_BY_MANIFEST, SEVERITY_RANK,
+};
 
 pub const WORKSPACE_AUDIT_DISCOVERY_MAX_DEPTH: usize = 3;
 pub const DEFAULT_BUNDLE_REFRESH_INTERVAL_SECONDS: f64 = 15.0 * 60.0;
@@ -133,91 +138,6 @@ static SKIP_DIR_SET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         .copied()
         .collect()
 });
-static PACKAGE_MANAGER_BY_ECOSYSTEM: LazyLock<BTreeMap<&'static str, &'static str>> =
-    LazyLock::new(|| {
-        [
-            ("npm", "npm"),
-            ("pypi", "pip"),
-            ("cargo", "cargo"),
-            ("go", "go"),
-            ("maven", "maven"),
-            ("packagist", "composer"),
-            ("rubygems", "bundle"),
-            ("docker", "docker"),
-            ("system", "system"),
-            ("unsupported", "unsupported"),
-        ]
-        .into_iter()
-        .collect()
-    });
-
-static ECOSYSTEM_BY_MANIFEST: LazyLock<BTreeMap<&'static str, &'static str>> =
-    LazyLock::new(|| {
-        [
-            ("package.json", "npm"),
-            ("requirements.txt", "pypi"),
-            ("constraints.txt", "pypi"),
-            ("pyproject.toml", "pypi"),
-            ("Pipfile", "pypi"),
-            ("Cargo.toml", "cargo"),
-            ("go.mod", "go"),
-            ("pom.xml", "maven"),
-            ("build.gradle", "maven"),
-            ("build.gradle.kts", "maven"),
-            ("composer.json", "packagist"),
-            ("Gemfile", "rubygems"),
-        ]
-        .into_iter()
-        .collect()
-    });
-
-static ECOSYSTEM_BY_LOCKFILE: LazyLock<BTreeMap<&'static str, &'static str>> =
-    LazyLock::new(|| {
-        [
-            ("package-lock.json", "npm"),
-            ("pnpm-lock.yaml", "npm"),
-            ("yarn.lock", "npm"),
-            ("bun.lock", "npm"),
-            ("bun.lockb", "npm"),
-            ("poetry.lock", "pypi"),
-            ("uv.lock", "pypi"),
-            ("Pipfile.lock", "pypi"),
-            ("Cargo.lock", "cargo"),
-            ("go.sum", "go"),
-            ("gradle.lockfile", "maven"),
-            ("composer.lock", "packagist"),
-            ("Gemfile.lock", "rubygems"),
-        ]
-        .into_iter()
-        .collect()
-    });
-
-static ECOSYSTEM_BY_PURL: LazyLock<BTreeMap<&'static str, &'static str>> = LazyLock::new(|| {
-    [
-        ("cargo", "cargo"),
-        ("composer", "packagist"),
-        ("gem", "rubygems"),
-        ("golang", "go"),
-        ("maven", "maven"),
-        ("npm", "npm"),
-        ("pypi", "pypi"),
-    ]
-    .into_iter()
-    .collect()
-});
-
-static SEVERITY_RANK: LazyLock<BTreeMap<&'static str, i64>> = LazyLock::new(|| {
-    [
-        ("unknown", 0),
-        ("low", 1),
-        ("medium", 2),
-        ("high", 3),
-        ("critical", 4),
-    ]
-    .into_iter()
-    .collect()
-});
-
 static AUDIT_SENSITIVE_BASENAMES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         ".env",
@@ -2793,337 +2713,6 @@ fn resolve_sbom_paths(workspace_dir: &Path, sbom_paths: &[String]) -> Vec<String
     resolved
 }
 
-/// `_split_namespace_name` (:3465-3470).
-fn split_namespace_name(package_name: &str) -> (Option<String>, String) {
-    let cleaned = package_name.trim();
-    if cleaned.starts_with('@') && cleaned.contains('/') {
-        let (ns, name) = cleaned.split_once('/').unwrap_or((cleaned, ""));
-        return (Some(ns.to_string()), name.to_string());
-    }
-    (None, cleaned.to_string())
-}
-
-/// `_inventory_from_purl` (:3618-3645).
-fn inventory_from_purl(purl: Option<&str>) -> Option<Map<String, Value>> {
-    let purl = purl?;
-    if !purl.starts_with("pkg:") {
-        return None;
-    }
-    let without_prefix = &purl[4..];
-    let (package_type, remainder) = match without_prefix.split_once('/') {
-        Some((t, r)) => (t, r),
-        None => (without_prefix, ""),
-    };
-    let ecosystem = ECOSYSTEM_BY_PURL.get(package_type)?;
-    if remainder.is_empty() {
-        return None;
-    }
-    let package_ref = remainder
-        .split('?')
-        .next()
-        .unwrap_or("")
-        .split('#')
-        .next()
-        .unwrap_or("");
-    let (package_path, package_version) = match package_ref.split_once('@') {
-        Some((p, v)) => (p, v),
-        None => (package_ref, ""),
-    };
-    if package_path.is_empty() {
-        return None;
-    }
-    let mut out = Map::new();
-    if let Some((ns, name)) = package_path.rsplit_once('/') {
-        out.insert(
-            "namespace".into(),
-            if ns.is_empty() {
-                Value::Null
-            } else {
-                Value::String(unquote(ns))
-            },
-        );
-        out.insert("name".into(), Value::String(unquote(name)));
-    } else {
-        out.insert("namespace".into(), Value::Null);
-        out.insert("name".into(), Value::String(unquote(package_path)));
-    }
-    out.insert("ecosystem".into(), Value::String((*ecosystem).to_string()));
-    out.insert(
-        "version".into(),
-        if package_version.is_empty() {
-            Value::Null
-        } else {
-            Value::String(unquote(package_version))
-        },
-    );
-    Some(out)
-}
-
-/// `_inventory_key` (:3462-3463).
-fn inventory_key(item: &Map<String, Value>) -> (String, Option<String>, String) {
-    let namespace = match item.get("namespace") {
-        Some(Value::String(s)) => Some(s.clone()),
-        _ => None,
-    };
-    (
-        string_value(item.get("ecosystem")).unwrap_or_default(),
-        namespace,
-        string_value(item.get("name")).unwrap_or_default(),
-    )
-}
-
-/// `_merge_inventory_item` (:3439-3460).
-fn merge_inventory_item(
-    inventory_map: &mut BTreeMap<(String, Option<String>, String), Map<String, Value>>,
-    item: &Map<String, Value>,
-) {
-    let key = inventory_key(item);
-    match inventory_map.get_mut(&key) {
-        None => {
-            let mut entry = Map::new();
-            entry.insert(
-                "ecosystem".into(),
-                item.get("ecosystem").cloned().unwrap_or(Value::Null),
-            );
-            entry.insert(
-                "namespace".into(),
-                item.get("namespace").cloned().unwrap_or(Value::Null),
-            );
-            entry.insert(
-                "name".into(),
-                item.get("name").cloned().unwrap_or(Value::Null),
-            );
-            entry.insert(
-                "direct".into(),
-                json!(item.get("direct").and_then(Value::as_bool).unwrap_or(false)),
-            );
-            entry.insert(
-                "range".into(),
-                item.get("range").cloned().unwrap_or(Value::Null),
-            );
-            entry.insert(
-                "version".into(),
-                item.get("version").cloned().unwrap_or(Value::Null),
-            );
-            inventory_map.insert(key, entry);
-        }
-        Some(existing) => {
-            let e_direct = existing
-                .get("direct")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let i_direct = item.get("direct").and_then(Value::as_bool).unwrap_or(false);
-            existing.insert("direct".into(), json!(e_direct || i_direct));
-            if existing.get("range").is_none_or(Value::is_null)
-                && !item.get("range").is_none_or(Value::is_null)
-            {
-                existing.insert(
-                    "range".into(),
-                    item.get("range").cloned().unwrap_or(Value::Null),
-                );
-            }
-            if existing.get("version").is_none_or(Value::is_null)
-                && !item.get("version").is_none_or(Value::is_null)
-            {
-                existing.insert(
-                    "version".into(),
-                    item.get("version").cloned().unwrap_or(Value::Null),
-                );
-            }
-        }
-    }
-}
-
-/// `_target_from_inventory_item` (:3475-3501).
-fn target_from_inventory_item(item: &Map<String, Value>) -> PackageIntentTarget {
-    let name = string_value(item.get("name")).unwrap_or_default();
-    let qualified_name = match item.get("namespace") {
-        Some(Value::String(ns)) => format!("{ns}/{name}"),
-        _ => name,
-    };
-    let version = item
-        .get("version")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let version_range = item.get("range").and_then(Value::as_str).map(str::to_owned);
-    let ecosystem = string_value(item.get("ecosystem")).unwrap_or_default();
-    let suffix = version.unwrap_or_else(|| version_range.unwrap_or_default());
-    match ecosystem.as_str() {
-        "npm" => {
-            let spec = if suffix.is_empty() {
-                qualified_name
-            } else {
-                format!("{qualified_name}@{suffix}")
-            };
-            js_target(&spec)
-        }
-        "pypi" => {
-            let spec = if suffix.is_empty() {
-                qualified_name
-            } else {
-                format!("{qualified_name}{suffix}")
-            };
-            python_target(&spec, false, None, Vec::new())
-        }
-        "maven" => {
-            let spec = if suffix.is_empty() {
-                qualified_name
-            } else {
-                format!("{qualified_name}:{suffix}")
-            };
-            coordinate_target(&ecosystem, &spec)
-        }
-        "packagist" => {
-            let spec = if suffix.is_empty() {
-                qualified_name
-            } else {
-                format!("{qualified_name}:{suffix}")
-            };
-            composer_target(&spec)
-        }
-        _ => {
-            let spec = if suffix.is_empty() {
-                qualified_name
-            } else {
-                format!("{qualified_name}@{suffix}")
-            };
-            version_target(&ecosystem, &spec, None)
-        }
-    }
-}
-
-/// `_inventory_item_from_sbom_component` (:3589-3616).
-fn inventory_item_from_sbom_component(
-    name: &Value,
-    version: &Value,
-    purl: &Value,
-) -> Option<Map<String, Value>> {
-    let purl_str = purl.as_str();
-    let purl_values = inventory_from_purl(purl_str);
-    if purl_values.is_none() && !name.is_string() {
-        return None;
-    }
-    let ecosystem = purl_values
-        .as_ref()
-        .and_then(|p| {
-            p.get("ecosystem")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
-        .unwrap_or_else(|| "unsupported".to_string());
-    let namespace = purl_values
-        .as_ref()
-        .and_then(|p| p.get("namespace").cloned())
-        .unwrap_or(Value::Null);
-    let package_name = purl_values
-        .as_ref()
-        .and_then(|p| p.get("name").and_then(Value::as_str).map(str::to_owned))
-        .unwrap_or_else(|| name.as_str().unwrap_or("").trim().to_string());
-    let package_version = match &purl_values {
-        Some(p) => p.get("version").cloned().unwrap_or(Value::Null),
-        None => version
-            .as_str()
-            .map(|v| Value::String(v.trim().to_string()))
-            .unwrap_or(Value::Null),
-    };
-    if package_name.is_empty() {
-        return None;
-    }
-    let mut out = Map::new();
-    out.insert("ecosystem".into(), json!(ecosystem));
-    out.insert("namespace".into(), namespace);
-    out.insert("name".into(), json!(package_name));
-    out.insert("direct".into(), json!(false));
-    out.insert("range".into(), Value::Null);
-    out.insert("version".into(), package_version);
-    Some(out)
-}
-
-/// `_inventory_from_cyclonedx` (:3539-3556).
-fn inventory_from_cyclonedx(payload: &Map<String, Value>) -> Vec<Map<String, Value>> {
-    let Some(Value::Array(components)) = payload.get("components") else {
-        return Vec::new();
-    };
-    let mut inventory: BTreeMap<(String, Option<String>, String), Map<String, Value>> =
-        BTreeMap::new();
-    for component in components {
-        let Some(component) = component.as_object() else {
-            continue;
-        };
-        let name = component.get("name").cloned().unwrap_or(Value::Null);
-        let version = component.get("version").cloned().unwrap_or(Value::Null);
-        let purl = component.get("purl").cloned().unwrap_or(Value::Null);
-        if let Some(item) = inventory_item_from_sbom_component(&name, &version, &purl) {
-            merge_inventory_item(&mut inventory, &item);
-        }
-    }
-    inventory.into_values().collect()
-}
-
-/// `_inventory_from_spdx` (:3558-3587).
-fn inventory_from_spdx(payload: &Map<String, Value>) -> Vec<Map<String, Value>> {
-    let Some(Value::Array(packages)) = payload.get("packages") else {
-        return Vec::new();
-    };
-    let mut inventory: BTreeMap<(String, Option<String>, String), Map<String, Value>> =
-        BTreeMap::new();
-    for package in packages {
-        let Some(package) = package.as_object() else {
-            continue;
-        };
-        let mut purl: Option<String> = None;
-        if let Some(Value::Array(external_refs)) = package.get("externalRefs") {
-            for external_ref in external_refs {
-                let Some(external_ref) = external_ref.as_object() else {
-                    continue;
-                };
-                let ref_type = external_ref
-                    .get("referenceType")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_lowercase();
-                if ref_type != "purl" {
-                    continue;
-                }
-                if let Some(locator) = external_ref.get("referenceLocator").and_then(Value::as_str)
-                {
-                    if !locator.is_empty() {
-                        purl = Some(locator.to_string());
-                        break;
-                    }
-                }
-            }
-        }
-        let name = package.get("name").cloned().unwrap_or(Value::Null);
-        let version = package.get("versionInfo").cloned().unwrap_or(Value::Null);
-        let purl_v = purl.map(Value::String).unwrap_or(Value::Null);
-        if let Some(item) = inventory_item_from_sbom_component(&name, &version, &purl_v) {
-            merge_inventory_item(&mut inventory, &item);
-        }
-    }
-    inventory.into_values().collect()
-}
-
-/// `_inventory_from_sbom_text` (:3519-3528).
-fn inventory_from_sbom_text(text: &str) -> Result<Vec<Map<String, Value>>, LocalSupplyChainError> {
-    let payload: Value = serde_json::from_str(text)
-        .map_err(|_| LocalSupplyChainError::Runtime("invalid JSON".to_string()))?;
-    let payload = payload.as_object().cloned().unwrap_or_default();
-    if payload.get("bomFormat").and_then(Value::as_str) == Some("CycloneDX") {
-        return Ok(inventory_from_cyclonedx(&payload));
-    }
-    if payload
-        .get("spdxVersion")
-        .map(|v| !v.is_null())
-        .unwrap_or(false)
-    {
-        return Ok(inventory_from_spdx(&payload));
-    }
-    Err(LocalSupplyChainError::Runtime(
-        "Unsupported SBOM format".to_string(),
-    ))
-}
-
 // ---------------------------------------------------------------------------
 // Evaluation mutation helpers (approval-reuse / current-policy rewrites).
 // ---------------------------------------------------------------------------
@@ -3658,31 +3247,6 @@ fn protect_action_for_policy_action(policy_action: Option<&Value>) -> GuardActio
     )
 }
 
-/// `_target_for_package_spec` (:4345-4353).
-fn target_for_package_spec(ecosystem: &str, package_spec: &str) -> PackageIntentTarget {
-    match ecosystem {
-        "npm" => js_target(package_spec),
-        "pypi" => python_target(package_spec, false, None, Vec::new()),
-        "maven" => coordinate_target(ecosystem, package_spec),
-        "packagist" => composer_target(package_spec),
-        _ => version_target(ecosystem, package_spec, None),
-    }
-}
-
-/// `_package_manager_for_scan` (:4357-4362).
-fn package_manager_for_scan(manifest_paths: &[String]) -> String {
-    for manifest_path in manifest_paths {
-        let name = basename(manifest_path);
-        if let Some(ecosystem) = ECOSYSTEM_BY_MANIFEST.get(name) {
-            return PACKAGE_MANAGER_BY_ECOSYSTEM
-                .get(*ecosystem)
-                .map(|value| (*value).to_string())
-                .unwrap_or_else(|| (*ecosystem).to_string());
-        }
-    }
-    "workspace".to_string()
-}
-
 /// `_discover_workspace_audit_paths` (:3243-3262).
 fn discover_workspace_audit_paths(workspace_dir: &Path) -> (Vec<String>, Vec<String>) {
     let workspace_root = match workspace_dir.canonicalize() {
@@ -3801,9 +3365,7 @@ fn workspace_inventory_from_paths(
     paths: &dyn PathSupportApi,
     manifest_parser: &dyn ManifestParserApi,
 ) -> Vec<Map<String, Value>> {
-    let mut inventory_map: BTreeMap<(String, Option<String>, String), Map<String, Value>> =
-        BTreeMap::new();
-    let _merged: Vec<Map<String, Value>> = Vec::new();
+    let mut inventory_map = InventoryMap::new();
 
     for relative_path in manifest_paths {
         let text = match read_workspace_audit_text(paths, workspace_dir, relative_path) {
@@ -3877,7 +3439,7 @@ fn workspace_inventory_from_paths(
         }
     }
 
-    inventory_map.values().cloned().collect()
+    inventory_map.into_values()
 }
 
 /// `_workspace_scan_intent` (:3213-3240).
@@ -3980,58 +3542,6 @@ fn resolve_empty_audit_outcome(
     }
 }
 
-/// `_target_from_manifest_dependency` (:4326-4342).
-fn target_from_manifest_dependency(
-    ecosystem: &str,
-    package_name: &str,
-    version: &str,
-) -> PackageIntentTarget {
-    let clean_name = package_name.trim();
-    let clean_version = version.trim();
-    match ecosystem {
-        "npm" => {
-            let spec = if clean_version.is_empty() {
-                clean_name.to_string()
-            } else {
-                format!("{clean_name}@{clean_version}")
-            };
-            js_target(&spec)
-        }
-        "pypi" => {
-            let spec = if clean_version.is_empty() {
-                clean_name.to_string()
-            } else {
-                format!("{clean_name}{clean_version}")
-            };
-            python_target(&spec, false, None, Vec::new())
-        }
-        "maven" => {
-            let spec = if clean_version.is_empty() {
-                clean_name.to_string()
-            } else {
-                format!("{clean_name}:{clean_version}")
-            };
-            coordinate_target(ecosystem, &spec)
-        }
-        "packagist" => {
-            let spec = if clean_version.is_empty() {
-                clean_name.to_string()
-            } else {
-                format!("{clean_name}:{clean_version}")
-            };
-            composer_target(&spec)
-        }
-        _ => {
-            let spec = if clean_version.is_empty() {
-                clean_name.to_string()
-            } else {
-                format!("{clean_name}@{clean_version}")
-            };
-            version_target(ecosystem, &spec, None)
-        }
-    }
-}
-
 /// `_workspace_audit_inventory` (:3301-3322).
 struct WorkspaceAuditInventory {
     manifest_paths: Vec<String>,
@@ -4081,8 +3591,7 @@ fn workspace_diff_audit_inventory(
 ) -> WorkspaceDiffAuditInventory {
     let (manifest_paths, lockfile_paths) = workspace_files(after_workspace_dir);
     let normalized_sbom_paths = resolve_sbom_paths(after_workspace_dir, sbom_paths);
-    let mut inventory_map: BTreeMap<(String, Option<String>, String), Map<String, Value>> =
-        BTreeMap::new();
+    let mut inventory_map = InventoryMap::new();
     let mut changed_paths: Vec<String> = Vec::new();
     let mut changed_packages: Vec<String> = Vec::new();
     for relative_path in manifest_paths.iter().chain(lockfile_paths.iter()) {
@@ -4150,7 +3659,11 @@ fn workspace_diff_audit_inventory(
             Some(t) => t,
             None => continue,
         };
-        let parsed_items = match inventory_from_sbom_text(&sbom_text) {
+        let payload: Value = match serde_json::from_str(&sbom_text) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let parsed_items = match inventory_from_sbom_payload(&payload) {
             Ok(items) => items,
             Err(_) => continue,
         };
@@ -4170,7 +3683,7 @@ fn workspace_diff_audit_inventory(
         manifest_paths,
         lockfile_paths,
         sbom_paths: normalized_sbom_paths,
-        package_items: inventory_map.into_values().collect(),
+        package_items: inventory_map.into_values(),
         summary,
     }
 }

@@ -397,8 +397,9 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
     if _native_cloud_transport_unavailable(payload):
         return None
     # The resident returns the decision; the Python store still owns the
-    # evidence row. A payload that cannot be reconstructed or persisted falls
-    # back to the Python evaluator so the evidence contract still holds.
+    # evidence row. A payload that cannot be reconstructed falls back to the
+    # Python evaluator; a persist failure propagates — the Python evaluator
+    # would hit the same store error, so swallowing it just re-runs the eval.
     now_text = now if isinstance(now, str) else None
     if now_text is None:
         from datetime import datetime, timezone
@@ -406,14 +407,14 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
         now_text = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         evaluation = native_authority.evaluation_from_native_payload(payload)
-        _supply_chain_package_eval_module()._persist_evidence(
-            store=store,
-            artifact=artifact,
-            evaluation=evaluation,
-            now=now_text,
-        )
-    except Exception:
+    except (TypeError, ValueError, KeyError, AttributeError):
         return None
+    _supply_chain_package_eval_module()._persist_evidence(
+        store=store,
+        artifact=artifact,
+        evaluation=evaluation,
+        now=now_text,
+    )
     return evaluation
 
 

@@ -24,7 +24,7 @@ _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _HEALTH_PROBE_ATTEMPTS = 2
 _HEALTH_PROBE_TOTAL_TIMEOUT_SECONDS = 1.0
 _HEALTH_PROBE_ATTEMPT_TIMEOUT_SECONDS = _HEALTH_PROBE_TOTAL_TIMEOUT_SECONDS / _HEALTH_PROBE_ATTEMPTS
-_STRESS_REQUEST_ATTEMPTS = 3
+_STRESS_REQUEST_ATTEMPTS = 5
 _HEALTH_READY_TIMEOUT_SECONDS = 15.0
 
 
@@ -159,7 +159,7 @@ def stress_request(endpoint: str, auth_token: str) -> float:
         except urllib.error.HTTPError as exc:
             if exc.code == 503 and attempt + 1 < _STRESS_REQUEST_ATTEMPTS:
                 last_error = exc
-                time.sleep(0.05)
+                time.sleep(0.1 * (attempt + 1))
                 continue
             raise
         except json.JSONDecodeError as exc:

@@ -402,14 +402,26 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
         }
     };
 
-    let mut canonical = canonical_existing;
-    if !missing_tail.is_empty() {
-        // A `\\?\` prefix disables 8.3 expansion. Keep the Win32 form so an
-        // unresolved short-name tail still opens.
-        canonical = win32_path(&canonical);
-    }
+    let verbatim = canonical_existing
+        .as_os_str()
+        .to_string_lossy()
+        .starts_with(r"\\?\");
+    let mut canonical = if missing_tail.is_empty() {
+        canonical_existing
+    } else {
+        win32_path(&canonical_existing)
+    };
     for component in missing_tail.iter().rev() {
         canonical.push(existing_alias_or_name(&canonical, component));
+    }
+    if verbatim && !missing_tail.is_empty() {
+        canonical = std::fs::canonicalize(&canonical).unwrap_or_else(|_| {
+            let text = canonical.to_string_lossy().into_owned();
+            match text.strip_prefix(r"\\") {
+                Some(rest) => PathBuf::from(format!(r"\\?\UNC\{rest}")),
+                None => PathBuf::from(format!(r"\\?\{text}")),
+            }
+        });
     }
     Ok(canonical)
 }

@@ -41,10 +41,15 @@ from tests.update_context_test_support import (
 
 
 @pytest.fixture(autouse=True)
-def _use_legacy_update_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def _use_legacy_update_context(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    runtime = tmp_path / "hol-guard-runtime"
+    runtime.write_bytes(b"test-runtime")
+    runtime.chmod(0o700)
     monkeypatch.setattr(update_commands, "build_trusted_update_context", build_legacy_update_context)
     monkeypatch.setattr(update_commands, "_status_installed_distribution", build_legacy_status_distribution)
     monkeypatch.setattr(update_commands, "stage_trusted_wheel", stage_legacy_wheel)
+    monkeypatch.setattr(update_commands, "_bundled_runtime_candidate", lambda: runtime)
+    monkeypatch.setattr(update_commands, "resolve_guard_home", lambda: tmp_path / "guard-home")
     monkeypatch.setattr(update_commands, "_retire_native_resident_before_update", lambda _guard_home: True)
     monkeypatch.setattr(
         update_commands,

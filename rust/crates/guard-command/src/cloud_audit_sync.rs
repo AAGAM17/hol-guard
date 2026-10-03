@@ -516,8 +516,9 @@ fn urlparse_path(remote: &str) -> Result<String, String> {
     let parts = urlsplit(remote)?;
     let mut path = parts.path;
     if USES_PARAMS.contains(&parts.scheme.as_str()) {
-        if let Some(i) = path.find(';') {
-            path.truncate(i);
+        let start = path.rfind('/').unwrap_or(0);
+        if let Some(i) = path[start..].find(';') {
+            path.truncate(start + i);
         }
     }
     Ok(path)
@@ -1171,7 +1172,9 @@ pub fn build_cloud_audit_payload(
     }
 
     // min(_CLOUD_AUDIT_PAGE_SIZE, max(page_size or len(inventory), 1))
-    let base: i64 = page_size.unwrap_or(inventory.len() as i64);
+    let base: i64 = page_size
+        .filter(|n| *n != 0)
+        .unwrap_or(inventory.len() as i64);
     let effective_page_size = (CLOUD_AUDIT_PAGE_SIZE as i64).min(base.max(1));
 
     let mut payload = Map::new();

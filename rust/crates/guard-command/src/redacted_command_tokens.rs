@@ -108,10 +108,16 @@ fn subn_aws_secret_access_key(input: &str) -> (String, usize) {
     let mut count = 0usize;
     while let Some(caps) = AWS_SECRET_ACCESS_KEY_RE.captures_at(input, search) {
         let m = caps.get(0).unwrap();
+        let g4s = caps.get(4).map(|g| g.as_str()).unwrap_or("");
+        let g6s = caps.get(6).map(|g| g.as_str()).unwrap_or("");
         let pairs_match = caps.get(1).map(|g| g.as_str()).unwrap_or("")
             == caps.get(3).map(|g| g.as_str()).unwrap_or("")
-            && caps.get(4).map(|g| g.as_str()).unwrap_or("")
-                == caps.get(6).map(|g| g.as_str()).unwrap_or("");
+            && (g4s.is_empty() || g4s == g6s);
+        let match_end = if g4s.is_empty() {
+            caps.get(5).unwrap().end()
+        } else {
+            m.end()
+        };
         if pairs_match {
             out.push_str(&input[cursor..m.start()]);
             // Python replacement r"\1\2\1=\3*****\3": the separator is
@@ -126,8 +132,8 @@ fn subn_aws_secret_access_key(input: &str) -> (String, usize) {
             out.push_str(g4);
             out.push_str("*****");
             out.push_str(g4);
-            cursor = m.end();
-            search = m.end();
+            cursor = match_end;
+            search = match_end;
             count += 1;
         } else {
             let first_char_len = input[m.start()..]

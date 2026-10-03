@@ -37,7 +37,10 @@ fn protect_action_for_policy_action(policy_action: &Value) -> GuardAction {
 
 /// `_string_value` — `Some(s)` iff `value` is a JSON string, else `None`.
 fn string_value(value: &Value) -> Option<String> {
-    value.as_str().map(str::to_owned)
+    value
+        .as_str()
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_owned)
 }
 
 /// `_string_items` — collect string items of a list (skips non-strings).
@@ -461,18 +464,26 @@ pub fn package_protect_verdict_context(
         "redacted_command".to_string(),
         json!(intent.redacted_command),
     );
-    receipt_policy_metadata.insert(
-        "observe_mode".to_string(),
-        json!(authority.observe_mode),
-    );
-    receipt_policy_metadata.insert(
-        "observed_policy_action".to_string(),
-        json!(observed_policy_action.as_str()),
-    );
-    receipt_policy_metadata.insert(
-        "approval_reuse".to_string(),
-        Value::Array(approval_reuse_evidence.clone()),
-    );
+    if observe_projected {
+        receipt_policy_metadata.insert("observe_mode".to_string(), json!(true));
+        receipt_policy_metadata.insert(
+            "observed_policy_action".to_string(),
+            json!(observed_policy_action.as_str()),
+        );
+    }
+    if let Some(bundle_version) = evaluation
+        .value
+        .get("bundle_version")
+        .filter(|value| !value.is_null())
+    {
+        receipt_policy_metadata.insert("bundle_version".to_string(), bundle_version.clone());
+    }
+    if !approval_reuse_evidence.is_empty() {
+        receipt_policy_metadata.insert(
+            "approval_reuse".to_string(),
+            Value::Array(approval_reuse_evidence.clone()),
+        );
+    }
     if authority.invoking_harness != "guard-cli" {
         receipt_policy_metadata.insert(
             "invoking_harness".to_string(),

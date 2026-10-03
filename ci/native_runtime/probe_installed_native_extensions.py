@@ -525,7 +525,7 @@ def main() -> int:
         "native_feature_missing",
     )
     authoring = prove_installed_data_only_authoring(package)
-    with tempfile.TemporaryDirectory(prefix="hge-", dir=None if os.name == "nt" else "/tmp") as temporary:
+    with tempfile.TemporaryDirectory(prefix="hge-", dir=Path.home() if os.name == "nt" else "/tmp") as temporary:
         report = exercise(Path(temporary))
     report["data_only_authoring"] = authoring
     report["data_only_authoring_receipts_authenticated"] = False

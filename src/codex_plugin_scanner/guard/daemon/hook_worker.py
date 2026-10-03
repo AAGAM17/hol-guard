@@ -113,6 +113,7 @@ class HookWorker(HookWorkerNativeMixin):
         self,
         *,
         store: GuardStore,
+        workspace: Path | None = None,
         activity_writer: CommandActivityWriter | None = None,
         capture_writer: CodexBindingCaptureWriter | None = None,
         wait_for_native_policy: bool = True,
@@ -131,6 +132,8 @@ class HookWorker(HookWorkerNativeMixin):
         mode = native_mode()
         self._owns_policy_snapshot_publisher = publish_native_policy and mode in {"auto", "force", "shadow"}
         if self._owns_policy_snapshot_publisher:
+            if workspace is not None:
+                self.policy_snapshot_publisher.register_workspace(workspace)
             self.policy_snapshot_publisher.start()
         if wait_for_native_policy and mode in {"auto", "force"}:
             wait_until_ready = getattr(self.policy_snapshot_publisher, "wait_until_ready", None)

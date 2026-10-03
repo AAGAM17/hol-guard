@@ -60,3 +60,21 @@ def test_model_claims_do_not_replace_write_edit_side_effects(tmp_path):
     (workspace / "copy.txt").write_text("fixture-before\n")
     with pytest.raises(AssertionError, match="side effects"):
         assert_file_tools(file_events(), workspace)
+
+
+def test_outside_cwd_anchored_edit_uses_actual_host_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "other"
+    workspace.mkdir()
+    outside.mkdir()
+    prepare_workspace(outside)
+    events = file_events()
+    for event in events:
+        if event.get("type") == "tool_execution_start" and "path" in event["args"]:
+            event["args"]["path"] = str(outside / event["args"]["path"])
+    events[6]["args"] = {"input": "[~/other/copy.txt#FAE4]\nPUT 1.=1:\n+fixture-after"}
+    assert_file_tools(events, workspace, outside)
+    events[6]["args"] = {"input": "[~/elsewhere/copy.txt#FAE4]\nPUT 1.=1:\n+fixture-after"}
+    with pytest.raises(AssertionError, match="target"):
+        assert_file_tools(events, workspace, outside)

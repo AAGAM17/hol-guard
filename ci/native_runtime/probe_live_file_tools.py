@@ -50,7 +50,10 @@ def assert_file_tools(events: list[dict], workspace: Path, target_root: Path | N
             target = anchored_target
         if not isinstance(target, str):
             raise AssertionError("Pi omitted a file target")
-        path = Path(target)
+        try:
+            path = Path(target).expanduser()
+        except RuntimeError as error:
+            raise AssertionError("Pi supplied an unknown home-relative target") from error
         if not path.is_absolute():
             path = workspace / path
         if path.resolve() != (target_root / filename).resolve():

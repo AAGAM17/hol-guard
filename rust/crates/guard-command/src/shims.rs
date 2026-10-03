@@ -228,7 +228,7 @@ pub fn install_guard_shim(
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(&posix_path)
             .map(|m| m.permissions())
-            .unwrap_or_else(|_| fs::Permissions::from_mode(0o644));
+            .unwrap_or_else(|_| fs::Permissions::from_mode(0o700));
         perms.set_mode(perms.mode() | 0o755);
         let _ = fs::set_permissions(&posix_path, perms);
     }
@@ -366,7 +366,7 @@ fn write_package_manager_shim_files(
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(&posix_path)
             .map(|m| m.permissions())
-            .unwrap_or_else(|_| fs::Permissions::from_mode(0o644));
+            .unwrap_or_else(|_| fs::Permissions::from_mode(0o700));
         perms.set_mode(perms.mode() | 0o755);
         let _ = fs::set_permissions(&posix_path, perms);
     }

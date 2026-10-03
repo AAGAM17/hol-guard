@@ -283,6 +283,8 @@ def update_settings(
     if native is not None:
         config = _config_from_wire(native)
         if config is not None:
+            if not config.enabled:
+                _invalidate_active_grants(guard_home)
             return config
     with _APPROVAL_GATE_LOCK:
         previous_generation = _factor_generation(_load_state(guard_home))
@@ -1071,9 +1073,10 @@ def validate_grant(
         )
     except ApprovalGateError as error:
         # A resident that started after Python issued the proof has an empty
-        # table. That is not a rejection of a resident-issued grant; Python
-        # still holds those proofs and must validate them, including revocation.
-        if str(error) != "Approval proof is required.":
+        # table. That is not a rejection of a resident-issued grant. If the
+        # gate is still enabled, Python still holds those proofs and must
+        # validate them. A disabled gate is a real revocation.
+        if str(error) != "Approval proof is required." or _load_state(guard_home).get("enabled") is not True:
             raise
         native = None
     if native is not None:

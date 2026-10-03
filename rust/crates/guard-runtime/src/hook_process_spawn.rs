@@ -174,7 +174,7 @@ pub fn private_hook_runtime_cwd(manifest_path: &Path) -> Result<PathBuf, String>
         .map_err(|_| "managed Codex hook runtime directory is unavailable".to_string())?;
     let resolved = std::fs::canonicalize(parent)
         .map_err(|_| "managed Codex hook runtime directory is unavailable".to_string())?;
-    let resolved_meta = std::fs::symlink_metadata(&resolved)
+    let _resolved_meta = std::fs::symlink_metadata(&resolved)
         .map_err(|_| "managed Codex hook runtime directory is unavailable".to_string())?;
 
     if parent_meta.file_type().is_symlink() || !parent_meta.file_type().is_dir() {
@@ -183,7 +183,7 @@ pub fn private_hook_runtime_cwd(manifest_path: &Path) -> Result<PathBuf, String>
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if (parent_meta.dev(), parent_meta.ino()) != (resolved_meta.dev(), resolved_meta.ino()) {
+        if (parent_meta.dev(), parent_meta.ino()) != (_resolved_meta.dev(), _resolved_meta.ino()) {
             return Err(
                 "managed Codex hook runtime directory changed during validation".to_string(),
             );

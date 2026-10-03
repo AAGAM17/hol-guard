@@ -138,7 +138,7 @@ fn evaluate(
         "guard-shell",
         false,
     );
-    let write_redirect = rich.redirects.iter().any(|r| {
+    let _write_redirect = rich.redirects.iter().any(|r| {
         let op = r.operator.trim_start_matches(|c: char| c.is_ascii_digit());
         op == ">" || op == ">>" || op == ">|"
     });
@@ -199,7 +199,7 @@ fn evaluate(
         request.compatibility_reason.as_deref(),
         workflow_authorization.as_ref(),
         &read_factors,
-        write_redirect,
+        _write_redirect,
     )
     .map_err(|code| format!("native_command_effect_{code}"))
 }

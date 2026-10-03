@@ -225,6 +225,7 @@ pub fn restore_bundled_runtime_execute_bit(path: &Path, bundled: &Path) {
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode | 0o111));
 }
 #[cfg(not(unix))]
+#[allow(dead_code)]
 pub fn restore_bundled_runtime_execute_bit(_path: &Path, _bundled: &Path) {}
 
 /// `_windows_native_dll_directories` (`native_runtime.py:209-241`).

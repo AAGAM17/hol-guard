@@ -209,7 +209,7 @@ impl EncryptedFileSecretStore {
     }
 
     /// `_atomic_write_bytes` — write `.name.<rand>.tmp`, fsync, chmod, rename.
-    fn atomic_write_bytes(&self, path: &Path, payload: &[u8], mode: u32) -> std::io::Result<()> {
+    fn atomic_write_bytes(&self, path: &Path, payload: &[u8], _mode: u32) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -228,7 +228,7 @@ impl EncryptedFileSecretStore {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(mode));
+            let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(_mode));
         }
         fs::rename(&tmp, path)?;
         Ok(())
@@ -237,7 +237,7 @@ impl EncryptedFileSecretStore {
 
 /// Free `_atomic_write_bytes` for non-store callers (e.g. `TotpSecretStore`).
 /// `.name.<rand>.tmp`, fsync, chmod, rename.
-pub(crate) fn atomic_write_bytes(path: &Path, payload: &[u8], mode: u32) -> std::io::Result<()> {
+pub(crate) fn atomic_write_bytes(path: &Path, payload: &[u8], _mode: u32) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -256,7 +256,7 @@ pub(crate) fn atomic_write_bytes(path: &Path, payload: &[u8], mode: u32) -> std:
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(mode));
+        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(_mode));
     }
     fs::rename(&tmp, path)?;
     Ok(())

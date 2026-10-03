@@ -141,6 +141,7 @@ def _snapshot(
     fetch_json: FetchJson,
     deadline: float,
     clock: Callable[[], float],
+    execution_validator: Callable[[Mapping[str, object], str], None] = _require_current_execution,
 ) -> tuple[str, ...]:
     """Validate the full inventory before classifying a deferred matrix error."""
     states = ["absent"] * SHARD_COUNT
@@ -207,7 +208,7 @@ def _snapshot(
             label = f"Python coverage shard {index}"
             states[index] = _job_state(job, label)
             if states[index] == "success":
-                _require_current_execution(job, label)
+                execution_validator(job, label)
         if len(jobs_by_id) == total_count:
             if invalid_shard_name_seen:
                 # Native compilation may finish before planning expands coverage.
@@ -234,6 +235,7 @@ def wait_for_shards(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = _progress,
+    execution_validator: Callable[[Mapping[str, object], str], None] = _require_current_execution,
 ) -> None:
     """Accept every expected successful shard, scoped to the current run attempt."""
     if _REPOSITORY.fullmatch(repository) is None or any(part in {".", ".."} for part in repository.split("/")):
@@ -250,7 +252,15 @@ def wait_for_shards(
     log(f"Waiting for {SHARD_COUNT} Python coverage shards in run {run_id}, attempt {attempt}")
     while True:
         try:
-            states = _snapshot(repository, run_id, attempt, fetch_json=fetch_json, deadline=deadline, clock=clock)
+            states = _snapshot(
+                repository,
+                run_id,
+                attempt,
+                fetch_json=fetch_json,
+                deadline=deadline,
+                clock=clock,
+                execution_validator=execution_validator,
+            )
         except _SchedulingRaceError:
             if clock() >= deadline:
                 raise ShardWaitError("Timed out waiting for Python coverage shard jobs") from None

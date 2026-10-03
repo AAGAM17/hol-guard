@@ -42,7 +42,7 @@ def test_sonar_preparation_precedes_analysis_and_fails_closed() -> None:
     assert steps[0]["id"] == "token-presence"
     assert job["permissions"] == {"contents": "read", "actions": "read"}
     assert wait_index < download_index < setup_index < scan_index
-    assert "wait_for_pytest_shards.py" in steps[wait_index]["run"]
+    assert "select_pytest_coverage.py" in steps[wait_index]["run"]
     assert "SONAR_TOKEN" not in steps[wait_index].get("env", {})
     assert setup["run"] == "bash scripts/ci/prepare_sonar_analysis.sh"
     assert '"rust/rust-toolchain.toml"' in script
@@ -110,8 +110,11 @@ def _run_preparation(
 def test_preparation_combines_all_shards_before_creating_coverage_xml(tmp_path: Path) -> None:
     result, commands = _run_preparation(tmp_path, 128)
     assert result.returncode == 0, result.stderr
-    assert len(commands) == 2
-    assert commands[0].split() == [
+    assert len(commands) == 3
+    assert (
+        commands[0] == "uv run --no-sync python scripts/ci/select_pytest_coverage.py --verify-downloads coverage-data"
+    )
+    assert commands[1].split() == [
         "uv",
         "run",
         "--no-sync",
@@ -121,7 +124,7 @@ def test_preparation_combines_all_shards_before_creating_coverage_xml(tmp_path: 
         "4",
         *sorted(f"coverage-data/shard-{shard:02d}/.coverage" for shard in range(128)),
     ]
-    assert commands[1] == "uv run --no-sync python scripts/ci/parallel_coverage_xml.py --workers 4"
+    assert commands[2] == "uv run --no-sync python scripts/ci/parallel_coverage_xml.py --workers 4"
 
 
 @pytest.mark.parametrize("fail_command", ["", "cargo clippy"])
@@ -164,6 +167,7 @@ def test_preparation_rejects_incomplete_or_excess_coverage_before_running_tools(
 @pytest.mark.parametrize(
     "failed_command",
     [
+        "uv run --no-sync python scripts/ci/select_pytest_coverage.py",
         "uv run --no-sync python scripts/ci/parallel_coverage_combine.py",
         "uv run --no-sync python scripts/ci/parallel_coverage_xml.py",
     ],

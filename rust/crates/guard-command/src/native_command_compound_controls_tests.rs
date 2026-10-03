@@ -88,6 +88,7 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
         "cat alias.txt; git push origin main",
         "ls ordinary.txt; git push origin main",
         "ls; git push origin main",
+        "stat ordinary.txt; git push origin main",
     ] {
         assert_ne!(
             evaluate(&controls, command).minimum_action,
@@ -157,6 +158,35 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             );
             assert_eq!(result.minimum_action == "allow", expected, "{command}");
         }
+        for (path, expected) in [("ordinary.txt", true), ("alias.txt", false)] {
+            let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
+                "omp",
+                "PreToolUse",
+                &serde_json::json!({"tool_name":"bash", "tool_input":{
+                    "command":format!("stat {path}; git push origin main")
+                }}),
+                Some(&controls),
+                None,
+                root.to_str(),
+                root.to_str(),
+            );
+            assert_eq!(result.minimum_action == "allow", expected, "stat {path}");
+        }
+        let home_only = crate::pretool::evaluate_pre_tool_envelope_with_context(
+            "omp",
+            "PreToolUse",
+            &serde_json::json!({"tool_name":"bash", "tool_input":{
+                "command":"cat alias.txt; git push origin main"
+            }}),
+            Some(&controls),
+            None,
+            root.to_str(),
+            None,
+        );
+        assert_ne!(
+            home_only.minimum_action, "allow",
+            "home-only context cannot prove relative symlink targets"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
     let mut mixed = binding.clone();

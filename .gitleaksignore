@@ -16,3 +16,6 @@ f37d56c979d76221d7a0e869eaac5ff381384e58:rust/crates/guard-scanner/src/secret_de
 f37d56c979d76221d7a0e869eaac5ff381384e58:rust/crates/guard-scanner/src/secret_detection.rs:generic-api-key:1524
 f37d56c979d76221d7a0e869eaac5ff381384e58:rust/crates/guard-scanner/src/secret_detection.rs:generic-api-key:1553
 f37d56c979d76221d7a0e869eaac5ff381384e58:rust/crates/guard-scanner/src/secret_detection.rs:generic-api-key:1581
+d4b88a05b21b63adafc99151e0c99ac4deb343d8:rust/crates/guard-scanner/src/secret_detection.rs:generic-api-key:1620
+d4b88a05b21b63adafc99151e0c99ac4deb343d8:rust/crates/guard-scanner/src/secret_detection.rs:generic-api-key:1627
+d4b88a05b21b63adafc99151e0c99ac4deb343d8:rust/crates/guard-scanner/src/secret_detection.rs:generic-api-key:1633

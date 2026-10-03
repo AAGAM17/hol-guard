@@ -956,6 +956,7 @@ def _run_guard_update_unlocked(
     notes = _success_notes(payload)
     if notes:
         payload["notes"] = [*_payload_notes(payload), *notes]
+    finalization_exit_code = 0
     if resident_update_lock is not None and resident_update_lock.active and _should_publish_runtime_digest(payload):
         # A refreshed daemon may issue native requests immediately. Publish the
         # installed executable identity before releasing the barrier so a
@@ -976,7 +977,8 @@ def _run_guard_update_unlocked(
                 reason_code,
                 "HOL Guard could not safely establish its native resident update barrier.",
             )
-            return payload, 1
+            payload["changed"] = True
+            finalization_exit_code = 1
     daemon_refresh: dict[str, object] | None = None
     if context is not None:
         daemon_refresh, daemon_refresh_note = refresh_guard_daemon_after_update(
@@ -1036,7 +1038,7 @@ def _run_guard_update_unlocked(
                 }
             )
             return finish_update((payload, 1))
-    return finish_update((payload, 0))
+    return finish_update((payload, finalization_exit_code))
 
 
 def _record_verified_local_wheel_receipt(

@@ -199,8 +199,6 @@ fn diagnostic_shell_commands_preserve_an_approvable_review() {
     let controls = CompiledNativeCommandControls::new(&binding).unwrap();
     for command in [
         "ss -ltn | grep ':5486'; curl -sS -m 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:5486/; hol-guard doctor 2>&1 | grep -E 'Mode|Runtime|Approval' | head -12",
-        "timeout 120 ~/.local/bin/hol-guard doctor 2>&1 | tail -45",
-        "timeout 120 /home/example/.local/bin/hol-guard doctor 2>&1 | tail -45",
     ] {
         let payload = serde_json::json!({"tool_name": "Bash", "tool_input": {"command": command}});
         let result = crate::pretool::evaluate_pre_tool_envelope_with_extensions(
@@ -210,6 +208,26 @@ fn diagnostic_shell_commands_preserve_an_approvable_review() {
         assert_eq!(result.minimum_action, "review", "{command}: {}", result.reason_code);
         assert!(result.command_extensions.as_ref().unwrap().evaluation_error.is_none());
         assert!(!result.explicitly_benign);
+    }
+    for command in [
+        "hol-guard doctor",
+        "hol-guard doctor --json",
+        "timeout 120 hol-guard doctor 2>&1 | tail -45",
+    ] {
+        let payload = serde_json::json!({"tool_name": "Bash", "tool_input": {"command": command}});
+        let result = crate::pretool::evaluate_pre_tool_envelope_with_extensions(
+            "claude-code",
+            "PreToolUse",
+            &payload,
+            Some(&controls),
+            Some(Instant::now() + std::time::Duration::from_secs(9)),
+        );
+        assert_eq!(
+            result.minimum_action, "allow",
+            "{command}: {}",
+            result.reason_code
+        );
+        assert!(result.explicitly_benign);
     }
     let payload = serde_json::json!({"tool_name": "Bash", "tool_input": {
         "command": "timeout 120 ~/.local/bin/hol-guard doctor 2>&1 | tail -45"

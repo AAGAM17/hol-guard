@@ -144,6 +144,50 @@ fn allows_bounded_exact_commands() {
 }
 
 #[test]
+fn allows_only_bounded_guard_doctor_diagnostics() {
+    for command in [
+        "hol-guard doctor",
+        "hol-guard doctor --json",
+        "hol-guard doctor 2>&1 | tail -45",
+        "hol-guard doctor --json 2>&1 | tail -n 45",
+        "hol-guard doctor 2>&1 && true",
+        "timeout 120 hol-guard doctor 2>&1 | tail -45",
+        "timeout 120 hol-guard doctor --json 2>&1 | tail -n 45",
+        "timeout 120 hol-guard doctor 2>&1 | head -45",
+        "true && hol-guard doctor --json",
+        "hol-guard doctor --json && true",
+        "hol-guard doctor --json | tail -45",
+    ] {
+        let decision = evaluate_pre_tool(&request(command)).unwrap();
+        assert_eq!(decision.minimum_action, "allow", "{command}");
+        assert_eq!(
+            decision.reason_code, "native_exact_safe_command",
+            "{command}"
+        );
+    }
+    for command in [
+        "./hol-guard doctor",
+        "/usr/local/bin/hol-guard doctor",
+        "/tmp/fake/bin/hol-guard doctor",
+        "~/.local/bin/hol-guard doctor",
+        "hol-guard doctor --run-cli",
+        "hol-guard doctor --repair",
+        "hol-guard doctor --json --repair",
+        "hol-guard update",
+        "sudo -n hol-guard doctor",
+        "env FOO=bar hol-guard doctor",
+        "timeout --kill-after=1 120 hol-guard doctor 2>&1 | tail -45",
+        "timeout 120 hol-guard doctor 2>&1 | tail -45 | wc -l",
+        "cat .env && hol-guard doctor",
+        "hol-guard doctor && cat .env",
+        "hol-guard doctor && unknown-command",
+    ] {
+        let decision = evaluate_pre_tool(&request(command)).unwrap();
+        assert_ne!(decision.minimum_action, "allow", "{command}");
+    }
+}
+
+#[test]
 fn allows_bounded_pipeline_consumers() {
     for command in [
         "git status --short | head -2",

@@ -277,6 +277,9 @@ fn exact_safe_command_with_context(
     allow_git_helper_context: bool,
     context: (Option<&str>, Option<&str>),
 ) -> bool {
+    if segment_proof::exact_safe_guard_doctor(model) {
+        return true;
+    }
     if model.confidence != "exact"
         || model.path_overridden
         || model.segments.is_empty()

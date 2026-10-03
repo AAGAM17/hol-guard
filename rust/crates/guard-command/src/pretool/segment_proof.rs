@@ -4,6 +4,95 @@ use super::{
 };
 use crate::CanonicalCommandV1;
 
+fn safe_guard_doctor_arguments(arguments: &[String], allow_stderr_redirect: bool) -> bool {
+    match arguments {
+        [doctor] if doctor == "doctor" => true,
+        [doctor, json] if doctor == "doctor" && json == "--json" => true,
+        [doctor, redirect] if allow_stderr_redirect && doctor == "doctor" && redirect == "2>&1" => {
+            true
+        }
+        [doctor, json, redirect]
+            if allow_stderr_redirect
+                && doctor == "doctor"
+                && json == "--json"
+                && redirect == "2>&1" =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn exact_safe_guard_doctor(model: &CanonicalCommandV1) -> bool {
+    if model.confidence != "exact"
+        || model.path_overridden
+        || model.segments.is_empty()
+        || model.segments.len() > 2
+    {
+        return false;
+    }
+    let first = &model.segments[0];
+    if first.pipeline_index != 0
+        || !exact_safe_guard_doctor_segment(first, model.segments.len() > 1)
+    {
+        return false;
+    }
+    if model.segments.len() == 1 {
+        return model.wrapper_chain.is_empty()
+            && first.wrapper_chain.is_empty()
+            && exact_safe_guard_doctor_segment(first, false);
+    }
+
+    let tail = &model.segments[1];
+    let bounded_timeout_pipeline = model.wrapper_chain == ["timeout"]
+        && first.wrapper_chain == ["timeout"]
+        && first.tokens.len() == 3 + first.arguments.len()
+        && first.tokens.first().is_some_and(|token| token == "timeout")
+        && first.tokens.get(1).is_some_and(|token| {
+            !token.is_empty()
+                && token.len() <= 10
+                && token.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        && exact_safe_guard_doctor_segment(first, true);
+    bounded_timeout_pipeline
+        && tail.pipeline_index == 1
+        && tail.wrapper_chain.is_empty()
+        && safe_guard_doctor_pipeline_consumer(model, tail)
+}
+
+fn exact_safe_guard_doctor_segment(
+    segment: &crate::CommandSegmentV1,
+    allow_stderr_redirect: bool,
+) -> bool {
+    segment.executable.as_deref() == Some("hol-guard")
+        && segment.environment_names.is_empty()
+        && !segment.path_overridden
+        && !sensitive_command(&segment.text)
+        && !segment
+            .arguments
+            .iter()
+            .any(|argument| sensitive_path_argument(argument))
+        && safe_guard_doctor_arguments(&segment.arguments, allow_stderr_redirect)
+}
+
+fn safe_guard_doctor_pipeline_consumer(
+    model: &CanonicalCommandV1,
+    segment: &crate::CommandSegmentV1,
+) -> bool {
+    let basename = executable_basename(segment.executable.as_deref().unwrap_or(""));
+    let stdin_filter = segment.pipeline_index > 0
+        && ((matches!(basename, "head" | "tail")
+            && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments))
+            || (basename == "jq" && safe_reads::safe_jq_stdin_arguments(&segment.arguments))
+            || (basename == "wc"
+                && safe_reads::safe_word_count_stdin_arguments(&segment.arguments))
+            || (basename == "grep" && search::safe_grep_stdin_arguments(&segment.arguments))
+            || (basename == "rg" && search::safe_rg_stdin_arguments(&segment.arguments))
+            || (basename == "sed" && safe_reads::safe_sed_stdin_arguments(&segment.arguments))
+            || super::stdin_filters::safe_arguments(basename, &segment.arguments));
+    stdin_filter && exact_safe_segment_with_context(model, segment, false, (None, None))
+}
+
 pub(super) fn verified_cwd_compound_context(
     model: &CanonicalCommandV1,
     context: (Option<&str>, Option<&str>),
@@ -240,6 +329,7 @@ pub(super) fn exact_safe_segment_with_context(
         "sed" => {
             safe_reads::safe_sed_arguments(&segment.arguments, segment.pipeline_index > 0, context)
         }
+        "hol-guard" => safe_guard_doctor_arguments(&segment.arguments, model.segments.len() > 1),
         "python" | "python3" | "node" | "nodejs" => {
             pure_expression::safe_inline_expression(basename, &segment.arguments)
         }

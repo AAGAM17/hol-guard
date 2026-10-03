@@ -21,6 +21,7 @@ use lease::client_request_with_lease;
 #[path = "managed_resident_client_request.rs"]
 mod client_request_flow;
 pub(super) use client_request_flow::client_request_with_deadline;
+use client_request_flow::CLIENT_RETRY_DELAY;
 #[path = "managed_resident_transport.rs"]
 mod managed_resident_transport;
 #[cfg(windows)]

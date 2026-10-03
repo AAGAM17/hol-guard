@@ -13,7 +13,7 @@ use crate::resident_state::{
 
 // Startup may use the caller's remaining budget, never more than nine seconds.
 const CLIENT_START_TIMEOUT: Duration = Duration::from_millis(9_000);
-const CLIENT_RETRY_DELAY: Duration = Duration::from_millis(5);
+pub(super) const CLIENT_RETRY_DELAY: Duration = Duration::from_millis(5);
 
 fn try_live_or_restart(
     state_base: &Path,
@@ -80,7 +80,7 @@ fn try_home_states(
     Ok(None)
 }
 
-pub(super) fn client_request_with_deadline(
+pub(crate) fn client_request_with_deadline(
     state_base: &Path,
     payload: &[u8],
     overall_deadline: Instant,

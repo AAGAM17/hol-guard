@@ -58,15 +58,6 @@ def try_execute_contained_typescript(
 
     if manager.strip().lower() != "npx":
         return None
-    native_result = _native_execution.contained_typescript_execute_native(
-        workspace,
-        manager.strip().lower(),
-        argv,
-        guard_home=guard_home,
-        evidence=None,
-    )
-    if native_result is not None:
-        return native_result
     canonical_workspace = _canonical_directory(workspace)
     intent = parse_package_intent(
         _shell_join(("npx", *argv)),
@@ -75,6 +66,15 @@ def try_execute_contained_typescript(
     if intent is None or len(intent.local_executions) != 1:
         return None
     local_execution = intent.local_executions[0]
+    native_result = _native_execution.contained_typescript_execute_native(
+        workspace,
+        manager.strip().lower(),
+        argv,
+        guard_home=guard_home,
+        evidence=local_execution.to_dict(),
+    )
+    if native_result is not None:
+        return native_result
     evidence = local_execution.typescript_launch
     if evidence is None or evidence.status != "complete" or evidence.direct_silent_verification:
         return None

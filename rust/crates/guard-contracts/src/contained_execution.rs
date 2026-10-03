@@ -71,10 +71,12 @@ pub const MCP_STDIO_PROBE_RESULT_SCHEMA: &str = "guard-mcp-stdio-probe-result.v1
 #[serde(deny_unknown_fields)]
 pub struct ContainedNodeExecuteRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     pub workspace: String,
     pub manager: String,
     pub argv: Vec<String>,
+    #[serde(default)]
     pub command_text: String,
     pub evidence: Option<Value>,
     pub guard_home: String,
@@ -91,10 +93,12 @@ pub struct ContainedNodeExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedTypescriptExecuteRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     pub workspace: String,
     pub manager: String,
     pub argv: Vec<String>,
+    #[serde(default)]
     pub command_text: String,
     pub evidence: Option<Value>,
     pub guard_home: String,
@@ -111,16 +115,21 @@ pub struct ContainedTypescriptExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedPackageScriptExecuteRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     pub workspace: String,
     pub manager: String,
     pub argv: Vec<String>,
+    #[serde(default)]
     pub command_text: String,
     /// Shim bin directory (PATH pin target); resident scrubs it from PATH.
-    pub shim_directory: String,
+    #[serde(default)]
+    pub shim_directory: Option<String>,
     /// Scrubbed child environment (caller already stripped secret material).
-    pub environment: BTreeMap<String, String>,
-    pub timeout_seconds: u64,
+    #[serde(default)]
+    pub environment: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
     pub guard_home: String,
 }
 
@@ -135,7 +144,8 @@ pub struct ContainedPackageScriptExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedWorkspaceWriteExecuteRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     pub workspace: String,
     /// Legacy raw-command form (shim-intercepted path). Ignored when the
     /// structured `operation`/`source`/`target` triple is present.
@@ -170,7 +180,8 @@ pub struct ContainedWorkspaceWriteExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedExecuteRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     /// Canonical `ContainmentRequest` payload (carries `schema_version`).
     pub request: Value,
     /// Canonical `ContainmentPolicy` payload (carries `schema_version`).
@@ -190,7 +201,8 @@ pub struct ContainedExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedTestHookRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     pub workspace: String,
     pub command_text: String,
     pub guard_home: String,
@@ -211,7 +223,8 @@ pub struct ContainedTestHookResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ShimAdminRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     /// One of `probe_intercepts` | `status` | `activate` | `repair` |
     /// `supported_managers`.
     pub subop: String,
@@ -250,7 +263,8 @@ pub struct ShimAdminResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct McpStdioProbeRequestV1 {
     pub schema: String,
-    pub request_id: String,
+    #[serde(default)]
+    pub request_id: Option<String>,
     /// Raw command text to probe.
     pub command_text: String,
     /// Working directory the shim observed.
@@ -276,4 +290,75 @@ pub struct McpStdioProbeResultV1 {
     /// "failed", "reason": ...}` on probe failure; `None` when the command is
     /// not an MCP launch (caller falls back to the legacy path).
     pub result: Option<Value>,
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+
+    #[test]
+    fn ww_semantic_request_deserializes() {
+        let raw = serde_json::json!({
+            "schema": "guard-contained-workspace-write-execute-request.v1",
+            "request_id": "ww-1",
+            "workspace": "/repo",
+            "command_text": "",
+            "operation": "patch-apply",
+            "source": "patches/fix.patch",
+            "target": "src/lib.rs",
+            "environment": {"PATH": "/usr/bin"},
+            "timeout_seconds": 120,
+            "guard_home": "/home/.hol-guard",
+        });
+        let req: ContainedWorkspaceWriteExecuteRequestV1 =
+            serde_json::from_value(raw).expect("structured WW request must deserialize");
+        assert_eq!(req.operation.as_deref(), Some("patch-apply"));
+        assert_eq!(req.source.as_deref(), Some("patches/fix.patch"));
+        assert_eq!(req.target.as_deref(), Some("src/lib.rs"));
+        assert_eq!(
+            req.environment
+                .as_ref()
+                .and_then(|e| e.get("PATH"))
+                .map(|s| s.as_str()),
+            Some("/usr/bin")
+        );
+    }
+
+    #[test]
+    fn ww_legacy_token_request_deserializes() {
+        let raw = serde_json::json!({
+            "schema": "guard-contained-workspace-write-execute-request.v1",
+            "request_id": "ww-2",
+            "workspace": "/repo",
+            "command_text": "mkdir -p a b",
+            "operation": null,
+            "source": null,
+            "target": null,
+            "environment": null,
+            "timeout_seconds": null,
+            "guard_home": "/home/.hol-guard",
+        });
+        let req: ContainedWorkspaceWriteExecuteRequestV1 =
+            serde_json::from_value(raw).expect("legacy token request must deserialize");
+        assert_eq!(req.command_text, "mkdir -p a b");
+        assert!(req.operation.is_none());
+    }
+
+    #[test]
+    fn contained_node_request_without_optional_fields() {
+        // _contained_request sends only the base set — no command_text.
+        let raw = serde_json::json!({
+            "schema": "guard-contained-node-execute-request.v1",
+            "request_id": "n-1",
+            "workspace": "/repo",
+            "manager": "npx",
+            "argv": ["npx", "vitest"],
+            "guard_home": "/home/.hol-guard",
+            "evidence": null,
+        });
+        let req: ContainedNodeExecuteRequestV1 =
+            serde_json::from_value(raw).expect("node request must deserialize");
+        assert_eq!(req.manager, "npx");
+        assert!(req.command_text.is_empty());
+    }
 }

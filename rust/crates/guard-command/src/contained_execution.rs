@@ -3545,7 +3545,6 @@ impl ContainedTestHookOutcome {
     }
 }
 
-
 // ===========================================================================
 // Semantic workspace-write operations (contained_workspace_write_execution.py)
 //
@@ -3557,8 +3556,12 @@ impl ContainedTestHookOutcome {
 // ===========================================================================
 
 /// Python `ContainedWriteOperation` semantic literal.
-const WW_SEMANTIC_OPS: &[&str] =
-    &["patch-check", "patch-apply", "format-write", "copy-generated"];
+const WW_SEMANTIC_OPS: &[&str] = &[
+    "patch-check",
+    "patch-apply",
+    "format-write",
+    "copy-generated",
+];
 
 /// `_resolve_executable` (:416-424): resolve `name` via `PATH` from the
 /// scrubbed `environment`, pinned to a canonical regular executable file.
@@ -3576,8 +3579,8 @@ fn _resolve_executable(name: &str, env: &BTreeMap<String, String>) -> Result<Pat
         }
     }
     let candidate = found.ok_or_else(|| format!("{name} executable unavailable"))?;
-    let canonical =
-        fs::canonicalize(&candidate).map_err(|_| format!("{name} executable is not path-pinned"))?;
+    let canonical = fs::canonicalize(&candidate)
+        .map_err(|_| format!("{name} executable is not path-pinned"))?;
     let meta =
         fs::metadata(&canonical).map_err(|_| format!("{name} executable is not path-pinned"))?;
     if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
@@ -3855,7 +3858,7 @@ pub fn try_execute_contained_workspace_write_semantic(
         }
         None => vec![],
     };
-    let mut request = ContainmentRequest {
+    let request = ContainmentRequest {
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
         kind: "workspace-write".to_owned(),
         argv: argv.clone(),

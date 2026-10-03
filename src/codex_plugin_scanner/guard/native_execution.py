@@ -245,7 +245,7 @@ def contained_workspace_write_execute_native(
         return None
     try:
         return _contained_workspace_write_result(result)
-    except (TypeError, ValueError, KeyError):
+    except (KeyError, TypeError, ValueError):
         return None
 
 

@@ -20,34 +20,3 @@ pub(crate) fn evaluate_mcp_stdio_probe(
         result: None,
     })
 }
-/// Minimal POSIX-shell word splitter for the probe  field.
-/// Handles single/double quotes and backslash escapes; returns the raw token
-/// list — the probe does not glob or expand variables.
-fn split_shell_words(text: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut chars = text.chars().peekable();
-    let mut in_single = false;
-    let mut in_double = false;
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' if !in_single => {
-                if let Some(next) = chars.next() {
-                    cur.push(next);
-                }
-            }
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            c if c.is_whitespace() && !in_single && !in_double => {
-                if !cur.is_empty() {
-                    out.push(std::mem::take(&mut cur));
-                }
-            }
-            c => cur.push(c),
-        }
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
-}

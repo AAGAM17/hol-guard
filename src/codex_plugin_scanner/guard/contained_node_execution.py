@@ -79,15 +79,6 @@ def try_execute_contained_node_command(
     normalized_manager = manager.strip().lower()
     if normalized_manager not in {"npx", "bunx"}:
         return None
-    native_result = _native_execution.contained_node_execute_native(
-        workspace,
-        normalized_manager,
-        argv,
-        guard_home=guard_home,
-        evidence=None,
-    )
-    if native_result is not None:
-        return native_result
     try:
         canonical_workspace = _canonical_directory(workspace)
         # The OS backends expose system runtime roots read-only. A project
@@ -104,6 +95,15 @@ def try_execute_contained_node_command(
     if intent is None or len(intent.local_executions) != 1:
         return None
     execution = intent.local_executions[0]
+    native_result = _native_execution.contained_node_execute_native(
+        workspace,
+        normalized_manager,
+        argv,
+        guard_home=guard_home,
+        evidence=execution.to_dict(),
+    )
+    if native_result is not None:
+        return native_result
     evidence = build_local_node_runner_evidence(
         normalized_manager,
         argv,

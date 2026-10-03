@@ -130,4 +130,94 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
         assert_eq!(result.minimum_action, "block");
         assert_eq!(result.decision, "deny");
     }
+
+    binding.layers[0].controls[0].target_id = "command.git.permission.worktree".into();
+    binding.layers[0].controls[0].state = "enabled".into();
+    binding.effective_digest = binding.compute_effective_digest().unwrap();
+    let controls = CompiledNativeCommandControls::new(&binding).unwrap();
+    for harness in ["omp", "zcode"] {
+        for (command, allowed) in [
+            ("git worktree list".to_owned(), true),
+            (
+                format!("cd {} && git worktree list", project.display()),
+                true,
+            ),
+            (
+                format!("cd {} && git worktree list | head -1", project.display()),
+                true,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list && cat one.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list && unknown-tool",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!("cd {} && git worktree list && cat .env", project.display()),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list && cat alias.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list && rm -rf project",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!("cd {} ; git worktree list", project.display()),
+                false,
+            ),
+            (
+                format!("cd {} || git worktree list", project.display()),
+                false,
+            ),
+        ] {
+            let result = evaluate_pre_tool_envelope_with_context(
+                harness,
+                "PreToolUse",
+                &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+                Some(&controls),
+                None,
+                root.to_str(),
+                root.to_str(),
+            );
+            assert_eq!(
+                result.minimum_action == "allow",
+                allowed,
+                "{harness}: {command}: {}",
+                result.reason_code
+            );
+        }
+    }
+    binding.layers[0].controls[0].state = "disabled".into();
+    binding.effective_digest = binding.compute_effective_digest().unwrap();
+    let controls = CompiledNativeCommandControls::new(&binding).unwrap();
+    for harness in ["omp", "zcode"] {
+        let command = format!("cd {} && git worktree list | head -1", project.display());
+        let result = evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+            Some(&controls),
+            None,
+            root.to_str(),
+            root.to_str(),
+        );
+        assert_eq!(result.minimum_action, "block", "{harness}: {command}");
+    }
 }

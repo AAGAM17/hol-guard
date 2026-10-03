@@ -37,8 +37,8 @@ mod restart_budget;
 const MANAGED_OWNER_LOCK_FILE_NAME: &str = owner_lock::MANAGED_OWNER_LOCK_FILE_NAME;
 
 use crate::resident_state::{
-    acquire_startup_lock, discover_home_states_prefer, process_start_marker, runtime_digest,
-    state_scope, token_from_state,
+    discover_home_states_prefer, process_start_marker, runtime_digest, state_scope,
+    token_from_state,
 };
 
 pub(crate) fn client_stream(state_base: &Path) -> Result<(), String> {

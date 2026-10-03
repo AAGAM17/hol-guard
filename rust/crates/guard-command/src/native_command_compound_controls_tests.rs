@@ -204,6 +204,22 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
                 "relative or empty cwd cannot prove path targets: {cwd:?}"
             );
         }
+        let missing_cwd = root.join("missing-context-root");
+        let unresolved_context = crate::pretool::evaluate_pre_tool_envelope_with_context(
+            "omp",
+            "PreToolUse",
+            &serde_json::json!({"tool_name":"bash", "tool_input":{
+                "command":"cat alias.txt; git push origin main"
+            }}),
+            Some(&controls),
+            None,
+            root.to_str(),
+            missing_cwd.to_str(),
+        );
+        assert_ne!(
+            unresolved_context.minimum_action, "allow",
+            "unresolvable cwd cannot prove path targets"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
     let mut mixed = binding.clone();

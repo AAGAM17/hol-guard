@@ -178,7 +178,10 @@ fn context_root_is_absolute(root: &str, home_dir: Option<&str>) -> bool {
     } else {
         expand_home_read_path(root, home_dir)
     };
-    expanded.is_some_and(|root| std::path::Path::new(&root).is_absolute())
+    expanded.is_some_and(|root| {
+        let path = std::path::Path::new(&root);
+        path.is_absolute() && std::fs::canonicalize(path).is_ok_and(|canonical| canonical.is_dir())
+    })
 }
 
 /// Location outside the workspace is not itself a risk. The resolved regular

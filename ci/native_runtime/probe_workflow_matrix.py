@@ -156,6 +156,11 @@ def run_live(
                 executable,
                 "--model",
                 model,
+                "--system-prompt",
+                "You execute a synthetic regression in a disposable fixture. "
+                "Run only the exact commands supplied by the user, serially. "
+                "Standard shell readers such as head and tail are permitted for these fixtures. "
+                "Keep the loaded Guard extension active; never bypass a block or approval.",
                 "--cwd",
                 str(workspace),
                 "--no-extensions",

@@ -221,3 +221,30 @@ def test_source_identity_ignores_inherited_git_repository_selection(tmp_path, mo
     binding = source_identity(repos[0])
     assert binding["tested_source_sha"] == expected[0]
     assert binding["source_dirty"] is False
+
+
+@pytest.mark.parametrize("target", ["{{home}}/other-project/notes.md", "~/other-project/notes.md"])
+def test_live_omp_home_display_anchor_names_the_same_verified_fixture(target):
+    from ci.gauntlet.proofs import task_calls_in_scope
+
+    scenario = Scenario("sibling", "allow", "home-task", "Edit the sibling note")
+    calls = [
+        {
+            "name": "write",
+            "args": {"path": "{{home}}/other-project/notes.md", "content": "Reviewed settings change.\n"},
+        },
+        {"name": "read", "args": {"path": target}},
+        {"name": "edit", "args": {"input": f"[{target}#FB48]\nPUT 1.=1:\n+Verified settings change."}},
+        {"name": "read", "args": {"path": "{{home}}/other-project/notes.md"}},
+    ]
+    assert task_calls_in_scope(scenario, calls)
+    assert task_tools_match(scenario, calls)
+    for wrong in ("~other/other-project/notes.md", "~/../other-project/notes.md", "~/.env", "~/other-project/other.md"):
+        changed = deepcopy(calls)
+        changed[2]["args"]["input"] = f"[{wrong}#FB48]\nPUT 1.=1:\n+Verified settings change."
+        assert not task_calls_in_scope(scenario, changed)
+        assert not task_tools_match(scenario, changed)
+    contradictory = deepcopy(calls)
+    contradictory[2]["args"]["path"] = "{{home}}/other-project/other.md"
+    assert not task_calls_in_scope(scenario, contradictory)
+    assert not task_tools_match(scenario, contradictory)

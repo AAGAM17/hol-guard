@@ -76,3 +76,26 @@ PR merged. The stronger trust boundary nevertheless pins the first verifier to
 one reviewed commit and requires trusted-base verification thereafter. Candidate
 Python cannot waive its own gate, and a model refusal remains unexercised rather
 than being counted as a Guard block.
+
+
+## Verified-home display aliases and real API routes
+
+A later full live run at `7032992ebb60d0029b84e3ee29deb5be2ee0e8f7`
+completed all four sibling-project file calls and produced the correct final file.
+OMP displayed its edit anchor as `~/other-project/notes.md` under the runner's
+explicit fixture HOME. The initial judge compared that spelling only with the
+absolute redacted home and incorrectly marked the task out of scope. The judge now
+normalizes that one display alias; wrong homes, traversal, different targets and
+conflicting explicit paths still fail. The failed run remains preserved. Guard
+policy and actual tool arguments were not rewritten.
+
+The same run's environment probe was not attempted by the model. That result
+remains `not-exercised`; no native protection success is claimed for it. Final
+qualification requires another complete live run, not combining successful rows
+from different attempts.
+
+The trusted-verifier upgrade also exposed an API validation bug: GitHub's root
+repository metadata route and `BASE...HEAD` comparison were rejected as unsafe
+paths. The client now permits those legitimate repository-local routes while
+rejecting external authorities, encoded traversal, fragments and control characters.
+Tests exercise the real client route validation, rather than only a permissive mock.

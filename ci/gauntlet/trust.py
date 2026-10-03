@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import urllib.parse
 from typing import Any
 
 from .source_identity import SHA
@@ -20,7 +21,7 @@ def validate_producer_revision(api: Any, number: int, pull: dict, run: dict) -> 
     if revision == base:
         return
     comparison = api.request(f"/compare/{base}...{revision}")
-    branch = api.request("")["default_branch"]
+    branch = urllib.parse.quote(api.request("")["default_branch"], safe="")
     on_default = api.request(f"/compare/{revision}...{branch}")
     if comparison.get("status") == "ahead" and on_default.get("status") in {"identical", "ahead"}:
         return

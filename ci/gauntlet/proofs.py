@@ -92,13 +92,20 @@ def guard_inventory(
     return by_id, None
 
 
+def _fixture_path(value: str) -> str:
+    """Normalize only the verified fixture home's OMP display alias."""
+    if value.startswith("~/"):
+        value = "{{home}}/" + value[2:]
+    return value.removeprefix("{{workspace}}/").removeprefix("./")
+
+
 def _path(args: dict[str, Any]) -> str | None:
     value = args.get("path", args.get("file_path"))
     if "path" in args and "file_path" in args and args["path"] != args["file_path"]:
         return None
     if not isinstance(value, str):
         return None
-    return value.removeprefix("{{workspace}}/").removeprefix("./")
+    return _fixture_path(value)
 
 
 def _edit_path(args: dict[str, Any]) -> str | None:
@@ -110,7 +117,7 @@ def _edit_path(args: dict[str, Any]) -> str | None:
     headers = re.findall(r"^\[([^\n]+)#[0-9A-Fa-f]{4}\]$", text, re.MULTILINE)
     if len(headers) != 1:
         return None
-    path = headers[0].removeprefix("{{workspace}}/").removeprefix("./")
+    path = _fixture_path(headers[0])
     explicit = _path(args)
     if ("path" in args or "file_path" in args) and explicit is None:
         return None

@@ -103,11 +103,11 @@ The gate is incorporated into the repository's already-required `ci (3.12)` chec
 
 PR #3463 is the only initial-installation exception. Its required CI check pins
 an immutable reviewed verifier SHA in `.github/workflows/ci.yml`; that commit is
-also named `guard-gauntlet-bootstrap-v1`. The exception applies only to this
+also named `guard-gauntlet-bootstrap-v2`. The original v1 tag remains unchanged; v2 corrects the observed home-anchor judge and repository API route handling. The exception applies only to this
 repository and PR, only while the trusted base does not contain Gauntlet, and
 only to evidence produced by that exact pinned commit. It does not waive the
 full live suite or permit replayed evidence. Dispatch the initial evidence and
-metadata checks with `--ref guard-gauntlet-bootstrap-v1`. A missing base module
+metadata checks with `--ref guard-gauntlet-bootstrap-v2`. A missing base module
 posts no qualification; it directs the operator to this bounded path.
 
 After installation, dispatch from `main`. A new candidate can change runner
@@ -120,7 +120,7 @@ to pending.
 
 ## Reading a result
 
-`summary.json` and per-case public JSON bind the candidate, installed source, native binary/rule digest, SDK lock, runner files and catalog. Public tool events omit model reasoning and system prompts. The observer records the complete Guard input and its original digest; the runner applies the same fixture-path redactions to host and Guard inputs, then the judge checks their equality. The only permitted normalization is the pinned OMP adapter's derived single-target edit metadata, validated against the actual patch header. Private fixture logs remain on the test machine for diagnosis; they must not be attached wholesale to a public PR.
+`summary.json` and per-case public JSON bind the candidate, installed source, native binary/rule digest, SDK lock, runner files and catalog. Public tool events omit model reasoning and system prompts. The observer records the complete Guard input and its original digest; the runner applies the same fixture-path redactions to host and Guard inputs, then the judge checks their equality. The Guard-input comparison permits only the pinned OMP adapter's derived single-target edit metadata, validated against the actual patch header. Task-scope checks also recognize the host's `~/` display alias for the explicit disposable HOME; they never use the operator's home or relax target identity. Private fixture logs remain on the test machine for diagnosis; they must not be attached wholesale to a public PR.
 
 | Result | Meaning |
 | --- | --- |
@@ -136,7 +136,7 @@ Identical HTTP 429/5xx retries before any completion bytes were delivered are re
 
 The synthetic-canary relay is a test-operator backstop, not HOL Guard. If it blocks export, the tested path **fails**. It never supplies decisions, fabricates tool output, or substitutes a completion. The agent receives no inherited provider/cloud/GitHub credentials; the dedicated provider key remains in the outer relay.
 
-Evidence hashes prove byte integrity, not authorship. Qualification additionally depends on a trusted producer or repository-writer attestation. The evidence consumer requires the producer revision to equal the current trusted base. Candidate source and catalog files are read through immutable Git blobs and treated only as data; candidate Python is never imported by the verifier. This workflow does not claim that arbitrary untrusted JSON can cryptographically prove an LLM ran.
+Evidence hashes prove byte integrity, not authorship. Qualification additionally depends on a trusted producer or repository-writer attestation. The evidence consumer requires the producer revision to be the trusted base or a verified descendant reachable from the default branch. Candidate source and catalog files are read through immutable Git blobs and treated only as data; candidate Python is never imported by the verifier. This workflow does not claim that arbitrary untrusted JSON can cryptographically prove an LLM ran.
 
 ## Improving the suite
 

@@ -408,7 +408,7 @@ def test_evidence_jobs_run_only_from_trusted_default_or_pinned_bootstrap():
     for name in ("verify", "publish"):
         condition = workflow["jobs"][name]["if"]
         assert "github.event.repository.default_branch" in condition
-        assert "refs/tags/guard-gauntlet-bootstrap-v1" in condition
+        assert "refs/tags/guard-gauntlet-bootstrap-v2" in condition
         assert "github.event_name == 'workflow_dispatch'" in condition
         assert "GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA" in workflow["jobs"][name]["env"]
 
@@ -428,3 +428,52 @@ def test_required_ci_uses_trusted_base_or_exact_initial_verifier():
     requirement = next(step for step in job["steps"] if step.get("run") == "python3 -m ci.gauntlet.github_ci require")
     assert requirement["working-directory"] == "gauntlet-trusted"
     assert requirement["env"]["GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA"] == checkouts[1]["ref"]
+
+
+@pytest.mark.parametrize("path", ["", "/", "/compare/" + "a" * 40 + "..." + "b" * 40])
+def test_repository_api_accepts_root_and_immutable_comparison_routes(monkeypatch, path):
+    import urllib.request
+
+    from ci.gauntlet.github_ci import GitHubAPI
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "hashgraph-online/hol-guard")
+    monkeypatch.setenv("GITHUB_TOKEN", "synthetic-test-only")
+    requests = []
+
+    def opened(request, timeout):
+        requests.append(request)
+        return io.BytesIO(b'{"status":"ahead","default_branch":"main"}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", opened)
+    assert GitHubAPI().request(path)["status"] == "ahead"
+    assert requests[0].full_url == "https://api.github.com/repos/hashgraph-online/hol-guard" + path
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "https://attacker.invalid/path",
+        "//attacker.invalid/path",
+        "/../other/repo",
+        "/%2e%2e/other/repo",
+        "/contents/./secret",
+        "/%2f%2fattacker.invalid",
+        "/contents/\\secret",
+        "/contents/file#fragment",
+        "/contents/file\n",
+    ],
+)
+def test_repository_api_rejects_authority_and_traversal_inputs(monkeypatch, path):
+    import urllib.request
+
+    from ci.gauntlet.github_ci import GitHubAPI
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "hashgraph-online/hol-guard")
+    monkeypatch.setenv("GITHUB_TOKEN", "synthetic-test-only")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid route must not send a token")
+
+    monkeypatch.setattr(urllib.request, "urlopen", forbidden)
+    with pytest.raises(ValueError, match="invalid repository API path"):
+        GitHubAPI().request(path)

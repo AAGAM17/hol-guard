@@ -47,7 +47,22 @@ class GitHubAPI:
 
     def request(self, path: str, data: dict[str, Any] | None = None, method: str | None = None):
         """Send the short-lived job token only to this repository's GitHub API."""
-        if not path.startswith("/") or ".." in path:
+        # Root metadata and GitHub's BASE...HEAD comparison are valid API
+        # routes. Reject path traversal by segment, not the comparison marker.
+        if not isinstance(path, str):
+            raise ValueError("invalid repository API path")
+        parsed = urllib.parse.urlsplit(path)
+        decoded = urllib.parse.unquote(parsed.path)
+        if (
+            (path != "" and not path.startswith("/"))
+            or parsed.scheme
+            or parsed.netloc
+            or parsed.fragment
+            or decoded.startswith("//")
+            or "\\" in decoded
+            or any(part in {".", ".."} for part in decoded.split("/"))
+            or any(ord(character) < 32 or ord(character) == 127 for character in path)
+        ):
             raise ValueError("invalid repository API path")
         url = "https://api.github.com/repos/" + self.repo + path
         body = json.dumps(data).encode() if data is not None else None

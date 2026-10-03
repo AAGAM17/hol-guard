@@ -210,6 +210,7 @@ def review_native_artifact_hook(
         and (policy_action in {"review", "require-reapproval"} or cursor_native_queue)
     ):
         set_native_artifact_hook_final_action(state, "block")
+        state.approval_prompted = False
         guidance = safe_alternative_reason(f"HOL Guard blocked this action. {risk_summary}")
         _terminalize_runtime_action_copy(state.response_payload)
         state.response_payload.update(

@@ -59,6 +59,7 @@ def _record_copilot_pre_activity(
     receipt_id: str,
     decision: ToolCallDecision,
     runtime_workspace: Path | None,
+    prompted: bool | None = None,
 ) -> None:
     raw_reuse_status = decision.approval_reuse_status
     reuse_status = (
@@ -74,7 +75,11 @@ def _record_copilot_pre_activity(
         payload=payload,
         policy_action=policy_action,
         receipt_id=receipt_id,
-        prompted=command_activity_was_prompted(decision.current_action or policy_action, reuse_status),
+        prompted=(
+            prompted
+            if prompted is not None
+            else command_activity_was_prompted(decision.current_action or policy_action, reuse_status)
+        ),
         approval_reuse_status=reuse_status,
         cwd=runtime_workspace,
         home_dir=context.home_dir,
@@ -204,6 +209,7 @@ def run_native_copilot_pretool(
                 receipt_id=receipt.receipt_id,
                 decision=decision,
                 runtime_workspace=runtime_workspace,
+                prompted=False if safe_alternative else None,
             )
             _record_harness_usage_for_hook(
                 store=store,
@@ -244,6 +250,7 @@ def run_native_copilot_pretool(
                     receipt_id=receipt.receipt_id,
                     decision=decision,
                     runtime_workspace=runtime_workspace,
+                    prompted=False if safe_alternative else None,
                 )
         if args.harness == "copilot":
             _record_harness_usage_for_hook(
@@ -442,6 +449,7 @@ def run_native_copilot_permission_request(
             receipt_id=receipt.receipt_id,
             decision=decision,
             runtime_workspace=runtime_workspace,
+            prompted=False if safe_alternative else None,
         )
         _record_harness_usage_for_hook(
             store=store,
@@ -477,6 +485,7 @@ def run_native_copilot_permission_request(
         receipt_id=receipt.receipt_id,
         decision=decision,
         runtime_workspace=runtime_workspace,
+        prompted=False if safe_alternative else None,
     )
     if terminal_action:
         response_payload["approval_requests"] = []

@@ -287,9 +287,7 @@ pub fn merge_inventory_item(inventory_map: &mut InventoryMap, item: &Map<String,
             );
             entry.insert(
                 "direct".into(),
-                Value::Bool(
-                    item.get("direct").map(python_truthy).unwrap_or(false),
-                ),
+                Value::Bool(item.get("direct").map(python_truthy).unwrap_or(false)),
             );
             entry.insert(
                 "range".into(),
@@ -299,16 +297,15 @@ pub fn merge_inventory_item(inventory_map: &mut InventoryMap, item: &Map<String,
                 "version".into(),
                 item.get("version").cloned().unwrap_or(Value::Null),
             );
-            inventory_map.index.insert(key.clone(), inventory_map.items.len());
+            inventory_map
+                .index
+                .insert(key.clone(), inventory_map.items.len());
             inventory_map.order.push(key);
             inventory_map.items.push(entry);
         }
         Some(&slot) => {
             let existing = &mut inventory_map.items[slot];
-            let existing_direct = existing
-                .get("direct")
-                .map(python_truthy)
-                .unwrap_or(false);
+            let existing_direct = existing.get("direct").map(python_truthy).unwrap_or(false);
             let item_direct = item.get("direct").map(python_truthy).unwrap_or(false);
             existing.insert("direct".into(), Value::Bool(existing_direct || item_direct));
             if matches!(existing.get("range"), None | Some(Value::Null))
@@ -419,7 +416,11 @@ pub fn inventory_from_sbom_payload(
     if payload.get("bomFormat").and_then(Value::as_str) == Some("CycloneDX") {
         return Ok(inventory_from_cyclonedx(payload));
     }
-    if payload.get("spdxVersion").map(python_truthy).unwrap_or(false) {
+    if payload
+        .get("spdxVersion")
+        .map(python_truthy)
+        .unwrap_or(false)
+    {
         return Ok(inventory_from_spdx(payload));
     }
     Err(LocalSupplyChainError::Runtime(
@@ -474,8 +475,7 @@ pub fn inventory_from_spdx(payload: &Map<String, Value>) -> Vec<Map<String, Valu
                 if ref_type != "purl" {
                     continue;
                 }
-                if let Some(locator) =
-                    external_ref.get("referenceLocator").and_then(Value::as_str)
+                if let Some(locator) = external_ref.get("referenceLocator").and_then(Value::as_str)
                 {
                     if !locator.is_empty() {
                         purl = Some(locator);
@@ -844,7 +844,12 @@ mod tests {
                         .output
                         .get("err")
                         .unwrap_or_else(|| panic!("expected ok for {:?}", case.input));
-                    assert_eq!(&json!(err.to_string()), expected, "err for {:?}", case.input);
+                    assert_eq!(
+                        &json!(err.to_string()),
+                        expected,
+                        "err for {:?}",
+                        case.input
+                    );
                 }
             }
         }

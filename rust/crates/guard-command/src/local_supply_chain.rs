@@ -28,6 +28,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
+use crate::cloud_audit_sync::{
+    build_cloud_audit_payload, normalize_cloud_audit_response,
+    normalized_supply_chain_batch_job_url, normalized_supply_chain_batch_url,
+    resolve_next_refresh_at, should_use_cloud_workspace_audit,
+    CloudAuditWorkspaceContextApi, EnvCloudAuditWorkspaceContext,
+};
 
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256, Sha512};
@@ -1588,24 +1594,6 @@ fn posture_health_status(
     "degraded"
 }
 
-/// `_resolve_next_refresh_at` (:4491-4502).
-fn resolve_next_refresh_at(
-    summary: &Map<String, Value>,
-    synced_at: Option<&str>,
-) -> Option<String> {
-    if let Some(explicit) = string_value(summary.get("next_refresh_at"))
-        .as_deref()
-        .and_then(parse_timestamp)
-    {
-        return Some(explicit.isoformat());
-    }
-    let synced = synced_at.and_then(parse_timestamp)?;
-    Some(
-        synced
-            .add_seconds_f64(DEFAULT_BUNDLE_REFRESH_INTERVAL_SECONDS)
-            .isoformat(),
-    )
-}
 
 /// `resolve_risk_action` (config.py :1065-1077) ported against the local
 /// `GuardConfig` mirror.
@@ -1893,7 +1881,7 @@ pub fn build_local_supply_chain_posture(
         snapshot_now,
     );
     let synced_at = string_value(summary.get("synced_at"));
-    let next_refresh_at = resolve_next_refresh_at(&summary, synced_at.as_deref());
+    let next_refresh_at = resolve_next_refresh_at(Some(&summary), synced_at.as_deref());
     let support = summary
         .get("supported_ecosystems")
         .cloned()
@@ -2576,81 +2564,6 @@ fn inventory_summary(inventory: &[Map<String, Value>]) -> Map<String, Value> {
     out
 }
 
-/// `_normalize_cloud_audit_response`
-fn normalize_cloud_audit_response(response: &Map<String, Value>) -> Map<String, Value> {
-    let mut out = Map::new();
-    out.insert(
-        "decision".into(),
-        json!(response
-            .get("decision")
-            .and_then(Value::as_str)
-            .unwrap_or("monitor")),
-    );
-    out.insert(
-        "packages".into(),
-        Value::Array(
-            response
-                .get("packages")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
-        ),
-    );
-    out.insert(
-        "reasons".into(),
-        Value::Array(
-            response
-                .get("reasons")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
-        ),
-    );
-    out.insert(
-        "enforcement".into(),
-        json!(response
-            .get("enforcement")
-            .and_then(Value::as_str)
-            .unwrap_or("premium_cloud")),
-    );
-    out.insert(
-        "entitlement_state".into(),
-        json!(response
-            .get("entitlementState")
-            .and_then(Value::as_str)
-            .unwrap_or("premium")),
-    );
-    out.insert(
-        "cache_status".into(),
-        json!(response
-            .get("cacheStatus")
-            .and_then(Value::as_str)
-            .unwrap_or("miss")),
-    );
-    out.insert(
-        "processed_count".into(),
-        json!(int_value(response.get("processedCount")).unwrap_or(0)),
-    );
-    out.insert(
-        "total_packages".into(),
-        json!(int_value(response.get("totalPackages")).unwrap_or(0)),
-    );
-    out.insert(
-        "status".into(),
-        json!(response
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("completed")),
-    );
-    out.insert(
-        "workspace_id".into(),
-        json!(response
-            .get("workspaceId")
-            .and_then(Value::as_str)
-            .unwrap_or("")),
-    );
-    out
-}
 
 /// `_ci_gate_result`
 fn ci_gate_result(evaluation: &Map<String, Value>, threshold: &str) -> Map<String, Value> {
@@ -3359,25 +3272,11 @@ fn build_workspace_context_payload(
     }
     out.insert(
         "machine".into(),
-        safe_machine_name().map_or(Value::Null, Value::String),
+        EnvCloudAuditWorkspaceContext.safe_machine_name().map_or(Value::Null, Value::String),
     );
     out
 }
 
-/// `_safe_machine_name` (:3804-3810).
-fn safe_machine_name() -> Option<String> {
-    std::env::var("COMPUTERNAME")
-        .ok()
-        .or_else(|| std::env::var("HOSTNAME").ok())
-        .and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-}
 
 /// `_redacted_workspace_folder_path` (:3812-3819).
 fn redacted_workspace_folder_path(workspace_dir: &Path) -> Option<String> {
@@ -3440,79 +3339,8 @@ fn codebase_label_from_remote(remote: &str) -> Option<String> {
     }
 }
 
-/// `_normalized_supply_chain_batch_url` (:4141-4159).
-fn normalized_supply_chain_batch_url(sync_url: &str, workspace_id: &str) -> String {
-    let sync_path = if let Some(pos) = sync_url.find("://") {
-        let after_scheme = &sync_url[pos + 3..];
-        if let Some(slash) = after_scheme.find('/') {
-            &after_scheme[slash..]
-        } else {
-            "/"
-        }
-    } else {
-        sync_url
-    };
-    let sync_path = sync_path.trim_end_matches('/');
-    let base = sync_url.find("://").map_or(sync_url, |pos| {
-        let end = sync_url[pos + 3..]
-            .find('/')
-            .map(|s| pos + 3 + s)
-            .unwrap_or(sync_url.len());
-        &sync_url[..end]
-    });
-    let next_path = if let Some(stripped) = sync_path.strip_suffix("/receipts/sync") {
-        format!("{stripped}/supply-chain/evaluate/batch")
-    } else {
-        format!("{sync_path}/supply-chain/evaluate/batch")
-    };
-    // Strip existing workspaceId from query.
-    let query_clean = sync_url
-        .split('?')
-        .nth(1)
-        .map(|q| {
-            q.split('&')
-                .filter(|pair| !pair.starts_with("workspaceId="))
-                .collect::<Vec<_>>()
-                .join("&")
-        })
-        .unwrap_or_default();
-    let _separator = if query_clean.is_empty() { "?" } else { "?&" };
-    format!(
-        "{base}{next_path}?workspaceId={workspace_id}{}",
-        if query_clean.is_empty() {
-            String::new()
-        } else {
-            format!("&{query_clean}")
-        }
-    )
-}
 
-/// `_build_cloud_audit_payload` (:3841-3858).
-fn build_cloud_audit_payload(request_payload: &Map<String, Value>) -> Map<String, Value> {
-    let mut out = Map::new();
-    for (key, value) in request_payload {
-        match key.as_str() {
-            "sbom" | "sbom_paths" | "command" | "invoking_harness" | "intent" | "operation"
-            | "audit_context" => {}
-            _ => {
-                out.insert(key.clone(), value.clone());
-            }
-        }
-    }
-    out
-}
 
-/// `_should_use_cloud_workspace_audit` (:3646-3657).
-fn should_use_cloud_workspace_audit(auth_context: Option<&Map<String, Value>>) -> bool {
-    match auth_context {
-        Some(ctx) => {
-            let sync_url = ctx.get("sync_url").and_then(Value::as_str).unwrap_or("");
-            let token = ctx.get("token").and_then(Value::as_str).unwrap_or("");
-            !sync_url.is_empty() && !token.is_empty()
-        }
-        None => false,
-    }
-}
 
 /// `_run_cloud_workspace_audit` (:3659-3766).
 fn run_cloud_workspace_audit(
@@ -3538,7 +3366,8 @@ fn run_cloud_workspace_audit(
                     "auth_context or sync_url/token required".into(),
                 ));
             }
-            let url = normalized_supply_chain_batch_url(sync_url, workspace_id);
+            let url = normalized_supply_chain_batch_url(sync_url, workspace_id)
+                .map_err(LocalSupplyChainError::Runtime)?;
             let mut headers = BTreeMap::new();
             headers.insert("Authorization".into(), format!("Bearer {token}"));
             headers.insert("Content-Type".into(), "application/json".into());
@@ -3548,7 +3377,8 @@ fn run_cloud_workspace_audit(
             let ctx_sync_url = ctx.get("sync_url").and_then(Value::as_str).ok_or_else(|| {
                 LocalSupplyChainError::Runtime("auth_context missing sync_url".into())
             })?;
-            let url = normalized_supply_chain_batch_url(ctx_sync_url, workspace_id);
+            let url = normalized_supply_chain_batch_url(ctx_sync_url, workspace_id)
+                .map_err(LocalSupplyChainError::Runtime)?;
             let headers = runner.guard_sync_headers(&Value::Object(ctx.clone()));
             (url, headers)
         }
@@ -3835,14 +3665,53 @@ pub fn build_workspace_audit_payload(
         .resolve_guard_sync_auth_context(store)
         .ok()
         .and_then(|value| value.as_object().cloned());
-    let use_cloud = should_use_cloud_workspace_audit(cloud_auth.as_ref());
+    let posture = {
+        let summary = dict_payload(
+            store.get_sync_payload("supply_chain_bundle_summary").as_ref(),
+        )
+        .unwrap_or_default();
+        let entitlement = dict_payload(
+            store.get_sync_payload("supply_chain_bundle_entitlement").as_ref(),
+        )
+        .unwrap_or_default();
+        let bundle_payload = store
+            .get_cached_supply_chain_bundle(workspace_id)
+            .and_then(|bundle| dict_payload(bundle.get("bundle")))
+            .unwrap_or_default();
+        let tier = string_value(summary.get("tier"))
+            .or_else(|| string_value(entitlement.get("tier")))
+            .or_else(|| string_value(bundle_payload.get("tier")));
+        let mut bundle = Map::new();
+        bundle.insert("tier".into(), tier.map_or(Value::Null, Value::String));
+        let mut posture = Map::new();
+        posture.insert("bundle".into(), Value::Object(bundle));
+        posture
+    };
+    let use_cloud = should_use_cloud_workspace_audit(store, &posture);
 
     let evaluation_result = if use_cloud {
-        let cloud_request_payload = build_cloud_audit_payload(&request_payload);
+        let inventory_values: Vec<Value> = package_items
+            .iter()
+            .cloned()
+            .map(Value::Object)
+            .collect();
+        let cloud_request_payload = build_cloud_audit_payload(
+            workspace_dir,
+            workspace_id,
+            store,
+            &manifest_paths,
+            &lockfile_paths,
+            &inventory_values,
+            "audit",
+            Some(CLOUD_AUDIT_PAGE_SIZE as i64),
+            paths,
+            &EnvCloudAuditWorkspaceContext,
+        )
+        .ok();
         match run_cloud_workspace_audit(
             runner,
             http,
-            &cloud_request_payload,
+            cloud_request_payload.as_ref().unwrap_or(&request_payload),
             cloud_auth.as_ref(),
             None,
             None,
@@ -7027,31 +6896,7 @@ fn url_origin(url: &str) -> Option<String> {
     Some(url[..scheme_end + 3 + host_end].to_string())
 }
 
-/// `urllib.parse.quote(component, safe='')` for a path segment.
-fn quote_url_component(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-' | b'_' | b'~' => {
-                out.push(byte as char);
-            }
-            _ => {
-                let _ = write!(out, "%{byte:02X}");
-            }
-        }
-    }
-    out
-}
 
-/// Loose `str(value)` coercion for scalar payload fields.
-fn json_scalar_str(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        Value::Bool(b) => b.to_string(),
-        _ => String::new(),
-    }
-}
 
 /// `HTTPError` mapping for cloud audit calls — 403 plan-restriction check
 /// first, then retryable/not-available vs runtime, mirroring Python ordering.
@@ -7168,36 +7013,6 @@ pub fn execute_cloud_workspace_audit_request(
     }
 }
 
-/// `_normalized_supply_chain_batch_job_url` (:3938-3960) — batch URL with the
-/// job id appended to the path and `pageSize` in the query.
-pub fn normalized_supply_chain_batch_job_url(
-    sync_url: &str,
-    workspace_id: &str,
-    job_id: &str,
-    page_size: usize,
-) -> String {
-    let batch_url = normalized_supply_chain_batch_url(sync_url, workspace_id);
-    let (base, query) = match batch_url.split_once('?') {
-        Some((b, q)) => (b.to_string(), q),
-        None => (batch_url.clone(), ""),
-    };
-    let mut query_pairs: Vec<String> = query
-        .split('&')
-        .filter(|pair| !pair.is_empty())
-        .filter(|pair| {
-            let key = pair.split('=').next().unwrap_or("");
-            key != "cursor" && key != "pageSize"
-        })
-        .map(str::to_string)
-        .collect();
-    query_pairs.push(format!("pageSize={}", page_size.max(1)));
-    format!(
-        "{}/{}?{}",
-        base.trim_end_matches('/'),
-        quote_url_component(job_id),
-        query_pairs.join("&")
-    )
-}
 
 /// `_enqueue_cloud_workspace_audit_job` (:3961-3979).
 pub fn enqueue_cloud_workspace_audit_job(
@@ -7215,7 +7030,8 @@ pub fn enqueue_cloud_workspace_audit_job(
             ));
         }
     };
-    let request_url = normalized_supply_chain_batch_url(&sync_url, workspace_id);
+    let request_url = normalized_supply_chain_batch_url(&sync_url, workspace_id)
+        .map_err(LocalSupplyChainError::Runtime)?;
     let response_payload = execute_cloud_workspace_audit_request(
         auth_context,
         &request_url,
@@ -7258,8 +7074,9 @@ pub fn poll_cloud_workspace_audit_job(
         &sync_url,
         workspace_id,
         job_id,
-        CLOUD_AUDIT_JOB_PAGE_SIZE,
-    );
+        CLOUD_AUDIT_JOB_PAGE_SIZE as i64,
+    )
+    .map_err(LocalSupplyChainError::Runtime)?;
     let deadline = std::time::Instant::now()
         + std::time::Duration::from_secs_f64(CLOUD_AUDIT_JOB_POLL_TIMEOUT_SECONDS);
     let mut last_response = Map::new();
@@ -7296,247 +7113,6 @@ pub fn poll_cloud_workspace_audit_job(
 // Job-mode audit payload (:3823-3899, :4014-4071)
 // ---------------------------------------------------------------------------
 
-/// `_hash_existing_paths` for the sync flow — per-path sha256 digests of
-/// bytes read inside the workspace.
-fn sync_hash_existing_paths(workspace_dir: &Path, relative_paths: &[String]) -> Vec<String> {
-    relative_paths
-        .iter()
-        .filter_map(|relative_path| {
-            resolve_path_within_workspace(workspace_dir, relative_path)
-                .and_then(|p| std::fs::read(p).ok())
-                .map(|bytes| stable_digest_hex(&bytes))
-        })
-        .collect()
-}
-
-/// `_workspace_audit_fingerprint` (:4041-4062) — digest over workspace id,
-/// folder name, manifest/lockfile content hashes, and the policy version.
-fn workspace_audit_sync_fingerprint(
-    workspace_id: &str,
-    workspace_dir: &Path,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-    policy_version: &str,
-) -> String {
-    let manifest_hashes = sync_hash_existing_paths(workspace_dir, manifest_paths);
-    let lockfile_hashes = sync_hash_existing_paths(workspace_dir, lockfile_paths);
-    let canonical = json!({
-        "workspace_id": workspace_id,
-        "workspace_name": workspace_dir
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        "manifest_hashes": manifest_hashes,
-        "lockfile_hashes": lockfile_hashes,
-        "policy_version": policy_version,
-    });
-    // `serde_json::to_string` emits compact `,`/`:` separators over sorted
-    // `Map` keys — identical to `json.dumps(..., sort_keys=True,
-    // separators=(",", ":"))`.
-    stable_digest_hex(canonical.to_string().as_bytes())
-}
-
-/// `_workspace_audit_lockfile_context` (:4014-4040).
-fn cloud_audit_lockfile_context(
-    workspace_dir: &Path,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-    inventory: &[Map<String, Value>],
-) -> Option<Map<String, Value>> {
-    if lockfile_paths.is_empty() {
-        return None;
-    }
-    let lockfile_path = resolve_path_within_workspace(workspace_dir, &lockfile_paths[0])?;
-    if !lockfile_path.exists() {
-        return None;
-    }
-    let lockfile_text = read_text_within_workspace(workspace_dir, &lockfile_paths[0])?;
-    let manifest_hash = manifest_paths.first().and_then(|manifest_path| {
-        let bytes = resolve_path_within_workspace(workspace_dir, manifest_path)
-            .and_then(|p| std::fs::read(p).ok())?;
-        if is_audit_sensitive_basename(basename(manifest_path)) {
-            return None;
-        }
-        Some(stable_digest_hex(&bytes))
-    });
-    let mut ctx = Map::new();
-    ctx.insert("dependencyCount".into(), json!(inventory.len()));
-    ctx.insert(
-        "fileName".into(),
-        json!(lockfile_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()),
-    );
-    ctx.insert(
-        "lockfileHash".into(),
-        json!(stable_digest_hex(lockfile_text.as_bytes())),
-    );
-    ctx.insert(
-        "manifestHash".into(),
-        manifest_hash.map_or(Value::Null, Value::String),
-    );
-    Some(ctx)
-}
-
-/// `_build_workspace_context_payload` (:3823-3838) for the job-mode request —
-/// codebase identity plus manifest/lockfile path lists.
-fn cloud_audit_workspace_context(
-    workspace_dir: &Path,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-) -> Map<String, Value> {
-    let workspace_name = workspace_dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let codebase =
-        read_git_origin_codebase_untracked(workspace_dir).unwrap_or_else(|| workspace_name.clone());
-    let mut out = Map::new();
-    out.insert("agent".into(), json!(LOCAL_SUPPLY_CHAIN_HARNESS));
-    out.insert("codebase".into(), json!(codebase));
-    out.insert(
-        "folderPath".into(),
-        redacted_workspace_folder_path(workspace_dir).map_or(Value::Null, Value::String),
-    );
-    out.insert("lockfilePaths".into(), json!(lockfile_paths.to_vec()));
-    out.insert(
-        "machine".into(),
-        safe_machine_name().map_or(Value::Null, Value::String),
-    );
-    out.insert("manifestPaths".into(), json!(manifest_paths.to_vec()));
-    out.insert(
-        "packageManager".into(),
-        json!(package_manager_for_scan(manifest_paths)),
-    );
-    out.insert("workspaceName".into(), json!(workspace_name));
-    out
-}
-
-/// `_read_git_origin_codebase` fallback used when the runner seam is not
-/// wired for this payload builder: read `.git/config` for `url =`.
-fn read_git_origin_codebase_untracked(workspace_dir: &Path) -> Option<String> {
-    let git_config = workspace_dir.join(".git").join("config");
-    let text = std::fs::read_to_string(git_config).ok()?;
-    let mut in_remote_origin = false;
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_remote_origin = trimmed == "[remote \"origin\"]";
-            continue;
-        }
-        if in_remote_origin {
-            if let Some((key, value)) = trimmed.split_once('=') {
-                if key.trim() == "url" {
-                    let url = value.trim();
-                    if !url.is_empty() {
-                        return Some(url.to_string());
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// `_build_cloud_audit_payload` (:3841-3899) — the job-mode request body sent
-/// to the batch endpoint for managed workspace sync.
-#[allow(clippy::too_many_arguments)]
-fn build_cloud_audit_job_payload(
-    workspace_dir: &Path,
-    workspace_id: &str,
-    store: &dyn SupplyChainStore,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-    inventory: &[Map<String, Value>],
-    mode: &str,
-    page_size: Option<usize>,
-) -> Map<String, Value> {
-    let summary = store.get_sync_payload("supply_chain_bundle_summary");
-    let mut policy_version = "local:none".to_string();
-    if let Some(summary_map) = summary.as_ref().and_then(Value::as_object) {
-        if let Some(policy_hash) = summary_map.get("policy_hash").and_then(Value::as_str) {
-            if !policy_hash.is_empty() {
-                policy_version = policy_hash.to_string();
-            }
-        }
-    }
-    let workspace_fingerprint = workspace_audit_sync_fingerprint(
-        workspace_id,
-        workspace_dir,
-        manifest_paths,
-        lockfile_paths,
-        &policy_version,
-    );
-    let effective_page = match page_size {
-        Some(size) if size > 0 => size,
-        _ => inventory.len(),
-    };
-    let page_size_value = effective_page.clamp(1, CLOUD_AUDIT_PAGE_SIZE);
-    let packages: Vec<Value> = inventory
-        .iter()
-        .map(|item| {
-            let mut pkg = Map::new();
-            pkg.insert(
-                "direct".into(),
-                json!(item.get("direct").and_then(Value::as_bool).unwrap_or(false)),
-            );
-            pkg.insert(
-                "ecosystem".into(),
-                json!(item
-                    .get("ecosystem")
-                    .map(json_scalar_str)
-                    .unwrap_or_default()),
-            );
-            pkg.insert(
-                "name".into(),
-                json!(item.get("name").map(json_scalar_str).unwrap_or_default()),
-            );
-            pkg.insert(
-                "namespace".into(),
-                item.get("namespace").cloned().unwrap_or(Value::Null),
-            );
-            if let Some(version) = item.get("version").and_then(Value::as_str) {
-                pkg.insert("version".into(), json!(version));
-            }
-            if let Some(range) = item.get("range").and_then(Value::as_str) {
-                pkg.insert("range".into(), json!(range));
-            }
-            Value::Object(pkg)
-        })
-        .collect();
-    let mut payload = Map::new();
-    payload.insert(
-        "commandShape".into(),
-        json!({
-            "argCount": 3,
-            "flags": [],
-            "packageManager": package_manager_for_scan(manifest_paths),
-            "redacted": true,
-            "verb": "audit",
-        }),
-    );
-    payload.insert("harness".into(), json!(LOCAL_SUPPLY_CHAIN_HARNESS));
-    if let Some(lockfile_ctx) =
-        cloud_audit_lockfile_context(workspace_dir, manifest_paths, lockfile_paths, inventory)
-    {
-        payload.insert("lockfileContext".into(), Value::Object(lockfile_ctx));
-    }
-    payload.insert("mode".into(), json!(mode));
-    payload.insert("pageSize".into(), json!(page_size_value));
-    payload.insert("packages".into(), Value::Array(packages));
-    payload.insert("policyVersion".into(), json!(policy_version));
-    payload.insert(
-        "workspaceContext".into(),
-        Value::Object(cloud_audit_workspace_context(
-            workspace_dir,
-            manifest_paths,
-            lockfile_paths,
-        )),
-    );
-    payload.insert("workspaceFingerprint".into(), json!(workspace_fingerprint));
-    payload
-}
 
 // ---------------------------------------------------------------------------
 // Managed workspace audit sync (:4165-4302)
@@ -7579,16 +7155,25 @@ fn run_managed_workspace_audit_job(
         row.insert("package_count".into(), json!(0));
         return Ok((WorkspaceAuditJobOutcome::Skipped, row));
     }
-    let request_payload = build_cloud_audit_job_payload(
+    let job_inventory: Vec<Value> = inventory
+        .package_items
+        .iter()
+        .cloned()
+        .map(Value::Object)
+        .collect();
+    let request_payload = build_cloud_audit_payload(
         candidate,
         workspace_id,
         store,
         &inventory.manifest_paths,
         &inventory.lockfile_paths,
-        &inventory.package_items,
+        &job_inventory,
         "job",
-        Some(CLOUD_AUDIT_SYNC_PAGE_SIZE.min(inventory.package_items.len().max(1))),
-    );
+        Some(CLOUD_AUDIT_SYNC_PAGE_SIZE.min(inventory.package_items.len().max(1)) as i64),
+        paths,
+        &EnvCloudAuditWorkspaceContext,
+    )
+    .map_err(LocalSupplyChainError::Runtime)?;
     let enqueue_response = enqueue_cloud_workspace_audit_job(
         resolved_auth_context,
         &request_payload,

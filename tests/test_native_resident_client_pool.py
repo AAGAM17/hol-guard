@@ -418,3 +418,96 @@ def test_stream_launch_keeps_an_existing_state_dir(tmp_path: Path) -> None:
     state = tmp_path / "native-runtime"
     state.mkdir()
     assert _existing_state_dir(state) == state
+
+
+def test_directory_probe_fails_closed_when_stat_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.native_resident_stream import _is_directory as stream_is_directory
+
+    def fail_is_dir(self: Path) -> bool:
+        raise OSError("stat failed")
+
+    monkeypatch.setattr(Path, "is_dir", fail_is_dir)
+    assert client_module._is_directory(tmp_path) is False
+    assert stream_is_directory(tmp_path) is False
+
+
+def test_pinned_state_dir_resolves_an_existing_absolute_spelling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "missing" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    monkeypatch.setattr(client_module.os.path, "abspath", lambda _path: str(created))
+    monkeypatch.setattr(
+        client_module,
+        "_is_directory",
+        lambda path: path == created or path == created.resolve(),
+    )
+    assert client_module._pinned_state_dir(state) == created.resolve()
+
+
+def test_pinned_state_dir_keeps_absolute_when_resolve_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "missing" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    monkeypatch.setattr(client_module.os.path, "abspath", lambda _path: str(created))
+    monkeypatch.setattr(client_module, "_is_directory", lambda path: path == created)
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        raise OSError("resolve failed")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    assert client_module._pinned_state_dir(state) == created
+
+
+def test_pinned_state_dir_keeps_absolute_when_resolved_spelling_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "missing" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    missing = tmp_path / "gone"
+    monkeypatch.setattr(client_module.os.path, "abspath", lambda _path: str(created))
+    monkeypatch.setattr(client_module, "_is_directory", lambda path: path == created)
+    monkeypatch.setattr(Path, "resolve", lambda self, strict=False: missing)
+    assert client_module._pinned_state_dir(state) == created
+
+
+def test_stream_keeps_absolute_when_resolve_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard import native_resident_stream as stream
+
+    pinned = tmp_path / "pinned" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    monkeypatch.setattr(stream.os.path, "abspath", lambda _path: str(created))
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        raise OSError("resolve failed")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    assert stream._existing_state_dir(pinned) == created
+
+
+def test_overlapping_runtime_spelling_replaces_the_stale_pool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_module.close_native_resident_clients()
+    runtime = tmp_path / "runtime"
+    first = tmp_path / "first" / "native-runtime"
+    second = tmp_path / "second" / "native-runtime"
+    monkeypatch.setattr(client_module, "_directory_forms", lambda _path: {"same-runtime"})
+    try:
+        first_pool = client_module._client_pool_for(runtime, first, {})
+        second_pool = client_module._client_pool_for(runtime, second, {})
+        assert second_pool is not first_pool
+        assert first_pool._closed is True  # pyright: ignore[reportPrivateUsage]
+        assert (str(runtime), str(client_module._pinned_state_dir(first))) not in client_module._CLIENT_POOLS
+        assert (str(runtime), str(client_module._pinned_state_dir(second))) in client_module._CLIENT_POOLS
+    finally:
+        client_module.close_native_resident_clients()

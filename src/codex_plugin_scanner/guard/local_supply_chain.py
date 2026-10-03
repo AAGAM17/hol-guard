@@ -333,19 +333,13 @@ def _native_cloud_transport_unavailable(payload: dict[str, object]) -> bool:
 
 
 def _python_cloud_auth_failed(store: GuardStore) -> bool:
-    """Tests and the Python evaluator observe auth expiry on this seam.
-    The resident cannot see that patch, so an expiry must fall back.
-    """
-    from .runtime import supply_chain_package_eval as package_eval
-    from .runtime.runner import GuardSyncAuthorizationExpiredError
-
-    try:
-        package_eval._resolve_guard_sync_auth_context(store, allow_primary_repair=False)
-    except GuardSyncAuthorizationExpiredError:
-        return True
-    except Exception:
+    from .runtime import runner
+    if runner._test_sync_auth_context_override is not None:
         return False
-    return False
+    credentials = store.get_oauth_local_credentials(allow_primary=False)
+    if not isinstance(credentials, dict):
+        return False
+    return not credentials.get("refresh_token")
 
 
 def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:

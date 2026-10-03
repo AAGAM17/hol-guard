@@ -40,10 +40,11 @@ pub struct PackageIntentParseRequestV1 {
     /// Optional home directory (`Path.home()` fallback when absent).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home_dir: Option<String>,
-    /// Optional canonical command tokens (Python accepts it; the Rust port
-    /// ignores it for parse — carried for wire parity).
+    /// Optional canonical command object. Python sends a `CanonicalCommand`
+    /// dict. This parse ignores it; accepting any JSON value keeps a present
+    /// object from failing the request and falling back to Python.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub canonical_command: Option<Vec<String>>,
+    pub canonical_command: Option<Value>,
     /// Explicit environment overlay. Non-string maps are ignored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<Value>,

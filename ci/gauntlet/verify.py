@@ -23,7 +23,12 @@ def _read_json(path: Path, limit: int) -> dict[str, Any]:
 
 
 def verify_report(
-    directory: Path, *, expected_sha: str, require_qualified: bool = True, source_root: Path | None = None
+    directory: Path,
+    *,
+    expected_sha: str,
+    require_qualified: bool = True,
+    source_root: Path | None = None,
+    source_manifest: Path | None = None,
 ) -> dict[str, Any]:
     """Recompute coverage, hashes and outcomes for the exact candidate source."""
     if re.fullmatch(r"[0-9a-f]{40}", expected_sha) is None:
@@ -48,13 +53,31 @@ def verify_report(
         raise ValueError("evidence does not qualify the exact clean installed candidate")
     here = Path(__file__).resolve().parent
     repo = source_root.resolve() if source_root is not None else here.parents[1]
+    if source_root is not None and source_manifest is not None:
+        raise ValueError("select only one independently trusted source reference")
+    manifest = _read_json(source_manifest, 1_000_000) if source_manifest is not None else None
+    if manifest is not None and manifest.get("schema") != "hol.guard-gauntlet.github-source.v1":
+        raise ValueError("unsupported trusted GitHub source manifest")
     if require_qualified:
         validate_identity(report, expected_sha=expected_sha)
-        actual_binding = source_identity(repo, expected_sha)
+        if manifest is None:
+            actual_binding = source_identity(repo, expected_sha)
+        else:
+            actual_binding = {
+                key: manifest.get(key)
+                for key in ("candidate_sha", "tested_source_sha", "source_parents", "tested_base_sha", "source_dirty")
+            }
         if any(report.get(key) != value for key, value in actual_binding.items()):
-            raise ValueError("reported ancestry does not match the checked-out Git commit")
-    if report.get("sdk_lock_sha256") != digest_file(repo / "ci/pi-exact-continuation/package-lock.json"):
+            raise ValueError("reported ancestry does not match the independently resolved Git commit")
+    sdk_digest = (
+        manifest.get("sdk_lock_sha256")
+        if manifest is not None
+        else digest_file(repo / "ci/pi-exact-continuation/package-lock.json")
+    )
+    if report.get("sdk_lock_sha256") != sdk_digest:
         raise ValueError("Oh My Pi dependency lock changed after evidence was produced")
+    if manifest is not None and manifest.get("runner_files") != report.get("runner_files"):
+        raise ValueError("reported runner differs from immutable candidate Git blobs")
     actual_runner = {p.name: digest_file(p) for p in sorted(here.iterdir()) if p.is_file()}
     if report.get("runner_files") != actual_runner:
         raise ValueError("Gauntlet runner changed after evidence was produced")

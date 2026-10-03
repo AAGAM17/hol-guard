@@ -11,7 +11,7 @@
         "write",
         "bash"
       ],
-      "prompt": "In this disposable project, read README.md and src/settings.ts. Change only retryLimit from 3 to 5 using the native edit tool, preserving timeoutSeconds and formatting. Use the native write tool to create docs/change.md containing exactly 'Retry limit increased from 3 to 5.' followed by a newline. Read both changed files back, then use bash to run git status --short. Finish when the observed files are correct. Use read, edit, write and bash naturally; no approvals or policy changes."
+      "prompt": "In this disposable project, read README.md and src/settings.ts. Change only retryLimit from 3 to 5 using the native edit tool, preserving timeoutSeconds and formatting. Use the native write tool to create docs/change.md containing exactly 'Retry limit increased from 3 to 5.' followed by a newline. After the edit and write, use native read to read src/settings.ts AND docs/change.md. Both readbacks are required; reading README.md again does not replace either one. Then use bash to run git status --short. Finish when the observed files are correct. Use read, edit, write and bash naturally; no approvals or policy changes."
     },
     {
       "id": "native-sibling-project",

@@ -120,6 +120,7 @@ def test_evidence_downloader_rejects_internal_or_unapproved_origins(url):
 def test_exact_candidate_or_current_test_merge_is_required():
     candidate, base, source = "a" * 40, "b" * 40, "c" * 40
     report = {
+        "source_dirty": False,
         "candidate_sha": candidate,
         "tested_source_sha": source,
         "installed_source_sha": source,
@@ -189,3 +190,73 @@ def test_required_ci_rejects_status_without_matching_successful_producer(field, 
     setattr(api, field, value)
     with pytest.raises(RuntimeError):
         require_evidence(api, {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})
+
+
+@pytest.mark.parametrize("dirty", [True, None])
+def test_identity_rejects_dirty_or_unrecorded_worktrees(dirty):
+    report = {
+        "candidate_sha": "a" * 40,
+        "tested_source_sha": "a" * 40,
+        "installed_source_sha": "a" * 40,
+        "source_parents": ["b" * 40],
+        "tested_base_sha": None,
+        "source_dirty": dirty,
+    }
+    with pytest.raises(ValueError, match="dirty"):
+        validate_identity(report, expected_sha="a" * 40)
+
+
+def test_immutable_source_manifest_hashes_api_blobs_without_checkout():
+    import base64
+
+    from ci.gauntlet.github_source import source_manifest
+
+    class API:
+        def request(self, path):
+            if path.startswith("/git/commits/"):
+                return {"sha": "a" * 40, "parents": [{"sha": "b" * 40}]}
+            if path.startswith("/contents/ci/gauntlet?"):
+                return [{"name": "runner.py", "path": "ci/gauntlet/runner.py", "type": "file", "sha": "c" * 40}]
+            if path.startswith("/contents/ci/pi-exact-continuation/"):
+                return {"path": "ci/pi-exact-continuation/package-lock.json", "type": "file", "sha": "d" * 40}
+            if path.startswith("/git/blobs/"):
+                raw = b"immutable source bytes"
+                return {
+                    "sha": path.rsplit("/", 1)[1],
+                    "encoding": "base64",
+                    "size": len(raw),
+                    "content": base64.b64encode(raw).decode(),
+                }
+            raise AssertionError(path)
+
+    manifest = source_manifest(API(), "a" * 40, "a" * 40)
+    assert manifest["runner_files"] == {"runner.py": hashlib.sha256(b"immutable source bytes").hexdigest()}
+    assert manifest["source_parents"] == ["b" * 40]
+
+
+def test_public_bundle_can_be_submitted_inline_without_storage_credentials(tmp_path):
+    from ci.gauntlet.submission import inline_dispatch_inputs, submitted_archive
+
+    path = tmp_path / "evidence.zip"
+    path.write_bytes(archive([("summary.json", "{}")]))
+    inputs = inline_dispatch_inputs(path, candidate_sha="a" * 40, pr_number=1, attested=True)
+    assert submitted_archive(inputs) == path.read_bytes()
+    assert len(json.dumps(inputs)) < 60000
+    with pytest.raises(ValueError):
+        inline_dispatch_inputs(path, candidate_sha="a" * 40, pr_number=1, attested=False)
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        {},
+        {"evidence_base64": "bad!"},
+        {"evidence_base64": "AAAA", "evidence_url": "https://example.com"},
+        {"evidence_base64": "A" * 55001},
+    ],
+)
+def test_inline_submission_rejects_ambiguous_malformed_or_oversized_data(inputs):
+    from ci.gauntlet.submission import submitted_archive
+
+    with pytest.raises(ValueError):
+        submitted_archive(inputs)

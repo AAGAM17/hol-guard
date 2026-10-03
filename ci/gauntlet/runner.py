@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -282,6 +283,7 @@ def run_suite(
     source_sha = binding["tested_source_sha"]
     dirty = binding["source_dirty"]
     report = {
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "schema": "hol.guard-gauntlet.evidence.v1",
         "name": "Guard Gauntlet",
         **binding,
@@ -318,6 +320,7 @@ def run_suite(
         )
         print(json.dumps({"scenario": scenario.id, **case["assessment"]}), flush=True)
         (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
+    report["finished_at"] = datetime.now(timezone.utc).isoformat()
     report["pass"] = report["full_profile"] and all(c["outcome"] == "pass" for c in report["cases"])
     report["source_unchanged"] = source_identity(REPO, candidate_sha) == binding and report["runner_files"] == {
         p.name: digest_file(p) for p in sorted(HERE.iterdir()) if p.is_file()

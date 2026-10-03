@@ -1,4 +1,5 @@
 """Read candidate Git blobs as data; privileged validation never checks out PR code."""
+
 from __future__ import annotations
 
 import base64
@@ -25,17 +26,29 @@ def source_manifest(api: Any, source: str, candidate: str) -> dict[str, Any]:
     runner = {}
     for row in rows:
         name = row.get("name")
-        if (row.get("type") != "file" or not isinstance(name, str) or "/" in name or "\\" in name
-                or row.get("path") != PREFIX + name or name in runner):
+        if (
+            row.get("type") != "file"
+            or not isinstance(name, str)
+            or "/" in name
+            or "\\" in name
+            or row.get("path") != PREFIX + name
+            or name in runner
+        ):
             raise ValueError("candidate Gauntlet entries must be unique ordinary files")
         runner[name] = blob_digest(api, row["sha"])
     lock = api.request("/contents/" + LOCK + "?ref=" + source)
     if not isinstance(lock, dict) or lock.get("type") != "file" or lock.get("path") != LOCK:
         raise ValueError("candidate SDK lock is not an ordinary file")
-    return {"schema": "hol.guard-gauntlet.github-source.v1", "candidate_sha": candidate,
-            "tested_source_sha": source, "source_parents": parents,
-            "tested_base_sha": next((p for p in parents if p != candidate), None) if source != candidate else None,
-            "source_dirty": False, "runner_files": runner, "sdk_lock_sha256": blob_digest(api, lock["sha"])}
+    return {
+        "schema": "hol.guard-gauntlet.github-source.v1",
+        "candidate_sha": candidate,
+        "tested_source_sha": source,
+        "source_parents": parents,
+        "tested_base_sha": next((p for p in parents if p != candidate), None) if source != candidate else None,
+        "source_dirty": False,
+        "runner_files": runner,
+        "sdk_lock_sha256": blob_digest(api, lock["sha"]),
+    }
 
 
 def blob_digest(api: Any, sha: str) -> str:
@@ -45,8 +58,14 @@ def blob_digest(api: Any, sha: str) -> str:
     blob = api.request("/git/blobs/" + sha)
     size = blob.get("size")
     content = blob.get("content")
-    if (blob.get("sha") != sha or blob.get("encoding") != "base64" or type(size) is not int
-            or not 0 <= size <= 2_000_000 or not isinstance(content, str) or len(content) > 3_000_000):
+    if (
+        blob.get("sha") != sha
+        or blob.get("encoding") != "base64"
+        or type(size) is not int
+        or not 0 <= size <= 2_000_000
+        or not isinstance(content, str)
+        or len(content) > 3_000_000
+    ):
         raise ValueError("Git blob response has an invalid identity, encoding or size")
     raw = base64.b64decode("".join(content.split()), validate=True)
     if len(raw) != size:

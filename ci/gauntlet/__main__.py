@@ -33,10 +33,14 @@ def main() -> int:
     verify.add_argument("directory", type=Path)
     verify.add_argument("--expected-sha", required=True)
     verify.add_argument("--source-root", type=Path, help="Candidate checkout read only as data by a trusted verifier")
+    verify.add_argument("--source-manifest", type=Path, help="Independently fetched immutable GitHub blob manifest")
     pack = sub.add_parser("pack", help="Verify and export only public qualification evidence")
     pack.add_argument("directory", type=Path)
     pack.add_argument("--expected-sha", required=True)
     pack.add_argument("--output", type=Path, required=True)
+    pack.add_argument("--pr", type=int, help="Pull request receiving the inline public bundle")
+    pack.add_argument("--dispatch-inputs", type=Path, help="Write bounded JSON for gh workflow run --json")
+    pack.add_argument("--attest-real-inference", action="store_true")
     verify.add_argument(
         "--exploratory", action="store_true", help="Do not treat old-runtime exploration as merge proof"
     )
@@ -55,6 +59,17 @@ def main() -> int:
 
             verify_report(args.directory, expected_sha=args.expected_sha)
             digest = pack_bundle(args.directory, args.output)
+            if args.dispatch_inputs is not None:
+                from .submission import inline_dispatch_inputs
+
+                inputs = inline_dispatch_inputs(
+                    args.output,
+                    candidate_sha=args.expected_sha,
+                    pr_number=args.pr or 0,
+                    attested=args.attest_real_inference,
+                )
+                with args.dispatch_inputs.open("x", encoding="utf-8") as stream:
+                    json.dump(inputs, stream)
             print(json.dumps({"path": str(args.output), "sha256": digest}))
             return 0
         if args.command == "verify":
@@ -67,6 +82,7 @@ def main() -> int:
                         expected_sha=args.expected_sha,
                         require_qualified=not args.exploratory,
                         source_root=args.source_root,
+                        source_manifest=args.source_manifest,
                     ),
                     indent=2,
                 )

@@ -1,4 +1,5 @@
 """Submit bounded public evidence using GitHub alone or a direct object URL."""
+
 from __future__ import annotations
 
 import base64
@@ -17,9 +18,13 @@ def inline_dispatch_inputs(archive: Path, *, candidate_sha: str, pr_number: int,
     if archive.is_symlink() or not archive.is_file() or archive.stat().st_size > 40000:
         raise ValueError("bundle is too large for inline dispatch; use a signed evidence URL instead")
     raw = archive.read_bytes()
-    inputs = {"candidate_sha": candidate_sha, "pr_number": str(pr_number),
-              "evidence_base64": base64.b64encode(raw).decode("ascii"),
-              "evidence_sha256": hashlib.sha256(raw).hexdigest(), "attest_real_inference": "true"}
+    inputs = {
+        "candidate_sha": candidate_sha,
+        "pr_number": str(pr_number),
+        "evidence_base64": base64.b64encode(raw).decode("ascii"),
+        "evidence_sha256": hashlib.sha256(raw).hexdigest(),
+        "attest_real_inference": "true",
+    }
     if len(json.dumps(inputs)) > 60000:
         raise ValueError("inline evidence exceeds the bounded workflow input budget")
     return inputs

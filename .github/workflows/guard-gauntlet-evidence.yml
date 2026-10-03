@@ -17,8 +17,12 @@ on:
         required: true
         type: string
       evidence_url:
-        description: Direct HTTPS signed object URL for the public evidence ZIP
-        required: true
+        description: Optional direct HTTPS signed URL for a large public evidence ZIP
+        required: false
+        type: string
+      evidence_base64:
+        description: Public ZIP from Gauntlet dispatch inputs, as an alternative to a signed URL
+        required: false
         type: string
       evidence_sha256:
         description: SHA-256 of that exact public evidence ZIP
@@ -81,20 +85,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m ci.gauntlet.github_ci prepare --destination "$RUNNER_TEMP/gauntlet-evidence"
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          ref: ${{ steps.prepare.outputs.tested_source_sha }}
-          path: candidate
-          persist-credentials: false
-          submodules: false
-          lfs: false
-      - name: Recompute every outcome against the actual candidate Git tree
+      - name: Recompute every outcome against immutable candidate Git blobs
         working-directory: trusted
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
           python -m ci.gauntlet verify "$RUNNER_TEMP/gauntlet-evidence" \
-            --expected-sha "$CANDIDATE_SHA" --source-root "$GITHUB_WORKSPACE/candidate" \
+            --expected-sha "$CANDIDATE_SHA" --source-manifest "$RUNNER_TEMP/gauntlet-source-manifest.json" \
             > "$RUNNER_TEMP/gauntlet-verified.json"
           {
             echo "## Guard Gauntlet: independently verified live evidence"

@@ -11,8 +11,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from .bundle import download, unpack
+from .bundle import unpack
 from .source_identity import SHA
+from .submission import submitted_archive
 
 CONTEXT = "Guard Gauntlet"
 
@@ -138,12 +139,16 @@ def prepare_evidence(api: GitHubAPI, event: dict[str, Any], destination: Path) -
     number = int(inputs["pr_number"])
     candidate = inputs["candidate_sha"]
     pull = api.pull(number, candidate)
-    unpack(download(inputs["evidence_url"]), destination, inputs["evidence_sha256"])
+    unpack(submitted_archive(inputs), destination, inputs["evidence_sha256"])
     report = json.loads((destination / "summary.json").read_text())
     source = report.get("tested_source_sha")
     if not isinstance(source, str) or report.get("candidate_sha") != candidate:
         raise ValueError("evidence candidate does not match the requested pull request")
     api.prove_source(source, candidate, pull["base"]["sha"])
+    from .github_source import source_manifest
+
+    manifest = source_manifest(api, source, candidate)
+    (destination.parent / "gauntlet-source-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     output("tested_source_sha", source)
     output("candidate_sha", candidate)
     output("pr_number", str(number))

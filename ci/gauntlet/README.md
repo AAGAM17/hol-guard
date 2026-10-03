@@ -77,17 +77,23 @@ python -m ci.gauntlet pack /absolute/path/gauntlet-evidence \
   --output /absolute/path/guard-gauntlet.zip
 ```
 
-Upload that ZIP as a direct HTTPS object on an approved R2, S3, Azure artifact or GitHub object endpoint. The command prints the archive SHA-256. Do not upload the private fixture directory or the model's raw system prompts/reasoning.
+For a small public bundle, no separate storage service is needed. Generate bounded workflow inputs after the actual live run:
 
-A repository writer then dispatches **Guard Gauntlet evidence**, using the reviewed workflow revision, with:
+```sh
+python -m ci.gauntlet pack /absolute/path/gauntlet-evidence \
+  --expected-sha FULL_PR_HEAD_SHA \
+  --output /absolute/path/guard-gauntlet-inline.zip \
+  --pr YOUR_PR_NUMBER --dispatch-inputs /absolute/path/gauntlet-inputs.json \
+  --attest-real-inference
+gh workflow run guard-gauntlet-evidence.yml --ref YOUR_REVIEWED_WORKFLOW_BRANCH \
+  --json < /absolute/path/gauntlet-inputs.json
+```
 
-- `pr_number`: the current pull request.
-- `candidate_sha`: its full current head SHA.
-- `evidence_url`: the direct signed ZIP object URL.
-- `evidence_sha256`: the printed digest.
-- `attest_real_inference`: `true` only after confirming real inference and actual host execution produced the evidence.
+A connected GitHub tool can dispatch the same JSON inputs. The attestation flag means the operator actually verified real inference and real host execution; it must never be used for fabricated or replayed completions.
 
-The read-only validation job checks the live report as data. It never imports candidate Python. A separate write-capable job publishes the exact-head status and a PR comment with the public artifact. A status claim alone is insufficient: the existing required `ci (3.12)` aggregate also requires a successful repository-owned evidence workflow and its unique unexpired candidate artifact.
+The generated inputs contain `pr_number`, `candidate_sha`, `evidence_base64`, `evidence_sha256` and `attest_real_inference`. Inline transport is bounded below GitHub's workflow-input limit. Larger bundles can use `evidence_url` instead of `evidence_base64`, pointing to a direct signed HTTPS object on an approved R2, S3, Azure artifact or GitHub object endpoint. Exactly one transport is accepted. Never upload the private fixture directory or model system prompts/reasoning.
+
+The read-only validation job checks the live report as data. It reads immutable candidate Git blobs through GitHub and never checks out or imports candidate code. A separate write-capable job publishes the exact-head status and a PR comment with the public artifact. A status claim alone is insufficient: the existing required `ci (3.12)` aggregate also requires a successful repository-owned evidence workflow and its unique unexpired candidate artifact.
 
 A first CI run can fail with “fresh real-agent evidence required.” After the evidence workflow finishes successfully, rerun the failed CI jobs. The agent performing the PR should complete this sequence rather than ask the maintainer to waive it. New enforcement commits invalidate old evidence. Unrelated documentation changes do not require a product run.
 

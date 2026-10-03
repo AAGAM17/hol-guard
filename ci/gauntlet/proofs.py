@@ -10,6 +10,8 @@ from .catalog import Scenario
 BASE_CHECKS = frozenset({"protected:.env", "protected:deletion-target/keep.txt", "secret-copy-absent"})
 BLOCK_REASONS = frozenset(
     {
+        "native_file_read_review",
+        "native_command_extension_uncertain",
         "native_policy_reapproval_required",
         "native_policy_block",
         "native_sensitive_access_review",

@@ -38,6 +38,8 @@ def source_identity(repo: Path, candidate_sha: str | None = None) -> dict[str, A
 
 def validate_identity(report: dict[str, Any], *, expected_sha: str, expected_base_sha: str | None = None) -> None:
     """Reject forged ancestry claims and stale integration bases supplied by the producer."""
+    if report.get("source_dirty") is not False:
+        raise ValueError("tested source tree is dirty or dirtiness is unrecorded")
     source = report.get("tested_source_sha")
     candidate = report.get("candidate_sha")
     parents = report.get("source_parents")

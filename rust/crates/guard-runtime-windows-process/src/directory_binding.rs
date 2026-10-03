@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::io;
 use std::os::windows::io::AsRawHandle;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
 
 use winapi::shared::minwindef::{DWORD, FALSE};
 use winapi::um::fileapi::CreateDirectoryW;
@@ -434,16 +434,68 @@ fn validate_boundary(path: &Path, trusted_base: &Path, private_root: &Path) -> i
 }
 
 fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
-    let mut path_components = path.components();
-    for expected in prefix.components() {
-        let Some(actual) = path_components.next() else {
-            return false;
-        };
-        if actual.as_os_str() != expected.as_os_str() {
-            return false;
-        }
+    let path_components = boundary_components(path);
+    let prefix_components = boundary_components(prefix);
+    if prefix_components.len() > path_components.len() {
+        return false;
     }
-    true
+    path_components
+        .iter()
+        .zip(prefix_components.iter())
+        .all(|(actual, expected)| boundary_component_eq(actual, expected))
+}
+
+fn boundary_components(path: &Path) -> Vec<Component<'_>> {
+    path.components()
+        .filter(|component| !matches!(component, Component::CurDir))
+        .collect()
+}
+
+/// Win32 canonical forms name the same directory with different prefixes
+/// (`C:\` vs `\\?\C:\`, `\\server\share` vs `\\?\UNC\server\share`) and with
+/// filesystem case. Guard homes are created by this process; a case variant is
+/// the same NTFS directory, not a sibling escape. `..` is rejected earlier.
+fn boundary_component_eq(actual: &Component<'_>, expected: &Component<'_>) -> bool {
+    match (actual, expected) {
+        (Component::Prefix(left), Component::Prefix(right)) => windows_prefix_eq(*left, *right),
+        (Component::RootDir, Component::RootDir) => true,
+        (Component::Normal(left), Component::Normal(right)) => os_eq_ignore_ascii_case(left, right),
+        _ => false,
+    }
+}
+
+fn windows_prefix_eq(left: Prefix<'_>, right: Prefix<'_>) -> bool {
+    let left_disk = match left {
+        Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => Some(letter),
+        _ => None,
+    };
+    let right_disk = match right {
+        Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => Some(letter),
+        _ => None,
+    };
+    if let (Some(left_letter), Some(right_letter)) = (left_disk, right_disk) {
+        return left_letter.to_ascii_lowercase() == right_letter.to_ascii_lowercase();
+    }
+    let left_unc = match left {
+        Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => Some((server, share)),
+        _ => None,
+    };
+    let right_unc = match right {
+        Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => Some((server, share)),
+        _ => None,
+    };
+    if let (Some((left_server, left_share)), Some((right_server, right_share))) =
+        (left_unc, right_unc)
+    {
+        return os_eq_ignore_ascii_case(left_server, right_server)
+            && os_eq_ignore_ascii_case(left_share, right_share);
+    }
+    os_eq_ignore_ascii_case(left.as_os_str(), right.as_os_str())
+}
+
+fn os_eq_ignore_ascii_case(left: &OsStr, right: &OsStr) -> bool {
+    left.to_string_lossy()
+        .eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
 /// Create one owner-private directory with its security descriptor applied at
@@ -489,4 +541,39 @@ fn create_private_directory_handle(
         return Err(io::Error::new(io::ErrorKind::AlreadyExists, error));
     }
     Err(error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verbatim_disk_prefix_matches_drive_prefix() {
+        let path = Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\home\native-runtime");
+        let prefix = Path::new(r"C:\Users\runneradmin\AppData\Local\Temp\home");
+        assert!(path_has_prefix(path, prefix));
+        assert!(path_has_prefix(
+            prefix,
+            Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\home")
+        ));
+    }
+
+    #[test]
+    fn windows_prefix_compare_is_case_insensitive_and_rejects_siblings() {
+        let path = Path::new(r"\\?\C:\Users\RUNNERADMIN\AppData\Local\Temp\Home");
+        let prefix = Path::new(r"c:\users\runneradmin\appdata\local\temp\home");
+        assert!(path_has_prefix(path, prefix));
+        assert!(!path_has_prefix(
+            Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\other"),
+            Path::new(r"C:\Users\runneradmin\AppData\Local\Temp\home")
+        ));
+    }
+
+    #[test]
+    fn verbatim_unc_prefix_matches_unc_prefix() {
+        let path = Path::new(r"\\?\UNC\server\share\home\native-runtime");
+        let prefix = Path::new(r"\\server\share\home");
+        assert!(path_has_prefix(path, prefix));
+        assert!(!path_has_prefix(path, Path::new(r"\\other\share\home")));
+    }
 }

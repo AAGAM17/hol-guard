@@ -196,6 +196,13 @@ def exercise(root: Path) -> dict[str, object]:
     home, workspace = root / "home", root / "work"
     home.mkdir(mode=0o700)
     workspace.mkdir(mode=0o700)
+    if os.name == "nt":
+        from codex_plugin_scanner.guard.native_policy_snapshot_windows_state import (
+            _windows_ensure_private_directory,
+        )
+
+        _windows_ensure_private_directory(home)
+        _windows_ensure_private_directory(workspace)
     store = GuardStore(home)
     password = secrets.token_urlsafe(32)
     update_guard_settings(home, {"mode": "enforce"})

@@ -71,7 +71,7 @@ where
     };
     result
         .and_then(|mut binding| action(&mut binding))
-        .map_err(|error| error.to_string())
+        .map_err(surfaced_windows_bind_error)
 }
 
 #[cfg(test)]
@@ -103,7 +103,7 @@ pub(super) fn bind_windows_private_directory_under(
             }
         },
     )
-    .map_err(|error| error.to_string())
+    .map_err(surfaced_windows_bind_error)
 }
 
 pub(super) fn bind_windows_existing_directory(
@@ -131,7 +131,7 @@ pub(super) fn bind_windows_existing_directory_under(
             }
         },
     )
-    .map_err(|error| error.to_string())
+    .map_err(surfaced_windows_bind_error)
 }
 
 fn with_existing_directory<T, F>(path: &Path, private_root: &Path, action: F) -> io::Result<T>
@@ -522,6 +522,37 @@ fn verify_windows_owner(applied: &SecurityDescriptor, owner: &Sid) -> Result<(),
     Ok(())
 }
 
+fn is_stable_native_code(message: &str) -> bool {
+    (1..=128).contains(&message.len())
+        && message.starts_with("native_")
+        && message
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn surfaced_windows_bind_error(error: io::Error) -> String {
+    surfaced_windows_bind_message(&error.to_string())
+}
+
+fn surfaced_windows_bind_message(message: &str) -> String {
+    if is_stable_native_code(message) {
+        return message.to_owned();
+    }
+    if message.contains("outside its trusted private boundary") {
+        return "native_resident_windows_boundary_mismatch".to_owned();
+    }
+    if message.contains("ancestry is missing") {
+        return "native_resident_windows_private_ancestry_missing".to_owned();
+    }
+    if message.contains("os error 32") || message.contains("being used by another process") {
+        return "native_resident_windows_sharing_violation".to_owned();
+    }
+    if message.contains("os error 5") || message.contains("Access is denied") {
+        return "native_resident_windows_access_denied".to_owned();
+    }
+    "native_resident_windows_bind_failed".to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,5 +578,39 @@ mod tests {
             system.as_ref(),
             administrators.as_ref(),
         ));
+    }
+
+    #[test]
+    fn windows_bind_errors_keep_stable_codes() {
+        assert_eq!(
+            super::surfaced_windows_bind_message(
+                "directory binding path is outside its trusted private boundary"
+            ),
+            "native_resident_windows_boundary_mismatch"
+        );
+        assert_eq!(
+            super::surfaced_windows_bind_message("private directory ancestry is missing"),
+            "native_resident_windows_private_ancestry_missing"
+        );
+        assert_eq!(
+            super::surfaced_windows_bind_message(
+                "The process cannot access the file because it is being used by another process. (os error 32)"
+            ),
+            "native_resident_windows_sharing_violation"
+        );
+        assert_eq!(
+            super::surfaced_windows_bind_message("Access is denied. (os error 5)"),
+            "native_resident_windows_access_denied"
+        );
+        assert_eq!(
+            super::surfaced_windows_bind_message("native_resident_windows_acl_not_private"),
+            "native_resident_windows_acl_not_private"
+        );
+        assert_eq!(
+            super::surfaced_windows_bind_message(
+                "The system cannot find the path specified. (os error 3)"
+            ),
+            "native_resident_windows_bind_failed"
+        );
     }
 }

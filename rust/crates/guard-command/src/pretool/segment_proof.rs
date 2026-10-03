@@ -19,17 +19,13 @@ pub(crate) fn benign_command_segments(
     {
         return Vec::new();
     }
-    let segment_benign: Vec<bool> = model
-        .segments
-        .iter()
-        .map(|segment| exact_safe_segment_with_context(model, segment, false, context))
-        .collect();
+    let mut all_previous_benign = true;
     model
         .segments
         .iter()
         .enumerate()
         .filter_map(|(index, segment)| {
-            let benign = segment_benign[index];
+            let benign = exact_safe_segment_with_context(model, segment, false, context);
             let basename = executable_basename(segment.executable.as_deref().unwrap_or(""));
             let stdin_filter = segment.pipeline_index > 0
                 && matches!(basename, "head" | "tail")
@@ -93,15 +89,15 @@ pub(crate) fn benign_command_segments(
                 }
                 found
             };
-            let all_previous_benign = segment_benign[..index].iter().all(|benign| *benign);
             // Earlier extension-approved segments may rewrite the tree (checkout/pull);
             // a pre-execution path proof only holds while every predecessor is benign.
-            (benign
+            let covered = benign
                 && ls_has_explicit_target
                 && (!requires_path_context
                     || safe_reads::verified_path_context(context.0, context.1))
-                && (path_free || all_previous_benign))
-                .then_some(index)
+                && (path_free || all_previous_benign);
+            all_previous_benign = all_previous_benign && benign;
+            covered.then_some(index)
         })
         .collect()
 }

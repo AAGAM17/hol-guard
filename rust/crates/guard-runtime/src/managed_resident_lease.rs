@@ -533,6 +533,10 @@ pub(super) fn retire_clients_for_update(
         }
         let actual_start_marker = match process_start_marker(record.process_id) {
             Ok(marker) => marker,
+            Err(_) if !lease_file_is_recent(record.modified) => {
+                let _ = remove_stale_lease(&path, &private_root);
+                continue;
+            }
             Err(_) => return Err("native_resident_client_retirement_failed".to_owned()),
         };
         if actual_start_marker != record.start_marker {

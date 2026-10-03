@@ -6568,82 +6568,6 @@ fn package_execution_exit_code(policy_action: &Value) -> i64 {
     }
 }
 
-/// `_package_target_identities` (py:2735-2761). `ProtectTargetIdentity` is
-/// unported; identities ride along as JSON for the `AdvisoryModelApi` seam.
-#[allow(dead_code)]
-fn package_target_identities(
-    artifact: &GuardArtifact,
-    advisory_model: &dyn AdvisoryModelApi,
-) -> Vec<Map<String, Value>> {
-    let metadata = artifact.metadata.as_object();
-    let targets = metadata
-        .and_then(|m| m.get("targets"))
-        .and_then(Value::as_array);
-    let Some(targets) = targets else {
-        return Vec::new();
-    };
-    let mut identities: Vec<Map<String, Value>> = Vec::new();
-    for item in targets {
-        let Some(item) = item.as_object() else {
-            continue;
-        };
-        // `str(item.get("ecosystem") or "")` — falsy values become "".
-        let ecosystem = item
-            .get("ecosystem")
-            .filter(|v| !matches!(v, Value::Null | Value::Bool(false)))
-            .map(|v| {
-                v.as_str()
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| v.to_string())
-            })
-            .unwrap_or_default();
-        let package_name = item
-            .get("package_name")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        // `str(item.get("raw_spec") or package_name or "")`.
-        let raw_spec_value = item
-            .get("raw_spec")
-            .filter(|v| !matches!(v, Value::Null | Value::Bool(false)));
-        let raw_spec = raw_spec_value
-            .map(|v| {
-                v.as_str()
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| v.to_string())
-            })
-            .or_else(|| package_name.clone())
-            .unwrap_or_default();
-        let version = item
-            .get("requested_specifier")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let source_url = item
-            .get("source_url")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let artifact_id = format!(
-            "{}:{}",
-            ecosystem,
-            package_name.clone().unwrap_or_else(|| raw_spec.clone())
-        );
-        let artifact_name = package_name.clone().unwrap_or_else(|| raw_spec.clone());
-        let package_url = advisory_model.build_package_url(
-            &ecosystem,
-            package_name.as_deref(),
-            version.as_deref(),
-        );
-        let mut identity = Map::new();
-        identity.insert("artifact_id".into(), json!(artifact_id));
-        identity.insert("artifact_name".into(), json!(artifact_name));
-        identity.insert("ecosystem".into(), json!(ecosystem));
-        identity.insert("package_name".into(), option_json(package_name));
-        identity.insert("package_url".into(), option_json(package_url));
-        identity.insert("source_url".into(), option_json(source_url));
-        identities.push(identity);
-    }
-    identities
-}
-
 /// `_package_matched_cached_advisory_ids` (py:2764-2775).
 #[allow(dead_code)]
 fn package_matched_cached_advisory_ids(
@@ -6652,11 +6576,12 @@ fn package_matched_cached_advisory_ids(
     advisory_model: &dyn AdvisoryModelApi,
 ) -> Vec<String> {
     let advisories = store.list_cached_advisories();
-    let identities = package_target_identities(artifact, advisory_model);
+    let identities = crate::target_identities::package_target_identities(artifact);
     let mut matched_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for advisory in &advisories {
         for identity in &identities {
-            if advisory_model.advisory_matches_target(advisory, &Value::Object(identity.clone())) {
+            if advisory_model.advisory_matches_target(advisory, &Value::Object(identity.to_dict()))
+            {
                 if let Some(advisory_id) = advisory.get("id").and_then(Value::as_str) {
                     if !advisory_id.is_empty() {
                         matched_ids.insert(advisory_id.to_string());
@@ -7994,58 +7919,6 @@ fn package_request_policy_hash(
 // ---------------------------------------------------------------------------
 // Command execution payload helpers (:3136-3174)
 // ---------------------------------------------------------------------------
-
-/// `_build_command_execution_payload` (:3136-3153) — execution evidence with
-/// redacted stdout/stderr plus redaction metadata.
-pub fn build_command_execution_payload(
-    stdout: &str,
-    stderr: &str,
-    returncode: i64,
-    unsafe_raw_output: bool,
-    redaction: &dyn RedactionApi,
-) -> Map<String, Value> {
-    let (redacted_stdout, stdout_count, stdout_classifiers) = redaction.redact_text(stdout);
-    let (redacted_stderr, stderr_count, stderr_classifiers) = redaction.redact_text(stderr);
-    let mut payload = Map::new();
-    payload.insert("returncode".into(), json!(returncode));
-    payload.insert(
-        "stdout".into(),
-        Value::String(if unsafe_raw_output {
-            stdout.to_string()
-        } else {
-            redacted_stdout
-        }),
-    );
-    payload.insert(
-        "stderr".into(),
-        Value::String(if unsafe_raw_output {
-            stderr.to_string()
-        } else {
-            redacted_stderr
-        }),
-    );
-    // `RedactedText.to_dict` — `original_sha256` is intentionally empty so
-    // secret-bearing input never becomes a hash oracle.
-    payload.insert(
-        "stdout_redactions".into(),
-        json!({
-            "count": stdout_count,
-            "classifiers": stdout_classifiers,
-            "original_sha256": "",
-        }),
-    );
-    payload.insert(
-        "stderr_redactions".into(),
-        json!({
-            "count": stderr_count,
-            "classifiers": stderr_classifiers,
-            "original_sha256": "",
-        }),
-    );
-    payload.insert("raw_output_enabled".into(), json!(unsafe_raw_output));
-    payload
-}
-
 /// `_coerce_command_output` (:3155-3160) — `str | bytes | None` -> `str` with
 /// replacement decoding. Accepts `Option<impl AsRef<[u8]>>` so `&str`,
 /// `&Vec<u8>`, `Vec<u8>`, and `&[u8]` callers all work.

@@ -20,7 +20,6 @@ pub(crate) use lease::client_request;
 use lease::client_request_with_lease;
 #[path = "managed_resident_client_request.rs"]
 mod client_request_flow;
-pub(super) use client_request_flow::client_request_with_deadline;
 #[path = "managed_resident_transport.rs"]
 mod managed_resident_transport;
 #[cfg(windows)]
@@ -38,7 +37,8 @@ mod restart_budget;
 const MANAGED_OWNER_LOCK_FILE_NAME: &str = owner_lock::MANAGED_OWNER_LOCK_FILE_NAME;
 
 use crate::resident_state::{
-    discover_home_states_prefer, process_start_marker, runtime_digest, state_scope, token_from_state,
+    acquire_startup_lock, discover_home_states_prefer, process_start_marker, runtime_digest,
+    state_scope, token_from_state,
 };
 
 pub(crate) fn client_stream(state_base: &Path) -> Result<(), String> {
@@ -47,7 +47,22 @@ pub(crate) fn client_stream(state_base: &Path) -> Result<(), String> {
 
 const MANAGED_IDLE_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const MANAGED_STOP_TIMEOUT: Duration = Duration::from_secs(2);
+const CLIENT_RETRY_DELAY: Duration = Duration::from_millis(5);
 static MANAGED_SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+fn client_request_with_deadline(
+    state_base: &Path,
+    payload: &[u8],
+    overall_deadline: Instant,
+    client_lease: &lease::ClientLease,
+) -> Result<Vec<u8>, String> {
+    client_request_flow::client_request_with_deadline(
+        state_base,
+        payload,
+        overall_deadline,
+        client_lease,
+    )
+}
 
 pub(crate) fn acquire_managed_owner_lock(
     scope: &Path,

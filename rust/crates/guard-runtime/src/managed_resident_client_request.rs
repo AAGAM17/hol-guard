@@ -4,7 +4,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::{containment, lease, restart_budget};
+use super::{containment, lease, restart_budget, CLIENT_RETRY_DELAY};
 use crate::resident_state::{
     acquire_startup_lock, clear_stale_startup_lock, discover_home_states_prefer, next_generation,
     runtime_digest, state_scope, token_from_state, validate_package_process_identity,
@@ -13,7 +13,6 @@ use crate::resident_state::{
 
 // Startup may use the caller's remaining budget, never more than nine seconds.
 const CLIENT_START_TIMEOUT: Duration = Duration::from_millis(9_000);
-const CLIENT_RETRY_DELAY: Duration = Duration::from_millis(5);
 
 fn try_live_or_restart(
     state_base: &Path,

@@ -156,6 +156,7 @@ def test_sensitive_read_context_binds_exact_configured_override(
     publisher = "trusted-publisher" if override_scope == "publisher" else None
     artifact = _sensitive_read_artifact(workspace, publisher=publisher)
     base_config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -195,6 +196,7 @@ def test_sensitive_read_exact_allow_overrides_global_block_before_independent_ri
     workspace.mkdir()
     artifact = _sensitive_read_artifact(workspace)
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         default_action="block",
@@ -212,6 +214,7 @@ def test_sensitive_read_risk_block_outranks_exact_allow(tmp_path: Path) -> None:
     workspace.mkdir()
     artifact = _sensitive_read_artifact(workspace)
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         default_action="block",
@@ -232,6 +235,7 @@ def test_stdio_sensitive_read_old_allow_cannot_survive_new_exact_artifact_block(
     store = GuardStore(tmp_path / "guard-home")
     artifact = _sensitive_read_artifact(workspace)
     review_config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -277,6 +281,7 @@ def test_stdio_sensitive_read_old_allow_cannot_survive_new_default_block(
     store = GuardStore(tmp_path / "guard-home")
     artifact = _sensitive_read_artifact(workspace)
     review_config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         default_action="review",
@@ -343,6 +348,7 @@ def test_stdio_sensitive_read_fresh_terminal_action_never_queues_approval(
     store = GuardStore(tmp_path / "guard-home")
     artifact = _sensitive_read_artifact(workspace)
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -377,6 +383,7 @@ def test_stdio_sensitive_read_exact_saved_block_is_terminal_and_not_reapprovable
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -422,6 +429,7 @@ def test_stdio_sensitive_read_valid_saved_block_remains_terminal_with_separate_i
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -473,6 +481,7 @@ def test_stdio_sensitive_read_current_review_still_queues_approval(tmp_path: Pat
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -510,6 +519,7 @@ def test_stdio_sensitive_read_unchanged_exact_one_shot_is_claimed_and_forwarded(
     store = GuardStore(tmp_path / "guard-home")
     artifact = _sensitive_read_artifact(workspace)
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -581,6 +591,7 @@ def test_stdio_sensitive_read_rebuilds_current_authority_after_exact_claim(
     store = GuardStore(tmp_path / "guard-home")
     artifact = _sensitive_read_artifact(workspace)
     review_config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -664,6 +675,7 @@ def test_stdio_sensitive_read_fails_closed_when_postclaim_config_refresh_fails(
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -721,6 +733,7 @@ def test_stdio_invalidated_saved_allow_with_current_review_never_reaches_child(
     workspace.mkdir()
     store = GuardStore(tmp_path / "guard-home")
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",
@@ -764,6 +777,7 @@ def test_sensitive_read_legacy_artifact_digest_is_not_approval_authority(tmp_pat
     workspace.mkdir()
     artifact = _sensitive_read_artifact(workspace)
     config = GuardConfig(
+        blocked_request_mode="ask",
         guard_home=tmp_path / "guard-home",
         workspace=workspace,
         security_level="custom",

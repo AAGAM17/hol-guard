@@ -1959,6 +1959,7 @@ def test_guard_protect_pnpm_install_alias_renders_wrapped_review_link_for_cloud_
     assert "http://127.0.0.1:5474/requests/" not in output
 
 
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_ignores_stale_policy_bundle_package_family_block(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

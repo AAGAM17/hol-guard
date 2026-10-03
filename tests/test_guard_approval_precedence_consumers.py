@@ -43,6 +43,7 @@ from codex_plugin_scanner.guard.runtime.supply_chain_package_eval import (
 )
 from codex_plugin_scanner.guard.store import GuardStore
 
+pytestmark = pytest.mark.usefixtures("approval_questionnaire_mode")
 
 def _exact_package_context_token() -> str:
     # Built lazily inside tests: the token is native-owned and a module-level

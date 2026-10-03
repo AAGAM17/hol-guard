@@ -4456,7 +4456,7 @@ fn final_package_protect_authority(
             current.evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
             normalize_guard_action(
                 current.current_action.as_ref().unwrap_or(&Value::Null),
-                GuardAction::Allow,
+                GuardAction::Block,
             ),
         ),
     ));
@@ -4470,7 +4470,7 @@ fn final_package_protect_authority(
                     failure_eval.value.as_object().map_or(&*EMPTY_MAP, |m| m),
                     normalize_guard_action(
                         current.current_action.as_ref().unwrap_or(&Value::Null),
-                        GuardAction::Allow,
+                        GuardAction::Block,
                     ),
                 ),
             )),
@@ -5312,9 +5312,7 @@ fn compose_current_package_policy_action(
     // An additional current action (from the claim-resolution path) may
     // supersede everything else.
     if let Some(v) = additional_current_action {
-        if let Some(s) = v.as_str() {
-            action = Some(s.to_string());
-        }
+        action = Some(normalize_guard_action(v, GuardAction::Block).as_str().to_string());
     }
     action.map(Value::String)
 }

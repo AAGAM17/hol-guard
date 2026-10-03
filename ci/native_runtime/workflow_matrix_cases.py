@@ -53,6 +53,8 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("read-outside", f"cat {outside}"),
         ("head", "head -n 1 src/one.ts"),
         ("tail", "tail -n 1 src/one.ts"),
+        ("head-shorthand", "head -1 src/one.ts"),
+        ("tail-shorthand", "tail -1 src/one.ts"),
         ("word-count-file", "wc -l src/one.ts"),
         ("word-count-files", "wc -lw src/one.ts src/two.ts"),
         ("word-count-pipeline", "cat src/one.ts | wc -l"),

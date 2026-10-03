@@ -298,7 +298,7 @@ fn create_null_handle(
 /// `MAX_PATH` includes the terminating NUL. A path already at that limit
 /// cannot be opened unless `CreateFileW` receives the `\\?\` prefix. Shorter
 /// paths stay in Win32 form: the prefix disables 8.3 expansion.
-const MAX_PATH: usize = 260;
+pub(crate) const MAX_PATH: usize = 260;
 
 fn wide_path(path: &Path) -> io::Result<Vec<u16>> {
     if path.as_os_str().encode_wide().any(|unit| unit == 0) {

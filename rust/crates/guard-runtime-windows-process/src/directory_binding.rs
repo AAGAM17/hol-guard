@@ -14,6 +14,7 @@ use super::private_files::{
     open_directory_bound, open_inspect_private_file, open_raw, open_raw_directory_bound,
     open_rename_directory, rename_into_directory, validate_handle, verify_private_file,
 };
+use super::windows::MAX_PATH;
 
 const ERROR_ALREADY_EXISTS: i32 = 183;
 
@@ -506,7 +507,7 @@ fn extended_path_if_long(path: &Path) -> PathBuf {
 
     let path = win32_path(path);
     let wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
-    if wide.len() < 260 {
+    if wide.len() < MAX_PATH {
         return path;
     }
     let mut extended = Vec::with_capacity(wide.len() + 8);

@@ -3386,7 +3386,6 @@ fn targets_from_artifact(artifact: &GuardArtifact) -> Vec<Map<String, Value>> {
     parsed
 }
 
-/// `_private_package_targets_match_public` (:2257-2300).
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(bytes))

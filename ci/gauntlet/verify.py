@@ -1,0 +1,62 @@
+"""Verify a complete Gauntlet evidence directory without trusting its verdicts."""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from .catalog import catalog_digest, load_catalog
+from .evidence import assess_case
+from .fixtures import digest_file
+
+
+def _read_json(path: Path, limit: int) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
+        raise ValueError("missing, symlinked or oversized evidence")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("evidence must be a JSON object")
+    return data
+
+
+def verify_report(directory: Path, *, expected_sha: str, require_qualified: bool = True) -> dict[str, Any]:
+    """Recompute coverage, hashes and outcomes for the exact candidate source."""
+    if re.fullmatch(r"[0-9a-f]{40}", expected_sha) is None:
+        raise ValueError("expected candidate SHA must be a full commit")
+    directory = directory.resolve()
+    report = _read_json(directory / "summary.json", 1_000_000)
+    if report.get("schema") != "hol.guard-gauntlet.evidence.v1" or report.get("candidate_sha") != expected_sha:
+        raise ValueError("wrong evidence schema or stale candidate SHA")
+    if report.get("catalog_sha256") != catalog_digest():
+        raise ValueError("scenario catalog changed after evidence was produced")
+    expected = load_catalog()
+    ids = [s.id for s in expected]
+    if report.get("expected_scenarios") != ids or [r.get("id") for r in report.get("cases", [])] != ids:
+        raise ValueError("missing, duplicate, reordered or unknown scenario evidence")
+    if report.get("full_profile") is not True or report.get("pass") is not True:
+        raise ValueError("partial or failed runs do not qualify")
+    if require_qualified and (report.get("merge_qualified") is not True or report.get("source_dirty") is not False
+                              or report.get("installed_source_sha") != expected_sha):
+        raise ValueError("evidence does not qualify the exact clean installed candidate")
+    here = Path(__file__).resolve().parent
+    actual_runner = {p.name: digest_file(p) for p in sorted(here.iterdir()) if p.is_file()}
+    if report.get("runner_files") != actual_runner:
+        raise ValueError("Gauntlet runner changed after evidence was produced")
+    results = []
+    for scenario, row in zip(expected, report["cases"], strict=True):
+        path = directory / "cases" / f"{scenario.id}.json"
+        case = _read_json(path, 8_000_000)
+        if case.get("id") != scenario.id or case.get("expectation") != scenario.expectation:
+            raise ValueError("scenario identity mismatch")
+        if digest_file(path) != row.get("evidence_sha256"):
+            raise ValueError("scenario evidence bytes changed")
+        result = assess_case(scenario, case)
+        if result != case.get("assessment") or any(row.get(k) != v for k, v in result.items()):
+            raise ValueError("claimed result does not match observed evidence")
+        if result["outcome"] != "pass":
+            raise ValueError("a required scenario did not pass")
+        results.append(result)
+    return {"verified": True, "candidate_sha": expected_sha, "scenarios": len(results),
+            "actual_tool_calls": sum(result["tool_calls"] for result in results),
+            "merge_qualified": report["merge_qualified"]}

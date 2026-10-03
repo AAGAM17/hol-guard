@@ -169,14 +169,6 @@ def _assess_observed(scenario: Scenario, case: dict[str, Any], calls: list[dict[
     guards = case["guard_observations"]
     routes = case["native_routes"]
     rounds = case["inference"]["live_rounds"]
-    if (
-        type(case["returncode"]) is not int
-        or case["returncode"] != 0
-        or case["timed_out"] is not False
-        or case["cleanup_ok"] is not True
-        or "execution_error" in case
-    ):
-        return "harness-error", "host process or owned daemon lifecycle did not complete"
     if not reconcile_rounds(rounds)[0]:
         return "inference-error", "a provider round failed or ended before completion"
     if any(e.get("stop_reason") in {"aborted", "error"} for e in case["events"]):

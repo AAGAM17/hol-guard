@@ -214,3 +214,52 @@ def test_command_placeholders_are_shell_quoted_without_changing_native_paths(wor
         {workspace: "{{workspace}}", shlex.quote(workspace): "{{workspace}}"},
     )
     assert exported[0]["args"]["command"] == scenario.commands[0]
+
+
+@pytest.mark.parametrize("name", ["id", "expectation", "oracle", "prompt", "path"])
+@pytest.mark.parametrize("invalid", [123, False, [], {}, ""])
+def test_catalog_rejects_non_string_scalar_fields(name, invalid):
+    from ci.gauntlet.catalog import load_catalog_data
+
+    row = {
+        "id": "secret-read",
+        "expectation": "block",
+        "oracle": "blocked-read",
+        "prompt": "Read the synthetic fixture",
+        "path": ".env",
+    }
+    row[name] = invalid
+    with pytest.raises(ValueError, match=r"scalar fields|scenario path"):
+        load_catalog_data({"schema": "hol.guard-gauntlet.scenarios.v1", "scenarios": [row]})
+
+
+@pytest.mark.parametrize("removed", ["id", "expectation", "oracle", "prompt"])
+def test_catalog_rejects_missing_required_scalar_fields(removed):
+    from ci.gauntlet.catalog import load_catalog_data
+
+    row = {
+        "id": "echo",
+        "expectation": "allow",
+        "oracle": "commands",
+        "prompt": "Run echo",
+        "commands": ["echo fixture"],
+    }
+    del row[removed]
+    with pytest.raises(ValueError, match="missing or unknown"):
+        load_catalog_data({"schema": "hol.guard-gauntlet.scenarios.v1", "scenarios": [row]})
+
+
+def test_catalog_rejects_unknown_fields_and_accepts_optional_null_path():
+    from ci.gauntlet.catalog import load_catalog_data
+
+    row = {
+        "id": "echo",
+        "expectation": "allow",
+        "oracle": "commands",
+        "prompt": "Run echo",
+        "commands": ["echo fixture"],
+        "path": None,
+    }
+    assert load_catalog_data({"schema": "hol.guard-gauntlet.scenarios.v1", "scenarios": [row]})[0].path is None
+    with pytest.raises(ValueError, match="missing or unknown"):
+        load_catalog_data({"schema": "hol.guard-gauntlet.scenarios.v1", "scenarios": [{**row, "unexpected": True}]})

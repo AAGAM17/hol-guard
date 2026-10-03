@@ -351,7 +351,8 @@ def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch)
         installed = False
 
         def gauntlet_installed_at(self, revision):
-            assert revision == "b" * 40
+            # PR metadata can retain the pre-installation base indefinitely.
+            assert revision == "d" * 40
             return self.installed
 
         def request(self, path):
@@ -362,7 +363,7 @@ def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch)
             raise AssertionError(path)
 
     api = API()
-    pull = {"base": {"sha": "b" * 40}}
+    pull = {"base": {"sha": "b" * 40}, "gauntlet_base_sha": "d" * 40}
     run = {"head_sha": "c" * 40}
     monkeypatch.setenv("GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA", "c" * 40)
     validate_producer_revision(api, 3463, pull, run)
@@ -372,6 +373,9 @@ def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch)
     with pytest.raises(RuntimeError, match="trusted base"):
         validate_producer_revision(api, 3463, pull, run)
     api.installed = False
+    for tip in (None, "not-a-sha"):
+        with pytest.raises(RuntimeError, match="trusted base"):
+            validate_producer_revision(api, 3463, {**pull, "gauntlet_base_sha": tip}, run)
     monkeypatch.delenv("GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA")
     with pytest.raises(RuntimeError, match="trusted base"):
         validate_producer_revision(api, 3463, pull, run)

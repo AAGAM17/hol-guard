@@ -31,7 +31,9 @@ def validate_producer_revision(api: Any, number: int, pull: dict, run: dict) -> 
         and number == BOOTSTRAP_PULL_REQUEST
         and SHA.fullmatch(bootstrap) is not None
         and revision == bootstrap
-        and not api.gauntlet_installed_at(base)
+        and isinstance(pull.get("gauntlet_base_sha"), str)
+        and SHA.fullmatch(pull["gauntlet_base_sha"]) is not None
+        and not api.gauntlet_installed_at(pull["gauntlet_base_sha"])
     ):
         return
     raise RuntimeError("Gauntlet evidence must be verified by the current trusted base revision")

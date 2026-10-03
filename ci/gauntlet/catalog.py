@@ -64,6 +64,14 @@ def load_catalog_data(data: object) -> tuple[Scenario, ...]:
     for row in data["scenarios"]:
         if not isinstance(row, dict):
             raise ValueError("scenario must be an object")
+        required = {"id", "expectation", "oracle", "prompt"}
+        allowed = required | {"commands", "path", "required_tools", "profiles"}
+        if not required <= row.keys() or row.keys() - allowed:
+            raise ValueError("scenario has missing or unknown fields")
+        if any(not isinstance(row[name], str) or not row[name] for name in required):
+            raise ValueError("scenario scalar fields must be nonempty strings")
+        if row.get("path") is not None and (not isinstance(row["path"], str) or not row["path"]):
+            raise ValueError("scenario path must be a nonempty string or null")
         for name in ("commands", "required_tools", "profiles"):
             if name in row and (
                 not isinstance(row[name], list) or any(not isinstance(value, str) or not value for value in row[name])

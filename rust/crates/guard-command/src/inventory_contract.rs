@@ -264,6 +264,46 @@ fn a_str<'a>(obj: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     obj.get(key).and_then(Value::as_str)
 }
 
+/// Recursive mirror of Python `_inventory_contract_json` for a single `Value`.
+///
+/// Python serializes the whole `asdict(snapshot)` payload through this walker:
+/// every dict key is snake→camel cased, `None` values under
+/// `_OPTIONAL_ONLY_CONTRACT_KEYS` are dropped, `metadata`/`evidence` records and
+/// `redactionReport` pass through untouched (the caller already normalizes the
+/// report), every `_INVENTORY_DATETIME_KEYS` field is normalized, and all other
+/// values recurse. The per-entity builders below emit their named fields
+/// explicitly; `extra` free-form fields ride through this walker verbatim.
+fn contract_value_json(key_camel: &str, value: &Value) -> Option<Value> {
+    if value.is_null() && OPTIONAL_ONLY_CONTRACT_KEYS.contains(&key_camel) {
+        return None;
+    }
+    if FREE_FORM_RECORD_KEYS.contains(&key_camel) || key_camel == "redactionReport" {
+        return Some(value.clone());
+    }
+    if INVENTORY_DATETIME_KEYS.contains(&key_camel) {
+        return Some(normalize_inventory_datetime(value));
+    }
+    Some(match value {
+        Value::Object(map) => {
+            let mut out = Map::new();
+            for (k, v) in map {
+                let camel = _snake_to_camel_case_key(k);
+                if let Some(normalized) = contract_value_json(&camel, v) {
+                    out.insert(camel, normalized);
+                }
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| contract_value_json("", item).unwrap_or_else(|| item.clone()))
+                .collect(),
+        ),
+        _ => value.clone(),
+    })
+}
+
 /// `getattr(run, key)` → non-empty `str`.
 fn run_str<'a>(run: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     run.get(key).and_then(Value::as_str)
@@ -362,7 +402,10 @@ pub fn _inventory_contract_json(
     out.insert("snapshotId".into(), json!(snapshot.snapshot_id));
     out.insert("agentId".into(), json!(snapshot.agent_id));
     out.insert("agentType".into(), json!(snapshot.agent_type));
-    out.insert("generatedAt".into(), json!(snapshot.generated_at));
+    out.insert(
+        "generatedAt".into(),
+        normalize_inventory_datetime(&json!(snapshot.generated_at)),
+    );
     out.insert("runtimeVersion".into(), json!(snapshot.runtime_version));
     out.insert("items".into(), Value::Array(items_json));
     out.insert("findings".into(), Value::Array(findings_json));
@@ -374,7 +417,10 @@ pub fn _inventory_contract_json(
         ))),
     );
     for (k, v) in &snapshot.extra {
-        out.insert(_snake_to_camel_case_key(k), v.clone());
+        let camel = _snake_to_camel_case_key(k);
+        if let Some(normalized) = contract_value_json(&camel, v) {
+            out.insert(camel, normalized);
+        }
     }
     out
 }
@@ -405,7 +451,10 @@ fn _inventory_item_json(
             ._safe_json(&Value::Object(metadata), "", false),
     );
     for (k, v) in &item.extra {
-        obj.insert(_snake_to_camel_case_key(k), v.clone());
+        let camel = _snake_to_camel_case_key(k);
+        if let Some(normalized) = contract_value_json(&camel, v) {
+            obj.insert(camel, normalized);
+        }
     }
     Value::Object(obj)
 }
@@ -422,22 +471,45 @@ fn _inventory_finding_json(finding: &GuardAgentInventoryFinding) -> Value {
     obj.insert("summary".into(), json!(finding.summary));
     obj.insert("evidence".into(), Value::Object(finding.evidence.clone()));
     for (k, v) in &finding.extra {
-        obj.insert(_snake_to_camel_case_key(k), v.clone());
+        let camel = _snake_to_camel_case_key(k);
+        if let Some(normalized) = contract_value_json(&camel, v) {
+            obj.insert(camel, normalized);
+        }
     }
     Value::Object(obj)
 }
 
 fn _inventory_source_json(source: &GuardInventorySource) -> Value {
+    // Python `asdict(GuardInventorySource)` emits `captured_at`/`detail` as
+    // `None` when unset and `_inventory_contract_json` keeps them in dataclass
+    // field order (source_id, source_type, status, captured_at, detail). Mirror
+    // that: always emit both keys, `null` for empty, `capturedAt` before
+    // `detail`, and run both through `_normalize_inventory_datetime`.
     let mut obj = Map::new();
     obj.insert("sourceId".into(), json!(source.source_id));
     obj.insert("sourceType".into(), json!(source.source_type));
     obj.insert("status".into(), json!(source.status));
-    obj.insert("detail".into(), json!(source.detail));
-    if !source.captured_at.is_empty() {
-        obj.insert("capturedAt".into(), json!(source.captured_at));
-    }
+    obj.insert(
+        "capturedAt".into(),
+        if source.captured_at.is_empty() {
+            Value::Null
+        } else {
+            normalize_inventory_datetime(&json!(source.captured_at))
+        },
+    );
+    obj.insert(
+        "detail".into(),
+        if source.detail.is_empty() {
+            Value::Null
+        } else {
+            json!(source.detail)
+        },
+    );
     for (k, v) in &source.extra {
-        obj.insert(_snake_to_camel_case_key(k), v.clone());
+        let camel = _snake_to_camel_case_key(k);
+        if let Some(normalized) = contract_value_json(&camel, v) {
+            obj.insert(camel, normalized);
+        }
     }
     Value::Object(obj)
 }

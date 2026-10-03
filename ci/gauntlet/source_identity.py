@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -13,8 +14,13 @@ SHA = re.compile(r"[0-9a-f]{40}")
 def source_identity(repo: Path, candidate_sha: str | None = None) -> dict[str, Any]:
     """Accept a candidate itself or its two-parent GitHub test merge, never a loose ancestor."""
 
+    # The requested checkout owns identity, not a wrapper's Git location or
+    # injected configuration. Keep loader/platform variables for the real CLI.
+    environment = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
     def git(*args: str) -> str:
-        return subprocess.check_output(["git", *args], cwd=repo, text=True, timeout=15).strip()
+        return subprocess.check_output(["git", *args], cwd=repo, env=environment, text=True, timeout=15).strip()
 
     source = git("rev-parse", "HEAD")
     candidate = candidate_sha or source

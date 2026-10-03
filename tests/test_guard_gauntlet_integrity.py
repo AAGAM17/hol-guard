@@ -188,3 +188,36 @@ def test_setup_failures_are_harness_errors_even_before_inference(change):
     case["inference"]["live_rounds"] = []
     case[change] = {"execution_error": "RuntimeError", "returncode": 1, "timed_out": True, "cleanup_ok": False}[change]
     assert assess_case(ordinary(), case)["outcome"] == "harness-error"
+
+
+def test_source_identity_ignores_inherited_git_repository_selection(tmp_path, monkeypatch):
+    import os
+    import subprocess
+
+    from ci.gauntlet.source_identity import source_identity
+
+    env = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    expected = []
+    repos = [tmp_path / "candidate", tmp_path / "different-repository"]
+    for index, repo in enumerate(repos):
+        repo.mkdir()
+
+        def git(*args, root=repo):
+            return subprocess.check_output(["git", *args], cwd=root, env=env, text=True).strip()
+
+        git("init", "--quiet")
+        git("config", "user.name", "Gauntlet fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        (repo / "ordinary.txt").write_text(str(index))
+        git("add", "ordinary.txt")
+        git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture")
+        expected.append(git("rev-parse", "HEAD"))
+    assert expected[0] != expected[1]
+    monkeypatch.setenv("GIT_DIR", str(repos[1] / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(repos[1]))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(repos[1] / ".git/index"))
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(repos[1] / ".git/objects"))
+    binding = source_identity(repos[0])
+    assert binding["tested_source_sha"] == expected[0]
+    assert binding["source_dirty"] is False

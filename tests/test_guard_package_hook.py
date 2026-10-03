@@ -653,7 +653,7 @@ def test_guard_hook_keeps_block_copy_when_scanner_escalates_package_warning(
 
     assert rc == 1
     assert output["policy_action"] == "block"
-    assert output["decision_v2_json"]["user_title"] == "Blocked by policy"
+    assert output["decision_v2_json"]["user_title"] == "Package blocked"
     assert output["decision_v2_json"]["user_title"] != output["supply_chain_evaluation"]["user_copy"]["title"]
     assert (
         output["decision_v2_json"]["dashboard_primary_detail"]
@@ -718,7 +718,7 @@ def test_guard_hook_keeps_data_flow_summary_when_package_warning_is_weaker(
     assert rc == 1
     assert output["policy_action"] == "block"
     assert "network host" in output["risk_summary"]
-    assert output["decision_v2_json"]["user_title"] == "Blocked by policy"
+    assert output["decision_v2_json"]["user_title"] == "Package blocked"
     assert (
         output["decision_v2_json"]["dashboard_primary_detail"] == "Source-to-sink route: local secret -> network host. "
         "This command sends local secret to network host without exposing the raw secret in Guard evidence."

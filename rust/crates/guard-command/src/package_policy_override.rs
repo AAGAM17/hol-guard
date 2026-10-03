@@ -438,7 +438,11 @@ fn package_label(map: &Map<String, Value>) -> String {
     }
     let raw = primary
         .get("requestedVersion")
-        .filter(|v| !matches!(v, Value::Null | Value::Bool(false)) && v.as_str() != Some("") && v.as_u64() != Some(0))
+        .filter(|v| {
+            !matches!(v, Value::Null | Value::Bool(false))
+                && v.as_str() != Some("")
+                && v.as_u64() != Some(0)
+        })
         .or_else(|| primary.get("resolvedVersion"));
     let version = raw.and_then(Value::as_str);
     match version {

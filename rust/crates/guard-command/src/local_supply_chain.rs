@@ -46,8 +46,8 @@ use crate::package_policy_override as ppo;
 use crate::workspace_inventory::{
     inventory_from_sbom_payload, merge_inventory_item, package_manager_for_scan,
     split_namespace_name, target_for_package_spec, target_from_inventory_item,
-    target_from_manifest_dependency, InventoryMap, ECOSYSTEM_BY_LOCKFILE,
-    ECOSYSTEM_BY_MANIFEST, SEVERITY_RANK,
+    target_from_manifest_dependency, InventoryMap, ECOSYSTEM_BY_LOCKFILE, ECOSYSTEM_BY_MANIFEST,
+    SEVERITY_RANK,
 };
 
 pub const WORKSPACE_AUDIT_DISCOVERY_MAX_DEPTH: usize = 3;
@@ -339,9 +339,10 @@ pub trait PackageEvalApi {
     /// action (`block`/`sandbox-required`/`require-reapproval`/`review`/`warn`/`allow`).
     /// Default delegates to the oracle-verified `package_policy_override` mapping.
     fn package_decision_for_action(&self, action: &str) -> String {
-        crate::package_policy_override::package_decision_for_action(
-            normalize_guard_action(&Value::String(action.to_string()), GuardAction::Allow),
-        )
+        crate::package_policy_override::package_decision_for_action(normalize_guard_action(
+            &Value::String(action.to_string()),
+            GuardAction::Allow,
+        ))
         .to_string()
     }
 }
@@ -4435,7 +4436,17 @@ fn final_package_protect_authority(
             );
             return Ok((
                 initial.clone(),
-                PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, initial.evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
+                PackageRequestEvaluation::new(Value::Object(
+                    ppo::package_evaluation_with_rejected_reuse(
+                        eval_api,
+                        initial
+                            .evaluation
+                            .value
+                            .as_object()
+                            .map_or(&*EMPTY_MAP, |m| m),
+                        &reuse,
+                    ),
+                )),
             ));
         }
     };
@@ -4453,7 +4464,11 @@ fn final_package_protect_authority(
     let current_evaluation = PackageRequestEvaluation::new(Value::Object(
         ppo::package_evaluation_with_current_policy_action(
             eval_api,
-            current.evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+            current
+                .evaluation
+                .value
+                .as_object()
+                .map_or(&*EMPTY_MAP, |m| m),
             normalize_guard_action(
                 current.current_action.as_ref().unwrap_or(&Value::Null),
                 GuardAction::Block,
@@ -4493,7 +4508,16 @@ fn final_package_protect_authority(
             );
             return Ok((
                 current,
-                PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
+                PackageRequestEvaluation::new(Value::Object(
+                    ppo::package_evaluation_with_rejected_reuse(
+                        eval_api,
+                        current_evaluation
+                            .value
+                            .as_object()
+                            .map_or(&*EMPTY_MAP, |m| m),
+                        &reuse,
+                    ),
+                )),
             ));
         }
         let refreshed_saved_policy = apply_stored_package_policy_override(
@@ -4528,7 +4552,16 @@ fn final_package_protect_authority(
             );
             return Ok((
                 current,
-                PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
+                PackageRequestEvaluation::new(Value::Object(
+                    ppo::package_evaluation_with_rejected_reuse(
+                        eval_api,
+                        current_evaluation
+                            .value
+                            .as_object()
+                            .map_or(&*EMPTY_MAP, |m| m),
+                        &reuse,
+                    ),
+                )),
             ));
         }
         let reuse = evaluate_approval_reuse(
@@ -4547,7 +4580,10 @@ fn final_package_protect_authority(
                 PackageRequestEvaluation::new(Value::Object(
                     ppo::package_policy_override_evaluation(
                         eval_api,
-                        current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+                        current_evaluation
+                            .value
+                            .as_object()
+                            .map_or(&*EMPTY_MAP, |m| m),
                         "allow",
                         "allow",
                         "Allowed by saved approval",
@@ -4564,7 +4600,16 @@ fn final_package_protect_authority(
         }
         return Ok((
             current,
-            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
+            PackageRequestEvaluation::new(Value::Object(
+                ppo::package_evaluation_with_rejected_reuse(
+                    eval_api,
+                    current_evaluation
+                        .value
+                        .as_object()
+                        .map_or(&*EMPTY_MAP, |m| m),
+                    &reuse,
+                ),
+            )),
         ));
     }
 
@@ -4579,7 +4624,16 @@ fn final_package_protect_authority(
         );
         return Ok((
             current,
-            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
+            PackageRequestEvaluation::new(Value::Object(
+                ppo::package_evaluation_with_rejected_reuse(
+                    eval_api,
+                    current_evaluation
+                        .value
+                        .as_object()
+                        .map_or(&*EMPTY_MAP, |m| m),
+                    &reuse,
+                ),
+            )),
         ));
     }
 
@@ -4607,8 +4661,16 @@ fn final_package_protect_authority(
             false,
             false,
         );
-        let resolved =
-            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse)));
+        let resolved = PackageRequestEvaluation::new(Value::Object(
+            ppo::package_evaluation_with_rejected_reuse(
+                eval_api,
+                current_evaluation
+                    .value
+                    .as_object()
+                    .map_or(&*EMPTY_MAP, |m| m),
+                &reuse,
+            ),
+        ));
         return Ok((current, resolved));
     }
     Ok((current, resolved))
@@ -6543,7 +6605,8 @@ fn build_package_protect_payload(
     );
     let evaluation = initial_policy_resolution.evaluation;
     let effective_dry_run = dry_run
-        && !(allow_saved_approval_execution && ppo::evaluation_uses_saved_package_approval(&evaluation.value));
+        && !(allow_saved_approval_execution
+            && ppo::evaluation_uses_saved_package_approval(&evaluation.value));
     let execution_policy_action = package_execution_policy_action(&authority, &evaluation);
     let execution_permitted = is_execution_permitted(&execution_policy_action);
     let mut payload = Map::new();
@@ -6664,8 +6727,16 @@ fn build_package_protect_payload(
             false,
             false,
         );
-        let denied_evaluation =
-            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, final_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse)));
+        let denied_evaluation = PackageRequestEvaluation::new(Value::Object(
+            ppo::package_evaluation_with_rejected_reuse(
+                eval_api,
+                final_evaluation
+                    .value
+                    .as_object()
+                    .map_or(&*EMPTY_MAP, |m| m),
+                &reuse,
+            ),
+        ));
         let denied = package_protect_denied_after_final_boundary(
             &mut payload,
             &final_authority,
@@ -6728,7 +6799,10 @@ fn build_package_protect_payload(
             let fail_evaluation = PackageRequestEvaluation::new(Value::Object(
                 ppo::package_policy_override_evaluation(
                     eval_api,
-                    final_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+                    final_evaluation
+                        .value
+                        .as_object()
+                        .map_or(&*EMPTY_MAP, |m| m),
                     "block",
                     "block",
                     "Execution failed",

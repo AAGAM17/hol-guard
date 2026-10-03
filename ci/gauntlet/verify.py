@@ -15,6 +15,7 @@ from .source_identity import source_identity, validate_identity
 
 
 def _read_json(path: Path, limit: int) -> dict[str, Any]:
+    """Read a bounded JSON object, rejecting missing files, symlinks and nonobject payloads."""
     if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
         raise ValueError("missing, symlinked or oversized evidence")
     data = json.loads(path.read_text(encoding="utf-8"))

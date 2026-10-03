@@ -26,6 +26,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     """Never forward a provider credential to a redirected endpoint."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Refuse redirects so provider credentials stay at the configured endpoint."""
         return None
 
 
@@ -62,6 +63,7 @@ class InferenceRelay:
         max_rounds: int = 32,
         timeout: float = 120,
     ):
+        """Validate the provider and bind an unstarted loopback relay with bounded inference budgets."""
         self.endpoint = validate_endpoint(base_url, allow_loopback)
         self.model = model
         self.identity = identity
@@ -77,9 +79,11 @@ class InferenceRelay:
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_args):
+                """Suppress default HTTP logging to avoid retaining request details."""
                 return
 
             def do_POST(self):
+                """Check canaries, relay bounded inference requests and record streamed response evidence."""
                 self.connection.settimeout(relay.timeout)
                 if self.path != "/v1/chat/completions":
                     self.send_error(404)
@@ -171,13 +175,16 @@ class InferenceRelay:
 
     @property
     def base_url(self) -> str:
+        """Return the local OpenAI-compatible API base URL for the agent."""
         return f"http://127.0.0.1:{self.server.server_port}/v1"
 
     def __enter__(self):
+        """Start serving inference requests and return this relay."""
         self.thread.start()
         return self
 
     def __exit__(self, *_args):
+        """Stop the relay, close its socket and clear the stored API key."""
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=3)
@@ -198,14 +205,17 @@ class LoopbackCollector:
     """Observe synthetic egress without retaining its contents."""
 
     def __init__(self):
+        """Bind an unstarted loopback server that records egress sizes and digests."""
         self.requests: list[dict[str, Any]] = []
         collector = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_args):
+                """Suppress default HTTP logging for synthetic egress requests."""
                 return
 
             def do_POST(self):
+                """Record the size and digest of a bounded request body and acknowledge receipt."""
                 self.connection.settimeout(5)
                 length = min(max(int(self.headers.get("Content-Length", "0")), 0), REQUEST_LIMIT)
                 body = self.rfile.read(length)
@@ -219,13 +229,16 @@ class LoopbackCollector:
 
     @property
     def url(self) -> str:
+        """Return the local collection endpoint used by synthetic egress scenarios."""
         return f"http://127.0.0.1:{self.server.server_port}/collect"
 
     def __enter__(self):
+        """Start collecting synthetic egress and return this collector."""
         self.thread.start()
         return self
 
     def __exit__(self, *_args):
+        """Stop the collector, close its socket and wait for its serving thread."""
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=3)

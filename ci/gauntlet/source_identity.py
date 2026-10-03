@@ -20,6 +20,7 @@ def source_identity(repo: Path, candidate_sha: str | None = None) -> dict[str, A
     environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
 
     def git(*args: str) -> str:
+        """Run Git in the selected checkout with inherited Git overrides removed."""
         return subprocess.check_output(["git", *args], cwd=repo, env=environment, text=True, timeout=15).strip()
 
     source = git("rev-parse", "HEAD")

@@ -27,38 +27,46 @@ from ci.gauntlet.source_identity import validate_identity
     ],
 )
 def test_enforcement_and_qualification_changes_require_live_evidence(path):
+    """Require Gauntlet evidence for changes to enforcement or qualification inputs."""
     assert requires_gauntlet([path])
 
 
 def test_unrelated_documentation_does_not_require_a_new_product_run():
+    """Leave unrelated documentation outside the live-evidence path scope."""
     assert not requires_gauntlet(["README.md", "docs/marketing.md"])
 
 
 class MetadataAPI:
     def __init__(self, rows, count):
+        """Store a synthetic PR file inventory and initialize captured status writes."""
         self.rows, self.count, self.statuses = rows, count, []
 
     def pull(self, number, sha):
+        """Validate the fixture PR identity and return its declared changed-file count."""
         assert number == 1 and sha == "a" * 40
         return {"changed_files": self.count}
 
     def request(self, path):
+        """Return fixture file rows or an empty status history for expected API routes."""
         if "/statuses?" in path:
             return []
         assert path == "/pulls/1/files?per_page=100&page=1"
         return self.rows
 
     def status(self, *args):
+        """Capture a proposed status update without contacting GitHub."""
         self.statuses.append(args)
 
 
 def test_renaming_enforcement_out_of_the_scoped_directory_still_requires_evidence():
+    """Include previous filenames when deciding whether a renamed file needs evidence."""
     api = MetadataAPI([{"filename": "retired.txt", "previous_filename": "rust/crates/guard-command/src/pretool.rs"}], 1)
     initialize_gate(api, {"inputs": {"pr_number": "1", "candidate_sha": "a" * 40}})
     assert api.statuses[0][1] == "pending"
 
 
 def test_incomplete_file_inventory_cannot_waive_the_gate():
+    """Reject a file count mismatch before publishing a gate status."""
     api = MetadataAPI([{"filename": "README.md"}], 2)
     with pytest.raises(ValueError, match="incomplete"):
         initialize_gate(api, {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})
@@ -66,6 +74,7 @@ def test_incomplete_file_inventory_cannot_waive_the_gate():
 
 
 def archive(entries):
+    """Return an in-memory ZIP archive containing the supplied test entries."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as result:
         for name, body in entries:
@@ -74,6 +83,7 @@ def archive(entries):
 
 
 def test_public_evidence_roundtrip(tmp_path):
+    """Preserve public case JSON through evidence packaging and digest-checked extraction."""
     source = tmp_path / "source"
     (source / "cases").mkdir(parents=True)
     (source / "summary.json").write_text(json.dumps({"schema": "unit-fixture"}))
@@ -88,6 +98,7 @@ def test_public_evidence_roundtrip(tmp_path):
     "name", ["../outside.json", "/absolute.json", "raw-prompts.json", "runner.py", "cases\\bad.json"]
 )
 def test_archive_never_extracts_code_private_logs_or_path_traversal(tmp_path, name):
+    """Reject disallowed archive paths before creating an extraction directory."""
     data = archive([("summary.json", "{}"), (name, "bad")])
     with pytest.raises(ValueError, match="unsafe"):
         unpack(data, tmp_path / "extracted", hashlib.sha256(data).hexdigest())
@@ -95,6 +106,7 @@ def test_archive_never_extracts_code_private_logs_or_path_traversal(tmp_path, na
 
 
 def test_archive_digest_and_symlinks_are_verified(tmp_path):
+    """Reject symlink archive entries and archives with mismatched digests."""
     info = zipfile.ZipInfo("cases/link.json")
     info.create_system = 3
     info.external_attr = (stat.S_IFLNK | 0o777) << 16
@@ -115,11 +127,13 @@ def test_archive_digest_and_symlinks_are_verified(tmp_path):
     ],
 )
 def test_evidence_downloader_rejects_internal_or_unapproved_origins(url):
+    """Reject evidence URLs outside the approved credential-free HTTPS origins."""
     with pytest.raises(ValueError):
         download(url)
 
 
 def test_exact_candidate_or_current_test_merge_is_required():
+    """Reject stale bases and parentage that does not bind a test merge to the candidate."""
     candidate, base, source = "a" * 40, "b" * 40, "c" * 40
     report = {
         "source_dirty": False,
@@ -141,6 +155,7 @@ class QualifiedAPI(MetadataAPI):
     repo = "hashgraph-online/hol-guard"
 
     def __init__(self):
+        """Initialize synthetic metadata for a successful source-bound evidence workflow."""
         super().__init__([{"filename": "rust/crates/guard-command/src/pretool.rs"}], 1)
         self.state = "success"
         self.conclusion = "success"
@@ -154,14 +169,17 @@ class QualifiedAPI(MetadataAPI):
         self.source = "a" * 40
 
     def pull(self, number, sha):
+        """Extend fixture PR metadata with the independently resolved destination tip."""
         return {**super().pull(number, sha), "base": {"sha": self.base}, "gauntlet_base_sha": self.base}
 
     def prove_source(self, source, candidate, base):
+        """Record source checks and reject test merges inconsistent with the fixture base."""
         self.source_checks.append((source, candidate, base))
         if source != candidate and (source != self.source or base != self.tested_base):
             raise ValueError("evidence is not for the current test merge")
 
     def request(self, path):
+        """Serve synthetic status, artifact and workflow metadata for qualification tests."""
         if path == "":
             return {"default_branch": "main"}
         if path.startswith("/compare/"):
@@ -191,6 +209,7 @@ class QualifiedAPI(MetadataAPI):
 
 
 def test_required_ci_accepts_only_successful_real_evidence_producer():
+    """Accept synthetic metadata satisfying the successful evidence-producer contract."""
     from ci.gauntlet.pr_requirement import require_evidence
 
     require_evidence(QualifiedAPI(), {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})
@@ -206,6 +225,7 @@ def test_required_ci_accepts_only_successful_real_evidence_producer():
     ],
 )
 def test_required_ci_rejects_status_without_matching_successful_producer(field, value):
+    """Reject pending status, invalid producer metadata or artifacts for a different candidate."""
     from ci.gauntlet.pr_requirement import require_evidence
 
     api = QualifiedAPI()
@@ -216,6 +236,7 @@ def test_required_ci_rejects_status_without_matching_successful_producer(field, 
 
 @pytest.mark.parametrize("dirty", [True, None])
 def test_identity_rejects_dirty_or_unrecorded_worktrees(dirty):
+    """Require an explicit clean-worktree assertion in the source identity report."""
     report = {
         "candidate_sha": "a" * 40,
         "tested_source_sha": "a" * 40,
@@ -229,12 +250,14 @@ def test_identity_rejects_dirty_or_unrecorded_worktrees(dirty):
 
 
 def test_immutable_source_manifest_hashes_api_blobs_without_checkout():
+    """Derive runner digests and ancestry from immutable API data without checking out code."""
     import base64
 
     from ci.gauntlet.github_source import source_manifest
 
     class API:
         def request(self, path):
+            """Serve synthetic commit, directory and encoded blob responses for manifest construction."""
             if path.startswith("/git/commits/"):
                 return {"sha": "a" * 40, "parents": [{"sha": "b" * 40}]}
             if path.startswith("/contents/ci/gauntlet?"):
@@ -263,6 +286,7 @@ def test_immutable_source_manifest_hashes_api_blobs_without_checkout():
 
 
 def test_public_bundle_can_be_submitted_inline_without_storage_credentials(tmp_path):
+    """Round-trip an attested inline archive and reject submission without attestation."""
     from ci.gauntlet.submission import inline_dispatch_inputs, submitted_archive
 
     path = tmp_path / "evidence.zip"
@@ -284,6 +308,7 @@ def test_public_bundle_can_be_submitted_inline_without_storage_credentials(tmp_p
     ],
 )
 def test_inline_submission_rejects_ambiguous_malformed_or_oversized_data(inputs):
+    """Reject missing, conflicting, invalid or oversized inline archive inputs."""
     from ci.gauntlet.submission import submitted_archive
 
     with pytest.raises(ValueError):
@@ -292,10 +317,12 @@ def test_inline_submission_rejects_ambiguous_malformed_or_oversized_data(inputs)
 
 @pytest.mark.parametrize("parents", [["b" * 40], ["b" * 40, "c" * 40], ["bad-parent"], [None]])
 def test_github_manifest_rejects_unrelated_or_malformed_parentage_before_reading_blobs(parents):
+    """Reject invalid source ancestry before requesting any candidate file contents."""
     from ci.gauntlet.github_source import source_manifest
 
     class API:
         def request(self, path):
+            """Return the tested parentage and fail if manifest validation requests another route."""
             assert path == "/git/commits/" + "d" * 40
             return {"sha": "d" * 40, "parents": [{"sha": p} for p in parents]}
 
@@ -304,6 +331,7 @@ def test_github_manifest_rejects_unrelated_or_malformed_parentage_before_reading
 
 
 def test_required_ci_rechecks_verified_test_merge_against_current_base():
+    """Invalidate previously verified merge evidence after the destination branch advances."""
     from ci.gauntlet.pr_requirement import require_evidence
 
     api = QualifiedAPI()
@@ -320,6 +348,7 @@ def test_required_ci_rechecks_verified_test_merge_against_current_base():
 
 @pytest.mark.parametrize("description", [None, "verified", "Real-agent evidence verified; source=invalid"])
 def test_required_ci_rejects_unbound_legacy_status(description):
+    """Reject success descriptions that do not identify a full verified source commit."""
     from ci.gauntlet.pr_requirement import require_evidence
 
     api = QualifiedAPI()
@@ -329,12 +358,14 @@ def test_required_ci_rejects_unbound_legacy_status(description):
 
 
 def test_gate_reinitialization_preserves_an_unchanged_qualified_head():
+    """Preserve valid existing qualification without publishing a replacement pending status."""
     api = QualifiedAPI()
     initialize_gate(api, {"inputs": {"pr_number": "1", "candidate_sha": "a" * 40}})
     assert api.statuses == []
 
 
 def test_candidate_branch_verifier_cannot_qualify_itself():
+    """Reject evidence produced by an untrusted verifier on the candidate branch."""
     from ci.gauntlet.pr_requirement import require_evidence
 
     api = QualifiedAPI()
@@ -344,6 +375,7 @@ def test_candidate_branch_verifier_cannot_qualify_itself():
 
 
 def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch):
+    """Limit bootstrap verification to the pinned revision, designated PR and preinstallation base."""
     from ci.gauntlet.trust import validate_producer_revision
 
     class API:
@@ -352,10 +384,12 @@ def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch)
 
         def gauntlet_installed_at(self, revision):
             # PR metadata can retain the pre-installation base indefinitely.
+            """Check installation state at the independently resolved destination tip."""
             assert revision == "d" * 40
             return self.installed
 
         def request(self, path):
+            """Serve trusted default-branch and ancestry metadata for the bootstrap fixture."""
             if path == "":
                 return {"default_branch": "main"}
             if path.startswith("/compare/"):
@@ -382,6 +416,7 @@ def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch)
 
 
 def test_candidate_catalog_may_add_but_not_weaken_trusted_cases():
+    """Allow added cases and prompt edits while rejecting removal or altered trusted commands."""
     from dataclasses import replace
 
     from ci.gauntlet.catalog import Scenario, retain_trusted_cases
@@ -397,12 +432,14 @@ def test_candidate_catalog_may_add_but_not_weaken_trusted_cases():
 
 @pytest.mark.parametrize("previous", ["", 7, False])
 def test_malformed_previous_paths_do_not_waive_enforcement(previous):
+    """Reject invalid previous filenames instead of using them to bypass path scoping."""
     api = MetadataAPI([{"filename": "README.md", "previous_filename": previous}], 1)
     with pytest.raises(ValueError, match="previous"):
         initialize_gate(api, {"inputs": {"pr_number": "1", "candidate_sha": "a" * 40}})
 
 
 def test_evidence_jobs_run_only_from_trusted_default_or_pinned_bootstrap():
+    """Require privileged evidence jobs to use reviewed workflow-dispatch refs and verifier bindings."""
     from pathlib import Path
 
     import yaml
@@ -418,6 +455,7 @@ def test_evidence_jobs_run_only_from_trusted_default_or_pinned_bootstrap():
 
 
 def test_required_ci_uses_trusted_base_or_exact_initial_verifier():
+    """Check that required CI invokes the verifier from its trusted checkout and pinned bootstrap."""
     from pathlib import Path
 
     import yaml
@@ -436,6 +474,7 @@ def test_required_ci_uses_trusted_base_or_exact_initial_verifier():
 
 @pytest.mark.parametrize("path", ["", "/", "/compare/" + "a" * 40 + "..." + "b" * 40])
 def test_repository_api_accepts_root_and_immutable_comparison_routes(monkeypatch, path):
+    """Allow repository metadata and immutable comparison routes within the configured API origin."""
     import urllib.request
 
     from ci.gauntlet.github_ci import GitHubAPI
@@ -445,6 +484,7 @@ def test_repository_api_accepts_root_and_immutable_comparison_routes(monkeypatch
     requests = []
 
     def opened(request, timeout):
+        """Capture an outgoing request and return synthetic repository comparison metadata."""
         requests.append(request)
         return io.BytesIO(b'{"status":"ahead","default_branch":"main"}')
 
@@ -468,6 +508,7 @@ def test_repository_api_accepts_root_and_immutable_comparison_routes(monkeypatch
     ],
 )
 def test_repository_api_rejects_authority_and_traversal_inputs(monkeypatch, path):
+    """Reject unsafe API paths before any authenticated network request is sent."""
     import urllib.request
 
     from ci.gauntlet.github_ci import GitHubAPI
@@ -476,6 +517,7 @@ def test_repository_api_rejects_authority_and_traversal_inputs(monkeypatch, path
     monkeypatch.setenv("GITHUB_TOKEN", "synthetic-test-only")
 
     def forbidden(*args, **kwargs):
+        """Fail if an invalid API route reaches the network transport."""
         raise AssertionError("invalid route must not send a token")
 
     monkeypatch.setattr(urllib.request, "urlopen", forbidden)
@@ -484,6 +526,7 @@ def test_repository_api_rejects_authority_and_traversal_inputs(monkeypatch, path
 
 
 def test_pull_resolves_current_base_ref_instead_of_stale_pr_metadata(monkeypatch):
+    """Resolve the current destination ref separately from the stale base recorded on the PR."""
     from ci.gauntlet.github_ci import GitHubAPI
 
     monkeypatch.setenv("GITHUB_REPOSITORY", "hashgraph-online/hol-guard")
@@ -491,6 +534,7 @@ def test_pull_resolves_current_base_ref_instead_of_stale_pr_metadata(monkeypatch
     api = GitHubAPI()
 
     def request(path):
+        """Return stale PR metadata and a newer tip for its encoded destination branch ref."""
         if path == "/pulls/1":
             return {"state": "open", "head": {"sha": "a" * 40}, "base": {"ref": "release/test", "sha": "b" * 40}}
         assert path == "/git/ref/heads/release%2Ftest"
@@ -503,6 +547,7 @@ def test_pull_resolves_current_base_ref_instead_of_stale_pr_metadata(monkeypatch
 
 
 def test_current_test_merge_must_match_the_independently_resolved_base(monkeypatch):
+    """Accept only test-merge parents matching the candidate and the current destination tip."""
     from ci.gauntlet.github_ci import GitHubAPI
 
     monkeypatch.setenv("GITHUB_REPOSITORY", "hashgraph-online/hol-guard")
@@ -517,6 +562,7 @@ def test_current_test_merge_must_match_the_independently_resolved_base(monkeypat
 
 
 def test_privileged_gate_uses_only_default_trusted_checkout_and_reviewed_dispatch_refs():
+    """Verify trusted gate checkout, dispatch restrictions and the expected job permissions."""
     from pathlib import Path
 
     import yaml

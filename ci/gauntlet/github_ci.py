@@ -40,6 +40,7 @@ def requires_gauntlet(paths: list[str]) -> bool:
 
 class GitHubAPI:
     def __init__(self):
+        """Load the job token and validate the repository identity from the environment."""
         self.repo = os.environ["GITHUB_REPOSITORY"]
         if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.repo) is None:
             raise ValueError("invalid repository identity")
@@ -82,6 +83,7 @@ class GitHubAPI:
         return json.loads(raw) if raw else None
 
     def pull(self, number: int, expected_sha: str) -> dict[str, Any]:
+        """Require an open PR at the expected head and resolve its current destination branch tip."""
         if number < 1 or SHA.fullmatch(expected_sha) is None:
             raise ValueError("invalid pull request or commit")
         pull = self.request(f"/pulls/{number}")
@@ -128,6 +130,7 @@ class GitHubAPI:
             raise ValueError("evidence is not for the current candidate or its current test merge")
 
     def status(self, sha: str, state: str, description: str) -> None:
+        """Publish the Gauntlet commit status with a link to the current workflow run."""
         self.request(
             "/statuses/" + sha,
             {
@@ -140,6 +143,7 @@ class GitHubAPI:
 
 
 def output(name: str, value: str) -> None:
+    """Append a validated single-line name and value to the GitHub Actions output file."""
     if re.fullmatch(r"[a-z_]+", name) is None or "\n" in value or "\r" in value:
         raise ValueError("unsafe workflow output")
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
@@ -257,6 +261,7 @@ def publish_result(api: GitHubAPI, event: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    """Dispatch the requested gate or evidence action using the GitHub event payload."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["initialize", "prepare", "publish", "require"])
     parser.add_argument("--destination", type=Path)

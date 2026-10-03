@@ -100,6 +100,7 @@ def _fixture_path(value: str) -> str:
 
 
 def _path(args: dict[str, Any]) -> str | None:
+    """Normalize a tool path, returning None for missing, nonstring or conflicting aliases."""
     value = args.get("path", args.get("file_path"))
     if "path" in args and "file_path" in args and args["path"] != args["file_path"]:
         return None
@@ -109,6 +110,7 @@ def _path(args: dict[str, Any]) -> str | None:
 
 
 def _edit_path(args: dict[str, Any]) -> str | None:
+    """Resolve one edit anchor, rejecting malformed headers or conflicting explicit paths."""
     if "input" not in args:
         return _path(args)
     text = args["input"]

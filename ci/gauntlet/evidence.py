@@ -16,6 +16,7 @@ TRANSCRIPT_LIMIT = 16 * 1024 * 1024
 
 
 def sha256_bytes(value: bytes) -> str:
+    """Return the hexadecimal SHA-256 digest of the supplied bytes."""
     return hashlib.sha256(value).hexdigest()
 
 

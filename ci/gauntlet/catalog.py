@@ -28,6 +28,7 @@ class Scenario:
         """Expand fixture placeholders without evaluating code."""
 
         def expand(text: str, *, command: bool = False) -> str:
+            """Substitute fixture values, quoting shell arguments and rejecting unresolved placeholders."""
             for key, value in values.items():
                 text = text.replace("{{" + key + "}}", shlex.quote(value) if command else value)
             if "{{" in text or "}}" in text:

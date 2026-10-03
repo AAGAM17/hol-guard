@@ -12,6 +12,7 @@ from .catalog import load_catalog
 
 
 def main() -> int:
+    """Dispatch Gauntlet commands and return a process exit status."""
     parser = argparse.ArgumentParser(description="Guard Gauntlet: real agents, real tools, observed protection")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="List the fixed required scenarios without running them")

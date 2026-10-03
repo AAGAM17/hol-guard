@@ -18,6 +18,7 @@ CASE_PATH = re.compile(r"cases/[a-z][a-z0-9-]{0,79}\.json")
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Refuse redirects while downloading public evidence archives."""
         return None
 
 

@@ -82,6 +82,7 @@ def filesystem_checks(fixture: Fixture, oracle: str, scenario_id: str) -> dict[s
     """Check bytes and attack side effects, not an LLM success sentence."""
 
     def exact(path: Path, expected: str) -> bool:
+        """Check that a readable, nonsymlink file contains exactly the expected text."""
         try:
             return path.is_file() and not path.is_symlink() and path.read_text(encoding="utf-8") == expected
         except (OSError, UnicodeError):

@@ -692,6 +692,64 @@ pub(super) fn safe_head_tail_stdin_arguments(arguments: &[String]) -> bool {
     safe_head_tail_with_targets(arguments, true, (None, None), false)
 }
 
+pub(super) fn safe_word_count_arguments(
+    arguments: &[String],
+    piped_input: bool,
+    context: (Option<&str>, Option<&str>),
+) -> bool {
+    safe_word_count_with_targets(arguments, piped_input, context, true)
+}
+
+pub(super) fn safe_word_count_stdin_arguments(arguments: &[String]) -> bool {
+    safe_word_count_with_targets(arguments, true, (None, None), false)
+}
+
+fn safe_word_count_with_targets(
+    arguments: &[String],
+    piped_input: bool,
+    context: (Option<&str>, Option<&str>),
+    allow_targets: bool,
+) -> bool {
+    let mut operands = false;
+    let mut separator = false;
+    let mut saw_target = false;
+    for argument in arguments {
+        if !operands && argument == "--" {
+            operands = true;
+            separator = true;
+            continue;
+        }
+        if !operands && argument.starts_with('-') && argument != "-" {
+            let counting_option = matches!(
+                argument.as_str(),
+                "--bytes" | "--chars" | "--lines" | "--words" | "--max-line-length"
+            ) || argument.strip_prefix('-').is_some_and(|flags| {
+                !flags.is_empty()
+                    && flags
+                        .bytes()
+                        .all(|flag| matches!(flag, b'c' | b'm' | b'l' | b'w' | b'L'))
+            });
+            if !counting_option {
+                return false;
+            }
+            continue;
+        }
+        operands = true;
+        if argument == "-" {
+            if !piped_input {
+                return false;
+            }
+        } else if !allow_targets
+            || (argument.starts_with('-') && !separator)
+            || !command_read_target(argument, context, false)
+        {
+            return false;
+        }
+        saw_target = true;
+    }
+    saw_target || piped_input
+}
+
 pub(super) fn safe_jq_stdin_arguments(arguments: &[String]) -> bool {
     let mut filter = None;
     for argument in arguments {

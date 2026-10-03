@@ -32,7 +32,9 @@ pub(crate) fn benign_command_segments(
                 && ((matches!(basename, "head" | "tail")
                     && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments))
                     || (basename == "jq"
-                        && safe_reads::safe_jq_stdin_arguments(&segment.arguments)));
+                        && safe_reads::safe_jq_stdin_arguments(&segment.arguments))
+                    || (basename == "wc"
+                        && safe_reads::safe_word_count_stdin_arguments(&segment.arguments)));
             let path_free = matches!(
                 basename,
                 "pwd"
@@ -63,6 +65,7 @@ pub(crate) fn benign_command_segments(
                         | "rg"
                         | "grep"
                         | "sed"
+                        | "wc"
                 );
             let ls_has_explicit_target = basename != "ls"
                 || segment
@@ -133,6 +136,11 @@ pub(super) fn exact_safe_segment_with_context(
         "jq" => {
             segment.pipeline_index > 0 && safe_reads::safe_jq_stdin_arguments(&segment.arguments)
         }
+        "wc" => safe_reads::safe_word_count_arguments(
+            &segment.arguments,
+            segment.pipeline_index > 0,
+            context,
+        ),
         "rg" | "grep" => {
             search::safe_search_arguments_with_context(basename, &segment.arguments, context)
         }

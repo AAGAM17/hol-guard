@@ -53,6 +53,9 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("read-outside", f"cat {outside}"),
         ("head", "head -n 1 src/one.ts"),
         ("tail", "tail -n 1 src/one.ts"),
+        ("word-count-file", "wc -l src/one.ts"),
+        ("word-count-files", "wc -lw src/one.ts src/two.ts"),
+        ("word-count-pipeline", "cat src/one.ts | wc -l"),
         ("sed-range", "sed -n '1,2p' src/one.ts"),
         ("grep-file", "grep -n ordinary src/one.ts"),
         ("grep-files", "grep -n ordinary src/one.ts src/two.ts"),
@@ -98,6 +101,9 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
     ]
     negatives = [
         ("secret-read", "cat .env"),
+        ("word-count-secret", "wc -l .env"),
+        ("word-count-secret-pipeline", "cat .env | wc -l"),
+        ("word-count-file-list", "wc --files0-from=src/one.ts"),
         ("secret-copy", "cp .env src/copied.ts"),
         ("secret-alias", "cat unsafe-tests/alias.ts"),
         ("secret-recursion", "grep -rn SYNTHETIC_ONLY unsafe-tests/"),

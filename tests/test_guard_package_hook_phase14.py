@@ -546,4 +546,4 @@ def test_phase14_claude_compatibility_hook_enforces_package_install_without_node
     assert payload["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
     assert payload["hookSpecificOutput"]["permissionDecision"] == "ask"
     assert "minimist@1.2.8" in payload["hookSpecificOutput"]["permissionDecisionReason"]
-    assert "policy-review-1" in payload["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "authorization expired" in payload["hookSpecificOutput"]["permissionDecisionReason"]

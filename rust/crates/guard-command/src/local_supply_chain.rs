@@ -41,7 +41,7 @@ use crate::package_execution_context::{
 };
 use crate::package_intent_common::{
     build_package_request_artifact, composer_target, coordinate_target, js_target, python_target,
-    redact_package_request_token, version_target, GuardArtifact, PackageIntent,
+    version_target, GuardArtifact, PackageIntent,
     PackageIntentTarget,
 };
 use crate::package_manifest_diff::parse_manifest_dependencies;
@@ -2899,39 +2899,6 @@ pub fn dict_items(value: &Value) -> Vec<&Map<String, Value>> {
         Value::Array(items) => items.iter().filter_map(Value::as_object).collect(),
         _ => Vec::new(),
     }
-}
-
-/// `_redact_command_token` (:4414-4425).
-fn redact_command_token(token: &str) -> String {
-    let token = redact_package_request_token(token);
-    if let Some(eq) = token.find('=') {
-        let key = &token[..eq];
-        if ["token", "secret", "api_key", "api-key", "password"]
-            .iter()
-            .any(|frag| key.to_lowercase().contains(frag))
-        {
-            return format!("{key}=*****");
-        }
-    }
-    if let Some(colon) = token.find(':') {
-        let key = &token[..colon];
-        if ["token", "secret", "api_key", "api-key", "password"]
-            .iter()
-            .any(|frag| key.to_lowercase().contains(frag))
-        {
-            return format!("{key}: *****");
-        }
-    }
-    redact_text_shim(&token)
-}
-
-fn redact_text_shim(value: &str) -> String {
-    value.to_string()
-}
-
-/// `redacted_command_tokens` (:3132-3134).
-pub fn redacted_command_tokens(command: &[String]) -> Vec<String> {
-    command.iter().map(|t| redact_command_token(t)).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -7564,7 +7531,10 @@ fn apply_package_protect_projection(
         json!(command.iter().map(|s| json!(s)).collect::<Vec<_>>()),
     );
     cmd_map.insert("redacted".to_owned(), json!(intent.redacted_command));
-    cmd_map.insert("tokens".to_owned(), json!(redacted_command_tokens(command)));
+    cmd_map.insert(
+        "tokens".to_owned(),
+        json!(crate::redacted_command_tokens::redacted_command_tokens(command)),
+    );
     payload.insert("command".to_owned(), Value::Object(cmd_map));
 
     // `payload["request"]`

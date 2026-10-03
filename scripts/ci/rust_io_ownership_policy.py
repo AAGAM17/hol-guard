@@ -162,6 +162,7 @@ _SERVICE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_policy_snapshot_windows_support.py",
         "src/codex_plugin_scanner/guard/oauth_token_claims.py",
         "src/codex_plugin_scanner/guard/stable_guard_cli.py",
+        "src/codex_plugin_scanner/guard/runtime/supply_chain_package_services.py",
     }
 )
 _PENDING_AUTHORITY_PATHS: Final = frozenset(

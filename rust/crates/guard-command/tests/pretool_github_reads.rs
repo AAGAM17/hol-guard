@@ -54,10 +54,18 @@ fn explicit_github_read_permission_deny_still_wins() {
             "pwd; gh auth status; echo done",
             "gh auth status | head -1",
             "gh auth status | jq .",
+            "gh auth status | sort -u",
+            "gh auth status | uniq -c",
+            "gh auth status | cut -c1-5",
         ] {
             let exercises_local_permission = matches!(
                 command,
-                "gh auth status" | "pwd; gh auth status; echo done" | "gh auth status | head -1"
+                "gh auth status"
+                    | "pwd; gh auth status; echo done"
+                    | "gh auth status | head -1"
+                    | "gh auth status | sort -u"
+                    | "gh auth status | uniq -c"
+                    | "gh auth status | cut -c1-5"
             );
             if permission == "read-local" && !exercises_local_permission {
                 continue;

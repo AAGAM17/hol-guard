@@ -63,6 +63,9 @@ pub(super) fn exact_safe_cwd_compound(
                     | "rg"
                     | "grep"
                     | "sed"
+                    | "sort"
+                    | "uniq"
+                    | "cut"
             )
         ) && exact_safe_segment_with_context(model, segment, false, (context.0, Some(&cwd)))
     })
@@ -98,7 +101,8 @@ pub(crate) fn benign_command_segments(
                     || (basename == "jq"
                         && safe_reads::safe_jq_stdin_arguments(&segment.arguments))
                     || (basename == "wc"
-                        && safe_reads::safe_word_count_stdin_arguments(&segment.arguments)));
+                        && safe_reads::safe_word_count_stdin_arguments(&segment.arguments))
+                    || super::stdin_filters::safe_arguments(basename, &segment.arguments));
             let path_free = matches!(
                 basename,
                 "pwd"
@@ -205,6 +209,10 @@ pub(super) fn exact_safe_segment_with_context(
             segment.pipeline_index > 0,
             context,
         ),
+        "sort" | "uniq" | "cut" => {
+            segment.pipeline_index > 0
+                && super::stdin_filters::safe_arguments(basename, &segment.arguments)
+        }
         "rg" | "grep" => {
             search::safe_search_arguments_with_context(basename, &segment.arguments, context)
         }

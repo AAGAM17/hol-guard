@@ -8,6 +8,7 @@ mod restricted_tests;
 mod safe_reads;
 mod search;
 mod segment_proof;
+mod stdin_filters;
 mod worktree_writes;
 
 pub mod generic;

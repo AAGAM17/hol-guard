@@ -196,6 +196,8 @@ pub const NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES: &[&str] = &[
     "native_socket_cleanup_failed",
     "native_socket_existing_path_rejected",
     "native_socket_generation_collision",
+    "native_socket_identity_changed",
+    "native_socket_identity_unavailable",
     "native_socket_nonblocking_failed",
     "native_socket_parent_missing",
     "native_socket_parent_not_private",

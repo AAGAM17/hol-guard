@@ -715,6 +715,9 @@ mod tests {
         assert_eq!(err, ManifestReject::Invalid);
     }
 
+    // Windows read_bounded fail-closes before decode (no descriptor path
+    // walk). These checks run only where a bounded read can succeed.
+    #[cfg(unix)]
     #[test]
     fn size_mismatch_is_runtime_mismatch() {
         let dir = tmp_dir("size_mismatch");
@@ -727,6 +730,7 @@ mod tests {
         assert_eq!(err, ManifestReject::RuntimeMismatch);
     }
 
+    #[cfg(unix)]
     #[test]
     fn sha_mismatch_is_runtime_mismatch() {
         let dir = tmp_dir("sha_mismatch");
@@ -738,6 +742,7 @@ mod tests {
         assert_eq!(err, ManifestReject::RuntimeMismatch);
     }
 
+    #[cfg(unix)]
     #[test]
     fn version_mismatch_flagged() {
         let dir = tmp_dir("version_mismatch");
@@ -751,6 +756,7 @@ mod tests {
         assert_eq!(err, ManifestReject::VersionMismatch);
     }
 
+    #[cfg(unix)]
     #[test]
     fn valid_manifest_accepted() {
         let dir = tmp_dir("valid_manifest");

@@ -42,6 +42,7 @@ pub const NATIVE_COMMAND_CONTROL_ERROR_CODES: &[&str] = &[
     "native_command_program_binding_mismatch",
     "native_policy_snapshot_command_authority_invalid",
     "native_policy_snapshot_command_authority_not_private",
+    "native_policy_snapshot_command_authority_parent_missing",
     "native_policy_snapshot_command_authority_read_failed",
     "native_policy_snapshot_command_authority_stat_failed",
     "native_policy_snapshot_command_authority_too_large",

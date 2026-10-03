@@ -307,6 +307,9 @@ mod tests {
         })
     }
 
+    // POSIX read floors are not compiled on Windows; production fail-closes
+    // before evaluate_command. Do not weaken that to satisfy this assertion.
+    #[cfg(unix)]
     #[test]
     fn command_effect_op_decides_over_resident_transport() {
         std::fs::create_dir_all("/tmp/rtm008-home").ok();

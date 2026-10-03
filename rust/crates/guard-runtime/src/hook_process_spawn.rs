@@ -670,6 +670,7 @@ mod tests {
         assert!(!e.contains_key("LD_PRELOAD"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn runs_simple_command_to_completion() {
         let dir = tmp_dir("simple");
@@ -689,6 +690,7 @@ mod tests {
         assert!(result.stdout.trim().contains("hello"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn deadline_kills_long_running_process() {
         let dir = tmp_dir("timeout");
@@ -708,6 +710,7 @@ mod tests {
         assert!(elapsed < Duration::from_secs(5));
     }
 
+    #[cfg(unix)]
     #[test]
     fn output_limit_marks_exceeded() {
         let dir = tmp_dir("limit");
@@ -729,6 +732,7 @@ mod tests {
         assert!(result.output_limit_exceeded);
     }
 
+    #[cfg(unix)]
     #[test]
     fn process_group_kill_reaches_children() {
         // Spawn a shell that forks a grandchild; group kill must reap both.
@@ -750,6 +754,7 @@ mod tests {
         assert!(result.timed_out);
     }
 
+    #[cfg(unix)]
     #[test]
     fn stdin_input_reaches_child() {
         let dir = tmp_dir("stdin");
@@ -784,6 +789,9 @@ mod tests {
         assert!(!result.containment_failed);
     }
 
+    // World-writable rejection uses Unix mode bits. Windows has no 0o777
+    // equivalent in this helper, so the fixture cannot provoke the error.
+    #[cfg(unix)]
     #[test]
     fn private_runtime_cwd_rejects_world_writable_dir() {
         let dir = tmp_dir("cwdpub");

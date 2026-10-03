@@ -340,7 +340,7 @@ def _python_cloud_auth_failed(store: object) -> bool:
     from .runtime.runner import GuardSyncAuthorizationExpiredError
 
     try:
-        package_eval._resolve_guard_sync_auth_context(store, allow_primary_repair=False)
+        package_eval._resolve_guard_sync_auth_context(cast(GuardStore, store), allow_primary_repair=False)
     except GuardSyncAuthorizationExpiredError:
         return True
     except Exception:

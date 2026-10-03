@@ -361,7 +361,25 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
     )
     if payload is None:
         return None
-    return native_authority.evaluation_from_native_payload(payload)
+    # The resident returns the decision; the Python store still owns the
+    # evidence row. A payload that cannot be reconstructed or persisted falls
+    # back to the Python evaluator so the evidence contract still holds.
+    now_text = now if isinstance(now, str) else None
+    if now_text is None:
+        from datetime import datetime, timezone
+
+        now_text = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        evaluation = native_authority.evaluation_from_native_payload(payload)
+        _supply_chain_package_eval_module()._persist_evidence(
+            store=store,
+            artifact=artifact,
+            evaluation=evaluation,
+            now=now_text,
+        )
+    except Exception:
+        return None
+    return evaluation
 
 
 def _is_package_request_evaluation(value: object) -> TypeGuard[Any]:

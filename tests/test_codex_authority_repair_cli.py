@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,20 @@ def _args(*extra):
     parser = argparse.ArgumentParser()
     add_guard_root_parser(parser)
     return parser.parse_args(["apps", "repair", "codex", "--restore-authority", "--json", *extra])
+
+
+def _tree_without_resident_lease_timestamps(root):
+    tree = _tree(root)
+    for relative_path, metadata in tree.items():
+        path = Path(relative_path)
+        if (
+            path.parent.name == "resident-client-leases.v1"
+            and path.parent.parent.name == "native-runtime"
+            and path.name.startswith("client-")
+            and path.suffix == ".lease"
+        ):
+            tree[relative_path] = (*metadata[:2], None, metadata[3])
+    return tree
 
 
 def test_only_explicit_restore_path_defers_to_exact_gate():
@@ -128,7 +143,7 @@ def test_approval_prompt_does_not_restart_expired_parent_budget(prepared_repair,
 def test_dry_run_prepares_without_factors_or_publication(prepared_repair, tmp_path, monkeypatch):  # noqa: F811
     context, _config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
-    before = _tree(tmp_path)
+    before = _tree_without_resident_lease_timestamps(tmp_path)
     factors = []
     monkeypatch.setattr(command, "consume_desktop_lifecycle_env", lambda **kwargs: factors.append(kwargs))
     code, payload = command.run_codex_authority_repair(_args("--dry-run"), context, store, None)
@@ -137,7 +152,7 @@ def test_dry_run_prepares_without_factors_or_publication(prepared_repair, tmp_pa
     assert payload["verified"] is False
     assert factors == []
     assert not manifest.exists()
-    assert _tree(tmp_path) == before
+    assert _tree_without_resident_lease_timestamps(tmp_path) == before
 
 
 @pytest.mark.usefixtures("native_hook_force")

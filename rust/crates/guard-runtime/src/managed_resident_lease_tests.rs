@@ -521,7 +521,10 @@ fn update_retirement_removes_an_expired_dead_same_runtime_lease() {
         .expect("short-lived child should start");
     let process_id = child.id();
     let status = child.wait().expect("short-lived child should be reaped");
-    assert!(status.success(), "short-lived child should exit successfully");
+    assert!(
+        status.success(),
+        "short-lived child should exit successfully"
+    );
     let digest =
         crate::resident_state::runtime_digest().expect("runtime digest should be available");
     let path = directory.join(format!("client-{process_id}-expired.lease"));
@@ -538,7 +541,10 @@ fn update_retirement_removes_an_expired_dead_same_runtime_lease() {
 
     let result = retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(2));
     assert_eq!(result, Ok(()));
-    assert!(!path.exists(), "a definitively dead lease should be drained");
+    assert!(
+        !path.exists(),
+        "a definitively dead lease should be drained"
+    );
     fs::remove_dir_all(root).expect("test directory should be removable");
 }
 

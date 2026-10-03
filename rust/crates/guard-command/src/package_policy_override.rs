@@ -379,7 +379,9 @@ pub fn package_policy_override_evaluation(
 
 /// Python `_string_value`: returns the `str` value, else `None`.
 fn string_value(value: Option<&Value>) -> Option<&str> {
-    value.and_then(Value::as_str)
+    value
+        .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
 }
 
 /// Rebuild `packages` with every entry's `decision` set (Python
@@ -429,10 +431,11 @@ fn package_label(map: &Map<String, Value>) -> String {
     if name.is_empty() {
         return default_label;
     }
-    let version = primary
+    let raw = primary
         .get("requestedVersion")
-        .and_then(Value::as_str)
-        .or_else(|| primary.get("resolvedVersion").and_then(Value::as_str));
+        .filter(|v| !matches!(v, Value::Null | Value::Bool(false)) && v.as_str() != Some("") && v.as_u64() != Some(0))
+        .or_else(|| primary.get("resolvedVersion"));
+    let version = raw.and_then(Value::as_str);
     match version {
         Some(v) if !v.is_empty() => format!("`{name}@{v}`"),
         _ => format!("`{name}`"),
@@ -648,7 +651,7 @@ mod tests {
         let blank: Map<String, Value> = serde_json::from_str(r#"{"scope":"harness","artifact_id":""}"#).unwrap();
         assert_eq!(
             saved_package_policy_clear_command(&artifact, "hash", &blank, "/work dir"),
-            "hol-guard policies clear --harness claude-code --scope harness --artifact-id ''"
+            "hol-guard policies clear --harness claude-code --scope harness --artifact-id npm:left-pad"
         );
     }
 

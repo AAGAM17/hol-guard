@@ -140,6 +140,70 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
             ("git worktree list".to_owned(), true),
             (
                 format!(
+                    "cd {} && git worktree list | rg --file=one.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg -nfone.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg --ignore-file=one.txt fixture",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg -- fixture one.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg -n -e fixture",
+                    project.display()
+                ),
+                true,
+            ),
+            (
+                format!("cd {} && git worktree list | rg -efixt", project.display()),
+                true,
+            ),
+            (
+                format!("cd {} && git worktree list | rg --files", project.display()),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg fixture .env",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg -f one.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | rg --pre=sh fixture",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
                     "cd {} && git worktree list | grep -n -e fixture",
                     project.display()
                 ),

@@ -940,23 +940,17 @@ fn largest_character_share(value: &str) -> f64 {
     largest as f64 / value.chars().count() as f64
 }
 
-fn obvious_sample(value: &str, context: &str, path: &str) -> bool {
-    if value.is_empty() {
+/// `_obvious_sample` (secret_detection.py:641-651): strip the candidate,
+/// unwrap bracket placeholders, then apply the Python ordering exactly —
+/// `fullmatch` on the unwrapped value, `search` on the *value* (not context),
+/// and only then the sample-context gate on `context`/`path`.
+fn obvious_sample(candidate: &str, context: &str, path: &str) -> bool {
+    let value = candidate.trim();
+    let unwrapped = value.trim_matches(|c| "<>[]{}()".contains(c));
+    if COMMON_PLACEHOLDER.is_match(unwrapped) || SAMPLE_WORDS.is_match(value) {
         return true;
     }
-    if SAMPLE_WORDS.is_match(context) {
-        return true;
-    }
-    if COMMON_PLACEHOLDER.is_match(value) || SHELL_VARIABLE_REFERENCE.is_match(value) {
-        return true;
-    }
-    if value.chars().next().is_some_and(|c| c.is_numeric()) {
-        return true;
-    }
-    if value.chars().any(|c| c.is_whitespace()) {
-        return true;
-    }
-    let has_sample_context = SAMPLE_WORDS.is_match(value) || path_is_sample_fixture(path);
+    let has_sample_context = SAMPLE_WORDS.is_match(context) || path_is_sample_fixture(path);
     if !has_sample_context {
         return false;
     }
@@ -1614,6 +1608,29 @@ mod tests {
             "key=aaaaaaaaaaaaaaaaaaaaaaaa",
             "docs/sample.txt"
         ));
+        // Python `_obvious_sample` does NOT early-true on a leading digit or
+        // interior whitespace; those were spurious Rust-only suppressions.
+        assert!(!obvious_sample(
+            "1X9kkkkkkkkkkkkkk",
+            "password = 1X9kkkkkkkkkkkkkk",
+            "config/prod.env"
+        ));
+        assert!(!obvious_sample(
+            "9digitsLeadingSecret99",
+            "token = 9digitsLeadingSecret99",
+            ""
+        ));
+        // SAMPLE_WORDS matches `context` only in the sample-context gate, and
+        // `value` only for the early-true search — not swapped.
+        assert!(!obvious_sample(
+            "xK9mQ2vL8nP4wR7tY1uI6oP3aS5dFgHj",
+            "secret = xK9mQ2vL8nP4wR7tY1uI6oP3aS5dFgHj",
+            "src/prod.rs"
+        ));
+        // Bracket-wrapped placeholder still hits the fullmatch-on-unwrapped arm.
+        assert!(obvious_sample("<placeholder_secret>", "key = x", ""));
+        // Empty candidate: no early-true — falls to the context gate (False here).
+        assert!(!obvious_sample("", "key = xK9mQ2vL8nP4wR7", ""));
     }
 
     #[test]

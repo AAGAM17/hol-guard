@@ -7460,8 +7460,8 @@ fn evaluate_with_cloud(
     workspace_id: Option<&str>,
     workspace_fingerprint: Option<&str>,
     bundle_meta: Option<&BTreeMap<String, String>>,
-    bundle_defer_eligible: bool,
-    bundle_decision: Option<&str>,
+    _bundle_defer_eligible: bool,
+    _bundle_decision: Option<&str>,
     bundle_evaluation: Option<&EvaluationDraft>,
 ) -> (Option<PackageEvalResult>, Option<Map<String, Value>>) {
     if targets.is_empty() || workspace_id.is_none() || workspace_fingerprint.is_none() {
@@ -7497,22 +7497,13 @@ fn evaluate_with_cloud(
             .unwrap_or(false)
     };
 
-    // `can_fallback_from_cloud_failure` (:1136-1150).
-    let can_fallback_from_cloud_failure =
-        |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> bool {
-            if bundle_meta.is_some() && bundle_defer_eligible && bundle_decision == Some("block") {
-                return true;
-            }
-            cloud_protection_is_explicitly_unpaid(&cloud_entitlement)
-                && resolve_fail_closed(deps, store) != "block"
-        };
-
+    // `resolve_cloud_failure_decision` (:1690-1704).
     let resolve_cloud_failure_decision =
         |deps: &SupplyChainEvalDeps<'_>, store: &dyn SupplyChainStore| -> String {
-            if can_fallback_from_cloud_failure(deps, store) {
-                return "allow".to_string();
+            if cloud_protection_is_explicitly_unpaid(&cloud_entitlement) {
+                return resolve_fail_closed(deps, store);
             }
-            resolve_fail_closed(deps, store)
+            "block".to_string()
         };
 
     // Resolve auth context + evaluate URL + request payload (:1318-1336).
@@ -7685,39 +7676,56 @@ fn evaluate_with_cloud(
                     )),
                 );
             }
+            let failure_decision = resolve_cloud_failure_decision(deps, store);
             let is_timeout = deps.guard_sync.is_timeout_error(&error);
-            let (code, message) = if is_timeout {
-                (
-                    "cloud_timeout",
-                    "Guard cloud evaluation timed out, so Guard used local package intelligence.",
-                )
-            } else {
-                (
-                    "cloud_network_error",
-                    "Guard cloud evaluation could not be reached, so Guard used local package intelligence.",
-                )
-            };
-            let bundle_is_at_least_as_strict = bundle_meta.is_some()
-                && bundle_defer_eligible
-                && bundle_evaluation.is_some_and(|b| {
-                    decision_rank(&b.decision)
-                        >= decision_rank(&resolve_cloud_failure_decision(deps, store))
-                });
-            if can_fallback_from_cloud_failure(deps, store) || bundle_is_at_least_as_strict {
-                return (None, Some(cloud_fallback_reason(code, message)));
+            if is_timeout {
+                if failure_decision == "block" {
+                    return (
+                        Some(cloud_fail_closed_evaluation_full(
+                            deps,
+                            "cloud_timeout",
+                            "Guard Cloud evaluation timed out, so this package request is paused for explicit review.",
+                            artifact,
+                            targets,
+                            workspace_dir,
+                            Some(workspace_fingerprint),
+                            bundle_meta,
+                            "ask",
+                        )),
+                        None,
+                    );
+                }
+                return (
+                    None,
+                    Some(cloud_fallback_reason(
+                        "cloud_timeout",
+                        "Guard cloud evaluation timed out, so Guard fell back to local intelligence.",
+                    )),
+                );
             }
-            let eval_result = cloud_fail_closed_evaluation_full(
-                deps,
-                code,
-                message,
-                artifact,
-                targets,
-                workspace_dir,
-                Some(workspace_fingerprint),
-                bundle_meta,
-                &resolve_cloud_failure_decision(deps, store),
-            );
-            (Some(eval_result), None)
+            if failure_decision == "block" {
+                return (
+                    Some(cloud_fail_closed_evaluation_full(
+                        deps,
+                        "cloud_http_error",
+                        "Guard Cloud evaluation could not be reached, so Guard blocked the install rather than bypassing Cloud package protection.",
+                        artifact,
+                        targets,
+                        workspace_dir,
+                        Some(workspace_fingerprint),
+                        bundle_meta,
+                        "block",
+                    )),
+                    None,
+                );
+            }
+            (
+                None,
+                Some(cloud_fallback_reason(
+                    "cloud_http_error",
+                    "Guard Cloud evaluation could not be reached, so Guard used local package intelligence.",
+                )),
+            )
         }
     }
 }

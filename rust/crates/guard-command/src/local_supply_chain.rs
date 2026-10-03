@@ -133,10 +133,6 @@ static SKIP_DIR_SET: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         .copied()
         .collect()
 });
-
-static INFORMATIONAL_REASON_CODES: LazyLock<HashSet<&'static str>> =
-    LazyLock::new(|| ["unknown_package", "no_cached_match"].into_iter().collect());
-
 static PACKAGE_MANAGER_BY_ECOSYSTEM: LazyLock<BTreeMap<&'static str, &'static str>> =
     LazyLock::new(|| {
         [
@@ -2555,46 +2551,6 @@ fn enrich_evaluation_packages_with_advisory_aliases(
     out
 }
 
-/// `_package_reason_codes`
-fn package_reason_codes(item: &Map<String, Value>) -> HashSet<String> {
-    let mut codes = HashSet::new();
-    if let Some(reasons) = item.get("reasons").and_then(Value::as_array) {
-        for reason in reasons {
-            let Some(reason) = reason.as_object() else {
-                continue;
-            };
-            let code = reason
-                .get("code")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            if !code.is_empty() {
-                codes.insert(code);
-            }
-        }
-    }
-    codes
-}
-
-/// `_is_actionable_package_finding`
-fn is_actionable_package_finding(item: &Map<String, Value>) -> bool {
-    let decision = item
-        .get("decision")
-        .and_then(Value::as_str)
-        .unwrap_or("monitor");
-    if matches!(decision, "block" | "ask" | "warn") {
-        return true;
-    }
-    let reason_codes = package_reason_codes(item);
-    if reason_codes.is_empty() {
-        return !matches!(decision, "allow" | "monitor");
-    }
-    !reason_codes
-        .iter()
-        .all(|code| INFORMATIONAL_REASON_CODES.contains(code.as_str()))
-}
-
 /// `_package_severity_rank` — `normalized_severity` first, then max over
 /// reason severities; absent → `unknown` rank (0).
 fn package_severity_rank(package: &Map<String, Value>) -> i64 {
@@ -2613,62 +2569,6 @@ fn package_severity_rank(package: &Map<String, Value>) -> i64 {
         }
     }
     highest
-}
-
-/// `_audit_package_inventory_for_receipt`
-fn audit_package_inventory_for_receipt(
-    package_items: &[Map<String, Value>],
-    limit: usize,
-    bundle: Option<&Map<String, Value>>,
-) -> Vec<Value> {
-    let mut ranked: Vec<&Map<String, Value>> = package_items.iter().collect();
-    ranked.sort_by(|a, b| {
-        (
-            a.get("ecosystem").and_then(Value::as_str).unwrap_or(""),
-            a.get("name").and_then(Value::as_str).unwrap_or(""),
-        )
-            .cmp(&(
-                b.get("ecosystem").and_then(Value::as_str).unwrap_or(""),
-                b.get("name").and_then(Value::as_str).unwrap_or(""),
-            ))
-    });
-    ranked
-        .into_iter()
-        .take(limit.min(500))
-        .map(|item| Value::Object(enrich_package_with_advisory_aliases(item, bundle)))
-        .collect()
-}
-
-/// `_audit_package_findings_for_receipt`
-fn audit_package_findings_for_receipt(
-    package_items: &[Map<String, Value>],
-    limit: usize,
-    bundle: Option<&Map<String, Value>>,
-) -> Vec<Value> {
-    let decision_rank = |decision: &str| match decision {
-        "block" => 4,
-        "ask" => 3,
-        "warn" => 2,
-        "monitor" => 1,
-        _ => 0,
-    };
-    let mut ranked: Vec<(i64, i64, &Map<String, Value>)> = Vec::new();
-    for item in package_items {
-        if !is_actionable_package_finding(item) {
-            continue;
-        }
-        let decision = item
-            .get("decision")
-            .and_then(Value::as_str)
-            .unwrap_or("monitor");
-        ranked.push((decision_rank(decision), package_severity_rank(item), item));
-    }
-    ranked.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
-    ranked
-        .into_iter()
-        .take(limit.min(100))
-        .map(|(_, _, item)| Value::Object(enrich_package_with_advisory_aliases(item, bundle)))
-        .collect()
 }
 
 /// `workspace_audit_path_hashes`
@@ -3714,142 +3614,16 @@ fn package_evaluation_with_current_policy_action(
 // Audit receipt metadata (:904-1008).
 // ---------------------------------------------------------------------------
 
-/// `_incomplete_audit_receipt_metadata` (:904-942).
-fn incomplete_audit_receipt_metadata(
-    paths_api: &dyn PathSupportApi,
-    result: &Map<String, Value>,
-    workspace_dir: Option<&Path>,
-) -> Map<String, Value> {
-    let message = string_value(result.get("message"))
-        .unwrap_or_else(|| "Workspace audit did not complete.".to_string());
-    let outcome =
-        string_value(result.get("audit_outcome")).unwrap_or_else(|| "incomplete".to_string());
-    let manifest_paths = string_items(result.get("manifest_paths"));
-    let lockfile_paths = string_items(result.get("lockfile_paths"));
-    let path_hashes =
-        workspace_audit_path_hashes(paths_api, workspace_dir, &manifest_paths, &lockfile_paths);
-    let policy_decision = if matches!(
-        outcome.as_str(),
-        "sync_required" | "inventory_empty" | "no_project_files"
-    ) {
-        "review"
-    } else {
-        "warn"
-    };
-    let mut scanner_evidence = Map::new();
-    scanner_evidence.insert("operation".into(), json!("audit"));
-    scanner_evidence.insert("audit_status".into(), json!("incomplete"));
-    scanner_evidence.insert("audit_outcome".into(), json!(outcome));
-    scanner_evidence.insert("audit_decision".into(), json!("monitor"));
-    scanner_evidence.insert("blocked_package_count".into(), json!(0));
-    scanner_evidence.insert("total_packages".into(), json!(0));
-    scanner_evidence.insert("manifest_paths".into(), json!(manifest_paths));
-    scanner_evidence.insert("lockfile_paths".into(), json!(lockfile_paths));
-    scanner_evidence.insert(
-        "manifest_hashes".into(),
-        path_hashes
-            .get("manifest_hashes")
-            .cloned()
-            .unwrap_or(json!([])),
-    );
-    scanner_evidence.insert(
-        "lockfile_hashes".into(),
-        path_hashes
-            .get("lockfile_hashes")
-            .cloned()
-            .unwrap_or(json!([])),
-    );
-    scanner_evidence.insert("package_findings".into(), json!([]));
-    let mut out = Map::new();
-    out.insert("policy_decision".into(), json!(policy_decision));
-    out.insert("capabilities_summary".into(), json!(message));
-    out.insert(
-        "artifact_name".into(),
-        json!("Workspace supply-chain audit"),
-    );
-    out.insert("scanner_evidence".into(), Value::Object(scanner_evidence));
-    out
-}
-
-/// `audit_receipt_metadata` (:943-1008).
+/// `audit_receipt_metadata` (:943-1008). Canonical implementation lives in
+/// `crate::audit_receipt`; this resolves the `store`→bundle boundary locally.
 pub fn audit_receipt_metadata(
     paths_api: &dyn PathSupportApi,
     result: &Map<String, Value>,
     workspace_dir: Option<&Path>,
     store: Option<&dyn SupplyChainStore>,
 ) -> Map<String, Value> {
-    let Some(evaluation) = result.get("evaluation").and_then(Value::as_object) else {
-        return incomplete_audit_receipt_metadata(paths_api, result, workspace_dir);
-    };
-    let decision =
-        string_value(evaluation.get("decision")).unwrap_or_else(|| "monitor".to_string());
-    let package_items: Vec<Map<String, Value>> = evaluation
-        .get("packages")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|i| i.as_object().cloned()).collect())
-        .unwrap_or_default();
-    let blocked_packages = package_items
-        .iter()
-        .filter(|i| i.get("decision").and_then(Value::as_str) == Some("block"))
-        .count();
     let bundle = store.and_then(cached_supply_chain_bundle_payload);
-    let package_findings = audit_package_findings_for_receipt(&package_items, 100, bundle.as_ref());
-    let package_inventory =
-        audit_package_inventory_for_receipt(&package_items, 500, bundle.as_ref());
-    let policy_decision = match decision.as_str() {
-        "block" => "block",
-        "ask" => "review",
-        "warn" => "warn",
-        _ => "allow",
-    };
-    let inventory = result
-        .get("inventory")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let manifest_paths = string_items(result.get("manifest_paths"));
-    let lockfile_paths = string_items(result.get("lockfile_paths"));
-    let path_hashes =
-        workspace_audit_path_hashes(paths_api, workspace_dir, &manifest_paths, &lockfile_paths);
-    let total_packages = inventory
-        .get("total_packages")
-        .and_then(Value::as_u64)
-        .map(|v| v as usize)
-        .unwrap_or(package_items.len());
-    let mut scanner_evidence = Map::new();
-    scanner_evidence.insert("operation".into(), json!("audit"));
-    scanner_evidence.insert("audit_decision".into(), json!(decision));
-    scanner_evidence.insert("blocked_package_count".into(), json!(blocked_packages));
-    scanner_evidence.insert("lockfile_paths".into(), json!(lockfile_paths));
-    scanner_evidence.insert("manifest_paths".into(), json!(manifest_paths));
-    scanner_evidence.insert(
-        "manifest_hashes".into(),
-        path_hashes
-            .get("manifest_hashes")
-            .cloned()
-            .unwrap_or(json!([])),
-    );
-    scanner_evidence.insert(
-        "lockfile_hashes".into(),
-        path_hashes
-            .get("lockfile_hashes")
-            .cloned()
-            .unwrap_or(json!([])),
-    );
-    scanner_evidence.insert("total_packages".into(), json!(total_packages));
-    scanner_evidence.insert("package_inventory".into(), json!(package_inventory));
-    scanner_evidence.insert("package_findings".into(), json!(package_findings));
-    let mut out = Map::new();
-    out.insert("policy_decision".into(), json!(policy_decision));
-    out.insert("capabilities_summary".into(), json!(format!(
-        "Workspace audit completed with {policy_decision} decision across {total_packages} packages."
-    )));
-    out.insert(
-        "artifact_name".into(),
-        json!("Workspace supply-chain audit"),
-    );
-    out.insert("scanner_evidence".into(), Value::Object(scanner_evidence));
-    out
+    crate::audit_receipt::audit_receipt_metadata(paths_api, result, workspace_dir, bundle.as_ref())
 }
 
 // ---------------------------------------------------------------------------
@@ -3865,11 +3639,12 @@ fn evaluation_exit_code(decision: &str) -> i64 {
     }
 }
 
-/// `is_execution_permitted` — any action ≤ "require-reapproval" lets execution proceed.
+/// `is_execution_permitted` (runtime/package_execution_policy.py :8-15) permits
+/// exactly `"allow"` and `"warn"`; `monitor`/observe/require-reapproval are
+/// telemetry or pre-approval dispositions, not enforcement passes — fail closed.
 #[allow(dead_code)]
 fn is_execution_permitted(action: &GuardAction) -> bool {
-    let action_value = action.as_str();
-    !matches!(action_value, "sandbox-required" | "block")
+    matches!(action.as_str(), "allow" | "warn")
 }
 
 /// `_protect_action_for_policy_action` (:4373-4374).

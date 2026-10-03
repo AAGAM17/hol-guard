@@ -189,9 +189,7 @@ fn client_request_with_deadline(
     overall_deadline: Instant,
     _client_lease: &lease::ClientLease,
 ) -> Result<Vec<u8>, String> {
-    // Keep the caller's budget intact. Windows spawn already has
-    // CLIENT_START_TIMEOUT; shrinking every live request by 300ms makes the
-    // 250ms command-model SLO miss the ready serve entirely.
+    // Preserve the caller's budget; Windows startup has its own timeout.
     if Instant::now() >= overall_deadline {
         return Err("native_client_deadline_exceeded".to_owned());
     }
@@ -203,9 +201,7 @@ fn client_request_with_deadline(
     if Instant::now() >= overall_deadline {
         return Err("native_client_deadline_exceeded".to_owned());
     }
-    // Older per-digest launchers left their startup marker in the runtime
-    // scope.  Retire only an authenticated stale marker before taking the
-    // home-wide lock; a live marker remains an active startup signal.
+    // Retire authenticated stale startup markers only; live markers remain active signals.
     let _ = clear_stale_startup_lock(&scope, &digest)?;
     let mut lock = acquire_startup_lock(state_base)?;
     if lock.is_none() && clear_stale_startup_lock(state_base, &digest)? {
@@ -234,9 +230,7 @@ fn client_request_with_deadline(
     if let Some(response) = try_live_or_restart(state_base, payload, overall_deadline, &digest)? {
         return Ok(response);
     }
-    // A missing or unreadable verifier key is a prerequisite, not a crashed
-    // resident. Spawning anyway exits immediately and opens the restart circuit
-    // before publication can write the key and retry.
+    // A missing verifier key is a prerequisite failure, not a crashed resident.
     let verifier_key = state_base.join("policy-verifier.key");
     match fs::symlink_metadata(&verifier_key) {
         Ok(_) => {}
@@ -272,8 +266,7 @@ fn client_request_with_deadline(
     match request_result {
         Ok(response) => Ok(response),
         Err(error) => {
-            // Cleanup retries share the request deadline. A failed containment
-            // check must remain visible rather than be hidden by the request error.
+            // Use the request deadline for cleanup and expose containment failures.
             containment::abort_spawned_managed(
                 &mut spawned,
                 &scope,
@@ -288,10 +281,7 @@ fn client_request_with_deadline(
 }
 
 pub(crate) fn stop_managed(state_base: &Path) -> Result<(), String> {
-    // Materialize the current runtime scope even when no resident state is
-    // present.  This keeps the stop command's authenticated, private-home
-    // contract deterministic for callers that use it to initialize a fresh
-    // scope before publishing test or recovery state.
+    // Initialize the authenticated private scope even when no resident exists.
     let digest = runtime_digest()?;
     let _ = state_scope(state_base, &digest)?;
     let request = br#"{"operation":"shutdown","request":{}}"#;
@@ -417,10 +407,7 @@ pub(crate) fn supervise_managed_for_owner(
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // The supervisor was launched in its own process group by
-        // spawn_managed_for_owner. Leave the serving child in that inherited
-        // group so startup timeout containment addresses both processes as
-        // one authenticated unit.
+        // Keep the serving child in the supervisor's group for joint containment.
         let mut child = child
             .spawn()
             .map_err(|_| "native_resident_spawn_failed".to_owned())?;

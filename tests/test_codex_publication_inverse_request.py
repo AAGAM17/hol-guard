@@ -189,11 +189,11 @@ def test_cli_review_approval_publication_and_real_native_retirement(inverse, tmp
     assert preview["verified"] is False
     assert participant_digests(context, config, manifest) == before
     daemon = OwnedDaemonLifecycle(context.home_dir, context.guard_home, identity.path)
+    store.set_managed_install("codex", True, None, codex_native_hook_state(context), "isolated-cli-inverse")
+    daemon.start(time.monotonic() + 30)
     verify = command.verify_and_retire_codex_publication_inverse
 
     def verify_with_owned_daemon(pending, **kwargs):
-        store.set_managed_install("codex", True, None, codex_native_hook_state(context), "isolated-cli-inverse")
-        daemon.start(pending.authorization.deadline_monotonic)
         proof = verify(pending, **kwargs)
         daemon.stop(pending.authorization.deadline_monotonic)
         return proof

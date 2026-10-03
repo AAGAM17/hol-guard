@@ -159,6 +159,7 @@ pub const NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES: &[&str] = &[
     "native_resident_windows_bind_failed",
     "native_resident_windows_boundary_mismatch",
     "native_resident_windows_private_ancestry_missing",
+    "native_resident_windows_trusted_ancestry_missing",
     "native_resident_windows_sharing_violation",
     "native_resident_worker_pool_stopped",
     "native_resource_pressure",

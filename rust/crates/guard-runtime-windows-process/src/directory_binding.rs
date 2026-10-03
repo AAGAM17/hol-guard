@@ -4,7 +4,7 @@ use std::os::windows::io::AsRawHandle;
 use std::path::{Component, Path, PathBuf, Prefix, PrefixComponent};
 
 use winapi::shared::minwindef::{DWORD, FALSE};
-use winapi::um::fileapi::CreateDirectoryW;
+use winapi::um::fileapi::{CreateDirectoryW, GetLongPathNameW};
 use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
 use winapi::um::winnt::{FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE};
 use windows_permissions::SecurityDescriptor;
@@ -377,6 +377,16 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
         match existing.canonicalize() {
             Ok(canonical) => break canonical,
             Err(error) => {
+                // `canonicalize` can fail on an existing 8.3 component when
+                // its DACL blocks the handle query. Walking past it and
+                // appending the short name onto a `\\?\` parent disables
+                // Win32 short-name expansion, so the later open returns
+                // NotFound. Prefer the long path when the component exists.
+                if error.kind() != io::ErrorKind::NotFound {
+                    if let Some(long) = long_path_if_same_shape(&existing) {
+                        break long;
+                    }
+                }
                 let Some(name) = existing.file_name() else {
                     return Err(error);
                 };
@@ -394,9 +404,67 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
 
     let mut canonical = canonical_existing;
     for component in missing_tail.iter().rev() {
-        canonical.push(component);
+        canonical.push(existing_alias_or_name(&canonical, component));
     }
     Ok(canonical)
+}
+
+fn existing_alias_or_name(parent: &Path, name: &OsStr) -> std::ffi::OsString {
+    let candidate = win32_path(parent).join(name);
+    let Some(long) = long_path_if_same_shape(&candidate) else {
+        return name.to_owned();
+    };
+    let Some(long_name) = long.file_name() else {
+        return name.to_owned();
+    };
+    let Some(long_parent) = long.parent() else {
+        return name.to_owned();
+    };
+    if path_has_prefix(long_parent, &win32_path(parent))
+        && path_has_prefix(&win32_path(parent), long_parent)
+    {
+        long_name.to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
+fn win32_path(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest.as_ref());
+    }
+    path.to_owned()
+}
+
+fn long_path_if_same_shape(path: &Path) -> Option<PathBuf> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    if wide.contains(&0) {
+        return None;
+    }
+    wide.push(0);
+    let mut buffer = vec![0u16; 512];
+    let mut length =
+        unsafe { GetLongPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) };
+    if length as usize > buffer.len() {
+        buffer.resize(length as usize, 0);
+        length =
+            unsafe { GetLongPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) };
+    }
+    if length == 0 || length as usize > buffer.len() {
+        return None;
+    }
+    buffer.truncate(length as usize - 1);
+    let long = PathBuf::from(std::ffi::OsString::from_wide(&buffer));
+    if !long.is_absolute() || long.components().count() != path.components().count() {
+        return None;
+    }
+    Some(long)
 }
 
 fn validate_boundary(path: &Path, trusted_base: &Path, private_root: &Path) -> io::Result<()> {

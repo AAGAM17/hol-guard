@@ -541,7 +541,10 @@ fn surfaced_windows_bind_message(message: &str) -> String {
     if message.contains("outside its trusted private boundary") {
         return "native_resident_windows_boundary_mismatch".to_owned();
     }
-    if message.contains("ancestry is missing") {
+    if message.contains("trusted directory ancestry is missing") {
+        return "native_resident_windows_trusted_ancestry_missing".to_owned();
+    }
+    if message.contains("private directory ancestry is missing") {
         return "native_resident_windows_private_ancestry_missing".to_owned();
     }
     if message.contains("os error 32") || message.contains("being used by another process") {
@@ -591,6 +594,10 @@ mod tests {
         assert_eq!(
             super::surfaced_windows_bind_message("private directory ancestry is missing"),
             "native_resident_windows_private_ancestry_missing"
+        );
+        assert_eq!(
+            super::surfaced_windows_bind_message("trusted directory ancestry is missing"),
+            "native_resident_windows_trusted_ancestry_missing"
         );
         assert_eq!(
             super::surfaced_windows_bind_message(

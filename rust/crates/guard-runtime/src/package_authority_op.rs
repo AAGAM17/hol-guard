@@ -262,9 +262,7 @@ fn valid_oauth_credentials_result(secret: &Value) -> bool {
     };
     nonempty(secret.get("refresh_token"))
         && nonempty(secret.get("dpop_private_key_pem"))
-        && secret
-            .get("dpop_public_jwk")
-            .map_or(false, Value::is_object)
+        && secret.get("dpop_public_jwk").is_some_and(Value::is_object)
         && nonempty(secret.get("dpop_public_jwk_thumbprint"))
 }
 
@@ -1704,7 +1702,7 @@ impl StoreExtrasApi for ResidentStoreExtras {
         // the secret store, not a cached `guard_oauth_metadata` row.
         let mut health = Map::new();
         let payload = self.oauth_local_credentials();
-        let configured = payload.as_ref().map_or(false, Value::is_object);
+        let configured = payload.as_ref().is_some_and(Value::is_object);
         health.insert("configured".to_string(), Value::Bool(configured));
         health.insert(
             "backend".to_string(),

@@ -1059,15 +1059,23 @@ def validate_grant(
     session_nonce: str | None = None,
     now: str | None = None,
 ) -> None:
-    native = _approval_gate_native(
-        "validate_grant",
-        guard_home,
-        params={"action": action, "scope": scope, "subject": subject, "session_nonce": session_nonce},
-        approval_gate_grant=approval_gate_grant,
-        strict=strict,
-        purpose=purpose,
-        now=now,
-    )
+    try:
+        native = _approval_gate_native(
+            "validate_grant",
+            guard_home,
+            params={"action": action, "scope": scope, "subject": subject, "session_nonce": session_nonce},
+            approval_gate_grant=approval_gate_grant,
+            strict=strict,
+            purpose=purpose,
+            now=now,
+        )
+    except ApprovalGateError as error:
+        # A resident that started after Python issued the proof has an empty
+        # table. That is not a rejection of a resident-issued grant; Python
+        # still holds those proofs and must validate them, including revocation.
+        if str(error) != "Approval proof is required.":
+            raise
+        native = None
     if native is not None:
         return
     with _APPROVAL_GATE_LOCK:

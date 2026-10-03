@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
 
-use std::fs;
 #[cfg(not(windows))]
 use std::io::Write;
 use std::path::Path;
@@ -230,16 +229,7 @@ fn client_request_with_deadline(
     if let Some(response) = try_live_or_restart(state_base, payload, overall_deadline, &digest)? {
         return Ok(response);
     }
-    // A missing verifier key is a prerequisite failure, not a crashed resident.
-    let verifier_key = state_base.join("policy-verifier.key");
-    match fs::symlink_metadata(&verifier_key) {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err("native_policy_verifier_key_missing".to_owned());
-        }
-        Err(_) => return Err("native_policy_verifier_key_stat_failed".to_owned()),
-    }
-    restart_budget::consume(&scope)?;
+    restart_budget::consume_for_spawn(state_base, &scope)?;
     let generation = next_generation(&scope, &digest)?;
     let mut token = [0u8; crate::AUTH_TOKEN_BYTES];
     getrandom::fill(&mut token).map_err(|_| "native_client_random_failed".to_owned())?;

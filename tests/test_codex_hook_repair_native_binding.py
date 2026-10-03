@@ -264,7 +264,7 @@ def test_real_configured_hook_native_protection_commits_repair(
                     with pytest.raises(ApprovalGateError):
                         repair.verify_and_commit_codex_hook_repair(pending, receipt_store=store)
                 else:
-                    reason = "admission_protection_failed" if boundary == "wrong-native" else "functional_proof_missing"
+                    reason = "admission_protection_failed" if boundary in {"wrong-native", "tampered-proof"} else "functional_proof_missing"
                     with pytest.raises(TransitionError, match=reason):
                         repair.verify_and_commit_codex_hook_repair(pending, receipt_store=store)
             else:

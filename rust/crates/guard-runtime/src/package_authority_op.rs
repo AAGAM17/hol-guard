@@ -83,6 +83,20 @@ impl ResidentSupplyChainStore {
     fn conn(&self) -> Result<Connection, rusqlite::Error> {
         Connection::open(&self.store_path)
     }
+
+    fn oauth_local_credentials(&self) -> Option<Value> {
+        let conn = self.conn().ok()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT payload_json FROM sync_state \
+                 WHERE state_key = 'oauth_local_credentials' LIMIT 1",
+            )
+            .ok()?;
+        let mut rows = stmt.query([]).ok()?;
+        let row = rows.next().ok()??;
+        let raw: String = row.get(0).ok()?;
+        serde_json::from_str(&raw).ok()
+    }
 }
 
 impl SupplyChainStore for ResidentSupplyChainStore {
@@ -91,27 +105,35 @@ impl SupplyChainStore for ResidentSupplyChainStore {
     }
 
     fn get_cloud_sync_profile(&self) -> Option<Value> {
-        // store_oauth.py: get_cloud_sync_profile — last `profile` row from
-        // the sync-state table.
-        let conn = self.conn().ok()?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT payload_json FROM guard_sync_state \
-                 WHERE kind = 'profile' ORDER BY rowid DESC LIMIT 1",
-            )
-            .ok()?;
-        let mut rows = stmt.query([]).ok()?;
-        let row = rows.next().ok()??;
-        let raw: String = row.get(0).ok()?;
-        serde_json::from_str(&raw).ok()
+        // store_oauth.py: get_cloud_sync_profile reads oauth local credentials,
+        // not a separate profile row.
+        let payload = self.oauth_local_credentials()?;
+        let workspace_id = payload
+            .get("workspace_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?;
+        let issuer = payload
+            .get("issuer")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("https://hol.org");
+        Some(serde_json::json!({
+            "auth_mode": "oauth",
+            "sync_url": issuer,
+            "workspace_id": workspace_id,
+        }))
     }
 
     fn get_cloud_workspace_id(&self) -> Option<String> {
-        let profile = self.get_cloud_sync_profile()?;
-        profile
+        // store_oauth.py: _cloud_workspace_id_from_connection
+        let payload = self.oauth_local_credentials()?;
+        payload
             .get("workspace_id")
-            .or_else(|| profile.get("workspaceId"))
             .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
             .map(str::to_owned)
     }
 

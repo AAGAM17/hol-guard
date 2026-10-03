@@ -2180,11 +2180,11 @@ fn finalize_evaluation(
     }
     let fix_command = fix_command(&primary_package);
     let title = match draft.decision.as_str() {
-        "block" => "Package blocked",
-        "ask" => "Package needs review",
-        "warn" => "Package has risk signals",
-        "monitor" => "Package monitored",
-        _ => "Package allowed",
+        "block" => "Critical install blocked",
+        "ask" => "Review required",
+        "warn" => "Proceed with caution",
+        "monitor" => "Monitoring this package",
+        _ => "Allowed by policy",
     }
     .to_string();
     let mut summary = match draft.decision.as_str() {
@@ -4068,9 +4068,19 @@ fn resolved_target_version(
             return Some(v.clone());
         }
     }
-    if let Some(v) = optional_string(target.get("version")) {
-        if !v.is_empty() {
-            return Some(v);
+    if let Some(version) = optional_string(target.get("version")) {
+        if !version.is_empty() {
+            return Some(version);
+        }
+    }
+    if let Some(requested) = optional_string(target.get("requested_specifier"))
+        .or_else(|| optional_string(target.get("range")))
+    {
+        let ecosystem = optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".into());
+        if !requested_specifier_is_range(Some(requested.as_str()), &ecosystem) {
+            if let Some(exact) = exact_version(&requested) {
+                return Some(exact);
+            }
         }
     }
     registry_resolved_target_version(deps, target)
@@ -4746,6 +4756,11 @@ fn bundle_package_result(
     );
     reason.insert("severity".to_string(), Value::String("medium".into()));
     let mut pkg = package_target_result(target, decision, vec![reason], None);
+    if let Some(fix) = optional_string_map(package_match, "recommendedFixVersion") {
+        if !fix.is_empty() {
+            pkg.insert("recommendedFixVersion".to_string(), Value::String(fix));
+        }
+    }
     if let Some(v) = resolved_version {
         pkg.insert("resolvedVersion".to_string(), Value::String(v.to_string()));
     }
@@ -7683,7 +7698,12 @@ fn evaluate_with_cloud(
                     "Guard cloud evaluation could not be reached, so Guard used local package intelligence.",
                 )
             };
-            if can_fallback_from_cloud_failure(deps, store) {
+            // A fresh cached bundle, including a review rule, is the local
+            // decision. Returning a cloud fail-closed result here drops the
+            // matched rule and the caller never reaches the bundle fallback.
+            if can_fallback_from_cloud_failure(deps, store)
+                || (bundle_meta.is_some() && bundle_defer_eligible && bundle_evaluation.is_some())
+            {
                 return (None, Some(cloud_fallback_reason(code, message)));
             }
             let eval_result = cloud_fail_closed_evaluation_full(

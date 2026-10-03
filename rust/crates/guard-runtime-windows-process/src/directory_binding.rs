@@ -14,7 +14,7 @@ use super::private_files::{
     open_directory_bound, open_inspect_private_file, open_raw, open_raw_directory_bound,
     open_rename_directory, rename_into_directory, validate_handle, verify_private_file,
 };
-use super::windows::MAX_PATH;
+use super::MAX_PATH;
 
 const ERROR_ALREADY_EXISTS: i32 = 183;
 

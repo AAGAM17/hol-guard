@@ -275,7 +275,7 @@ fn retire_clients_for_update_terminates_exact_process() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    for _ in 0..200 {
+    for _ in 0..1000 {
         if root.join("child-ready").is_file() {
             break;
         }

@@ -671,6 +671,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn valid_manifest(size: i64, sha: &str) -> serde_json::Value {
         serde_json::json!({
             "schema": NATIVE_MANIFEST_SCHEMA,

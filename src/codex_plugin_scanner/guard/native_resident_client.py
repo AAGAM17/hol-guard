@@ -179,10 +179,12 @@ def _client_pool_for(executable: Path, state_dir: Path, environment: Mapping[str
     return pool
 
 
-def _state_files(state_dir: Path) -> tuple[Path, ...]:
+def _state_files(state_dir: Path, *, strict: bool = False) -> tuple[Path, ...]:
     try:
         return tuple(state_dir.glob("resident-v3-*/generation-*.json"))
     except (OSError, RuntimeError):
+        if strict:
+            raise
         return ()
 
 
@@ -246,12 +248,43 @@ def stop_native_resident(
         timeout_seconds=timeout_seconds,
         output_limit=_MAX_RESPONSE_BYTES,
     )
-    return (
-        result.returncode == 0
-        and not result.timed_out
-        and not result.containment_failed
-        and not _state_files(state_dir)
-    )
+    if result.returncode != 0 or result.timed_out or result.containment_failed:
+        return False
+    try:
+        return not _state_files(state_dir, strict=True)
+    except (OSError, RuntimeError):
+        return False
+
+
+def retire_native_resident_for_update(
+    *,
+    executable: Path,
+    guard_home: Path,
+    environment: Mapping[str, str],
+    timeout_seconds: float = 3.0,
+) -> bool:
+    """Retire any resident before its executable can be replaced in place.
+
+    The resident registry is process-local, so an updater may need to retire a
+    resident started by another Guard process. State discovery stays bounded to
+    this Guard home, while shutdown still goes through the authenticated Rust
+    command and its PID/start-marker/runtime-digest checks.
+    """
+
+    resolved_guard_home = guard_home.expanduser().resolve()
+    state_dir = resolved_guard_home / "native-runtime"
+    try:
+        close_native_resident_clients(resolved_guard_home)
+        if not _state_files(state_dir, strict=True):
+            return True
+        return stop_native_resident(
+            executable=executable,
+            state_dir=state_dir,
+            environment=environment,
+            timeout_seconds=timeout_seconds,
+        )
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def close_native_residents(guard_home: Path | None = None) -> bool:
@@ -395,5 +428,6 @@ __all__ = [
     "native_resident_client_failure_code",
     "native_resident_client_request",
     "record_native_resident_client_failure_code",
+    "retire_native_resident_for_update",
     "stop_native_resident",
 ]

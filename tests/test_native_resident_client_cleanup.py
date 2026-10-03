@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -77,7 +78,11 @@ def test_close_native_residents_stops_tracked_production_pool(
         original = dict(client_module._RESIDENTS)
         client_module._RESIDENTS.clear()
     stopped: list[Path] = []
-    monkeypatch.setattr(client_module, "_state_files", lambda _state_dir: (state_dir / "generation.json",))
+    monkeypatch.setattr(
+        client_module,
+        "_state_files",
+        lambda _state_dir, *, strict=False: (state_dir / "generation.json",),
+    )
     monkeypatch.setattr(
         client_module,
         "stop_native_resident",
@@ -94,6 +99,108 @@ def test_close_native_residents_stops_tracked_production_pool(
         with client_module._RESIDENTS_LOCK:
             client_module._RESIDENTS.clear()
             client_module._RESIDENTS.update(original)
+
+
+def test_retire_native_resident_for_update_stops_untracked_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard_home = tmp_path / "guard-home"
+    state_dir = guard_home / "native-runtime"
+    executable = tmp_path / "runtime"
+    state_dir.mkdir(parents=True)
+    executable.write_text("binary", encoding="utf-8")
+    stopped: list[dict[str, object]] = []
+    closed: list[Path] = []
+    monkeypatch.setattr(
+        client_module,
+        "close_native_resident_clients",
+        lambda home=None: closed.append(home) if home is not None else None,
+    )
+    monkeypatch.setattr(
+        client_module,
+        "_state_files",
+        lambda _state_dir, *, strict=False: (state_dir / "generation.json",),
+    )
+    monkeypatch.setattr(
+        client_module,
+        "stop_native_resident",
+        lambda **kwargs: stopped.append(kwargs) or True,
+    )
+
+    assert client_module.retire_native_resident_for_update(
+        executable=executable,
+        guard_home=guard_home,
+        environment={"HOME": str(tmp_path)},
+    )
+    assert closed == [guard_home.resolve()]
+    assert stopped == [
+        {
+            "executable": executable,
+            "state_dir": state_dir,
+            "environment": {"HOME": str(tmp_path)},
+            "timeout_seconds": 3.0,
+        }
+    ]
+
+
+def test_retire_native_resident_for_update_fails_closed_on_state_discovery_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard_home = tmp_path / "guard-home"
+    state_dir = guard_home / "native-runtime"
+    state_dir.mkdir(parents=True)
+    stopped: list[Path] = []
+
+    def inaccessible_state_files(_state_dir: Path, *, strict: bool = False) -> tuple[Path, ...]:
+        if strict:
+            raise PermissionError("state directory is inaccessible")
+        return ()
+
+    monkeypatch.setattr(client_module, "_state_files", inaccessible_state_files)
+    monkeypatch.setattr(
+        client_module,
+        "stop_native_resident",
+        lambda **kwargs: stopped.append(kwargs["state_dir"]) or True,
+    )
+
+    assert not client_module.retire_native_resident_for_update(
+        executable=tmp_path / "runtime",
+        guard_home=guard_home,
+        environment={},
+    )
+    assert stopped == []
+
+
+def test_stop_native_resident_fails_closed_on_final_state_discovery_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "guard-home" / "native-runtime"
+    executable = tmp_path / "runtime"
+
+    def inaccessible_state_files(_state_dir: Path, *, strict: bool = False) -> tuple[Path, ...]:
+        if strict:
+            raise RuntimeError("state discovery failed")
+        return ()
+
+    monkeypatch.setattr(client_module, "_state_files", inaccessible_state_files)
+    monkeypatch.setattr(
+        client_module,
+        "run_isolated_hook_process",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            timed_out=False,
+            containment_failed=False,
+        ),
+    )
+
+    assert not client_module.stop_native_resident(
+        executable=executable,
+        state_dir=state_dir,
+        environment={},
+    )
 
 
 def test_close_native_residents_preserves_another_guard_home(

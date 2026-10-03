@@ -33,8 +33,7 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::action_lattice::{most_restrictive_guard_action, normalize_guard_action};
-use crate::approval_reuse::{evaluate_approval_reuse, ApprovalReuseDecision};
-use crate::command_launcher_floors::shlex_join;
+use crate::approval_reuse::evaluate_approval_reuse;
 use crate::effect_decision::GuardAction;
 use crate::package_execution_context::{
     PackageExecutionContext, PackageExecutionContextComponent, PACKAGE_EXECUTION_CONTEXT_VERSION,
@@ -43,6 +42,7 @@ use crate::package_intent_common::{
     build_package_request_artifact, GuardArtifact, PackageIntent, PackageIntentTarget,
 };
 use crate::package_manifest_diff::parse_manifest_dependencies;
+use crate::package_policy_override as ppo;
 use crate::workspace_inventory::{
     inventory_from_sbom_payload, merge_inventory_item, package_manager_for_scan,
     split_namespace_name, target_for_package_spec, target_from_inventory_item,
@@ -127,6 +127,7 @@ pub static WORKSPACE_AUDIT_DISCOVERY_SKIP_DIRS: &[&str] = &[
     "worktrees",
 ];
 
+static EMPTY_MAP: LazyLock<Map<String, Value>> = LazyLock::new(Map::new);
 static MANIFEST_CANDIDATE_SET: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| MANIFEST_CANDIDATES.iter().copied().collect());
 static LOCKFILE_CANDIDATE_SET: LazyLock<HashSet<&'static str>> =
@@ -336,7 +337,13 @@ pub trait PackageEvalApi {
     ) -> Map<String, Value>;
     /// `_package_decision_for_action(action)` -> decision string for a policy
     /// action (`block`/`sandbox-required`/`require-reapproval`/`review`/`warn`/`allow`).
-    fn package_decision_for_action(&self, action: &str) -> String;
+    /// Default delegates to the oracle-verified `package_policy_override` mapping.
+    fn package_decision_for_action(&self, action: &str) -> String {
+        crate::package_policy_override::package_decision_for_action(
+            normalize_guard_action(&Value::String(action.to_string()), GuardAction::Allow),
+        )
+        .to_string()
+    }
 }
 
 /// `.runtime.package_intent_parser` seam.
@@ -2717,76 +2724,6 @@ fn resolve_sbom_paths(workspace_dir: &Path, sbom_paths: &[String]) -> Vec<String
 // Evaluation mutation helpers (approval-reuse / current-policy rewrites).
 // ---------------------------------------------------------------------------
 
-/// `_evaluation_uses_saved_package_approval` (:3073-3075).
-#[allow(dead_code)]
-fn evaluation_uses_saved_package_approval(evaluation: &PackageRequestEvaluation) -> bool {
-    evaluation
-        .reasons()
-        .iter()
-        .any(|r| r.get("code").and_then(Value::as_str) == Some("saved_package_approval"))
-}
-
-/// `_package_approval_reuse_evidence` (:3077-3087).
-#[allow(dead_code)]
-fn package_approval_reuse_evidence(
-    evaluation: &PackageRequestEvaluation,
-) -> Vec<Map<String, Value>> {
-    let mut evidence_items: Vec<Map<String, Value>> = Vec::new();
-    for reason in evaluation.reasons() {
-        let Some(reuse_evidence) = reason.get("approval_reuse").and_then(Value::as_object) else {
-            continue;
-        };
-        let mut evidence = Map::new();
-        evidence.insert("source".into(), json!("approval_reuse"));
-        for (k, v) in reuse_evidence {
-            evidence.insert(k.clone(), v.clone());
-        }
-        evidence_items.push(evidence);
-    }
-    evidence_items
-}
-
-/// `_approval_reuse_reason_message` (:2574-2601) — humanized reuse summary.
-#[allow(dead_code)]
-fn approval_reuse_reason_message(reuse: &ApprovalReuseDecision) -> String {
-    match reuse.reason_code.as_str() {
-        "approval_reuse_missing" => {
-            "No reusable local approval matched this package request.".to_string()
-        }
-        "approval_reuse_policy_override" => {
-            "Current package policy overrides the remembered approval.".to_string()
-        }
-        "approval_reuse_stale" => "The remembered approval is no longer fresh.".to_string(),
-        "approval_reuse_expired" => "The remembered approval expired.".to_string(),
-        "approval_reuse_claim_failed" => {
-            "The remembered approval could not be claimed for this launch.".to_string()
-        }
-        _ => {
-            if reuse.status == "rejected" {
-                "The remembered approval was rejected for this request.".to_string()
-            } else {
-                "The remembered approval was reused.".to_string()
-            }
-        }
-    }
-}
-
-/// `_package_decision_for_action` — map a policy action to its package decision.
-#[allow(dead_code)]
-fn package_decision_for_action(action: &str) -> String {
-    match action {
-        "block" => "block",
-        "sandbox-required" => "sandbox-required",
-        "require-reapproval" => "require-reapproval",
-        "review" => "review",
-        "warn" => "warn",
-        "allow" => "allow",
-        _ => action,
-    }
-    .to_string()
-}
-
-/// `_package_evaluation_with_rejected_reuse` (:2537-2571).
 /// `.local_supply_chain._stored_package_policy_is_stale_policy_bundle_family`
 /// (:1849-1864). Returns `true` when the stored override record describes a
 /// policy-bundle *family* stale override for the package-request family.
@@ -2848,71 +2785,6 @@ fn package_policy_workspace_candidates(
     }
 }
 
-/// `.local_supply_chain._saved_package_policy_clear_command` (:1867-1920).
-/// Builds the `hol-guard policies clear …` command matching one override.
-#[allow(dead_code)]
-fn saved_package_policy_clear_command(
-    artifact: &GuardArtifact,
-    _artifact_hash: &str,
-    matched_policy: &Value,
-    workspace_dir: &Path,
-) -> String {
-    let scope = matched_policy
-        .get("scope")
-        .and_then(Value::as_str)
-        .unwrap_or("artifact");
-    let mut command: Vec<String> = vec![
-        "hol-guard".to_string(),
-        "policies".to_string(),
-        "clear".to_string(),
-    ];
-    if let Some(decision_id) = matched_policy.get("decision_id").and_then(Value::as_i64) {
-        command.push("--decision-id".to_string());
-        command.push(decision_id.to_string());
-    }
-    command.push("--harness".to_string());
-    command.push(
-        matched_policy
-            .get("harness")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(|| artifact.harness.clone()),
-    );
-    command.push("--scope".to_string());
-    command.push(scope.to_string());
-    let mut artifact_id = matched_policy
-        .get("artifact_id")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    if artifact_id.is_none() && matches!(scope, "artifact" | "workspace" | "harness" | "global") {
-        artifact_id = Some(artifact.artifact_id.clone());
-    }
-    if let Some(artifact_id) = artifact_id {
-        command.push("--artifact-id".to_string());
-        command.push(artifact_id);
-    }
-    if let Some(matched_hash) = matched_policy.get("artifact_hash").and_then(Value::as_str) {
-        command.push("--artifact-hash".to_string());
-        command.push(matched_hash.to_string());
-    }
-    let mut policy_workspace = matched_policy
-        .get("workspace")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    if policy_workspace.is_none() && matches!(scope, "artifact" | "workspace") {
-        policy_workspace = Some(workspace_dir.to_string_lossy().into_owned());
-    }
-    if let Some(policy_workspace) = policy_workspace {
-        command.push("--policy-workspace".to_string());
-        command.push(policy_workspace);
-    }
-    if let Some(publisher) = matched_policy.get("publisher").and_then(Value::as_str) {
-        command.push("--publisher".to_string());
-        command.push(publisher.to_string());
-    }
-    shlex_join(&command)
-}
-
 /// `.local_supply_chain._is_fresh_artifact_approval` (:2098-2118).
 #[allow(dead_code)]
 fn is_fresh_artifact_approval(store: &dyn SupplyChainStore, decision: &Value) -> bool {
@@ -2962,243 +2834,6 @@ fn is_legacy_package_local_approval(decision: &Value) -> bool {
             .and_then(Value::as_str)
             .is_some()
         && decision.get("workspace").is_none()
-}
-
-/// `.local_supply_chain._package_policy_override_evaluation` (:1867+ region).
-/// Produces an evaluation `replace`ed with the override fields.
-#[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
-fn package_policy_override_evaluation(
-    evaluation: &PackageRequestEvaluation,
-    decision: &str,
-    policy_action: &str,
-    title: &str,
-    summary: &str,
-    harness_message: &str,
-    next_step: Option<&str>,
-    reason_code: &str,
-    reason_message: &str,
-    approval_reuse: Option<&ApprovalReuseDecision>,
-    approval_claim_disposition: Option<&Value>,
-) -> PackageRequestEvaluation {
-    let mut reason = Map::new();
-    reason.insert("code".into(), Value::String(reason_code.into()));
-    reason.insert("message".into(), Value::String(reason_message.into()));
-    reason.insert("severity".into(), Value::String("low".into()));
-    reason.insert("source".into(), Value::String("guard-local".into()));
-    if let Some(reuse) = approval_reuse {
-        reason.insert(
-            "approval_reuse".into(),
-            serde_json::to_value(reuse).unwrap_or(Value::Null),
-        );
-    }
-    if let Some(disposition) = approval_claim_disposition {
-        reason.insert("approval_claim_disposition".into(), disposition.clone());
-    }
-    let reason = Value::Object(reason);
-    let packages: Vec<Value> = evaluation
-        .packages()
-        .iter()
-        .map(|package| {
-            let mut package = package.clone();
-            if let Some(obj) = package.as_object_mut() {
-                obj.insert("decision".into(), Value::String(decision.into()));
-            }
-            package
-        })
-        .collect();
-    let mut reasons: Vec<Value> = vec![reason.clone()];
-    reasons.extend(
-        evaluation
-            .reasons()
-            .iter()
-            .filter(|item| *item != &reason)
-            .cloned(),
-    );
-    let mut user_copy = evaluation.user_copy().cloned().unwrap_or_default();
-    user_copy.insert("title".into(), Value::String(title.into()));
-    user_copy.insert("summary".into(), Value::String(summary.into()));
-    user_copy.insert(
-        "next_step".into(),
-        next_step
-            .map(|s| Value::String(s.into()))
-            .unwrap_or(Value::Null),
-    );
-    user_copy.insert("dashboard_url".into(), Value::Null);
-    user_copy.insert(
-        "harness_message".into(),
-        Value::String(harness_message.into()),
-    );
-    evaluation.with_fields(&[
-        ("decision", Value::String(decision.into())),
-        ("policy_action", Value::String(policy_action.into())),
-        ("reasons", Value::Array(reasons)),
-        ("packages", Value::Array(packages)),
-        ("risk_summary", Value::String(harness_message.into())),
-        ("user_copy", Value::Object(user_copy)),
-        ("record_monitor_evidence", Value::Bool(false)),
-    ])
-}
-
-#[allow(dead_code)]
-fn package_evaluation_with_rejected_reuse(
-    eval_api: &dyn PackageEvalApi,
-    evaluation: &PackageRequestEvaluation,
-    reuse: &ApprovalReuseDecision,
-) -> PackageRequestEvaluation {
-    let mut reason = Map::new();
-    reason.insert("code".into(), json!(reuse.reason_code));
-    reason.insert(
-        "message".into(),
-        json!(approval_reuse_reason_message(reuse)),
-    );
-    reason.insert(
-        "severity".into(),
-        json!(if reuse.status == "rejected" {
-            "high"
-        } else {
-            "low"
-        }),
-    );
-    reason.insert("source".into(), json!("guard-local"));
-    reason.insert(
-        "approval_reuse".into(),
-        serde_json::to_value(reuse).unwrap_or(Value::Null),
-    );
-    let mut reasons: Vec<Value> = vec![Value::Object(reason)];
-    reasons.extend(
-        evaluation
-            .reasons()
-            .iter()
-            .filter(|r| r.get("code").and_then(Value::as_str) != Some(reuse.reason_code.as_str()))
-            .cloned(),
-    );
-    if Some(reuse.action.as_str()) == evaluation.policy_action().as_deref() {
-        return evaluation.with_fields(&[("reasons", json!(reasons))]);
-    }
-    let decision = package_decision_for_action(reuse.action.as_str());
-    let packages: Vec<Value> = evaluation
-        .packages()
-        .iter()
-        .map(|p| {
-            let mut m = p.as_object().cloned().unwrap_or_default();
-            m.insert("decision".into(), json!(decision));
-            Value::Object(m)
-        })
-        .collect();
-    let summary = approval_reuse_reason_message(reuse);
-    let user_copy = eval_api.supply_chain_user_copy(
-        "Saved approval not reusable",
-        &summary,
-        Some("Review the current package request in HOL Guard, then retry."),
-        None,
-        Some(&summary),
-    );
-    evaluation.with_fields(&[
-        ("decision", json!(decision)),
-        ("policy_action", json!(reuse.action.as_str())),
-        ("reasons", json!(reasons)),
-        ("packages", json!(packages)),
-        ("risk_summary", json!(summary)),
-        ("user_copy", Value::Object(user_copy)),
-        ("record_monitor_evidence", json!(false)),
-    ])
-}
-
-/// `_package_evaluation_with_current_policy_action` (:2474-2535).
-#[allow(dead_code)]
-fn package_evaluation_with_current_policy_action(
-    eval_api: &dyn PackageEvalApi,
-    evaluation: &PackageRequestEvaluation,
-    current_action: &str,
-) -> PackageRequestEvaluation {
-    if evaluation.policy_action().as_deref() == Some(current_action) {
-        return evaluation.clone();
-    }
-    let decision = package_decision_for_action(current_action);
-    let rewritten_packages: Vec<Value> = evaluation
-        .packages()
-        .iter()
-        .map(|p| {
-            let mut m = p.as_object().cloned().unwrap_or_default();
-            m.insert("decision".into(), json!(decision));
-            Value::Object(m)
-        })
-        .collect();
-    let action_label = match current_action {
-        "block" => "blocks",
-        "sandbox-required" => "requires sandbox enforcement for",
-        "require-reapproval" => "requires fresh approval for",
-        "review" => "requires review for",
-        "warn" => "warns about",
-        "allow" => "allows",
-        _ => "allows",
-    };
-    let mut package_label = "this package request".to_string();
-    if let Some(primary_package) = evaluation.packages().first().and_then(Value::as_object) {
-        let package_name = primary_package
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let package_version = primary_package
-            .get("requestedVersion")
-            .or_else(|| primary_package.get("resolvedVersion"))
-            .and_then(Value::as_str);
-        if !package_name.is_empty() {
-            let package_ref = match package_version {
-                Some(v) if !v.is_empty() => format!("{package_name}@{v}"),
-                _ => package_name.to_string(),
-            };
-            package_label = format!("`{package_ref}`");
-        }
-    }
-    let summary = format!("HOL Guard's current package policy {action_label} {package_label}.");
-    let mut reason = Map::new();
-    reason.insert("code".into(), json!("current_package_policy"));
-    reason.insert("message".into(), json!(summary));
-    reason.insert(
-        "severity".into(),
-        json!(if matches!(current_action, "block" | "sandbox-required") {
-            "high"
-        } else {
-            "medium"
-        }),
-    );
-    reason.insert("source".into(), json!("guard-local"));
-    reason.insert("policy_action".into(), json!(current_action));
-    let mut reasons: Vec<Value> = vec![Value::Object(reason)];
-    reasons.extend(
-        evaluation
-            .reasons()
-            .iter()
-            .filter(|r| r.get("code").and_then(Value::as_str) != Some("current_package_policy"))
-            .cloned(),
-    );
-    let needs_review = matches!(
-        current_action,
-        "review" | "require-reapproval" | "sandbox-required" | "block"
-    );
-    let next_step = if needs_review {
-        Some("Review the current package request in HOL Guard, then retry.")
-    } else {
-        None
-    };
-    let user_copy = eval_api.supply_chain_user_copy(
-        "Current package policy",
-        &summary,
-        next_step,
-        None,
-        Some(&summary),
-    );
-    evaluation.with_fields(&[
-        ("decision", json!(decision)),
-        ("policy_action", json!(current_action)),
-        ("reasons", json!(reasons)),
-        ("packages", json!(rewritten_packages)),
-        ("risk_summary", json!(summary)),
-        ("user_copy", Value::Object(user_copy)),
-        ("record_monitor_evidence", json!(false)),
-    ])
 }
 
 // ---------------------------------------------------------------------------
@@ -4800,7 +4435,7 @@ fn final_package_protect_authority(
             );
             return Ok((
                 initial.clone(),
-                package_evaluation_with_rejected_reuse(eval_api, &initial.evaluation, &reuse),
+                PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, initial.evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
             ));
         }
     };
@@ -4815,28 +4450,30 @@ fn final_package_protect_authority(
             )
         };
 
-    let current_evaluation = package_evaluation_with_current_policy_action(
-        eval_api,
-        &current.evaluation,
-        &current
-            .current_action
-            .clone()
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_default(),
-    );
+    let current_evaluation = PackageRequestEvaluation::new(Value::Object(
+        ppo::package_evaluation_with_current_policy_action(
+            eval_api,
+            current.evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+            normalize_guard_action(
+                current.current_action.as_ref().unwrap_or(&Value::Null),
+                GuardAction::Allow,
+            ),
+        ),
+    ));
 
     if let Some(failure_eval) = saved_approval_claim_failure {
         return Ok((
             current.clone(),
-            package_evaluation_with_current_policy_action(
-                eval_api,
-                &failure_eval,
-                &current
-                    .current_action
-                    .clone()
-                    .and_then(|v| v.as_str().map(str::to_string))
-                    .unwrap_or_default(),
-            ),
+            PackageRequestEvaluation::new(Value::Object(
+                ppo::package_evaluation_with_current_policy_action(
+                    eval_api,
+                    failure_eval.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+                    normalize_guard_action(
+                        current.current_action.as_ref().unwrap_or(&Value::Null),
+                        GuardAction::Allow,
+                    ),
+                ),
+            )),
         ));
     }
 
@@ -4856,7 +4493,7 @@ fn final_package_protect_authority(
             );
             return Ok((
                 current,
-                package_evaluation_with_rejected_reuse(eval_api, &current_evaluation, &reuse),
+                PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
             ));
         }
         let refreshed_saved_policy = apply_stored_package_policy_override(
@@ -4874,10 +4511,10 @@ fn final_package_protect_authority(
             paths_api,
             approval_context_api,
         );
-        if evaluation_uses_saved_package_approval(&refreshed_saved_policy) {
+        if ppo::evaluation_uses_saved_package_approval(&refreshed_saved_policy.value) {
             return Ok((current, refreshed_saved_policy));
         }
-        if !package_approval_reuse_evidence(&refreshed_saved_policy).is_empty() {
+        if !ppo::package_approval_reuse_evidence(&refreshed_saved_policy.value).is_empty() {
             return Ok((current, refreshed_saved_policy));
         }
         if saved_approval_claim_disposition.as_deref() != Some("consumed") {
@@ -4891,7 +4528,7 @@ fn final_package_protect_authority(
             );
             return Ok((
                 current,
-                package_evaluation_with_rejected_reuse(eval_api, &current_evaluation, &reuse),
+                PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
             ));
         }
         let reuse = evaluate_approval_reuse(
@@ -4907,24 +4544,27 @@ fn final_package_protect_authority(
         {
             return Ok((
                 current,
-                package_policy_override_evaluation(
-                    &current_evaluation,
-                    "allow",
-                    "allow",
-                    "Allowed by saved approval",
-                    "HOL Guard reused your saved approval for this package request.",
-                    "HOL Guard reused your saved approval for this package request.",
-                    Some("Review the current package request in HOL Guard, then retry."),
-                    "saved_package_approval",
-                    "HOL Guard reused your saved approval for this package request.",
-                    Some(&reuse),
-                    None,
-                ),
+                PackageRequestEvaluation::new(Value::Object(
+                    ppo::package_policy_override_evaluation(
+                        eval_api,
+                        current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+                        "allow",
+                        "allow",
+                        "Allowed by saved approval",
+                        "HOL Guard reused your saved approval for this package request.",
+                        "HOL Guard reused your saved approval for this package request.",
+                        Some("Review the current package request in HOL Guard, then retry."),
+                        "saved_package_approval",
+                        "HOL Guard reused your saved approval for this package request.",
+                        Some(&reuse),
+                        None,
+                    ),
+                )),
             ));
         }
         return Ok((
             current,
-            package_evaluation_with_rejected_reuse(eval_api, &current_evaluation, &reuse),
+            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
         ));
     }
 
@@ -4939,7 +4579,7 @@ fn final_package_protect_authority(
         );
         return Ok((
             current,
-            package_evaluation_with_rejected_reuse(eval_api, &current_evaluation, &reuse),
+            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse))),
         ));
     }
 
@@ -4958,7 +4598,7 @@ fn final_package_protect_authority(
         paths_api,
         approval_context_api,
     );
-    if evaluation_uses_saved_package_approval(&resolved) {
+    if ppo::evaluation_uses_saved_package_approval(&resolved.value) {
         let reuse = evaluate_approval_reuse(
             &current.current_action.clone().unwrap_or(Value::Null),
             Some(&json!("allow")),
@@ -4968,7 +4608,7 @@ fn final_package_protect_authority(
             false,
         );
         let resolved =
-            package_evaluation_with_rejected_reuse(eval_api, &current_evaluation, &reuse);
+            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, current_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse)));
         return Ok((current, resolved));
     }
     Ok((current, resolved))
@@ -6578,7 +6218,7 @@ fn package_protect_verdict_context(
         );
     }
     let risk_signals = evaluation_risk_signals(evaluation);
-    let approval_reuse_evidence = package_approval_reuse_evidence(evaluation);
+    let approval_reuse_evidence = ppo::package_approval_reuse_evidence(&evaluation.value);
 
     let mut receipt_policy_metadata = Map::new();
     receipt_policy_metadata.insert(
@@ -6905,7 +6545,7 @@ fn build_package_protect_payload(
     );
     let evaluation = initial_policy_resolution.evaluation;
     let effective_dry_run = dry_run
-        && !(allow_saved_approval_execution && evaluation_uses_saved_package_approval(&evaluation));
+        && !(allow_saved_approval_execution && ppo::evaluation_uses_saved_package_approval(&evaluation.value));
     let execution_policy_action = package_execution_policy_action(&authority, &evaluation);
     let execution_permitted = is_execution_permitted(&execution_policy_action);
     let mut payload = Map::new();
@@ -6968,7 +6608,7 @@ fn build_package_protect_payload(
     let (final_authority, final_evaluation) = final_package_protect_authority(
         authority.clone(),
         &evaluation,
-        evaluation_uses_saved_package_approval(&evaluation),
+        ppo::evaluation_uses_saved_package_approval(&evaluation.value),
         command,
         store,
         workspace_dir,
@@ -7027,7 +6667,7 @@ fn build_package_protect_payload(
             false,
         );
         let denied_evaluation =
-            package_evaluation_with_rejected_reuse(eval_api, &final_evaluation, &reuse);
+            PackageRequestEvaluation::new(Value::Object(ppo::package_evaluation_with_rejected_reuse(eval_api, final_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m), &reuse)));
         let denied = package_protect_denied_after_final_boundary(
             &mut payload,
             &final_authority,
@@ -7044,19 +6684,22 @@ fn build_package_protect_payload(
     let bound_launch_command =
         bound_external_archive_launch_command(&launch_command, &final_evaluation);
     if bound_launch_command.is_none() {
-        let denied_evaluation = package_policy_override_evaluation(
-            &final_evaluation,
-            "block",
-            "block",
-            "External archive blocked",
-            "The inspected external archive could not be bound to the installer launch.",
-            "HOL Guard blocked an external archive whose digest-bound blob was unavailable.",
-            None,
-            "external_archive_digest_mismatch",
-            "The inspected external archive changed or was not present in the installer command.",
-            None,
-            None,
-        );
+        let denied_evaluation = PackageRequestEvaluation::new(Value::Object(
+            ppo::package_policy_override_evaluation(
+                eval_api,
+                final_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+                "block",
+                "block",
+                "External archive blocked",
+                "The inspected external archive could not be bound to the installer launch.",
+                "HOL Guard blocked an external archive whose digest-bound blob was unavailable.",
+                None,
+                "external_archive_digest_mismatch",
+                "The inspected external archive changed or was not present in the installer command.",
+                None,
+                None,
+            ),
+        ));
         let denied = package_protect_denied_after_final_boundary(
             &mut payload,
             &final_authority,
@@ -7084,19 +6727,22 @@ fn build_package_protect_payload(
         Ok(e) => e,
         Err(err) => {
             // Treat runner failure as execution failure.
-            let fail_evaluation = package_policy_override_evaluation(
-                &final_evaluation,
-                "block",
-                "block",
-                "Execution failed",
-                &err,
-                "HOL Guard could not execute the installer command.",
-                None,
-                "execution_failed",
-                &err,
-                None,
-                None,
-            );
+            let fail_evaluation = PackageRequestEvaluation::new(Value::Object(
+                ppo::package_policy_override_evaluation(
+                    eval_api,
+                    final_evaluation.value.as_object().map_or(&*EMPTY_MAP, |m| m),
+                    "block",
+                    "block",
+                    "Execution failed",
+                    &err,
+                    "HOL Guard could not execute the installer command.",
+                    None,
+                    "execution_failed",
+                    &err,
+                    None,
+                    None,
+                ),
+            ));
             let denied = package_protect_denied_after_final_boundary(
                 &mut payload,
                 &final_authority,
@@ -7147,19 +6793,6 @@ fn build_package_protect_payload(
     }
     cleanup_external_archive_downloads(&final_evaluation);
     Ok((payload, execution.returncode))
-}
-
-/// `_stored_package_policy_evaluation_requires_review` — check whether a
-/// stored package policy evaluation requires re-review.
-#[allow(dead_code)]
-fn stored_package_policy_evaluation_requires_review(evaluation: &PackageRequestEvaluation) -> bool {
-    evaluation.reasons().iter().any(|r| {
-        r.get("code").and_then(Value::as_str) == Some("saved_package_approval")
-            && r.get("approval_reuse")
-                .and_then(|v| v.get("status"))
-                .and_then(Value::as_str)
-                == Some("rejected")
-    }) || evaluation_uses_saved_package_approval(evaluation)
 }
 
 /// `recompute_package_protect_artifact_hash` — recompute the artifact hash

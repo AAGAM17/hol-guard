@@ -160,7 +160,7 @@ def test_release_resident_starts_without_authority_and_rejects_approval(
     tmp_path: Path,
 ) -> None:
     runtime, state_dir = native_runtime
-    request = _request(runtime, tmp_path, default_action="review")
+    request = _request(runtime, state_dir.parent, default_action="review")
     ordinary = _invoke(runtime, state_dir, request)
     assert ordinary["authority"] == "rust"
     assert _result(ordinary)["minimum_action"] == "review"

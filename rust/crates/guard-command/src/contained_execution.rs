@@ -3692,16 +3692,13 @@ fn _copy_semantic_workspace(
         if file_type.is_dir() {
             _copy_semantic_workspace(root, &source_path, &target_path, total_bytes)?;
         } else if file_type.is_file() {
-            let source_file = File::open(&source_path)
-                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
-            let mut target_file = File::create(&target_path)
-                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+            let source_file =
+                File::open(&source_path).map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+            let mut target_file =
+                File::create(&target_path).map_err(|_| "workspace_stage_copy_failed".to_owned())?;
             let remaining = MAX_TOTAL_CAPTURED_OUTPUT_BYTES - *total_bytes;
-            let copied = std::io::copy(
-                &mut source_file.take(remaining + 1),
-                &mut target_file,
-            )
-            .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+            let copied = std::io::copy(&mut source_file.take(remaining + 1), &mut target_file)
+                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
             if copied > remaining {
                 return Err("workspace_stage_too_large".to_owned());
             }

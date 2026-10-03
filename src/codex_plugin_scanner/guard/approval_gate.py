@@ -850,6 +850,25 @@ def require_high_risk(
             return None
         grant = _grant_from_wire(grant_payload)
         if grant is not None:
+            state = _load_state(guard_home)
+            now_epoch = _epoch(now)
+            with _APPROVAL_GATE_LOCK:
+                _ACTIVE_GRANTS[grant.grant_id] = {
+                    "guard_home": str(guard_home),
+                    "expires_epoch": _epoch(grant.expires_at),
+                    "purpose": grant.purpose,
+                    "strict": grant.strict,
+                    "used_cooldown": grant.used_cooldown,
+                    "password_verified": grant.password_verified,
+                    "totp_verified": grant.totp_verified,
+                    "action": grant.action,
+                    "scope": grant.scope,
+                    "subject": grant.subject,
+                    "session_nonce": grant.session_nonce,
+                    "factor_set": grant.factor_set,
+                    "factor_generation": _factor_generation(state),
+                }
+                _prune_grants(_ACTIVE_GRANTS, now_epoch)
             return grant
     state = _load_state(guard_home)
     if not _enabled(state):

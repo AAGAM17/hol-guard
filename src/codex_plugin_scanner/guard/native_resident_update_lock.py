@@ -155,14 +155,14 @@ def _write_marker(descriptor: int, digest: str) -> None:
     encoded = f"{digest}\n".encode("ascii") if digest else b""
     try:
         _ = os.lseek(descriptor, 0, os.SEEK_SET)
-        _ = os.ftruncate(descriptor, 0)
+        os.ftruncate(descriptor, 0)
         offset = 0
         while offset < len(encoded):
             written = os.write(descriptor, encoded[offset:])
             if written <= 0:
                 raise OSError("native resident update marker write failed")
             offset += written
-        _ = os.fsync(descriptor)
+        os.fsync(descriptor)
     except OSError as error:
         raise NativeResidentUpdateLockError("update_native_resident_lock_write_failed") from error
 

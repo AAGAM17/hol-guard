@@ -338,3 +338,16 @@ def test_close_native_residents_preserves_another_guard_home(
         with client_module._RESIDENTS_LOCK:
             client_module._RESIDENTS.clear()
             client_module._RESIDENTS.update(original)
+
+
+def test_state_file_discovery_can_fail_closed_or_raise_strictly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def inaccessible_glob(_path: Path, _pattern: str) -> tuple[Path, ...]:
+        raise OSError("state discovery failed")
+
+    monkeypatch.setattr(client_module.Path, "glob", inaccessible_glob)
+    assert client_module._state_files(tmp_path) == ()
+    with pytest.raises(OSError, match="state discovery failed"):
+        client_module._state_files(tmp_path, strict=True)

@@ -191,6 +191,7 @@ def _mirror_native_grant(guard_home: Path, grant: ApprovalGateGrant, now: str | 
     with _APPROVAL_GATE_LOCK:
         _ACTIVE_GRANTS[grant.grant_id] = {
             "guard_home": str(guard_home),
+            "origin": "native",
             "expires_epoch": _epoch(grant.expires_at),
             "purpose": grant.purpose,
             "strict": grant.strict,
@@ -970,6 +971,12 @@ def consume_extension_control_grant(
         return
 
     with _APPROVAL_GATE_LOCK:
+        meta = _ACTIVE_GRANTS.get(approval_gate_grant.grant_id) if approval_gate_grant else None
+        if meta is not None and meta.get("origin") == "native":
+            _ACTIVE_GRANTS.pop(approval_gate_grant.grant_id, None)
+            raise ApprovalGateError("approval_gate_required", "Approval proof is required.")
+
+    with _APPROVAL_GATE_LOCK:
         _validate_grant_locked(
             guard_home,
             approval_gate_grant,
@@ -1049,6 +1056,12 @@ def consume_local_cli_trust_grant(
         with _APPROVAL_GATE_LOCK:
             _ACTIVE_GRANTS.pop(approval_gate_grant.grant_id, None)
         return
+
+    with _APPROVAL_GATE_LOCK:
+        meta = _ACTIVE_GRANTS.get(approval_gate_grant.grant_id) if approval_gate_grant else None
+        if meta is not None and meta.get("origin") == "native":
+            _ACTIVE_GRANTS.pop(approval_gate_grant.grant_id, None)
+            raise ApprovalGateError("approval_gate_required", "Approval proof is required.")
 
     with _APPROVAL_GATE_LOCK:
         _validate_grant_locked(

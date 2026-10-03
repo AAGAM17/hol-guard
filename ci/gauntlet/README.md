@@ -85,7 +85,7 @@ python -m ci.gauntlet pack /absolute/path/gauntlet-evidence \
   --output /absolute/path/guard-gauntlet-inline.zip \
   --pr YOUR_PR_NUMBER --dispatch-inputs /absolute/path/gauntlet-inputs.json \
   --attest-real-inference
-gh workflow run guard-gauntlet-evidence.yml --ref YOUR_REVIEWED_WORKFLOW_BRANCH \
+gh workflow run guard-gauntlet-evidence.yml --ref main \
   --json < /absolute/path/gauntlet-inputs.json
 ```
 
@@ -93,15 +93,34 @@ A connected GitHub tool can dispatch the same JSON inputs. The attestation flag 
 
 The generated inputs contain `pr_number`, `candidate_sha`, `evidence_base64`, `evidence_sha256` and `attest_real_inference`. Inline transport is bounded below GitHub's workflow-input limit. Larger bundles can use `evidence_url` instead of `evidence_base64`, pointing to a direct signed HTTPS object on an approved R2, S3, Azure artifact or GitHub object endpoint. Exactly one transport is accepted. Never upload the private fixture directory or model system prompts/reasoning.
 
-The read-only validation job checks the live report as data. It reads immutable candidate Git blobs through GitHub and never checks out or imports candidate code. A separate write-capable job publishes the exact-head status and a PR comment with the public artifact. A status claim alone is insufficient: the existing required `ci (3.12)` aggregate also requires a successful repository-owned evidence workflow and its unique unexpired candidate artifact.
+The default-branch verifier checks the live report as data. Feature-branch verifier runs cannot qualify their own PR. Candidate catalogs may add cases, but the trusted core cannot be removed or weakened; changes to core oracle contracts require a separate reviewed baseline update. It reads immutable candidate Git blobs through GitHub and never checks out or imports candidate code. A separate write-capable job publishes the exact-head status and a PR comment with the public artifact. A status claim alone is insufficient: the existing required `ci (3.12)` aggregate also requires a successful repository-owned evidence workflow and its unique unexpired candidate artifact.
 
 A first CI run can fail with “fresh real-agent evidence required.” After the evidence workflow finishes successfully, rerun the failed CI jobs. The agent performing the PR should complete this sequence rather than ask the maintainer to waive it. New enforcement commits invalidate old evidence. The required check revalidates the verified source against the current PR base, so a stale test-merge report cannot silently qualify a newer integration. Unrelated documentation changes do not require a product run.
 
-No new branch-protection setting is needed: the gate is incorporated into the repository's already-required `ci (3.12)` check. No provider secret is automatically exposed to fork PRs. Fork contributions need a repository-writer-attested live run, not an untrusted uploaded `pass: true`.
+No new branch-protection setting is needed: the gate is incorporated into the repository's already-required `ci (3.12)` check and runs from a separate trusted-base checkout, not candidate Python. Changes to that workflow itself still require normal repository review. No provider secret is automatically exposed to fork PRs. Fork contributions need a repository-writer-attested live run, not an untrusted uploaded `pass: true`.
+
+## Initial installation and verifier upgrades
+
+PR #3463 is the only initial-installation exception. Its required CI check pins
+an immutable reviewed verifier SHA in `.github/workflows/ci.yml`; that commit is
+also named `guard-gauntlet-bootstrap-v1`. The exception applies only to this
+repository and PR, only while the trusted base does not contain Gauntlet, and
+only to evidence produced by that exact pinned commit. It does not waive the
+full live suite or permit replayed evidence. Dispatch the initial evidence and
+metadata checks with `--ref guard-gauntlet-bootstrap-v1`. A missing base module
+posts no qualification; it directs the operator to this bounded path.
+
+After installation, dispatch from `main`. A new candidate can change runner
+implementation or add scenario data while the trusted base judge recomputes
+outcomes. Existing scenario expectations, exact commands and physical oracles
+cannot be weakened by the candidate. The publisher and required CI consumer
+both verify the producer revision and the tested source. Reinitializing an
+unchanged, still-qualified head preserves its success rather than resetting it
+to pending.
 
 ## Reading a result
 
-`summary.json` and per-case public JSON bind the candidate, installed source, native binary/rule digest, SDK lock, runner files and catalog. Public tool events omit model reasoning and system prompts. Private fixture logs remain on the test machine for diagnosis; they must not be attached wholesale to a public PR.
+`summary.json` and per-case public JSON bind the candidate, installed source, native binary/rule digest, SDK lock, runner files and catalog. Public tool events omit model reasoning and system prompts. The observer records the complete Guard input and its original digest; the runner applies the same fixture-path redactions to host and Guard inputs, then the judge checks their equality. The only permitted normalization is the pinned OMP adapter's derived single-target edit metadata, validated against the actual patch header. Private fixture logs remain on the test machine for diagnosis; they must not be attached wholesale to a public PR.
 
 | Result | Meaning |
 | --- | --- |
@@ -117,7 +136,7 @@ Identical HTTP 429/5xx retries before any completion bytes were delivered are re
 
 The synthetic-canary relay is a test-operator backstop, not HOL Guard. If it blocks export, the tested path **fails**. It never supplies decisions, fabricates tool output, or substitutes a completion. The agent receives no inherited provider/cloud/GitHub credentials; the dedicated provider key remains in the outer relay.
 
-Evidence hashes prove byte integrity, not authorship. Qualification additionally depends on a trusted producer or repository-writer attestation. The trusted verifier revision must be reviewed when the catalog or judge itself changes. This workflow does not claim that arbitrary untrusted JSON can cryptographically prove an LLM ran.
+Evidence hashes prove byte integrity, not authorship. Qualification additionally depends on a trusted producer or repository-writer attestation. The evidence consumer requires the producer revision to equal the current trusted base. Candidate source and catalog files are read through immutable Git blobs and treated only as data; candidate Python is never imported by the verifier. This workflow does not claim that arbitrary untrusted JSON can cryptographically prove an LLM ran.
 
 ## Improving the suite
 

@@ -13,7 +13,11 @@ function record(value: Record<string, unknown>): void {
 
 function isGuard(input: RequestInfo | URL): boolean {
   try {
-    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    let target: string;
+    if (typeof input === "string") target = input;
+    else if (input instanceof URL) target = input.href;
+    else target = input.url;
+    const url = new URL(target);
     return url.protocol === "http:" && url.hostname === "127.0.0.1"
       && url.port === guardPort && url.pathname === "/v1/hooks/omp";
   } catch { return false; }
@@ -30,6 +34,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promis
       event: request.hook_event_name,
       tool: request.tool_name,
       tool_call_id: request.tool_call_id,
+      input_json: JSON.stringify(request.tool_input ?? null),
       input_sha256: createHash("sha256").update(JSON.stringify(request.tool_input ?? null)).digest("hex"),
       http_status: response.status,
       decision: body.decision,

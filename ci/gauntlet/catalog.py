@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
+
+from .fixtures import digest_file
 
 CATALOG = Path(__file__).with_name("scenarios.json")
 
@@ -47,12 +48,27 @@ class Scenario:
 
 def load_catalog(path: Path = CATALOG) -> tuple[Scenario, ...]:
     """Reject incomplete or duplicate author-reviewed cases."""
-    data = json.loads(path.read_text(encoding="utf-8"))
+    return load_catalog_data(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_catalog_data(data: object) -> tuple[Scenario, ...]:
+    """Parse scenario data without importing candidate Python code."""
+    if not isinstance(data, dict) or not isinstance(data.get("scenarios"), list):
+        raise ValueError("scenario catalog must contain an array")
+    if not 1 <= len(data["scenarios"]) <= 256:
+        raise ValueError("scenario catalog count exceeds its bound")
     if data.get("schema") != "hol.guard-gauntlet.scenarios.v1":
         raise ValueError("unsupported Gauntlet scenario schema")
     scenarios = []
     ids: set[str] = set()
     for row in data["scenarios"]:
+        if not isinstance(row, dict):
+            raise ValueError("scenario must be an object")
+        for name in ("commands", "required_tools", "profiles"):
+            if name in row and (
+                not isinstance(row[name], list) or any(not isinstance(value, str) or not value for value in row[name])
+            ):
+                raise ValueError("scenario lists must contain nonempty strings")
         scenario = Scenario(
             **{
                 **row,
@@ -86,4 +102,15 @@ def load_catalog(path: Path = CATALOG) -> tuple[Scenario, ...]:
 
 def catalog_digest(path: Path = CATALOG) -> str:
     """Bind evidence to exact author-reviewed scenario bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return digest_file(path)
+
+
+def retain_trusted_cases(candidate: tuple[Scenario, ...], trusted: tuple[Scenario, ...]) -> None:
+    """Allow additional data cases, never removal or weakening of the trusted core."""
+    from dataclasses import replace
+
+    by_id = {scenario.id: scenario for scenario in candidate}
+    for baseline in trusted:
+        supplied = by_id.get(baseline.id)
+        if supplied is None or replace(supplied, prompt="") != replace(baseline, prompt=""):
+            raise ValueError("candidate changed a trusted scenario contract: " + baseline.id)

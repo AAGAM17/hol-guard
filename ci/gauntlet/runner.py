@@ -22,6 +22,7 @@ from ci.native_runtime import probe_installed_pi_output as probe
 from .catalog import Scenario, catalog_digest, load_catalog
 from .evidence import TRANSCRIPT_LIMIT, assess_case, public_events, read_events, sha256_bytes
 from .fixtures import create_fixture, digest_file, filesystem_checks
+from .input_evidence import public_observations
 from .provider import InferenceRelay, LoopbackCollector
 from .source_identity import source_identity
 
@@ -223,7 +224,9 @@ def run_case(
             case["raw_transcript_sha256"] = digest_file(raw_log)
             case["stderr_sha256"] = digest_file(error_log)
             if guard_log.exists():
-                case["guard_observations"] = [json.loads(line) for line in guard_log.read_text().splitlines()]
+                case["guard_observations"] = public_observations(
+                    [json.loads(line) for line in guard_log.read_text().splitlines()], replacements
+                )
             if (
                 digest_file(extension) != case["guard_extension_sha256"]
                 or digest_file(identity.path) != identity.sha256

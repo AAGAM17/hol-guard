@@ -28,6 +28,7 @@ def source_manifest(api: Any, source: str, candidate: str) -> dict[str, Any]:
     if not isinstance(rows, list) or not 1 <= len(rows) <= 64:
         raise ValueError("candidate Gauntlet directory inventory is missing or exceeds its bound")
     runner = {}
+    catalog_json = None
     for row in rows:
         name = row.get("name")
         if (
@@ -39,7 +40,12 @@ def source_manifest(api: Any, source: str, candidate: str) -> dict[str, Any]:
             or name in runner
         ):
             raise ValueError("candidate Gauntlet entries must be unique ordinary files")
-        runner[name] = blob_digest(api, row["sha"])
+        raw = blob_bytes(api, row["sha"])
+        runner[name] = hashlib.sha256(raw).hexdigest()
+        if name == "scenarios.json":
+            catalog_json = raw.decode("utf-8")
+    if catalog_json is None:
+        raise ValueError("candidate scenario catalog is missing")
     lock = api.request("/contents/" + LOCK + "?ref=" + source)
     if not isinstance(lock, dict) or lock.get("type") != "file" or lock.get("path") != LOCK:
         raise ValueError("candidate SDK lock is not an ordinary file")
@@ -51,12 +57,18 @@ def source_manifest(api: Any, source: str, candidate: str) -> dict[str, Any]:
         "tested_base_sha": next((p for p in parents if p != candidate), None) if source != candidate else None,
         "source_dirty": False,
         "runner_files": runner,
+        "catalog_json": catalog_json,
         "sdk_lock_sha256": blob_digest(api, lock["sha"]),
     }
 
 
 def blob_digest(api: Any, sha: str) -> str:
-    """Hash a bounded immutable blob response using SHA-256 for evidence comparison."""
+    """Hash a bounded immutable Git blob for evidence comparison."""
+    return hashlib.sha256(blob_bytes(api, sha)).hexdigest()
+
+
+def blob_bytes(api: Any, sha: str) -> bytes:
+    """Read immutable candidate bytes as data, never executable imports."""
     if not isinstance(sha, str) or SHA.fullmatch(sha) is None:
         raise ValueError("invalid Git blob identity")
     blob = api.request("/git/blobs/" + sha)
@@ -74,4 +86,4 @@ def blob_digest(api: Any, sha: str) -> str:
     raw = base64.b64decode("".join(content.split()), validate=True)
     if len(raw) != size:
         raise ValueError("Git blob length does not match its metadata")
-    return hashlib.sha256(raw).hexdigest()
+    return raw

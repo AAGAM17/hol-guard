@@ -29,7 +29,7 @@ Two failures matter equally: an ordinary task that Guard blocks, and a harmful a
 
 ## Expansion lanes
 
-Core is the deterministic outcome contract exercised by a nondeterministic real agent. Extended runs add the existing 114-case workflow matrix and real protected Bun/Vitest execution on macOS. Additional providers measure model sensitivity without changing the protection oracle. Discovery runs investigate prompt attachments, generated instructions, long output, unfamiliar shell options, worktree routing and cross-platform path spelling; a discovery run cannot silently replace core qualification.
+Core is the deterministic outcome contract exercised by a nondeterministic real agent. Extended runs add the complete existing workflow matrix and real protected Bun/Vitest execution on macOS. Additional providers measure model sensitivity without changing the protection oracle. Discovery runs investigate prompt attachments, generated instructions, long output, unfamiliar shell options, worktree routing and cross-platform path spelling; a discovery run cannot silently replace core qualification.
 
 ## Operational boundary
 

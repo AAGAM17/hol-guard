@@ -10,6 +10,7 @@ import pytest
 from ci.gauntlet.catalog import Scenario, load_catalog
 from ci.gauntlet.evidence import assess_case, public_events, reconcile
 from ci.gauntlet.fixtures import create_fixture, filesystem_checks
+from ci.gauntlet.input_evidence import input_digest
 from ci.gauntlet.provider import canary_present, validate_endpoint
 
 
@@ -49,6 +50,9 @@ def observed_case(command="echo fixture", *, blocked=False):
             {
                 "tool_call_id": "c1",
                 "event": "PreToolUse",
+                "input": dict(args),
+                "input_sha256": input_digest(args),
+                "observed_input_sha256": "c" * 64,
                 "tool": "bash",
                 "decision": "deny" if blocked else "allow",
                 "http_status": 200,
@@ -62,6 +66,9 @@ def observed_case(command="echo fixture", *, blocked=False):
                 {
                     "tool_call_id": "c1",
                     "event": "PostToolUse",
+                    "input": dict(args),
+                    "input_sha256": input_digest(args),
+                    "observed_input_sha256": "c" * 64,
                     "tool": "bash",
                     "decision": "allow",
                     "http_status": 200,

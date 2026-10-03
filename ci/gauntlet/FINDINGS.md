@@ -53,3 +53,26 @@ fixture paths are shell-quoted when inserted into commands, including spaces and
 apostrophes; and the required CI consumer rechecks a verified test merge against
 the current PR base instead of accepting an old producer run indefinitely.
 Final qualification must rerun the whole catalog on the final installed source.
+
+
+## Complete live core and observed edit normalization
+
+The clean `0ef1e41e5ac2b0a78f80851c14e43b787d8af38a` build completed all
+14 core scenarios through actual OMP 18.1.18 and live connected inference.
+There were 36 actual tool calls: 29 successful ordinary calls and seven
+native-blocked synthetic attempts, no ordinary approvals, unchanged protected
+files, and no collector or model-export canary violations. The independent
+verifier and GitHub evidence workflow run `37153308133` both succeeded.
+These results belong to that source, not automatically to subsequent revisions.
+
+A separate live edit trace showed OMP adding `path` and a single-entry `paths`
+list to the unchanged anchored edit before Guard review. The judge now checks
+that exact derived metadata instead of equating unequal raw JSON digests or
+ignoring argument differences entirely. Changed commands, paths, content,
+additional edit targets and mismatching native pre/post inputs fail qualification.
+
+Initial feature-branch workflow dispatch was exercised successfully before the
+PR merged. The stronger trust boundary nevertheless pins the first verifier to
+one reviewed commit and requires trusted-base verification thereafter. Candidate
+Python cannot waive its own gate, and a model refusal remains unexercised rather
+than being counted as a Guard block.

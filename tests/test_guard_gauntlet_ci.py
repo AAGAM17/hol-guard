@@ -43,6 +43,8 @@ class MetadataAPI:
         return {"changed_files": self.count}
 
     def request(self, path):
+        if "/statuses?" in path:
+            return []
         assert path == "/pulls/1/files?per_page=100&page=1"
         return self.rows
 
@@ -147,6 +149,7 @@ class QualifiedAPI(MetadataAPI):
         self.description = "Real-agent evidence verified; source=" + "a" * 40
         self.base = "b" * 40
         self.tested_base = self.base
+        self.verifier = self.base
         self.source_checks = []
         self.source = "a" * 40
 
@@ -175,6 +178,7 @@ class QualifiedAPI(MetadataAPI):
         if path == "/actions/runs/123":
             return {
                 "event": "workflow_dispatch",
+                "head_sha": self.verifier,
                 "conclusion": self.conclusion,
                 "path": self.path,
                 "head_repository": {"full_name": self.repo},
@@ -230,7 +234,10 @@ def test_immutable_source_manifest_hashes_api_blobs_without_checkout():
             if path.startswith("/git/commits/"):
                 return {"sha": "a" * 40, "parents": [{"sha": "b" * 40}]}
             if path.startswith("/contents/ci/gauntlet?"):
-                return [{"name": "runner.py", "path": "ci/gauntlet/runner.py", "type": "file", "sha": "c" * 40}]
+                return [
+                    {"name": "runner.py", "path": "ci/gauntlet/runner.py", "type": "file", "sha": "c" * 40},
+                    {"name": "scenarios.json", "path": "ci/gauntlet/scenarios.json", "type": "file", "sha": "e" * 40},
+                ]
             if path.startswith("/contents/ci/pi-exact-continuation/"):
                 return {"path": "ci/pi-exact-continuation/package-lock.json", "type": "file", "sha": "d" * 40}
             if path.startswith("/git/blobs/"):
@@ -244,7 +251,10 @@ def test_immutable_source_manifest_hashes_api_blobs_without_checkout():
             raise AssertionError(path)
 
     manifest = source_manifest(API(), "a" * 40, "a" * 40)
-    assert manifest["runner_files"] == {"runner.py": hashlib.sha256(b"immutable source bytes").hexdigest()}
+    assert manifest["runner_files"] == {
+        name: hashlib.sha256(b"immutable source bytes").hexdigest() for name in ("runner.py", "scenarios.json")
+    }
+    assert manifest["catalog_json"] == "immutable source bytes"
     assert manifest["source_parents"] == ["b" * 40]
 
 
@@ -299,6 +309,7 @@ def test_required_ci_rechecks_verified_test_merge_against_current_base():
     require_evidence(api, event)
     assert api.source_checks == [(api.source, "a" * 40, "b" * 40)]
     api.base = "d" * 40
+    api.verifier = api.base
     with pytest.raises(ValueError, match="current test merge"):
         require_evidence(api, event)
 
@@ -311,3 +322,81 @@ def test_required_ci_rejects_unbound_legacy_status(description):
     api.description = description
     with pytest.raises(RuntimeError, match="verified source binding"):
         require_evidence(api, {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})
+
+
+def test_gate_reinitialization_preserves_an_unchanged_qualified_head():
+    api = QualifiedAPI()
+    initialize_gate(api, {"inputs": {"pr_number": "1", "candidate_sha": "a" * 40}})
+    assert api.statuses == []
+
+
+def test_candidate_branch_verifier_cannot_qualify_itself():
+    from ci.gauntlet.pr_requirement import require_evidence
+
+    api = QualifiedAPI()
+    api.verifier = "a" * 40
+    with pytest.raises(RuntimeError, match="trusted base"):
+        require_evidence(api, {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})
+
+
+def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch):
+    from ci.gauntlet.trust import validate_producer_revision
+
+    class API:
+        repo = "hashgraph-online/hol-guard"
+        installed = False
+
+        def gauntlet_installed_at(self, revision):
+            assert revision == "b" * 40
+            return self.installed
+
+    api = API()
+    pull = {"base": {"sha": "b" * 40}}
+    run = {"head_sha": "c" * 40}
+    monkeypatch.setenv("GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA", "c" * 40)
+    validate_producer_revision(api, 3463, pull, run)
+    with pytest.raises(RuntimeError, match="trusted base"):
+        validate_producer_revision(api, 3464, pull, run)
+    api.installed = True
+    with pytest.raises(RuntimeError, match="trusted base"):
+        validate_producer_revision(api, 3463, pull, run)
+    api.installed = False
+    monkeypatch.delenv("GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA")
+    with pytest.raises(RuntimeError, match="trusted base"):
+        validate_producer_revision(api, 3463, pull, run)
+
+
+def test_candidate_catalog_may_add_but_not_weaken_trusted_cases():
+    from dataclasses import replace
+
+    from ci.gauntlet.catalog import Scenario, retain_trusted_cases
+
+    baseline = Scenario("ordinary", "allow", "commands", "old prompt", ("echo fixture",))
+    addition = Scenario("additional", "allow", "commands", "new task", ("pwd",))
+    retain_trusted_cases((replace(baseline, prompt="clearer prompt"), addition), (baseline,))
+    with pytest.raises(ValueError, match="trusted scenario"):
+        retain_trusted_cases((addition,), (baseline,))
+    with pytest.raises(ValueError, match="trusted scenario"):
+        retain_trusted_cases((replace(baseline, commands=("pwd",)),), (baseline,))
+
+
+@pytest.mark.parametrize("previous", ["", 7, False])
+def test_malformed_previous_paths_do_not_waive_enforcement(previous):
+    api = MetadataAPI([{"filename": "README.md", "previous_filename": previous}], 1)
+    with pytest.raises(ValueError, match="previous"):
+        initialize_gate(api, {"inputs": {"pr_number": "1", "candidate_sha": "a" * 40}})
+
+
+def test_evidence_jobs_run_only_from_trusted_default_or_pinned_bootstrap():
+    from pathlib import Path
+
+    import yaml
+
+    path = Path(__file__).resolve().parents[1] / ".github/workflows/guard-gauntlet-evidence.yml"
+    workflow = yaml.safe_load(path.read_text())
+    for name in ("verify", "publish"):
+        condition = workflow["jobs"][name]["if"]
+        assert "github.event.repository.default_branch" in condition
+        assert "refs/tags/guard-gauntlet-bootstrap-v1" in condition
+        assert "github.event_name == 'workflow_dispatch'" in condition
+        assert "GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA" in workflow["jobs"][name]["env"]

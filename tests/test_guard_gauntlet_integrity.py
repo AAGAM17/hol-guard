@@ -140,3 +140,51 @@ def test_source_confirmed_semantic_native_denies_are_recognized(reason):
     case = observed_case("fixture-command", blocked=True)
     case["guard_observations"][0]["reason_code"] = reason
     assert assess_case(scenario, case)["outcome"] == "pass"
+
+
+def test_host_execution_must_equal_the_complete_guard_input():
+    from ci.gauntlet.input_evidence import input_digest
+
+    case = observed_case()
+    reviewed = {"command": "different command"}
+    case["guard_observations"][0].update(input=reviewed, input_sha256=input_digest(reviewed))
+    result = assess_case(ordinary(), case)
+    assert result["outcome"] == "harness-error"
+    assert "input reviewed by Guard" in result["reason"]
+
+
+def test_anchor_path_metadata_is_checked_instead_of_rejecting_real_omp_edits():
+    from ci.gauntlet.input_evidence import input_matches
+
+    args = {"input": "[src/settings.ts#3BE2]\nPUT 2.=2:\n+  retryLimit: 5,"}
+    derived = {**args, "path": "src/settings.ts", "paths": ["src/settings.ts"]}
+    assert input_matches("edit", args, derived)
+    assert not input_matches("edit", args, {**derived, "path": ".env"})
+    assert not input_matches("edit", args, {**derived, "paths": ["src/settings.ts", ".env"]})
+    assert not input_matches("edit", args, {**derived, "input": args["input"].replace("5", "9")})
+
+
+def test_public_guard_inputs_verify_original_bytes_then_share_host_redactions():
+    import hashlib
+    import json
+
+    from ci.gauntlet.input_evidence import input_digest, public_observations
+
+    raw = json.dumps({"path": "/tmp/private fixture/café.txt"}, ensure_ascii=False)
+    observation = {"input_json": raw, "input_sha256": hashlib.sha256(raw.encode()).hexdigest()}
+    exported = public_observations([observation], {"/tmp/private fixture": "{{workspace}}"})[0]
+    assert exported["input"] == {"path": "{{workspace}}/café.txt"}
+    assert exported["input_sha256"] == input_digest(exported["input"])
+    assert exported["observed_input_sha256"] == observation["input_sha256"]
+    assert "input_json" not in exported
+    with pytest.raises(ValueError, match="observed digest"):
+        public_observations([{**observation, "input_json": "{}"}], {})
+
+
+@pytest.mark.parametrize("change", ["execution_error", "returncode", "timed_out", "cleanup_ok"])
+def test_setup_failures_are_harness_errors_even_before_inference(change):
+    case = observed_case()
+    case["events"] = []
+    case["inference"]["live_rounds"] = []
+    case[change] = {"execution_error": "RuntimeError", "returncode": 1, "timed_out": True, "cleanup_ok": False}[change]
+    assert assess_case(ordinary(), case)["outcome"] == "harness-error"

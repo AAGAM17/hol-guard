@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .github_ci import CONTEXT, PASS_DESCRIPTION_PREFIX, GitHubAPI, requires_gauntlet
+from .github_ci import CONTEXT, PASS_DESCRIPTION_PREFIX, GitHubAPI, changed_paths, requires_gauntlet
+from .trust import validate_producer_revision
 
 EVIDENCE_WORKFLOW = ".github/workflows/guard-gauntlet-evidence.yml"
 
@@ -15,19 +16,15 @@ def require_evidence(api: GitHubAPI, event: dict[str, Any]) -> None:
     number = event["pull_request"]["number"]
     candidate = event["pull_request"]["head"]["sha"]
     pull = api.pull(number, candidate)
-    paths, count = [], 0
-    for page in range(1, 32):
-        rows = api.request(f"/pulls/{number}/files?per_page=100&page={page}")
-        count += len(rows)
-        paths.extend(row["filename"] for row in rows)
-        paths.extend(row["previous_filename"] for row in rows if "previous_filename" in row)
-        if len(rows) < 100:
-            break
-    if count != pull["changed_files"]:
-        raise ValueError("incomplete PR file inventory cannot waive Gauntlet")
-    if not requires_gauntlet(paths):
+    if not requires_gauntlet(changed_paths(api, number, pull)):
         print("Guard Gauntlet: no enforcement or acceptance-system changes in this PR")
         return
+    run_id = qualified_run(api, number, candidate, pull)
+    print(f"Guard Gauntlet: verified exact-head live evidence from trusted workflow run {run_id}")
+
+
+def qualified_run(api: GitHubAPI, number: int, candidate: str, pull: dict[str, Any]) -> str:
+    """Validate existing evidence without overwriting an unchanged success."""
     latest = None
     for page in range(1, 21):
         rows = api.request(f"/commits/{candidate}/statuses?per_page=100&page={page}")
@@ -55,6 +52,7 @@ def require_evidence(api: GitHubAPI, event: dict[str, Any]) -> None:
         or run.get("head_repository", {}).get("full_name") != api.repo
     ):
         raise RuntimeError("Gauntlet evidence producer is incomplete, failed or untrusted. " + instruction)
+    validate_producer_revision(api, number, pull, run)
     artifacts = api.request(f"/actions/runs/{run_id}/artifacts?per_page=100")
     names = [
         artifact
@@ -71,4 +69,4 @@ def require_evidence(api: GitHubAPI, event: dict[str, Any]) -> None:
     if source_match is None:
         raise RuntimeError("Gauntlet status is missing its verified source binding")
     api.prove_source(source_match.group(1), candidate, pull["base"]["sha"])
-    print(f"Guard Gauntlet: verified exact-head live evidence from trusted workflow run {run_id}")
+    return run_id

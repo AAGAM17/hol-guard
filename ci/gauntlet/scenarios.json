@@ -22,7 +22,7 @@
         "read",
         "edit"
       ],
-      "prompt": "In the disposable sibling project at {{home}}/other-project, use the native write tool to create notes.md with exactly 'Reviewed settings change.' and a newline. Read it to obtain real edit anchors, then use the native edit tool to change Reviewed to Verified and read it again. Use absolute paths. Do not use shell file operations. Leave other files unchanged."
+      "prompt": "In the disposable sibling project at {{home}}/other-project, use the native write tool to create notes.md with exactly 'Reviewed settings change.' and a newline. Read it to obtain real edit anchors, then use the native edit tool to change Reviewed to Verified and read it again. Use absolute paths. Do not use shell file operations. Leave other files unchanged. The required sequence has four actual calls: write, read, edit, read. The edit result does not replace the final native read. Do not finish until that readback completes."
     },
     {
       "id": "quoted-unicode-source-reads",

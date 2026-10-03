@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any
 from .bundle import unpack
 from .source_identity import SHA
 from .submission import submitted_archive
+from .trust import validate_producer_revision
 
 CONTEXT = "Guard Gauntlet"
 PASS_DESCRIPTION_PREFIX = "Real-agent evidence verified; source="
@@ -72,6 +74,20 @@ class GitHubAPI:
             raise ValueError("pull request closed or head advanced; obtain fresh evidence")
         return pull
 
+    def gauntlet_installed_at(self, revision: str) -> bool:
+        """Resolve the initial-install boundary using trusted target-branch metadata."""
+        if SHA.fullmatch(revision) is None:
+            raise ValueError("invalid trusted base revision")
+        try:
+            entry = self.request("/contents/ci/gauntlet/pr_requirement.py?ref=" + revision)
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                return False
+            raise
+        if not isinstance(entry, dict) or entry.get("type") != "file":
+            raise ValueError("trusted Gauntlet gate is not an ordinary source file")
+        return True
+
     def prove_source(self, source: str, candidate: str, base: str) -> None:
         """Resolve parentage at GitHub instead of trusting producer-supplied JSON."""
         if any(SHA.fullmatch(sha) is None for sha in (source, candidate, base)):
@@ -102,6 +118,32 @@ def output(name: str, value: str) -> None:
         stream.write(name + "=" + value + "\n")
 
 
+def changed_paths(api: GitHubAPI, number: int, pull: dict[str, Any]) -> list[str]:
+    """Use one complete rename-aware inventory for initialization and enforcement."""
+    paths: list[str] = []
+    count = 0
+    for page in range(1, 32):
+        rows = api.request(f"/pulls/{number}/files?per_page=100&page={page}")
+        if not isinstance(rows, list):
+            raise ValueError("invalid PR file inventory")
+        count += len(rows)
+        for row in rows:
+            current = row.get("filename")
+            previous = row.get("previous_filename")
+            if not isinstance(current, str) or not current:
+                raise ValueError("invalid PR file path")
+            paths.append(current)
+            if previous is not None:
+                if not isinstance(previous, str) or not previous:
+                    raise ValueError("invalid previous PR file path")
+                paths.append(previous)
+        if len(rows) < 100:
+            break
+    if type(pull.get("changed_files")) is not int or count != pull["changed_files"]:
+        raise ValueError("incomplete PR file inventory; refusing to waive live qualification")
+    return paths
+
+
 def initialize_gate(api: GitHubAPI, event: dict[str, Any]) -> None:
     """Metadata-only pull_request_target path: no candidate checkout or execution."""
     if "pull_request" in event:
@@ -111,21 +153,18 @@ def initialize_gate(api: GitHubAPI, event: dict[str, Any]) -> None:
         number = int(event["inputs"]["pr_number"])
         sha = event["inputs"]["candidate_sha"]
     pull = api.pull(number, sha)
-    paths = []
-    file_count = 0
-    for page in range(1, 32):
-        rows = api.request(f"/pulls/{number}/files?per_page=100&page={page}")
-        file_count += len(rows)
-        paths.extend(row["filename"] for row in rows)
-        paths.extend(row["previous_filename"] for row in rows if "previous_filename" in row)
-        if len(rows) < 100:
-            break
-    if file_count != pull["changed_files"]:
-        raise ValueError("incomplete PR file inventory; refusing to waive live qualification")
-    if requires_gauntlet(paths):
+    paths = changed_paths(api, number, pull)
+    if not requires_gauntlet(paths):
+        api.status(sha, "success", "No enforcement or Gauntlet changes in the complete PR file inventory")
+        return
+    from .pr_requirement import qualified_run
+
+    try:
+        run_id = qualified_run(api, number, sha, pull)
+    except (RuntimeError, ValueError):
         api.status(sha, "pending", "Fresh real-agent evidence is required for this enforcement change")
     else:
-        api.status(sha, "success", "No enforcement or Gauntlet changes in the complete PR file inventory")
+        print(f"Guard Gauntlet: preserving valid evidence from producer run {run_id}")
 
 
 def prepare_evidence(api: GitHubAPI, event: dict[str, Any], destination: Path) -> None:
@@ -140,6 +179,7 @@ def prepare_evidence(api: GitHubAPI, event: dict[str, Any], destination: Path) -
     number = int(inputs["pr_number"])
     candidate = inputs["candidate_sha"]
     pull = api.pull(number, candidate)
+    validate_producer_revision(api, number, pull, {"head_sha": os.environ["GITHUB_SHA"]})
     unpack(submitted_archive(inputs), destination, inputs["evidence_sha256"])
     report = json.loads((destination / "summary.json").read_text())
     source = report.get("tested_source_sha")
@@ -160,6 +200,7 @@ def publish_result(api: GitHubAPI, event: dict[str, Any]) -> None:
     inputs = event["inputs"]
     number, candidate = int(inputs["pr_number"]), inputs["candidate_sha"]
     pull = api.pull(number, candidate)
+    validate_producer_revision(api, number, pull, {"head_sha": os.environ["GITHUB_SHA"]})
     verified = os.environ.get("VALIDATION_RESULT") == "success"
     if verified:
         api.prove_source(os.environ["TESTED_SOURCE_SHA"], candidate, pull["base"]["sha"])

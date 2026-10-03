@@ -312,10 +312,9 @@ fn split_netloc(url: &str) -> (&str, &str) {
 /// `_check_bracketed_host` — IPvFuture (`v`/`V`+hex `.`anything) or a valid
 /// IPv6 literal; an IPv4 literal in brackets raises.
 fn check_bracketed_host(hostname: &str) -> Result<(), String> {
-    if hostname.starts_with('v') {
+    if let Some(rest) = hostname.strip_prefix('v') {
         // re: \Av[a-fA-F0-9]+\..+\z — Python `re` is ASCII-only here.
         let valid = {
-            let rest = &hostname[1..];
             let mut split = rest.splitn(2, '.');
             let hexdigits = split.next().unwrap_or("");
             let tail = split.next();
@@ -741,10 +740,10 @@ fn redact_local_path_default(value: &str) -> String {
         if value == home_prefix {
             return "~".to_string();
         }
-        if value.starts_with(home_prefix) {
-            if let Some(next) = value.as_bytes().get(home_prefix.len()) {
+        if let Some(rest) = value.strip_prefix(home_prefix) {
+            if let Some(next) = rest.as_bytes().first() {
                 if matches!(next, b'/' | b'\\') {
-                    return format!("~{}", &value[home_prefix.len()..]);
+                    return format!("~{rest}");
                 }
             }
         }
@@ -2075,7 +2074,8 @@ mod tests {
     #[test]
     fn urlsplit_primitives() {
         // Oracle outputs recorded against Python 3.14.3 urlsplit.
-        let cases: &[(&str, (&str, &str, &str, &str, &str))] = &[
+        type UrlSplitResult<'a> = (&'a str, &'a str, &'a str, &'a str, &'a str);
+        let cases: &[(&str, UrlSplitResult<'_>)] = &[
             ("1:foo", ("", "", "1:foo", "", "")),
             ("a1:foo", ("a1", "", "foo", "", "")),
             ("+a:foo", ("", "", "+a:foo", "", "")),

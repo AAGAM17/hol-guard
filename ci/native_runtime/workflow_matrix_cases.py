@@ -22,7 +22,7 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         directory.mkdir(parents=True)
     subprocess.run(["git", "init", "--quiet", str(workspace)], check=True, capture_output=True)
     source = "ordinary-workflow-fixture\nsecond-line\n"
-    for name in ("one.ts", "two.ts", "path with spaces.ts", "move-source.ts"):
+    for name in ("one.ts", "two.ts", "path with spaces.ts", "move-source.ts", "cwd-move-source.ts"):
         (workspace / "src" / name).write_text(source)
     (workspace / "__tests__/nested/one.test.ts").write_text(source)
     (home / "notes.txt").write_text(source)
@@ -93,6 +93,7 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("cwd-copy", f"cd {repository} && cp src/one.ts src/cwd-copied.ts"),
         ("cwd-touch", f"cd {repository} && touch src/cwd-created.ts"),
         ("cwd-mkdir", f"cd {repository} && mkdir -p generated-cwd/nested"),
+        ("cwd-move", f"cd {repository} && mv src/cwd-move-source.ts src/cwd-moved.ts"),
         ("mkdir", "mkdir generated"),
         ("mkdir-parents", "mkdir -p generated/deep/nested"),
         ("touch-source", "touch src/created.ts"),

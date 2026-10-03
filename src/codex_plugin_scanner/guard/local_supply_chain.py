@@ -358,6 +358,7 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
         now=now,
         external_archive_network_authorized=bool(kwargs.get("external_archive_network_authorized", False)),
         retain_external_archive_blob=bool(kwargs.get("retain_external_archive_blob", False)),
+        runtime_private_metadata=getattr(artifact, "runtime_private_metadata", None),
     )
     if payload is None:
         return None

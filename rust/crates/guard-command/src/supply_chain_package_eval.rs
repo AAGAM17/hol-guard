@@ -2927,27 +2927,12 @@ fn heuristic_result(
             ));
             continue;
         }
-        let lockfile_parse_warning =
-            lockfile_parse_warning_result(deps, workspace_dir, artifact, target);
-        let package_result = Some(heuristic_package_result(
-            target,
-            "monitor",
-            "heuristic_eval",
-            "Heuristic evaluation completed.",
-            "info",
-        ));
-        let package_result = if let Some(pr) = package_result {
-            if let Some(warning) = &lockfile_parse_warning {
-                packages.push(warning.clone());
-            }
-            pr
-        } else {
-            if let Some(warning) = lockfile_parse_warning {
-                packages.push(warning);
-            }
-            continue;
-        };
-        packages.push(package_result);
+        if let Some(warning) = lockfile_parse_warning_result(deps, workspace_dir, artifact, target) {
+            packages.push(warning);
+        }
+        // No specific heuristic matched. Leave the target for the unknown-package
+        // review fallback instead of inventing a monitor allow.
+        continue;
     }
     if packages.is_empty() {
         return None;
@@ -3341,6 +3326,11 @@ fn targets_from_artifact(artifact: &GuardArtifact) -> Vec<Map<String, Value>> {
 }
 
 /// `_private_package_targets_match_public` (:2257-2300).
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
+}
+
 // supply_chain_package_eval.py:2257-2300
 #[allow(dead_code)]
 fn private_package_targets_match_public(
@@ -3380,7 +3370,7 @@ fn private_package_targets_match_public(
         let expected_raw_spec_hash = optional_string(pub_map.get("raw_spec_hash"));
         match (&private_raw_spec, &expected_raw_spec_hash) {
             (Some(spec), Some(hash)) => {
-                if stable_digest_hex(spec.as_bytes()) != *hash {
+                if sha256_hex(spec.as_bytes()) != *hash {
                     return false;
                 }
             }
@@ -3391,7 +3381,7 @@ fn private_package_targets_match_public(
         match (&private_source_url, &expected_source_hash) {
             (None, Some(_)) => return false,
             (Some(url), Some(hash)) => {
-                if stable_digest_hex(url.as_bytes()) != *hash {
+                if sha256_hex(url.as_bytes()) != *hash {
                     return false;
                 }
             }
@@ -3414,7 +3404,7 @@ fn public_package_targets_are_self_consistent(public_targets: &[Value]) -> bool 
         let raw_spec_hash = optional_string(map.get("raw_spec_hash"));
         if let Some(hash) = raw_spec_hash {
             match &raw_spec {
-                Some(spec) if stable_digest_hex(spec.as_bytes()) == hash => {}
+                Some(spec) if sha256_hex(spec.as_bytes()) == hash => {}
                 _ => return false,
             }
         }
@@ -3422,7 +3412,7 @@ fn public_package_targets_are_self_consistent(public_targets: &[Value]) -> bool 
         let source_url_hash = optional_string(map.get("source_url_hash"));
         if let Some(hash) = source_url_hash {
             match &source_url {
-                Some(url) if stable_digest_hex(url.as_bytes()) == hash => {}
+                Some(url) if sha256_hex(url.as_bytes()) == hash => {}
                 _ => return false,
             }
         }

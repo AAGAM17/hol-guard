@@ -332,6 +332,15 @@ pub struct RuntimeCapabilitiesV1 {
     pub build_sha: String,
     pub target: String,
     pub features: Vec<String>,
+    /// Packaged command identity of this binary. Empty when the program
+    /// cannot be loaded. The publisher uses these to bind a snapshot to the
+    /// runtime that will enforce it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub program_digest: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub catalog_digest: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub trust_digest: String,
 }
 
 #[cfg(test)]

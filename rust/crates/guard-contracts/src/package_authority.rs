@@ -93,6 +93,10 @@ pub struct SupplyChainEvalRequestV1 {
     /// Retain external-archive temp blobs for evidence (default false).
     #[serde(default)]
     pub retain_external_archive_blob: bool,
+    /// Ephemeral enforcement values. Never persisted; used only to verify
+    /// public target hashes against the private spec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_private_metadata: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

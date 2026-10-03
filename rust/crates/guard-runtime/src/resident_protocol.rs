@@ -122,6 +122,15 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
     if cfg!(unix) {
         features.push("authenticated-unix-resident-v1".into());
     }
+    let (program_digest, catalog_digest, trust_digest) =
+        match guard_command::native_command_program::packaged_command_program() {
+            Ok(program) => (
+                program.program_digest.clone(),
+                program.catalog_digest.clone(),
+                program.trust_digest.clone(),
+            ),
+            Err(_) => (String::new(), String::new(), String::new()),
+        };
     RuntimeCapabilitiesV1 {
         protocol_version: NATIVE_PROTOCOL_VERSION,
         runtime_version: crate::PACKAGE_VERSION.to_owned(),
@@ -129,6 +138,9 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         build_sha: crate::BUILD_SHA.to_owned(),
         target: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
         features,
+        program_digest,
+        catalog_digest,
+        trust_digest,
     }
 }
 
@@ -363,7 +375,11 @@ pub(crate) fn safe_error_response(code: &str, retryable: bool) -> Vec<u8> {
         }))
         .unwrap_or_else(|_| error_response("native_response_encode_failed", false));
     }
-    error_response("native_request_invalid_json", retryable)
+    serde_json::to_vec(&serde_json::json!({
+        "error": "native_request_invalid_json",
+        "retryable": retryable,
+    }))
+    .unwrap_or_else(|_| error_response("native_request_invalid_json", retryable))
 }
 
 #[cfg(test)]

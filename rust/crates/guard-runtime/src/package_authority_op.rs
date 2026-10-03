@@ -1340,7 +1340,10 @@ pub(crate) fn evaluate_supply_chain_eval(
     let store = ResidentSupplyChainStore::new(&store_path, &guard_home);
     let deps_holder = ResidentEvalDeps::new(&store_path);
     let deps = deps_holder.as_deps();
-    let artifact = artifact_from_value(&request.artifact);
+    let mut artifact = artifact_from_value(&request.artifact);
+    if let Some(private) = &request.runtime_private_metadata {
+        artifact.runtime_private_metadata = private.clone();
+    }
     let workspace = request.workspace_dir.as_deref().map(Path::new);
     let result = match evaluate_package_request_artifact(
         &artifact,

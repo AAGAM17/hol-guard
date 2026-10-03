@@ -134,6 +134,7 @@ def supply_chain_eval_native(
     now: str | None = None,
     external_archive_network_authorized: bool = False,
     retain_external_archive_blob: bool = False,
+    runtime_private_metadata: Mapping[str, object] | None = None,
     timeout_seconds: float = 10.0,
 ) -> dict[str, object] | None:
     """``supply_chain_eval`` op — returns the evaluation payload dict."""
@@ -148,6 +149,8 @@ def supply_chain_eval_native(
         "external_archive_network_authorized": bool(external_archive_network_authorized),
         "retain_external_archive_blob": bool(retain_external_archive_blob),
     }
+    if runtime_private_metadata:
+        request["runtime_private_metadata"] = dict(runtime_private_metadata)
     response = _resident_request(
         operation="supply_chain_eval",
         request=request,

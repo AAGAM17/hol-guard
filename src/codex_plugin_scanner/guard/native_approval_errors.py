@@ -366,6 +366,7 @@ NATIVE_COMMAND_CONTROL_ERROR_CODES = frozenset(
         "native_command_control_revision_reused",
         "native_command_control_target_invalid",
         "native_command_control_target_unknown",
+        "native_command_program_binding_mismatch",
         "native_policy_snapshot_command_authority_invalid",
         "native_policy_snapshot_command_authority_not_private",
         "native_policy_snapshot_command_authority_read_failed",

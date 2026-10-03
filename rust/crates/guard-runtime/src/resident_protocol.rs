@@ -3,11 +3,14 @@ use guard_contracts::{
     ApprovalChallengeRequestV3, ApprovalChallengeRequestV4, ApprovalConsumeRequestV3,
     ApprovalConsumeRequestV4, ApprovalGateRequestV1, ApprovalReuseRequestV1,
     ApprovalValidateRequestV3, ApprovalValidateRequestV4, ClaimApprovalReuseDecisionsRequestV1,
-    CommandEffectRequestV1, ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1,
+    CommandEffectRequestV1, ContainedExecuteRequestV1, ContainedNodeExecuteRequestV1,
+    ContainedPackageScriptExecuteRequestV1, ContainedTestHookRequestV1,
+    ContainedTypescriptExecuteRequestV1, ContainedWorkspaceWriteExecuteRequestV1,
+    ContextDigestRequestV1, GuardHookEnvelopeV2, McpStdioProbeRequestV1, NativeHookRequestV1,
     PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, RuntimeCapabilitiesV1,
-    SupplyChainEvalRequestV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES,
-    NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION,
-    NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    ShimAdminRequestV1, SupplyChainEvalRequestV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA,
+    MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES,
+    NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use guard_hook_core::review_post_tool;
 use guard_policy_snapshot::canonical_json_bytes;
@@ -40,6 +43,14 @@ pub(crate) enum ResidentOperationV1 {
     PackageIntentParse(PackageIntentParseRequestV1),
     SupplyChainEval(SupplyChainEvalRequestV1),
     PackageAuthorityDecide(PackageAuthorityDecideRequestV1),
+    ContainedNodeExecute(ContainedNodeExecuteRequestV1),
+    ContainedTypescriptExecute(ContainedTypescriptExecuteRequestV1),
+    ContainedPackageScriptExecute(ContainedPackageScriptExecuteRequestV1),
+    ContainedWorkspaceWriteExecute(ContainedWorkspaceWriteExecuteRequestV1),
+    ContainedExecute(ContainedExecuteRequestV1),
+    ContainedTestHook(ContainedTestHookRequestV1),
+    ShimAdmin(ShimAdminRequestV1),
+    McpStdioProbe(McpStdioProbeRequestV1),
     Health(Value),
     Shutdown(Value),
 }
@@ -116,6 +127,9 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         guard_contracts::CLAIM_APPROVAL_REUSE_FEATURE.into(),
         guard_contracts::APPROVAL_GATE_FEATURE.into(),
         guard_contracts::PACKAGE_AUTHORITY_FEATURE.into(),
+        guard_contracts::CONTAINED_EXECUTION_FEATURE.into(),
+        guard_contracts::SHIM_ADMIN_FEATURE.into(),
+        guard_contracts::MCP_STDIO_PROBE_FEATURE.into(),
     ];
     if cfg!(windows) {
         features.push("authenticated-loopback-resident-v1".into());
@@ -316,6 +330,30 @@ pub(crate) fn evaluate_resident_bytes(
             }
             ResidentOperationV1::PackageAuthorityDecide(request) => {
                 crate::package_authority_op::evaluate_package_authority_decide(&request)
+            }
+            ResidentOperationV1::ContainedNodeExecute(request) => {
+                crate::contained_op::evaluate_contained_node_execute(&request)
+            }
+            ResidentOperationV1::ContainedTypescriptExecute(request) => {
+                crate::contained_op::evaluate_contained_typescript_execute(&request)
+            }
+            ResidentOperationV1::ContainedPackageScriptExecute(request) => {
+                crate::contained_op::evaluate_contained_package_script_execute(&request)
+            }
+            ResidentOperationV1::ContainedWorkspaceWriteExecute(request) => {
+                crate::contained_op::evaluate_contained_workspace_write_execute(&request)
+            }
+            ResidentOperationV1::ContainedExecute(request) => {
+                crate::contained_op::evaluate_contained_execute(&request)
+            }
+            ResidentOperationV1::ContainedTestHook(request) => {
+                crate::contained_op::evaluate_contained_test_hook(&request)
+            }
+            ResidentOperationV1::ShimAdmin(request) => {
+                crate::shim_op::evaluate_shim_admin(&request)
+            }
+            ResidentOperationV1::McpStdioProbe(request) => {
+                crate::mcp_probe_op::evaluate_mcp_stdio_probe(&request)
             }
             ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
                 "status": "ready",

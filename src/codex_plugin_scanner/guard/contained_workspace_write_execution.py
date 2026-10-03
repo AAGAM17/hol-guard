@@ -52,6 +52,8 @@ from .runtime.effect_decision import (
 from .runtime.secret_sensitivity import classify_secret_path
 from .runtime.workspace_snapshot_inputs import complete_workspace_snapshot
 
+from . import native_execution as _native_execution
+
 ContainedWriteOperation = Literal["patch-check", "patch-apply", "format-write", "copy-generated"]
 _PROTECTED_PARTS = frozenset(
     {
@@ -94,6 +96,15 @@ def try_execute_contained_workspace_write(
 ) -> ContainedWorkspaceWriteResult | None:
     """Execute one exact operation and promote at most one declared output."""
 
+    _argv = _invocation(operation, source, target, workspace, environment or dict(os.environ))[1]
+    _command_text = " ".join(_argv)
+    native_result = _native_execution.contained_workspace_write_execute_native(
+        workspace,
+        _command_text,
+        guard_home,
+    )
+    if native_result is not None:
+        return native_result
     try:
         canonical_workspace = _canonical_directory(workspace)
         invocation = _invocation(operation, source, target, canonical_workspace, environment or dict(os.environ))

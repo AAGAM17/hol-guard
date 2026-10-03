@@ -30,11 +30,11 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::effect_decision::{
-    evaluate_effect_decision, DecisionBasis, DecisionFactor, DecisionFactorSource,
-    EffectAssessment, EffectBlastRadius, EffectConfidence, EffectDecision, EffectDecisionRequest,
-    EffectEvidenceSource, EffectKind, EffectReversibility, EffectTargetScope, GuardAction,
-    PositiveProof, ProofRequirement, ProofRoute, EFFECT_CONTRACT_SCHEMA_VERSION,
-    EFFECT_DECISION_SCHEMA_VERSION,
+    effect_decision_to_payload, evaluate_effect_decision, DecisionBasis, DecisionFactor,
+    DecisionFactorSource, EffectAssessment, EffectBlastRadius, EffectConfidence, EffectDecision,
+    EffectDecisionRequest, EffectEvidenceSource, EffectKind, EffectReversibility,
+    EffectTargetScope, GuardAction, PositiveProof, ProofRequirement, ProofRoute,
+    EFFECT_CONTRACT_SCHEMA_VERSION, EFFECT_DECISION_SCHEMA_VERSION,
 };
 use crate::package_intent_common::LocalPackageExecutionEvidence;
 use crate::package_intent_parser::parse_package_intent;
@@ -453,6 +453,75 @@ pub struct ContainmentRequest {
     pub max_output_bytes: u64,
     pub additional_read_paths: Vec<String>,
     pub allow_outbound_network: bool,
+}
+impl ContainmentAction {
+    /// Parse the wire `action` string (snake_case, e.g. `"run"`).
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Self::from_str(s)
+    }
+}
+
+fn _cs_str(v: &Value, key: &str) -> Option<String> {
+    v.get(key)?.as_str().map(|s| s.to_owned())
+}
+fn _cs_str_list(v: &Value, key: &str) -> Vec<String> {
+    v.get(key)
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|i| i.as_str().map(|s| s.to_owned()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+fn _cs_u64(v: &Value, key: &str) -> Option<u64> {
+    v.get(key)?.as_u64()
+}
+fn _cs_u32(v: &Value, key: &str) -> Option<u32> {
+    v.get(key)?.as_u64().map(|n| n as u32)
+}
+fn _cs_bool(v: &Value, key: &str) -> bool {
+    v.get(key).and_then(|x| x.as_bool()).unwrap_or(false)
+}
+
+impl ContainmentRequest {
+    /// Build from a Python-wire dict (snake_case keys).
+    pub fn from_dict(v: &Value) -> Option<Self> {
+        Some(Self {
+            schema_version: _cs_str(v, "schema_version")?,
+            kind: _cs_str(v, "kind")?,
+            argv: _cs_str_list(v, "argv"),
+            cwd: _cs_str(v, "cwd")?,
+            env_allowlist: _cs_str_list(v, "env_allowlist"),
+            timeout_seconds: _cs_u64(v, "timeout_seconds")?,
+            max_output_bytes: _cs_u64(v, "max_output_bytes")?,
+            additional_read_paths: _cs_str_list(v, "additional_read_paths"),
+            allow_outbound_network: _cs_bool(v, "allow_outbound_network"),
+        })
+    }
+}
+
+impl ContainmentPolicy {
+    /// Build from a Python-wire dict (snake_case keys).
+    pub fn from_dict(v: &Value) -> Option<Self> {
+        Some(Self {
+            schema_version: _cs_str(v, "schema_version")?,
+            action: ContainmentAction::from_str(&_cs_str(v, "action")?)?,
+            workspace_read_paths: _cs_str_list(v, "workspace_read_paths"),
+            workspace_write_paths: _cs_str_list(v, "workspace_write_paths"),
+            env_allowlist: _cs_str_list(v, "env_allowlist"),
+            allowed_domains: _cs_str_list(v, "allowed_domains"),
+            timeout_seconds: _cs_u64(v, "timeout_seconds")?,
+            max_processes: _cs_u32(v, "max_processes")?,
+            max_open_files: _cs_u32(v, "max_open_files")?,
+            max_file_size_bytes: _cs_u64(v, "max_file_size_bytes")?,
+            max_write_bytes_total: _cs_u64(v, "max_write_bytes_total")?,
+            max_output_bytes: _cs_u64(v, "max_output_bytes")?,
+            memory_mb: _cs_u32(v, "memory_mb")?,
+            additional_read_paths: _cs_str_list(v, "additional_read_paths"),
+            allow_outbound_network: _cs_bool(v, "allow_outbound_network"),
+        })
+    }
 }
 
 /// `ContainmentAttestation` (:93-100).
@@ -952,6 +1021,8 @@ pub fn execute_contained(
 ) -> Result<
     (
         i32,
+        String,
+        String,
         Vec<ContainmentCapturedOutput>,
         u64,
         String,
@@ -1077,8 +1148,12 @@ pub fn execute_contained(
     });
     write_manifest_atomically(&manifest_path, &attestation)?;
 
+    let stdout_text = fs::read_to_string(&stdout_path).unwrap_or_default();
+    let stderr_text = fs::read_to_string(&stderr_path).unwrap_or_default();
     Ok((
         exit_code,
+        stdout_text,
+        stderr_text,
         outputs,
         started,
         enforcement.to_owned(),
@@ -1964,6 +2039,15 @@ pub struct ContainedNodeResult {
     pub captured_files: Vec<String>,
     pub evidence: Option<Value>,
     pub decision: Option<EffectDecision>,
+    /// stdout captured from the contained process (RTM-020 wire field).
+    pub stdout: String,
+    /// stderr captured from the contained process.
+    pub stderr: String,
+    /// PositiveProof produced before the decision; kept alongside so the
+    /// Python caller can reconstruct its own dataclass without re-deriving.
+    pub proof: Option<PositiveProof>,
+    /// Stable operation identifier matching the Python caller's label.
+    pub operation_id: String,
 }
 
 /// `_resolve_node` (:38-67).
@@ -2047,7 +2131,7 @@ fn _complete_contained_node_command(
     };
     validate_containment_policy(&policy)?;
     let run_id = format!("node-{}", _now_epoch_ms());
-    let (exit_code, outputs, started_ms, enforcement, captured) =
+    let (exit_code, stdout_text, stderr_text, outputs, started_ms, enforcement, captured) =
         execute_contained(&request, &policy, guard_home, &run_id)?;
     let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
     let attestation_digest = format!(
@@ -2073,13 +2157,14 @@ fn _complete_contained_node_command(
     let evidence = build_local_node_runner_evidence(workspace, execution, tokens);
     let attestation = ContainmentAttestation {
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
-        enforcement,
-        profile_digest,
+        enforcement: enforcement.clone(),
+        profile_digest: profile_digest.clone(),
         started_epoch_ms: started_ms,
         exit_code,
         outputs: outputs.clone(),
         artifact_manifests: vec![],
     };
+    let proof_out = proof.clone();
     let decision = proof.and_then(|proof| {
         let factor = DecisionFactor {
             source: DecisionFactorSource::Effect,
@@ -2108,6 +2193,10 @@ fn _complete_contained_node_command(
         captured_files: captured,
         evidence,
         decision,
+        stdout: stdout_text,
+        stderr: stderr_text,
+        proof: proof_out,
+        operation_id: "node-run".to_owned(),
     })
 }
 
@@ -2153,6 +2242,10 @@ pub struct ContainedTypeScriptResult {
     pub decision: Option<EffectDecision>,
     pub tree_digest: String,
     pub closure_digest: String,
+    pub stdout: String,
+    pub stderr: String,
+    pub proof: Option<PositiveProof>,
+    pub operation_id: String,
 }
 
 fn _shell_join(tokens: &[String]) -> String {
@@ -2254,7 +2347,7 @@ pub fn try_execute_contained_typescript(
     };
     validate_containment_policy(&policy).ok()?;
     let run_id = format!("ts-{}", _now_epoch_ms());
-    let (exit_code, outputs, started_ms, enforcement, captured) =
+    let (exit_code, _stdout_text, _stderr_text, outputs, started_ms, enforcement, captured) =
         execute_contained(&request, &policy, guard_home, &run_id).ok()?;
     let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
     let attestation = ContainmentAttestation {
@@ -2273,6 +2366,10 @@ pub fn try_execute_contained_typescript(
         decision: None,
         tree_digest,
         closure_digest,
+        stdout: _stdout_text.clone(),
+        stderr: _stderr_text.clone(),
+        proof: None,
+        operation_id: "typecheck".to_owned(),
     })
 }
 
@@ -2298,6 +2395,10 @@ pub struct ContainedWorkspaceWriteResult {
     pub captured_files: Vec<String>,
     pub applied: Vec<String>,
     pub decision: Option<EffectDecision>,
+    pub stdout: String,
+    pub stderr: String,
+    pub proof: Option<PositiveProof>,
+    pub operation_id: String,
 }
 
 fn _safe_relative(workspace: &Path, raw: &str) -> Option<PathBuf> {
@@ -2450,6 +2551,10 @@ fn _result_without_promotion(
         captured_files: captured,
         applied: vec![],
         decision: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        proof: None,
+        operation_id: "copy".to_owned(),
     }
 }
 
@@ -2575,7 +2680,7 @@ pub fn try_execute_contained_workspace_write(
     };
     validate_containment_policy(&policy).ok()?;
     let run_id = format!("ws-write-{}", _now_epoch_ms());
-    let (exit_code, outputs, started_ms, enforcement, captured) =
+    let (exit_code, _stdout_text, _stderr_text, outputs, started_ms, enforcement, captured) =
         execute_contained(&request, &policy, guard_home, &run_id).ok()?;
     let health = load_current_containment_health(guard_home);
     let proof = _proof_from_execution(
@@ -2617,6 +2722,13 @@ pub fn try_execute_contained_workspace_write(
         captured_files: captured,
         applied,
         decision,
+        stdout: _stdout_text.clone(),
+        stderr: _stderr_text.clone(),
+        proof: None,
+        operation_id: ops
+            .first()
+            .map(|o| o.kind.clone())
+            .unwrap_or_else(|| "write".to_owned()),
     })
 }
 
@@ -2636,6 +2748,10 @@ pub struct ContainedPackageScriptResult {
     pub captured_files: Vec<String>,
     pub script: String,
     pub decision: Option<EffectDecision>,
+    pub stdout: String,
+    pub stderr: String,
+    pub proof: Option<PositiveProof>,
+    pub operation_id: String,
 }
 
 fn _resolve_bun(workspace: &Path, execution: &LocalPackageExecutionEvidence) -> Option<PathBuf> {
@@ -2712,7 +2828,7 @@ pub fn try_execute_contained_package_script(
     };
     validate_containment_policy(&policy).ok()?;
     let run_id = format!("pkg-{}", _now_epoch_ms());
-    let (exit_code, outputs, started_ms, enforcement, captured) =
+    let (exit_code, _stdout_text, _stderr_text, outputs, started_ms, enforcement, captured) =
         execute_contained(&request, &policy, guard_home, &run_id).ok()?;
     let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
     let attestation = ContainmentAttestation {
@@ -2731,6 +2847,10 @@ pub fn try_execute_contained_package_script(
         captured_files: captured,
         script,
         decision: None,
+        stdout: _stdout_text.clone(),
+        stderr: _stderr_text.clone(),
+        proof: None,
+        operation_id: "package-script".to_owned(),
     })
 }
 
@@ -2856,4 +2976,559 @@ pub fn contained_test_hook(
         });
     }
     Some(_hook_outcome("unknown", "reject"))
+}
+
+// ===========================================================================
+// RTM-020 structured-intent entry points
+//
+// The four `try_execute_contained_*_with_intent` functions are the caller-side
+// bindings of the resident ops. They accept the caller's *already-parsed*
+// `LocalPackageExecutionEvidence` plus the exact `manager`/`argv` tuple so the
+// kernel never has to `shlex`-join an argv back into `command_text` (which
+// would re-parse quoting/escaping and could shift intent classification).
+//
+// `command_text` is retained in the contract so the resident can run the
+// legacy self-parse for shadow comparison, but the *intent* binding comes
+// from `manager`/`argv`/`evidence`, never from re-parsing `command_text`.
+// ===========================================================================
+
+/// Structured-intent binding for `try_execute_contained_node_command`.
+///
+/// `argv` is the exact token sequence the shim observed; `evidence` is the
+/// serialized `LocalPackageExecutionEvidence.to_dict()` produced by the
+/// caller's probe. Returns `None` when either is absent/unparseable — the
+/// resident maps that to a Python fallback, never a re-spawn.
+pub fn try_execute_contained_node_command_with_intent(
+    workspace: &Path,
+    manager: &str,
+    argv: &[String],
+    guard_home: &Path,
+    evidence: Option<&Value>,
+) -> Option<ContainedNodeResult> {
+    let execution = evidence.and_then(LocalPackageExecutionEvidence::from_dict)?;
+    if manager != "npx" && manager != "bunx" {
+        return None;
+    }
+    if !execution.local_only_requested {
+        return None;
+    }
+    if _package_shim_handoff_active(&execution) {
+        return None;
+    }
+    if _fail_closed_vitest_handoff(execution.typescript_launch.as_ref()) {
+        return None;
+    }
+    _complete_contained_node_command(workspace, &execution, argv, guard_home).ok()
+}
+
+/// Structured-intent binding for `try_execute_contained_typescript`.
+pub fn try_execute_contained_typescript_with_intent(
+    workspace: &Path,
+    manager: &str,
+    argv: &[String],
+    guard_home: &Path,
+    evidence: Option<&Value>,
+) -> Option<ContainedTypeScriptResult> {
+    let execution = evidence.and_then(LocalPackageExecutionEvidence::from_dict)?;
+    if manager != "npx" {
+        return None;
+    }
+    if !execution.local_only_requested {
+        return None;
+    }
+    let node = _resolve_node_ts(workspace, &execution)?;
+    // `argv` here is the caller-bound token sequence (starts with `tsc` or
+    // the tsx/vite/vitest runner), not the npx-prefixed form.
+    // `_compiler_args` scans past `tsc`, so we synthesise a virtual
+    // `[manager, tsc, ...argv]` prefix to reuse the existing extraction.
+    let mut tokens = vec![manager.to_owned(), "tsc".to_owned()];
+    tokens.extend(argv.iter().skip(1).cloned());
+    let (compiler_args, _explicit_package) = _compiler_args(&tokens);
+    let mut sources: Vec<String> = Vec::new();
+    for arg in &compiler_args {
+        if (arg.ends_with(".ts")
+            || arg.ends_with(".tsx")
+            || arg.ends_with(".cts")
+            || arg.ends_with(".mts"))
+            && !arg.starts_with('-')
+        {
+            sources.push(arg.clone());
+        }
+    }
+    if sources.is_empty() {
+        return None;
+    }
+    let package_root = workspace.join("node_modules").join("typescript");
+    let (tree_digest, _package_inputs, closure_digest, _closure_inputs) =
+        typescript_snapshot_inputs(workspace, &package_root, &sources).ok()?;
+    let argv_full = {
+        let mut a = vec![node.to_string_lossy().into_owned()];
+        a.extend(argv.iter().cloned());
+        a
+    };
+    let request = ContainmentRequest {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        kind: "typescript-check".to_owned(),
+        argv: argv_full,
+        cwd: workspace.to_string_lossy().into_owned(),
+        env_allowlist: vec!["PATH".to_owned(), "HOME".to_owned()],
+        timeout_seconds: 120,
+        max_output_bytes: 4 * 1024 * 1024,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_request(&request).ok()?;
+    let policy = ContainmentPolicy {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        action: ContainmentAction::Run,
+        workspace_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        workspace_write_paths: vec![workspace.to_string_lossy().into_owned()],
+        env_allowlist: request.env_allowlist.clone(),
+        allowed_domains: vec![],
+        timeout_seconds: request.timeout_seconds,
+        max_processes: 32,
+        max_open_files: 512,
+        max_file_size_bytes: 32 * 1024 * 1024,
+        max_write_bytes_total: 64 * 1024 * 1024,
+        max_output_bytes: request.max_output_bytes,
+        memory_mb: 1024,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_policy(&policy).ok()?;
+    let run_id = format!("ts-{}", _now_epoch_ms());
+    let (exit_code, _stdout_text, _stderr_text, outputs, started_ms, enforcement, captured) =
+        execute_contained(&request, &policy, guard_home, &run_id).ok()?;
+    let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
+    let attestation = ContainmentAttestation {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        enforcement,
+        profile_digest,
+        started_epoch_ms: started_ms,
+        exit_code,
+        outputs: outputs.clone(),
+        artifact_manifests: vec![],
+    };
+    Some(ContainedTypeScriptResult {
+        attestation,
+        outputs,
+        captured_files: captured,
+        decision: None,
+        tree_digest,
+        closure_digest,
+        stdout: _stdout_text.clone(),
+        stderr: _stderr_text.clone(),
+        proof: None,
+        operation_id: "typecheck".to_owned(),
+    })
+}
+
+/// Structured-intent binding for `try_execute_contained_package_script`.
+pub fn try_execute_contained_package_script_with_intent(
+    workspace: &Path,
+    manager: &str,
+    argv: &[String],
+    guard_home: &Path,
+    evidence: Option<&Value>,
+) -> Option<ContainedPackageScriptResult> {
+    let execution = evidence.and_then(LocalPackageExecutionEvidence::from_dict)?;
+    if manager != "bun" {
+        return None;
+    }
+    if !execution.local_only_requested {
+        return None;
+    }
+    let bun = _resolve_bun(workspace, &execution)?;
+    let script = _runner_package(argv).unwrap_or_else(|| "run".to_owned());
+    let argv_full = {
+        let mut a = vec![bun.to_string_lossy().into_owned()];
+        a.extend(argv.iter().skip(1).cloned());
+        a
+    };
+    let request = ContainmentRequest {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        kind: "package-script".to_owned(),
+        argv: argv_full,
+        cwd: workspace.to_string_lossy().into_owned(),
+        env_allowlist: vec!["PATH".to_owned(), "HOME".to_owned()],
+        timeout_seconds: 120,
+        max_output_bytes: 4 * 1024 * 1024,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_request(&request).ok()?;
+    let policy = ContainmentPolicy {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        action: ContainmentAction::Run,
+        workspace_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        workspace_write_paths: vec![workspace.to_string_lossy().into_owned()],
+        env_allowlist: request.env_allowlist.clone(),
+        allowed_domains: vec![],
+        timeout_seconds: request.timeout_seconds,
+        max_processes: 32,
+        max_open_files: 512,
+        max_file_size_bytes: 32 * 1024 * 1024,
+        max_write_bytes_total: 64 * 1024 * 1024,
+        max_output_bytes: request.max_output_bytes,
+        memory_mb: 1024,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_policy(&policy).ok()?;
+    let run_id = format!("pkg-{}", _now_epoch_ms());
+    let (exit_code, _stdout_text, _stderr_text, outputs, started_ms, enforcement, captured) =
+        execute_contained(&request, &policy, guard_home, &run_id).ok()?;
+    let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
+    let attestation = ContainmentAttestation {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        enforcement,
+        profile_digest,
+        started_epoch_ms: started_ms,
+        exit_code,
+        outputs: outputs.clone(),
+        artifact_manifests: vec![],
+    };
+    let _evidence = build_local_package_script_evidence(workspace, &execution);
+    Some(ContainedPackageScriptResult {
+        attestation,
+        outputs,
+        captured_files: captured,
+        script,
+        decision: None,
+        stdout: _stdout_text.clone(),
+        stderr: _stderr_text.clone(),
+        proof: None,
+        operation_id: "package-script".to_owned(),
+    })
+}
+
+/// Structured-intent binding for `try_execute_contained_workspace_write`.
+/// No `manager`/`evidence` — the write op is fully described by `command_text`.
+pub fn try_execute_contained_workspace_write_with_intent(
+    workspace: &Path,
+    argv: &[String],
+    guard_home: &Path,
+) -> Option<ContainedWorkspaceWriteResult> {
+    let tokens: Vec<String> = argv.to_vec();
+    let (subject, ops) = _invocation(&tokens)?;
+    if ops.is_empty() {
+        return None;
+    }
+    for op in &ops {
+        _safe_relative(workspace, &op.path)?;
+        if let Some(src) = &op.source {
+            _safe_relative(workspace, src)?;
+        }
+    }
+    let requirements = _requirements(&ops);
+    let request = ContainmentRequest {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        kind: "workspace-write".to_owned(),
+        argv: tokens.clone(),
+        cwd: workspace.to_string_lossy().into_owned(),
+        env_allowlist: vec!["PATH".to_owned(), "HOME".to_owned()],
+        timeout_seconds: 60,
+        max_output_bytes: 1024 * 1024,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_request(&request).ok()?;
+    let policy = ContainmentPolicy {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        action: ContainmentAction::Write,
+        workspace_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        workspace_write_paths: vec![workspace.to_string_lossy().into_owned()],
+        env_allowlist: request.env_allowlist.clone(),
+        allowed_domains: vec![],
+        timeout_seconds: request.timeout_seconds,
+        max_processes: 8,
+        max_open_files: 256,
+        max_file_size_bytes: 8 * 1024 * 1024,
+        max_write_bytes_total: 16 * 1024 * 1024,
+        max_output_bytes: request.max_output_bytes,
+        memory_mb: 512,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_policy(&policy).ok()?;
+    let run_id = format!("ww-{}", _now_epoch_ms());
+    let (exit_code, _stdout_text, _stderr_text, outputs, started_ms, enforcement, captured) =
+        execute_contained(&request, &policy, guard_home, &run_id).ok()?;
+    let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
+    let attestation = ContainmentAttestation {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        enforcement: enforcement.clone(),
+        profile_digest: profile_digest.clone(),
+        started_epoch_ms: started_ms,
+        exit_code,
+        outputs: outputs.clone(),
+        artifact_manifests: vec![],
+    };
+    let attestation_digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(
+            json!({
+                "exit_code": exit_code,
+                "outputs": outputs.iter().map(|o| &o.sha256).collect::<Vec<_>>(),
+            })
+            .to_string()
+            .as_bytes(),
+        ))
+    );
+    let health = load_current_containment_health(guard_home);
+    let proof = contained_positive_proof(
+        health.as_ref(),
+        &enforcement,
+        &profile_digest,
+        &attestation_digest,
+        &requirements,
+    )
+    .ok();
+    let Some(proof) = proof else {
+        return Some(_result_without_promotion(attestation, outputs, captured));
+    };
+    let mut applied: Vec<String> = Vec::new();
+    for op in &ops {
+        match _promote_output(workspace, op) {
+            Ok(path) => applied.push(path),
+            Err(_) => {
+                return Some(_result_without_promotion(attestation, outputs, captured));
+            }
+        }
+    }
+    let decision = _contained_decision(&subject, proof, &requirements);
+    Some(ContainedWorkspaceWriteResult {
+        attestation,
+        outputs,
+        captured_files: captured,
+        applied,
+        decision,
+        stdout: _stdout_text.clone(),
+        stderr: _stderr_text.clone(),
+        proof: None,
+        operation_id: ops
+            .first()
+            .map(|o| o.kind.clone())
+            .unwrap_or_else(|| "write".to_owned()),
+    })
+}
+
+// ===========================================================================
+// RTM-020 to_dict impls — canonical JSON the resident op returns to Python.
+// Each impl mirrors the Python `asdict(...)` output for the corresponding
+// dataclass so the bridge can reconstruct the Python type verbatim.
+// ===========================================================================
+
+impl ContainmentCapturedOutput {
+    /// Serialize to the `asdict` shape of `ContainmentCapturedOutput`.
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("relative_path".to_owned(), json!(self.relative_path));
+        m.insert("sha256".to_owned(), json!(self.sha256));
+        m.insert("size_bytes".to_owned(), json!(self.size_bytes));
+        m.insert("media_type".to_owned(), json!(self.media_type));
+        Value::Object(m)
+    }
+}
+
+impl ContainmentAttestation {
+    /// Serialize to the `asdict` shape of `ContainmentAttestation`.
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("schema_version".to_owned(), json!(self.schema_version));
+        m.insert("enforcement".to_owned(), json!(self.enforcement));
+        m.insert("profile_digest".to_owned(), json!(self.profile_digest));
+        m.insert("started_epoch_ms".to_owned(), json!(self.started_epoch_ms));
+        m.insert("exit_code".to_owned(), json!(self.exit_code));
+        m.insert(
+            "outputs".to_owned(),
+            Value::Array(self.outputs.iter().map(|o| o.to_dict()).collect()),
+        );
+        m.insert(
+            "artifact_manifests".to_owned(),
+            json!(self.artifact_manifests),
+        );
+        Value::Object(m)
+    }
+}
+
+impl ContainedNodeResult {
+    /// Serialize to the result envelope the resident returns.
+    /// `proof`/`decision` are flattened into the EffectDecision shape the
+    /// Python caller already knows how to reconstruct.
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("attestation".to_owned(), self.attestation.to_dict());
+        m.insert(
+            "outputs".to_owned(),
+            Value::Array(self.outputs.iter().map(|o| o.to_dict()).collect()),
+        );
+        m.insert(
+            "captured_files".to_owned(),
+            Value::Array(
+                self.captured_files
+                    .iter()
+                    .map(|f| Value::String(f.clone()))
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "evidence".to_owned(),
+            self.evidence.clone().unwrap_or(Value::Null),
+        );
+        m.insert(
+            "decision".to_owned(),
+            self.decision
+                .as_ref()
+                .map(effect_decision_to_payload)
+                .unwrap_or(Value::Null),
+        );
+        Value::Object(m)
+    }
+}
+
+impl ContainedTypeScriptResult {
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("attestation".to_owned(), self.attestation.to_dict());
+        m.insert(
+            "outputs".to_owned(),
+            Value::Array(self.outputs.iter().map(|o| o.to_dict()).collect()),
+        );
+        m.insert(
+            "captured_files".to_owned(),
+            Value::Array(
+                self.captured_files
+                    .iter()
+                    .map(|f| Value::String(f.clone()))
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "decision".to_owned(),
+            self.decision
+                .as_ref()
+                .map(effect_decision_to_payload)
+                .unwrap_or(Value::Null),
+        );
+        m.insert("tree_digest".to_owned(), json!(self.tree_digest));
+        m.insert("closure_digest".to_owned(), json!(self.closure_digest));
+        m.insert("stdout".to_owned(), json!(self.stdout));
+        m.insert("stderr".to_owned(), json!(self.stderr));
+        m.insert(
+            "proof".to_owned(),
+            self.proof
+                .as_ref()
+                .map(|p| serde_json::to_value(p).unwrap_or(Value::Null))
+                .unwrap_or(Value::Null),
+        );
+        m.insert("operation_id".to_owned(), json!(self.operation_id));
+        Value::Object(m)
+    }
+}
+
+impl ContainedPackageScriptResult {
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("attestation".to_owned(), self.attestation.to_dict());
+        m.insert(
+            "outputs".to_owned(),
+            Value::Array(self.outputs.iter().map(|o| o.to_dict()).collect()),
+        );
+        m.insert(
+            "captured_files".to_owned(),
+            Value::Array(
+                self.captured_files
+                    .iter()
+                    .map(|f| Value::String(f.clone()))
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "decision".to_owned(),
+            self.decision
+                .as_ref()
+                .map(effect_decision_to_payload)
+                .unwrap_or(Value::Null),
+        );
+        m.insert("script".to_owned(), json!(self.script));
+        m.insert("stdout".to_owned(), json!(self.stdout));
+        m.insert("stderr".to_owned(), json!(self.stderr));
+        m.insert(
+            "proof".to_owned(),
+            self.proof
+                .as_ref()
+                .map(|p| serde_json::to_value(p).unwrap_or(Value::Null))
+                .unwrap_or(Value::Null),
+        );
+        m.insert("operation_id".to_owned(), json!(self.operation_id));
+        Value::Object(m)
+    }
+}
+
+impl ContainedWorkspaceWriteResult {
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("attestation".to_owned(), self.attestation.to_dict());
+        m.insert(
+            "outputs".to_owned(),
+            Value::Array(self.outputs.iter().map(|o| o.to_dict()).collect()),
+        );
+        m.insert(
+            "captured_files".to_owned(),
+            Value::Array(
+                self.captured_files
+                    .iter()
+                    .map(|f| Value::String(f.clone()))
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "applied".to_owned(),
+            Value::Array(
+                self.applied
+                    .iter()
+                    .map(|a| Value::String(a.clone()))
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "decision".to_owned(),
+            self.decision
+                .as_ref()
+                .map(effect_decision_to_payload)
+                .unwrap_or(Value::Null),
+        );
+        m.insert("stdout".to_owned(), json!(self.stdout));
+        m.insert("stderr".to_owned(), json!(self.stderr));
+        m.insert(
+            "proof".to_owned(),
+            self.proof
+                .as_ref()
+                .map(|p| serde_json::to_value(p).unwrap_or(Value::Null))
+                .unwrap_or(Value::Null),
+        );
+        m.insert("operation_id".to_owned(), json!(self.operation_id));
+        Value::Object(m)
+    }
+}
+
+impl ContainedTestHookOutcome {
+    pub fn to_dict(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("kind".to_owned(), json!(self.kind));
+        m.insert("status".to_owned(), json!(self.status));
+        m.insert(
+            "attestation".to_owned(),
+            self.attestation
+                .as_ref()
+                .map(|a| a.to_dict())
+                .unwrap_or(Value::Null),
+        );
+        m.insert(
+            "evidence".to_owned(),
+            self.evidence.clone().unwrap_or(Value::Null),
+        );
+        Value::Object(m)
+    }
 }

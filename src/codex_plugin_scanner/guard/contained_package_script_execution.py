@@ -31,6 +31,8 @@ from .runtime.effect_decision import EffectDecision, FinalDisposition, PositiveP
 from .runtime.local_package_script_evidence import build_local_package_script_evidence
 from .runtime.workspace_snapshot_inputs import complete_workspace_snapshot, reject_external_node_modules
 
+from . import native_execution as _native_execution
+
 
 @dataclass(frozen=True, slots=True)
 class ContainedPackageScriptResult:
@@ -56,6 +58,17 @@ def try_execute_contained_package_script(
 
     if manager.strip().lower() != "bun":
         return None
+    native_result = _native_execution.contained_package_script_execute_native(
+        workspace,
+        "bun",
+        argv,
+        guard_home,
+        shim_directory=str(shim_directory),
+        environment=environment,
+        timeout_seconds=int(timeout_seconds),
+    )
+    if native_result is not None:
+        return native_result
     try:
         canonical_workspace = _canonical_directory(workspace)
         evidence = build_local_package_script_evidence("bun", argv, workspace=canonical_workspace)

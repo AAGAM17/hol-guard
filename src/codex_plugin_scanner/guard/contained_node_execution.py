@@ -31,6 +31,9 @@ from .runtime.containment_executor import execute_contained, file_sha256
 from .runtime.effect_decision import EffectDecision, FinalDisposition, PositiveProof
 from .runtime.local_node_runner_evidence import build_local_node_runner_evidence
 from .runtime.package_intent_parser import parse_package_intent
+
+from . import native_execution as _native_execution
+
 from .runtime.workspace_snapshot_inputs import complete_workspace_snapshot, reject_external_node_modules
 
 
@@ -76,6 +79,15 @@ def try_execute_contained_node_command(
     normalized_manager = manager.strip().lower()
     if normalized_manager not in {"npx", "bunx"}:
         return None
+    native_result = _native_execution.contained_node_execute_native(
+        workspace,
+        normalized_manager,
+        argv,
+        guard_home,
+        evidence=None,
+    )
+    if native_result is not None:
+        return native_result
     try:
         canonical_workspace = _canonical_directory(workspace)
         # The OS backends expose system runtime roots read-only. A project

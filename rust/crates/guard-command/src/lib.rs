@@ -1090,6 +1090,7 @@ pub mod hook_evidence_writer;
 pub mod hook_responses;
 pub mod inventory_contract;
 pub mod linux_artifact_supply_chain;
+pub mod local_mcp_stdio;
 pub mod mcp_decision;
 pub mod restricted_archive;
 #[cfg(unix)]

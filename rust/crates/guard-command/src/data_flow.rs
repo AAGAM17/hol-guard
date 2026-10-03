@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use regex::Regex;
+use fancy_regex::Regex as FancyRegex;
 
 use crate::shell_structure::{self, ShellScanState};
 
@@ -17,10 +17,10 @@ pub struct ShellPipe {
 
 /// `_INPUT_REDIRECT_PATTERN`.
 #[allow(clippy::invalid_regex)]
-fn input_redirect_pattern() -> &'static Regex {
-    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+fn input_redirect_pattern() -> &'static FancyRegex {
+    static RE: std::sync::OnceLock<FancyRegex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(?<!<)(?:\d*)<\s*(?![<&])(?P<target>"[^"]+"|'[^']+'|[^ \t\r\n;&|<>]+)"#)
+        FancyRegex::new(r#"(?<!<)(?:\d*)<\s*(?![<&])(?P<target>"[^"]+"|'[^']+'|[^ \t\r\n;&|<>]+)"#)
             .expect("input redirect pattern")
     })
 }
@@ -29,8 +29,8 @@ fn input_redirect_pattern() -> &'static Regex {
 pub fn extract_input_redirects(command: &str) -> Vec<String> {
     let mut targets: Vec<String> = Vec::new();
     for segment in split_top_level_commands(command) {
-        for caps in input_redirect_pattern().captures_iter(&segment) {
-            let target = strip_shell_quotes(&caps["target"]);
+        for caps in input_redirect_pattern().captures_iter(&segment).flatten() {
+            let target = strip_shell_quotes(caps.name("target").map(|m| m.as_str()).unwrap_or(""));
             if !target.is_empty() && !target.starts_with('(') && !target.starts_with('&') {
                 targets.push(target);
             }

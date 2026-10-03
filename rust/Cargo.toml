@@ -31,6 +31,7 @@ getrandom = "0.3.3"
 libc = "0.2.175"
 nix = { version = "0.31.3", features = ["fs", "poll", "process", "signal", "socket"] }
 regex = "1.11.2"
+fancy-regex = "0.19"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.219", features = ["derive"] }
 idna = "1.0"

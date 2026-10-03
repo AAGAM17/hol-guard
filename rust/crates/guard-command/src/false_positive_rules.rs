@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use fancy_regex::Regex as FancyRegex;
 use regex::Regex;
 
 use crate::command_launcher_floors::shlex_split;
@@ -106,13 +107,14 @@ static OUTPUT_REDIRECT_TO_EXFIL: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 #[allow(clippy::invalid_regex)]
-static SHELL_CHAINING_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"&&|\|\||(?<!<);|(?:^|[\s])&(?![&|])(?:[\s]|$)").expect("SHELL_CHAINING_PATTERN")
+static SHELL_CHAINING_PATTERN: LazyLock<FancyRegex> = LazyLock::new(|| {
+    FancyRegex::new(r"&&|\|\||(?<!<);|(?:^|[\s])&(?![&|])(?:[\s]|$)")
+        .expect("SHELL_CHAINING_PATTERN")
 });
 
 #[allow(clippy::invalid_regex)]
-static OUTPUT_REDIRECT_TO_LOCAL_FILE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?:^|[\s;&|])(?:\d+)?>>?\s*(?!&?\d\b|/dev/null(?:\s|$))\S+")
+static OUTPUT_REDIRECT_TO_LOCAL_FILE: LazyLock<FancyRegex> = LazyLock::new(|| {
+    FancyRegex::new(r"(?i)(?:^|[\s;&|])(?:\d+)?>>?\s*(?!&?\d\b|/dev/null(?:\s|$))\S+")
         .expect("OUTPUT_REDIRECT_TO_LOCAL_FILE")
 });
 
@@ -738,7 +740,10 @@ pub fn classify_read_only_http_fetch(command: &str) -> Option<&'static str> {
     if OUTPUT_REDIRECT_TO_EXFIL.is_match(command) {
         return None;
     }
-    if OUTPUT_REDIRECT_TO_LOCAL_FILE.is_match(command) {
+    if OUTPUT_REDIRECT_TO_LOCAL_FILE
+        .is_match(command)
+        .unwrap_or(false)
+    {
         return None;
     }
     if SECRET_FILE_NAMES.is_match(command) {
@@ -925,13 +930,14 @@ fn has_shell_chaining(command: &str) -> bool {
     if looks_like_heredoc_script(command) {
         return has_heredoc_follow_on_command(command);
     }
-    SHELL_CHAINING_PATTERN.is_match(command) || NEWLINE_COMMAND_PATTERN.is_match(command)
+    SHELL_CHAINING_PATTERN.is_match(command).unwrap_or(false)
+        || NEWLINE_COMMAND_PATTERN.is_match(command)
 }
 
 /// `_has_heredoc_follow_on_command` (:738-752).
 fn has_heredoc_follow_on_command(command: &str) -> bool {
     let first_line = command.lines().next().unwrap_or("");
-    if SHELL_CHAINING_PATTERN.is_match(first_line) {
+    if SHELL_CHAINING_PATTERN.is_match(first_line).unwrap_or(false) {
         return true;
     }
     let delimiter = match HEREDOC_DELIMITER_PATTERN.captures(first_line) {

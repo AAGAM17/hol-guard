@@ -20,6 +20,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use fancy_regex::Regex as FancyRegex;
 use guard_contracts::{
     RiskConfidenceLabel, RiskRedactionLevel, RiskSeverityLabel, RiskSignalCategory, RiskSignalV2,
 };
@@ -119,8 +120,8 @@ static SHELL_VARIABLE_EXPANSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 #[allow(clippy::invalid_regex)]
-static SECRET_PATH_TOKEN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
+static SECRET_PATH_TOKEN_PATTERN: LazyLock<FancyRegex> = LazyLock::new(|| {
+    FancyRegex::new(
         r"(?i)(?<![A-Za-z0-9_.-])(?P<path>\.env(?:\.[A-Za-z0-9_-]+)?|\.npmrc|\.pypirc|\.netrc|\.git-credentials|(?:~?/)?\.aws/credentials|(?:~?/)?\.ssh/id_(?:rsa|ed25519|ecdsa)|wallet\.key|private-key\.pem|terraform\.tfvars)(?![A-Za-z0-9_.-])",
     )
     .expect("SECRET_PATH_TOKEN_PATTERN")
@@ -478,7 +479,7 @@ fn secret_read_command_paths(command: &str) -> Vec<String> {
         if tokens.is_empty() || !SECRET_READ_COMMANDS.contains(&tokens[0].to_lowercase().as_str()) {
             continue;
         }
-        for m in SECRET_PATH_TOKEN_PATTERN.captures_iter(&segment) {
+        for m in SECRET_PATH_TOKEN_PATTERN.captures_iter(&segment).flatten() {
             let path_group = m.name("path").expect("path group");
             let char_start = segment[..path_group.start()].chars().count();
             if url_ranges

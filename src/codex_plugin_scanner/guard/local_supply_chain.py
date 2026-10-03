@@ -96,6 +96,7 @@ from .runtime.workspace_path_guard import (
     resolve_path_within_workspace,
 )
 from .shims import package_shim_dashboard_status, package_shim_supported_managers
+from . import native_execution as _native_execution
 from .stable_digest import stable_digest_hex
 from .store import GuardStore
 
@@ -3315,7 +3316,15 @@ def _build_package_manager_protection(store: Any) -> dict[str, object]:
     installed_managers = sorted(set(_string_items(status.get("installed_managers"))))
     active_managers = sorted(set(_string_items(status.get("active_managers"))))
     missing_shims = sorted(set(_string_items(status.get("missing_managers"))))
-    supported_managers = list(package_shim_supported_managers())
+    _native_managers = _native_execution.shim_admin_native(
+        "supported_managers",
+        guard_home=store.guard_home,
+    )
+    supported_managers = (
+        list(_native_managers)
+        if isinstance(_native_managers, list)
+        else list(package_shim_supported_managers())
+    )
     detected_managers = sorted(set(_string_items(status.get("detected_managers"))))
     protected_managers = sorted(set(_string_items(status.get("protected_managers"))))
     protected_set = set(protected_managers)

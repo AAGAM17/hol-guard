@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import signal
+import shlex
 import subprocess
 import tempfile
 import threading
@@ -13,6 +14,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal, TypeGuard
 
 from .local_mcp_probe_env import (
@@ -51,6 +53,13 @@ class McpCatalogResult:
     skills_reason: str | None = None
 
 
+
+def _shlex_join_safe(argv: list) -> str:
+    try:
+        return shlex.join(argv)
+    except Exception:
+        return " ".join(argv)
+
 def run_mcp_catalog(
     argv: Sequence[str],
     *,
@@ -65,6 +74,24 @@ def run_mcp_catalog(
         return McpCatalogResult(reason="invalid_launch")
     if cancel is not None and cancel.is_set():
         return McpCatalogResult(reason="cancelled")
+    from .. import native_execution as _native_execution
+    _native_result = _native_execution.mcp_stdio_probe_native(
+        _shlex_join_safe(list(argv)),
+        str(Path.cwd()),
+        guard_home=Path.home() / ".hol-guard",
+        timeout_seconds=timeout,
+        connection_identity_hash=connection_identity_hash,
+    )
+    if _native_result is not None:
+        if _native_result.get("status") == "ok":
+            return McpCatalogResult(
+                tools=tuple(_native_result.get("tools") or ()),
+                complete=True,
+                protocol_version=_native_result.get("protocol_version"),
+                server_info=_native_result.get("server_info"),
+                capabilities=_native_result.get("capabilities"),
+            )
+        return McpCatalogResult(reason=_native_result.get("reason", "native_failed"))
     try:
         with tempfile.TemporaryDirectory(prefix="hol-guard-mcp-probe-") as tmp:
             return _exchange_tools_list(

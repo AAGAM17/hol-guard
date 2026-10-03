@@ -333,10 +333,11 @@ impl SupplyChainStore for ResidentSupplyChainStore {
     }
 
     fn get_sync_payload(&self, key: &str) -> Option<Value> {
-        // store_cloud_events.py: get_sync_payload — KV sync payloads table.
+        // store_cloud_events.py: get_sync_payload — `sync_state` KV table,
+        // keyed by `state_key`.
         let conn = self.conn().ok()?;
         let mut stmt = conn
-            .prepare("SELECT payload_json FROM guard_sync_payloads WHERE key = ?1 LIMIT 1")
+            .prepare("SELECT payload_json FROM sync_state WHERE state_key = ?1 LIMIT 1")
             .ok()?;
         let mut rows = stmt.query([key]).ok()?;
         let row = rows.next().ok()??;
@@ -348,10 +349,12 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         if let Ok(conn) = self.conn() {
             let body = serde_json::to_string(payload).unwrap_or_else(|_| "{}".into());
             let _ = conn.execute(
-                "INSERT INTO guard_sync_payloads (key, payload_json) \
-                 VALUES (?1, ?2) \
-                 ON CONFLICT(key) DO UPDATE SET payload_json = excluded.payload_json",
-                rusqlite::params![key, body],
+                "INSERT INTO sync_state (state_key, payload_json, updated_at) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(state_key) DO UPDATE SET \
+                   payload_json = excluded.payload_json, \
+                   updated_at = excluded.updated_at",
+                rusqlite::params![key, body, guard_command::local_supply_chain::utc_now_iso()],
             );
         }
     }

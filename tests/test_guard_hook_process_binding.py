@@ -269,6 +269,9 @@ def test_guard_hook_ask_package_fallback_does_not_wait_without_process_identity(
     _ = capsys.readouterr()
 
     assert rc == 0
+    # Unbound process identity cannot establish the v1 approval binding, so the
+    # hook emits a terminal block and does not queue a resumable approval (the
+    # default safe-alternative/terminal path) — and must never enter the inline
+    # browser wait that an unknown process identity would deadlock on.
     queued = store.list_approval_requests(limit=5)
-    assert len(queued) == 1
-    assert queued[0]["resolution_action"] is None
+    assert queued == []

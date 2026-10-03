@@ -5,7 +5,7 @@ use serde_json::json;
 
 #[test]
 fn unused_global_filters_do_not_block_unrelated_repository_inspection() {
-    let root = std::env::temp_dir().join(format!("guard-unused-filters-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("guard unused filters {}", std::process::id()));
     let _cleanup = FixtureCleanup(root.clone());
     let home = root.join("home");
     let repository = root.join("repository");
@@ -47,7 +47,8 @@ fn unused_global_filters_do_not_block_unrelated_repository_inspection() {
         .unwrap()
         .success());
     let controls = github_controls("enabled");
-    let absolute_status = format!("git --no-pager -C {} status --short", repository.display());
+    let quoted_repository = repository.to_string_lossy().replace('\'', "'\\''");
+    let absolute_status = format!("git --no-pager -C '{quoted_repository}' status --short");
     for harness in ["omp", "zcode"] {
         for command in [
             "git status --short",

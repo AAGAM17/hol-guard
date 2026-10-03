@@ -23,6 +23,36 @@ from codex_plugin_scanner.guard.native_runtime import (
 )
 
 
+def test_execution_lookup_context_is_feature_gated_and_omits_environment_values(monkeypatch):
+    from codex_plugin_scanner.guard.native_hook_edge import _encode_hook_envelope
+
+    monkeypatch.setenv("PATH", "/verified/system/bin")
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/verified/user/config")
+    monkeypatch.setenv("GIT_EXTERNAL_DIFF", "synthetic-secret-must-not-serialize")
+    arguments = dict(
+        payload={"tool_name": "bash", "command": "git status --short"},
+        harness="omp",
+        event="PreToolUse",
+        guard_home=Path("/guard"),
+        home_dir=Path("/home/test"),
+        cwd=Path("/workspace"),
+        source_ref_external_allowed=False,
+        deadline_budget_ms=500,
+        snapshot={"generation": 1},
+    )
+    legacy = json.loads(_encode_hook_envelope(**arguments))
+    assert "execution_environment" not in legacy["source"]
+    encoded = _encode_hook_envelope(**arguments, execution_context_supported=True)
+    context = json.loads(encoded)["source"]["execution_environment"]
+    assert context["path"] == "/verified/system/bin"
+    assert context["xdg_config_home"] == "/verified/user/config"
+    assert "GIT_EXTERNAL_DIFF" in context["environment_names"]
+    assert b"synthetic-secret-must-not-serialize" not in encoded
+    monkeypatch.setenv("GIT_EXTERNAL_DIFF", "different-synthetic-value")
+    changed = json.loads(_encode_hook_envelope(**arguments, execution_context_supported=True))
+    assert changed["source"]["execution_environment"]["environment_digest"] != context["environment_digest"]
+
+
 def _edge_result() -> dict[str, object]:
     edge = {
         "schema": "guard-hook-edge-result.v2",

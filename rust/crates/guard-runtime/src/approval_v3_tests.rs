@@ -168,6 +168,7 @@ fn store_and_envelope_with_runtime(
             home_dir: root.to_string_lossy().into_owned(),
             guard_home: root.to_string_lossy().into_owned(),
             source_ref_external_allowed: false,
+            execution_environment: None,
         },
     };
     (root, store, envelope)

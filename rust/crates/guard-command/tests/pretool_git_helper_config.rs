@@ -1,5 +1,33 @@
-use guard_command::pretool::generic::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
+
+// Cargo injects dynamic-loader settings into the test process. Model the
+// synthetic hook caller explicitly rather than inheriting the build harness.
+fn evaluate_pre_tool_envelope_with_context(
+    harness: &str,
+    event: &str,
+    payload: &serde_json::Value,
+    controls: Option<&guard_command::native_command_controls::CompiledNativeCommandControls>,
+    deadline: Option<std::time::Instant>,
+    home: Option<&str>,
+    cwd: Option<&str>,
+) -> guard_contracts::PreToolResultV1 {
+    let context = guard_contracts::GuardExecutionEnvironmentV1 {
+        path: std::env::var("PATH").unwrap(),
+        environment_names: vec![],
+        environment_digest: "0".repeat(64),
+        xdg_config_home: None,
+    };
+    guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context(
+        harness,
+        event,
+        payload,
+        controls,
+        deadline,
+        home,
+        cwd,
+        Some(&context),
+    )
+}
 
 fn github_controls(
     state: &str,
@@ -21,6 +49,98 @@ fn github_controls(
     })).unwrap();
     binding.effective_digest = binding.compute_effective_digest().unwrap();
     guard_command::native_command_controls::CompiledNativeCommandControls::new(&binding).unwrap()
+}
+
+#[test]
+fn git_query_uses_bounded_request_context_not_resident_path() {
+    use guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context;
+    use guard_contracts::GuardExecutionEnvironmentV1;
+    let root = std::env::temp_dir().join(format!("guard-git-lookup-{}", std::process::id()));
+    let home = root.join("home");
+    let repository = root.join("repository");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&repository).unwrap();
+    assert!(std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .arg(&repository)
+        .status()
+        .unwrap()
+        .success());
+    let original_path = std::env::var("PATH").unwrap();
+    let evaluate = |context: &GuardExecutionEnvironmentV1| {
+        evaluate_pre_tool_envelope_with_execution_context(
+            "omp",
+            "PreToolUse",
+            &json!({"tool_name":"bash", "tool_input":{"command":"git status --short"}}),
+            None,
+            None,
+            home.to_str(),
+            repository.to_str(),
+            Some(context),
+        )
+    };
+    let context = GuardExecutionEnvironmentV1 {
+        path: original_path.clone(),
+        environment_names: vec![],
+        environment_digest: "0".repeat(64),
+        xdg_config_home: None,
+    };
+    assert_eq!(evaluate(&context).decision, "allow");
+    let xdg = root.join("custom-config");
+    std::fs::create_dir_all(xdg.join("git")).unwrap();
+    std::fs::write(
+        xdg.join("git/config"),
+        b"[core]\nfsmonitor = ./synthetic-never-execute\n",
+    )
+    .unwrap();
+    let mut routed = context.clone();
+    routed.xdg_config_home = Some(xdg.to_string_lossy().into_owned());
+    routed.environment_names.push("XDG_CONFIG_HOME".into());
+    assert_eq!(evaluate(&routed).decision, "deny");
+    std::fs::write(xdg.join("git/config"), b"[core]\nfsmonitor = false\n").unwrap();
+    assert_eq!(evaluate(&routed).decision, "allow");
+    for context in [
+        GuardExecutionEnvironmentV1 {
+            path: "/synthetic-no-git".into(),
+            environment_names: vec![],
+            environment_digest: "0".repeat(64),
+            xdg_config_home: None,
+        },
+        GuardExecutionEnvironmentV1 {
+            path: original_path.clone(),
+            environment_names: vec!["GIT_EXTERNAL_DIFF".into()],
+            environment_digest: "0".repeat(64),
+            xdg_config_home: None,
+        },
+        GuardExecutionEnvironmentV1 {
+            path: original_path.clone(),
+            environment_names: vec!["git_config_global".into()],
+            environment_digest: "0".repeat(64),
+            xdg_config_home: None,
+        },
+        GuardExecutionEnvironmentV1 {
+            path: "x".repeat(32769),
+            environment_names: vec![],
+            environment_digest: "0".repeat(64),
+            xdg_config_home: None,
+        },
+    ] {
+        assert_eq!(evaluate(&context).decision, "deny");
+    }
+    let shadow = repository.join("bin");
+    std::fs::create_dir_all(&shadow).unwrap();
+    std::fs::write(shadow.join("git"), b"synthetic executable must never run").unwrap();
+    let shadow_path =
+        std::env::join_paths(std::iter::once(shadow).chain(std::env::split_paths(&original_path)))
+            .unwrap();
+    let context = GuardExecutionEnvironmentV1 {
+        path: shadow_path.to_string_lossy().into_owned(),
+        environment_names: vec![],
+        environment_digest: "0".repeat(64),
+        xdg_config_home: None,
+    };
+    assert_eq!(evaluate(&context).decision, "deny");
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -89,7 +209,8 @@ fn configured_fsmonitor_cannot_be_admitted_as_a_benign_read() {
             );
             assert_eq!(
                 result.decision, "allow",
-                "{harness}: {command}: safe configuration must stay quiet"
+                "{harness}: {command}: safe configuration must stay quiet: {} / {}",
+                result.reason_code, result.reason
             );
         }
     }

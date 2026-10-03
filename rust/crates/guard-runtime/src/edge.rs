@@ -121,7 +121,7 @@ pub(crate) fn execution_intent_digest(envelope: &GuardHookEnvelopeV2) -> Result<
     let harness = canonical_harness(&envelope.harness)?;
     let event = authoritative_event(envelope)?;
     let payload = request_payload_identity(&envelope.raw_payload, &harness, &event)?;
-    let value = serde_json::json!({
+    let mut value = serde_json::json!({
         "schema": "guard-native-execution-intent.v1",
         "version": 1,
         "event": event,
@@ -131,6 +131,10 @@ pub(crate) fn execution_intent_digest(envelope: &GuardHookEnvelopeV2) -> Result<
             "cwd": envelope.source.cwd,
         },
     });
+    if let Some(context) = &envelope.source.execution_environment {
+        value["source"]["execution_environment"] = serde_json::to_value(context)
+            .map_err(|_| "native_hook_execution_intent_digest_failed")?;
+    }
     canonical_identity_digest(&value, "native_hook_execution_intent_digest_failed")
 }
 
@@ -143,12 +147,16 @@ pub(crate) fn request_identity(envelope: &GuardHookEnvelopeV2) -> Result<(String
     let harness = canonical_harness(&envelope.harness)?;
     let event = authoritative_event(envelope)?;
     let payload = request_payload_identity(&envelope.raw_payload, &harness, &event)?;
-    let source = serde_json::json!({
+    let mut source = serde_json::json!({
         "cwd": envelope.source.cwd,
         "guard_home": envelope.source.guard_home,
         "home_dir": envelope.source.home_dir,
         "source_ref_external_allowed": envelope.source.source_ref_external_allowed,
     });
+    if let Some(context) = &envelope.source.execution_environment {
+        source["execution_environment"] =
+            serde_json::to_value(context).map_err(|_| "native_hook_request_digest_failed")?;
+    }
     let value = serde_json::json!({
         "schema": "guard-native-request-identity.v3",
         "version": 3,
@@ -316,6 +324,27 @@ fn validate_envelope_shape(envelope: &GuardHookEnvelopeV2) -> Result<(), String>
     if encoded.len() > MAX_NATIVE_REQUEST_BYTES {
         return Err("native_hook_request_bounds_exceeded".to_owned());
     }
+    if let Some(context) = &envelope.source.execution_environment {
+        if context.path.len() > MAX_PATH_BYTES
+            || context.path.contains('\0')
+            || context
+                .xdg_config_home
+                .as_ref()
+                .is_some_and(|path| path.len() > MAX_PATH_BYTES || path.contains('\0'))
+            || context.environment_names.len() > 512
+            || context
+                .environment_names
+                .iter()
+                .any(|name| name.len() > 256 || name.chars().any(char::is_control))
+            || context.environment_digest.len() != 64
+            || !context
+                .environment_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("native_hook_source_metadata_invalid".to_owned());
+        }
+    }
     let _ = request_identity(envelope)?;
     for path in [
         envelope.source.cwd.as_deref(),
@@ -359,7 +388,7 @@ fn evaluate_validated_envelope(
     }
     let (result, mut receipt) = match event_name.as_str() {
         "PreToolUse" | "UserPromptSubmit" => {
-            let native = guard_command::pretool::evaluate_pre_tool_envelope_with_context(
+            let native = guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context(
                 &harness,
                 &event_name,
                 &envelope.raw_payload,
@@ -372,6 +401,7 @@ fn evaluate_validated_envelope(
                 ),
                 Some(envelope.source.home_dir.as_str()),
                 envelope.source.cwd.as_deref(),
+                envelope.source.execution_environment.as_ref(),
             );
             let evaluated = if let Some(snapshot) = policy_snapshot {
                 crate::policy_enforcement::apply_pre_tool_policy(

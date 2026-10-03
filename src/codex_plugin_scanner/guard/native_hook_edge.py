@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -256,6 +258,7 @@ def _encode_hook_envelope(
     source_ref_external_allowed: bool,
     deadline_budget_ms: int,
     snapshot: Mapping[str, object],
+    execution_context_supported: bool = False,
 ) -> bytes | None:
     envelope = {
         "schema": "guard-hook-envelope.v2",
@@ -281,6 +284,17 @@ def _encode_hook_envelope(
             "source_ref_external_allowed": source_ref_external_allowed,
         },
     }
+    if execution_context_supported:
+        # Carry lookup context, never environment values or secret contents.
+        active_environment = {key: value for key, value in os.environ.items() if value}
+        cast(dict[str, Any], envelope["source"])["execution_environment"] = {
+            "path": os.environ.get("PATH", ""),
+            "environment_names": sorted(active_environment),
+            "xdg_config_home": os.environ.get("XDG_CONFIG_HOME"),
+            "environment_digest": hashlib.sha256(
+                json.dumps(active_environment, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
     try:
         encoded = json.dumps(
             envelope,
@@ -349,6 +363,7 @@ def review_raw_hook_native(
         source_ref_external_allowed=source_ref_external_allowed,
         deadline_budget_ms=deadline_budget_ms,
         snapshot=snapshot,
+        execution_context_supported="git-execution-context-v1" in status.capabilities.features,
     )
     if encoded is None:
         return record_native_hook_result("native_fail_safe", None)

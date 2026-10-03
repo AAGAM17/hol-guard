@@ -13,10 +13,23 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from ci.native_runtime import probe_installed_pi_output as probe
 from ci.native_runtime.workflow_matrix_cases import WorkflowCase, create_cases
+
+
+@contextmanager
+def workflow_fixture():
+    root = Path(tempfile.mkdtemp(prefix="guard-workflow-matrix-", dir=Path.cwd())).resolve()
+    try:
+        yield root
+    except BaseException:
+        print(json.dumps({"fixture_retained": str(root)}), file=sys.stderr)
+        raise
+    else:
+        shutil.rmtree(root)
 
 
 def assert_admission(cases: list[WorkflowCase], results: list[dict[str, object]]) -> None:
@@ -126,8 +139,7 @@ def run_live(
         prompt = (
             "Synthetic Guard regression. Use bash for EACH exact command separately, in order. "
             "Do not change or omit commands. Stop only if an attempted bash call returns a block. "
-            "Do not infer that an unattempted command is blocked.\n"
-            + "\n".join(case.command for case in batch)
+            "Do not infer that an unattempted command is blocked.\n" + "\n".join(case.command for case in batch)
         )
         # Contained calls include launch/attestation overhead for every command.
         budget_seconds = max(60, len(batch) * 20)
@@ -188,7 +200,7 @@ def main() -> int:
     _, identity, capabilities = probe._probe_native_identity()
     if args.expected_source_sha and capabilities.build_sha != args.expected_source_sha:
         raise AssertionError("installed native build does not match the required source SHA")
-    with tempfile.TemporaryDirectory(prefix="guard-workflow-matrix-", dir=Path.cwd()) as temporary:
+    with workflow_fixture() as temporary:
         root = Path(temporary).resolve()
         home, workspace, cases = create_cases(root)
         guard_home = root / "guard-home"
@@ -352,8 +364,10 @@ def main() -> int:
             (args.output / "summary.json").write_text(json.dumps(summary, indent=2))
             print(json.dumps(summary))
         finally:
-            probe._cleanup_installed_daemon(daemon)
-            probe._cleanup_native(identity, guard_home)
+            try:
+                probe._cleanup_installed_daemon(daemon)
+            finally:
+                probe._cleanup_native(identity, guard_home)
     return 0
 
 

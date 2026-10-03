@@ -11,6 +11,7 @@ pub(super) fn execution_free(
     arguments: &[String],
     context: (Option<&str>, Option<&str>),
     deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> Option<bool> {
     let remaining = crate::command_compatibility::git_inspection_arguments(arguments)?;
     let operation = remaining.first()?.as_str();
@@ -19,12 +20,19 @@ pub(super) fn execution_free(
     }
     Some(
         probe(
-            executable, arguments, remaining, operation, context, deadline,
+            executable,
+            arguments,
+            remaining,
+            operation,
+            context,
+            deadline,
+            execution_environment,
         )
         .unwrap_or(false),
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn probe(
     executable: &str,
     arguments: &[String],
@@ -32,6 +40,7 @@ fn probe(
     operation: &str,
     context: (Option<&str>, Option<&str>),
     deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> Option<bool> {
     let deadline = deadline
         .unwrap_or_else(|| Instant::now() + Duration::from_millis(250))
@@ -42,11 +51,31 @@ fn probe(
     let home = fs::canonicalize(context.0?).ok()?;
     let cwd = fs::canonicalize(context.1?).ok()?;
     let leading = &arguments[..arguments.len().checked_sub(remaining.len())?];
-    if !home.is_dir() || !cwd.is_dir() || !clean_environment(operation, leading) {
+    if !home.is_dir()
+        || !cwd.is_dir()
+        || !clean_environment(operation, leading, execution_environment)
+    {
         return None;
     }
-    let binary = trusted_git(executable, &home, &cwd)?;
-    let mut child = Command::new(binary)
+    let binary = trusted_git(executable, &home, &cwd, execution_environment)?;
+    let mut command = Command::new(binary);
+    command.env_clear();
+    #[cfg(windows)]
+    for key in ["SYSTEMROOT", "WINDIR"] {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+    if let Some(directory) =
+        execution_environment.and_then(|context| context.xdg_config_home.as_deref())
+    {
+        command.env("XDG_CONFIG_HOME", directory);
+    } else if execution_environment.is_none() {
+        if let Some(directory) = std::env::var_os("XDG_CONFIG_HOME") {
+            command.env("XDG_CONFIG_HOME", directory);
+        }
+    }
+    let mut child = command
         .args(leading)
         .args(["--no-pager", "config", "--null", "--get-regexp", "^(core\\.fsmonitor|core\\.pager|pager\\..*|diff\\.external|diff\\..*\\.(command|textconv)|filter\\..*\\.(process|clean|smudge))$"])
         .current_dir(&cwd)
@@ -141,32 +170,70 @@ fn probe(
     Some(true)
 }
 
-fn clean_environment(operation: &str, arguments: &[String]) -> bool {
+fn clean_environment(
+    operation: &str,
+    arguments: &[String],
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
     // Status does not page by default; pager.status enabling it is checked
     // in effective config. --no-pager also disables environment pagers.
     let can_page = operation != "status" && !arguments.iter().any(|arg| arg == "--no-pager");
-    !std::env::vars_os().any(|(key, value)| {
-        let key = key.to_string_lossy();
-        !value.is_empty()
-            && (key.starts_with("GIT_TRACE")
-                || key.starts_with("GIT_CONFIG")
-                || (can_page && matches!(key.as_ref(), "GIT_PAGER" | "PAGER"))
-                || matches!(
-                    key.as_ref(),
-                    "GIT_DIR"
-                        | "GIT_EXTERNAL_DIFF"
-                        | "GIT_COMMON_DIR"
-                        | "GIT_WORK_TREE"
-                        | "GIT_EXEC_PATH"
-                        | "LD_PRELOAD"
-                        | "LD_LIBRARY_PATH"
-                        | "DYLD_INSERT_LIBRARIES"
-                        | "DYLD_LIBRARY_PATH"
-                ))
+    let names = match execution_environment {
+        Some(context) => {
+            if context.path.len() > 32768
+                || context.path.contains('\0')
+                || context
+                    .xdg_config_home
+                    .as_ref()
+                    .is_some_and(|path| path.len() > 32768 || path.contains('\0'))
+                || context.environment_names.len() > 512
+                || context.environment_digest.len() != 64
+                || !context
+                    .environment_digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                || context
+                    .environment_names
+                    .iter()
+                    .any(|name| name.len() > 256 || name.chars().any(char::is_control))
+            {
+                return false;
+            }
+            context.environment_names.clone()
+        }
+        None => std::env::vars_os()
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(name, _)| name.to_string_lossy().into_owned())
+            .collect(),
+    };
+    !names.iter().any(|key| {
+        let key = key.to_ascii_uppercase();
+        key.starts_with("GIT_TRACE")
+            || key.starts_with("DYLD_")
+            || key.starts_with("LD_")
+            || key.starts_with("GIT_CONFIG")
+            || (can_page && matches!(key.as_str(), "GIT_PAGER" | "PAGER"))
+            || matches!(
+                key.as_str(),
+                "GIT_DIR"
+                    | "GIT_EXTERNAL_DIFF"
+                    | "GIT_COMMON_DIR"
+                    | "GIT_WORK_TREE"
+                    | "GIT_EXEC_PATH"
+                    | "LD_PRELOAD"
+                    | "LD_LIBRARY_PATH"
+                    | "DYLD_INSERT_LIBRARIES"
+                    | "DYLD_LIBRARY_PATH"
+            )
     })
 }
 
-fn trusted_git(executable: &str, home: &Path, cwd: &Path) -> Option<PathBuf> {
+fn trusted_git(
+    executable: &str,
+    home: &Path,
+    cwd: &Path,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> Option<PathBuf> {
     let supplied = Path::new(executable);
     let path = if supplied.components().count() > 1 {
         fs::canonicalize(if supplied.is_absolute() {
@@ -177,7 +244,10 @@ fn trusted_git(executable: &str, home: &Path, cwd: &Path) -> Option<PathBuf> {
         .ok()?
     } else {
         let mut found = None;
-        for directory in std::env::split_paths(&std::env::var_os("PATH")?) {
+        let path = execution_environment
+            .map(|context| std::ffi::OsString::from(&context.path))
+            .or_else(|| std::env::var_os("PATH"))?;
+        for directory in std::env::split_paths(&path) {
             let directory = if directory.is_absolute() {
                 directory
             } else {

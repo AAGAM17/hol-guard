@@ -48,6 +48,22 @@ pub fn evaluate_pre_tool_envelope_with_context(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> PreToolResultV1 {
+    evaluate_pre_tool_envelope_with_execution_context(
+        harness, event, payload, controls, deadline, home_dir, cwd, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_pre_tool_envelope_with_execution_context(
+    harness: &str,
+    event: &str,
+    payload: &Value,
+    controls: Option<&CompiledNativeCommandControls>,
+    deadline: Option<Instant>,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> PreToolResultV1 {
     let mut signals = match extract_generic_signals(payload) {
         Ok(value) => value,
         Err(error) => return generic_error_result(harness, event, error),
@@ -147,6 +163,7 @@ pub fn evaluate_pre_tool_envelope_with_context(
                             &segment.arguments,
                             context,
                             deadline,
+                            execution_environment,
                         ) == Some(false)
                             // A preceding mutation can change config or the
                             // repository before this read actually executes.

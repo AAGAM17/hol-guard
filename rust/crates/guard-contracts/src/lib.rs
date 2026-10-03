@@ -42,6 +42,18 @@ pub struct GuardHookSourceMetadataV2 {
     pub guard_home: String,
     #[serde(default)]
     pub source_ref_external_allowed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_environment: Option<GuardExecutionEnvironmentV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GuardExecutionEnvironmentV1 {
+    pub path: String,
+    pub environment_names: Vec<String>,
+    pub environment_digest: String,
+    #[serde(default)]
+    pub xdg_config_home: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

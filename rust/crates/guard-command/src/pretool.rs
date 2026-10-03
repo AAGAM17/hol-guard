@@ -16,6 +16,7 @@ pub mod generic;
 
 pub use generic::evaluate_pre_tool_envelope;
 pub use generic::evaluate_pre_tool_envelope_with_context;
+pub use generic::evaluate_pre_tool_envelope_with_execution_context;
 pub use generic::evaluate_pre_tool_envelope_with_extensions;
 pub(crate) use segment_proof::benign_command_segments;
 

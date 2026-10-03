@@ -138,17 +138,16 @@ pub fn guard_run_plan_for_command(
 /// when no extra prefix exists.
 #[allow(dead_code)]
 pub fn guard_run_executable_prefix(launch_plan: &GuardRunLaunchPlan) -> Option<Vec<String>> {
-    let adapter = &launch_plan.adapter_command;
-    let execution = &launch_plan.execution_command;
-    if execution.len() <= adapter.len() {
+    let args = &launch_plan.adapter_command[1..];
+    let exec = &launch_plan.execution_command;
+    if exec.len() < args.len() + 1 {
         return None;
     }
-    let prefix_len = execution.len() - adapter.len();
-    if &execution[prefix_len..] == adapter.as_slice() {
-        Some(execution[..prefix_len].to_vec())
-    } else {
-        None
+    let prefix_len = exec.len() - args.len();
+    if !args.is_empty() && &exec[prefix_len..] != args {
+        return None;
     }
+    Some(exec[..prefix_len].to_vec())
 }
 
 /// Seam for the harness-adapter launch command used by
@@ -157,11 +156,13 @@ pub fn guard_run_executable_prefix(launch_plan: &GuardRunLaunchPlan) -> Option<V
 /// runtime, not this module.
 pub trait GuardRunAdapterApi {
     /// `HarnessAdapter.launch_command_from_authorized_plan` — build the launch
-    /// argv for an authorized plan, or `None` when it cannot be bound.
+    /// argv for authorized executable prefixes and an environment, or `None`
+    /// when it cannot be bound.
     fn launch_command_from_authorized_plan(
         &self,
         harness: &str,
-        plan: &GuardRunLaunchPlan,
+        authorized_executable_prefixes: &[Vec<String>],
+        launch_environment: &BTreeMap<String, String>,
         passthrough_args: &[String],
     ) -> Option<Vec<String>>;
 }
@@ -179,24 +180,40 @@ pub fn guard_run_finalize_authorized_launch_plan(
     context_home_dir: Option<&Path>,
     context_workspace_dir: Option<&Path>,
 ) -> Option<GuardRunLaunchPlan> {
-    for plan in authorized_plans {
-        let command =
-            adapter.launch_command_from_authorized_plan(harness, plan, passthrough_args)?;
-        // Python re-runs the launch-environment build against `context`; the
-        // plan already carries the prepared environment, so reuse it here and
-        // only re-derive the cwd from context when provided.
-        let launch_cwd = context_workspace_dir
-            .map(|p| p.to_path_buf())
-            .or_else(|| context_home_dir.map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| plan.launch_cwd.clone());
-        let mut finalized = plan.clone();
-        finalized.adapter_command = command.clone();
-        finalized.execution_command = command;
-        finalized.launch_cwd = launch_cwd;
-        finalized.reusable = runtime_launch_identity_is_reusable(&finalized.identity);
-        return Some(finalized);
+    if authorized_plans.is_empty() || !authorized_plans.iter().all(|p| p.reusable) {
+        return None;
     }
-    None
+    let first = &authorized_plans[0];
+    if authorized_plans[1..].iter().any(|p| {
+        p.environment_sha256 != first.environment_sha256 || p.environment != first.environment
+    }) {
+        return None;
+    }
+    let mut prefixes: Vec<Vec<String>> = Vec::new();
+    for plan in authorized_plans {
+        let prefix = guard_run_executable_prefix(plan)?;
+        if !prefixes.contains(&prefix) {
+            prefixes.push(prefix);
+        }
+    }
+    let actual = adapter.launch_command_from_authorized_plan(
+        harness,
+        &prefixes,
+        &first.environment,
+        passthrough_args,
+    )?;
+    let mut finalized = authorized_plans
+        .iter()
+        .find(|plan| actual == plan.adapter_command || actual == plan.execution_command)?
+        .clone();
+    // Python re-runs the launch-environment build against `context`; the
+    // plan already carries the prepared environment, so reuse it here and
+    // only re-derive the cwd from context when provided.
+    finalized.launch_cwd = context_workspace_dir
+        .map(|p| p.to_path_buf())
+        .or_else(|| context_home_dir.map(|p| p.to_path_buf()))
+        .unwrap_or(finalized.launch_cwd);
+    Some(finalized)
 }
 
 /// `_guard_run_launch_plan_signature` (:606-616). Canonical signature of a
@@ -212,7 +229,9 @@ pub fn guard_run_launch_plan_signature(launch_plan: &GuardRunLaunchPlan) -> Opti
         "environment_sha256": launch_plan.environment_sha256,
         "identity": launch_plan.identity,
     });
-    Some(serde_json::to_string(&payload).expect("plan signature serializes"))
+    Some(ascii_escape_json(
+        &serde_json::to_string(&payload).expect("plan signature serializes"),
+    ))
 }
 
 /// Seam for the timing-free detector authority payload consumed by
@@ -287,16 +306,20 @@ pub fn guard_run_authority_signature(
     let detector_payload = detector
         .runtime_detector_context(evaluation)
         .unwrap_or(Value::Null);
-    let detector_json =
-        serde_json::to_string(&detector_payload).expect("detector payload serializes");
+    let detector_json = ascii_escape_json(
+        &serde_json::to_string(&detector_payload).expect("detector payload serializes"),
+    );
     let contexts_sorted: Vec<Value> = contexts
         .iter()
         .map(|(k, (h, a))| json!([k, h, a]))
         .collect();
     let plan_signatures: Vec<Value> = launch_previews
         .iter()
-        .filter_map(|plan| guard_run_launch_plan_signature(plan))
-        .map(Value::String)
+        .map(|plan| {
+            guard_run_launch_plan_signature(plan)
+                .map(Value::String)
+                .unwrap_or(Value::Null)
+        })
         .collect();
     Some(json!({
         "harness": harness,

@@ -77,6 +77,7 @@ pub(crate) fn benign_command_segments(
                             | "--sort"
                             | "--format"
                             | "--time"
+                            | "--time-style"
                             | "--block-size"
                             | "--quoting-style"
                             | "--indicator-style"

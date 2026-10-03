@@ -423,7 +423,7 @@ def test_required_ci_uses_trusted_base_or_exact_initial_verifier():
     checkouts = [step["with"] for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")]
     assert checkouts == [
         {"ref": "${{ github.event.pull_request.base.sha }}", "path": "gauntlet-trusted", "persist-credentials": False},
-        {"ref": "4d9a3a54fe50bb813356beb49dc6eb7310652480", "path": "gauntlet-trusted", "persist-credentials": False},
+        {"ref": "69de8c263514933786d5816b7a4ae8b239326a65", "path": "gauntlet-trusted", "persist-credentials": False},
     ]
     requirement = next(step for step in job["steps"] if step.get("run") == "python3 -m ci.gauntlet.github_ci require")
     assert requirement["working-directory"] == "gauntlet-trusted"

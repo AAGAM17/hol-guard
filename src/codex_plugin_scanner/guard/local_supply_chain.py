@@ -322,6 +322,19 @@ def _parse_package_intent_native(
         return None
 
 
+def _native_cloud_transport_unavailable(payload: dict[str, object]) -> bool:
+    """The resident cloud client is still a stub. Treat that miss as transport
+    failure so the Python evaluator can observe the real timeout or network error.
+    """
+    reasons = payload.get("reasons")
+    if not isinstance(reasons, list):
+        return False
+    return any(
+        isinstance(reason, dict) and reason.get("code") == "cloud_network_error"
+        for reason in reasons
+    )
+
+
 def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:
     """Best-effort native evaluation through the resident package authority.
 
@@ -361,6 +374,8 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
         runtime_private_metadata=getattr(artifact, "runtime_private_metadata", None),
     )
     if payload is None:
+        return None
+    if _native_cloud_transport_unavailable(payload):
         return None
     # The resident returns the decision; the Python store still owns the
     # evidence row. A payload that cannot be reconstructed or persisted falls

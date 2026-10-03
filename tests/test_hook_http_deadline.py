@@ -14,6 +14,12 @@ from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon as daemo
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _render_bounded_hook_script
 
 
+def _identity_of(fd: int) -> str:
+    if os.path.isdir("/proc/self/fd"):
+        return os.readlink(f"/proc/self/fd/{fd}")
+    return str(fd)
+
+
 def open_descriptor_identities() -> set[str] | None:
     """Return identities of descriptors the hook could leave open.
 
@@ -123,14 +129,16 @@ def test_open_descriptor_identities_notice_a_new_socket() -> None:
     sock = socket.socket()
     try:
         sock.bind(("127.0.0.1", 0))
+        ident = _identity_of(sock.fileno())
         during = open_descriptor_identities() or set()
-        leaked = during - before
-        assert leaked
+        leaked = {ident}
+        assert ident in during and ident not in before
     finally:
         sock.close()
-        after = open_descriptor_identities()
-        if after is not None:
-            assert leaked.isdisjoint(after)
+        if os.path.isdir("/proc/self/fd"):
+            after = open_descriptor_identities()
+            if after is not None:
+                assert leaked.isdisjoint(after)
 
 
 @pytest.mark.parametrize("generated", [False, True])

@@ -398,7 +398,7 @@ jobs:
         if: github.event_name == 'pull_request' && steps.gauntlet_verifier.outputs.bootstrap == 'true'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: a820693305e7c913285724a7aade92b085b55f09
+          ref: 4d9a3a54fe50bb813356beb49dc6eb7310652480
           path: gauntlet-trusted
           persist-credentials: false
       - name: Require actual live-agent qualification for enforcement changes
@@ -406,7 +406,7 @@ jobs:
         working-directory: gauntlet-trusted
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA: a820693305e7c913285724a7aade92b085b55f09
+          GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA: 4d9a3a54fe50bb813356beb49dc6eb7310652480
         run: python3 -m ci.gauntlet.github_ci require
 
   pi-exact-continuation:

@@ -140,9 +140,7 @@ pub fn saved_package_policy_clear_command(
     command.push("--scope".to_string());
     command.push(scope.to_string());
     let mut artifact_id = string_value(matched_policy.get("artifact_id")).map(str::to_string);
-    if artifact_id.is_none()
-        && matches!(scope, "artifact" | "workspace" | "harness" | "global")
-    {
+    if artifact_id.is_none() && matches!(scope, "artifact" | "workspace" | "harness" | "global") {
         artifact_id = Some(artifact.artifact_id.clone());
     }
     if let Some(id) = artifact_id {
@@ -153,8 +151,7 @@ pub fn saved_package_policy_clear_command(
         command.push("--artifact-hash".to_string());
         command.push(matched_hash.to_string());
     }
-    let mut policy_workspace =
-        string_value(matched_policy.get("workspace")).map(str::to_string);
+    let mut policy_workspace = string_value(matched_policy.get("workspace")).map(str::to_string);
     if policy_workspace.is_none() && matches!(scope, "artifact" | "workspace") {
         policy_workspace = Some(workspace_dir.to_string());
     }
@@ -181,7 +178,10 @@ pub fn package_approval_reuse_evidence(evaluation: &Value) -> Vec<Map<String, Va
                 continue;
             };
             let mut evidence = Map::new();
-            evidence.insert("source".to_string(), Value::String("approval_reuse".to_string()));
+            evidence.insert(
+                "source".to_string(),
+                Value::String("approval_reuse".to_string()),
+            );
             for (key, value) in reuse_map {
                 evidence.insert(key.clone(), value.clone());
             }
@@ -214,10 +214,11 @@ pub fn package_evaluation_with_current_policy_action(
         GuardAction::Allow => "allows",
     };
     let package_label = package_label(map);
-    let summary = format!(
-        "HOL Guard's current package policy {action_label} {package_label}."
-    );
-    let severity = if matches!(current_action, GuardAction::Block | GuardAction::SandboxRequired) {
+    let summary = format!("HOL Guard's current package policy {action_label} {package_label}.");
+    let severity = if matches!(
+        current_action,
+        GuardAction::Block | GuardAction::SandboxRequired
+    ) {
         "high"
     } else {
         "medium"
@@ -270,12 +271,19 @@ pub fn package_evaluation_with_rejected_reuse(
     reuse: &ApprovalReuseDecision,
 ) -> Map<String, Value> {
     let message = approval_reuse_reason_message(reuse);
-    let severity = if reuse.status == "rejected" { "high" } else { "low" };
+    let severity = if reuse.status == "rejected" {
+        "high"
+    } else {
+        "low"
+    };
     let mut reason = Map::new();
     reason.insert("code".to_string(), Value::String(reuse.reason_code.clone()));
     reason.insert("message".to_string(), Value::String(message.clone()));
     reason.insert("severity".to_string(), Value::String(severity.to_string()));
-    reason.insert("source".to_string(), Value::String("guard-local".to_string()));
+    reason.insert(
+        "source".to_string(),
+        Value::String("guard-local".to_string()),
+    );
     reason.insert(
         "approval_reuse".to_string(),
         serde_json::to_value(reuse).unwrap_or(Value::Null),
@@ -397,10 +405,7 @@ fn rewritten_package_decisions(map: &Map<String, Value>, decision: &str) -> Vec<
                 .map(|package| {
                     if let Some(pkg) = package.as_object() {
                         let mut pkg = pkg.clone();
-                        pkg.insert(
-                            "decision".to_string(),
-                            Value::String(decision.to_string()),
-                        );
+                        pkg.insert("decision".to_string(), Value::String(decision.to_string()));
                         Value::Object(pkg)
                     } else {
                         package.clone()
@@ -445,11 +450,7 @@ fn package_label(map: &Map<String, Value>) -> String {
 /// Build the replacement `reasons` array: prepend `reason`, then keep every
 /// existing reason whose `code` differs from `code_to_drop`.
 /// Mirrors `(reason, *tuple(item for item in evaluation.reasons if item.get("code") != reason["code"]))`.
-fn prepend_reason(
-    map: &Map<String, Value>,
-    reason: Value,
-    code_to_drop: &str,
-) -> Vec<Value> {
+fn prepend_reason(map: &Map<String, Value>, reason: Value, code_to_drop: &str) -> Vec<Value> {
     let mut out = Vec::with_capacity(1);
     out.push(reason);
     if let Some(reasons) = map.get("reasons").and_then(Value::as_array) {
@@ -527,7 +528,14 @@ mod tests {
         .unwrap()
     }
 
-    fn reuse(action: GuardAction, status: &str, reason_code: &str, current: GuardAction, saved: Option<GuardAction>, should_claim: bool) -> ApprovalReuseDecision {
+    fn reuse(
+        action: GuardAction,
+        status: &str,
+        reason_code: &str,
+        current: GuardAction,
+        saved: Option<GuardAction>,
+        should_claim: bool,
+    ) -> ApprovalReuseDecision {
         ApprovalReuseDecision {
             action,
             status: Box::leak(status.to_string().into_boxed_str()),
@@ -554,8 +562,14 @@ mod tests {
     #[test]
     fn decision_for_action_mapping() {
         assert_eq!(package_decision_for_action(GuardAction::Block), "block");
-        assert_eq!(package_decision_for_action(GuardAction::SandboxRequired), "ask");
-        assert_eq!(package_decision_for_action(GuardAction::RequireReapproval), "ask");
+        assert_eq!(
+            package_decision_for_action(GuardAction::SandboxRequired),
+            "ask"
+        );
+        assert_eq!(
+            package_decision_for_action(GuardAction::RequireReapproval),
+            "ask"
+        );
         assert_eq!(package_decision_for_action(GuardAction::Review), "ask");
         assert_eq!(package_decision_for_action(GuardAction::Warn), "warn");
         assert_eq!(package_decision_for_action(GuardAction::Allow), "allow");
@@ -573,9 +587,17 @@ mod tests {
             (None, None, false),
         ] {
             let mut e = Map::new();
-            if let Some(p) = pa { e.insert("policy_action".into(), json!(p)); }
-            if let Some(d) = dec { e.insert("decision".into(), json!(d)); }
-            assert_eq!(stored_package_policy_evaluation_requires_review(&Value::Object(e)), want, "pa={pa:?} dec={dec:?}");
+            if let Some(p) = pa {
+                e.insert("policy_action".into(), json!(p));
+            }
+            if let Some(d) = dec {
+                e.insert("decision".into(), json!(d));
+            }
+            assert_eq!(
+                stored_package_policy_evaluation_requires_review(&Value::Object(e)),
+                want,
+                "pa={pa:?} dec={dec:?}"
+            );
         }
     }
 
@@ -605,13 +627,40 @@ mod tests {
             ("approval_reuse_saved_action_unknown", "Saved approval was rejected because its action is unknown or malformed."),
         ];
         for (code, want) in cases {
-            let r = reuse(GuardAction::Review, "rejected", code, GuardAction::Review, None, false);
+            let r = reuse(
+                GuardAction::Review,
+                "rejected",
+                code,
+                GuardAction::Review,
+                None,
+                false,
+            );
             assert_eq!(approval_reuse_reason_message(&r), want, "{code}");
         }
-        let r = reuse(GuardAction::Review, "rejected", "approval_reuse_no_saved_decision", GuardAction::Review, None, false);
-        assert_eq!(approval_reuse_reason_message(&r), "Saved package policy was not reused (approval_reuse_no_saved_decision).");
-        let r2 = reuse(GuardAction::Review, "rejected", "something_else", GuardAction::Review, None, false);
-        assert_eq!(approval_reuse_reason_message(&r2), "Saved package policy was not reused (something_else).");
+        let r = reuse(
+            GuardAction::Review,
+            "rejected",
+            "approval_reuse_no_saved_decision",
+            GuardAction::Review,
+            None,
+            false,
+        );
+        assert_eq!(
+            approval_reuse_reason_message(&r),
+            "Saved package policy was not reused (approval_reuse_no_saved_decision)."
+        );
+        let r2 = reuse(
+            GuardAction::Review,
+            "rejected",
+            "something_else",
+            GuardAction::Review,
+            None,
+            false,
+        );
+        assert_eq!(
+            approval_reuse_reason_message(&r2),
+            "Saved package policy was not reused (something_else)."
+        );
     }
 
     #[test]
@@ -643,12 +692,14 @@ mod tests {
             saved_package_policy_clear_command(&artifact, "hash", &min, "/work dir"),
             "hol-guard policies clear --harness claude-code --scope artifact --artifact-id npm:left-pad --policy-workspace '/work dir'"
         );
-        let global: Map<String, Value> = serde_json::from_str(r#"{"scope":"global","workspace":"/weird dir"}"#).unwrap();
+        let global: Map<String, Value> =
+            serde_json::from_str(r#"{"scope":"global","workspace":"/weird dir"}"#).unwrap();
         assert_eq!(
             saved_package_policy_clear_command(&artifact, "hash", &global, "/work dir"),
             "hol-guard policies clear --harness claude-code --scope global --artifact-id npm:left-pad --policy-workspace '/weird dir'"
         );
-        let blank: Map<String, Value> = serde_json::from_str(r#"{"scope":"harness","artifact_id":""}"#).unwrap();
+        let blank: Map<String, Value> =
+            serde_json::from_str(r#"{"scope":"harness","artifact_id":""}"#).unwrap();
         assert_eq!(
             saved_package_policy_clear_command(&artifact, "hash", &blank, "/work dir"),
             "hol-guard policies clear --harness claude-code --scope harness --artifact-id npm:left-pad"
@@ -667,11 +718,16 @@ mod tests {
         assert_eq!(items.len(), 2);
         let mut b0 = Vec::new();
         guard_contracts::write_canonical_json(&Value::Object(items[0].clone()), &mut b0).unwrap();
-        assert_eq!(String::from_utf8(b0).unwrap(),
-            r#"{"reason_code":"rc","source":"approval_reuse","status":"rejected"}"#);
+        assert_eq!(
+            String::from_utf8(b0).unwrap(),
+            r#"{"reason_code":"rc","source":"approval_reuse","status":"rejected"}"#
+        );
         let mut b1 = Vec::new();
         guard_contracts::write_canonical_json(&Value::Object(items[1].clone()), &mut b1).unwrap();
-        assert_eq!(String::from_utf8(b1).unwrap(), r#"{"source":"overridden","x":1}"#);
+        assert_eq!(
+            String::from_utf8(b1).unwrap(),
+            r#"{"source":"overridden","x":1}"#
+        );
     }
 
     #[test]
@@ -697,7 +753,14 @@ mod tests {
     fn rejected_reuse_oracle() {
         let eval = NoopEval;
         let m = base_eval();
-        let r = reuse(GuardAction::Block, "rejected", "approval_reuse_current_block", GuardAction::Block, Some(GuardAction::Allow), false);
+        let r = reuse(
+            GuardAction::Block,
+            "rejected",
+            "approval_reuse_current_block",
+            GuardAction::Block,
+            Some(GuardAction::Allow),
+            false,
+        );
         let out = package_evaluation_with_rejected_reuse(&eval, &m, &r);
         let got = canon(&out);
         let want = r#"{"bundle_version":"b1","cache_status":"miss","decision":"block","enforcement":"enforce","entitlement_state":"entitled","evidence_ids":[],"exception_id":null,"external_archive_source_hashes":[],"matched_rule_id":null,"package_intent_hash":"abc123","packages":[{"decision":"block","name":"left-pad","requestedVersion":"1.0.0"},{"decision":"block","name":"raw"}],"policy_action":"block","policy_version":"p1","reasons":[{"approval_reuse":{"action":"block","current_action":"block","original_current_action":"block","original_current_type":"str","original_saved_action":"allow","original_saved_type":"str","reason_code":"approval_reuse_current_block","saved_action":"allow","should_claim":false,"status":"rejected"},"code":"approval_reuse_current_block","message":"Saved approval was rejected because current package policy blocks this request.","severity":"high","source":"guard-local"},{"code":"existing_reason","message":"keep me","severity":"low","source":"guard-local"}],"record_monitor_evidence":false,"refresh_required":false,"risk_summary":"Saved approval was rejected because current package policy blocks this request.","user_copy":{"dashboard_url":null,"harness_message":"Saved approval was rejected because current package policy blocks this request.","next_step":"Review the current package request in HOL Guard, then retry.","summary":"Saved approval was rejected because current package policy blocks this request.","title":"Saved approval not reusable"},"workspace_fingerprint":"wf1"}"#;
@@ -734,12 +797,27 @@ mod tests {
     fn policy_override_oracle() {
         let eval = NoopEval;
         let m = base_eval();
-        let r = reuse(GuardAction::Block, "rejected", "approval_reuse_current_block", GuardAction::Block, Some(GuardAction::Allow), false);
+        let r = reuse(
+            GuardAction::Block,
+            "rejected",
+            "approval_reuse_current_block",
+            GuardAction::Block,
+            Some(GuardAction::Allow),
+            false,
+        );
         let out = package_policy_override_evaluation(
-            &eval, &m, "allow", "allow",
-            "Saved package policy", "sum", "hm", None,
-            "saved_package_approval", "rm",
-            Some(&r), Some("consumed"),
+            &eval,
+            &m,
+            "allow",
+            "allow",
+            "Saved package policy",
+            "sum",
+            "hm",
+            None,
+            "saved_package_approval",
+            "rm",
+            Some(&r),
+            Some("consumed"),
         );
         let got = canon(&out);
         let want = r#"{"bundle_version":"b1","cache_status":"miss","decision":"allow","enforcement":"enforce","entitlement_state":"entitled","evidence_ids":[],"exception_id":null,"external_archive_source_hashes":[],"matched_rule_id":null,"package_intent_hash":"abc123","packages":[{"decision":"allow","name":"left-pad","requestedVersion":"1.0.0"},{"decision":"allow","name":"raw"}],"policy_action":"allow","policy_version":"p1","reasons":[{"approval_claim_disposition":"consumed","approval_reuse":{"action":"block","current_action":"block","original_current_action":"block","original_current_type":"str","original_saved_action":"allow","original_saved_type":"str","reason_code":"approval_reuse_current_block","saved_action":"allow","should_claim":false,"status":"rejected"},"code":"saved_package_approval","message":"rm","severity":"low","source":"guard-local"},{"code":"existing_reason","message":"keep me","severity":"low","source":"guard-local"}],"record_monitor_evidence":false,"refresh_required":false,"risk_summary":"hm","user_copy":{"dashboard_url":null,"harness_message":"hm","next_step":null,"summary":"sum","title":"Saved package policy"},"workspace_fingerprint":"wf1"}"#;
@@ -751,10 +829,18 @@ mod tests {
         let eval = NoopEval;
         let m = base_eval();
         let out = package_policy_override_evaluation(
-            &eval, &m, "ask", "review",
-            "T2", "S2", "HM2", Some("step"),
-            "rc2", "rm2",
-            None, None,
+            &eval,
+            &m,
+            "ask",
+            "review",
+            "T2",
+            "S2",
+            "HM2",
+            Some("step"),
+            "rc2",
+            "rm2",
+            None,
+            None,
         );
         let got = canon(&out);
         let want = r#"{"bundle_version":"b1","cache_status":"miss","decision":"ask","enforcement":"enforce","entitlement_state":"entitled","evidence_ids":[],"exception_id":null,"external_archive_source_hashes":[],"matched_rule_id":null,"package_intent_hash":"abc123","packages":[{"decision":"ask","name":"left-pad","requestedVersion":"1.0.0"},{"decision":"ask","name":"raw"}],"policy_action":"review","policy_version":"p1","reasons":[{"code":"rc2","message":"rm2","severity":"low","source":"guard-local"},{"code":"existing_reason","message":"keep me","severity":"low","source":"guard-local"}],"record_monitor_evidence":false,"refresh_required":false,"risk_summary":"HM2","user_copy":{"dashboard_url":null,"harness_message":"HM2","next_step":"step","summary":"S2","title":"T2"},"workspace_fingerprint":"wf1"}"#;

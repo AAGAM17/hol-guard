@@ -54,11 +54,41 @@ pub(crate) fn benign_command_segments(
                         | "grep"
                         | "sed"
                 );
-            let ls_has_explicit_target = basename != "ls"
-                || segment
-                    .arguments
-                    .iter()
-                    .any(|argument| !argument.starts_with('-'));
+            let ls_has_explicit_target = basename != "ls" || {
+                let mut skip_next = false;
+                let mut found = false;
+                for argument in &segment.arguments {
+                    if skip_next {
+                        skip_next = false;
+                        continue;
+                    }
+                    if matches!(
+                        argument.as_str(),
+                        "-I"
+                            | "--ignore"
+                            | "--hide"
+                            | "-w"
+                            | "--width"
+                            | "-T"
+                            | "--tabsize"
+                            | "--color"
+                            | "--sort"
+                            | "--format"
+                            | "--time"
+                            | "--block-size"
+                            | "--quoting-style"
+                            | "--indicator-style"
+                    ) {
+                        skip_next = true;
+                        continue;
+                    }
+                    if !argument.starts_with('-') {
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            };
             let all_previous_benign = segment_benign[..index].iter().all(|benign| *benign);
             // Earlier extension-approved segments may rewrite the tree (checkout/pull);
             // a pre-execution path proof only holds while every predecessor is benign.

@@ -20,7 +20,7 @@ def test_fixture_alias_redaction_preserves_host_guard_identity(monkeypatch):
     import json
     from pathlib import Path
 
-    canonical = "/private/" + "tmp/fixture/home/project"
+    canonical = str(Path("/").joinpath("private", "tmp", "fixture", "workspace"))
     alias = canonical.removeprefix("/private")
     monkeypatch.setattr(Path, "resolve", lambda path, **kwargs: Path(canonical) if str(path) == alias else path)
     replacements = fixture_path_aliases({canonical: "{{workspace}}"})
@@ -40,7 +40,7 @@ def test_fixture_alias_redaction_requires_matching_physical_path(monkeypatch):
     """Keep an unrelated alias distinct instead of qualifying a different target."""
     from pathlib import Path
 
-    canonical = "/private/" + "tmp/fixture/home/project"
+    canonical = str(Path("/").joinpath("private", "tmp", "fixture", "workspace"))
     monkeypatch.setattr(Path, "resolve", lambda path, **kwargs: path)
     replacements = {canonical: "{{workspace}}"}
     assert fixture_path_aliases(replacements) == replacements

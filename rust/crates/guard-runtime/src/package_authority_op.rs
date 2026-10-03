@@ -343,25 +343,61 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         &self,
         approval_id: &str,
         claimed_at: &str,
-        _expected_decision: &Value,
+        expected_decision: &Value,
     ) -> bool {
-        let conn = match self.conn() {
-            Ok(c) => c,
+        let mut conn = match self.conn() {
+            Ok(connection) => connection,
             Err(_) => return false,
         };
-        crate::local_once_store::claim_local_once_approval_locked(
-            &conn,
-            "",
-            Some(approval_id),
-            None,
-            None,
-            None,
+        let resolved_home =
+            std::fs::canonicalize(&self.guard_home).unwrap_or_else(|_| self.guard_home.clone());
+        let mut secret_store =
+            crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
+        let (material, _) = crate::policy_integrity_resolver::resolve_integrity_state(
+            &mut secret_store,
+            &resolved_home,
+        );
+        let Some(material) = material else {
+            return false;
+        };
+        let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
+            Ok(tx) => tx,
+            Err(_) => return false,
+        };
+        let expected = if expected_decision.is_null() {
+            None
+        } else {
+            Some(expected_decision)
+        };
+        let claimed = crate::local_once_store::claim_local_once_approval_by_id_locked(
+            &tx,
+            approval_id,
             claimed_at,
-            None,
-            None,
-        )
-        .map(|v| v.is_some())
-        .unwrap_or(false)
+            expected,
+            Some(material.raw_key.as_slice()),
+            Some(material.key_id.as_str()),
+            true,
+        );
+        let Ok(Some(decision)) = claimed else {
+            return false;
+        };
+        let payload = serde_json::json!({
+            "approval_id": decision.get("approval_id"),
+            "request_id": decision.get("request_id"),
+            "harness": decision.get("harness"),
+            "artifact_id": decision.get("artifact_id"),
+        });
+        let body = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into());
+        if tx
+            .execute(
+                "INSERT INTO guard_events (event_name, payload_json, occurred_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params!["approval.local_once_applied", body, claimed_at],
+            )
+            .is_err()
+        {
+            return false;
+        }
+        tx.commit().is_ok()
     }
 
     fn add_receipt(&self, receipt: &Value) {

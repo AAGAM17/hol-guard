@@ -158,18 +158,24 @@ impl SupplyChainStore for ResidentSupplyChainStore {
     }
 
     fn get_cached_supply_chain_bundle(&self, workspace_id: &str) -> Option<Value> {
-        // store_supply_chain.py: get_cached_supply_chain_bundle
+        // store_supply_chain.py: get_supply_chain_bundle
         let conn = self.conn().ok()?;
         let mut stmt = conn
             .prepare(
-                "SELECT response_json FROM guard_supply_chain_bundle_cache \
+                "SELECT response_json, cached_at FROM guard_supply_chain_bundle_cache \
                  WHERE workspace_id = ?1 LIMIT 1",
             )
             .ok()?;
         let mut rows = stmt.query([workspace_id]).ok()?;
         let row = rows.next().ok()??;
         let raw: String = row.get(0).ok()?;
-        serde_json::from_str(&raw).ok()
+        let cached_at: String = row.get(1).ok()?;
+        let mut payload: Value = serde_json::from_str(&raw).ok()?;
+        let Value::Object(map) = &mut payload else {
+            return None;
+        };
+        map.insert("cached_at".into(), Value::String(cached_at));
+        Some(payload)
     }
 
     fn get_sync_payload(&self, key: &str) -> Option<Value> {
@@ -1157,11 +1163,12 @@ impl StoreExtrasApi for ResidentStoreExtras {
         scoring_version: &str,
         bundle_version: &str,
     ) -> Option<Map<String, Value>> {
-        // store_supply_chain.py: get_cached_supply_chain_evaluation
+        // store_supply_chain.py: get_supply_chain_evaluation
         let conn = self.conn().ok()?;
         let mut stmt = conn
             .prepare(
-                "SELECT decision_json FROM guard_supply_chain_eval_cache \
+                "SELECT bundle_version, decision_json, updated_at \
+                 FROM guard_supply_chain_eval_cache \
                  WHERE workspace_id = ?1 AND package_intent_hash = ?2 \
                  AND feed_snapshot_hash = ?3 AND policy_hash = ?4 \
                  AND scoring_version = ?5 AND bundle_version = ?6 LIMIT 1",
@@ -1178,9 +1185,18 @@ impl StoreExtrasApi for ResidentStoreExtras {
             ])
             .ok()?;
         let row = rows.next().ok()??;
-        let raw: String = row.get(0).ok()?;
+        let stored_bundle_version: String = row.get(0).ok()?;
+        let raw: String = row.get(1).ok()?;
+        let updated_at: String = row.get(2).ok()?;
         match serde_json::from_str::<Value>(&raw).ok()? {
-            Value::Object(m) => Some(m),
+            Value::Object(mut decision) => {
+                decision.insert(
+                    "bundle_version".into(),
+                    Value::String(stored_bundle_version),
+                );
+                decision.insert("updated_at".into(), Value::String(updated_at));
+                Some(decision)
+            }
             _ => None,
         }
     }

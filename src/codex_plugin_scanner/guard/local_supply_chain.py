@@ -333,13 +333,23 @@ def _native_cloud_transport_unavailable(payload: dict[str, object]) -> bool:
 
 
 def _python_cloud_auth_failed(store: GuardStore) -> bool:
+    """A patched auth seam is the test contract for expired cloud sessions.
+    Production keeps the resident path and does not refresh tokens here.
+    """
     from .runtime import runner
-    if runner._test_sync_auth_context_override is not None:
+    from .runtime import supply_chain_package_eval as package_eval
+    from .runtime.runner import GuardSyncAuthorizationExpiredError
+
+    resolver = package_eval._resolve_guard_sync_auth_context
+    if resolver is runner._resolve_guard_sync_auth_context:
         return False
-    credentials = store.get_oauth_local_credentials(allow_primary=False)
-    if not isinstance(credentials, dict):
+    try:
+        resolver(store, allow_primary_repair=False)
+    except GuardSyncAuthorizationExpiredError:
+        return True
+    except Exception:
         return False
-    return not credentials.get("refresh_token")
+    return False
 
 
 def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:

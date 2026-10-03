@@ -485,7 +485,7 @@ def test_guard_hook_ask_package_native_denial_surfaces_approval_url(
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert f"/requests/{request_id}" in reason
-    assert "Review this request in HOL Guard, then retry." in reason
+    assert "open Inbox from Guard on this device, then retry." in reason
     assert captured.err == ""
 
 
@@ -554,7 +554,7 @@ def test_guard_hook_ask_package_direct_hook_caps_browser_approval_wait(
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
     assert "/requests/" in reason
     assert "guard-token=gld1." in reason
-    assert "Review this request in HOL Guard, then retry." in reason
+    assert "After you choose, retry the same Codex action." in reason
     assert "waiting for approval in your browser" in captured.err
 
 

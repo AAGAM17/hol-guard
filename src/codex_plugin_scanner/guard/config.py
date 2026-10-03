@@ -507,10 +507,12 @@ def load_guard_config(
     *,
     managed_policy_state: ManagedPolicyState | None = None,
     require_canonical_workspace: bool = False,
+    create_home: bool = True,
 ) -> GuardConfig:
     """Load Guard config from home and workspace overrides."""
 
-    guard_home.mkdir(parents=True, exist_ok=True)
+    if create_home:
+        guard_home.mkdir(parents=True, exist_ok=True)
     home_config = _read_toml(guard_home / "config.toml")
     workspace_config = _load_workspace_guard_config(workspace, require_canonical=require_canonical_workspace)
 

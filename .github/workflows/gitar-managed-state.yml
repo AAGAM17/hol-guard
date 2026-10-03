@@ -15,7 +15,12 @@ on:
 permissions: {}
 
 concurrency:
-  group: gitar-managed-state-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
+  group: >-
+    gitar-managed-state-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}-${{
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.state == 'open' ||
+      github.event.issue.state == 'open'
+    }}
   cancel-in-progress: true
 
 jobs:

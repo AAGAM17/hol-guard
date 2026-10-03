@@ -123,14 +123,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         features.push("authenticated-unix-resident-v1".into());
     }
     let (program_digest, catalog_digest, trust_digest) =
-        match guard_command::native_command_program::packaged_command_program() {
-            Ok(program) => (
-                program.program_digest.clone(),
-                program.catalog_digest.clone(),
-                program.trust_digest.clone(),
-            ),
-            Err(_) => (String::new(), String::new(), String::new()),
-        };
+        guard_command::native_command_program::packaged_program_digests();
     RuntimeCapabilitiesV1 {
         protocol_version: NATIVE_PROTOCOL_VERSION,
         runtime_version: crate::PACKAGE_VERSION.to_owned(),

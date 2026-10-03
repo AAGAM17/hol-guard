@@ -435,7 +435,7 @@ fn win32_path(path: &Path) -> PathBuf {
         return PathBuf::from(format!(r"\\{rest}"));
     }
     if let Some(rest) = text.strip_prefix(r"\\?\") {
-        return PathBuf::from(rest.as_ref());
+        return PathBuf::from(rest);
     }
     path.to_owned()
 }

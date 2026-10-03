@@ -486,7 +486,7 @@ fn windows_prefix_kind_eq(left: Prefix<'_>, right: Prefix<'_>) -> bool {
         _ => None,
     };
     if let (Some(left_letter), Some(right_letter)) = (left_disk, right_disk) {
-        return left_letter.to_ascii_lowercase() == right_letter.to_ascii_lowercase();
+        return left_letter.eq_ignore_ascii_case(&right_letter);
     }
     let left_unc = match left {
         Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => Some((server, share)),

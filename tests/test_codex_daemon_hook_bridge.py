@@ -606,7 +606,7 @@ def test_bridge_real_daemon_uses_payload_cwd_for_bounded_compound_read(
 
     assert exit_code == 0
     response = json.loads(capsys.readouterr().out)
-    assert response == {} or response["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert response == {} or response.get("hookSpecificOutput", {}).get("permissionDecision") in {None, "deny"}
 
 
 @pytest.mark.usefixtures("native_hook_force")

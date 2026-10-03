@@ -123,8 +123,7 @@ def test_guard_protect_human_output_replaces_all_approval_url_occurrences(tmp_pa
     assert isinstance(signed_url, str)
     assert signed_url != review_url
     assert user_copy["harness_message"] == (
-        "Review __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__; "
-        "retry with __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__."
+        "Review __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__; retry with __HOL_GUARD_EPHEMERAL_SIGNED_APPROVAL_URL__."
     )
 
 

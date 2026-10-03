@@ -51,8 +51,11 @@ def assert_file_tools(events: list[dict], workspace: Path, target_root: Path | N
                 target = anchored_target
             elif not (
                 isinstance(target, str)
-                and args.get("old_string") == "fixture-before"
-                and args.get("new_string") == "fixture-after"
+                and (args.get("old_string"), args.get("new_string"))
+                in (
+                    ("fixture-before", "fixture-after"),
+                    ("fixture-before\n", "fixture-after\n"),
+                )
             ):
                 raise AssertionError("Pi supplied an invalid string-replacement edit")
         if not isinstance(target, str):

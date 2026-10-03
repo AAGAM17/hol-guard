@@ -81,11 +81,12 @@ def test_outside_cwd_anchored_edit_uses_actual_host_home(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("path_key", ("path", "file_path"))
-def test_string_replacement_edit_validates_target_and_contents(tmp_path, path_key):
+@pytest.mark.parametrize("newline", ("", "\n"))
+def test_string_replacement_edit_validates_target_and_contents(tmp_path, path_key, newline):
     workspace = prepare_workspace(tmp_path)
     events = file_events()
     events[6]["args"] = {
-        path_key: "copy.txt", "old_string": "fixture-before", "new_string": "fixture-after"
+        path_key: "copy.txt", "old_string": f"fixture-before{newline}", "new_string": f"fixture-after{newline}"
     }
     assert_file_tools(events, workspace)
     events[6]["args"][path_key] = "other.txt"
@@ -93,5 +94,21 @@ def test_string_replacement_edit_validates_target_and_contents(tmp_path, path_ke
         assert_file_tools(events, workspace)
     events[6]["args"][path_key] = "copy.txt"
     events[6]["args"]["new_string"] = "unexpected"
+    with pytest.raises(AssertionError, match="string-replacement"):
+        assert_file_tools(events, workspace)
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    (
+        ("fixture-before", "fixture-after\n"),
+        ("fixture-before\n", "fixture-after"),
+        ("fixture-before\n\n", "fixture-after\n\n"),
+    ),
+)
+def test_string_replacement_cannot_change_newline_contract(tmp_path, old, new):
+    workspace = prepare_workspace(tmp_path)
+    events = file_events()
+    events[6]["args"] = {"path": "copy.txt", "old_string": old, "new_string": new}
     with pytest.raises(AssertionError, match="string-replacement"):
         assert_file_tools(events, workspace)

@@ -42,7 +42,11 @@ jobs:
   initialize:
     env:
       GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA: ${{ github.ref == 'refs/tags/guard-gauntlet-bootstrap-v3' && github.sha || '' }}
-    if: github.event_name != 'pull_request' && (github.event.action != 'edited' || github.event.changes.base)
+    if: >-
+      (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base)) ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+        github.ref == 'refs/tags/guard-gauntlet-bootstrap-v3'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -51,11 +55,11 @@ jobs:
       statuses: write
       actions: read
     steps:
-      # pull_request_target deliberately keeps the default trusted-base checkout.
+      # Default checkout is the trusted base for pull_request_target, or the
+      # explicitly allowed main/bootstrap ref for a writer-dispatched run.
       # No fork, PR head, merge ref or uploaded artifact is checked out or executed.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: ${{ github.ref == 'refs/tags/guard-gauntlet-bootstrap-v3' && github.sha || github.event.pull_request.base.sha || github.event.repository.default_branch }}
           persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:

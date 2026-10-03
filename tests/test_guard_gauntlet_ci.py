@@ -514,3 +514,26 @@ def test_current_test_merge_must_match_the_independently_resolved_base(monkeypat
     api.prove_source("d" * 40, "a" * 40, "c" * 40)
     with pytest.raises(ValueError, match="current test merge"):
         api.prove_source("d" * 40, "a" * 40, "b" * 40)
+
+
+def test_privileged_gate_uses_only_default_trusted_checkout_and_reviewed_dispatch_refs():
+    from pathlib import Path
+
+    import yaml
+
+    workflow = yaml.safe_load(Path(".github/workflows/guard-gauntlet-gate.yml").read_text())
+    initialize = workflow["jobs"]["initialize"]
+    condition = initialize["if"]
+    assert "github.event_name == 'pull_request_target'" in condition
+    assert "github.event_name == 'workflow_dispatch'" in condition
+    assert "github.event.repository.default_branch" in condition
+    assert "refs/tags/guard-gauntlet-bootstrap-v3" in condition
+    assert "github.event_name != 'pull_request'" not in condition
+    checkouts = [step["with"] for step in initialize["steps"] if step.get("uses", "").startswith("actions/checkout@")]
+    assert checkouts == [{"persist-credentials": False}]
+    assert initialize["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+        "statuses": "write",
+        "actions": "read",
+    }

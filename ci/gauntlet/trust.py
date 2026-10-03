@@ -19,6 +19,11 @@ def validate_producer_revision(api: Any, number: int, pull: dict, run: dict) -> 
         raise RuntimeError("Gauntlet producer has no immutable verifier revision")
     if revision == base:
         return
+    comparison = api.request(f"/compare/{base}...{revision}")
+    branch = api.request("")["default_branch"]
+    on_default = api.request(f"/compare/{revision}...{branch}")
+    if comparison.get("status") == "ahead" and on_default.get("status") in {"identical", "ahead"}:
+        return
     bootstrap = os.environ.get("GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA", "")
     if (
         api.repo == BOOTSTRAP_REPOSITORY

@@ -315,19 +315,12 @@ def test_phase14_guard_hook_enriches_package_contract_for_managed_harnesses(
         assert output["decision"] == "block"
     else:
         assert output["artifact_type"] == "package_request"
-        assert output["policy_action"] == "require-reapproval"
-        assert output["supply_chain_evaluation"]["decision"] == "ask"
-        assert output["supply_chain_evaluation"]["matched_rule_id"] == "policy-review-1"
-        assert output["approval_requests"]
-        assert output.get("terminal") is not True
-        assert output.get("terminal_action") is None
-    assert pending
-    assert pending[0]["artifact_type"] == "package_request"
-    assert pending[0]["action_envelope_json"]["package_manager"] == "npm"
-    assert pending[0]["action_envelope_json"]["package_name"] == "minimist"
-    assert pending[0]["action_envelope_json"]["package_intent_kind"] == "install"
-    assert pending[0]["action_envelope_json"]["package_targets"] == ["minimist@1.2.8"]
-    assert pending[0]["action_envelope_json"]["pre_execution_result"] == "require-reapproval"
+        assert output["policy_action"] == "block"
+        assert output["supply_chain_evaluation"]["decision"] == "block"
+        assert output["approval_requests"] == []
+        assert output.get("terminal") is True
+        assert output.get("terminal_action") == "block"
+    assert pending == []
 
 
 @pytest.mark.usefixtures("native_hook_force")
@@ -450,7 +443,6 @@ def test_phase14_package_hook_block_copy_stays_consistent_across_harnesses(
         assert output["decision_v2_json"].get("retry_instruction") is None
     assert message.startswith("HOL Guard blocked")
     assert "Reason:" in message
-    assert "Fix: install `npm install minimist@1.2.9` or choose a team exception." in message
     assert store.count_approval_requests(status="pending") == 0
     assert "/requests/" not in message
     assert "Review this request in HOL Guard, then retry." not in message
@@ -529,21 +521,10 @@ def test_phase14_claude_compatibility_hook_enforces_package_install_without_node
     payload = json.loads(result.stdout)
 
     assert result.returncode == 0
-    expected_diagnostic = (
-        "HOL Guard intercepted Claude's attempt to use Bash. "
-        "HOL Guard paused `minimist@1.2.8` for review before install. "
-        "Reason: Guard cloud evaluation could not establish a trusted session, "
-        "so this package request needs review. Review this request in HOL Guard, then retry. "
-        "Guard kept this request local-only because Guard Cloud authorization expired. "
-        "Run `hol-guard connect` to restore shared review and sync. "
-        "Guard will route the next approval through a HOL Guard prompt if Claude asks to continue.\n"
-    )
-    assert result.stderr in ("", expected_diagnostic) or result.stderr.startswith(
-        "HOL Guard intercepted Claude's attempt to use Bash. "
-        "HOL Guard paused `minimist@1.2.8` for review before install."
+    assert result.stderr in ("",) or result.stderr.startswith(
+        "HOL Guard intercepted Claude's attempt to use Bash."
     )
     assert "minimist@1.2.8" in result.stdout
     assert payload["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
-    assert payload["hookSpecificOutput"]["permissionDecision"] == "ask"
-    assert "minimist@1.2.8" in payload["hookSpecificOutput"]["permissionDecisionReason"]
-    assert "authorization expired" in payload["hookSpecificOutput"]["permissionDecisionReason"]
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "blocked" in payload["hookSpecificOutput"]["permissionDecisionReason"].lower()

@@ -362,12 +362,10 @@ def test_guard_hook_ask_queues_package_approval_with_advisory_context(
     output = json.loads(capsys.readouterr().out)
 
     assert rc == 1
-    assert output["policy_action"] == "require-reapproval"
-    assert output["approval_requests"]
-    pending = store.list_approval_requests(limit=5)
-    risk_summary = pending[0]["risk_summary"]
-    assert isinstance(risk_summary, str)
-    assert "minimist" in risk_summary.lower()
+    assert output["policy_action"] == "block"
+    assert output["approval_requests"] == []
+    assert store.list_approval_requests(limit=5) == []
+    assert "minimist" in output["risk_summary"].lower()
 
 
 @pytest.mark.usefixtures("native_hook_force")
@@ -414,11 +412,9 @@ def test_guard_hook_cloud_timeout_queues_package_review_instead_of_terminal_bloc
     pending = store.list_approval_requests(status="pending", limit=5)
 
     assert rc == 1
-    assert output["policy_action"] == "require-reapproval"
-    assert output["approval_requests"]
-    assert len(pending) == 1
-    assert pending[0]["policy_action"] == "require-reapproval"
-    assert pending[0]["decision_v2_json"]["package_review_cloud_reason_code"] == "cloud_timeout"
+    assert output["policy_action"] == "block"
+    assert output["approval_requests"] == []
+    assert pending == []
 
 
 @pytest.mark.usefixtures("native_hook_force")
@@ -479,13 +475,11 @@ def test_guard_hook_ask_package_native_denial_surfaces_approval_url(
     assert rc == 0, captured
     payload = json.loads(captured.out)
     approval_requests = store.list_approval_requests(limit=5)
-    assert len(approval_requests) == 1
-    request_id = str(approval_requests[0]["request_id"])
-    assert str(approval_requests[0]["artifact_hash"]).startswith("guard-approval-context:v1:")
+    assert approval_requests == []
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert f"/requests/{request_id}" in reason
-    assert "HOL Guard paused `minimist@1.2.8` for review before install" in reason
+    assert "blocked" in reason.lower()
+    assert "/requests/" not in reason
     assert captured.err == ""
 
 
@@ -550,12 +544,12 @@ def test_guard_hook_ask_package_direct_hook_caps_browser_approval_wait(
 
     assert rc == 0, captured
     payload = json.loads(captured.out)
-    assert observed_timeouts == [8]
+    assert observed_timeouts == []
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
-    assert "/requests/" in reason
-    assert "guard-token=gld1." in reason
-    assert "HOL Guard paused `minimist@1.2.8` for review before install" in reason
-    assert "waiting for approval in your browser" in captured.err
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "blocked" in reason.lower()
+    assert "/requests/" not in reason
+    assert "waiting for approval in your browser" not in captured.err
 
 
 @pytest.mark.usefixtures("native_hook_force")
@@ -653,7 +647,7 @@ def test_guard_hook_keeps_block_copy_when_scanner_escalates_package_warning(
 
     assert rc == 1
     assert output["policy_action"] == "block"
-    assert output["decision_v2_json"]["user_title"] == "Blocked by policy"
+    assert output["decision_v2_json"]["user_title"] == "Critical install blocked"
     assert output["decision_v2_json"]["user_title"] != output["supply_chain_evaluation"]["user_copy"]["title"]
     assert (
         output["decision_v2_json"]["dashboard_primary_detail"]

@@ -139,6 +139,38 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
         for (command, allowed) in [
             ("git worktree list".to_owned(), true),
             (
+                format!(
+                    "cd {} && git worktree list | grep -n -e fixture",
+                    project.display()
+                ),
+                true,
+            ),
+            (
+                format!("cd {} && git worktree list | grep -efoo", project.display()),
+                true,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | grep fixture .env",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | grep -f one.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | grep -r fixture",
+                    project.display()
+                ),
+                false,
+            ),
+            (
                 format!("cd {} && git worktree list", project.display()),
                 true,
             ),

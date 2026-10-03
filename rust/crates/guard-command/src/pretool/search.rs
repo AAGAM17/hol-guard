@@ -304,6 +304,10 @@ fn short_search_option(
     Ok((None, false))
 }
 
+pub(super) fn safe_grep_stdin_arguments(arguments: &[String]) -> bool {
+    grep::safe_stdin_arguments(arguments)
+}
+
 pub(super) fn safe_search_arguments_with_context(
     executable: &str,
     arguments: &[String],

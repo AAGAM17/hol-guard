@@ -116,6 +116,8 @@ pub(crate) fn benign_command_segments(
                         && safe_reads::safe_jq_stdin_arguments(&segment.arguments))
                     || (basename == "wc"
                         && safe_reads::safe_word_count_stdin_arguments(&segment.arguments))
+                    || (basename == "grep"
+                        && search::safe_grep_stdin_arguments(&segment.arguments))
                     || super::stdin_filters::safe_arguments(basename, &segment.arguments));
             let path_free = matches!(
                 basename,

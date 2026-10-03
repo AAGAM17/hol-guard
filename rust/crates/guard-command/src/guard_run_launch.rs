@@ -693,43 +693,35 @@ fn pi_guard_policy_tamper_patterns() -> &'static [FancyRegex] {
             FancyRegex::new(r"(?i)\b(?:disable|turn\s+off|uninstall|bypass)\s+HOL\s+Guard\b")
                 .expect("t1"),
             FancyRegex::new(&format!(
-                r"(?i)\b(?:edit|modify|change|write)\b{}\.codex/config\.toml{}\b(?:approval_policy|never|weaken|disable|remove)\b",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\b(?:edit|modify|change|write)\b{_SAME_SENTENCE_120}\.codex/config\.toml{_SAME_SENTENCE_120}\b(?:approval_policy|never|weaken|disable|remove)\b"
             ))
             .expect("t2"),
             FancyRegex::new(&format!(
-                r"(?i)\b(?:remove|delete|strip|disable)\b{}\b(?:hook|hooks|HOL\s+Guard|guard)\b{}\.claude/settings\.local\.json",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\b(?:remove|delete|strip|disable)\b{_SAME_SENTENCE_120}\b(?:hook|hooks|HOL\s+Guard|guard)\b{_SAME_SENTENCE_120}\.claude/settings\.local\.json"
             ))
             .expect("t3"),
             FancyRegex::new(&format!(
-                r"(?i)\b(?:remove|delete|disable)\b{}\b(?:OpenCode|opencode)\b{}\b(?:Guard|guard|config|configuration)\b",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\b(?:remove|delete|disable)\b{_SAME_SENTENCE_120}\b(?:OpenCode|opencode)\b{_SAME_SENTENCE_120}\b(?:Guard|guard|config|configuration)\b"
             ))
             .expect("t4"),
             FancyRegex::new(&format!(
-                r"(?i)\bif\s+(?:blocked|denied|rejected)\b(?={}\b(?:HOL\s+)?Guard\b){}\b(?:try|use|run)\b{}\b(?:shell|bash|sh|terminal)\b",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\bif\s+(?:blocked|denied|rejected)\b(?={_SAME_SENTENCE_120}\b(?:HOL\s+)?Guard\b){_SAME_SENTENCE_120}\b(?:try|use|run)\b{_SAME_SENTENCE_120}\b(?:shell|bash|sh|terminal)\b"
             ))
             .expect("t5"),
             FancyRegex::new(&format!(
-                r"(?i)\b(?:if\s+)?(?:HOL\s+)?Guard\s+(?:blocks?|blocked|denies|denied|rejects?|rejected)\b{}\b(?:try|use|run)\b{}\b(?:shell|bash|sh|terminal)\b",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\b(?:if\s+)?(?:HOL\s+)?Guard\s+(?:blocks?|blocked|denies|denied|rejects?|rejected)\b{_SAME_SENTENCE_120}\b(?:try|use|run)\b{_SAME_SENTENCE_120}\b(?:shell|bash|sh|terminal)\b"
             ))
             .expect("t6"),
             FancyRegex::new(&format!(
-                r"(?i)\b(?:if\s+)?(?:HOL\s+)?Guard\s+(?:blocks?|blocked|denies|denied|rejects?|rejected)\b{}\buse\s+another\s+MCP\s+servers?\b",
-                _SAME_SENTENCE_120
+                r"(?i)\b(?:if\s+)?(?:HOL\s+)?Guard\s+(?:blocks?|blocked|denies|denied|rejects?|rejected)\b{_SAME_SENTENCE_120}\buse\s+another\s+MCP\s+servers?\b"
             ))
             .expect("t7"),
             FancyRegex::new(&format!(
-                r"(?i)\buse\s+another\s+MCP\s+servers?\b{}\b(?:if|when)\s+(?:blocked|denied|rejected)\b(?={}\b(?:HOL\s+)?Guard\b)",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\buse\s+another\s+MCP\s+servers?\b{_SAME_SENTENCE_120}\b(?:if|when)\s+(?:blocked|denied|rejected)\b(?={_SAME_SENTENCE_120}\b(?:HOL\s+)?Guard\b)"
             ))
             .expect("t8"),
             FancyRegex::new(&format!(
-                r"(?i)\bif\s+(?:blocked|denied|rejected)\b(?={}\b(?:HOL\s+)?Guard\b){}\buse\s+another\s+MCP\s+servers?\b",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\bif\s+(?:blocked|denied|rejected)\b(?={_SAME_SENTENCE_120}\b(?:HOL\s+)?Guard\b){_SAME_SENTENCE_120}\buse\s+another\s+MCP\s+servers?\b"
             ))
             .expect("t9"),
         ]
@@ -742,32 +734,28 @@ fn pi_exact_secret_read_patterns() -> &'static [(FancyRegex, &'static str)] {
         vec![
             (
                 FancyRegex::new(&format!(
-                    r"(?i)\b(?:read|open|print|show|dump|cat)\b{}(?<![\w-])\.env(?!\.example\b)(?:\.[A-Za-z0-9_-]+)?{}\b(?:exactly|full|contents?|every\s+line)\b",
-                    _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                    r"(?i)\b(?:read|open|print|show|dump|cat)\b{_SAME_SENTENCE_120}(?<![\w-])\.env(?!\.example\b)(?:\.[A-Za-z0-9_-]+)?{_SAME_SENTENCE_120}\b(?:exactly|full|contents?|every\s+line)\b"
                 ))
                 .expect("es1"),
                 "Prompt asks for exact local .env contents.",
             ),
             (
                 FancyRegex::new(&format!(
-                    r"(?i)\b(?:read|open|print|show|dump|cat)\b{}\.npmrc{}\b(?:exactly|full|contents?|every\s+line)\b",
-                    _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                    r"(?i)\b(?:read|open|print|show|dump|cat)\b{_SAME_SENTENCE_120}\.npmrc{_SAME_SENTENCE_120}\b(?:exactly|full|contents?|every\s+line)\b"
                 ))
                 .expect("es2"),
                 "Prompt asks for exact npm registry credentials.",
             ),
             (
                 FancyRegex::new(&format!(
-                    r"(?i)\b(?:print|show|dump|cat|read|open)\b{}(?:~?/\.ssh|\.ssh)/(?:id_rsa|id_ed25519)\b",
-                    _SAME_SENTENCE_120
+                    r"(?i)\b(?:print|show|dump|cat|read|open)\b{_SAME_SENTENCE_120}(?:~?/\.ssh|\.ssh)/(?:id_rsa|id_ed25519)\b"
                 ))
                 .expect("es3"),
                 "Prompt asks to print SSH private-key material.",
             ),
             (
                 FancyRegex::new(&format!(
-                    r"(?i)\b(?:print|show|dump|cat|read|open)\b{}\b(?:SSH\s+)?private\s+key\b{}\b(?:contents?|material|full|exact)\b",
-                    _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                    r"(?i)\b(?:print|show|dump|cat|read|open)\b{_SAME_SENTENCE_120}\b(?:SSH\s+)?private\s+key\b{_SAME_SENTENCE_120}\b(?:contents?|material|full|exact)\b"
                 ))
                 .expect("es4"),
                 "Prompt asks to print SSH private-key material.",
@@ -781,13 +769,11 @@ fn pi_upload_or_encode_secret_patterns() -> &'static [FancyRegex] {
     static PATTERNS: LazyLock<Vec<FancyRegex>> = LazyLock::new(|| {
         vec![
             FancyRegex::new(&format!(
-                r"(?i)\b(?:upload|send|post|transfer)\b{}\b(?:local\s+)?(?:credential|secret|token|key)\s+file\b",
-                _SAME_SENTENCE_120
+                r"(?i)\b(?:upload|send|post|transfer)\b{_SAME_SENTENCE_120}\b(?:local\s+)?(?:credential|secret|token|key)\s+file\b"
             ))
             .expect("up1"),
             FancyRegex::new(&format!(
-                r"(?i)\b(?:base64|encode|encoded)\b{}\.env(?:\.[A-Za-z0-9_-]+)?{}\b(?:send|post|upload|transfer|endpoint|webhook|url)\b",
-                _SAME_SENTENCE_120, _SAME_SENTENCE_120
+                r"(?i)\b(?:base64|encode|encoded)\b{_SAME_SENTENCE_120}\.env(?:\.[A-Za-z0-9_-]+)?{_SAME_SENTENCE_120}\b(?:send|post|upload|transfer|endpoint|webhook|url)\b"
             ))
             .expect("up2"),
         ]
@@ -893,7 +879,7 @@ fn pi_documentation_subject_context(text: &str, prefix: &str, _start: usize, end
     let chars = chars_of(text);
     let n = chars.len();
     let suffix = cslice(&chars, end, (end + DOC_LOOKAHEAD).min(n));
-    format!("{} {}", prefix, suffix)
+    format!("{prefix} {suffix}")
 }
 
 /// `_is_documentation_context_with_subject` (:358)
@@ -1057,7 +1043,7 @@ pub fn detect_prompt_injection_requests(prompt_text: &str) -> Vec<GuardRunPrompt
         let confidence = if embedded.is_some() { 0.62 } else { 0.86 };
         let severity = if embedded.is_some() { 6 } else { 8 };
         let summary = match embedded {
-            Some(ctx) => format!("Untrusted {} includes prompt-injection instructions.", ctx),
+            Some(ctx) => format!("Untrusted {ctx} includes prompt-injection instructions."),
             None => "Prompt asks the harness to override prior or system instructions.".to_string(),
         };
         requests.push(pi_mk_request(
@@ -1284,8 +1270,7 @@ const EXFIL_NAMED_REMOTE_TARGETS: &str =
 
 fn exfil_remote_targets() -> String {
     format!(
-        r"(?:(?:[a-z][a-z0-9+.-]*://)|(?:[a-z0-9-]+\.)+[a-z]{{2,}}|(?:\d{{1,3}}\.){{3}}\d{{1,3}}|{})",
-        EXFIL_NAMED_REMOTE_TARGETS
+        r"(?:(?:[a-z][a-z0-9+.-]*://)|(?:[a-z0-9-]+\.)+[a-z]{{2,}}|(?:\d{{1,3}}\.){{3}}\d{{1,3}}|{EXFIL_NAMED_REMOTE_TARGETS})"
     )
 }
 
@@ -1293,28 +1278,15 @@ fn runner_exfil_prompt_patterns() -> Vec<FancyRegex> {
     let rt = exfil_remote_targets();
     vec![
         FancyRegex::new(&format!(
-            r"(?i)\b(?:upload|exfiltrate|transfer|paste|gist|webhook)\b{}\b{}\b",
-            _SAME_SENTENCE_80, EXFIL_ARTIFACTS
+            r"(?i)\b(?:upload|exfiltrate|transfer|paste|gist|webhook)\b{_SAME_SENTENCE_80}\b{EXFIL_ARTIFACTS}\b"
         ))
         .expect("exfil1"),
         FancyRegex::new(&format!(
-            r"(?i)\b{}\b{}\b{}\b{}\b{}\b{}\b{}\b",
-            EXFIL_ACTIONS,
-            _SAME_SENTENCE_80,
-            EXFIL_ARTIFACTS,
-            _SAME_SENTENCE_40,
-            EXFIL_DESTINATIONS,
-            _SAME_SENTENCE_40,
-            rt
+            r"(?i)\b{EXFIL_ACTIONS}\b{_SAME_SENTENCE_80}\b{EXFIL_ARTIFACTS}\b{_SAME_SENTENCE_40}\b{EXFIL_DESTINATIONS}\b{_SAME_SENTENCE_40}\b{rt}\b"
         ))
         .expect("exfil2"),
         FancyRegex::new(&format!(
-            r"(?i)\b{}\b{}\b{}\b{}\b{}\b",
-            EXFIL_ACTIONS,
-            _SAME_SENTENCE_80,
-            EXFIL_DESTINATIONS,
-            _SAME_SENTENCE_40,
-            EXFIL_NAMED_REMOTE_TARGETS
+            r"(?i)\b{EXFIL_ACTIONS}\b{_SAME_SENTENCE_80}\b{EXFIL_DESTINATIONS}\b{_SAME_SENTENCE_40}\b{EXFIL_NAMED_REMOTE_TARGETS}\b"
         ))
         .expect("exfil3"),
         FancyRegex::new(
@@ -1657,8 +1629,7 @@ pub fn prompt_request_id(
     normalized_prompt: &str,
 ) -> String {
     sha256_hex(&format!(
-        "{}:{}:{}",
-        request_class, matched_text, normalized_prompt
+        "{request_class}:{matched_text}:{normalized_prompt}"
     ))
 }
 
@@ -1686,7 +1657,7 @@ pub fn extract_prompt_requests(prompt_text: &str) -> Vec<GuardRunPromptRequest> 
         let summary = if label == "local .env file" {
             "Prompt asks the harness to read a local .env file directly.".to_owned()
         } else {
-            format!("Prompt asks for direct access to {}.", label)
+            format!("Prompt asks for direct access to {label}.")
         };
         requests.push(GuardRunPromptRequest {
             request_id: prompt_request_id("secret_read", matched, lowered),

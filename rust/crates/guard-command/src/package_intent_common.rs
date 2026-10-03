@@ -2273,6 +2273,93 @@ fn collect_candidate_commands(value: &Value, results: &mut Vec<String>, depth: u
     }
 }
 
+// ---------------------------------------------------------------------------
+// from_dict — RTM-020 resident-op transport.
+//
+// `try_execute_contained_*_with_intent` receives a pre-parsed
+// `LocalPackageExecutionEvidence` produced by the Python caller. The value
+// arrives as the `to_dict` output of the caller's dataclass; we reconstruct
+// the Rust struct without re-running the environment probe so caller-bound
+// context (workspace, PATH source, cwd) survives the transport intact.
+// ---------------------------------------------------------------------------
+
+fn _string_field(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+fn _bool_field(value: &Value, key: &str) -> bool {
+    value.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn _opt_string_field(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+fn _file_evidence_from_dict(value: &Value) -> Option<PackageExecutionFileEvidence> {
+    let path = _string_field(value, "path")?;
+    let status_str = _string_field(value, "status").unwrap_or_else(|| "unknown".to_owned());
+    Some(PackageExecutionFileEvidence {
+        path: path.clone(),
+        resolved_path: _opt_string_field(value, "resolved_path").or_else(|| Some(path.clone())),
+        status: match status_str.as_str() {
+            "present" => "present",
+            "absent" => "absent",
+            "directory" => "directory",
+            _ => "unknown",
+        },
+        file_identity: _opt_string_field(value, "file_identity"),
+        content_hash: _opt_string_field(value, "content_hash"),
+    })
+}
+
+fn _file_evidence_list(value: &Value, key: &str) -> Vec<PackageExecutionFileEvidence> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(_file_evidence_from_dict).collect())
+        .unwrap_or_default()
+}
+
+impl LocalPackageExecutionEvidence {
+    /// Reconstruct a `LocalPackageExecutionEvidence` from the `to_dict` JSON
+    /// emitted by the Python caller. Returns `None` when the payload is not an
+    /// object or is missing the required scalar fields — the resident treats
+    /// a `None` here exactly as the Python caller treats a `None` evidence
+    /// (transport failure → Python fallback, never re-spawn).
+    pub fn from_dict(value: &Value) -> Option<Self> {
+        if !value.is_object() {
+            return None;
+        }
+        let manager_name = _string_field(value, "manager_name")?;
+        let path_source = _string_field(value, "path_source")?;
+        let effective_cwd = _string_field(value, "effective_cwd")?;
+        let cwd_source = _string_field(value, "cwd_source")?;
+        let context_hash = _string_field(value, "context_hash")?;
+        Some(LocalPackageExecutionEvidence {
+            manager_name,
+            path_source,
+            effective_cwd,
+            cwd_source,
+            manager_is_guard_shim: _bool_field(value, "manager_is_guard_shim"),
+            local_only_requested: _bool_field(value, "local_only_requested"),
+            context_hash,
+            package_name: _opt_string_field(value, "package_name"),
+            executable_name: _opt_string_field(value, "executable_name"),
+            declared_version: _opt_string_field(value, "declared_version"),
+            manager: value.get("manager").and_then(_file_evidence_from_dict),
+            local_executable: value
+                .get("local_executable")
+                .and_then(_file_evidence_from_dict),
+            manifests: _file_evidence_list(value, "manifests"),
+            lockfiles: _file_evidence_list(value, "lockfiles"),
+            typescript_launch: value
+                .get("typescript_launch")
+                .filter(|v| !v.is_null())
+                .cloned(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2442,92 +2529,5 @@ mod tests {
                 || artifact.to_dict().get("runtime_private_metadata").is_none()
         );
         assert!(artifact.to_dict().get("runtime_private_metadata").is_none());
-    }
-}
-
-// ---------------------------------------------------------------------------
-// from_dict — RTM-020 resident-op transport.
-//
-// `try_execute_contained_*_with_intent` receives a pre-parsed
-// `LocalPackageExecutionEvidence` produced by the Python caller. The value
-// arrives as the `to_dict` output of the caller's dataclass; we reconstruct
-// the Rust struct without re-running the environment probe so caller-bound
-// context (workspace, PATH source, cwd) survives the transport intact.
-// ---------------------------------------------------------------------------
-
-fn _string_field(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(str::to_owned)
-}
-
-fn _bool_field(value: &Value, key: &str) -> bool {
-    value.get(key).and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn _opt_string_field(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(str::to_owned)
-}
-
-fn _file_evidence_from_dict(value: &Value) -> Option<PackageExecutionFileEvidence> {
-    let path = _string_field(value, "path")?;
-    let status_str = _string_field(value, "status").unwrap_or_else(|| "unknown".to_owned());
-    Some(PackageExecutionFileEvidence {
-        path: path.clone(),
-        resolved_path: _opt_string_field(value, "resolved_path").or_else(|| Some(path.clone())),
-        status: match status_str.as_str() {
-            "present" => "present",
-            "absent" => "absent",
-            "directory" => "directory",
-            _ => "unknown",
-        },
-        file_identity: _opt_string_field(value, "file_identity"),
-        content_hash: _opt_string_field(value, "content_hash"),
-    })
-}
-
-fn _file_evidence_list(value: &Value, key: &str) -> Vec<PackageExecutionFileEvidence> {
-    value
-        .get(key)
-        .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(_file_evidence_from_dict).collect())
-        .unwrap_or_default()
-}
-
-impl LocalPackageExecutionEvidence {
-    /// Reconstruct a `LocalPackageExecutionEvidence` from the `to_dict` JSON
-    /// emitted by the Python caller. Returns `None` when the payload is not an
-    /// object or is missing the required scalar fields — the resident treats
-    /// a `None` here exactly as the Python caller treats a `None` evidence
-    /// (transport failure → Python fallback, never re-spawn).
-    pub fn from_dict(value: &Value) -> Option<Self> {
-        if !value.is_object() {
-            return None;
-        }
-        let manager_name = _string_field(value, "manager_name")?;
-        let path_source = _string_field(value, "path_source")?;
-        let effective_cwd = _string_field(value, "effective_cwd")?;
-        let cwd_source = _string_field(value, "cwd_source")?;
-        let context_hash = _string_field(value, "context_hash")?;
-        Some(LocalPackageExecutionEvidence {
-            manager_name,
-            path_source,
-            effective_cwd,
-            cwd_source,
-            manager_is_guard_shim: _bool_field(value, "manager_is_guard_shim"),
-            local_only_requested: _bool_field(value, "local_only_requested"),
-            context_hash,
-            package_name: _opt_string_field(value, "package_name"),
-            executable_name: _opt_string_field(value, "executable_name"),
-            declared_version: _opt_string_field(value, "declared_version"),
-            manager: value.get("manager").and_then(_file_evidence_from_dict),
-            local_executable: value
-                .get("local_executable")
-                .and_then(_file_evidence_from_dict),
-            manifests: _file_evidence_list(value, "manifests"),
-            lockfiles: _file_evidence_list(value, "lockfiles"),
-            typescript_launch: value
-                .get("typescript_launch")
-                .filter(|v| !v.is_null())
-                .cloned(),
-        })
     }
 }

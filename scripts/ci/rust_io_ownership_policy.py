@@ -83,6 +83,9 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_hook_edge.py",
         "src/codex_plugin_scanner/guard/native_pretool.py",
         "src/codex_plugin_scanner/guard/native_resident_client.py",
+        # Resident-op dispatch bridge: decodes the bounded native response and
+        # returns a DTO; it does not interpret response content into a decision.
+        "src/codex_plugin_scanner/guard/native_execution.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_context.py",
     }

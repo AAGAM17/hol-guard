@@ -36,6 +36,7 @@ mod policy_store;
 mod prompt_analyze_op;
 mod resident_client;
 mod resident_endpoint;
+mod resident_ops;
 mod resident_process_identity;
 mod resident_protocol;
 mod resident_state;

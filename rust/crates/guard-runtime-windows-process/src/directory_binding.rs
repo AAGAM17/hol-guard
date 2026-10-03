@@ -403,6 +403,11 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
     };
 
     let mut canonical = canonical_existing;
+    if !missing_tail.is_empty() {
+        // A `\\?\` prefix disables 8.3 expansion. Keep the Win32 form so an
+        // unresolved short-name tail still opens.
+        canonical = win32_path(&canonical);
+    }
     for component in missing_tail.iter().rev() {
         canonical.push(existing_alias_or_name(&canonical, component));
     }

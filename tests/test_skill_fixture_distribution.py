@@ -1,11 +1,15 @@
 """Negative skill data stays inert in the repository and genuine in scanner tests."""
 
+import json
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 from codex_plugin_scanner.guard.skill_directory_discovery import discover_skill_documents
+from codex_plugin_scanner.models import ScanOptions
+from codex_plugin_scanner.reporting import format_json
+from codex_plugin_scanner.scanner import scan_plugin
 from tests import e2e_droid_exec
 from tests.skill_fixture_support import (
     MALICIOUS_SKILL_DOCUMENT,
@@ -65,6 +69,24 @@ def test_headless_scanner_materializes_and_removes_temporary_skill(monkeypatch):
     assert e2e_droid_exec.test_scanner() == []
     assert len(documents) == 1
     assert not documents[0].exists()
+
+
+@pytest.mark.parametrize("remove_risky_finding", [False, True])
+def test_headless_scanner_checks_serialized_security_findings(monkeypatch, remove_risky_finding):
+    def static_scan(command, cwd):
+        plugin = Path(command[4])
+        payload = json.loads(format_json(scan_plugin(plugin, ScanOptions(cisco_skill_scan="off"))))
+        if remove_risky_finding and plugin.name == "malicious-skill-plugin":
+            payload["findings"] = [
+                finding for finding in payload["findings"] if finding["ruleId"] != "RISKY_SKILL_INSTRUCTION"
+            ]
+        return 0, json.dumps(payload), ""
+
+    # Exercise the real serializer and scanner as data; never launch an agent or
+    # execute the skill instructions. Missing security findings must still fail.
+    monkeypatch.setattr(e2e_droid_exec, "run", static_scan)
+    failures = e2e_droid_exec.test_scanner()
+    assert bool(failures) == remove_risky_finding
 
 
 @pytest.mark.parametrize(

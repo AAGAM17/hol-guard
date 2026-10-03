@@ -1317,6 +1317,20 @@ fn request_digest<T: serde::Serialize>(request: &T) -> Result<String, String> {
     ))
 }
 
+fn string_environment(value: Option<&Value>) -> Option<BTreeMap<String, String>> {
+    let Value::Object(object) = value? else {
+        return None;
+    };
+    let mut environment = BTreeMap::new();
+    for (key, item) in object {
+        let Value::String(text) = item else {
+            return None;
+        };
+        environment.insert(key.clone(), text.clone());
+    }
+    Some(environment)
+}
+
 /// `PackageIntentParse` — `parse_package_intent` port.
 pub(crate) fn evaluate_package_intent_parse(
     request: &PackageIntentParseRequestV1,
@@ -1332,7 +1346,14 @@ pub(crate) fn evaluate_package_intent_parse(
     }
     let workspace = request.workspace.as_deref().map(Path::new);
     let home = request.home_dir.as_deref().map(Path::new);
-    let intent = parse_package_intent(&request.command_text, workspace, home, None, None);
+    let environment = string_environment(request.environment.as_ref());
+    let intent = parse_package_intent(
+        &request.command_text,
+        workspace,
+        home,
+        None,
+        environment.as_ref(),
+    );
     let payload = intent.map(|i| i.to_dict()).unwrap_or(Value::Null);
     let result = PackageIntentParseResultV1 {
         schema: PACKAGE_AUTHORITY_RESULT_SCHEMA.to_owned(),

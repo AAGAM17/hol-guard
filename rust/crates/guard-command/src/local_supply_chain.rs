@@ -48,6 +48,7 @@ use crate::package_intent_common::{
 };
 use crate::package_manifest_diff::parse_manifest_dependencies;
 use crate::package_policy_override as ppo;
+use crate::package_protect_projection as ppp;
 use crate::workspace_inventory::{
     inventory_from_sbom_payload, merge_inventory_item, package_manager_for_scan,
     split_namespace_name, target_for_package_spec, target_from_inventory_item,
@@ -5783,390 +5784,21 @@ fn option_json(value: Option<String>) -> Value {
 // Package protect payload — port of py:1709-1908 (micro2).
 // ===========================================================================
 
-/// `PackageProtectVerdictContext` — verdict presentation plus the stored
-/// receipt for one protect projection (py `runtime/package_protect_projection.py`).
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct PackageProtectVerdictContext {
-    matched_advisories: Vec<Value>,
-    observe_projected: bool,
-    observed_policy_action: GuardAction,
-    public_targets: Vec<Value>,
-    receipt: Value,
-    receipt_policy_metadata: Map<String, Value>,
-    risk_signals: Vec<String>,
-    verdict_action: GuardAction,
-    verdict_reason: String,
-}
-
-/// `PackageProtectProjection` — returned by `_apply_package_protect_projection`.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct PackageProtectProjection {
-    receipt: Value,
-    receipt_policy_metadata: Map<String, Value>,
-    verdict_action: GuardAction,
-    risk_signals: Vec<String>,
-}
-
-/// `_evaluation_risk_signals` (py:extracted) — collect signal codes from an
-/// evaluation's `risk_signals` array.
-#[allow(dead_code)]
-fn evaluation_risk_signals(evaluation: &PackageRequestEvaluation) -> Vec<String> {
-    evaluation
-        .risk_signals()
-        .iter()
-        .filter_map(|s| {
-            s.get("code")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .or_else(|| s.as_str().map(str::to_owned))
-        })
-        .collect()
-}
-
-/// `_matched_advisories` — advisory dicts that matched any target in the
-/// evaluation's `packages` (each package may carry `matched_advisories`).
-#[allow(dead_code)]
-fn matched_advisories(evaluation: &PackageRequestEvaluation) -> Vec<Value> {
-    let mut out: Vec<Value> = Vec::new();
-    for package in evaluation.packages() {
-        if let Some(list) = package.get("matched_advisories").and_then(Value::as_array) {
-            for item in list {
-                out.push(item.clone());
-            }
-        }
-    }
-    if let Some(list) = evaluation
-        .get("matched_advisories")
-        .and_then(Value::as_array)
-    {
-        for item in list {
-            out.push(item.clone());
-        }
-    }
-    out
-}
-
-/// `_protect_target_payload` — build the public target payload dict.
-#[allow(dead_code)]
-fn protect_target_payload(target: &PackageIntentTarget, harness: &str) -> Value {
-    let public_target = target.to_dict();
-    let raw_spec = public_target
-        .get("raw_spec")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let source_url = public_target.get("source_url").cloned();
-    let pkg_name = target.package_name.as_deref().filter(|s| !s.is_empty());
-    let artifact_id = format!(
-        "{}:{}",
-        target.ecosystem,
-        pkg_name.unwrap_or(raw_spec.as_str())
-    );
-    let artifact_name = pkg_name
-        .map(str::to_owned)
-        .unwrap_or_else(|| raw_spec.clone());
-    json!({
-        "artifact_id": artifact_id,
-        "artifact_name": artifact_name,
-        "artifact_type": "package_request",
-        "ecosystem": target.ecosystem,
-        "package_name": target.package_name,
-        "package_url": Value::Null,
-        "raw_spec": raw_spec,
-        "version": target.requested_specifier,
-        "source_url": source_url,
-        "harness": harness,
-    })
-}
-
-/// `_package_protect_verdict_context` (py:1709).
-#[allow(dead_code)]
-fn package_protect_verdict_context(
+/// Borrow the owned `PackageProtectAuthority` as the `package_approval`
+/// borrowed view that the canonical `package_protect_projection` module
+/// consumes (`&'a` field references into `self`).
+fn protect_authority_view(
     authority: &PackageProtectAuthority,
-    evaluation: &PackageRequestEvaluation,
-    execution_policy_action: Option<GuardAction>,
-) -> PackageProtectVerdictContext {
-    let intent = &authority.intent;
-    let public_targets: Vec<Value> = intent.targets.iter().map(|t| t.to_dict()).collect();
-    let artifact = &authority.artifact;
-    let observed_policy_action =
-        protect_action_for_policy_action(Some(&option_json(evaluation.policy_action())));
-    let verdict_action = execution_policy_action.unwrap_or(observed_policy_action);
-    let observe_projected = authority.observe_mode && verdict_action != observed_policy_action;
-    let mut verdict_reason = evaluation
-        .user_copy()
-        .and_then(|uc| uc.get("summary"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    if observe_projected {
-        verdict_reason = format!(
-            "Watch only observed a `{}` package-policy decision. \
-             HOL Guard allowed the install to continue.",
-            observed_policy_action.as_str()
-        );
+) -> crate::package_approval::PackageProtectAuthority<'_> {
+    crate::package_approval::PackageProtectAuthority {
+        intent: &authority.intent,
+        artifact: &authority.artifact,
+        execution_context: &authority.execution_context,
+        artifact_hash: &authority.artifact_hash,
+        additional_policy_context: authority.additional_policy_context.as_ref(),
+        observe_mode: authority.observe_mode,
+        invoking_harness: &authority.invoking_harness,
     }
-    let risk_signals = evaluation_risk_signals(evaluation);
-    let approval_reuse_evidence = ppo::package_approval_reuse_evidence(&evaluation.value);
-
-    let mut receipt_policy_metadata = Map::new();
-    receipt_policy_metadata.insert(
-        "matched_rule_id".to_owned(),
-        option_json(evaluation.matched_rule_id()),
-    );
-    receipt_policy_metadata.insert(
-        "package_execution_context".to_owned(),
-        authority.execution_context.to_evidence(),
-    );
-    receipt_policy_metadata.insert("package_manager".to_owned(), json!(intent.package_manager));
-    receipt_policy_metadata.insert(
-        "package_targets".to_owned(),
-        json!(public_targets
-            .iter()
-            .map(|t| t
-                .get("raw_spec")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string())
-            .collect::<Vec<_>>()),
-    );
-    receipt_policy_metadata.insert("policy_action".to_owned(), json!(verdict_action.as_str()));
-    receipt_policy_metadata.insert(
-        "policy_version".to_owned(),
-        evaluation
-            .get("policy_version")
-            .cloned()
-            .unwrap_or(Value::Null),
-    );
-    receipt_policy_metadata.insert(
-        "redacted_command".to_owned(),
-        json!(intent.redacted_command),
-    );
-    if observe_projected {
-        receipt_policy_metadata.insert("observe_mode".to_owned(), json!(true));
-        receipt_policy_metadata.insert(
-            "observed_policy_action".to_owned(),
-            json!(observed_policy_action.as_str()),
-        );
-    }
-    if let Some(bv) = evaluation.get("bundle_version").filter(|v| !v.is_null()) {
-        receipt_policy_metadata.insert("bundle_version".to_owned(), bv.clone());
-    }
-    if let Some(ctx) = &authority.additional_policy_context {
-        receipt_policy_metadata.insert(
-            "additional_policy_context".to_owned(),
-            Value::Object(ctx.clone()),
-        );
-    }
-    if !approval_reuse_evidence.is_empty() {
-        receipt_policy_metadata.insert("approval_reuse".to_owned(), json!(approval_reuse_evidence));
-    }
-    if authority.invoking_harness != LOCAL_SUPPLY_CHAIN_HARNESS {
-        receipt_policy_metadata.insert(
-            "invoking_harness".to_owned(),
-            json!(authority.invoking_harness),
-        );
-    }
-
-    // `_build_guard_receipt` — build a GuardReceipt-shaped Value.
-    let receipt = json!({
-        "receipt_id": format!("guard-{}", uuid4_hex()),
-        "timestamp": utc_now_iso(),
-        "harness": authority.invoking_harness,
-        "artifact_id": artifact.artifact_id,
-        "artifact_hash": authority.artifact_hash,
-        "policy_decision": verdict_action.as_str(),
-        "capabilities_summary": verdict_reason,
-        "changed_capabilities": intent
-            .targets
-            .iter()
-            .zip(public_targets.iter())
-            .map(|(t, pt)| {
-                match t.package_name.as_deref().filter(|s| !s.is_empty()) {
-                    Some(name) => name.to_string(),
-                    None => pt.get("raw_spec").and_then(Value::as_str).unwrap_or("").to_string(),
-                }
-            })
-            .collect::<Vec<_>>(),
-        "provenance_summary": evaluation
-            .user_copy()
-            .and_then(|uc| uc.get("harness_message"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        "artifact_name": artifact.name,
-        "source_scope": artifact.source_scope,
-        "scanner_evidence": approval_reuse_evidence,
-    });
-
-    PackageProtectVerdictContext {
-        matched_advisories: matched_advisories(evaluation),
-        observe_projected,
-        observed_policy_action,
-        public_targets,
-        receipt,
-        receipt_policy_metadata,
-        risk_signals,
-        verdict_action,
-        verdict_reason,
-    }
-}
-
-/// `_apply_package_protect_projection` (py:1779).
-#[allow(dead_code)]
-fn apply_package_protect_projection(
-    payload: &mut Map<String, Value>,
-    authority: &PackageProtectAuthority,
-    evaluation: &PackageRequestEvaluation,
-    command: &[String],
-    blocking: bool,
-    executed: bool,
-    execution_policy_action: Option<GuardAction>,
-) -> PackageProtectProjection {
-    let context = package_protect_verdict_context(authority, evaluation, execution_policy_action);
-    let intent = &authority.intent;
-
-    // `payload["command"]`
-    let mut cmd_map = Map::new();
-    cmd_map.insert(
-        "argv".to_owned(),
-        json!(command.iter().map(|s| json!(s)).collect::<Vec<_>>()),
-    );
-    cmd_map.insert("redacted".to_owned(), json!(intent.redacted_command));
-    cmd_map.insert(
-        "tokens".to_owned(),
-        json!(crate::redacted_command_tokens::redacted_command_tokens(
-            command
-        )),
-    );
-    payload.insert("command".to_owned(), Value::Object(cmd_map));
-
-    // `payload["request"]`
-    let mut req_map = Map::new();
-    req_map.insert("harness".to_owned(), json!(authority.invoking_harness));
-    req_map.insert("targets".to_owned(), json!(context.public_targets));
-    req_map.insert("manifest_paths".to_owned(), json!(intent.manifest_paths));
-    req_map.insert("lockfile_paths".to_owned(), json!(intent.lockfile_paths));
-    req_map.insert(
-        "package_execution_context".to_owned(),
-        authority.execution_context.to_evidence(),
-    );
-    payload.insert("request".to_owned(), Value::Object(req_map));
-
-    // `payload["targets"]` — protect_target_payload per target
-    payload.insert(
-        "targets".to_owned(),
-        json!(intent
-            .targets
-            .iter()
-            .map(|t| protect_target_payload(t, &authority.invoking_harness))
-            .collect::<Vec<_>>()),
-    );
-
-    // `payload["verdict"]`
-    let mut verdict = Map::new();
-    verdict.insert("action".to_owned(), json!(context.verdict_action.as_str()));
-    verdict.insert("reason".to_owned(), json!(context.verdict_reason));
-    verdict.insert("risk_signals".to_owned(), json!(context.risk_signals));
-    verdict.insert(
-        "matched_advisories".to_owned(),
-        json!(context.matched_advisories),
-    );
-    verdict.insert("blocking".to_owned(), json!(blocking));
-    if context.observe_projected {
-        verdict.insert("observe_mode".to_owned(), json!(true));
-        verdict.insert(
-            "observed_policy_action".to_owned(),
-            json!(context.observed_policy_action.as_str()),
-        );
-    }
-    payload.insert("verdict".to_owned(), Value::Object(verdict));
-
-    // `payload["receipt"]`
-    let mut receipt_val = context.receipt.clone();
-    if let Value::Object(ref mut m) = receipt_val {
-        m.insert(
-            "action_envelope_json".to_owned(),
-            Value::Object(context.receipt_policy_metadata.clone()),
-        );
-    }
-    payload.insert("receipt".to_owned(), receipt_val);
-
-    payload.insert(
-        "matched_advisories".to_owned(),
-        json!(context.matched_advisories),
-    );
-    payload.insert(
-        "supply_chain_evaluation".to_owned(),
-        evaluation.value.clone(),
-    );
-    payload.insert("executed".to_owned(), json!(executed));
-
-    PackageProtectProjection {
-        receipt: context.receipt,
-        receipt_policy_metadata: context.receipt_policy_metadata,
-        verdict_action: context.verdict_action,
-        risk_signals: context.risk_signals,
-    }
-}
-
-/// `_install_time_event_payload` (py:1837).
-#[allow(dead_code)]
-fn install_time_event_payload(
-    authority: &PackageProtectAuthority,
-    command: &[String],
-    action: GuardAction,
-    risk_signals: &[String],
-) -> Value {
-    json!({
-        "artifact_id": authority.artifact.artifact_id,
-        "artifact_name": authority.artifact.name,
-        "executor": command.first().map(String::as_str).unwrap_or(LOCAL_SUPPLY_CHAIN_HARNESS),
-        "harness": authority.invoking_harness,
-        "install_kind": authority.intent.intent_kind,
-        "action": action.as_str(),
-        "risk_signals": risk_signals,
-    })
-}
-
-/// `_package_protect_denied_after_final_boundary` (py:1857).
-#[allow(dead_code)]
-fn package_protect_denied_after_final_boundary(
-    payload: &mut Map<String, Value>,
-    authority: &PackageProtectAuthority,
-    evaluation: &PackageRequestEvaluation,
-    command: &[String],
-    store: &dyn SupplyChainStore,
-    now: &str,
-) -> (Map<String, Value>, i64) {
-    let projection = apply_package_protect_projection(
-        payload, authority, evaluation, command, true,  // blocking
-        false, // executed
-        None,
-    );
-    store.add_receipt(&projection.receipt);
-    store.set_receipt_action_envelope(
-        projection
-            .receipt
-            .get("receipt_id")
-            .and_then(Value::as_str)
-            .unwrap_or(""),
-        &Value::Object(projection.receipt_policy_metadata.clone()),
-    );
-    store.add_event(
-        &format!("install_time_{}", projection.verdict_action.as_str()),
-        &install_time_event_payload(
-            authority,
-            command,
-            projection.verdict_action,
-            &projection.risk_signals,
-        ),
-        now,
-    );
-    let exit_code = package_execution_exit_code(&option_json(evaluation.policy_action()));
-    (payload.clone(), exit_code)
 }
 
 /// `build_package_protect_payload` (py:1892).
@@ -6246,9 +5878,9 @@ fn build_package_protect_payload(
     payload.insert("dry_run".to_owned(), json!(dry_run));
 
     let mut payload_obj = payload.clone();
-    let projection = apply_package_protect_projection(
+    let projection = ppp::apply_package_protect_projection(
         &mut payload_obj,
-        &authority,
+        &protect_authority_view(&authority),
         &evaluation,
         command,
         !execution_permitted,
@@ -6279,15 +5911,16 @@ fn build_package_protect_payload(
                 .get("receipt_id")
                 .and_then(Value::as_str)
                 .unwrap_or(""),
-            &Value::Object(projection.receipt_policy_metadata.clone()),
+            &projection.receipt_policy_metadata,
         );
         store.add_event(
             &format!("install_time_{}", projection.verdict_action.as_str()),
-            &install_time_event_payload(
+            &crate::install_time_event::install_time_event_payload(
                 &authority,
                 command,
                 projection.verdict_action,
                 &projection.risk_signals,
+                [],
             ),
             now,
         );
@@ -6318,9 +5951,9 @@ fn build_package_protect_payload(
     let final_execution_action =
         package_execution_policy_action(&final_authority, &final_evaluation);
     if !is_execution_permitted(&final_execution_action) {
-        let denied = package_protect_denied_after_final_boundary(
+        let denied = ppp::package_protect_denied_after_final_boundary(
             &mut payload,
-            &final_authority,
+            &protect_authority_view(&final_authority),
             &final_evaluation,
             command,
             store,
@@ -6368,9 +6001,9 @@ fn build_package_protect_payload(
                 &reuse,
             ),
         ));
-        let denied = package_protect_denied_after_final_boundary(
+        let denied = ppp::package_protect_denied_after_final_boundary(
             &mut payload,
-            &final_authority,
+            &protect_authority_view(&final_authority),
             &denied_evaluation,
             command,
             store,
@@ -6400,9 +6033,9 @@ fn build_package_protect_payload(
                 None,
             ),
         ));
-        let denied = package_protect_denied_after_final_boundary(
+        let denied = ppp::package_protect_denied_after_final_boundary(
             &mut payload,
-            &final_authority,
+            &protect_authority_view(&final_authority),
             &denied_evaluation,
             command,
             store,
@@ -6446,9 +6079,9 @@ fn build_package_protect_payload(
                     None,
                 ),
             ));
-            let denied = package_protect_denied_after_final_boundary(
+            let denied = ppp::package_protect_denied_after_final_boundary(
                 &mut payload,
-                &final_authority,
+                &protect_authority_view(&final_authority),
                 &fail_evaluation,
                 command,
                 store,
@@ -6459,9 +6092,9 @@ fn build_package_protect_payload(
         }
     };
 
-    let final_projection = apply_package_protect_projection(
+    let final_projection = ppp::apply_package_protect_projection(
         &mut payload,
-        &final_authority,
+        &protect_authority_view(&final_authority),
         &final_evaluation,
         command,
         false,
@@ -6475,14 +6108,20 @@ fn build_package_protect_payload(
             .get("receipt_id")
             .and_then(Value::as_str)
             .unwrap_or(""),
-        &Value::Object(final_projection.receipt_policy_metadata.clone()),
+        &final_projection.receipt_policy_metadata,
     );
     let verdict_action = final_projection.verdict_action;
     let risk_signals = final_projection.risk_signals.clone();
     if execution.returncode == 0 {
         store.add_event(
             &format!("install_time_{}", verdict_action.as_str()),
-            &install_time_event_payload(&final_authority, command, verdict_action, &risk_signals),
+            &crate::install_time_event::install_time_event_payload(
+                &final_authority,
+                command,
+                verdict_action,
+                &risk_signals,
+                [],
+            ),
             now,
         );
     } else {
@@ -6490,7 +6129,13 @@ fn build_package_protect_payload(
         extra.insert("returncode".to_owned(), json!(execution.returncode));
         store.add_event(
             "install_time_execution_failed",
-            &install_time_event_payload(&final_authority, command, verdict_action, &risk_signals),
+            &crate::install_time_event::install_time_event_payload(
+                &final_authority,
+                command,
+                verdict_action,
+                &risk_signals,
+                [],
+            ),
             now,
         );
     }

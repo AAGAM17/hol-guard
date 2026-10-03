@@ -71,6 +71,7 @@ pub const MCP_STDIO_PROBE_RESULT_SCHEMA: &str = "guard-mcp-stdio-probe-result.v1
 #[serde(deny_unknown_fields)]
 pub struct ContainedNodeExecuteRequestV1 {
     pub schema: String,
+    pub request_id: String,
     pub workspace: String,
     pub manager: String,
     pub argv: Vec<String>,
@@ -90,6 +91,7 @@ pub struct ContainedNodeExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedTypescriptExecuteRequestV1 {
     pub schema: String,
+    pub request_id: String,
     pub workspace: String,
     pub manager: String,
     pub argv: Vec<String>,
@@ -109,6 +111,7 @@ pub struct ContainedTypescriptExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedPackageScriptExecuteRequestV1 {
     pub schema: String,
+    pub request_id: String,
     pub workspace: String,
     pub manager: String,
     pub argv: Vec<String>,
@@ -132,8 +135,27 @@ pub struct ContainedPackageScriptExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedWorkspaceWriteExecuteRequestV1 {
     pub schema: String,
+    pub request_id: String,
     pub workspace: String,
+    /// Legacy raw-command form (shim-intercepted path). Ignored when the
+    /// structured `operation`/`source`/`target` triple is present.
+    #[serde(default)]
     pub command_text: String,
+    /// Semantic operation: `patch-check` | `patch-apply` | `format-write` |
+    /// `copy-generated` — the Python `ContainedWriteOperation` contract.
+    #[serde(default)]
+    pub operation: Option<String>,
+    /// Workspace-relative source path (patch file, format target, copy src).
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Workspace-relative target path (None for `patch-check`).
+    #[serde(default)]
+    pub target: Option<String>,
+    /// Scrubbed child environment used to resolve the pinned executable.
+    #[serde(default)]
+    pub environment: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
     pub guard_home: String,
 }
 
@@ -148,6 +170,7 @@ pub struct ContainedWorkspaceWriteExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedExecuteRequestV1 {
     pub schema: String,
+    pub request_id: String,
     /// Canonical `ContainmentRequest` payload (carries `schema_version`).
     pub request: Value,
     /// Canonical `ContainmentPolicy` payload (carries `schema_version`).
@@ -167,6 +190,7 @@ pub struct ContainedExecuteResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ContainedTestHookRequestV1 {
     pub schema: String,
+    pub request_id: String,
     pub workspace: String,
     pub command_text: String,
     pub guard_home: String,
@@ -187,6 +211,7 @@ pub struct ContainedTestHookResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct ShimAdminRequestV1 {
     pub schema: String,
+    pub request_id: String,
     /// One of `probe_intercepts` | `status` | `activate` | `repair` |
     /// `supported_managers`.
     pub subop: String,
@@ -225,6 +250,7 @@ pub struct ShimAdminResultV1 {
 #[serde(deny_unknown_fields)]
 pub struct McpStdioProbeRequestV1 {
     pub schema: String,
+    pub request_id: String,
     /// Raw command text to probe.
     pub command_text: String,
     /// Working directory the shim observed.

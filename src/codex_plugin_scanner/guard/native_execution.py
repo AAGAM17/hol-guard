@@ -26,6 +26,7 @@ _RESIDENT_PROTOCOL_FEATURE = "resident-protocol-v2"
 _CONTAINED_EXECUTION_FEATURE = "contained-execution-v1"
 _SHIM_ADMIN_FEATURE = "shim-admin-v1"
 _MCP_STDIO_PROBE_FEATURE = "mcp-stdio-probe-v1"
+_PROMPT_ANALYZE_FEATURE = "prompt-analyze-v1"
 
 _request_counter = 0
 
@@ -209,16 +210,25 @@ def contained_package_script_execute_native(
 
 def contained_workspace_write_execute_native(
     workspace: Path,
-    command_text: str,
+    command_text: str = "",
     *,
     guard_home: Path,
     timeout_seconds: float = 10.0,
+    operation: str | None = None,
+    source: str | None = None,
+    target: str | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> dict[str, object] | None:
     request: dict[str, object] = {
         "schema": "guard-contained-workspace-write-execute-request.v1",
         "request_id": _request_id("contained_workspace_write_execute"),
         "workspace": str(workspace),
         "command_text": command_text,
+        "operation": operation,
+        "source": source,
+        "target": target,
+        "environment": dict(environment) if environment else None,
+        "timeout_seconds": timeout_seconds,
         "guard_home": str(guard_home),
     }
     decoded = _resident_request(
@@ -574,3 +584,53 @@ def _contained_workspace_write_result(payload: dict) -> Any:
         operation_id=cast("ContainedWriteOperation", op_raw),
         output_digest=output_digest if isinstance(output_digest, str) else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Prompt-analysis op (RTM-019)
+# ---------------------------------------------------------------------------
+
+def prompt_analyze_native(
+    subop: str,
+    *,
+    guard_home: Path,
+    prompt_text: str | None = None,
+    request_class: str | None = None,
+    matched_text: str | None = None,
+    harness: str | None = None,
+    config_path: str | None = None,
+    requests: Sequence[Mapping[str, object]] | None = None,
+    prior_policy_present: bool | None = None,
+    approved_classes: Sequence[str] | None = None,
+    timeout_seconds: float = 10.0,
+) -> object:
+    """Subop-multiplexed `prompt_analyze` resident op (RTM-019).
+
+    Returns the decoded ``result`` payload (request dicts, artifact dicts,
+    bool, or string per subop), or ``None`` on transport failure / missing
+    feature so the caller falls back to the Python body.
+    """
+    request: dict[str, object] = {
+        "schema": "guard-prompt-analyze-request.v1",
+        "request_id": _request_id("prompt_analyze"),
+        "subop": subop,
+        "prompt_text": prompt_text,
+        "request_class": request_class,
+        "matched_text": matched_text,
+        "harness": harness,
+        "config_path": config_path,
+        "requests": [dict(r) for r in requests] if requests is not None else None,
+        "prior_policy_present": prior_policy_present,
+        "approved_classes": list(approved_classes) if approved_classes is not None else None,
+        "guard_home": str(guard_home),
+    }
+    decoded = _resident_request(
+        operation="prompt_analyze",
+        request=request,
+        guard_home=guard_home,
+        timeout_seconds=timeout_seconds,
+        required_feature=_PROMPT_ANALYZE_FEATURE,
+    )
+    if decoded is None:
+        return None
+    return decoded.get("result")

@@ -2111,7 +2111,48 @@ def _detection_with_prompt_artifacts(
     )
 
 
-def extract_prompt_requests(prompt_text: str) -> list[PromptRequest]:
+def _prompt_request_from_dict(value: object) -> PromptRequest | None:
+    """Rebuild a PromptRequest from a resident ``extract`` payload dict."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        remediation_items = value.get("remediation") or []
+        remediation = tuple(
+            RemediationAction(
+                kind=str(item.get("kind") or ""),
+                label=str(item.get("label") or ""),
+                detail=item.get("detail"),
+            )
+            for item in remediation_items
+            if isinstance(item, dict)
+        )
+        return PromptRequest(
+            request_id=str(value["request_id"]),
+            request_class=str(value["request_class"]),
+            summary=str(value.get("summary") or ""),
+            matched_text=str(value.get("matched_text") or ""),
+            severity=int(value.get("severity") or 0),
+            confidence=float(value.get("confidence") or 0.0),
+            remediation=remediation,
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _prompt_analyze_native(subop: str, **kwargs) -> object:
+    """Route one prompt-analysis subop to the resident; ``None`` falls back."""
+    try:
+        from ..config import resolve_guard_home
+        from ..native_execution import prompt_analyze_native
+    except Exception:
+        return None
+    try:
+        return prompt_analyze_native(subop, guard_home=resolve_guard_home(), **kwargs)
+    except Exception:
+        return None
+
+
+def _extract_prompt_requests_python(prompt_text: str) -> list[PromptRequest]:
     """Extract structured prompt intent requests from passthrough arguments."""
 
     normalized_prompt = " ".join(prompt_text.split())
@@ -2274,7 +2315,21 @@ def extract_prompt_requests(prompt_text: str) -> list[PromptRequest]:
     return list(deduped.values())
 
 
-def prompt_requests_to_artifacts(
+def extract_prompt_requests(prompt_text: str) -> list[PromptRequest]:
+    """Extract structured prompt intent requests from passthrough arguments.
+
+    Native-first (RTM-019 ``prompt_analyze`` ``extract`` subop); on transport
+    failure or a ``None`` payload falls back to the Python oracle body.
+    """
+    native = _prompt_analyze_native("extract", prompt_text=prompt_text)
+    if isinstance(native, list):
+        rebuilt = [_prompt_request_from_dict(item) for item in native]
+        if all(item is not None for item in rebuilt):
+            return [item for item in rebuilt if item is not None]
+    return _extract_prompt_requests_python(prompt_text)
+
+
+def _prompt_requests_to_artifacts_python(
     *,
     detection: HarnessDetection,
     context: HarnessContext,
@@ -2310,7 +2365,52 @@ def prompt_requests_to_artifacts(
     return artifacts
 
 
-def should_force_reapproval(prompt_reqs: list[PromptRequest], prior_policy: dict[str, object] | None) -> bool:
+def prompt_requests_to_artifacts(
+    *,
+    detection: HarnessDetection,
+    context: HarnessContext,
+    requests: list[PromptRequest],
+) -> list[GuardArtifact]:
+    """Convert typed prompt requests into pseudo-artifacts for policy evaluation.
+
+    Native-first (``to_artifacts`` subop); falls back to the Python oracle.
+    """
+    config_path = str(_prompt_policy_path(detection, context))
+    native = _prompt_analyze_native(
+        "to_artifacts",
+        harness=str(detection.harness),
+        config_path=config_path,
+        requests=[r.to_dict() for r in requests],
+    )
+    if isinstance(native, list):
+        rebuilt = [a for a in (_guard_artifact_from_dict(item) for item in native) if a is not None]
+        if len(rebuilt) == len(native):
+            return rebuilt
+    return _prompt_requests_to_artifacts_python(
+        detection=detection, context=context, requests=requests
+    )
+
+
+def _guard_artifact_from_dict(value: object) -> GuardArtifact | None:
+    """Rebuild a GuardArtifact from a resident ``to_artifacts`` payload dict."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        metadata = value.get("metadata")
+        return GuardArtifact(
+            artifact_id=str(value["artifact_id"]),
+            name=str(value.get("name") or ""),
+            harness=str(value.get("harness") or ""),
+            artifact_type=str(value.get("artifact_type") or ""),
+            source_scope=str(value.get("source_scope") or ""),
+            config_path=str(value.get("config_path") or ""),
+            metadata=dict(metadata) if isinstance(metadata, dict) else {},
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _should_force_reapproval_python(prompt_reqs: list[PromptRequest], prior_policy: dict[str, object] | None) -> bool:
     """Return whether current prompt requests exceed prior approved scope."""
 
     if not prompt_reqs:
@@ -2326,9 +2426,49 @@ def should_force_reapproval(prompt_reqs: list[PromptRequest], prior_policy: dict
     return any(request.request_class not in approved or request.severity >= 8 for request in prompt_reqs)
 
 
-def _prompt_request_id(request_class: str, matched_text: str, normalized_prompt: str) -> str:
+def should_force_reapproval(prompt_reqs: list[PromptRequest], prior_policy: dict[str, object] | None) -> bool:
+    """Native-first (``should_force_reapproval`` subop); falls back to oracle.
+
+    ``prior_policy`` maps to ``prior_policy_present`` + ``approved_classes``
+    (string-only filter, matching the Python body's non-list -> empty set).
+    """
+    approved_classes_raw = prior_policy.get("approved_prompt_classes") if isinstance(prior_policy, dict) else None
+    approved_classes = (
+        [str(item) for item in approved_classes_raw if isinstance(item, str)]
+        if isinstance(approved_classes_raw, list)
+        else []
+    )
+    native = _prompt_analyze_native(
+        "should_force_reapproval",
+        requests=[r.to_dict() for r in prompt_reqs],
+        prior_policy_present=prior_policy is not None,
+        approved_classes=approved_classes,
+    )
+    if isinstance(native, bool):
+        return native
+    return _should_force_reapproval_python(prompt_reqs, prior_policy)
+
+
+def _prompt_request_id_python(request_class: str, matched_text: str, normalized_prompt: str) -> str:
     fingerprint = hashlib.sha256(f"{request_class}:{matched_text}:{normalized_prompt}".encode()).hexdigest()
     return fingerprint
+
+
+def _prompt_request_id(request_class: str, matched_text: str, normalized_prompt: str) -> str:
+    """Native-first ``request_id`` subop; falls back to the Python oracle.
+
+    ``normalized_prompt`` is the caller-supplied ``lowered`` value; it is
+    passed through as ``prompt_text`` so the resident reproduces the digest.
+    """
+    native = _prompt_analyze_native(
+        "request_id",
+        request_class=request_class,
+        matched_text=matched_text,
+        prompt_text=normalized_prompt,
+    )
+    if isinstance(native, str) and native:
+        return native
+    return _prompt_request_id_python(request_class, matched_text, normalized_prompt)
 
 
 def _prompt_policy_path(detection: HarnessDetection, context: HarnessContext) -> Path:

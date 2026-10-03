@@ -955,14 +955,14 @@ const CONTAINMENT_SANDBOX_NAME: &str = "hol-guard-contained";
 const CONTAINMENT_APPLE_TERMINATION_SIGNAL: u8 = 15;
 const BUBBLEWRAP_PATH: &str = "/usr/bin/bwrap";
 
-fn _now_epoch_ms() -> u64 {
+pub(crate) fn _now_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
 
-fn _platform() -> &'static str {
+pub(crate) fn _platform() -> &'static str {
     if cfg!(target_os = "macos") {
         "darwin"
     } else if cfg!(target_os = "linux") {
@@ -1163,7 +1163,7 @@ pub fn execute_contained(
 
 /// `_darwin_seatbelt_argv` (:206-361): build a seatbelt profile argv. The
 /// sandbox-exec profile is generated on the fly into `run_dir/profile.sb`.
-fn _darwin_seatbelt_argv(
+pub(crate) fn _darwin_seatbelt_argv(
     request: &ContainmentRequest,
     policy: &ContainmentPolicy,
     run_dir: &Path,
@@ -1204,7 +1204,7 @@ fn _darwin_seatbelt_argv(
 }
 
 /// `_linux_bwrap_argv` (:364-443): build a bubblewrap argv.
-fn _linux_bwrap_argv(
+pub(crate) fn _linux_bwrap_argv(
     request: &ContainmentRequest,
     policy: &ContainmentPolicy,
 ) -> Result<Vec<String>, String> {
@@ -1244,7 +1244,7 @@ fn _linux_bwrap_argv(
 const CONTAINMENT_BINDING_FRAME: &[u8] = b"hol-guard:contained-execution:v1\x00";
 
 /// `containment_binding_digest` (:74-79): sha256 over framed canonical JSON.
-fn _binding_digest(payload: &Value) -> String {
+pub(crate) fn _binding_digest(payload: &Value) -> String {
     let mut buf = Vec::new();
     let _ = guard_contracts::write_canonical_json(payload, &mut buf);
     let mut frame = CONTAINMENT_BINDING_FRAME.to_vec();
@@ -1253,7 +1253,7 @@ fn _binding_digest(payload: &Value) -> String {
 }
 
 /// `canonical_json` (:82-87) — `json.dumps(sort_keys=True, separators)`.
-fn _canonical_json(payload: &Value) -> Vec<u8> {
+pub(crate) fn _canonical_json(payload: &Value) -> Vec<u8> {
     let mut buf = Vec::new();
     let _ = guard_contracts::write_canonical_json(payload, &mut buf);
     buf
@@ -1540,7 +1540,7 @@ fn _is_protected_path(relative: &Path) -> bool {
         .any(|part| PROTECTED_NAMES.contains(&part))
 }
 
-fn _canonical_directory(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn _canonical_directory(root: &Path) -> Result<PathBuf, String> {
     let canonical = root
         .canonicalize()
         .map_err(|_| "workspace_unreadable".to_owned())?;
@@ -2401,7 +2401,7 @@ pub struct ContainedWorkspaceWriteResult {
     pub operation_id: String,
 }
 
-fn _safe_relative(workspace: &Path, raw: &str) -> Option<PathBuf> {
+pub(crate) fn _safe_relative(workspace: &Path, raw: &str) -> Option<PathBuf> {
     resolve_workspace_path(workspace, raw)
 }
 
@@ -2461,7 +2461,7 @@ fn _invocation(tokens: &[String]) -> Option<(String, Vec<ContainedWriteOperation
     }
 }
 
-fn _requirements(ops: &[ContainedWriteOperation]) -> Vec<ProofRequirement> {
+pub(crate) fn _requirements(ops: &[ContainedWriteOperation]) -> Vec<ProofRequirement> {
     let mut req = vec![ProofRequirement::ContainmentIdentity];
     if ops.iter().any(|o| o.kind == "delete") {
         req.push(ProofRequirement::CapabilityConstraints);
@@ -2469,7 +2469,7 @@ fn _requirements(ops: &[ContainedWriteOperation]) -> Vec<ProofRequirement> {
     req
 }
 
-fn _contained_decision(
+pub(crate) fn _contained_decision(
     subject: &str,
     proof: PositiveProof,
     requirements: &[ProofRequirement],
@@ -2507,7 +2507,7 @@ fn _contained_decision(
     .ok()
 }
 
-fn _proof_from_execution(
+pub(crate) fn _proof_from_execution(
     request: &ContainmentRequest,
     policy: &ContainmentPolicy,
     enforcement: &str,
@@ -2558,7 +2558,7 @@ fn _result_without_promotion(
     }
 }
 
-fn _promote_output(
+pub(crate) fn _promote_output(
     workspace: &Path,
     operation: &ContainedWriteOperation,
 ) -> Result<String, String> {
@@ -2732,7 +2732,9 @@ pub fn try_execute_contained_workspace_write(
     })
 }
 
-fn shlex_split(command_text: &str) -> Option<Vec<String>> {
+/// POSIX-shell word splitting shared by the resident ops that receive a
+///  contract field rather than a structured .
+pub fn shlex_split(command_text: &str) -> Option<Vec<String>> {
     crate::command_launcher_floors::shlex_split(command_text).ok()
 }
 
@@ -3541,4 +3543,264 @@ impl ContainedTestHookOutcome {
         );
         Value::Object(m)
     }
+}
+
+
+// ===========================================================================
+// Semantic workspace-write operations (contained_workspace_write_execution.py)
+//
+// `patch-check` / `patch-apply` / `format-write` / `copy-generated` are the
+// caller-facing semantic ops. Unlike the token path, these resolve a real tool
+// (`git`, `ruff`, `cp`) and run it inside the containment sandbox with the
+// workspace-write scope narrowed to the declared target only — satisfying the
+// Python isolation contract without snapshot staging.
+// ===========================================================================
+
+/// Python `ContainedWriteOperation` semantic literal.
+const WW_SEMANTIC_OPS: &[&str] =
+    &["patch-check", "patch-apply", "format-write", "copy-generated"];
+
+/// `_resolve_executable` (:416-424): resolve `name` via `PATH` from the
+/// scrubbed `environment`, pinned to a canonical regular executable file.
+fn _resolve_executable(name: &str, env: &BTreeMap<String, String>) -> Result<PathBuf, String> {
+    let path_var = env.get("PATH").cloned().unwrap_or_default();
+    let mut found: Option<PathBuf> = None;
+    for dir in path_var.split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = Path::new(dir).join(name);
+        if candidate.is_file() {
+            found = Some(candidate);
+            break;
+        }
+    }
+    let candidate = found.ok_or_else(|| format!("{name} executable unavailable"))?;
+    let canonical =
+        fs::canonicalize(&candidate).map_err(|_| format!("{name} executable is not path-pinned"))?;
+    let meta =
+        fs::metadata(&canonical).map_err(|_| format!("{name} executable is not path-pinned"))?;
+    if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 {
+        return Err(format!("{name} executable is not path-pinned"));
+    }
+    Ok(canonical)
+}
+
+/// Build the tool argv the Python `_invocation()` produces per semantic op
+/// (:300-349). Returns `(argv, target)`.
+fn _semantic_tool_argv(
+    operation: &str,
+    source: &str,
+    target: Option<&str>,
+    workspace: &Path,
+    env: &BTreeMap<String, String>,
+) -> Result<(Vec<String>, Option<String>), String> {
+    match operation {
+        "patch-check" => {
+            let git = _resolve_executable("git", env)?;
+            let patch = resolve_workspace_path(workspace, source)
+                .ok_or_else(|| "source_unsafe".to_owned())?;
+            Ok((
+                vec![
+                    git.to_string_lossy().into_owned(),
+                    "apply".to_owned(),
+                    "--check".to_owned(),
+                    "--".to_owned(),
+                    patch.to_string_lossy().into_owned(),
+                ],
+                None,
+            ))
+        }
+        "patch-apply" => {
+            let target = target.ok_or_else(|| "patch-apply_requires_target".to_owned())?;
+            let git = _resolve_executable("git", env)?;
+            let patch = resolve_workspace_path(workspace, source)
+                .ok_or_else(|| "source_unsafe".to_owned())?;
+            Ok((
+                vec![
+                    git.to_string_lossy().into_owned(),
+                    "apply".to_owned(),
+                    "--".to_owned(),
+                    patch.to_string_lossy().into_owned(),
+                ],
+                Some(target.to_owned()),
+            ))
+        }
+        "format-write" => {
+            let target = target.ok_or_else(|| "format-write_requires_target".to_owned())?;
+            let ruff = _resolve_executable("ruff", env)?;
+            let tgt = resolve_workspace_path(workspace, target)
+                .ok_or_else(|| "target_unsafe".to_owned())?;
+            Ok((
+                vec![
+                    ruff.to_string_lossy().into_owned(),
+                    "format".to_owned(),
+                    "--no-cache".to_owned(),
+                    tgt.to_string_lossy().into_owned(),
+                ],
+                Some(target.to_owned()),
+            ))
+        }
+        "copy-generated" => {
+            let target = target.ok_or_else(|| "copy-generated_requires_target".to_owned())?;
+            let cp = _resolve_executable("cp", env)?;
+            let src = resolve_workspace_path(workspace, source)
+                .ok_or_else(|| "source_unsafe".to_owned())?;
+            let tgt = resolve_workspace_path(workspace, target)
+                .ok_or_else(|| "target_unsafe".to_owned())?;
+            Ok((
+                vec![
+                    cp.to_string_lossy().into_owned(),
+                    src.to_string_lossy().into_owned(),
+                    tgt.to_string_lossy().into_owned(),
+                ],
+                Some(target.to_owned()),
+            ))
+        }
+        other => Err(format!("unsupported_operation:{other}")),
+    }
+}
+
+/// Structured semantic workspace-write execution — the honest port of
+/// `contained_workspace_write_execution.py::try_execute_contained_workspace_write`
+/// for the four semantic ops. The tool runs sandboxed with the write scope
+/// narrowed to the declared target; `patch-check` is a dry-run (no write scope,
+/// no promotion) and returns a result even on non-zero exit.
+pub fn try_execute_contained_workspace_write_semantic(
+    workspace: &Path,
+    operation: &str,
+    source: &str,
+    target: Option<&str>,
+    environment: Option<&BTreeMap<String, String>>,
+    timeout_seconds: Option<u64>,
+    guard_home: &Path,
+) -> Option<ContainedWorkspaceWriteResult> {
+    if !WW_SEMANTIC_OPS.contains(&operation) {
+        return None;
+    }
+    let env = environment.cloned().unwrap_or_default();
+    let (argv, target) = _semantic_tool_argv(operation, source, target, workspace, &env).ok()?;
+    // A "write" op describing the declared target drives requirements + promote.
+    let op_kind = match operation {
+        "patch-apply" => "patch-apply",
+        "format-write" => "format-write",
+        "copy-generated" => "copy-generated",
+        _ => "patch-check",
+    };
+    let ops: Vec<ContainedWriteOperation> = match &target {
+        Some(t) => vec![ContainedWriteOperation {
+            kind: "write".to_owned(),
+            path: t.clone(),
+            content: None,
+            source: Some(source.to_owned()),
+            mode: None,
+        }],
+        None => vec![],
+    };
+    let requirements = _requirements(&ops);
+    // Narrow write scope to the declared target's parent dir (patch-check: none).
+    let write_paths: Vec<String> = match &target {
+        Some(t) => {
+            let resolved = resolve_workspace_path(workspace, t)?;
+            let parent = resolved.parent().map(|p| p.to_path_buf()).unwrap_or(workspace.to_path_buf());
+            vec![parent.to_string_lossy().into_owned()]
+        }
+        None => vec![],
+    };
+    let mut request = ContainmentRequest {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        kind: "workspace-write".to_owned(),
+        argv: argv.clone(),
+        cwd: workspace.to_string_lossy().into_owned(),
+        env_allowlist: vec!["PATH".to_owned(), "HOME".to_owned()],
+        timeout_seconds: timeout_seconds.unwrap_or(60),
+        max_output_bytes: 1024 * 1024,
+        additional_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        allow_outbound_network: false,
+    };
+    validate_containment_request(&request).ok()?;
+    let policy = ContainmentPolicy {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        action: ContainmentAction::Write,
+        workspace_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        workspace_write_paths: write_paths,
+        env_allowlist: request.env_allowlist.clone(),
+        allowed_domains: vec![],
+        timeout_seconds: request.timeout_seconds,
+        max_processes: 8,
+        max_open_files: 256,
+        max_file_size_bytes: 8 * 1024 * 1024,
+        max_write_bytes_total: 16 * 1024 * 1024,
+        max_output_bytes: request.max_output_bytes,
+        memory_mb: 512,
+        additional_read_paths: vec![],
+        allow_outbound_network: false,
+    };
+    validate_containment_policy(&policy).ok()?;
+    let run_id = format!("ww-semantic-{}", _now_epoch_ms());
+    let (exit_code, stdout_text, stderr_text, outputs, started_ms, enforcement, captured) =
+        execute_contained(&request, &policy, guard_home, &run_id).ok()?;
+    let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
+    let attestation = ContainmentAttestation {
+        schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
+        enforcement: enforcement.clone(),
+        profile_digest: profile_digest.clone(),
+        started_epoch_ms: started_ms,
+        exit_code,
+        outputs: outputs.clone(),
+        artifact_manifests: vec![],
+    };
+    // `patch-check` returns a result even on non-zero exit (dry-run veto); the
+    // other ops treat non-zero as failure.
+    let is_check = operation == "patch-check";
+    if exit_code != 0 && !is_check {
+        return Some(_result_without_promotion(attestation, outputs, captured));
+    }
+    let attestation_digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(
+            json!({
+                "exit_code": exit_code,
+                "outputs": outputs.iter().map(|o| &o.sha256).collect::<Vec<_>>(),
+            })
+            .to_string()
+            .as_bytes(),
+        ))
+    );
+    let health = load_current_containment_health(guard_home);
+    let proof = contained_positive_proof(
+        health.as_ref(),
+        &enforcement,
+        &profile_digest,
+        &attestation_digest,
+        &requirements,
+    )
+    .ok();
+    let Some(proof) = proof else {
+        return Some(_result_without_promotion(attestation, outputs, captured));
+    };
+    let mut applied: Vec<String> = Vec::new();
+    // The sandbox confined writes to the declared target's directory; the tool
+    // has already produced it. Verify the target exists rather than re-writing.
+    for op in &ops {
+        let resolved = match resolve_workspace_path(workspace, &op.path) {
+            Some(p) if p.is_file() => op.path.clone(),
+            _ => {
+                return Some(_result_without_promotion(attestation, outputs, captured));
+            }
+        };
+        applied.push(resolved);
+    }
+    let decision = _contained_decision(op_kind, proof, &requirements);
+    Some(ContainedWorkspaceWriteResult {
+        attestation,
+        outputs,
+        captured_files: captured,
+        applied,
+        decision,
+        stdout: stdout_text,
+        stderr: stderr_text,
+        proof: None,
+        operation_id: operation.to_owned(),
+    })
 }

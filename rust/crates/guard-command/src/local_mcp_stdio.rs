@@ -66,10 +66,17 @@ fn is_package_shim_dir(entry: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn _package_cache_env() -> BTreeMap<String, String> {
+fn _package_cache_env(home_dir: Option<&Path>) -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
-    if let Ok(home) = std::env::var("HOME") {
-        let home = PathBuf::from(&home);
+    let home_owned: Option<PathBuf>;
+    let home = match home_dir {
+        Some(h) => Some(h.to_path_buf()),
+        None => {
+            home_owned = std::env::var("HOME").ok().map(PathBuf::from);
+            home_owned
+        }
+    };
+    if let Some(home) = home {
         let bun_cache = home.join(".bun").join("install").join("cache");
         if bun_cache.is_dir() {
             m.insert(
@@ -90,7 +97,11 @@ fn _package_cache_env() -> BTreeMap<String, String> {
 
 /// `probe_env(tmp, extra)` — scrubbed probe environment.
 /// `extra` overrides are applied except for the locked keys.
-pub fn probe_env(tmp: &str, extra: Option<&BTreeMap<String, String>>) -> BTreeMap<String, String> {
+pub fn probe_env(
+    tmp: &str,
+    extra: Option<&BTreeMap<String, String>>,
+    home_dir: Option<&Path>,
+) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     env.insert("PATH".to_owned(), probe_search_path());
     env.insert("HOME".to_owned(), tmp.to_owned());
@@ -105,7 +116,7 @@ pub fn probe_env(tmp: &str, extra: Option<&BTreeMap<String, String>>) -> BTreeMa
     env.insert("npm_config_fund".to_owned(), "false".to_owned());
     env.insert("NPM_CONFIG_UPDATE_NOTIFIER".to_owned(), "false".to_owned());
     env.insert("npm_config_loglevel".to_owned(), "error".to_owned());
-    env.extend(_package_cache_env());
+    env.extend(_package_cache_env(home_dir));
     if let Some(extra) = extra {
         for (key, value) in extra {
             let name = key.trim();
@@ -267,6 +278,7 @@ pub fn run_mcp_stdio_probe(
     cwd: &Path,
     timeout_seconds: f64,
     extra_env: Option<&BTreeMap<String, String>>,
+    home_dir: Option<&Path>,
     _connection_identity_hash: Option<&str>,
 ) -> McpStdioExchange {
     if argv.is_empty() || argv.iter().any(|p| p.is_empty() || p.contains('\0')) {
@@ -279,7 +291,7 @@ pub fn run_mcp_stdio_probe(
         };
     }
     let tmp = std::env::temp_dir().to_string_lossy().into_owned();
-    let env = probe_env(&tmp, extra_env);
+    let env = probe_env(&tmp, extra_env, home_dir);
 
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..])

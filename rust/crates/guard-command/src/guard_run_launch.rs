@@ -1644,6 +1644,13 @@ fn runner_first_match(patterns: &[FancyRegex], text: &str) -> Option<CMatch> {
 // ---------------------------------------------------------------------------
 
 /// `_prompt_request_id` (:2329) — sha256 of `"{cls}:{matched}:{normalized}"`.
+/// `normalized_prompt` input for `prompt_request_id` — reproduces runner.py
+/// `lowered = " ".join(prompt_text.split()).lower()`. `python_normalize` is
+/// the split+join; `to_lowercase` mirrors `.lower()` for ASCII/unicode.
+pub fn normalize_prompt_lower(prompt_text: &str) -> String {
+    python_normalize(prompt_text).to_lowercase()
+}
+
 pub fn prompt_request_id(
     request_class: &str,
     matched_text: &str,

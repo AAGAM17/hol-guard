@@ -194,6 +194,7 @@ where
     let mut handles = Vec::new();
     let mut created_indices = Vec::new();
     let mut created_final = false;
+    let mut bound_path = path.clone();
     for (index, component) in path.components().enumerate() {
         match component {
             Component::Prefix(prefix) => current.push(prefix.as_os_str()),
@@ -204,49 +205,61 @@ where
                 current.push(name);
                 let is_target = index == final_component;
                 let is_private = path_has_prefix(&current, &private_root);
+                let mut reopen_path = current.clone();
                 let (mut handle, created) = match open_directory_bound(&current, false, is_target) {
                     Ok(handle) => (handle, false),
                     Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                        let Some(descriptor) = security_descriptor else {
-                            cleanup_created_components(&handles, &created_indices, None);
-                            return Err(io::Error::new(
-                                io::ErrorKind::NotFound,
-                                if is_private {
-                                    "private directory ancestry is missing"
-                                } else {
-                                    "trusted directory ancestry is missing"
-                                },
-                            ));
-                        };
-                        if !is_private {
-                            cleanup_created_components(&handles, &created_indices, None);
-                            return Err(io::Error::new(
-                                io::ErrorKind::NotFound,
-                                "trusted directory ancestry is missing",
-                            ));
-                        }
-                        let (handle, created) =
-                            match create_private_directory_handle(&current, descriptor) {
-                                Ok(result) => result,
-                                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                                    match open_directory_bound(&current, false, is_target) {
-                                        Ok(handle) => (handle, false),
-                                        Err(error) => {
-                                            cleanup_created_components(
-                                                &handles,
-                                                &created_indices,
-                                                None,
-                                            );
-                                            return Err(error);
+                        if let Some((handle, opened)) =
+                            open_equivalent_directory(&current, is_target)
+                        {
+                            reopen_path = opened;
+                            (handle, false)
+                        } else {
+                            let Some(descriptor) = security_descriptor else {
+                                cleanup_created_components(&handles, &created_indices, None);
+                                return Err(io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    if is_private {
+                                        "private directory ancestry is missing"
+                                    } else {
+                                        "trusted directory ancestry is missing"
+                                    },
+                                ));
+                            };
+                            if !is_private {
+                                cleanup_created_components(&handles, &created_indices, None);
+                                return Err(io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    "trusted directory ancestry is missing",
+                                ));
+                            }
+                            let (handle, created) =
+                                match create_private_directory_handle(&current, descriptor) {
+                                    Ok(result) => result,
+                                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                                        match open_directory_bound(&current, false, is_target) {
+                                            Ok(handle) => (handle, false),
+                                            Err(error) => {
+                                                cleanup_created_components(
+                                                    &handles,
+                                                    &created_indices,
+                                                    None,
+                                                );
+                                                return Err(error);
+                                            }
                                         }
                                     }
-                                }
-                                Err(error) => {
-                                    cleanup_created_components(&handles, &created_indices, None);
-                                    return Err(error);
-                                }
-                            };
-                        (handle, created)
+                                    Err(error) => {
+                                        cleanup_created_components(
+                                            &handles,
+                                            &created_indices,
+                                            None,
+                                        );
+                                        return Err(error);
+                                    }
+                                };
+                            (handle, created)
+                        }
                     }
                     Err(error) => {
                         cleanup_created_components(&handles, &created_indices, None);
@@ -260,7 +273,7 @@ where
                     if is_private && !created {
                         drop(handle);
                         match durable_private_directory_handle(
-                            &current,
+                            &reopen_path,
                             is_target,
                             is_private,
                             &mut verify,
@@ -283,12 +296,15 @@ where
                 if created {
                     created_indices.push(handles.len());
                 }
+                if is_target {
+                    bound_path = reopen_path;
+                }
                 handles.push(handle);
             }
         }
     }
     Ok(PrivateDirectoryBinding {
-        path,
+        path: bound_path,
         handles,
         created_final,
     })
@@ -375,17 +391,16 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
 
     let canonical_existing = loop {
         match existing.canonicalize() {
-            Ok(canonical) => break canonical,
+            Ok(canonical) => {
+                break long_path_if_same_shape(&win32_path(&canonical)).unwrap_or(canonical);
+            }
             Err(error) => {
-                // `canonicalize` can fail on an existing 8.3 component when
-                // its DACL blocks the handle query. Walking past it and
-                // appending the short name onto a `\\?\` parent disables
-                // Win32 short-name expansion, so the later open returns
-                // NotFound. Prefer the long path when the component exists.
-                if error.kind() != io::ErrorKind::NotFound {
-                    if let Some(long) = long_path_if_same_shape(&existing) {
-                        break long;
-                    }
+                // `\\?\` disables 8.3 expansion, so canonicalize returns
+                // NotFound for an existing short name. GetLongPathNameW on
+                // the Win32 form still resolves it when the component count
+                // is unchanged. A junction that changes depth still fails.
+                if let Some(long) = long_path_if_same_shape(&win32_path(&existing)) {
+                    break long;
                 }
                 let Some(name) = existing.file_name() else {
                     return Err(error);
@@ -421,6 +436,9 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
         if let Ok(resolved) = std::fs::canonicalize(&canonical) {
             canonical = resolved;
         }
+    }
+    if let Some(long) = long_path_if_same_shape(&win32_path(&canonical)) {
+        canonical = long;
     }
     Ok(canonical)
 }
@@ -481,6 +499,30 @@ fn long_path_if_same_shape(path: &Path) -> Option<PathBuf> {
         return None;
     }
     Some(long)
+}
+
+/// Open the same directory under a spelling CreateFileW can resolve.
+///
+/// `\\?\` disables 8.3 expansion, so an existing short name returns
+/// NotFound. The Win32 form and a same-shape long path are the only
+/// retries. A junction that changes depth is rejected by the long-path check.
+fn open_equivalent_directory(
+    path: &Path,
+    allow_add_file: bool,
+) -> Option<(std::fs::File, PathBuf)> {
+    let win32 = win32_path(path);
+    if win32 != path {
+        if let Ok(handle) = open_directory_bound(&win32, false, allow_add_file) {
+            return Some((handle, win32));
+        }
+    }
+    let long = long_path_if_same_shape(&win32)?;
+    if long == path || long == win32 {
+        return None;
+    }
+    open_directory_bound(&long, false, allow_add_file)
+        .ok()
+        .map(|handle| (handle, long))
 }
 /// True when `path` is `root` or a descendant. `\\?\` and Win32 spellings name
 /// the same directory. A long-path lookup is accepted only when it keeps the
@@ -688,5 +730,16 @@ mod tests {
             Path::new(r"C:\Users\runneradmin\AppData\Local\Temp\other"),
             root
         ));
+    }
+
+    #[test]
+    fn verbatim_existing_directory_binds() {
+        let directory = std::env::temp_dir().join(format!("hg-bind-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let display = directory.display().to_string();
+        let verbatim = PathBuf::from(format!(r"\\?\{display}"));
+        let binding = bind_directory(&verbatim, &directory, &directory, |_, _, _, _| Ok(()));
+        let _ = std::fs::remove_dir_all(&directory);
+        binding.expect("verbatim spelling of an existing directory opens");
     }
 }

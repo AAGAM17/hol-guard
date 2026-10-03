@@ -538,10 +538,7 @@ fn update_retirement_removes_an_expired_dead_same_runtime_lease() {
 
     let result = retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(2));
     assert_eq!(result, Ok(()));
-    assert!(
-        !path.exists(),
-        "a definitively dead lease should be drained"
-    );
+    assert!(!path.exists(), "a definitively dead lease should be drained");
     fs::remove_dir_all(root).expect("test directory should be removable");
 }
 

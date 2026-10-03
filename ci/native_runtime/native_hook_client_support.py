@@ -37,9 +37,7 @@ def native_runtime(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
     assert _NATIVE_BINARY is not None
     runtime = Path(_NATIVE_BINARY).resolve(strict=True)
     state_root = (
-        tempfile.TemporaryDirectory(prefix="hol-guard-native-runtime-", dir=Path.home())
-        if os.name == "nt"
-        else None
+        tempfile.TemporaryDirectory(prefix="hol-guard-native-runtime-", dir=Path.home()) if os.name == "nt" else None
     )
     state_dir = (Path(state_root.name) if state_root is not None else tmp_path) / "native-runtime"
     state_dir.mkdir(mode=0o700)

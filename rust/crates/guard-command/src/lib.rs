@@ -67,7 +67,6 @@ pub mod package_intent_common;
 pub mod package_intent_parser;
 pub mod package_manager_command;
 pub mod package_manifest_diff;
-pub mod package_approval;
 mod parser_wrappers;
 pub mod pretool;
 #[cfg(unix)]
@@ -984,6 +983,7 @@ mod tests {
 pub mod local_supply_chain;
 pub mod redacted_command_tokens;
 pub mod supply_chain_package_eval;
+pub mod package_approval;
 
 // RTM-014/017/020/023 pending modules — compile signal only until legs complete.
 pub mod aibom_reporting;

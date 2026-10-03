@@ -236,6 +236,9 @@ pub(crate) fn next_settings_state(
         rotate_authentication_state(&mut next_state);
     }
     // Apply the enabled/cooldown/fail_closed fields last.
+    if requested_enabled.is_some_and(|en| en != gate_was_enabled) && np.is_none() {
+        rotate_authentication_state(&mut next_state);
+    }
     if let Some(en) = requested_enabled {
         next_state
             .as_object_mut()

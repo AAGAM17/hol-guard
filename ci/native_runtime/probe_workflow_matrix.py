@@ -258,6 +258,15 @@ def main() -> int:
                 if args.live_omp
                 else 0
             )
+            native_file_calls = 0
+            if args.live_omp:
+                from ci.native_runtime.native_file_workflows import run_live_native_files
+
+                native_file_calls = run_live_native_files(
+                    root=root, home=home, workspace=workspace, guard_home=guard_home,
+                    daemon=daemon, model=args.model, output=args.output,
+                )
+                actual += native_file_calls
             if args.test_project:
                 project = args.test_project.resolve(strict=True)
                 if (
@@ -359,6 +368,7 @@ def main() -> int:
                 "pass": True,
                 "mandatory_cases": len(cases),
                 "actual_pi_calls": actual,
+                "actual_native_file_calls": native_file_calls,
                 "new_quiet_approvals": 0,
                 "installed_source_sha": capabilities.build_sha,
                 "native_rule_digest": capabilities.rule_digest,

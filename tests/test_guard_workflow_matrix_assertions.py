@@ -1,5 +1,6 @@
 import pytest
 
+from ci.native_runtime.native_file_workflows import assert_native_file_execution
 from ci.native_runtime.probe_workflow_matrix import assert_admission, assert_execution, decode_events
 from ci.native_runtime.workflow_matrix_cases import WorkflowCase
 
@@ -69,3 +70,22 @@ def test_workflow_fixture_removes_only_successful_runs(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="cleanup uncertain"), workflow_fixture() as retained:
         raise RuntimeError("cleanup uncertain")
     assert retained.is_dir()
+
+
+def test_native_file_workflow_requires_real_successful_calls_and_final_content(tmp_path):
+    destination = tmp_path / "copy.ts"
+    destination.write_text("export const status = 'after';\n")
+    events = [
+        {"type": "tool_execution_end", "toolName": tool, "isError": False}
+        for tool in ["read", "write", "read", "edit", "read"]
+    ]
+    assert assert_native_file_execution(events, destination) == 5
+    with pytest.raises(AssertionError, match="completely"):
+        assert_native_file_execution(events[:-1], destination)
+    with pytest.raises(AssertionError, match="failed"):
+        assert_native_file_execution([{**event, "isError": True} for event in events], destination)
+    with pytest.raises(AssertionError, match="failed"):
+        assert_native_file_execution([{**event, "isError": None} for event in events], destination)
+    destination.write_text("export const status = 'before';\n")
+    with pytest.raises(AssertionError, match="required edit"):
+        assert_native_file_execution(events, destination)

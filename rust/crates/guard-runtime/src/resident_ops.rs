@@ -194,21 +194,27 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::PackageAuthorityDecide(request) => {
                 crate::package_authority_op::evaluate_package_authority_decide(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::ContainedNodeExecute(request) => {
                 crate::contained_op::evaluate_contained_node_execute(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::ContainedTypescriptExecute(request) => {
                 crate::contained_op::evaluate_contained_typescript_execute(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::ContainedPackageScriptExecute(request) => {
                 crate::contained_op::evaluate_contained_package_script_execute(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::ContainedWorkspaceWriteExecute(request) => {
                 crate::contained_op::evaluate_contained_workspace_write_execute(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::ContainedExecute(request) => {
                 crate::contained_op::evaluate_contained_execute(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::ContainedTestHook(request) => {
                 crate::contained_op::evaluate_contained_test_hook(&request)
             }
@@ -218,8 +224,19 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::McpStdioProbe(request) => {
                 crate::mcp_probe_op::evaluate_mcp_stdio_probe(&request)
             }
+            #[cfg(unix)]
             ResidentOperationV1::PromptAnalyze(request) => {
                 crate::prompt_analyze_op::evaluate_prompt_analyze(&request)
+            }
+            #[cfg(not(unix))]
+            ResidentOperationV1::ContainedNodeExecute(_)
+            | ResidentOperationV1::ContainedTypescriptExecute(_)
+            | ResidentOperationV1::ContainedPackageScriptExecute(_)
+            | ResidentOperationV1::ContainedWorkspaceWriteExecute(_)
+            | ResidentOperationV1::ContainedExecute(_)
+            | ResidentOperationV1::ContainedTestHook(_)
+            | ResidentOperationV1::PromptAnalyze(_) => {
+                Err("native_operation_unavailable_on_this_platform".to_owned())
             }
             ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
                 "status": "ready",

@@ -411,8 +411,8 @@ def test_real_configured_native_protection_before_inverse_retirement(
                 codex_native_hook_state(context),
                 "isolated-publication-inverse",
             )
-            daemon.start(time.monotonic() + 30)
             pending = publication.publish_codex_publication_inverse(authorize(context, plan, owner))
+            daemon.start(pending.authorization.deadline_monotonic)
             journal = context.guard_home / "managed/codex/pending-hook-publication.json"
             before = participant_digests(context, config, manifest)
             if boundary == "stale-proof":

@@ -12,7 +12,10 @@ pub(crate) fn benign_command_segments(
         || model.path_overridden
         || !model.wrapper_chain.is_empty()
         // A cwd transition changes the meaning of subsequent relative operands.
-        || model.segments.iter().any(|segment| segment.executable.as_deref() == Some("cd"))
+        || model
+            .segments
+            .iter()
+            .any(|segment| segment.executable.as_deref() == Some("cd"))
     {
         return Vec::new();
     }

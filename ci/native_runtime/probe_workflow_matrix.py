@@ -22,10 +22,10 @@ from codex_plugin_scanner.guard.hook_execution_environment import collect_hook_e
 
 
 @contextmanager
-def workflow_fixture():
+def workflow_fixture(directory: Path | None = None):
     # A synthetic project must not inherit the source repo's agent rules.
     # Otherwise a harness can refuse fixture commands before Guard sees them.
-    root = Path(tempfile.mkdtemp(prefix="guard-workflow-matrix-")).resolve()
+    root = Path(tempfile.mkdtemp(prefix="guard-workflow-matrix-", dir=directory)).resolve()
     try:
         yield root
     except BaseException:
@@ -198,6 +198,9 @@ def main() -> int:
     parser.add_argument("--expected-source-sha", help="Fail before testing if the installed native build is stale")
     parser.add_argument("--test-project", type=Path, help="Existing isolated Vitest project; no dependencies installed")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--fixture-directory", type=Path, help="Existing dedicated scratch directory outside source repos"
+    )
     args = parser.parse_args()
     if args.live_omp and args.test_project and sys.platform != "darwin":
         parser.error("live protected-test proofs require the macOS containment adapter")
@@ -205,7 +208,7 @@ def main() -> int:
     _, identity, capabilities = probe._probe_native_identity()
     if args.expected_source_sha and capabilities.build_sha != args.expected_source_sha:
         raise AssertionError("installed native build does not match the required source SHA")
-    with workflow_fixture() as temporary:
+    with workflow_fixture(args.fixture_directory) as temporary:
         root = Path(temporary).resolve()
         home, workspace, cases = create_cases(root)
         guard_home = root / "guard-home"
@@ -267,8 +270,13 @@ def main() -> int:
                 from ci.native_runtime.native_file_workflows import run_live_native_files
 
                 native_file_calls = run_live_native_files(
-                    root=root, home=home, workspace=workspace, guard_home=guard_home,
-                    daemon=daemon, model=args.model, output=args.output,
+                    root=root,
+                    home=home,
+                    workspace=workspace,
+                    guard_home=guard_home,
+                    daemon=daemon,
+                    model=args.model,
+                    output=args.output,
                 )
                 actual += native_file_calls
             if args.test_project:

@@ -116,3 +116,11 @@ def test_synthetic_project_does_not_inherit_source_repository_instructions(tmp_p
     with workflow_fixture() as fixture:
         assert fixture.parent == scratch.resolve()
         assert not fixture.is_relative_to(repository.resolve())
+
+
+def test_workflow_fixture_uses_explicit_scratch_directory(tmp_path):
+    from ci.native_runtime.probe_workflow_matrix import workflow_fixture
+
+    with workflow_fixture(tmp_path) as fixture:
+        assert fixture.parent == tmp_path.resolve()
+    assert not fixture.exists()

@@ -4,6 +4,70 @@ use super::{
 };
 use crate::CanonicalCommandV1;
 
+pub(super) fn exact_safe_cwd_compound(
+    model: &CanonicalCommandV1,
+    context: (Option<&str>, Option<&str>),
+) -> bool {
+    let Some(first) = model.segments.first() else {
+        return false;
+    };
+    if model.segments.len() < 2
+        || first.executable.as_deref() != Some("cd")
+        || !first.environment_names.is_empty()
+        || first.pipeline_index != 0
+    {
+        return false;
+    }
+    let [target] = first.arguments.as_slice() else {
+        return false;
+    };
+    let Some(cwd) = safe_reads::verified_cwd_target(target, context) else {
+        return false;
+    };
+    for (index, pair) in model.segments.windows(2).enumerate() {
+        // Parser spans count Unicode characters, not UTF-8 byte offsets.
+        let Some(length) = pair[1].span.start.checked_sub(pair[0].span.end) else {
+            return false;
+        };
+        let separator: String = model
+            .normalized_text
+            .chars()
+            .skip(pair[0].span.end)
+            .take(length)
+            .collect();
+        if (index == 0 && separator.trim() != "&&") || !matches!(separator.trim(), "&&" | "|") {
+            return false;
+        }
+    }
+    model.segments[1..].iter().all(|segment| {
+        matches!(
+            segment.executable.as_deref(),
+            Some(
+                "pwd"
+                    | "true"
+                    | "echo"
+                    | "printf"
+                    | "which"
+                    | "whoami"
+                    | "uname"
+                    | "date"
+                    | "sleep"
+                    | "ls"
+                    | "cat"
+                    | "head"
+                    | "tail"
+                    | "git"
+                    | "gh"
+                    | "jq"
+                    | "wc"
+                    | "rg"
+                    | "grep"
+                    | "sed"
+            )
+        ) && exact_safe_segment_with_context(model, segment, false, (context.0, Some(&cwd)))
+    })
+}
+
 pub(crate) fn benign_command_segments(
     model: &CanonicalCommandV1,
     context: (Option<&str>, Option<&str>),

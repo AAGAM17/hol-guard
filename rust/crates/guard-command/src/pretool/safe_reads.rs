@@ -189,6 +189,28 @@ fn resolved_path_allowed(
     resolved_path_allowed_in_scope(canonical, home_dir, cwd, false)
 }
 
+pub(super) fn verified_cwd_target(
+    value: &str,
+    context: (Option<&str>, Option<&str>),
+) -> Option<String> {
+    if context.0.is_none() || context.1.is_none() || !super::safe_directory_target(value) {
+        return None;
+    }
+    let supplied = std::path::Path::new(value);
+    if !supplied.is_absolute() {
+        return None;
+    }
+    let canonical = std::fs::canonicalize(supplied).ok()?;
+    // Absolute, non-aliased targets avoid CDPATH and logical/physical cwd ambiguity.
+    if canonical != supplied
+        || !canonical.is_dir()
+        || !resolved_path_allowed(&canonical, context.0, context.1)
+    {
+        return None;
+    }
+    canonical.to_str().map(str::to_owned)
+}
+
 fn resolved_path_allowed_in_scope(
     canonical: &std::path::Path,
     home_dir: Option<&str>,

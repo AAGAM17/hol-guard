@@ -281,6 +281,9 @@ fn exact_safe_command_with_context(
     {
         return false;
     }
+    if segment_proof::exact_safe_cwd_compound(model, context) {
+        return true;
+    }
     model.segments.iter().all(|segment| {
         segment_proof::exact_safe_segment_with_context(
             model,

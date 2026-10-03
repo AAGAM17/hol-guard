@@ -415,13 +415,12 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
         canonical.push(existing_alias_or_name(&canonical, component));
     }
     if verbatim && !missing_tail.is_empty() {
-        canonical = std::fs::canonicalize(&canonical).unwrap_or_else(|_| {
-            let text = canonical.to_string_lossy().into_owned();
-            match text.strip_prefix(r"\\") {
-                Some(rest) => PathBuf::from(format!(r"\\?\UNC\{rest}")),
-                None => PathBuf::from(format!(r"\\?\{text}")),
-            }
-        });
+        // A successful canonicalize restores the verbatim form. If it fails,
+        // keep the Win32 spelling: re-adding `\\?\` disables 8.3 expansion
+        // and makes an existing short-name tail look missing.
+        if let Ok(resolved) = std::fs::canonicalize(&canonical) {
+            canonical = resolved;
+        }
     }
     Ok(canonical)
 }

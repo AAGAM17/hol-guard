@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::io;
 use std::os::windows::io::AsRawHandle;
-use std::path::{Component, Path, PathBuf, Prefix};
+use std::path::{Component, Path, PathBuf, Prefix, PrefixComponent};
 
 use winapi::shared::minwindef::{DWORD, FALSE};
 use winapi::um::fileapi::CreateDirectoryW;
@@ -457,14 +457,21 @@ fn boundary_components(path: &Path) -> Vec<Component<'_>> {
 /// the same NTFS directory, not a sibling escape. `..` is rejected earlier.
 fn boundary_component_eq(actual: &Component<'_>, expected: &Component<'_>) -> bool {
     match (actual, expected) {
-        (Component::Prefix(left), Component::Prefix(right)) => windows_prefix_eq(*left, *right),
+        (Component::Prefix(left), Component::Prefix(right)) => windows_prefix_eq(left, right),
         (Component::RootDir, Component::RootDir) => true,
         (Component::Normal(left), Component::Normal(right)) => os_eq_ignore_ascii_case(left, right),
         _ => false,
     }
 }
 
-fn windows_prefix_eq(left: Prefix<'_>, right: Prefix<'_>) -> bool {
+fn windows_prefix_eq(left: &PrefixComponent<'_>, right: &PrefixComponent<'_>) -> bool {
+    if windows_prefix_kind_eq(left.kind(), right.kind()) {
+        return true;
+    }
+    os_eq_ignore_ascii_case(left.as_os_str(), right.as_os_str())
+}
+
+fn windows_prefix_kind_eq(left: Prefix<'_>, right: Prefix<'_>) -> bool {
     let left_disk = match left {
         Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => Some(letter),
         _ => None,
@@ -490,12 +497,7 @@ fn windows_prefix_eq(left: Prefix<'_>, right: Prefix<'_>) -> bool {
         return os_eq_ignore_ascii_case(left_server, right_server)
             && os_eq_ignore_ascii_case(left_share, right_share);
     }
-    os_eq_ignore_ascii_case(left.as_os_str(), right.as_os_str())
-}
-
-fn os_eq_ignore_ascii_case(left: &OsStr, right: &OsStr) -> bool {
-    left.to_string_lossy()
-        .eq_ignore_ascii_case(&right.to_string_lossy())
+    false
 }
 
 /// Create one owner-private directory with its security descriptor applied at

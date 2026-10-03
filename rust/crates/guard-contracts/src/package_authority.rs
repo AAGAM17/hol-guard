@@ -44,7 +44,7 @@ pub struct PackageIntentParseRequestV1 {
     /// ignores it for parse — carried for wire parity).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canonical_command: Option<Vec<String>>,
-    /// Explicit environment overlay; the Rust port ignores it.
+    /// Explicit environment overlay. Non-string maps are ignored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<Value>,
 }

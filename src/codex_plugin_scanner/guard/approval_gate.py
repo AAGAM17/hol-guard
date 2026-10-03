@@ -1431,8 +1431,11 @@ def _rotate_authentication_state(state: dict[str, object]) -> None:
 
 def _invalidate_active_grants(guard_home: Path) -> None:
     home = str(guard_home)
-    for grant_id in [grant_id for grant_id, metadata in _ACTIVE_GRANTS.items() if metadata.get("guard_home") == home]:
-        _ACTIVE_GRANTS.pop(grant_id, None)
+    with _APPROVAL_GATE_LOCK:
+        for grant_id in [
+            grant_id for grant_id, metadata in _ACTIVE_GRANTS.items() if metadata.get("guard_home") == home
+        ]:
+            _ACTIVE_GRANTS.pop(grant_id, None)
 
 
 def _raise_if_locked(state: dict[str, object], now_epoch: float) -> None:

@@ -568,7 +568,10 @@ def _contained_package_script_result(payload: dict) -> Any:
 
 
 def _contained_workspace_write_result(payload: dict) -> Any:
-    from .contained_workspace_write_execution import ContainedWorkspaceWriteResult
+    from .contained_workspace_write_execution import (
+        ContainedWriteOperation,
+        ContainedWorkspaceWriteResult,
+    )
 
     attestation = _require_dict(payload, 'attestation')
     decision_raw = _require_dict(payload, 'decision')
@@ -586,7 +589,7 @@ def _contained_workspace_write_result(payload: dict) -> Any:
         stderr=stderr,
         proof=proof,
         decision=decision,
-        operation_id=cast("ContainedWriteOperation", op_raw),
+        operation_id=cast(ContainedWriteOperation, op_raw),
         output_digest=output_digest if isinstance(output_digest, str) else None,
     )
 

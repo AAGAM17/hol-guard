@@ -2399,6 +2399,7 @@ pub struct ContainedWorkspaceWriteResult {
     pub stderr: String,
     pub proof: Option<PositiveProof>,
     pub operation_id: String,
+    pub output_digest: Option<String>,
 }
 
 pub(crate) fn _safe_relative(workspace: &Path, raw: &str) -> Option<PathBuf> {
@@ -2555,6 +2556,7 @@ fn _result_without_promotion(
         stderr: String::new(),
         proof: None,
         operation_id: "copy".to_owned(),
+        output_digest: None,
     }
 }
 
@@ -2729,6 +2731,7 @@ pub fn try_execute_contained_workspace_write(
             .first()
             .map(|o| o.kind.clone())
             .unwrap_or_else(|| "write".to_owned()),
+        output_digest: None,
     })
 }
 
@@ -3312,6 +3315,7 @@ pub fn try_execute_contained_workspace_write_with_intent(
             .first()
             .map(|o| o.kind.clone())
             .unwrap_or_else(|| "write".to_owned()),
+        output_digest: None,
     })
 }
 
@@ -3521,6 +3525,7 @@ impl ContainedWorkspaceWriteResult {
                 .unwrap_or(Value::Null),
         );
         m.insert("operation_id".to_owned(), json!(self.operation_id));
+        m.insert("output_digest".to_owned(), json!(self.output_digest));
         Value::Object(m)
     }
 }
@@ -3670,7 +3675,12 @@ impl Drop for SemanticWorkspaceStage {
     }
 }
 
-fn _copy_semantic_workspace(source: &Path, target: &Path) -> Result<(), String> {
+fn _copy_semantic_workspace(
+    root: &Path,
+    source: &Path,
+    target: &Path,
+    total_bytes: &mut u64,
+) -> Result<(), String> {
     fs::create_dir(target).map_err(|_| "workspace_stage_create_failed".to_owned())?;
     for entry in fs::read_dir(source).map_err(|_| "workspace_stage_read_failed".to_owned())? {
         let entry = entry.map_err(|_| "workspace_stage_read_failed".to_owned())?;
@@ -3680,14 +3690,26 @@ fn _copy_semantic_workspace(source: &Path, target: &Path) -> Result<(), String> 
             .file_type()
             .map_err(|_| "workspace_stage_read_failed".to_owned())?;
         if file_type.is_dir() {
-            _copy_semantic_workspace(&source_path, &target_path)?;
+            _copy_semantic_workspace(root, &source_path, &target_path, total_bytes)?;
         } else if file_type.is_file() {
-            fs::copy(&source_path, &target_path)
+            let source_file = File::open(&source_path)
                 .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+            let mut target_file = File::create(&target_path)
+                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+            let remaining = MAX_TOTAL_CAPTURED_OUTPUT_BYTES - *total_bytes;
+            let copied = std::io::copy(
+                &mut source_file.take(remaining + 1),
+                &mut target_file,
+            )
+            .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+            if copied > remaining {
+                return Err("workspace_stage_too_large".to_owned());
+            }
+            *total_bytes += copied;
         } else if file_type.is_symlink() {
             let link = fs::read_link(&source_path)
                 .map_err(|_| "workspace_stage_read_failed".to_owned())?;
-            if link.is_absolute() || !weak_canonicalize(&source_path).starts_with(source) {
+            if link.is_absolute() || !weak_canonicalize(&source_path).starts_with(root) {
                 return Err("workspace_stage_symlink_unsafe".to_owned());
             }
             std::os::unix::fs::symlink(link, &target_path)
@@ -3713,7 +3735,8 @@ fn _stage_semantic_workspace(
         return Err("workspace_stage_inside_workspace".to_owned());
     }
     let stage = parent.join(format!("{run_id}-workspace"));
-    if let Err(error) = _copy_semantic_workspace(workspace, &stage) {
+    let mut total_bytes = 0;
+    if let Err(error) = _copy_semantic_workspace(workspace, workspace, &stage, &mut total_bytes) {
         let _ = fs::remove_dir_all(&stage);
         return Err(error);
     }
@@ -3979,7 +4002,7 @@ pub fn try_execute_contained_workspace_write_semantic(
             Err(_) => return Some(_result_without_promotion(attestation, outputs, captured)),
         }
     }
-    let decision = _contained_decision(op_kind, proof, &requirements);
+    let decision = _contained_decision(op_kind, proof.clone(), &requirements);
     Some(ContainedWorkspaceWriteResult {
         attestation,
         outputs,
@@ -3988,7 +4011,8 @@ pub fn try_execute_contained_workspace_write_semantic(
         decision,
         stdout: stdout_text,
         stderr: stderr_text,
-        proof: None,
+        proof: Some(proof),
         operation_id: operation.to_owned(),
+        output_digest: staged_output.map(|(_, digest)| digest),
     })
 }

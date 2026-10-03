@@ -362,7 +362,6 @@ pub fn package_protect_denied_after_final_boundary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::Mutex;
 
@@ -463,7 +462,7 @@ mod tests {
         let evaln = evaluation();
         let auth = authority(&intent, &artifact, &cx, false);
         let mut payload = Map::new();
-        let proj = apply_package_protect_projection(
+        apply_package_protect_projection(
             &mut payload,
             &auth,
             &evaln,

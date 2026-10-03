@@ -1,5 +1,6 @@
 use super::containment::{is_retryable_live_request_error, is_stale_process_identity_error};
 use super::*;
+use crate::resident_state::acquire_startup_lock;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;

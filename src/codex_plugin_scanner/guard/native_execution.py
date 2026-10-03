@@ -228,7 +228,7 @@ def contained_workspace_write_execute_native(
         "source": source,
         "target": target,
         "environment": dict(environment) if environment else None,
-        "timeout_seconds": timeout_seconds,
+        "timeout_seconds": int(timeout_seconds),
         "guard_home": str(guard_home),
     }
     decoded = _resident_request(

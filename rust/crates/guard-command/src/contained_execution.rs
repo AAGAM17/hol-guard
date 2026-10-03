@@ -3589,6 +3589,137 @@ fn _resolve_executable(name: &str, env: &BTreeMap<String, String>) -> Result<Pat
     Ok(canonical)
 }
 
+fn _semantic_safe_relative(
+    workspace: &Path,
+    raw: &str,
+    must_exist: bool,
+) -> Result<PathBuf, String> {
+    let rel = Path::new(raw);
+    if raw.is_empty()
+        || raw.contains('\\')
+        || rel.is_absolute()
+        || rel
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        || rel
+            .components()
+            .filter_map(|component| component.as_os_str().to_str())
+            .collect::<Vec<_>>()
+            .join("/")
+            != raw
+    {
+        return Err("workspace_path_not_canonical".to_owned());
+    }
+    const SEMANTIC_PROTECTED_NAMES: &[&str] = &[
+        ".aws",
+        ".claude",
+        ".codex",
+        ".cursor",
+        ".docker",
+        ".git",
+        ".gnupg",
+        ".guard",
+        ".hol-guard",
+        ".kube",
+        ".ssh",
+        "guard-home",
+    ];
+    if _is_protected_path(rel)
+        || rel.components().any(|component| {
+            let part = component.as_os_str().to_string_lossy().to_lowercase();
+            part.starts_with(".env") || SEMANTIC_PROTECTED_NAMES.contains(&part.as_str())
+        })
+    {
+        return Err("workspace_path_protected".to_owned());
+    }
+    let candidate = workspace.join(rel);
+    let parent = candidate
+        .parent()
+        .ok_or_else(|| "workspace_path_not_canonical".to_owned())?;
+    let canonical_parent = weak_canonicalize(parent);
+    if !canonical_parent.starts_with(workspace) || !canonical_parent.is_dir() {
+        return Err("workspace_path_escaped".to_owned());
+    }
+    let canonical = weak_canonicalize(&candidate);
+    if !canonical.starts_with(workspace) {
+        return Err("workspace_path_escaped".to_owned());
+    }
+    match fs::symlink_metadata(&candidate) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err("workspace_path_symlink".to_owned());
+            }
+            if must_exist && (!metadata.is_file() || metadata.nlink() != 1) {
+                return Err("workspace_input_not_regular".to_owned());
+            }
+            if !must_exist && !metadata.is_file() {
+                return Err("workspace_output_not_regular".to_owned());
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !must_exist => {}
+        Err(_) => return Err("workspace_input_not_regular".to_owned()),
+    }
+    Ok(candidate)
+}
+
+struct SemanticWorkspaceStage(PathBuf);
+
+impl Drop for SemanticWorkspaceStage {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn _copy_semantic_workspace(source: &Path, target: &Path) -> Result<(), String> {
+    fs::create_dir(target).map_err(|_| "workspace_stage_create_failed".to_owned())?;
+    for entry in fs::read_dir(source).map_err(|_| "workspace_stage_read_failed".to_owned())? {
+        let entry = entry.map_err(|_| "workspace_stage_read_failed".to_owned())?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|_| "workspace_stage_read_failed".to_owned())?;
+        if file_type.is_dir() {
+            _copy_semantic_workspace(&source_path, &target_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&source_path, &target_path)
+                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+        } else if file_type.is_symlink() {
+            let link = fs::read_link(&source_path)
+                .map_err(|_| "workspace_stage_read_failed".to_owned())?;
+            if link.is_absolute() || !weak_canonicalize(&source_path).starts_with(source) {
+                return Err("workspace_stage_symlink_unsafe".to_owned());
+            }
+            std::os::unix::fs::symlink(link, &target_path)
+                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
+        } else {
+            return Err("workspace_stage_entry_unsupported".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn _stage_semantic_workspace(
+    workspace: &Path,
+    guard_home: &Path,
+    run_id: &str,
+) -> Result<SemanticWorkspaceStage, String> {
+    let parent = guard_home.join("containment");
+    fs::create_dir_all(&parent).map_err(|_| "workspace_stage_create_failed".to_owned())?;
+    let parent = parent
+        .canonicalize()
+        .map_err(|_| "workspace_stage_create_failed".to_owned())?;
+    if parent.starts_with(workspace) {
+        return Err("workspace_stage_inside_workspace".to_owned());
+    }
+    let stage = parent.join(format!("{run_id}-workspace"));
+    if let Err(error) = _copy_semantic_workspace(workspace, &stage) {
+        let _ = fs::remove_dir_all(&stage);
+        return Err(error);
+    }
+    Ok(SemanticWorkspaceStage(stage))
+}
+
 /// Build the tool argv the Python `_invocation()` produces per semantic op
 /// (:300-349). Returns `(argv, target)`.
 fn _semantic_tool_argv(
@@ -3600,9 +3731,8 @@ fn _semantic_tool_argv(
 ) -> Result<(Vec<String>, Option<String>), String> {
     match operation {
         "patch-check" => {
+            let patch = _semantic_safe_relative(workspace, source, true)?;
             let git = _resolve_executable("git", env)?;
-            let patch = resolve_workspace_path(workspace, source)
-                .ok_or_else(|| "source_unsafe".to_owned())?;
             Ok((
                 vec![
                     git.to_string_lossy().into_owned(),
@@ -3616,12 +3746,14 @@ fn _semantic_tool_argv(
         }
         "patch-apply" => {
             let target = target.ok_or_else(|| "patch-apply_requires_target".to_owned())?;
+            let patch = _semantic_safe_relative(workspace, source, true)?;
+            _semantic_safe_relative(workspace, target, false)?;
             let git = _resolve_executable("git", env)?;
-            let patch = resolve_workspace_path(workspace, source)
-                .ok_or_else(|| "source_unsafe".to_owned())?;
             Ok((
                 vec![
                     git.to_string_lossy().into_owned(),
+                    "-C".to_owned(),
+                    workspace.to_string_lossy().into_owned(),
                     "apply".to_owned(),
                     "--".to_owned(),
                     patch.to_string_lossy().into_owned(),
@@ -3631,9 +3763,8 @@ fn _semantic_tool_argv(
         }
         "format-write" => {
             let target = target.ok_or_else(|| "format-write_requires_target".to_owned())?;
+            let tgt = _semantic_safe_relative(workspace, target, true)?;
             let ruff = _resolve_executable("ruff", env)?;
-            let tgt = resolve_workspace_path(workspace, target)
-                .ok_or_else(|| "target_unsafe".to_owned())?;
             Ok((
                 vec![
                     ruff.to_string_lossy().into_owned(),
@@ -3646,11 +3777,9 @@ fn _semantic_tool_argv(
         }
         "copy-generated" => {
             let target = target.ok_or_else(|| "copy-generated_requires_target".to_owned())?;
+            let src = _semantic_safe_relative(workspace, source, true)?;
+            let tgt = _semantic_safe_relative(workspace, target, false)?;
             let cp = _resolve_executable("cp", env)?;
-            let src = resolve_workspace_path(workspace, source)
-                .ok_or_else(|| "source_unsafe".to_owned())?;
-            let tgt = resolve_workspace_path(workspace, target)
-                .ok_or_else(|| "target_unsafe".to_owned())?;
             Ok((
                 vec![
                     cp.to_string_lossy().into_owned(),
@@ -3681,8 +3810,24 @@ pub fn try_execute_contained_workspace_write_semantic(
     if !WW_SEMANTIC_OPS.contains(&operation) {
         return None;
     }
+    let workspace = _canonical_directory(workspace).ok()?;
+    _semantic_safe_relative(&workspace, source, true).ok()?;
+    if let Some(raw_target) = target {
+        _semantic_safe_relative(&workspace, raw_target, false).ok()?;
+    }
     let env = environment.cloned().unwrap_or_default();
-    let (argv, target) = _semantic_tool_argv(operation, source, target, workspace, &env).ok()?;
+    let run_id = format!("ww-semantic-{}", _now_epoch_ms());
+    let stage = if operation == "patch-check" {
+        None
+    } else {
+        Some(_stage_semantic_workspace(&workspace, guard_home, &run_id).ok()?)
+    };
+    let execution_workspace = match &stage {
+        Some(staged) => staged.0.canonicalize().ok()?,
+        None => workspace.clone(),
+    };
+    let (argv, target) =
+        _semantic_tool_argv(operation, source, target, &execution_workspace, &env).ok()?;
     // A "write" op describing the declared target drives requirements + promote.
     let op_kind = match operation {
         "patch-apply" => "patch-apply",
@@ -3704,11 +3849,11 @@ pub fn try_execute_contained_workspace_write_semantic(
     // Narrow write scope to the declared target's parent dir (patch-check: none).
     let write_paths: Vec<String> = match &target {
         Some(t) => {
-            let resolved = resolve_workspace_path(workspace, t)?;
+            let resolved = _semantic_safe_relative(&execution_workspace, t, false).ok()?;
             let parent = resolved
                 .parent()
                 .map(|p| p.to_path_buf())
-                .unwrap_or(workspace.to_path_buf());
+                .unwrap_or(execution_workspace.clone());
             vec![parent.to_string_lossy().into_owned()]
         }
         None => vec![],
@@ -3717,18 +3862,18 @@ pub fn try_execute_contained_workspace_write_semantic(
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
         kind: "workspace-write".to_owned(),
         argv: argv.clone(),
-        cwd: workspace.to_string_lossy().into_owned(),
+        cwd: execution_workspace.to_string_lossy().into_owned(),
         env_allowlist: vec!["PATH".to_owned(), "HOME".to_owned()],
         timeout_seconds: timeout_seconds.unwrap_or(60),
         max_output_bytes: 1024 * 1024,
-        additional_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        additional_read_paths: vec![execution_workspace.to_string_lossy().into_owned()],
         allow_outbound_network: false,
     };
     validate_containment_request(&request).ok()?;
     let policy = ContainmentPolicy {
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
         action: ContainmentAction::Write,
-        workspace_read_paths: vec![workspace.to_string_lossy().into_owned()],
+        workspace_read_paths: vec![execution_workspace.to_string_lossy().into_owned()],
         workspace_write_paths: write_paths,
         env_allowlist: request.env_allowlist.clone(),
         allowed_domains: vec![],
@@ -3743,9 +3888,27 @@ pub fn try_execute_contained_workspace_write_semantic(
         allow_outbound_network: false,
     };
     validate_containment_policy(&policy).ok()?;
-    let run_id = format!("ww-semantic-{}", _now_epoch_ms());
-    let (exit_code, stdout_text, stderr_text, outputs, started_ms, enforcement, captured) =
+    let (exit_code, stdout_text, stderr_text, mut outputs, started_ms, enforcement, captured) =
         execute_contained(&request, &policy, guard_home, &run_id).ok()?;
+    let staged_output = if exit_code == 0 && !ops.is_empty() {
+        let op = ops.first()?;
+        let staged_path = _semantic_safe_relative(&execution_workspace, &op.path, true).ok()?;
+        let metadata = fs::symlink_metadata(&staged_path).ok()?;
+        if !metadata.is_file() || metadata.size() > 8 * 1024 * 1024 {
+            return None;
+        }
+        let content = fs::read(&staged_path).ok()?;
+        let digest = format!("sha256:{}", hex::encode(Sha256::digest(&content)));
+        outputs.push(ContainmentCapturedOutput {
+            relative_path: op.path.clone(),
+            sha256: digest.clone(),
+            size_bytes: content.len() as u64,
+            media_type: CAPTURED_OUTPUT_MEDIA_TYPE.to_owned(),
+        });
+        Some((op.path.clone(), digest))
+    } else {
+        None
+    };
     let profile_digest = containment_profile_digest(&request, &policy, &enforcement);
     let attestation = ContainmentAttestation {
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
@@ -3786,16 +3949,35 @@ pub fn try_execute_contained_workspace_write_semantic(
         return Some(_result_without_promotion(attestation, outputs, captured));
     };
     let mut applied: Vec<String> = Vec::new();
-    // The sandbox confined writes to the declared target's directory; the tool
-    // has already produced it. Verify the target exists rather than re-writing.
     for op in &ops {
-        let resolved = match resolve_workspace_path(workspace, &op.path) {
-            Some(p) if p.is_file() => op.path.clone(),
-            _ => {
-                return Some(_result_without_promotion(attestation, outputs, captured));
-            }
+        let Some((staged_output_path, expected_digest)) = staged_output.as_ref() else {
+            return Some(_result_without_promotion(attestation, outputs, captured));
         };
-        applied.push(resolved);
+        if staged_output_path != &op.path {
+            return Some(_result_without_promotion(attestation, outputs, captured));
+        }
+        let staged_path = match _semantic_safe_relative(&execution_workspace, &op.path, true) {
+            Ok(path) => path,
+            Err(_) => return Some(_result_without_promotion(attestation, outputs, captured)),
+        };
+        match fs::symlink_metadata(&staged_path) {
+            Ok(metadata) if metadata.is_file() && metadata.size() <= 8 * 1024 * 1024 => {}
+            _ => return Some(_result_without_promotion(attestation, outputs, captured)),
+        }
+        let content = match fs::read(&staged_path) {
+            Ok(content) => content,
+            Err(_) => return Some(_result_without_promotion(attestation, outputs, captured)),
+        };
+        let current_digest = format!("sha256:{}", hex::encode(Sha256::digest(&content)));
+        if &current_digest != expected_digest {
+            return Some(_result_without_promotion(attestation, outputs, captured));
+        }
+        let mut promotion = op.clone();
+        promotion.content = Some(content);
+        match _promote_output(&workspace, &promotion) {
+            Ok(path) => applied.push(path),
+            Err(_) => return Some(_result_without_promotion(attestation, outputs, captured)),
+        }
     }
     let decision = _contained_decision(op_kind, proof, &requirements);
     Some(ContainedWorkspaceWriteResult {

@@ -1,4 +1,5 @@
 """Require source-bound live evidence inside the existing Python CI aggregate."""
+
 from __future__ import annotations
 
 import re
@@ -33,24 +34,33 @@ def require_evidence(api: GitHubAPI, event: dict[str, Any]) -> None:
         latest = next((row for row in rows if row.get("context") == CONTEXT), None)
         if latest is not None or len(rows) < 100:
             break
-    instruction = ("Guard Gauntlet requires fresh real-agent evidence for this exact PR head. "
-                   "Run the live suite, pack the verified public evidence, dispatch Guard Gauntlet evidence, "
-                   "wait for its successful validation, then rerun failed CI jobs. See ci/gauntlet/README.md.")
+    instruction = (
+        "Guard Gauntlet requires fresh real-agent evidence for this exact PR head. "
+        "Run the live suite, pack the verified public evidence, dispatch Guard Gauntlet evidence, "
+        "wait for its successful validation, then rerun failed CI jobs. See ci/gauntlet/README.md."
+    )
     if latest is None or latest.get("state") != "success":
         raise RuntimeError(instruction)
-    match = re.fullmatch(r"https://github\.com/" + re.escape(api.repo) + r"/actions/runs/([0-9]+)",
-                         latest.get("target_url", ""))
+    match = re.fullmatch(
+        r"https://github\.com/" + re.escape(api.repo) + r"/actions/runs/([0-9]+)", latest.get("target_url", "")
+    )
     if match is None:
         raise RuntimeError("Gauntlet status has no repository-owned producer run")
     run_id = match.group(1)
     run = api.request(f"/actions/runs/{run_id}")
-    if (run.get("event") != "workflow_dispatch" or run.get("conclusion") != "success"
-            or run.get("path", "").split("@", 1)[0] != EVIDENCE_WORKFLOW
-            or run.get("head_repository", {}).get("full_name") != api.repo):
+    if (
+        run.get("event") != "workflow_dispatch"
+        or run.get("conclusion") != "success"
+        or run.get("path", "").split("@", 1)[0] != EVIDENCE_WORKFLOW
+        or run.get("head_repository", {}).get("full_name") != api.repo
+    ):
         raise RuntimeError("Gauntlet evidence producer is incomplete, failed or untrusted. " + instruction)
     artifacts = api.request(f"/actions/runs/{run_id}/artifacts?per_page=100")
-    names = [artifact for artifact in artifacts.get("artifacts", [])
-             if artifact.get("name") == "guard-gauntlet-" + candidate and artifact.get("expired") is False]
+    names = [
+        artifact
+        for artifact in artifacts.get("artifacts", [])
+        if artifact.get("name") == "guard-gauntlet-" + candidate and artifact.get("expired") is False
+    ]
     if len(names) != 1:
         raise RuntimeError("Gauntlet producer has no unique unexpired evidence artifact for this head")
     print(f"Guard Gauntlet: verified exact-head live evidence from trusted workflow run {run_id}")

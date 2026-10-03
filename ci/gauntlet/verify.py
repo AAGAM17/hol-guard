@@ -1,4 +1,5 @@
 """Verify a complete Gauntlet evidence directory without trusting its verdicts."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ from typing import Any
 from .catalog import catalog_digest, load_catalog
 from .evidence import assess_case
 from .fixtures import digest_file
+from .source_identity import source_identity, validate_identity
 
 
 def _read_json(path: Path, limit: int) -> dict[str, Any]:
@@ -20,7 +22,9 @@ def _read_json(path: Path, limit: int) -> dict[str, Any]:
     return data
 
 
-def verify_report(directory: Path, *, expected_sha: str, require_qualified: bool = True) -> dict[str, Any]:
+def verify_report(
+    directory: Path, *, expected_sha: str, require_qualified: bool = True, source_root: Path | None = None
+) -> dict[str, Any]:
     """Recompute coverage, hashes and outcomes for the exact candidate source."""
     if re.fullmatch(r"[0-9a-f]{40}", expected_sha) is None:
         raise ValueError("expected candidate SHA must be a full commit")
@@ -36,10 +40,21 @@ def verify_report(directory: Path, *, expected_sha: str, require_qualified: bool
         raise ValueError("missing, duplicate, reordered or unknown scenario evidence")
     if report.get("full_profile") is not True or report.get("pass") is not True:
         raise ValueError("partial or failed runs do not qualify")
-    if require_qualified and (report.get("merge_qualified") is not True or report.get("source_dirty") is not False
-                              or report.get("installed_source_sha") != expected_sha):
+    if require_qualified and (
+        report.get("merge_qualified") is not True
+        or report.get("source_dirty") is not False
+        or report.get("source_unchanged") is not True
+    ):
         raise ValueError("evidence does not qualify the exact clean installed candidate")
     here = Path(__file__).resolve().parent
+    repo = source_root.resolve() if source_root is not None else here.parents[1]
+    if require_qualified:
+        validate_identity(report, expected_sha=expected_sha)
+        actual_binding = source_identity(repo, expected_sha)
+        if any(report.get(key) != value for key, value in actual_binding.items()):
+            raise ValueError("reported ancestry does not match the checked-out Git commit")
+    if report.get("sdk_lock_sha256") != digest_file(repo / "ci/pi-exact-continuation/package-lock.json"):
+        raise ValueError("Oh My Pi dependency lock changed after evidence was produced")
     actual_runner = {p.name: digest_file(p) for p in sorted(here.iterdir()) if p.is_file()}
     if report.get("runner_files") != actual_runner:
         raise ValueError("Gauntlet runner changed after evidence was produced")
@@ -57,6 +72,10 @@ def verify_report(directory: Path, *, expected_sha: str, require_qualified: bool
         if result["outcome"] != "pass":
             raise ValueError("a required scenario did not pass")
         results.append(result)
-    return {"verified": True, "candidate_sha": expected_sha, "scenarios": len(results),
-            "actual_tool_calls": sum(result["tool_calls"] for result in results),
-            "merge_qualified": report["merge_qualified"]}
+    return {
+        "verified": True,
+        "candidate_sha": expected_sha,
+        "scenarios": len(results),
+        "actual_tool_calls": sum(result["tool_calls"] for result in results),
+        "merge_qualified": report["merge_qualified"],
+    }

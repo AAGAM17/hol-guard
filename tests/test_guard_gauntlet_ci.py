@@ -1,4 +1,5 @@
 """Tests for data-only PR gating and safe evidence transport."""
+
 from __future__ import annotations
 
 import hashlib
@@ -14,10 +15,17 @@ from ci.gauntlet.github_ci import initialize_gate, requires_gauntlet
 from ci.gauntlet.source_identity import validate_identity
 
 
-@pytest.mark.parametrize("path", ["rust/crates/guard-command/src/pretool.rs",
-                                     "src/codex_plugin_scanner/guard/adapters/pi_extension_source.py",
-                                     "contracts/guard-hooks.json", "ci/gauntlet/evidence.py",
-                                     ".github/workflows/guard-gauntlet-evidence.yml", "uv.lock"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "rust/crates/guard-command/src/pretool.rs",
+        "src/codex_plugin_scanner/guard/adapters/pi_extension_source.py",
+        "contracts/guard-hooks.json",
+        "ci/gauntlet/evidence.py",
+        ".github/workflows/guard-gauntlet-evidence.yml",
+        "uv.lock",
+    ],
+)
 def test_enforcement_and_qualification_changes_require_live_evidence(path):
     assert requires_gauntlet([path])
 
@@ -74,7 +82,9 @@ def test_public_evidence_roundtrip(tmp_path):
     assert (tmp_path / "restored/cases/ordinary.json").read_text() == "{}"
 
 
-@pytest.mark.parametrize("name", ["../outside.json", "/absolute.json", "raw-prompts.json", "runner.py", "cases\\bad.json"])
+@pytest.mark.parametrize(
+    "name", ["../outside.json", "/absolute.json", "raw-prompts.json", "runner.py", "cases\\bad.json"]
+)
 def test_archive_never_extracts_code_private_logs_or_path_traversal(tmp_path, name):
     data = archive([("summary.json", "{}"), (name, "bad")])
     with pytest.raises(ValueError, match="unsafe"):
@@ -93,8 +103,15 @@ def test_archive_digest_and_symlinks_are_verified(tmp_path):
         unpack(data, tmp_path / "other", "0" * 64)
 
 
-@pytest.mark.parametrize("url", ["http://localhost/bundle.zip", "https://127.0.0.1/bundle.zip",
-                                    "https://example.com/bundle.zip", "https://u:p@test.s3.amazonaws.com/bundle.zip"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost/bundle.zip",
+        "https://127.0.0.1/bundle.zip",
+        "https://example.com/bundle.zip",
+        "https://u:p@test.s3.amazonaws.com/bundle.zip",
+    ],
+)
 def test_evidence_downloader_rejects_internal_or_unapproved_origins(url):
     with pytest.raises(ValueError):
         download(url)
@@ -102,11 +119,73 @@ def test_evidence_downloader_rejects_internal_or_unapproved_origins(url):
 
 def test_exact_candidate_or_current_test_merge_is_required():
     candidate, base, source = "a" * 40, "b" * 40, "c" * 40
-    report = {"candidate_sha": candidate, "tested_source_sha": source, "installed_source_sha": source,
-              "source_parents": [base, candidate], "tested_base_sha": base}
+    report = {
+        "candidate_sha": candidate,
+        "tested_source_sha": source,
+        "installed_source_sha": source,
+        "source_parents": [base, candidate],
+        "tested_base_sha": base,
+    }
     validate_identity(report, expected_sha=candidate, expected_base_sha=base)
     with pytest.raises(ValueError):
         validate_identity(report, expected_sha=candidate, expected_base_sha="d" * 40)
     report["source_parents"] = [base]
     with pytest.raises(ValueError):
         validate_identity(report, expected_sha=candidate)
+
+
+class QualifiedAPI(MetadataAPI):
+    repo = "hashgraph-online/hol-guard"
+
+    def __init__(self):
+        super().__init__([{"filename": "rust/crates/guard-command/src/pretool.rs"}], 1)
+        self.state = "success"
+        self.conclusion = "success"
+        self.path = ".github/workflows/guard-gauntlet-evidence.yml"
+        self.artifact = "guard-gauntlet-" + "a" * 40
+
+    def request(self, path):
+        if path.startswith("/pulls/"):
+            return self.rows
+        if "/statuses?" in path:
+            return [
+                {
+                    "context": "Guard Gauntlet",
+                    "state": self.state,
+                    "target_url": "https://github.com/" + self.repo + "/actions/runs/123",
+                }
+            ]
+        if "/artifacts?" in path:
+            return {"artifacts": [{"name": self.artifact, "expired": False}]}
+        if path == "/actions/runs/123":
+            return {
+                "event": "workflow_dispatch",
+                "conclusion": self.conclusion,
+                "path": self.path,
+                "head_repository": {"full_name": self.repo},
+            }
+        raise AssertionError(path)
+
+
+def test_required_ci_accepts_only_successful_real_evidence_producer():
+    from ci.gauntlet.pr_requirement import require_evidence
+
+    require_evidence(QualifiedAPI(), {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("state", "pending"),
+        ("conclusion", None),
+        ("path", ".github/workflows/unrelated.yml"),
+        ("artifact", "guard-gauntlet-" + "b" * 40),
+    ],
+)
+def test_required_ci_rejects_status_without_matching_successful_producer(field, value):
+    from ci.gauntlet.pr_requirement import require_evidence
+
+    api = QualifiedAPI()
+    setattr(api, field, value)
+    with pytest.raises(RuntimeError):
+        require_evidence(api, {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})

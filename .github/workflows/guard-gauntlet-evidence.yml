@@ -94,8 +94,14 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
           python -m ci.gauntlet verify "$RUNNER_TEMP/gauntlet-evidence" \
-            --expected-sha "$CANDIDATE_SHA" --source-root "$GITHUB_WORKSPACE/candidate"
-          cat "$RUNNER_TEMP/gauntlet-evidence/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            --expected-sha "$CANDIDATE_SHA" --source-root "$GITHUB_WORKSPACE/candidate" \
+            > "$RUNNER_TEMP/gauntlet-verified.json"
+          {
+            echo "## Guard Gauntlet: independently verified live evidence"
+            echo '```json'
+            cat "$RUNNER_TEMP/gauntlet-verified.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve verified public evidence
         if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -1,4 +1,5 @@
 """Trusted GitHub metadata and evidence plumbing. Never execute candidate code here."""
+
 from __future__ import annotations
 
 import argparse
@@ -18,9 +19,19 @@ CONTEXT = "Guard Gauntlet"
 
 def requires_gauntlet(paths: list[str]) -> bool:
     """Changes to enforcement, harness integration or this judge require live evidence."""
-    prefixes = ("src/codex_plugin_scanner/guard/", "rust/", "contracts/", "ci/native_runtime/",
-                "ci/gauntlet/", "ci/pi-exact-continuation/", ".github/workflows/guard-gauntlet")
-    return any(path.startswith(prefixes) or path in {"pyproject.toml", "uv.lock"} for path in paths)
+    prefixes = (
+        "src/codex_plugin_scanner/guard/",
+        "rust/",
+        "contracts/",
+        "contributions/command-sources/",
+        "ci/native_runtime/",
+        "ci/gauntlet/",
+        "ci/pi-exact-continuation/",
+        ".github/workflows/guard-gauntlet",
+    )
+    return any(
+        path.startswith(prefixes) or path in {"pyproject.toml", "uv.lock", ".github/workflows/ci.yml"} for path in paths
+    )
 
 
 class GitHubAPI:
@@ -36,11 +47,17 @@ class GitHubAPI:
             raise ValueError("invalid repository API path")
         url = "https://api.github.com/repos/" + self.repo + path
         body = json.dumps(data).encode() if data is not None else None
-        request = urllib.request.Request(url, data=body, method=method,
-                                         headers={"Authorization": "Bearer " + self.token,
-                                                  "Accept": "application/vnd.github+json",
-                                                  "X-GitHub-Api-Version": "2022-11-28",
-                                                  "Content-Type": "application/json"})
+        request = urllib.request.Request(
+            url,
+            data=body,
+            method=method,
+            headers={
+                "Authorization": "Bearer " + self.token,
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+            },
+        )
         with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read(8_000_000)
         return json.loads(raw) if raw else None
@@ -65,9 +82,15 @@ class GitHubAPI:
             raise ValueError("evidence is not for the current candidate or its current test merge")
 
     def status(self, sha: str, state: str, description: str) -> None:
-        self.request("/statuses/" + sha, {"state": state, "context": CONTEXT,
-                     "description": description[:140],
-                     "target_url": f"https://github.com/{self.repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"})
+        self.request(
+            "/statuses/" + sha,
+            {
+                "state": state,
+                "context": CONTEXT,
+                "description": description[:140],
+                "target_url": f"https://github.com/{self.repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+            },
+        )
 
 
 def output(name: str, value: str) -> None:
@@ -79,16 +102,23 @@ def output(name: str, value: str) -> None:
 
 def initialize_gate(api: GitHubAPI, event: dict[str, Any]) -> None:
     """Metadata-only pull_request_target path: no candidate checkout or execution."""
-    number = event["pull_request"]["number"]
-    sha = event["pull_request"]["head"]["sha"]
+    if "pull_request" in event:
+        number = event["pull_request"]["number"]
+        sha = event["pull_request"]["head"]["sha"]
+    else:
+        number = int(event["inputs"]["pr_number"])
+        sha = event["inputs"]["candidate_sha"]
     pull = api.pull(number, sha)
     paths = []
+    file_count = 0
     for page in range(1, 32):
         rows = api.request(f"/pulls/{number}/files?per_page=100&page={page}")
+        file_count += len(rows)
         paths.extend(row["filename"] for row in rows)
+        paths.extend(row["previous_filename"] for row in rows if "previous_filename" in row)
         if len(rows) < 100:
             break
-    if len(paths) != pull["changed_files"]:
+    if file_count != pull["changed_files"]:
         raise ValueError("incomplete PR file inventory; refusing to waive live qualification")
     if requires_gauntlet(paths):
         api.status(sha, "pending", "Fresh real-agent evidence is required for this enforcement change")
@@ -127,28 +157,42 @@ def publish_result(api: GitHubAPI, event: dict[str, Any]) -> None:
     verified = os.environ.get("VALIDATION_RESULT") == "success"
     if verified:
         api.prove_source(os.environ["TESTED_SOURCE_SHA"], candidate, pull["base"]["sha"])
-    api.status(candidate, "success" if verified else "failure",
-               "Complete source-bound real-agent evidence verified" if verified else "Gauntlet evidence did not qualify")
+    api.status(
+        candidate,
+        "success" if verified else "failure",
+        "Complete source-bound real-agent evidence verified" if verified else "Gauntlet evidence did not qualify",
+    )
     run_url = f"https://github.com/{api.repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-    body = (f"<!-- guard-gauntlet:{candidate} -->\n## Guard Gauntlet\n\n"
-            f"Candidate: `{candidate}`\n\n"
-            f"Result: **{'PASS' if verified else 'NOT QUALIFIED'}**\n\n"
-            "This is repository-writer-attested evidence from actual local model inference and Oh My Pi. "
-            "The CI validator independently checked source identity, the complete scenario inventory, "
-            "tool/Guard correlation, physical outcomes and evidence hashes. CI did not replace the live run "
-            "with unit tests or fabricate model completions.\n\n"
-            f"[Validation log and public evidence artifact]({run_url})\n")
+    explanation = (
+        "The CI validator independently checked source identity, the complete scenario inventory, "
+        "tool/Guard correlation, physical outcomes and evidence hashes. "
+        if verified
+        else "The package did not pass independent verification. No live qualification is claimed. "
+    )
+    body = (
+        f"<!-- guard-gauntlet:{candidate} -->\n## Guard Gauntlet\n\n"
+        f"Candidate: `{candidate}`\n\n"
+        f"Result: **{'PASS' if verified else 'NOT QUALIFIED'}**\n\n"
+        "The submitter attested to actual local model inference and Oh My Pi execution. "
+        + explanation
+        + "CI did not replace the live run with unit tests or fabricate model completions.\n\n"
+        + f"[Validation log and public evidence artifact]({run_url})\n"
+    )
     api.request(f"/issues/{number}/comments", {"body": body})
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["initialize", "prepare", "publish"])
+    parser.add_argument("action", choices=["initialize", "prepare", "publish", "require"])
     parser.add_argument("--destination", type=Path)
     args = parser.parse_args()
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     api = GitHubAPI()
-    if args.action == "initialize":
+    if args.action == "require":
+        from .pr_requirement import require_evidence
+
+        require_evidence(api, event)
+    elif args.action == "initialize":
         initialize_gate(api, event)
     elif args.action == "prepare":
         if args.destination is None:

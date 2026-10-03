@@ -1,25 +1,37 @@
 """Adversarial checks for the evidence judge, not substitutes for live runs."""
+
 from __future__ import annotations
 
 from copy import deepcopy
 
 import pytest
 
+from ci.gauntlet.catalog import Scenario
 from ci.gauntlet.evidence import assess_case
 from ci.gauntlet.proofs import task_tools_match
-from ci.gauntlet.catalog import Scenario
 from ci.gauntlet.transport import reconcile_rounds
 from tests.test_guard_gauntlet import observed_case, ordinary
 
 
 def completed(request="a" * 64):
-    return {"status": "completed", "request_sha256": request, "response_sha256": "b" * 64,
-            "response_bytes": 100, "response_models": ["judge-fixture"]}
+    return {
+        "status": "completed",
+        "request_sha256": request,
+        "response_sha256": "b" * 64,
+        "response_bytes": 100,
+        "response_models": ["judge-fixture"],
+    }
 
 
 def failed(**changes):
-    return {"status": "provider-error", "request_sha256": "a" * 64, "error_type": "HTTPError",
-            "http_status": 502, "delivered_bytes": 0, **changes}
+    return {
+        "status": "provider-error",
+        "request_sha256": "a" * 64,
+        "error_type": "HTTPError",
+        "http_status": 502,
+        "delivered_bytes": 0,
+        **changes,
+    }
 
 
 def test_identical_undelivered_transport_retry_is_visible_but_not_tool_replay():
@@ -27,21 +39,35 @@ def test_identical_undelivered_transport_retry_is_visible_but_not_tool_replay():
     assert reconcile_rounds([failed(http_status=429), failed(), completed()]) == (True, 2)
 
 
-@pytest.mark.parametrize("rows", [
-    [failed(delivered_bytes=1), completed()],
-    [failed(http_status=401), completed()],
-    [failed(error_type="TimeoutError"), completed()],
-    [failed(), completed("c" * 64)],
-    [completed(), failed()],
-    [{"status": "completed"}],
-    [],
-])
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [failed(delivered_bytes=1), completed()],
+        [failed(http_status=401), completed()],
+        [failed(error_type="TimeoutError"), completed()],
+        [failed(), completed("c" * 64)],
+        [completed(), failed()],
+        [{"status": "completed"}],
+        [],
+    ],
+)
 def test_partial_unrelated_or_unfinished_provider_attempts_never_pass(rows):
     assert reconcile_rounds(rows)[0] is False
 
 
-@pytest.mark.parametrize("change", ["missing-pre", "missing-post", "wrong-tool", "wrong-id", "wrong-route-count",
-                                     "http-error", "empty-filesystem", "missing-physical-task"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing-pre",
+        "missing-post",
+        "wrong-tool",
+        "wrong-id",
+        "wrong-route-count",
+        "http-error",
+        "empty-filesystem",
+        "missing-physical-task",
+    ],
+)
 def test_evidence_inventory_tampering_is_not_a_pass(change):
     case = observed_case()
     if change == "missing-pre":

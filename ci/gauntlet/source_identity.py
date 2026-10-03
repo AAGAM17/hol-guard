@@ -1,4 +1,5 @@
 """Bind live qualification to a Git source tree and the exact installed build."""
+
 from __future__ import annotations
 
 import re
@@ -11,8 +12,10 @@ SHA = re.compile(r"[0-9a-f]{40}")
 
 def source_identity(repo: Path, candidate_sha: str | None = None) -> dict[str, Any]:
     """Accept a candidate itself or its two-parent GitHub test merge, never a loose ancestor."""
+
     def git(*args: str) -> str:
         return subprocess.check_output(["git", *args], cwd=repo, text=True, timeout=15).strip()
+
     source = git("rev-parse", "HEAD")
     candidate = candidate_sha or source
     if SHA.fullmatch(source) is None or SHA.fullmatch(candidate) is None:
@@ -23,11 +26,14 @@ def source_identity(repo: Path, candidate_sha: str | None = None) -> dict[str, A
     parents = [line.removeprefix("parent ") for line in headers if line.startswith("parent ")]
     if candidate != source and (len(parents) != 2 or candidate not in parents):
         raise ValueError("installed-source checkout is not the requested candidate or its exact test merge")
-    status = git("status", "--porcelain", "--untracked-files=all", "--", "ci/gauntlet", "ci/native_runtime",
-                 "ci/pi-exact-continuation", "src", "rust", "pyproject.toml", "uv.lock")
-    return {"candidate_sha": candidate, "tested_source_sha": source, "source_parents": parents,
-            "tested_base_sha": next((p for p in parents if p != candidate), None) if candidate != source else None,
-            "source_dirty": bool(status)}
+    status = git("status", "--porcelain", "--untracked-files=all")
+    return {
+        "candidate_sha": candidate,
+        "tested_source_sha": source,
+        "source_parents": parents,
+        "tested_base_sha": next((p for p in parents if p != candidate), None) if candidate != source else None,
+        "source_dirty": bool(status),
+    }
 
 
 def validate_identity(report: dict[str, Any], *, expected_sha: str, expected_base_sha: str | None = None) -> None:
@@ -35,9 +41,14 @@ def validate_identity(report: dict[str, Any], *, expected_sha: str, expected_bas
     source = report.get("tested_source_sha")
     candidate = report.get("candidate_sha")
     parents = report.get("source_parents")
-    if (candidate != expected_sha or not isinstance(source, str) or SHA.fullmatch(source) is None
-            or report.get("installed_source_sha") != source or not isinstance(parents, list)
-            or any(not isinstance(p, str) or SHA.fullmatch(p) is None for p in parents)):
+    if (
+        candidate != expected_sha
+        or not isinstance(source, str)
+        or SHA.fullmatch(source) is None
+        or report.get("installed_source_sha") != source
+        or not isinstance(parents, list)
+        or any(not isinstance(p, str) or SHA.fullmatch(p) is None for p in parents)
+    ):
         raise ValueError("source, installed build and candidate binding disagree")
     if source != candidate:
         if len(parents) != 2 or candidate not in parents:

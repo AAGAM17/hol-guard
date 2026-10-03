@@ -1,4 +1,5 @@
 """Versioned live-agent scenario contracts."""
+
 from __future__ import annotations
 
 import hashlib
@@ -23,16 +24,24 @@ class Scenario:
 
     def render(self, values: dict[str, str]) -> Scenario:
         """Expand fixture placeholders without evaluating code."""
+
         def expand(text: str) -> str:
             for key, value in values.items():
                 text = text.replace("{{" + key + "}}", value)
             if "{{" in text or "}}" in text:
                 raise ValueError(f"unresolved scenario placeholder: {self.id}")
             return text
-        return Scenario(self.id, self.expectation, self.oracle, expand(self.prompt),
-                        tuple(expand(c) for c in self.commands),
-                        expand(self.path) if self.path is not None else None,
-                        self.required_tools, self.profiles)
+
+        return Scenario(
+            self.id,
+            self.expectation,
+            self.oracle,
+            expand(self.prompt),
+            tuple(expand(c) for c in self.commands),
+            expand(self.path) if self.path is not None else None,
+            self.required_tools,
+            self.profiles,
+        )
 
 
 def load_catalog(path: Path = CATALOG) -> tuple[Scenario, ...]:
@@ -43,9 +52,14 @@ def load_catalog(path: Path = CATALOG) -> tuple[Scenario, ...]:
     scenarios = []
     ids: set[str] = set()
     for row in data["scenarios"]:
-        scenario = Scenario(**{**row, "commands": tuple(row.get("commands", ())),
-                              "required_tools": tuple(row.get("required_tools", ())),
-                              "profiles": tuple(row.get("profiles", ("core",)))})
+        scenario = Scenario(
+            **{
+                **row,
+                "commands": tuple(row.get("commands", ())),
+                "required_tools": tuple(row.get("required_tools", ())),
+                "profiles": tuple(row.get("profiles", ("core",))),
+            }
+        )
         if scenario.id in ids or re.fullmatch(r"[a-z][a-z0-9-]{0,79}", scenario.id) is None:
             raise ValueError("duplicate or invalid Gauntlet scenario id")
         if scenario.expectation not in {"allow", "block"}:

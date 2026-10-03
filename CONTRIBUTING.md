@@ -68,6 +68,21 @@ keeps the contributor commits as ancestors so attribution and the original PR
 stay intact. Several contributions can also be batched onto one
 `intake/batch-...` branch so artifact regeneration runs once.
 
+## Guard Gauntlet: live-agent acceptance
+
+Changes to pre-tool behavior, command sources, policy composition, harness adapters or
+acceptance tooling must preserve ordinary agent workflows and harmful-call protection.
+Run [Guard Gauntlet](ci/gauntlet/README.md) with the actual Oh My Pi CLI, real model
+inference and the exact installed native build. Attach its verified public evidence
+through the **Guard Gauntlet evidence** workflow. The existing required `ci (3.12)`
+check verifies that exact-head evidence before the PR can qualify.
+
+A model refusal, admission-only probe, unit-test pass or prose completion is not live
+qualification. Keep failed evidence, add the relevant benign/security pair, and test
+again on the final source. Do not revive old false-positive behavior just to satisfy
+historical assertions. Contributors and coding agents should follow the complete
+run → verify → pack → attest → rerun-failed-CI sequence without waiving the gate.
+
 ## Development setup
 
 Install Git, [uv](https://docs.astral.sh/uv/getting-started/installation/), and

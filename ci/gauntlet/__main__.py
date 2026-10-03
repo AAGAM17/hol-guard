@@ -1,4 +1,5 @@
 """Command-line entry point for real-agent acceptance and evidence verification."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,6 +17,7 @@ def main() -> int:
     sub.add_parser("list", help="List the fixed required scenarios without running them")
     run = sub.add_parser("run", help="Run actual Oh My Pi with a live inference provider")
     run.add_argument("--expected-source-sha", required=True)
+    run.add_argument("--candidate-sha", help="PR head when testing its exact two-parent merge")
     run.add_argument("--output", type=Path, required=True)
     run.add_argument("--provider-url", default=os.environ.get("GUARD_GAUNTLET_PROVIDER_URL"))
     run.add_argument("--model", default=os.environ.get("GUARD_GAUNTLET_MODEL"))
@@ -30,17 +32,45 @@ def main() -> int:
     verify = sub.add_parser("verify", help="Independently reconcile a complete evidence package")
     verify.add_argument("directory", type=Path)
     verify.add_argument("--expected-sha", required=True)
-    verify.add_argument("--exploratory", action="store_true", help="Do not treat old-runtime exploration as merge proof")
+    verify.add_argument("--source-root", type=Path, help="Candidate checkout read only as data by a trusted verifier")
+    pack = sub.add_parser("pack", help="Verify and export only public qualification evidence")
+    pack.add_argument("directory", type=Path)
+    pack.add_argument("--expected-sha", required=True)
+    pack.add_argument("--output", type=Path, required=True)
+    verify.add_argument(
+        "--exploratory", action="store_true", help="Do not treat old-runtime exploration as merge proof"
+    )
     args = parser.parse_args()
     try:
         if args.command == "list":
-            print(json.dumps([{"id": s.id, "expectation": s.expectation, "oracle": s.oracle}
-                              for s in load_catalog()], indent=2))
+            print(
+                json.dumps(
+                    [{"id": s.id, "expectation": s.expectation, "oracle": s.oracle} for s in load_catalog()], indent=2
+                )
+            )
+            return 0
+        if args.command == "pack":
+            from .bundle import pack as pack_bundle
+            from .verify import verify_report
+
+            verify_report(args.directory, expected_sha=args.expected_sha)
+            digest = pack_bundle(args.directory, args.output)
+            print(json.dumps({"path": str(args.output), "sha256": digest}))
             return 0
         if args.command == "verify":
             from .verify import verify_report
-            print(json.dumps(verify_report(args.directory, expected_sha=args.expected_sha,
-                                           require_qualified=not args.exploratory), indent=2))
+
+            print(
+                json.dumps(
+                    verify_report(
+                        args.directory,
+                        expected_sha=args.expected_sha,
+                        require_qualified=not args.exploratory,
+                        source_root=args.source_root,
+                    ),
+                    indent=2,
+                )
+            )
             return 0
         if not args.provider_url or not args.model or not args.provider_identity:
             raise ValueError("live provider URL, model and provider identity are required; there is no mock fallback")
@@ -50,14 +80,36 @@ def main() -> int:
         if not api_key and not args.allow_loopback_provider:
             raise ValueError("configure a dedicated inference API key; missing inference cannot pass")
         from .runner import run_suite
-        provider = {"base_url": args.provider_url, "model": args.model, "api_key": api_key,
-                    "identity": args.provider_identity, "allow_loopback": args.allow_loopback_provider,
-                    "max_rounds": args.max_inference_rounds, "timeout": min(args.timeout, 120)}
-        report = run_suite(expected_source_sha=args.expected_source_sha, output=args.output,
-                           provider=provider, model_timeout=args.timeout, selected_ids=args.cases,
-                           omp=args.omp, work_root=args.work_root)
-        print(json.dumps({"pass": report["pass"], "merge_qualified": report["merge_qualified"],
-                          "scenarios": len(report["cases"]), "evidence": str(args.output)}))
+
+        provider = {
+            "base_url": args.provider_url,
+            "model": args.model,
+            "api_key": api_key,
+            "identity": args.provider_identity,
+            "allow_loopback": args.allow_loopback_provider,
+            "max_rounds": args.max_inference_rounds,
+            "timeout": min(args.timeout, 120),
+        }
+        report = run_suite(
+            expected_source_sha=args.expected_source_sha,
+            output=args.output,
+            provider=provider,
+            model_timeout=args.timeout,
+            selected_ids=args.cases,
+            omp=args.omp,
+            work_root=args.work_root,
+            candidate_sha=args.candidate_sha,
+        )
+        print(
+            json.dumps(
+                {
+                    "pass": report["pass"],
+                    "merge_qualified": report["merge_qualified"],
+                    "scenarios": len(report["cases"]),
+                    "evidence": str(args.output),
+                }
+            )
+        )
         return 0 if report["pass"] else 1
     except (ValueError, RuntimeError, OSError) as exc:
         print(json.dumps({"pass": False, "error_type": type(exc).__name__, "error": str(exc)}), file=sys.stderr)

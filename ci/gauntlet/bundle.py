@@ -1,4 +1,5 @@
 """Export and import bounded public evidence without raw prompts or executable files."""
+
 from __future__ import annotations
 
 import hashlib
@@ -57,9 +58,15 @@ def unpack(data: bytes, directory: Path, expected_sha256: str) -> None:
         for entry in entries:
             path = PurePosixPath(entry.filename)
             mode = entry.external_attr >> 16
-            if (path.is_absolute() or ".." in path.parts or "\\" in entry.filename
-                    or not allowed_name(entry.filename) or stat.S_ISLNK(mode)
-                    or (stat.S_IFMT(mode) not in {0, stat.S_IFREG}) or entry.flag_bits & 1):
+            if (
+                path.is_absolute()
+                or ".." in path.parts
+                or "\\" in entry.filename
+                or not allowed_name(entry.filename)
+                or stat.S_ISLNK(mode)
+                or (stat.S_IFMT(mode) not in {0, stat.S_IFREG})
+                or entry.flag_bits & 1
+            ):
                 raise ValueError("unsafe or unexpected evidence archive entry")
         directory.mkdir(mode=0o700, parents=True, exist_ok=False)
         for entry in entries:
@@ -81,10 +88,20 @@ def download(url: str) -> bytes:
     """Fetch a direct signed object URL without sending GitHub credentials."""
     parsed = urllib.parse.urlsplit(url)
     host = (parsed.hostname or "").lower()
-    allowed = (host.endswith(".r2.cloudflarestorage.com") or host.endswith(".amazonaws.com")
-               or host.endswith(".blob.core.windows.net") or host == "objects.githubusercontent.com")
-    if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.fragment
-            or parsed.port not in {None, 443} or not allowed):
+    allowed = (
+        host.endswith(".r2.cloudflarestorage.com")
+        or host.endswith(".amazonaws.com")
+        or host.endswith(".blob.core.windows.net")
+        or host == "objects.githubusercontent.com"
+    )
+    if (
+        parsed.scheme != "https"
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or parsed.port not in {None, 443}
+        or not allowed
+    ):
         raise ValueError("use a direct HTTPS R2, S3, Azure artifact or GitHub object URL")
     opener = urllib.request.build_opener(NoRedirect)
     with opener.open(urllib.request.Request(url, headers={"Accept": "application/zip"}), timeout=60) as response:

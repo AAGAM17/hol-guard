@@ -364,19 +364,30 @@ impl SupplyChainStore for ResidentSupplyChainStore {
             Err(_) => return Vec::new(),
         };
         let mut stmt = match conn.prepare(
-            "SELECT payload_json FROM publisher_cache \
-             WHERE publisher_key LIKE 'advisory:%' \
-             ORDER BY publisher_key ASC",
+            "SELECT publisher_key, payload_json, updated_at FROM publisher_cache \
+             ORDER BY updated_at DESC LIMIT 100",
         ) {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
-        let rows = match stmt.query_map([], |row| row.get::<_, String>(0)) {
+        let rows = match stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        }) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };
         rows.flatten()
-            .filter_map(|raw| serde_json::from_str(&raw).ok())
+            .filter_map(|(cache_key, raw, updated_at)| {
+                let mut payload = serde_json::from_str::<Value>(&raw).ok()?;
+                let object = payload.as_object_mut()?;
+                object.insert("cache_key".into(), Value::String(cache_key));
+                object.insert("updated_at".into(), Value::String(updated_at));
+                Some(payload)
+            })
             .collect()
     }
 
@@ -460,20 +471,23 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         if current.as_deref() != Some("connected") {
             return;
         }
-        let proof = json!({"milestone": milestone});
+        let proof: String = conn
+            .query_row(
+                "SELECT proof_json FROM guard_connect_states WHERE request_id = ?1",
+                [&request_id],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .filter(Value::is_object)
+            .unwrap_or_else(|| json!({}))
+            .to_string();
         let _ = conn.execute(
             "UPDATE guard_connect_states \
              SET status = ?1, milestone = ?2, reason = ?3, \
                  updated_at = ?4, proof_json = ?5 \
              WHERE request_id = ?6",
-            rusqlite::params![
-                status,
-                milestone,
-                reason,
-                now,
-                proof.to_string(),
-                request_id
-            ],
+            rusqlite::params![status, milestone, reason, now, proof, request_id],
         );
     }
 

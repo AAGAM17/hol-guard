@@ -27,7 +27,19 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
             ("|| cat one.txt", false),
             ("| cat one.txt", false),
             ("&& cd .. && cat one.txt", false),
-            ("&& cp one.txt copy.txt", false),
+            ("&& cp one.txt copy.txt", true),
+            ("&& mkdir -p generated/nested", true),
+            ("&& touch created.txt", true),
+            ("&& mv one.txt moved.txt", true),
+            ("&& cp .env copy.txt", false),
+            ("&& cp alias.txt copy.txt", false),
+            ("&& cp one.txt .env", false),
+            ("&& cp one.txt .git/config", false),
+            ("&& touch alias.txt", false),
+            ("&& mkdir -p .git/hooks", false),
+            ("&& mv one.txt .env", false),
+            ("&& cp one.txt copy.txt && cat copy.txt", false),
+            ("&& mkdir generated && touch generated/file.txt", false),
             ("&& rm -rf project", false),
             ("&& cat one.txt > copy.txt", false),
             ("&& cat one.txt >> .env", false),
@@ -52,6 +64,24 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
                 "{harness}: {command}"
             );
         }
+    }
+
+    for harness in ["omp", "zcode"] {
+        let result = evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &json!({"tool_name":"bash", "tool_input":{"command":"cd project && cp one.txt relative-copy.txt"}}),
+            None,
+            None,
+            root.to_str(),
+            root.to_str(),
+        );
+        // Relative cd can be redirected by caller CDPATH, which is not proved
+        // by this context. It must not inherit the absolute-cwd mutation proof.
+        assert_ne!(
+            result.minimum_action, "allow",
+            "{harness}: unverified relative cd copy"
+        );
     }
 
     for target in [root.join("missing"), project.join(".."), root.join("alias")] {

@@ -32,6 +32,9 @@ on Windows, enable Developer Mode or use an account with that privilege.
   sequences, AND/OR lists and pipelines; bounded numeric sleep; Git inspection
   with directory routing; Bun x/bunx and cross-project cwd. Git inspection uses
   a fresh repository inside the disposable workspace, not a user's repository.
+- A verified absolute `cd` followed by one bounded copy, directory creation or
+  file creation stays quiet. Secret and Git-metadata writes remain guarded, as
+  do multi-write chains and relative `cd` without a proved caller `CDPATH`.
 - Synthetic secret reads/copies, secret aliases, secret directory walks,
   directory deletion, destructive chains, Git metadata writes, GitHub mutation,
   external hosts and auth-token reads must remain guarded. Safe GitHub reads

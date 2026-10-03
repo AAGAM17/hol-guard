@@ -388,6 +388,25 @@ pub(super) fn exact_safe_cwd_compound(
     let Some(cwd) = verified_cwd_compound_context(model, context) else {
         return false;
     };
+    if model.segments.len() == 2
+        && matches!(
+            model.segments[1].executable.as_deref(),
+            Some("cp" | "mkdir" | "touch" | "mv")
+        )
+    {
+        // A verified successful cd has no filesystem side effects. Reuse the
+        // standalone mutation proof in its destination, without admitting
+        // chains whose earlier writes can invalidate a later path proof.
+        let mut operation = model.clone();
+        operation.segments = vec![model.segments[1].clone()];
+        return exact_safe_segment_with_context(
+            &operation,
+            &operation.segments[0],
+            false,
+            (context.0, Some(&cwd)),
+            execution_environment,
+        );
+    }
     model.segments[1..].iter().all(|segment| {
         (matches!(
             segment.executable.as_deref(),

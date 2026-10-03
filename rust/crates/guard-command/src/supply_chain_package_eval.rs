@@ -7698,12 +7698,13 @@ fn evaluate_with_cloud(
                     "Guard cloud evaluation could not be reached, so Guard used local package intelligence.",
                 )
             };
-            // A fresh cached bundle, including a review rule, is the local
-            // decision. Returning a cloud fail-closed result here drops the
-            // matched rule and the caller never reaches the bundle fallback.
-            if can_fallback_from_cloud_failure(deps, store)
-                || (bundle_meta.is_some() && bundle_defer_eligible && bundle_evaluation.is_some())
-            {
+            let bundle_is_at_least_as_strict = bundle_meta.is_some()
+                && bundle_defer_eligible
+                && bundle_evaluation.map_or(false, |b| {
+                    decision_rank(&b.decision)
+                        >= decision_rank(&resolve_cloud_failure_decision(deps, store))
+                });
+            if can_fallback_from_cloud_failure(deps, store) || bundle_is_at_least_as_strict {
                 return (None, Some(cloud_fallback_reason(code, message)));
             }
             let eval_result = cloud_fail_closed_evaluation_full(

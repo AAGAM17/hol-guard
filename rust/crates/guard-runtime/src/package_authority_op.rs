@@ -108,22 +108,23 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         // store_oauth.py: get_cloud_sync_profile reads oauth local credentials,
         // not a separate profile row.
         let payload = self.oauth_local_credentials()?;
-        let workspace_id = payload
-            .get("workspace_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())?;
-        let issuer = payload
-            .get("issuer")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or("https://hol.org");
-        Some(serde_json::json!({
+        let nonempty = |k: &str| {
+            payload
+                .get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+        };
+        let issuer = nonempty("issuer")?;
+        nonempty("client_id")?;
+        let mut profile = serde_json::json!({
             "auth_mode": "oauth",
-            "sync_url": issuer,
-            "workspace_id": workspace_id,
-        }))
+            "sync_url": format!("{}/api/guard/receipts/sync", issuer.trim_end_matches('/')),
+        });
+        if let Some(ws) = nonempty("workspace_id") {
+            profile["workspace_id"] = Value::String(ws.to_owned());
+        }
+        Some(profile)
     }
 
     fn get_cloud_workspace_id(&self) -> Option<String> {

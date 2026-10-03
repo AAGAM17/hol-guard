@@ -39,14 +39,7 @@ def open_descriptor_identities() -> set[str] | None:
     root = "/proc/self/fd"
     if not os.path.isdir(root):
         return None
-    targets: list[str | None] = []
-    for name in os.listdir(root):
-        if not name.isdigit():
-            continue
-        try:
-            targets.append(os.readlink(os.path.join(root, name)))
-        except OSError:
-            targets.append(None)
+    targets = [_identity_of(int(name)) for name in os.listdir(root) if name.isdigit()]
     return identities_from_targets(targets)
 
 
@@ -145,7 +138,9 @@ def test_open_descriptor_identities_notice_a_new_socket() -> None:
         ident = _identity_of(sock.fileno())
         if ident is None:
             pytest.skip("descriptor target unavailable")
-        during = open_descriptor_identities() or set()
+        during = open_descriptor_identities()
+        if during is None:
+            pytest.skip("descriptor census unavailable")
         leaked = {ident}
         assert ident in during and ident not in before
     finally:

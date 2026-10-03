@@ -23,8 +23,12 @@ def _allow_response(reason_code: str) -> HookReviewResponse:
 
 
 @pytest.fixture
-def hook_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[HookWorker, None, None]:
-    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "auto")
+def hook_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[HookWorker, None, None]:
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "auto"
+    )
     monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
     monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
     worker = HookWorker(
@@ -60,8 +64,13 @@ def test_hook_worker_auto_is_native_first(
             },
         }
 
-    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "auto")
-    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker.review_raw_hook_native", fake_native)
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "auto"
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.review_raw_hook_native",
+        fake_native,
+    )
     result = worker.review_http_payload(
         payload={"hook_event_name": "PostToolUse", "tool_response": "clean output"},
         params={},
@@ -71,14 +80,19 @@ def test_hook_worker_auto_is_native_first(
         workspace=tmp_path,
     )
     assert native_calls == 1
-    assert result == {"policy_action": "allow", "hookSpecificOutput": {"hookEventName": "PostToolUse"}}
+    assert result == {
+        "policy_action": "allow",
+        "hookSpecificOutput": {"hookEventName": "PostToolUse"},
+    }
 
 
 def test_hook_worker_auto_fails_closed_when_native_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_worker: HookWorker
 ) -> None:
     worker = hook_worker
-    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "auto")
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "auto"
+    )
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.hook_worker.native_runtime_status",
         lambda: NativeRuntimeStatus(
@@ -109,7 +123,9 @@ def test_hook_worker_shadow_compares_explicit_python_oracle(
 ) -> None:
     worker = hook_worker
 
-    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "shadow")
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "shadow"
+    )
     monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
     monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
 
@@ -129,7 +145,9 @@ def test_hook_worker_shadow_ignores_native_exception(
 ) -> None:
     worker = hook_worker
 
-    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "shadow")
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_worker.native_mode", lambda: "shadow"
+    )
     monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
     monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
 

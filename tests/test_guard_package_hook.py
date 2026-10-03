@@ -485,7 +485,7 @@ def test_guard_hook_ask_package_native_denial_surfaces_approval_url(
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert f"/requests/{request_id}" in reason
-    assert "Review this request in HOL Guard, then retry." in reason
+    assert "HOL Guard paused minimist@1.2.8 for review before install" in reason
     assert captured.err == ""
 
 
@@ -554,7 +554,7 @@ def test_guard_hook_ask_package_direct_hook_caps_browser_approval_wait(
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
     assert "/requests/" in reason
     assert "guard-token=gld1." in reason
-    assert "Review this request in HOL Guard, then retry." in reason
+    assert "HOL Guard paused minimist@1.2.8 for review before install" in reason
     assert "waiting for approval in your browser" in captured.err
 
 

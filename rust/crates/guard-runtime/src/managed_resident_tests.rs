@@ -1,6 +1,5 @@
 use super::containment::{is_retryable_live_request_error, is_stale_process_identity_error};
 use super::*;
-use crate::resident_state::acquire_startup_lock;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -41,7 +40,9 @@ fn startup_wait_honors_remaining_caller_budget() {
     ));
     fs::create_dir(&root).unwrap();
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
-    let lock = crate::resident_state::acquire_startup_lock(&root).unwrap().unwrap();
+    let lock = crate::resident_state::acquire_startup_lock(&root)
+        .unwrap()
+        .unwrap();
     let caller_budget = Duration::from_secs(2);
     let scheduling_allowance = Duration::from_millis(500);
     let started = Instant::now();

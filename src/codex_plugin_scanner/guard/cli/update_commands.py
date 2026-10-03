@@ -947,8 +947,23 @@ def _run_guard_update_unlocked(
         # A refreshed daemon may issue native requests immediately. Publish the
         # installed executable identity before releasing the barrier so a
         # pre-update client cannot revive the old resident.
-        _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
-        resident_update_lock.release()
+        try:
+            _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
+            resident_update_lock.release()
+        except NativeResidentUpdateLockError as error:
+            if resident_update_lock.active:
+                try:
+                    resident_update_lock.release()
+                except NativeResidentUpdateLockError as release_error:
+                    error = release_error
+            reason_code = error.reason_code
+            payload["status"] = "failed"
+            payload["reason_code"] = reason_code
+            payload["message"] = _TRUSTED_UPDATE_FAILURE_MESSAGES.get(
+                reason_code,
+                "HOL Guard could not safely establish its native resident update barrier.",
+            )
+            return payload, 1
     daemon_refresh: dict[str, object] | None = None
     if context is not None:
         daemon_refresh, daemon_refresh_note = refresh_guard_daemon_after_update(

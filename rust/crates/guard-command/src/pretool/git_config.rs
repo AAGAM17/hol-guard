@@ -138,7 +138,9 @@ fn probe(
     }
     let pager_key = format!("pager.{operation}");
     let pager_setting = effective.get(pager_key.as_str()).copied();
-    let paging = !leading.iter().any(|argument| argument == "--no-pager")
+    let paging = !leading
+        .iter()
+        .any(|argument| matches!(argument.as_str(), "-P" | "--no-pager"))
         && !execution_environment.is_some_and(|context| context.git_pager_disabled)
         && pager_setting.map_or(operation != "status", |value| !disabled_boolean(value));
     if paging && has_environment_pager(execution_environment) {

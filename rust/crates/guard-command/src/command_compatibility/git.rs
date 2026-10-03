@@ -36,7 +36,7 @@ fn command_index(arguments: &[String]) -> Option<usize> {
         } else if ((argument.starts_with("-c") || argument.starts_with("-C")) && argument.len() > 2)
             || matches!(
                 argument.as_str(),
-                "--no-pager"
+                "-P" | "--no-pager"
                     | "--paginate"
                     | "--bare"
                     | "--no-replace-objects"
@@ -83,7 +83,10 @@ fn bounded_inspection(arguments: &[String]) -> bool {
 pub(super) fn inspection_arguments(arguments: &[String]) -> Option<&[String]> {
     let mut index = 0;
     while let Some(argument) = arguments.get(index) {
-        if matches!(argument.as_str(), "--no-pager" | "--no-optional-locks") {
+        if matches!(
+            argument.as_str(),
+            "-P" | "--no-pager" | "--no-optional-locks"
+        ) {
             index += 1;
             continue;
         }

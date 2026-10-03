@@ -14,10 +14,35 @@ from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon as daemo
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _render_bounded_hook_script
 
 
+def open_descriptor_identities() -> set[str] | None:
+    """Return identities of descriptors the hook could leave open.
+
+    Linux exposes a stable target for each descriptor. Other platforms only
+    expose descriptor numbers. Either set grows when a socket outlives the RPC.
+    """
+
+    root = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+    if not os.path.isdir(root):
+        return None
+    identities: set[str] = set()
+    for name in os.listdir(root):
+        if not name.isdigit():
+            continue
+        path = os.path.join(root, name)
+        if root == "/proc/self/fd":
+            try:
+                identities.add(os.readlink(path))
+            except OSError:
+                continue
+        else:
+            identities.add(name)
+    return identities
+
+
 @pytest.mark.parametrize("generated", [False, True])
 @pytest.mark.parametrize("slow_stage", ["headers", "body", "complete"])
 def test_trickling_response_obeys_absolute_rpc_budget(tmp_path, monkeypatch, generated, slow_stage):
-    baseline_fds = len(os.listdir("/dev/fd")) if os.path.isdir("/dev/fd") else None
+    baseline_fds = open_descriptor_identities()
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -84,8 +109,28 @@ def test_trickling_response_obeys_absolute_rpc_budget(tmp_path, monkeypatch, gen
         listener.close()
         thread.join(timeout=3)
         assert not thread.is_alive()
-        if baseline_fds is not None:
-            assert len(os.listdir("/dev/fd")) == baseline_fds
+        ending_fds = open_descriptor_identities()
+        if baseline_fds is not None and ending_fds is not None:
+            leaked = ending_fds - baseline_fds
+            assert not leaked, f"hook RPC left file descriptors open: {sorted(leaked)}"
+
+
+def test_open_descriptor_identities_notice_a_new_socket() -> None:
+    before = open_descriptor_identities()
+    if before is None:
+        pytest.skip("descriptor census unavailable")
+    leaked: set[str] = set()
+    sock = socket.socket()
+    try:
+        sock.bind(("127.0.0.1", 0))
+        during = open_descriptor_identities() or set()
+        leaked = during - before
+        assert leaked
+    finally:
+        sock.close()
+        after = open_descriptor_identities()
+        if after is not None:
+            assert leaked.isdisjoint(after)
 
 
 @pytest.mark.parametrize("generated", [False, True])

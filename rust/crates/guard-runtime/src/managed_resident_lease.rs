@@ -11,7 +11,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::resident_state::{
-    ensure_private_directory_under, private_root_for_state_base, process_start_marker,
+    ensure_private_directory_under, private_root_for_state_base, process_is_definitively_gone,
+    process_start_marker,
 };
 
 #[path = "managed_resident_lease_identity.rs"]
@@ -534,8 +535,11 @@ pub(super) fn retire_clients_for_update(
         let actual_start_marker = match process_start_marker(record.process_id) {
             Ok(marker) => marker,
             Err(_) if !lease_file_is_recent(record.modified) => {
-                let _ = remove_stale_lease(&path, &private_root);
-                continue;
+                if process_is_definitively_gone(record.process_id).unwrap_or(false) {
+                    let _ = remove_stale_lease(&path, &private_root);
+                    continue;
+                }
+                return Err("native_resident_client_retirement_failed".to_owned());
             }
             Err(_) => return Err("native_resident_client_retirement_failed".to_owned()),
         };

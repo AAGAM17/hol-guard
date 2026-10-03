@@ -510,6 +510,35 @@ fn update_retirement_preserves_an_expired_live_same_runtime_lease() {
     fs::remove_dir_all(root).expect("test directory should be removable");
 }
 
+#[cfg(any(unix, windows))]
+#[test]
+fn update_retirement_removes_an_expired_dead_same_runtime_lease() {
+    let root = test_directory("retire-expired-dead");
+    let directory = lease_directory(&root).expect("lease directory should be available");
+    let process_id = u32::MAX;
+    let digest =
+        crate::resident_state::runtime_digest().expect("runtime digest should be available");
+    let path = directory.join(format!("client-{process_id}-expired.lease"));
+    let mut file = fixture_file_handle(&path);
+    file.write_all(format!("{process_id}\nstale\n{digest}\n").as_bytes())
+        .expect("fixture should be written");
+    file.set_modified(
+        SystemTime::now()
+            .checked_sub(LEASE_EXPIRY + Duration::from_secs(1))
+            .expect("test clock should support stale timestamp"),
+    )
+    .expect("test fixture should become stale");
+    drop(file);
+
+    let result = retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(2));
+    assert_eq!(result, Ok(()));
+    assert!(
+        !path.exists(),
+        "a definitively dead lease should be drained"
+    );
+    fs::remove_dir_all(root).expect("test directory should be removable");
+}
+
 #[test]
 fn lease_directory_entry_overflow_is_retained_as_live() {
     let root = test_directory("entry-overflow");

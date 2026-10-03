@@ -287,6 +287,9 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     _write_codex_pre_tool_payload(payload_path, workspace_dir, command)
     store = GuardStore(home_dir)
     _seed_guard_cloud(store, workspace_id=WORKSPACE_ID)
+    token_path = home_dir / "daemon-auth-token"
+    token_path.write_text("synthetic-daemon-token", encoding="utf-8")
+    token_path.chmod(0o600)
     store.cache_supply_chain_bundle(
         WORKSPACE_ID,
         _bundle_response(package_name="vitest", version="4.1.8", action="allow"),
@@ -345,7 +348,7 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     assert f"/requests/{approval_requests[0]['request_id']}" in captured.err
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     decision_reason = payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
-    assert "guard cloud evaluation could not be reached" in decision_reason
+    assert "needs your approval" in decision_reason
     assert (
         f"/requests/{approval_requests[0]['request_id']}" in payload["hookSpecificOutput"]["permissionDecisionReason"]
     )

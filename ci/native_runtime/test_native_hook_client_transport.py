@@ -173,7 +173,7 @@ def test_native_hook_client_rejects_duplicate_edge_keys_without_fallback(
     )
     assert result.returncode == 0
     assert json.loads(result.stdout) == {
-        "error": "native_request_invalid_json",
+        "error": "native_json_duplicate_key",
         "retryable": False,
     }
     assert {path.relative_to(state_dir) for path in state_dir.rglob("*")} == paths_before

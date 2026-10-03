@@ -329,10 +329,7 @@ def _native_cloud_transport_unavailable(payload: dict[str, object]) -> bool:
     reasons = payload.get("reasons")
     if not isinstance(reasons, list):
         return False
-    return any(
-        isinstance(reason, dict) and reason.get("code") == "cloud_network_error"
-        for reason in reasons
-    )
+    return any(isinstance(reason, dict) and reason.get("code") == "cloud_network_error" for reason in reasons)
 
 
 def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:

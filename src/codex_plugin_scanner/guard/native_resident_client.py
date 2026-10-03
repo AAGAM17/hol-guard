@@ -180,6 +180,13 @@ def _client_pool_for(executable: Path, state_dir: Path, environment: Mapping[str
     with _CLIENTS_LOCK:
         pool = _CLIENT_POOLS.get(key)
         if pool is None:
+            forms = _directory_forms(normalized_state_dir)
+            for old_key in list(_CLIENT_POOLS):
+                if old_key[0] == key[0] and _directory_forms(Path(old_key[1])) & forms:
+                    pool = _CLIENT_POOLS.pop(old_key)
+                    _CLIENT_POOLS[key] = pool
+                    break
+        if pool is None:
             if len(_CLIENT_POOLS) >= _MAX_PERSISTENT_POOLS:
                 evicted_key = next(iter(_CLIENT_POOLS))
                 evicted = _CLIENT_POOLS.pop(evicted_key)

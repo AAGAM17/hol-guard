@@ -140,8 +140,72 @@ def test_retire_native_resident_for_update_stops_untracked_state(
             "state_dir": state_dir,
             "environment": {"HOME": str(tmp_path)},
             "timeout_seconds": 3.0,
+            "retire_clients": True,
         }
     ]
+
+
+def test_retire_native_resident_for_update_checks_untracked_leases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard_home = tmp_path / "guard-home"
+    state_dir = guard_home / "native-runtime"
+    executable = tmp_path / "runtime"
+    stopped: list[dict[str, object]] = []
+    monkeypatch.setattr(client_module, "close_native_resident_clients", lambda *_args: None)
+    monkeypatch.setattr(client_module, "_state_files", lambda _state_dir, *, strict=False: ())
+    monkeypatch.setattr(
+        client_module,
+        "stop_native_resident",
+        lambda **kwargs: stopped.append(kwargs) or True,
+    )
+
+    assert client_module.retire_native_resident_for_update(
+        executable=executable,
+        guard_home=guard_home,
+        environment={},
+    )
+    assert stopped == [
+        {
+            "executable": executable,
+            "state_dir": state_dir,
+            "environment": {},
+            "timeout_seconds": 3.0,
+            "retire_clients": True,
+        }
+    ]
+
+
+def test_update_retirement_accepts_authenticated_no_resident_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "guard-home" / "native-runtime"
+    executable = tmp_path / "runtime"
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(client_module, "_state_files", lambda _state_dir, *, strict=False: ())
+    monkeypatch.setattr(
+        client_module,
+        "run_isolated_hook_process",
+        lambda command, **_kwargs: (
+            commands.append(command)
+            or SimpleNamespace(
+                returncode=2,
+                timed_out=False,
+                containment_failed=False,
+                stderr="native_resident_stop_unavailable\n",
+            )
+        ),
+    )
+
+    assert client_module.stop_native_resident(
+        executable=executable,
+        state_dir=state_dir,
+        environment={},
+        retire_clients=True,
+    )
+    assert commands == [(str(executable), "resident-stop", "--state-dir", str(state_dir), "--retire-clients")]
 
 
 def test_retire_native_resident_for_update_fails_closed_on_state_discovery_error(

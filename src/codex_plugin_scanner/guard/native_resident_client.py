@@ -238,22 +238,37 @@ def stop_native_resident(
     state_dir: Path,
     environment: Mapping[str, str],
     timeout_seconds: float = 3.0,
+    retire_clients: bool = False,
 ) -> bool:
     """Stop one Rust-managed resident and wait for its state retirement."""
+    command = [str(executable), "resident-stop", "--state-dir", str(state_dir)]
+    if retire_clients:
+        command.append("--retire-clients")
     result = run_isolated_hook_process(
-        (str(executable), "resident-stop", "--state-dir", str(state_dir)),
+        tuple(command),
         input_text="",
         cwd=executable.parent,
         environment=dict(environment),
         timeout_seconds=timeout_seconds,
         output_limit=_MAX_RESPONSE_BYTES,
     )
-    if result.returncode != 0 or result.timed_out or result.containment_failed:
+    if result.timed_out or result.containment_failed:
         return False
     try:
-        return not _state_files(state_dir, strict=True)
+        state_files = _state_files(state_dir, strict=True)
     except (OSError, RuntimeError):
         return False
+    if result.returncode == 0:
+        return not state_files
+    # Rust uses this authenticated, idempotent result when no resident state
+    # exists. Update retirement also inspects leases, so accept it only after
+    # the strict final state scan and only for the update-only command.
+    return (
+        retire_clients
+        and result.returncode == 2
+        and result.stderr.strip() == "native_resident_stop_unavailable"
+        and not state_files
+    )
 
 
 def retire_native_resident_for_update(
@@ -275,13 +290,13 @@ def retire_native_resident_for_update(
     state_dir = resolved_guard_home / "native-runtime"
     try:
         close_native_resident_clients(resolved_guard_home)
-        if not _state_files(state_dir, strict=True):
-            return True
+        _ = _state_files(state_dir, strict=True)
         return stop_native_resident(
             executable=executable,
             state_dir=state_dir,
             environment=environment,
             timeout_seconds=timeout_seconds,
+            retire_clients=True,
         )
     except (OSError, RuntimeError, ValueError):
         return False

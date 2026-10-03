@@ -127,9 +127,9 @@ fn client_request_cannot_spawn_while_update_barrier_is_held() {
     let digest = runtime_digest().unwrap();
     let mut update_file = OpenOptions::new()
         .create(true)
-        .truncate(true)
         .read(true)
         .write(true)
+        .truncate(false)
         .open(&lock_path)
         .unwrap();
     update_file

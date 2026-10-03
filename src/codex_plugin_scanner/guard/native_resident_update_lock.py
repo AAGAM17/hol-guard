@@ -46,13 +46,6 @@ class NativeResidentUpdateLock:
     def publish_runtime_digest(self, executable: Path) -> str:
         digest = _runtime_digest(executable)
         if digest is None:
-            try:
-                _ = executable.lstat()
-            except FileNotFoundError:
-                _write_marker(self._descriptor, "")
-                return ""
-            except OSError as error:
-                raise NativeResidentUpdateLockError("update_native_resident_lock_finalize_failed") from error
             raise NativeResidentUpdateLockError("update_native_resident_lock_finalize_failed")
         _write_marker(self._descriptor, digest)
         return digest

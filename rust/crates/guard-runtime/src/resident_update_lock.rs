@@ -7,11 +7,18 @@ use std::path::Path;
 pub(crate) const RESIDENT_UPDATE_LOCK_FILE_NAME: &str = "resident-update.v1.lock";
 const MAX_MARKER_BYTES: u64 = 128;
 
-#[derive(Debug)]
 pub(crate) struct ResidentUpdateSharedLock {
     file: File,
     #[cfg(windows)]
     _directory_binding: guard_runtime_windows_process::PrivateDirectoryBinding,
+}
+
+impl std::fmt::Debug for ResidentUpdateSharedLock {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ResidentUpdateSharedLock")
+            .finish_non_exhaustive()
+    }
 }
 
 impl Drop for ResidentUpdateSharedLock {
@@ -99,9 +106,9 @@ mod tests {
         let path = state.join(RESIDENT_UPDATE_LOCK_FILE_NAME);
         let file = OpenOptions::new()
             .create(true)
-            .truncate(true)
             .read(true)
             .write(true)
+            .truncate(false)
             .open(path)
             .unwrap();
         file.set_len(0).unwrap();
@@ -136,9 +143,9 @@ mod tests {
         let path = state.join(RESIDENT_UPDATE_LOCK_FILE_NAME);
         let mut file = OpenOptions::new()
             .create(true)
-            .truncate(true)
             .read(true)
             .write(true)
+            .truncate(false)
             .open(path)
             .unwrap();
         file.write_all(format!("{}\n", "b".repeat(64)).as_bytes())

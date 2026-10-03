@@ -377,7 +377,9 @@ def run_guard_update(
                 resident_update_lock=resident_update_lock,
             )
             if resident_update_lock.active:
-                _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
+                payload, _exit_code = result
+                if _should_publish_runtime_digest(payload):
+                    _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
                 resident_update_lock.release()
             return result
     except NativeResidentUpdateLockError as error:
@@ -943,7 +945,7 @@ def _run_guard_update_unlocked(
     notes = _success_notes(payload)
     if notes:
         payload["notes"] = [*_payload_notes(payload), *notes]
-    if resident_update_lock is not None and resident_update_lock.active:
+    if resident_update_lock is not None and resident_update_lock.active and _should_publish_runtime_digest(payload):
         # A refreshed daemon may issue native requests immediately. Publish the
         # installed executable identity before releasing the barrier so a
         # pre-update client cannot revive the old resident.
@@ -951,12 +953,12 @@ def _run_guard_update_unlocked(
             _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
             resident_update_lock.release()
         except NativeResidentUpdateLockError as error:
+            reason_code = error.reason_code
             if resident_update_lock.active:
                 try:
                     resident_update_lock.release()
                 except NativeResidentUpdateLockError as release_error:
-                    error = release_error
-            reason_code = error.reason_code
+                    reason_code = release_error.reason_code
             payload["status"] = "failed"
             payload["reason_code"] = reason_code
             payload["message"] = _TRUSTED_UPDATE_FAILURE_MESSAGES.get(
@@ -1231,6 +1233,12 @@ def _directory_path(path: str | Path) -> Path:
 
 def _output_lines(value: str) -> list[str]:
     return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def _should_publish_runtime_digest(payload: dict[str, object]) -> bool:
+    """Publish only after a successful installer, including same-version repairs."""
+
+    return payload.get("return_code") == 0 and payload.get("status") in {"current", "stale", "updated"}
 
 
 def _success_status(payload: dict[str, object]) -> str:

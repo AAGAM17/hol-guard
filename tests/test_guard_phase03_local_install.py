@@ -139,12 +139,16 @@ def test_update_retires_native_resident_before_installer_execution(
 ) -> None:
     wheel = tmp_path / "hol_guard-2.2.3-py3-none-any.whl"
     wheel.write_bytes(b"fake-wheel")
+    runtime = tmp_path / "hol-guard-runtime"
+    runtime.write_bytes(b"new-runtime")
+    runtime.chmod(0o700)
     events: list[tuple[str, object]] = []
     monkeypatch.setattr(update_commands, "_current_version", lambda: "2.2.1")
     monkeypatch.setattr(update_commands, "_current_version_from_subprocess", lambda *_args, **_kwargs: "2.2.3")
     monkeypatch.setattr(update_commands, "_latest_version_from_pypi", lambda: "2.2.3")
     monkeypatch.setattr(update_commands, "_direct_url_payload", lambda: None)
     monkeypatch.setattr(update_commands, "_installer_kind", lambda: "pipx")
+    monkeypatch.setattr(update_commands, "_bundled_runtime_candidate", lambda: runtime)
     monkeypatch.setattr(
         update_commands,
         "_retire_native_resident_before_update",

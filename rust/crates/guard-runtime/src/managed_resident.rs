@@ -276,7 +276,7 @@ fn client_request_with_deadline(
     }
 }
 
-pub(crate) fn stop_managed(state_base: &Path) -> Result<(), String> {
+pub(crate) fn stop_managed(state_base: &Path, retire_clients: bool) -> Result<(), String> {
     // Materialize the current runtime scope even when no resident state is
     // present.  This keeps the stop command's authenticated, private-home
     // contract deterministic for callers that use it to initialize a fresh
@@ -289,9 +289,14 @@ pub(crate) fn stop_managed(state_base: &Path) -> Result<(), String> {
         .into_iter()
         .next()
     else {
+        if retire_clients {
+            lease::retire_clients_for_update(state_base, &digest, deadline)?;
+        }
         return Err("native_resident_stop_unavailable".to_owned());
     };
-    lease::retire_clients_for_update(state_base, &digest, deadline)?;
+    if retire_clients {
+        lease::retire_clients_for_update(state_base, &digest, deadline)?;
+    }
     let process_ids = containment::state_process_identities(std::slice::from_ref(&state));
     let token = token_from_state(&state)?;
     let identity = crate::resident_client::ExpectedProcessIdentity {

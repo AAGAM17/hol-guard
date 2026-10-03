@@ -13,6 +13,7 @@ import pytest
 from codex_plugin_scanner.guard.cli import update_commands
 from codex_plugin_scanner.guard.mdm.contracts import ManagedPolicyState
 from codex_plugin_scanner.guard.native_resident_update_lock import (
+    NativeResidentUpdateLockError,
     hold_native_resident_update_lock,
 )
 from tests.update_context_test_support import (
@@ -79,6 +80,26 @@ def test_update_barrier_blocks_simultaneous_old_request_and_allows_new_runtime(t
 
     assert _probe(lock_path, old_digest) == "rejected"
     assert _probe(lock_path, new_digest) == "accepted"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="probe uses POSIX flock directly")
+def test_missing_runtime_does_not_clear_update_marker(tmp_path: Path) -> None:
+    guard_home = tmp_path / "guard-home"
+    runtime = tmp_path / "hol-guard-runtime"
+    runtime.write_bytes(b"old-runtime")
+    runtime.chmod(0o700)
+    old_digest = _digest(runtime)
+
+    with hold_native_resident_update_lock(guard_home, initial_executable=runtime) as update_lock:
+        with pytest.raises(
+            NativeResidentUpdateLockError,
+            match="update_native_resident_lock_finalize_failed",
+        ):
+            update_lock.publish_runtime_digest(tmp_path / "missing-runtime")
+        lock_path = guard_home / "native-runtime" / "resident-update.v1.lock"
+        assert lock_path.read_text(encoding="ascii") == f"{old_digest}\n"
+
+    assert _probe(lock_path, old_digest) == "accepted"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="probe uses POSIX flock directly")

@@ -521,7 +521,6 @@ pub(super) fn retire_clients_for_update(
         }
     }
 
-    let now = SystemTime::now();
     for path in paths {
         let record = match read_lease(&path, &private_root) {
             Ok(record) => record,
@@ -537,13 +536,6 @@ pub(super) fn retire_clients_for_update(
                 continue;
             }
         };
-        let Ok(age) = now.duration_since(record.modified) else {
-            return Err("native_resident_client_retirement_failed".to_owned());
-        };
-        if age > LEASE_EXPIRY {
-            let _ = record.identity.remove_if_same(&path);
-            continue;
-        }
         if !record.digest.eq_ignore_ascii_case(expected_digest) {
             continue;
         }

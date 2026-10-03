@@ -83,6 +83,17 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             "{command}"
         );
     }
+    for command in [
+        "cat ordinary.txt; git push origin main",
+        "cat alias.txt; git push origin main",
+        "ls ordinary.txt; git push origin main",
+    ] {
+        assert_ne!(
+            evaluate(&controls, command).minimum_action,
+            "allow",
+            "context-free wrappers cannot prove file targets: {command}"
+        );
+    }
     #[cfg(unix)]
     {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

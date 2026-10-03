@@ -29,7 +29,11 @@ fn explicit_github_read_permission_deny_still_wins() {
             "pwd; gh auth status; echo done",
             "gh auth status | head -1",
         ] {
-            if permission == "read-local" && !command.contains("gh auth status") {
+            let exercises_local_permission = matches!(
+                command,
+                "gh auth status" | "pwd; gh auth status; echo done" | "gh auth status | head -1"
+            );
+            if permission == "read-local" && !exercises_local_permission {
                 continue;
             }
             let result = evaluate_pre_tool_envelope_with_context(

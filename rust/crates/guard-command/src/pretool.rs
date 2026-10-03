@@ -308,12 +308,33 @@ pub(crate) fn benign_command_segments(
                 "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" | "date"
             ) || segment.arguments.is_empty()
                 || stdin_filter;
+            // Context-free public wrappers cannot prove that a file operand or
+            // implicit cwd is not a sensitive target. Keep extension consent
+            // from upgrading those lexical-only proofs; callers with verified
+            // home/cwd context retain the bounded path proof below.
+            let requires_path_context = !path_free
+                && matches!(
+                    basename,
+                    "ls" | "cat"
+                        | "cp"
+                        | "mkdir"
+                        | "touch"
+                        | "mv"
+                        | "head"
+                        | "tail"
+                        | "rg"
+                        | "grep"
+                        | "sed"
+                );
             let all_previous_benign = model.segments[..index]
                 .iter()
                 .all(|previous| exact_safe_segment_with_context(model, previous, false, context));
             // Earlier extension-approved segments may rewrite the tree (checkout/pull);
             // a pre-execution path proof only holds while every predecessor is benign.
-            (benign && (path_free || all_previous_benign)).then_some(index)
+            (benign
+                && (!requires_path_context || context.0.is_some() || context.1.is_some())
+                && (path_free || all_previous_benign))
+                .then_some(index)
         })
         .collect()
 }

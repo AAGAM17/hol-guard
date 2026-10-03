@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, cast
 
+from . import native_execution as _native_execution
 from .containment_execution_support import load_current_containment_health as _load_current_containment_health
 from .runtime.contained_execution_common import (
     canonical_existing_directory as _canonical_directory,
@@ -51,8 +52,6 @@ from .runtime.effect_decision import (
 )
 from .runtime.secret_sensitivity import classify_secret_path
 from .runtime.workspace_snapshot_inputs import complete_workspace_snapshot
-
-from . import native_execution as _native_execution
 
 ContainedWriteOperation = Literal["patch-check", "patch-apply", "format-write", "copy-generated"]
 _PROTECTED_PARTS = frozenset(

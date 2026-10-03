@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from codex_plugin_scanner.path_support import resolve_path_within_allowed_roots, resolves_within_root
 
+from . import native_execution as _native_execution
 from .action_lattice import most_restrictive_guard_action, normalize_guard_action
 from .adapters.base import HarnessContext
 from .advisory_model import ProtectTargetIdentity, advisory_matches_target, build_package_url
@@ -96,7 +97,6 @@ from .runtime.workspace_path_guard import (
     resolve_path_within_workspace,
 )
 from .shims import package_shim_dashboard_status, package_shim_supported_managers
-from . import native_execution as _native_execution
 from .stable_digest import stable_digest_hex
 from .store import GuardStore
 
@@ -3321,9 +3321,7 @@ def _build_package_manager_protection(store: Any) -> dict[str, object]:
         guard_home=store.guard_home,
     )
     supported_managers = (
-        list(_native_managers)
-        if isinstance(_native_managers, list)
-        else list(package_shim_supported_managers())
+        list(_native_managers) if isinstance(_native_managers, list) else list(package_shim_supported_managers())
     )
     detected_managers = sorted(set(_string_items(status.get("detected_managers"))))
     protected_managers = sorted(set(_string_items(status.get("protected_managers"))))

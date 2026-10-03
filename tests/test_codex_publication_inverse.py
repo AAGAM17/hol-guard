@@ -377,7 +377,7 @@ def test_real_configured_native_protection_before_inverse_retirement(
     inverse,
     monkeypatch,
     tmp_path,
-    boundary,  # noqa: F811
+    boundary,
 ):
     from codex_plugin_scanner.guard import runtime_transition_codex_observer as observer
     from codex_plugin_scanner.guard.native_runtime import native_runtime_status

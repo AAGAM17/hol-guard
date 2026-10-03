@@ -5,8 +5,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import signal
 import shlex
+import signal
 import subprocess
 import tempfile
 import threading
@@ -53,12 +53,12 @@ class McpCatalogResult:
     skills_reason: str | None = None
 
 
-
 def _shlex_join_safe(argv: list) -> str:
     try:
         return shlex.join(argv)
     except Exception:
         return " ".join(argv)
+
 
 def run_mcp_catalog(
     argv: Sequence[str],
@@ -75,6 +75,7 @@ def run_mcp_catalog(
     if cancel is not None and cancel.is_set():
         return McpCatalogResult(reason="cancelled")
     from .. import native_execution as _native_execution
+
     _native_result = _native_execution.mcp_stdio_probe_native(
         _shlex_join_safe(list(argv)),
         cwd=Path.cwd(),

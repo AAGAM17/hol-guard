@@ -113,14 +113,21 @@ pub(crate) enum ResidentOperationV1 {
     PackageIntentParse(PackageIntentParseRequestV1),
     SupplyChainEval(SupplyChainEvalRequestV1),
     PackageAuthorityDecide(PackageAuthorityDecideRequestV1),
+    #[allow(dead_code)]
     ContainedNodeExecute(ContainedNodeExecuteRequestV1),
+    #[allow(dead_code)]
     ContainedTypescriptExecute(ContainedTypescriptExecuteRequestV1),
+    #[allow(dead_code)]
     ContainedPackageScriptExecute(ContainedPackageScriptExecuteRequestV1),
+    #[allow(dead_code)]
     ContainedWorkspaceWriteExecute(ContainedWorkspaceWriteExecuteRequestV1),
+    #[allow(dead_code)]
     ContainedExecute(ContainedExecuteRequestV1),
+    #[allow(dead_code)]
     ContainedTestHook(ContainedTestHookRequestV1),
     ShimAdmin(ShimAdminRequestV1),
     McpStdioProbe(McpStdioProbeRequestV1),
+    #[allow(dead_code)]
     PromptAnalyze(PromptAnalyzeRequestV1),
     Health(Value),
     Shutdown(Value),

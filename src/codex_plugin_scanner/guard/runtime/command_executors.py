@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import native_execution as _native_execution
 from ..adapters import get_adapter
 from ..adapters.base import HarnessContext
 from ..cli.install_commands import (
@@ -29,7 +30,6 @@ from ..local_supply_chain import (
     resolve_supply_chain_audit_workspace_dir,
     sync_supply_chain_cloud_state,
 )
-from .. import native_execution as _native_execution
 from ..package_shim_status import record_package_shim_audit_result
 from ..shims import (
     activate_package_shims,

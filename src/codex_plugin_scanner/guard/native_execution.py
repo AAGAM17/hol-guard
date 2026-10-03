@@ -69,16 +69,12 @@ def _resident_request(
         timeout_seconds=timeout_seconds,
     )
     if response is None:
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason=f"native_{operation}_transport"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=f"native_{operation}_transport")
         return None
     try:
         decoded = json.loads(response.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        native_record_resident_failure(
-            status.identity.sha256, guard_home, reason=f"native_{operation}_malformed"
-        )
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=f"native_{operation}_malformed")
         return None
     if not isinstance(decoded, dict):
         return None
@@ -91,6 +87,7 @@ def _resident_request(
 # ---------------------------------------------------------------------------
 # Contained execution ops
 # ---------------------------------------------------------------------------
+
 
 def _contained_request(
     *,
@@ -309,6 +306,7 @@ def contained_test_hook_native(
 # Shim admin op
 # ---------------------------------------------------------------------------
 
+
 def shim_admin_native(
     subop: str,
     *,
@@ -349,6 +347,7 @@ def shim_admin_native(
 # ---------------------------------------------------------------------------
 # MCP stdio probe op
 # ---------------------------------------------------------------------------
+
 
 def mcp_stdio_probe_native(
     command_text: str,
@@ -392,31 +391,32 @@ def mcp_stdio_probe_native(
 # caller falls back to the Python body rather than fabricating a result.
 # ---------------------------------------------------------------------------
 
+
 def _require_str(payload: dict, key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str):
-        raise ValueError(f'missing or non-string field: {key}')
+        raise ValueError(f"missing or non-string field: {key}")
     return value
 
 
 def _require_int(payload: dict, key: str) -> int:
     value = payload.get(key)
     if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f'missing or non-int field: {key}')
+        raise ValueError(f"missing or non-int field: {key}")
     return value
 
 
 def _require_list(payload: dict, key: str) -> list:
     value = payload.get(key)
     if not isinstance(value, list):
-        raise ValueError(f'missing or non-list field: {key}')
+        raise ValueError(f"missing or non-list field: {key}")
     return value
 
 
 def _require_dict(payload: dict, key: str) -> dict:
     value = payload.get(key)
     if not isinstance(value, dict):
-        raise ValueError(f'missing or non-dict field: {key}')
+        raise ValueError(f"missing or non-dict field: {key}")
     return value
 
 
@@ -424,12 +424,12 @@ def _positive_proof(payload: dict) -> Any:
     from .runtime.effect_contract import ProofRequirement, ProofRoute
     from .runtime.effect_decision import PositiveProof
 
-    route_str = _require_str(payload, 'route')
-    binding_digest = _require_str(payload, 'binding_digest')
-    raw_reqs = _require_list(payload, 'satisfied_requirements')
-    enforced = payload.get('enforced')
+    route_str = _require_str(payload, "route")
+    binding_digest = _require_str(payload, "binding_digest")
+    raw_reqs = _require_list(payload, "satisfied_requirements")
+    enforced = payload.get("enforced")
     if not isinstance(enforced, bool):
-        raise ValueError('missing or non-bool field: enforced')
+        raise ValueError("missing or non-bool field: enforced")
     return PositiveProof(
         route=ProofRoute(route_str),
         binding_digest=binding_digest,
@@ -439,14 +439,13 @@ def _positive_proof(payload: dict) -> Any:
 
 
 def _decision_reason(item: dict) -> Any:
-    from .models import GuardAction
     from .runtime.effect_decision import DecisionFactorSource, DecisionReason
 
-    source = _require_str(item, 'source')
-    reason_code = _require_str(item, 'reason_code')
-    action_floor = _require_str(item, 'action_floor')
-    segment_ref = item.get('segment_ref')
-    operation_ref = item.get('operation_ref')
+    source = _require_str(item, "source")
+    reason_code = _require_str(item, "reason_code")
+    action_floor = _require_str(item, "action_floor")
+    segment_ref = item.get("segment_ref")
+    operation_ref = item.get("operation_ref")
     return DecisionReason(
         source=DecisionFactorSource(source),
         reason_code=reason_code,
@@ -460,11 +459,11 @@ def _effect_decision(payload: dict) -> Any:
     from .runtime.effect_contract import ProofRoute
     from .runtime.effect_decision import EffectDecision, FinalDisposition
 
-    action = _require_str(payload, 'action')
-    disposition = _require_str(payload, 'disposition')
-    raw_routes = _require_list(payload, 'proof_routes')
-    raw_controlling = _require_list(payload, 'controlling_reasons')
-    raw_reasons = _require_list(payload, 'reasons')
+    action = _require_str(payload, "action")
+    disposition = _require_str(payload, "disposition")
+    raw_routes = _require_list(payload, "proof_routes")
+    raw_controlling = _require_list(payload, "controlling_reasons")
+    raw_reasons = _require_list(payload, "reasons")
     return EffectDecision(
         action=action,  # type: ignore[arg-type]
         disposition=FinalDisposition(disposition),
@@ -477,16 +476,16 @@ def _effect_decision(payload: dict) -> Any:
 def _containment_attestation(payload: dict) -> Any:
     from .runtime.containment_contract import ContainmentAttestation, ContainmentBackend, ContainmentFailure
 
-    backend = _require_str(payload, 'backend')
-    failure_raw = payload.get('failure')
+    backend = _require_str(payload, "backend")
+    failure_raw = payload.get("failure")
     return ContainmentAttestation(
         backend=ContainmentBackend(backend),
-        backend_digest=_require_str(payload, 'backend_digest'),
-        request_digest=_require_str(payload, 'request_digest'),
-        policy_digest=_require_str(payload, 'policy_digest'),
-        launch_digest=_require_str(payload, 'launch_digest'),
-        executable_digest=_require_str(payload, 'executable_digest'),
-        enforced=bool(payload.get('enforced', False)),
+        backend_digest=_require_str(payload, "backend_digest"),
+        request_digest=_require_str(payload, "request_digest"),
+        policy_digest=_require_str(payload, "policy_digest"),
+        launch_digest=_require_str(payload, "launch_digest"),
+        executable_digest=_require_str(payload, "executable_digest"),
+        enforced=bool(payload.get("enforced", False)),
         failure=ContainmentFailure(failure_raw) if isinstance(failure_raw, str) else None,
     )
 
@@ -495,24 +494,24 @@ def _captured_output(item: dict) -> Any:
     from .runtime.containment_outputs import ContainmentCapturedOutput
 
     return ContainmentCapturedOutput(
-        snapshot_path=_require_str(item, 'snapshot_path'),
-        content=bytes.fromhex(_require_str(item, 'content_hex')) if 'content_hex' in item else b'',
-        content_digest=_require_str(item, 'content_digest'),
+        snapshot_path=_require_str(item, "snapshot_path"),
+        content=bytes.fromhex(_require_str(item, "content_hex")) if "content_hex" in item else b"",
+        content_digest=_require_str(item, "content_digest"),
     )
 
 
 def _contained_node_result(payload: dict) -> Any:
     from .contained_node_execution import ContainedNodeResult
 
-    attestation = _require_dict(payload, 'attestation')
-    decision_raw = _require_dict(payload, 'decision')
-    exit_code = _require_int(attestation, 'exit_code')
-    stdout = _require_str(payload, 'stdout')
-    stderr = _require_str(payload, 'stderr')
-    proof_raw = payload.get('proof')
+    attestation = _require_dict(payload, "attestation")
+    decision_raw = _require_dict(payload, "decision")
+    exit_code = _require_int(attestation, "exit_code")
+    stdout = _require_str(payload, "stdout")
+    stderr = _require_str(payload, "stderr")
+    proof_raw = payload.get("proof")
     proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
     decision = _effect_decision(decision_raw)
-    operation_id = _require_str(payload, 'operation_id')
+    operation_id = _require_str(payload, "operation_id")
     return ContainedNodeResult(
         exit_code=exit_code,
         stdout=stdout,
@@ -526,15 +525,15 @@ def _contained_node_result(payload: dict) -> Any:
 def _contained_typescript_result(payload: dict) -> Any:
     from .contained_typescript_execution import ContainedTypeScriptResult
 
-    attestation = _require_dict(payload, 'attestation')
-    decision_raw = _require_dict(payload, 'decision')
-    exit_code = _require_int(attestation, 'exit_code')
-    stdout = _require_str(payload, 'stdout')
-    stderr = _require_str(payload, 'stderr')
-    proof_raw = payload.get('proof')
+    attestation = _require_dict(payload, "attestation")
+    decision_raw = _require_dict(payload, "decision")
+    exit_code = _require_int(attestation, "exit_code")
+    stdout = _require_str(payload, "stdout")
+    stderr = _require_str(payload, "stderr")
+    proof_raw = payload.get("proof")
     proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
     decision = _effect_decision(decision_raw)
-    operation_id = _require_str(payload, 'operation_id')
+    operation_id = _require_str(payload, "operation_id")
     return ContainedTypeScriptResult(
         exit_code=exit_code,
         stdout=stdout,
@@ -548,15 +547,15 @@ def _contained_typescript_result(payload: dict) -> Any:
 def _contained_package_script_result(payload: dict) -> Any:
     from .contained_package_script_execution import ContainedPackageScriptResult
 
-    attestation = _require_dict(payload, 'attestation')
-    decision_raw = _require_dict(payload, 'decision')
-    exit_code = _require_int(attestation, 'exit_code')
-    stdout = _require_str(payload, 'stdout')
-    stderr = _require_str(payload, 'stderr')
-    proof_raw = payload.get('proof')
+    attestation = _require_dict(payload, "attestation")
+    decision_raw = _require_dict(payload, "decision")
+    exit_code = _require_int(attestation, "exit_code")
+    stdout = _require_str(payload, "stdout")
+    stderr = _require_str(payload, "stderr")
+    proof_raw = payload.get("proof")
     proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
     decision = _effect_decision(decision_raw)
-    operation_id = _require_str(payload, 'operation_id')
+    operation_id = _require_str(payload, "operation_id")
     return ContainedPackageScriptResult(
         exit_code=exit_code,
         stdout=stdout,
@@ -569,20 +568,20 @@ def _contained_package_script_result(payload: dict) -> Any:
 
 def _contained_workspace_write_result(payload: dict) -> Any:
     from .contained_workspace_write_execution import (
-        ContainedWriteOperation,
         ContainedWorkspaceWriteResult,
+        ContainedWriteOperation,
     )
 
-    attestation = _require_dict(payload, 'attestation')
-    decision_raw = _require_dict(payload, 'decision')
-    exit_code = _require_int(attestation, 'exit_code')
-    stdout = _require_str(payload, 'stdout')
-    stderr = _require_str(payload, 'stderr')
-    proof_raw = payload.get('proof')
+    attestation = _require_dict(payload, "attestation")
+    decision_raw = _require_dict(payload, "decision")
+    exit_code = _require_int(attestation, "exit_code")
+    stdout = _require_str(payload, "stdout")
+    stderr = _require_str(payload, "stderr")
+    proof_raw = payload.get("proof")
     proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
     decision = _effect_decision(decision_raw)
-    op_raw = _require_str(payload, 'operation_id')
-    output_digest = payload.get('output_digest')
+    op_raw = _require_str(payload, "operation_id")
+    output_digest = payload.get("output_digest")
     return ContainedWorkspaceWriteResult(
         exit_code=exit_code,
         stdout=stdout,
@@ -597,6 +596,7 @@ def _contained_workspace_write_result(payload: dict) -> Any:
 # ---------------------------------------------------------------------------
 # Prompt-analysis op (RTM-019)
 # ---------------------------------------------------------------------------
+
 
 def prompt_analyze_native(
     subop: str,

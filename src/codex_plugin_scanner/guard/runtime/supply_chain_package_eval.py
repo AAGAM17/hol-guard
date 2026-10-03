@@ -24,19 +24,17 @@ if TYPE_CHECKING:
 else:  # pragma: no cover - runtime compatibility
     tomllib = importlib.import_module("tomllib" if sys.version_info >= (3, 11) else "tomli")
 
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from ..action_lattice import normalize_guard_action_result
 from ..config import load_guard_config, resolve_risk_action
 from ..models import GuardAction, GuardArtifact
-from ..native_archive_inspection import inspect_archive_native
 from ..package_firewall_entitlement import resolve_package_firewall_entitlement
 from ..stable_digest import stable_digest_hex
 from ..store import GuardStore
 from ..store_evidence import EvidenceRecord
 from ..text import ensure_terminal_punctuation as _ensure_terminal_punctuation
-from .js_semver import highest_js_version_for_selector, version_matches_js_selector
+from .js_semver import version_matches_js_selector
 from .lockfile_evaluation_support import (
     collect_lockfile_parse_results,
     incomplete_lockfile_fallback_target,
@@ -45,7 +43,6 @@ from .lockfile_evaluation_support import (
     parse_lockfile_with_budget,
 )
 from .lockfile_parse_result import (
-    LOCKFILE_PARSER_VERSION,
     LockfileParseResult,
     incomplete_lockfile_result,
     parse_lockfile_text,
@@ -65,10 +62,7 @@ from .package_manifest_diff import (
 )
 from .restricted_archive_download import (
     RestrictedArchiveDownload,
-    RestrictedArchiveDownloadResult,
-    RestrictedArchiveFailure,
     canonical_external_https_archive_source,
-    download_restricted_archive,
     is_external_https_archive_source,
 )
 from .runner import (
@@ -77,7 +71,6 @@ from .runner import (
     GuardSyncNotConfiguredError,
     _guard_sync_request,
     _is_timeout_error,
-    _normalized_receipts_sync_url,
     _resolve_guard_sync_auth_context,
     _urlopen_json_with_timeout_retry,
     _validate_guard_sync_url,
@@ -4822,28 +4815,12 @@ def _bundle_package_label(package: SupplyChainBundlePackage, *, version: str | N
     return f"{package_name}@{version or package.version}"
 
 
-
 # Retained cloud/registry/archive services live in supply_chain_package_services;
 # re-exported here so existing callers and monkeypatch seams keep working.
-from .supply_chain_package_services import (
-    _workspace_fingerprint,
+from .supply_chain_package_services import (  # noqa: E402
     _build_request_payload,
-    _lockfile_context,
-    _scan_external_tarball,
-    _external_archive_request_timeout_result,
-    _download_external_tarball,
-    _registry_resolved_target_version,
-    _registry_package_name,
-    _npm_registry_resolved_version,
-    _pypi_registry_resolved_version,
-    _normalized_pypi_requested_range,
-    _pypi_caret_specifier,
-    _pypi_tilde_specifier,
     _normalized_supply_chain_evaluate_url,
-    _NPM_REGISTRY_METADATA_BASE_URL,
-    _PYPI_REGISTRY_METADATA_BASE_URL,
-    _TARBALL_SCAN_MAX_BYTES,
-    _TARBALL_SCAN_MAX_FILES,
-    _TARBALL_SCAN_MAX_PACKAGE_JSON_BYTES,
-    _TARBALL_SCAN_TIMEOUT_SECONDS,
+    _registry_resolved_target_version,
+    _scan_external_tarball,
+    _workspace_fingerprint,
 )

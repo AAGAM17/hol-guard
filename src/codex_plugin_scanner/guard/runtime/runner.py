@@ -2386,9 +2386,7 @@ def prompt_requests_to_artifacts(
         rebuilt = [a for a in (_guard_artifact_from_dict(item) for item in native) if a is not None]
         if len(rebuilt) == len(native):
             return rebuilt
-    return _prompt_requests_to_artifacts_python(
-        detection=detection, context=context, requests=requests
-    )
+    return _prompt_requests_to_artifacts_python(detection=detection, context=context, requests=requests)
 
 
 def _guard_artifact_from_dict(value: object) -> GuardArtifact | None:

@@ -61,7 +61,7 @@ def test_only_explicit_restore_path_defers_to_exact_gate():
 def test_parent_deadline_refuses_before_preparation_or_factors(
     prepared_repair,
     monkeypatch,
-    deadline,  # noqa: F811 -- shared fixture
+    deadline,
 ):
     context, _config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -207,7 +207,7 @@ def test_existing_inverse_reports_recovery_required_before_factors(prepared_repa
 def test_public_apps_repair_uses_exact_plan_and_real_native_protection(
     prepared_repair,
     monkeypatch,
-    capsys,  # noqa: F811 -- shared fixture
+    capsys,
 ):
     context, config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -255,7 +255,7 @@ def test_captured_request_apply_does_not_prepare_under_collected_factors(
     prepared_repair,
     tmp_path,
     monkeypatch,
-    capsys,  # noqa: F811 -- shared fixture
+    capsys,
 ):
     context, _config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -298,7 +298,7 @@ def test_captured_request_apply_does_not_prepare_under_collected_factors(
 def test_changed_captured_dependency_refuses_before_factor_consumption(
     prepared_repair,
     tmp_path,
-    monkeypatch,  # noqa: F811 -- shared fixture
+    monkeypatch,
 ):
     context, config, manifest, _plan = prepared_repair
     store = GuardStore(context.guard_home)
@@ -332,7 +332,7 @@ def test_changed_captured_dependency_refuses_before_factor_consumption(
 def test_verification_workspace_does_not_change_signed_installation_context(
     prepared_repair,
     tmp_path,
-    capsys,  # noqa: F811 -- shared fixture
+    capsys,
 ):
     _context, _config, manifest, _plan = prepared_repair
     folder = tmp_path / "private-review-context"

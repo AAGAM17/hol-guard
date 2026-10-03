@@ -24,7 +24,6 @@ from codex_plugin_scanner.guard.native_policy_snapshot_publisher_transport impor
 from codex_plugin_scanner.guard.package_shim_gate import _parse_shim_package_intent
 from codex_plugin_scanner.guard.runtime.package_intent_common import PackageIntent
 
-
 DIGEST = "a" * 64
 OTHER = "b" * 64
 
@@ -76,9 +75,7 @@ def test_package_intent_from_dict_coerces_malformed_collections() -> None:
     assert execution.typescript_launch.schema_version == 0
     assert execution.typescript_launch.reasons == ("x",)
 
-    empty = PackageIntent.from_dict(
-        _intent_payload(targets="nope", local_executions=None, manifest_paths=None)
-    )
+    empty = PackageIntent.from_dict(_intent_payload(targets="nope", local_executions=None, manifest_paths=None))
     assert empty.targets == ()
     assert empty.local_executions == ()
     assert empty.manifest_paths == ()
@@ -213,14 +210,11 @@ def test_shim_parser_falls_back_when_native_payload_is_unusable(
     assert rejected.package_manager == "npm"
 
 
-def test_supply_chain_native_bridge_rejects_bad_call_shapes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_supply_chain_native_bridge_rejects_bad_call_shapes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert local_supply_chain._native_cloud_transport_unavailable({"reasons": "nope"}) is False
     assert local_supply_chain._native_cloud_transport_unavailable({"reasons": [{"code": "other"}]}) is False
     assert (
-        local_supply_chain._native_cloud_transport_unavailable({"reasons": [{"code": "cloud_network_error"}]})
-        is True
+        local_supply_chain._native_cloud_transport_unavailable({"reasons": [{"code": "cloud_network_error"}]}) is True
     )
     monkeypatch.setattr(
         local_supply_chain,

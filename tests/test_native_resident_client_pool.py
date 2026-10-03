@@ -27,9 +27,7 @@ def _pool(tmp_path: Path) -> _PersistentNativeClientPool:
     )
 
 
-def test_pool_recovers_retired_capacity_only_after_containment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pool_recovers_retired_capacity_only_after_containment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     clients = []
 
     class Client:

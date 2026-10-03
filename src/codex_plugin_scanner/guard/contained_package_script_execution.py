@@ -7,6 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import native_execution as _native_execution
 from .containment_execution_support import (
     contained_process_effect_decision as _contained_decision,
 )
@@ -30,8 +31,6 @@ from .runtime.containment_executor import execute_contained, file_sha256
 from .runtime.effect_decision import EffectDecision, FinalDisposition, PositiveProof
 from .runtime.local_package_script_evidence import build_local_package_script_evidence
 from .runtime.workspace_snapshot_inputs import complete_workspace_snapshot, reject_external_node_modules
-
-from . import native_execution as _native_execution
 
 
 @dataclass(frozen=True, slots=True)

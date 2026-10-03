@@ -29,9 +29,7 @@ def _pe():
     """
     module = sys.modules.get("codex_plugin_scanner.guard.runtime.supply_chain_package_eval")
     if module is None:
-        module = importlib.import_module(
-            "codex_plugin_scanner.guard.runtime.supply_chain_package_eval"
-        )
+        module = importlib.import_module("codex_plugin_scanner.guard.runtime.supply_chain_package_eval")
     return module
 
 
@@ -283,7 +281,9 @@ def _npm_registry_resolved_version(*, package_name: str, requested_range: str) -
 
 
 def _pypi_registry_resolved_version(*, package_name: str, requested_range: str) -> str | None:
-    metadata_url = f"{_PYPI_REGISTRY_METADATA_BASE_URL.rstrip('/')}/{_pe().urllib.parse.quote(package_name, safe='')}/json"
+    metadata_url = (
+        f"{_PYPI_REGISTRY_METADATA_BASE_URL.rstrip('/')}/{_pe().urllib.parse.quote(package_name, safe='')}/json"
+    )
     request = _pe().urllib.request.Request(
         metadata_url,
         headers={

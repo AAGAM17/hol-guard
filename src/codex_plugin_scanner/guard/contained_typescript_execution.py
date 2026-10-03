@@ -7,6 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import native_execution as _native_execution
 from .containment_execution_support import (
     contained_process_effect_decision as _contained_decision,
 )
@@ -30,8 +31,6 @@ from .runtime.containment_executor import execute_contained, file_sha256
 from .runtime.effect_decision import EffectDecision, PositiveProof
 from .runtime.package_intent_parser import parse_package_intent
 from .runtime.typescript_snapshot_inputs import typescript_snapshot_inputs
-
-from . import native_execution as _native_execution
 
 
 @dataclass(frozen=True, slots=True)

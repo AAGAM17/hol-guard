@@ -152,17 +152,6 @@ fn classified_parse_error(error: impl std::fmt::Display) -> String {
     "native_request_invalid_json".to_owned()
 }
 
-pub(crate) fn redacted_error_code(code: &str) -> String {
-    let safe = code.len() <= 64
-        && !code.is_empty()
-        && code.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        && (code.starts_with("native_") || code.starts_with("snapshot_"));
-    if safe {
-        return format!("native_request_invalid_json:{code}");
-    }
-    "native_request_invalid_json".to_owned()
-}
-
 pub(crate) fn parse(bytes: &[u8]) -> Result<Value, String> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let value = StrictJsonSeed { depth: 0 }

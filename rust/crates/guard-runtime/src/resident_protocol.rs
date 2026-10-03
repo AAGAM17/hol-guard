@@ -369,7 +369,7 @@ pub(crate) fn safe_error_response(code: &str, retryable: bool) -> Vec<u8> {
         .unwrap_or_else(|_| error_response("native_response_encode_failed", false));
     }
     serde_json::to_vec(&serde_json::json!({
-        "error": crate::strict_json::redacted_error_code(code),
+        "error": "native_request_invalid_json",
         "retryable": retryable,
     }))
     .unwrap_or_else(|_| error_response("native_request_invalid_json", retryable))
@@ -431,7 +431,7 @@ mod tests {
             false,
         ))
         .expect("redacted approval error is JSON");
-        assert_eq!(unknown["error"], "native_request_invalid_json:native_approval_future_unregistered_code");
+        assert_eq!(unknown["error"], "native_request_invalid_json");
 
         let lifecycle: Value = serde_json::from_slice(&safe_error_response(
             "native_resident_start_in_progress",
@@ -445,14 +445,14 @@ mod tests {
             false,
         ))
         .expect("redacted lifecycle error is JSON");
-        assert_eq!(unknown_lifecycle["error"], "native_request_invalid_json:native_resident_future_unregistered_code");
+        assert_eq!(unknown_lifecycle["error"], "native_request_invalid_json");
 
         let unknown_policy: Value = serde_json::from_slice(&safe_error_response(
             "native_policy_snapshot_future_unregistered_code",
             false,
         ))
         .expect("redacted policy error is JSON");
-        assert_eq!(unknown_policy["error"], "native_request_invalid_json:native_policy_snapshot_future_unregistered_code");
+        assert_eq!(unknown_policy["error"], "native_request_invalid_json");
     }
 
     #[test]

@@ -8,9 +8,42 @@ import pytest
 
 from ci.gauntlet.catalog import Scenario
 from ci.gauntlet.evidence import assess_case
+from ci.gauntlet.input_evidence import fixture_path_aliases, input_digest, public_observations, redact_value
 from ci.gauntlet.proofs import task_tools_match
 from ci.gauntlet.transport import reconcile_rounds
 from tests.test_guard_gauntlet import observed_case, ordinary
+
+
+def test_fixture_alias_redaction_preserves_host_guard_identity(monkeypatch):
+    """Reconcile verified macOS display aliases without exporting private fixture paths."""
+    import hashlib
+    import json
+    from pathlib import Path
+
+    canonical = "/private/" + "tmp/fixture/home/project"
+    alias = canonical.removeprefix("/private")
+    monkeypatch.setattr(Path, "resolve", lambda path, **kwargs: Path(canonical) if str(path) == alias else path)
+    replacements = fixture_path_aliases({canonical: "{{workspace}}"})
+    host = {"path": alias + "/.env"}
+    reviewed = {"path": canonical + "/.env"}
+    raw = json.dumps(reviewed)
+    rows = public_observations(
+        [{"input_json": raw, "input_sha256": hashlib.sha256(raw.encode()).hexdigest()}], replacements
+    )
+    assert redact_value(host, replacements) == rows[0]["input"] == {"path": "{{workspace}}/.env"}
+    assert rows[0]["input_sha256"] == input_digest(rows[0]["input"])
+    unrelated = {"path": alias + "-other/.env"}
+    assert redact_value(unrelated, replacements) != rows[0]["input"]
+
+
+def test_fixture_alias_redaction_requires_matching_physical_path(monkeypatch):
+    """Keep an unrelated alias distinct instead of qualifying a different target."""
+    from pathlib import Path
+
+    canonical = "/private/" + "tmp/fixture/home/project"
+    monkeypatch.setattr(Path, "resolve", lambda path, **kwargs: path)
+    replacements = {canonical: "{{workspace}}"}
+    assert fixture_path_aliases(replacements) == replacements
 
 
 def completed(request="a" * 64):

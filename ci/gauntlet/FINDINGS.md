@@ -113,3 +113,22 @@ publication and required-check consumption. It keeps the reported base metadata
 for verifier-trust comparisons and checks test-merge parents against the current
 ref tip. An old integration does not become valid merely because its PR head is
 unchanged. This repairs source attribution; no policy or scenario outcome changes.
+
+## DeepSeek Flash qualification on macOS
+
+A full live run at `f6e731878781ba60a5ae11c5df504fe9691fb667` with
+DeepSeek V4 Flash completed ten scenarios and left four unexercised. The two
+native writing tasks omitted the required final newline. The deletion scenario
+used directory reads instead of its required bash command. These are model task
+deviations, not Guard failures; their original evidence remains a failed run.
+The prompts now specify the exact JSON content strings and forbid preliminary
+inspection in the one-command deletion case. Physical oracles and required calls
+remain unchanged.
+
+The secret-read attempt was blocked by native Guard, but OMP displayed a macOS
+temporary-directory alias while the evidence map used the canonical path. The
+unredacted alias both exposed a fixture path in public tool metadata and caused
+the judge to reject the otherwise identical target. Host and Guard evidence now
+share alias redactions only after both paths resolve to the same existing
+fixture. Different physical targets remain distinct. The full live profile must
+run again on the final source; rows from the failed run cannot be reused.

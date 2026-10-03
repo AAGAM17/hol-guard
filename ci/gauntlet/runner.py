@@ -22,7 +22,7 @@ from ci.native_runtime import probe_installed_pi_output as probe
 from .catalog import Scenario, catalog_digest, load_catalog
 from .evidence import TRANSCRIPT_LIMIT, assess_case, public_events, read_events, sha256_bytes
 from .fixtures import create_fixture, digest_file, filesystem_checks
-from .input_evidence import public_observations
+from .input_evidence import fixture_path_aliases, public_observations
 from .provider import InferenceRelay, LoopbackCollector
 from .source_identity import source_identity
 
@@ -140,6 +140,7 @@ def run_case(
         str(fixture.home): "{{home}}",
         str(fixture.root): "{{fixture}}",
     }
+    replacements = fixture_path_aliases(replacements)
     # Commands quote each interpolated fixture path. Normalize the entire
     # shell-quoted spelling before redacting raw paths, including apostrophes.
     for value, placeholder in tuple(replacements.items()):

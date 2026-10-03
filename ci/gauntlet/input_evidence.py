@@ -5,7 +5,24 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from pathlib import Path
 from typing import Any
+
+
+def fixture_path_aliases(replacements: dict[str, str]) -> dict[str, str]:
+    """Redact macOS display aliases only when they resolve to the same fixture path."""
+    result = dict(replacements)
+    for original, placeholder in replacements.items():
+        path = Path(original)
+        if path.parts[:2] != ("/", "private") or len(path.parts) < 3 or path.parts[2] not in {"tmp", "var"}:
+            continue
+        alias = original.removeprefix("/private")
+        try:
+            if Path(alias).resolve(strict=True) == path.resolve(strict=True):
+                result[alias] = placeholder
+        except OSError:
+            continue
+    return result
 
 
 def redact_value(value: Any, replacements: dict[str, str]) -> Any:

@@ -149,10 +149,11 @@ pub(crate) fn private_file(
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 let mut file = windows_security::open_private_file(path, private_root)
-                    .map_err(surfaced_state_write_error)?;
+                    .map_err(|error| surfaced_state_write_error(&error))?;
                 windows_security::repair_private_file(&mut file)?;
                 if !create_new {
-                    file.set_len(0).map_err(surfaced_state_write_error)?;
+                    file.set_len(0)
+                        .map_err(|error| surfaced_state_write_error(&error))?;
                 }
                 file
             }

@@ -1,6 +1,7 @@
 """Default denial keeps transport execution and approval surfaces closed."""
 
 import json
+import sqlite3
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,8 +25,8 @@ def _unexpected_prompt(*args, **kwargs):
     pytest.fail("default denial must not create an approval surface")
 
 
-@pytest.mark.parametrize("harness", ["generic-test", "copilot"])
-def test_generic_pretool_review_blocks_without_queue(tmp_path, monkeypatch, capsys, harness):
+@pytest.mark.parametrize("harness,as_json", [("generic-test", True), ("copilot", True), ("copilot", False)])
+def test_generic_pretool_review_blocks_without_queue(tmp_path, monkeypatch, capsys, harness, as_json):
     context = _context(tmp_path)
     store = GuardStore(context.guard_home)
     config = GuardConfig(guard_home=context.guard_home, workspace=context.workspace_dir, default_action="review")
@@ -33,7 +34,7 @@ def test_generic_pretool_review_blocks_without_queue(tmp_path, monkeypatch, caps
         "codex_plugin_scanner.guard.cli.commands_hook_native_generic.queue_blocked_approvals", _unexpected_prompt
     )
     result = run_native_generic_payload(
-        SimpleNamespace(harness=harness, json=True),
+        SimpleNamespace(harness=harness, json=as_json),
         action_envelope=None,
         config=config,
         home_dir=context.home_dir,
@@ -49,13 +50,42 @@ def test_generic_pretool_review_blocks_without_queue(tmp_path, monkeypatch, caps
         store=store,
     )
     response = json.loads(capsys.readouterr().out)
-    if harness == "generic-test":
+    if as_json:
         assert result == 1
         assert response["policy_action"] == "block"
+    else:
+        assert result == 0
+        assert response["permissionDecision"] == "deny"
     serialized = json.dumps(response)
     assert "safe, permitted alternative" in serialized
     assert "Current local policy requires review" in serialized
     assert "FORGED" not in serialized
+    assert store.list_approval_requests() == []
+
+
+def test_default_denial_command_activity_is_unprompted(tmp_path, capsys):
+    context = _context(tmp_path)
+    store = GuardStore(context.guard_home)
+    run_native_generic_payload(
+        SimpleNamespace(harness="codex", json=True),
+        action_envelope=None,
+        config=GuardConfig(guard_home=context.guard_home, workspace=context.workspace_dir, default_action="review"),
+        home_dir=context.home_dir,
+        payload={
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "hol-guard-unmatched-probe --flag"},
+            "tool_call_id": "unprompted-activity-case",
+        },
+        runtime_workspace=context.workspace_dir,
+        store=store,
+    )
+    assert json.loads(capsys.readouterr().out)["policy_action"] == "block"
+    with sqlite3.connect(store.path) as connection:
+        row = connection.execute(
+            "select prompted, policy_action, proof_level, execution_status from command_activity"
+        ).fetchone()
+    assert row == (0, "block", "pre_hook", "prevented")
     assert store.list_approval_requests() == []
 
 

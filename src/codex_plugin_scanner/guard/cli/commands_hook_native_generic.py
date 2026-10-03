@@ -1247,9 +1247,13 @@ def run_native_generic_payload(
             payload=payload_map,
             policy_action=cast(GuardAction, policy_action),
             receipt_id=command_activity_receipt_id,
-            prompted=command_activity_was_prompted(
-                cast(GuardAction, policy_action),
-                command_activity_reuse_status,
+            prompted=(
+                False
+                if blocked_request_guidance is not None
+                else command_activity_was_prompted(
+                    cast(GuardAction, policy_action),
+                    command_activity_reuse_status,
+                )
             ),
             approval_reuse_status=command_activity_reuse_status,
             cwd=runtime_workspace,

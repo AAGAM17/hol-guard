@@ -191,6 +191,7 @@ pub struct PackageProtectAuthority<'a> {
     pub artifact: &'a GuardArtifact,
     pub execution_context: &'a PackageExecutionContext,
     pub artifact_hash: &'a str,
+    pub additional_policy_context: Option<&'a Map<String, Value>>,
     pub observe_mode: bool,
     /// `invoking_harness` — Python resolves via `resolve_local_supply_chain_harness`
     /// (env markers → parent process → `"guard-cli"`); the caller computes it.
@@ -477,6 +478,12 @@ pub fn package_protect_verdict_context(
         .filter(|value| !value.is_null())
     {
         receipt_policy_metadata.insert("bundle_version".to_string(), bundle_version.clone());
+    }
+    if let Some(context) = authority.additional_policy_context {
+        receipt_policy_metadata.insert(
+            "additional_policy_context".to_string(),
+            Value::Object(context.clone()),
+        );
     }
     if !approval_reuse_evidence.is_empty() {
         receipt_policy_metadata.insert(
@@ -768,6 +775,7 @@ mod tests {
             artifact: &artifact(),
             execution_context: &ctx(),
             artifact_hash: &"a".repeat(64),
+            additional_policy_context: None,
             observe_mode: true,
             invoking_harness: "codex",
         };
@@ -789,6 +797,7 @@ mod tests {
             artifact: &artifact(),
             execution_context: &ctx(),
             artifact_hash: &"a".repeat(64),
+            additional_policy_context: None,
             observe_mode: true,
             invoking_harness: "codex",
         };

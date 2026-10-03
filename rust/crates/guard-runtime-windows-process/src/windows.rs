@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn over_max_path_drive_path_uses_verbatim_prefix() {
-        let long = format!(r"C:\Users\runneradmin\{}", "long-private-home-".repeat(12));
+        let long = format!(r"C:\Users\runneradmin\{}", "long-private-home-".repeat(14));
         assert!(long.encode_utf16().count() >= MAX_PATH);
         let encoded = wide_path(Path::new(&long)).unwrap();
         let prefix: Vec<u16> = r"\\?\".encode_utf16().collect();
@@ -470,11 +470,12 @@ mod tests {
 
     #[test]
     fn over_max_path_unc_uses_unc_verbatim_prefix() {
-        let long = format!(r"\\server\share\{}", "long-private-home-".repeat(12));
+        let long = format!(r"\\server\share\{}", "long-private-home-".repeat(14));
+        assert!(long.encode_utf16().count() >= MAX_PATH);
         let encoded = wide_path(Path::new(&long)).unwrap();
         let prefix: Vec<u16> = r"\\?\UNC\".encode_utf16().collect();
         assert!(encoded.starts_with(&prefix));
-        let tail: Vec<u16> = format!(r"server\share\{}", "long-private-home-".repeat(12))
+        let tail: Vec<u16> = format!(r"server\share\{}", "long-private-home-".repeat(14))
             .encode_utf16()
             .chain([0])
             .collect();
@@ -483,11 +484,12 @@ mod tests {
 
     #[test]
     fn over_max_path_forward_slashes_are_normalized() {
-        let long = format!("C:/Users/runneradmin/{}", "long-private-home-".repeat(12));
+        let long = format!("C:/Users/runneradmin/{}", "long-private-home-".repeat(14));
+        assert!(long.encode_utf16().count() >= MAX_PATH);
         let encoded = wide_path(Path::new(&long)).unwrap();
         let prefix: Vec<u16> = r"\\?\".encode_utf16().collect();
         let expected: Vec<u16> =
-            format!(r"C:\Users\runneradmin\{}", "long-private-home-".repeat(12))
+            format!(r"C:\Users\runneradmin\{}", "long-private-home-".repeat(14))
                 .encode_utf16()
                 .chain([0])
                 .collect();

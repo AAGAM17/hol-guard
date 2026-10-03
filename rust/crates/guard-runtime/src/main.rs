@@ -14,6 +14,7 @@ mod archive_inspect_containment;
 mod claim_approval_reuse_op;
 mod claim_reuse;
 mod command_effect;
+#[cfg(unix)]
 mod contained_op;
 mod context_digest;
 mod context_digest_json;
@@ -33,6 +34,7 @@ mod package_authority_op;
 mod policy_enforcement;
 mod policy_integrity_resolver;
 mod policy_store;
+#[cfg(unix)]
 mod prompt_analyze_op;
 mod resident_client;
 mod resident_endpoint;

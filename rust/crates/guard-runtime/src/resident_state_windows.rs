@@ -219,6 +219,33 @@ pub(super) fn open_private_directory(path: &Path, private_root: &Path) -> io::Re
         handle.try_clone()
     })
 }
+fn windows_path_key(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    let stripped = text.strip_prefix(r"\\?\").unwrap_or(text.as_ref());
+    stripped
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
+}
+
+fn same_windows_parent(left: &Path, right: &Path) -> bool {
+    left == right || windows_path_key(left) == windows_path_key(right)
+}
+
+fn surfaced_windows_io_error(error: io::Error) -> String {
+    let message = error.to_string();
+    if !message.is_empty()
+        && message.len() <= 80
+        && message
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && message.starts_with("native_")
+    {
+        return message;
+    }
+    "native_resident_windows_acl_apply_failed".to_owned()
+}
+
 
 pub(super) fn replace_private_file(
     temporary: &Path,
@@ -228,7 +255,7 @@ pub(super) fn replace_private_file(
     let parent = path
         .parent()
         .ok_or_else(|| "native_resident_windows_replace_parent_missing".to_owned())?;
-    if temporary.parent() != Some(parent) {
+    if temporary.parent().is_none_or(|candidate| !same_windows_parent(candidate, parent)) {
         return Err("native_resident_windows_replace_parent_mismatch".to_owned());
     }
     let temporary_name = temporary
@@ -244,7 +271,7 @@ pub(super) fn replace_private_file(
         verify_windows_handle(&source, owner.as_ref()).map_err(io::Error::other)?;
         binding.replace_private_file(&source, destination_name)
     })
-    .map_err(|error| error.to_string())
+    .map_err(surfaced_windows_io_error)
 }
 
 pub(super) fn remove_private_file(path: &Path, private_root: &Path) -> Result<bool, String> {
@@ -262,7 +289,7 @@ pub(super) fn remove_private_file(path: &Path, private_root: &Path) -> Result<bo
         };
         guard_runtime_windows_process::delete_private_file_handle(&file).map(|()| true)
     })
-    .map_err(|error| error.to_string())
+    .map_err(surfaced_windows_io_error)
 }
 
 pub(super) fn verify_private_file(file: &File) -> Result<(), String> {

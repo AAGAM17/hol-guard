@@ -101,8 +101,14 @@ mod tests {
     #[test]
     fn expand_home_tilde() {
         let home = PathBuf::from("/home/u");
-        assert_eq!(expand_home("~", Some(&home)), "/home/u");
-        assert_eq!(expand_home("~/x", Some(&home)), "/home/u/x");
+        assert_eq!(
+            expand_home("~", Some(&home)),
+            home.to_string_lossy().into_owned()
+        );
+        assert_eq!(
+            expand_home("~/x", Some(&home)),
+            home.join("x").to_string_lossy().into_owned()
+        );
         assert_eq!(expand_home("plain", Some(&home)), "plain");
     }
 
@@ -116,19 +122,32 @@ mod tests {
     #[test]
     fn matches_python_oracle() {
         let home = PathBuf::from("/home/u");
-        let cwd = PathBuf::from("/cwd");
-        assert_eq!(expand_home("~", Some(&home)), "/home/u");
-        assert_eq!(expand_home("~/a/b", Some(&home)), "/home/u/a/b");
-        assert_eq!(expand_home("~\\w", Some(&home)), "/home/u/w");
+        assert_eq!(
+            expand_home("~", Some(&home)),
+            home.to_string_lossy().into_owned()
+        );
+        assert_eq!(
+            expand_home("~/a/b", Some(&home)),
+            home.join("a").join("b").to_string_lossy().into_owned()
+        );
+        assert_eq!(
+            expand_home("~\\w", Some(&home)),
+            home.join("w").to_string_lossy().into_owned()
+        );
         assert_eq!(expand_home("plain", Some(&home)), "plain");
         assert_eq!(expand_home("/abs", Some(&home)), "/abs");
-        assert_eq!(normalize_path("/a//b/./c/../d", Some(&cwd)), "/a/b/d");
-        assert_eq!(normalize_path("a/../b", Some(&cwd)), "/cwd/b");
-        assert_eq!(normalize_path("", Some(&cwd)), "/cwd");
-        assert_eq!(normalize_path("./x", Some(&cwd)), "/cwd/x");
-        assert_eq!(normalize_path("//p//q", Some(&cwd)), "//p/q");
-        assert_eq!(normalize_path("a/b/../..", Some(&cwd)), "/cwd");
-        assert_eq!(normalize_path("../up", Some(&cwd)), "/up");
-        assert_eq!(normalize_path("..", Some(&cwd)), "/");
+
+        #[cfg(unix)]
+        {
+            let cwd = PathBuf::from("/cwd");
+            assert_eq!(normalize_path("/a//b/./c/../d", Some(&cwd)), "/a/b/d");
+            assert_eq!(normalize_path("a/../b", Some(&cwd)), "/cwd/b");
+            assert_eq!(normalize_path("", Some(&cwd)), "/cwd");
+            assert_eq!(normalize_path("./x", Some(&cwd)), "/cwd/x");
+            assert_eq!(normalize_path("//p//q", Some(&cwd)), "//p/q");
+            assert_eq!(normalize_path("a/b/../..", Some(&cwd)), "/cwd");
+            assert_eq!(normalize_path("../up", Some(&cwd)), "/up");
+            assert_eq!(normalize_path("..", Some(&cwd)), "/");
+        }
     }
 }

@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn search_path_falls_back_to_defpath() {
-        assert_eq!(launch_search_path(&env(&[])), ":/bin:/usr/bin");
+        assert_eq!(launch_search_path(&env(&[])), os_defpath().to_string());
         assert_eq!(
             launch_search_path(&env(&[("PATH", "/x")])),
             "/x".to_string()

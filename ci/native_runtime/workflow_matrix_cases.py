@@ -86,6 +86,14 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("github-compound-and", "echo ready && gh api repos/hashgraph-online/hol-guard --jq .name"),
         ("github-compound-or", "gh api repos/hashgraph-online/hol-guard --jq .name || echo unavailable"),
         ("github-compound-pipeline", "gh api repos/hashgraph-online/hol-guard --jq .name | head -1"),
+        (
+            "github-compound-source-read",
+            "grep -n ordinary src/one.ts && gh api repos/hashgraph-online/hol-guard --jq .name",
+        ),
+        (
+            "github-compound-source-read-after",
+            "gh api repos/hashgraph-online/hol-guard --jq .name; grep -n ordinary src/one.ts",
+        ),
     ]
     negatives = [
         ("secret-read", "cat .env"),
@@ -109,6 +117,9 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("github-compound-secret", "gh api repos/hashgraph-online/hol-guard; cat .env"),
         ("github-compound-destructive", "gh api repos/hashgraph-online/hol-guard && rm -rf src"),
         ("github-compound-unknown", "gh api repos/hashgraph-online/hol-guard || python3 unknown.py"),
+        ("github-compound-secret-first", "cat .env; gh api repos/hashgraph-online/hol-guard --jq .name"),
+        ("github-compound-secret-or", "gh api repos/hashgraph-online/hol-guard --jq .name || cat .env"),
+        ("github-compound-secret-pipe", "cat .env | gh api repos/hashgraph-online/hol-guard --jq .name"),
     ]
     return (
         home,

@@ -66,12 +66,12 @@ fn ascii_escape_json(serialized: &str) -> String {
         } else {
             let code = ch as u32;
             if code <= 0xFFFF {
-                out.push_str(&format!("\\u{:04x}", code));
+                out.push_str(&format!("\\u{code:04x}"));
             } else {
                 let n = code - 0x1_0000;
                 let hi = 0xD800 + (n >> 10);
                 let lo = 0xDC00 + (n & 0x3FF);
-                out.push_str(&format!("\\u{:04x}\\u{:04x}", hi, lo));
+                out.push_str(&format!("\\u{hi:04x}\\u{lo:04x}"));
             }
         }
     }
@@ -264,7 +264,7 @@ pub fn guard_run_is_guard_action(value: &Value) -> bool {
 /// the detection state, per-artifact approval contexts, detector payload, and
 /// the launch previews. Returns `None` when any artifact's approval context is
 /// malformed — the authority tuple must never bind a corrupt claim.
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub fn guard_run_authority_signature(
     harness: &str,
     installed: bool,

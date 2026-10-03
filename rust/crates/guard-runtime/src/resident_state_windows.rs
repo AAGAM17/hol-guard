@@ -246,7 +246,6 @@ fn surfaced_windows_io_error(error: io::Error) -> String {
     "native_resident_windows_acl_apply_failed".to_owned()
 }
 
-
 pub(super) fn replace_private_file(
     temporary: &Path,
     path: &Path,
@@ -255,7 +254,10 @@ pub(super) fn replace_private_file(
     let parent = path
         .parent()
         .ok_or_else(|| "native_resident_windows_replace_parent_missing".to_owned())?;
-    if temporary.parent().is_none_or(|candidate| !same_windows_parent(candidate, parent)) {
+    if temporary
+        .parent()
+        .is_none_or(|candidate| !same_windows_parent(candidate, parent))
+    {
         return Err("native_resident_windows_replace_parent_mismatch".to_owned());
     }
     let temporary_name = temporary

@@ -162,6 +162,10 @@ class QualifiedAPI(MetadataAPI):
             raise ValueError("evidence is not for the current test merge")
 
     def request(self, path):
+        if path == "":
+            return {"default_branch": "main"}
+        if path.startswith("/compare/"):
+            return {"status": "ahead" if path == f"/compare/{self.base}...{self.verifier}" else "behind"}
         if path.startswith("/pulls/"):
             return self.rows
         if "/statuses?" in path:
@@ -349,6 +353,13 @@ def test_initial_installation_requires_the_explicit_pinned_verifier(monkeypatch)
         def gauntlet_installed_at(self, revision):
             assert revision == "b" * 40
             return self.installed
+
+        def request(self, path):
+            if path == "":
+                return {"default_branch": "main"}
+            if path.startswith("/compare/"):
+                return {"status": "behind"}
+            raise AssertionError(path)
 
     api = API()
     pull = {"base": {"sha": "b" * 40}}

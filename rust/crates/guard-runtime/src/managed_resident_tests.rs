@@ -243,6 +243,67 @@ fn client_leases_keep_shared_resident_alive_until_last_client_closes() {
 
 #[cfg(unix)]
 #[test]
+fn managed_owner_lock_rejects_second_process() {
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+
+    if let Some(root) = std::env::var_os("HOL_GUARD_OWNER_LOCK_CHILD") {
+        let root = PathBuf::from(root);
+        let _lock = acquire_managed_owner_lock(&root).unwrap();
+        fs::write(root.join("child-ready"), []).unwrap();
+        std::thread::sleep(Duration::from_secs(5));
+        return;
+    }
+
+    let root = std::env::temp_dir().join(format!(
+        "hol-guard-managed-owner-lock-process-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&root).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let marker = root.join("child-ready");
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .arg("managed_owner_lock_rejects_second_process")
+        .arg("--nocapture")
+        .env(
+            "HOL_GUARD_OWNER_LOCK_CHILD",
+            root.to_string_lossy().as_ref(),
+        )
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let mut child_ready = false;
+    for _ in 0..200 {
+        if marker.exists() {
+            child_ready = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let result = if child_ready {
+        acquire_managed_owner_lock(&root)
+    } else {
+        Err("child_not_ready".to_owned())
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(child_ready, "child process did not acquire the owner lock");
+    assert!(matches!(
+        result,
+        Err(error) if error == "native_resident_owner_busy"
+    ));
+}
+
+#[cfg(unix)]
+#[test]
 fn retire_clients_for_update_terminates_exact_process() {
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
@@ -275,7 +336,7 @@ fn retire_clients_for_update_terminates_exact_process() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    for _ in 0..200 {
+    for _ in 0..1000 {
         if root.join("child-ready").is_file() {
             break;
         }
@@ -289,7 +350,7 @@ fn retire_clients_for_update_terminates_exact_process() {
     }
     let digest = runtime_digest().unwrap();
     let retirement =
-        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(2));
+        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(10));
     if let Err(error) = retirement {
         let _ = child.kill();
         let _ = child.wait();

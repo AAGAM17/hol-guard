@@ -33,14 +33,12 @@ fn one(capability: &'static str) -> Capabilities {
 }
 
 pub(super) fn arguments_are_read_only(arguments: &[String]) -> bool {
-    // Repository selectors are unproven content reads and stay on the review path.
+    // Short-form repository selectors are unproven content reads and stay on the review path.
     !arguments.iter().any(|argument| {
         argument == "--web"
             || argument.starts_with("--web=")
             || argument == "--cache"
             || argument.starts_with("--cache=")
-            || argument == "--repo"
-            || argument.starts_with("--repo=")
             || argument.starts_with("-R")
             || (argument.starts_with('-')
                 && !argument.starts_with("--")

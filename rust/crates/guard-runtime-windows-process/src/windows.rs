@@ -42,7 +42,8 @@ mod private_files;
 #[path = "process_lifecycle.rs"]
 mod process_lifecycle;
 pub use directory_binding::{
-    bind_directory, bind_private_directory, create_private_directory, PrivateDirectoryBinding,
+    bind_directory, bind_private_directory, create_private_directory, path_is_within,
+    PrivateDirectoryBinding,
 };
 pub use private_files::{
     create_private_file, delete_private_file_handle, open_private_directory, open_private_file,

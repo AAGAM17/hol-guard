@@ -308,10 +308,10 @@ pub(crate) fn ensure_private_directory_under(
     {
         let resolved =
             windows_security::ensure_private_directory_path(path, private_root, protect_windows)?;
-        let private_root = private_root
+        let canonical_root = private_root
             .canonicalize()
             .map_err(|_| "native_resident_state_dir_outside_user_profile".to_owned())?;
-        if !resolved.starts_with(&private_root) {
+        if !guard_runtime_windows_process::path_is_within(&resolved, &canonical_root) {
             return Err("native_resident_state_dir_outside_user_profile".to_owned());
         }
         Ok(resolved)

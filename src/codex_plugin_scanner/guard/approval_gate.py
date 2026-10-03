@@ -1118,7 +1118,7 @@ def validate_grant(
         # table. That is not a rejection of a resident-issued grant. If the
         # gate is still enabled, Python still holds those proofs and must
         # validate them. A disabled gate is a real revocation.
-        if str(error) != "Approval proof is required." or _load_state(guard_home).get("enabled") is not True:
+        if error.code != "approval_gate_required" or _load_state(guard_home).get("enabled") is not True:
             raise
         native = None
     if native is not None:

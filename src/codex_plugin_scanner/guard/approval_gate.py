@@ -965,6 +965,8 @@ def consume_extension_control_grant(
         now=now,
     )
     if native is not None:
+        with _APPROVAL_GATE_LOCK:
+            _ACTIVE_GRANTS.pop(approval_gate_grant.grant_id, None)
         return
 
     with _APPROVAL_GATE_LOCK:
@@ -1044,6 +1046,8 @@ def consume_local_cli_trust_grant(
         now=now,
     )
     if native is not None:
+        with _APPROVAL_GATE_LOCK:
+            _ACTIVE_GRANTS.pop(approval_gate_grant.grant_id, None)
         return
 
     with _APPROVAL_GATE_LOCK:

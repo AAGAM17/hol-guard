@@ -103,11 +103,11 @@ The gate is incorporated into the repository's already-required `ci (3.12)` chec
 
 PR #3463 is the only initial-installation exception. Its required CI check pins
 an immutable reviewed verifier SHA in `.github/workflows/ci.yml`; that commit is
-also named `guard-gauntlet-bootstrap-v2`. The original v1 tag remains unchanged; v2 corrects the observed home-anchor judge and repository API route handling. The exception applies only to this
+also named `guard-gauntlet-bootstrap-v3`. The original v1 tag remains unchanged; v2 corrects the observed home-anchor judge and repository API route handling. The exception applies only to this
 repository and PR, only while the trusted base does not contain Gauntlet, and
 only to evidence produced by that exact pinned commit. It does not waive the
 full live suite or permit replayed evidence. Dispatch the initial evidence and
-metadata checks with `--ref guard-gauntlet-bootstrap-v2`. A missing base module
+metadata checks with `--ref guard-gauntlet-bootstrap-v3`. A missing base module
 posts no qualification; it directs the operator to this bounded path.
 
 After installation, dispatch from `main`. A new candidate can change runner

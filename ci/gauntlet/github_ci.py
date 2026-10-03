@@ -87,6 +87,19 @@ class GitHubAPI:
         pull = self.request(f"/pulls/{number}")
         if pull["state"] != "open" or pull["head"]["sha"] != expected_sha:
             raise ValueError("pull request closed or head advanced; obtain fresh evidence")
+        # Resolve the destination ref itself. PR metadata can still name the
+        # original base while GitHub has rebuilt its test merge on newer main.
+        branch = pull["base"]["ref"]
+        reference = self.request("/git/ref/heads/" + urllib.parse.quote(branch, safe=""))
+        tip = reference.get("object", {})
+        if (
+            reference.get("ref") != "refs/heads/" + branch
+            or tip.get("type") != "commit"
+            or not isinstance(tip.get("sha"), str)
+            or SHA.fullmatch(tip["sha"]) is None
+        ):
+            raise ValueError("current destination branch identity is unavailable")
+        pull["gauntlet_base_sha"] = tip["sha"]
         return pull
 
     def gauntlet_installed_at(self, revision: str) -> bool:
@@ -200,7 +213,7 @@ def prepare_evidence(api: GitHubAPI, event: dict[str, Any], destination: Path) -
     source = report.get("tested_source_sha")
     if not isinstance(source, str) or report.get("candidate_sha") != candidate:
         raise ValueError("evidence candidate does not match the requested pull request")
-    api.prove_source(source, candidate, pull["base"]["sha"])
+    api.prove_source(source, candidate, pull["gauntlet_base_sha"])
     from .github_source import source_manifest
 
     manifest = source_manifest(api, source, candidate)
@@ -218,7 +231,7 @@ def publish_result(api: GitHubAPI, event: dict[str, Any]) -> None:
     validate_producer_revision(api, number, pull, {"head_sha": os.environ["GITHUB_SHA"]})
     verified = os.environ.get("VALIDATION_RESULT") == "success"
     if verified:
-        api.prove_source(os.environ["TESTED_SOURCE_SHA"], candidate, pull["base"]["sha"])
+        api.prove_source(os.environ["TESTED_SOURCE_SHA"], candidate, pull["gauntlet_base_sha"])
     api.status(
         candidate,
         "success" if verified else "failure",

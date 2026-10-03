@@ -68,5 +68,5 @@ def qualified_run(api: GitHubAPI, number: int, candidate: str, pull: dict[str, A
     )
     if source_match is None:
         raise RuntimeError("Gauntlet status is missing its verified source binding")
-    api.prove_source(source_match.group(1), candidate, pull["base"]["sha"])
+    api.prove_source(source_match.group(1), candidate, pull["gauntlet_base_sha"])
     return run_id

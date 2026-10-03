@@ -99,3 +99,17 @@ repository metadata route and `BASE...HEAD` comparison were rejected as unsafe
 paths. The client now permits those legitimate repository-local routes while
 rejecting external authorities, encoded traversal, fragments and control characters.
 Tests exercise the real client route validation, rather than only a permissive mock.
+
+
+## Fresh GitHub test merges use the destination ref
+
+The live run for head `7bb531d1313c11e4c2d74309b4a70a315a93dd46` used GitHub's
+native wheel from test merge `bd6c48e508f7ee117ee42306306e985419044bb8`.
+Its other parent was the actual main tip `4b04871b62c486cd953f703bf00445fd665fdcb6`,
+while the PR response's base SHA still named `fa671cb7f7a271253eb707293d591ffc9894a4ae`.
+Using only that PR field would reject the current integration as stale. The
+consumer now resolves `refs/heads/<base.ref>` independently before preparation,
+publication and required-check consumption. It keeps the reported base metadata
+for verifier-trust comparisons and checks test-merge parents against the current
+ref tip. An old integration does not become valid merely because its PR head is
+unchanged. This repairs source attribution; no policy or scenario outcome changes.

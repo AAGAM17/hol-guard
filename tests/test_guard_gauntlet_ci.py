@@ -154,7 +154,7 @@ class QualifiedAPI(MetadataAPI):
         self.source = "a" * 40
 
     def pull(self, number, sha):
-        return {**super().pull(number, sha), "base": {"sha": self.base}}
+        return {**super().pull(number, sha), "base": {"sha": self.base}, "gauntlet_base_sha": self.base}
 
     def prove_source(self, source, candidate, base):
         self.source_checks.append((source, candidate, base))
@@ -408,7 +408,7 @@ def test_evidence_jobs_run_only_from_trusted_default_or_pinned_bootstrap():
     for name in ("verify", "publish"):
         condition = workflow["jobs"][name]["if"]
         assert "github.event.repository.default_branch" in condition
-        assert "refs/tags/guard-gauntlet-bootstrap-v2" in condition
+        assert "refs/tags/guard-gauntlet-bootstrap-v3" in condition
         assert "github.event_name == 'workflow_dispatch'" in condition
         assert "GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA" in workflow["jobs"][name]["env"]
 
@@ -477,3 +477,36 @@ def test_repository_api_rejects_authority_and_traversal_inputs(monkeypatch, path
     monkeypatch.setattr(urllib.request, "urlopen", forbidden)
     with pytest.raises(ValueError, match="invalid repository API path"):
         GitHubAPI().request(path)
+
+
+def test_pull_resolves_current_base_ref_instead_of_stale_pr_metadata(monkeypatch):
+    from ci.gauntlet.github_ci import GitHubAPI
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "hashgraph-online/hol-guard")
+    monkeypatch.setenv("GITHUB_TOKEN", "synthetic-test-only")
+    api = GitHubAPI()
+
+    def request(path):
+        if path == "/pulls/1":
+            return {"state": "open", "head": {"sha": "a" * 40}, "base": {"ref": "release/test", "sha": "b" * 40}}
+        assert path == "/git/ref/heads/release%2Ftest"
+        return {"ref": "refs/heads/release/test", "object": {"sha": "c" * 40, "type": "commit"}}
+
+    monkeypatch.setattr(api, "request", request)
+    pull = api.pull(1, "a" * 40)
+    assert pull["base"]["sha"] == "b" * 40
+    assert pull["gauntlet_base_sha"] == "c" * 40
+
+
+def test_current_test_merge_must_match_the_independently_resolved_base(monkeypatch):
+    from ci.gauntlet.github_ci import GitHubAPI
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "hashgraph-online/hol-guard")
+    monkeypatch.setenv("GITHUB_TOKEN", "synthetic-test-only")
+    api = GitHubAPI()
+    monkeypatch.setattr(
+        api, "request", lambda path: {"sha": "d" * 40, "parents": [{"sha": "a" * 40}, {"sha": "c" * 40}]}
+    )
+    api.prove_source("d" * 40, "a" * 40, "c" * 40)
+    with pytest.raises(ValueError, match="current test merge"):
+        api.prove_source("d" * 40, "a" * 40, "b" * 40)

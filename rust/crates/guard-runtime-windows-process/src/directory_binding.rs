@@ -482,6 +482,18 @@ fn long_path_if_same_shape(path: &Path) -> Option<PathBuf> {
     }
     Some(long)
 }
+/// True when `path` is `root` or a descendant. `\\?\` and Win32 spellings name
+/// the same directory. A long-path lookup is accepted only when it keeps the
+/// same component count, so a junction to another depth still fails.
+pub fn path_is_within(path: &Path, root: &Path) -> bool {
+    if path_has_prefix(path, root) {
+        return true;
+    }
+    let Some(long_path) = long_path_if_same_shape(&win32_path(path)) else {
+        return false;
+    };
+    path_has_prefix(&long_path, root) || path_has_prefix(&long_path, &win32_path(root))
+}
 
 fn validate_boundary(path: &Path, trusted_base: &Path, private_root: &Path) -> io::Result<()> {
     if !path.is_absolute() || !trusted_base.is_absolute() || !private_root.is_absolute() {
@@ -666,5 +678,15 @@ mod tests {
         let prefix = Path::new(r"\\server\share\home");
         assert!(path_has_prefix(path, prefix));
         assert!(!path_has_prefix(path, Path::new(r"\\other\share\home")));
+    }
+    #[test]
+    fn win32_child_is_within_verbatim_root() {
+        let root = Path::new(r"\\?\C:\Users\runneradmin\AppData\Local\Temp\home");
+        let child = Path::new(r"C:\Users\runneradmin\AppData\Local\Temp\home\native-runtime");
+        assert!(path_is_within(child, root));
+        assert!(!path_is_within(
+            Path::new(r"C:\Users\runneradmin\AppData\Local\Temp\other"),
+            root
+        ));
     }
 }

@@ -2366,7 +2366,7 @@ fn resolve_advisory_aliases_from_bundle(
     bundle: Option<&Map<String, Value>>,
     advisory_ids: &[String],
 ) -> Vec<String> {
-    let mut lookup: HashMap<String, Vec<String>> = HashMap::new();
+    let mut lookup: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     if let Some(bundle) = bundle {
         if let Some(advisories) = bundle.get("advisories").and_then(Value::as_array) {
             for advisory in advisories {

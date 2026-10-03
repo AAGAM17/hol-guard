@@ -459,7 +459,7 @@ fn long_path_if_same_shape(path: &Path) -> Option<PathBuf> {
     if length == 0 || length as usize > buffer.len() {
         return None;
     }
-    buffer.truncate(length as usize - 1);
+    buffer.truncate(length as usize);
     let long = PathBuf::from(std::ffi::OsString::from_wide(&buffer));
     if !long.is_absolute() || long.components().count() != path.components().count() {
         return None;

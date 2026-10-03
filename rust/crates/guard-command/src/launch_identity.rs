@@ -2053,6 +2053,99 @@ const UNRESOLVED_CODE_LAUNCHER_NAMES: &[&str] = &[
     "yarn.cmd",
 ];
 
+
+// ---------------------------------------------------------------------------
+// Package-supply-chain launch/advisory material
+// (`local_supply_chain.py` RTM-019).
+// ---------------------------------------------------------------------------
+
+// `_package_launch_approval_identity` (local_supply_chain.py :3109-3124) —
+// ticket name `_package_request_launch_identity_material` (surface-map alias;
+// same argv_sha256 + wrapper_resolution material compose). Pure projection:
+// `None` -> `{"available": False}`; otherwise binds `argv_sha256` verbatim and
+// passes through a Mapping `wrapper_resolution`, degrading any other/missing
+// value to `{"status": "direct"}`.
+pub fn package_request_launch_identity_material(
+    launch_identity: Option<&Map<String, Value>>,
+) -> Map<String, Value> {
+    let mut out = Map::new();
+    let Some(launch_identity) = launch_identity else {
+        out.insert("available".into(), json!(false));
+        return out;
+    };
+    let wrapper_resolution = launch_identity
+        .get("wrapper_resolution")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or_else(|| {
+            let mut direct = Map::new();
+            direct.insert("status".into(), json!("direct"));
+            Value::Object(direct)
+        });
+    out.insert(
+        "argv_sha256".into(),
+        launch_identity
+            .get("argv_sha256")
+            .cloned()
+            .unwrap_or(Value::Null),
+    );
+    out.insert("wrapper_resolution".into(), wrapper_resolution);
+    out
+}
+
+// Python `str.strip()` whitespace set (:811 body relies on it via `add_id`).
+// `char::is_whitespace` omits the C0 information separators \x1c-\x1f that
+// `str.isspace()` strips, so spell the set out for byte-exact parity.
+fn python_str_is_space(c: char) -> bool {
+    c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
+}
+
+fn python_str_strip(value: &str) -> &str {
+    value.trim_matches(python_str_is_space)
+}
+
+// `_package_advisory_ids` (local_supply_chain.py :811-836). First-seen,
+// case-sensitive dedup across the four list keys, the two scalar keys, then
+// per-reason ids — NOT `sorted(set(...))`. Non-strings, empty-after-strip,
+// and repeats are dropped.
+pub fn package_advisory_ids(package: &Map<String, Value>) -> Vec<String> {
+    let mut advisory_ids: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut add_id = |value: Option<&Value>| {
+        if let Some(text) = value.and_then(Value::as_str) {
+            let trimmed = python_str_strip(text);
+            if !trimmed.is_empty() && !seen.contains(trimmed) {
+                seen.insert(trimmed.to_string());
+                advisory_ids.push(trimmed.to_string());
+            }
+        }
+    };
+    for key in [
+        "advisoryIds",
+        "advisory_ids",
+        "relatedAdvisoryIds",
+        "related_advisory_ids",
+    ] {
+        if let Some(raw) = package.get(key).and_then(Value::as_array) {
+            for entry in raw {
+                add_id(Some(entry));
+            }
+        }
+    }
+    add_id(package.get("advisoryId"));
+    add_id(package.get("advisory_id"));
+    if let Some(reasons) = package.get("reasons").and_then(Value::as_array) {
+        for reason in reasons {
+            let Some(reason) = reason.as_object() else {
+                continue;
+            };
+            add_id(reason.get("advisoryId"));
+            add_id(reason.get("advisory_id"));
+        }
+    }
+    advisory_ids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2194,4 +2287,165 @@ mod tests {
             "guard-context-unbound:launch-verification:33f54a528b020a160461134ec8cf256d36536c821bd5a3e2538b160f9212a030"
         );
     }
+
+    // --- Package launch/advisory material (local_supply_chain.py) ------------
+
+    fn canon(value: &Value) -> String {
+        let mut out = Vec::new();
+        write_canonical_json(value, &mut out).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn launch_identity_material_none_oracle() {
+        // Oracle: _package_launch_approval_identity(None)
+        //   -> {"available": False}
+        let out = package_request_launch_identity_material(None);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out["available"], json!(false));
+        assert_eq!(
+            canon(&Value::Object(out)),
+            concat!("{\"available\":", "false}"),
+        );
+    }
+
+    #[test]
+    fn launch_identity_material_empty_map_oracle() {
+        // Oracle: _package_launch_approval_identity({})
+        //   -> {"argv_sha256": null, "wrapper_resolution": {"status": "direct"}}
+        let input = Map::new();
+        let out = package_request_launch_identity_material(Some(&input));
+        assert_eq!(
+            canon(&Value::Object(out)),
+            concat!(
+                "{\"argv_sha256\":null,\"wrapper_resolution\":{\"status\":\"",
+                "direct\"}}",
+            ),
+        );
+    }
+
+    #[test]
+    fn launch_identity_material_wrapper_mapping_oracle() {
+        // Oracle: _package_launch_approval_identity(
+        //   {"argv_sha256": "a"*64,
+        //    "wrapper_resolution": {"status": "wrapper", "wrapper": "env",
+        //                           "attempts": 1}})
+        let input: Map<String, Value> = serde_json::from_value(json!({
+            "argv_sha256": "a".repeat(64),
+            "wrapper_resolution": {
+                "status": "wrapper",
+                "wrapper": "env",
+                "attempts": 1,
+            },
+        }))
+        .unwrap();
+        let out = package_request_launch_identity_material(Some(&input));
+        assert_eq!(out["argv_sha256"], json!("a".repeat(64)));
+        assert_eq!(
+            canon(&Value::Object(out)),
+            concat!(
+                "{\"argv_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"",
+                "wrapper_resolution\":{\"attempts\":1,\"status\":\"wrapper\",\"wrapper\":\"env\"}}",
+            ),
+        );
+    }
+
+    #[test]
+    fn launch_identity_material_non_mapping_wrapper_degrades_to_direct() {
+        // Oracle: wrapper_resolution="env-wrapped" or None -> {"status": "direct"};
+        // unrelated keys do not leak through.
+        for wrapper in [json!("env-wrapped"), Value::Null, json!(7), json!(["x"])] {
+            let input: Map<String, Value> = serde_json::from_value(json!({
+                "argv_sha256": "c".repeat(64),
+                "wrapper_resolution": wrapper,
+                "other": 1,
+            }))
+            .unwrap();
+            let out = package_request_launch_identity_material(Some(&input));
+            assert_eq!(
+                canon(&Value::Object(out)),
+                concat!(
+                    "{\"argv_sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"",
+                    "wrapper_resolution\":{\"status\":\"direct\"}}",
+                ),
+            );
+        }
+    }
+
+    #[test]
+    fn advisory_ids_empty_package_oracle() {
+        // Oracle: _package_advisory_ids({}) -> []
+        assert!(package_advisory_ids(&Map::new()).is_empty());
+    }
+
+    #[test]
+    fn advisory_ids_full_oracle_parity() {
+        // Oracle: _package_advisory_ids(<fixture>) ==
+        //   ["GHSA-1111","CVE-2024-2","RUSTSEC-2024-3","GHSA-zzzz",
+        //    "ghsa-zzzz","GHSA-HEAD","GHSA-R1","ghsa-r2"]
+        // First-seen insertion order across the four list keys, the two
+        // scalar keys, then reasons — dedup is case-sensitive, so
+        // "GHSA-zzzz"/"ghsa-zzzz" both survive (NOT sorted(set(...))).
+        let package: Map<String, Value> = serde_json::from_value(json!({
+            "advisoryIds": ["GHSA-1111", " CVE-2024-2 ", "GHSA-1111", "", 7, null],
+            "advisory_ids": ["CVE-2024-2", "RUSTSEC-2024-3"],
+            "relatedAdvisoryIds": ["GHSA-zzzz"],
+            "related_advisory_ids": ["ghsa-zzzz", "GHSA-1111"],
+            "advisoryId": " GHSA-HEAD ",
+            "advisory_id": "GHSA-HEAD",
+            "reasons": [
+                {"advisoryId": "GHSA-R1", "advisory_id": "ghsa-r2"},
+                {"advisoryId": "GHSA-1111"},
+                "not-a-dict",
+                {"other": "x"},
+            ],
+        }))
+        .unwrap();
+        assert_eq!(
+            package_advisory_ids(&package),
+            vec![
+                "GHSA-1111",
+                "CVE-2024-2",
+                "RUSTSEC-2024-3",
+                "GHSA-zzzz",
+                "ghsa-zzzz",
+                "GHSA-HEAD",
+                "GHSA-R1",
+                "ghsa-r2",
+            ],
+        );
+    }
+
+    #[test]
+    fn advisory_ids_malformed_inputs_oracle() {
+        // Oracle: _package_advisory_ids({"advisoryIds": "not-a-list",
+        //   "reasons": "nope", "advisoryId": 42}) -> []
+        //  and  {"reasons": [{"advisoryId": "  "}, {"advisory_id": null}]} -> []
+        let package: Map<String, Value> = serde_json::from_value(json!({
+            "advisoryIds": "not-a-list",
+            "reasons": "nope",
+            "advisoryId": 42,
+        }))
+        .unwrap();
+        assert!(package_advisory_ids(&package).is_empty());
+        let package2: Map<String, Value> = serde_json::from_value(json!({
+            "reasons": [{"advisoryId": "  "}, {"advisory_id": null}],
+        }))
+        .unwrap();
+        assert!(package_advisory_ids(&package2).is_empty());
+    }
+
+    #[test]
+    fn advisory_ids_python_strip_whitespace_oracle() {
+        // Python str.strip() removes \x1c-\x1f; char::is_whitespace does not.
+        // A \x1c-padded id must trim to the same string and dedup.
+        // Oracle: _package_advisory_ids(
+        //   {"advisoryIds": ["\x1cGHSA-X\x1d", "GHSA-X"]}) -> ["GHSA-X"]
+        let package: Map<String, Value> = serde_json::from_value(json!({
+            "advisoryIds": ["\u{1c}GHSA-X\u{1d}", "GHSA-X"],
+        }))
+        .unwrap();
+        assert_eq!(package_advisory_ids(&package), vec!["GHSA-X"]);
+    }
 }
+

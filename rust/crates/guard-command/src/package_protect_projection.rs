@@ -804,4 +804,52 @@ mod tests {
         );
         assert_eq!(c2, 2, "monitor (telemetry) fails closed → 2");
     }
+    #[test]
+    fn projection_quoted_shlex_and_raw_spec_fallback_match_oracle() {
+        // Oracle (Python): shlex.split("pip install 'req uests'") ==
+        //   ["pip","install","req uests"]; package_name=None →
+        //   artifact_id "pypi:requests>=2", artifact_name "requests>=2".
+        let mut pypi_intent = intent();
+        pypi_intent.package_manager = "pip".to_string();
+        pypi_intent.redacted_command = "pip install 'req uests'".into();
+        pypi_intent.targets = vec![PackageIntentTarget {
+            ecosystem: "pypi".into(),
+            package_name: None,
+            raw_spec: "requests>=2".into(),
+            requested_specifier: Some(">=2".into()),
+            ..Default::default()
+        }];
+        let artifact = artifact();
+        let cx = ctx();
+        let evaln = evaluation();
+        let auth = authority(&pypi_intent, &artifact, &cx, false);
+        let mut payload = Map::new();
+        apply_package_protect_projection(
+            &mut payload, &auth, &evaln,
+            &[],  // empty command → executor falls back to "guard-cli"
+            true, false, None,
+        );
+        assert_eq!(
+            payload["request"]["command"],
+            json!(["pip", "install", "req uests"])
+        );
+        assert_eq!(payload["request"]["executor"], json!("guard-cli"));
+        let tgt = &payload["targets"][0];
+        assert_eq!(tgt["artifact_id"], json!("pypi:requests>=2"));
+        assert_eq!(tgt["artifact_name"], json!("requests>=2"));
+        assert_eq!(tgt["package_name"], Value::Null);
+        assert_eq!(tgt["version"], json!(">=2"));
+        assert_eq!(tgt["package_url"], Value::Null);
+    }
+
+    #[test]
+    fn shlex_split_matches_python_posix_semantics() {
+        // unterminated quote → error → empty argv (ValueError → [])
+        assert!(shlex_split("'unterminated").is_err());
+        assert_eq!(shlex_split(r"a\ b").unwrap(), vec!["a b"]);
+        assert_eq!(shlex_split("a  b").unwrap(), vec!["a", "b"]);
+        assert_eq!(shlex_split("").unwrap(), Vec::<String>::new());
+        // '#' is a word char (Python default comments=False)
+        assert_eq!(shlex_split("a#b c").unwrap(), vec!["a#b", "c"]);
+    }
 }

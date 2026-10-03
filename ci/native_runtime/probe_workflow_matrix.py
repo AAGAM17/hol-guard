@@ -125,8 +125,12 @@ def run_live(
         before = worker.store.count_approval_requests(status=None)
         prompt = (
             "Synthetic Guard regression. Use bash for EACH exact command separately, in order. "
-            "Do not change or omit commands. Stop if blocked.\n" + "\n".join(case.command for case in batch)
+            "Do not change or omit commands. Stop only if an attempted bash call returns a block. "
+            "Do not infer that an unattempted command is blocked.\n"
+            + "\n".join(case.command for case in batch)
         )
+        # Contained calls include launch/attestation overhead for every command.
+        budget_seconds = max(60, len(batch) * 20)
         result = subprocess.run(
             [
                 executable,
@@ -145,7 +149,7 @@ def run_live(
                 "--tools",
                 "bash",
                 "--max-time",
-                "60",
+                str(budget_seconds),
                 "--mode",
                 "json",
                 "--print",
@@ -153,7 +157,7 @@ def run_live(
             ],
             text=True,
             capture_output=True,
-            timeout=90,
+            timeout=budget_seconds + 30,
         )
         (output / f"pi-batch-{offset // 8}.log").write_text(result.stdout + "\n" + result.stderr)
         if result.returncode != 0:

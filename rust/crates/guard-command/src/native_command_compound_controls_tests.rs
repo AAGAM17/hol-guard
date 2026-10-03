@@ -87,6 +87,7 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
         "cat ordinary.txt; git push origin main",
         "cat alias.txt; git push origin main",
         "ls ordinary.txt; git push origin main",
+        "ls; git push origin main",
     ] {
         assert_ne!(
             evaluate(&controls, command).minimum_action,

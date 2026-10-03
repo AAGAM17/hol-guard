@@ -332,6 +332,7 @@ pub(crate) fn benign_command_segments(
             // Earlier extension-approved segments may rewrite the tree (checkout/pull);
             // a pre-execution path proof only holds while every predecessor is benign.
             (benign
+                && !(basename == "ls" && segment.arguments.is_empty())
                 && (!requires_path_context || context.0.is_some() || context.1.is_some())
                 && (path_free || all_previous_benign))
                 .then_some(index)

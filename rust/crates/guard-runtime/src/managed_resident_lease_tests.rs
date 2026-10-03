@@ -515,7 +515,13 @@ fn update_retirement_preserves_an_expired_live_same_runtime_lease() {
 fn update_retirement_removes_an_expired_dead_same_runtime_lease() {
     let root = test_directory("retire-expired-dead");
     let directory = lease_directory(&root).expect("lease directory should be available");
-    let process_id = u32::MAX;
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--help")
+        .spawn()
+        .expect("short-lived child should start");
+    let process_id = child.id();
+    let status = child.wait().expect("short-lived child should be reaped");
+    assert!(status.success(), "short-lived child should exit successfully");
     let digest =
         crate::resident_state::runtime_digest().expect("runtime digest should be available");
     let path = directory.join(format!("client-{process_id}-expired.lease"));

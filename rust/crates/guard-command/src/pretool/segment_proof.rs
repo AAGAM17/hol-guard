@@ -67,8 +67,7 @@ pub(crate) fn benign_command_segments(
                     }
                     if matches!(
                         argument.as_str(),
-                        "-I"
-                            | "--ignore"
+                        "-I" | "--ignore"
                             | "--hide"
                             | "-w"
                             | "--width"

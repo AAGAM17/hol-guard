@@ -23,6 +23,31 @@ fn explicit_github_read_permission_deny_still_wins() {
     })).unwrap();
         binding.effective_digest = binding.compute_effective_digest().unwrap();
         let controls = CompiledNativeCommandControls::new(&binding).unwrap();
+        let denied_command = if permission == "read-local" {
+            "gh auth status"
+        } else {
+            "gh api repos/owner/repo/compare/base...main"
+        };
+        for harness in ["omp", "zcode"] {
+            for operator in [";", "&&", "||", "|"] {
+                for command in [
+                    format!("echo ordinary {operator} {denied_command}"),
+                    format!("{denied_command} {operator} echo ordinary"),
+                ] {
+                    let result = evaluate_pre_tool_envelope_with_context(
+                        harness,
+                        "PreToolUse",
+                        &json!({"tool_name":"bash","tool_input":{"command":command}}),
+                        Some(&controls),
+                        None,
+                        None,
+                        None,
+                    );
+                    assert_eq!(result.minimum_action, "block", "{harness}: {command}");
+                    assert_eq!(result.decision, "deny", "{harness}: {command}");
+                }
+            }
+        }
         for command in [
             "gh api repos/owner/repo/compare/base...main",
             "gh auth status",

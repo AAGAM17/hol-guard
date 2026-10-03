@@ -343,7 +343,6 @@ fn windows_acl_path(path: &Path) -> PathBuf {
     let wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
     if wide.starts_with(EXTENDED_PREFIX)
         || wide.starts_with(DEVICE_PREFIX)
-        || wide.len() < 260
         || !path.is_absolute()
     {
         return path.to_path_buf();

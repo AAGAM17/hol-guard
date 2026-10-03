@@ -7700,7 +7700,7 @@ fn evaluate_with_cloud(
             };
             let bundle_is_at_least_as_strict = bundle_meta.is_some()
                 && bundle_defer_eligible
-                && bundle_evaluation.map_or(false, |b| {
+                && bundle_evaluation.is_some_and(|b| {
                     decision_rank(&b.decision)
                         >= decision_rank(&resolve_cloud_failure_decision(deps, store))
                 });

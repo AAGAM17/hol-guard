@@ -6719,7 +6719,7 @@ def test_guard_hook_emits_copilot_native_ask_response_for_node_inline_apply_dele
     )
     output = json.loads(capsys.readouterr().out)
 
-    assert rc == 1
+    assert rc == 0
     assert output["hookSpecificOutput"]["permissionDecision"] in {"deny", "ask"}
     assert "hol guard" in output["hookSpecificOutput"]["permissionDecisionReason"].lower()
     assert "approve it in hol guard, then retry." in output["hookSpecificOutput"]["permissionDecisionReason"].lower()

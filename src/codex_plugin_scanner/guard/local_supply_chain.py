@@ -332,7 +332,7 @@ def _native_cloud_transport_unavailable(payload: dict[str, object]) -> bool:
     return any(isinstance(reason, dict) and reason.get("code") == "cloud_network_error" for reason in reasons)
 
 
-def _python_cloud_auth_failed(store: object) -> bool:
+def _python_cloud_auth_failed(store: GuardStore) -> bool:
     """Tests and the Python evaluator observe auth expiry on this seam.
     The resident cannot see that patch, so an expiry must fall back.
     """

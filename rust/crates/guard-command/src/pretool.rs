@@ -3,6 +3,7 @@ use guard_secure_fs::sensitive_path_family;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+mod git_config;
 mod pure_expression;
 mod restricted_tests;
 mod safe_reads;

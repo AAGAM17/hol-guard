@@ -1,0 +1,230 @@
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+const CONFIG_LIMIT: u64 = 65_536;
+
+pub(super) fn execution_free(
+    executable: &str,
+    arguments: &[String],
+    context: (Option<&str>, Option<&str>),
+    deadline: Option<Instant>,
+) -> Option<bool> {
+    let remaining = crate::command_compatibility::git_inspection_arguments(arguments)?;
+    let operation = remaining.first()?.as_str();
+    if !matches!(operation, "status" | "diff" | "log" | "show") {
+        return None;
+    }
+    Some(
+        probe(
+            executable, arguments, remaining, operation, context, deadline,
+        )
+        .unwrap_or(false),
+    )
+}
+
+fn probe(
+    executable: &str,
+    arguments: &[String],
+    remaining: &[String],
+    operation: &str,
+    context: (Option<&str>, Option<&str>),
+    deadline: Option<Instant>,
+) -> Option<bool> {
+    let deadline = deadline
+        .unwrap_or_else(|| Instant::now() + Duration::from_millis(250))
+        .min(Instant::now() + Duration::from_millis(250));
+    if Instant::now() >= deadline {
+        return None;
+    }
+    let home = fs::canonicalize(context.0?).ok()?;
+    let cwd = fs::canonicalize(context.1?).ok()?;
+    let leading = &arguments[..arguments.len().checked_sub(remaining.len())?];
+    if !home.is_dir() || !cwd.is_dir() || !clean_environment(operation, leading) {
+        return None;
+    }
+    let binary = trusted_git(executable, &home, &cwd)?;
+    let mut child = Command::new(binary)
+        .args(leading)
+        .args(["--no-pager", "config", "--null", "--get-regexp", "^(core\\.fsmonitor|core\\.pager|pager\\..*|diff\\.external|diff\\..*\\.(command|textconv)|filter\\..*\\.(process|clean|smudge))$"])
+        .current_dir(&cwd)
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut output = Vec::new();
+        stdout
+            .take(CONFIG_LIMIT + 1)
+            .read_to_end(&mut output)
+            .ok()?;
+        (output.len() <= CONFIG_LIMIT as usize).then_some(output)
+    });
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(1)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    let output = reader.join().ok()??;
+    let status = status?;
+    if status.code() == Some(1) && output.is_empty() {
+        return Some(true);
+    }
+    if !status.success() {
+        return None;
+    }
+    let output = std::str::from_utf8(&output).ok()?;
+    let options = remaining
+        .iter()
+        .skip(1)
+        .take_while(|value| value.as_str() != "--");
+    let no_external = options
+        .clone()
+        .filter_map(|value| match value.as_str() {
+            "--no-ext-diff" => Some(true),
+            "--ext-diff" => Some(false),
+            _ => None,
+        })
+        .last()
+        == Some(true);
+    let no_textconv = options
+        .clone()
+        .filter_map(|value| match value.as_str() {
+            "--no-textconv" => Some(true),
+            "--textconv" => Some(false),
+            _ => None,
+        })
+        .last()
+        == Some(true);
+    let mut effective = std::collections::BTreeMap::new();
+    for record in output.split('\0').filter(|record| !record.is_empty()) {
+        let (key, value) = record.split_once('\n')?;
+        effective.insert(key, value);
+    }
+    for (key, value) in effective {
+        let disabled = matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        );
+        let unsafe_value = match key {
+            "core.fsmonitor" => matches!(operation, "status" | "diff") && !disabled,
+            "core.pager" => !value.is_empty() && value != "cat",
+            key if key.starts_with("pager.") => !disabled && !value.is_empty() && value != "cat",
+            "diff.external" => !no_external && !value.is_empty(),
+            key if key.starts_with("diff.") && key.ends_with(".command") => {
+                !no_external && !value.is_empty()
+            }
+            key if key.starts_with("diff.") && key.ends_with(".textconv") => {
+                !no_textconv && !value.is_empty()
+            }
+            key if key.starts_with("filter.") => {
+                matches!(operation, "status" | "diff") && !value.is_empty()
+            }
+            _ => return None,
+        };
+        if unsafe_value {
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
+fn clean_environment(operation: &str, arguments: &[String]) -> bool {
+    // Status does not page by default; pager.status enabling it is checked
+    // in effective config. --no-pager also disables environment pagers.
+    let can_page = operation != "status" && !arguments.iter().any(|arg| arg == "--no-pager");
+    !std::env::vars_os().any(|(key, value)| {
+        let key = key.to_string_lossy();
+        !value.is_empty()
+            && (key.starts_with("GIT_TRACE")
+                || key.starts_with("GIT_CONFIG")
+                || (can_page && matches!(key.as_ref(), "GIT_PAGER" | "PAGER"))
+                || matches!(
+                    key.as_ref(),
+                    "GIT_DIR"
+                        | "GIT_EXTERNAL_DIFF"
+                        | "GIT_COMMON_DIR"
+                        | "GIT_WORK_TREE"
+                        | "GIT_EXEC_PATH"
+                        | "LD_PRELOAD"
+                        | "LD_LIBRARY_PATH"
+                        | "DYLD_INSERT_LIBRARIES"
+                        | "DYLD_LIBRARY_PATH"
+                ))
+    })
+}
+
+fn trusted_git(executable: &str, home: &Path, cwd: &Path) -> Option<PathBuf> {
+    let supplied = Path::new(executable);
+    let path = if supplied.components().count() > 1 {
+        fs::canonicalize(if supplied.is_absolute() {
+            supplied.to_path_buf()
+        } else {
+            cwd.join(supplied)
+        })
+        .ok()?
+    } else {
+        let mut found = None;
+        for directory in std::env::split_paths(&std::env::var_os("PATH")?) {
+            let directory = if directory.is_absolute() {
+                directory
+            } else {
+                cwd.join(directory)
+            };
+            let candidate = directory.join(if cfg!(windows) { "git.exe" } else { "git" });
+            if candidate.is_file() {
+                found = Some(fs::canonicalize(candidate).ok()?);
+                break;
+            }
+        }
+        found?
+    };
+    if path.starts_with(home)
+        || path.starts_with(cwd)
+        || path.starts_with(std::env::temp_dir())
+        || path.starts_with("/tmp")
+        || path.starts_with("/private/tmp")
+    {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let home_metadata = fs::metadata(home).ok()?;
+        let owner = home_metadata.uid();
+        for ancestor in std::iter::once(path.as_path()).chain(path.ancestors().skip(1)) {
+            let metadata = fs::metadata(ancestor).ok()?;
+            if metadata.mode() & 0o002 != 0
+                || (metadata.mode() & 0o020 != 0
+                    && metadata.uid() != owner
+                    && metadata.gid() != home_metadata.gid())
+                || !matches!(metadata.uid(), uid if uid == 0 || uid == owner)
+            {
+                return None;
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        if !["ProgramFiles", "ProgramFiles(x86)", "SystemRoot"]
+            .iter()
+            .filter_map(std::env::var_os)
+            .any(|root| path.starts_with(root))
+        {
+            return None;
+        }
+    }
+    Some(path)
+}

@@ -87,6 +87,23 @@ pub(super) fn inspection_arguments(arguments: &[String]) -> Option<&[String]> {
             index += 1;
             continue;
         }
+        if argument == "-c" {
+            let (key, value) = arguments.get(index + 1)?.split_once('=')?;
+            let boolean = value.to_ascii_lowercase();
+            let safe = match key.to_ascii_lowercase().as_str() {
+                "core.fsmonitor" => matches!(boolean.as_str(), "false" | "0" | "no" | "off"),
+                "core.quotepath" => matches!(
+                    boolean.as_str(),
+                    "true" | "false" | "1" | "0" | "yes" | "no" | "on" | "off"
+                ),
+                _ => false,
+            };
+            if !safe {
+                return None;
+            }
+            index += 2;
+            continue;
+        }
         let target = if argument == "-C" {
             index += 1;
             arguments.get(index)?.as_str()

@@ -129,6 +129,44 @@ pub fn evaluate_pre_tool_envelope_with_context(
         ),
         _ => result,
     };
+    if event == "PreToolUse"
+        // Existing helper-context review may delegate only to enforced
+        // read-only containment below; do not replace that protection.
+        && result.reason_code != "native_git_helper_context_review"
+        && command_model.is_some_and(|model| {
+            let destination =
+                super::segment_proof::verified_cwd_compound_context(model, (home_dir, cwd));
+            let context = (home_dir, destination.as_deref().or(cwd));
+            let benign = super::segment_proof::benign_command_segments(model, (home_dir, cwd));
+            model.segments.iter().enumerate().any(|(index, segment)| {
+                segment.executable.as_deref().is_some_and(|executable| {
+                    super::executable_basename(executable) == "git"
+                        && (!segment.environment_names.is_empty()
+                            || super::git_config::execution_free(
+                            executable,
+                            &segment.arguments,
+                            context,
+                            deadline,
+                        ) == Some(false)
+                            // A preceding mutation can change config or the
+                            // repository before this read actually executes.
+                            || (index > 0
+                                && (0..index).any(|prior| !benign.contains(&prior))))
+                })
+            })
+        })
+        && matches!(
+            result.minimum_action.as_str(),
+            "allow" | "warn" | "review"
+        )
+    {
+        result.minimum_action = "require-reapproval".into();
+        result.policy_action = "require-reapproval".into();
+        result.decision = "deny".into();
+        result.explicitly_benign = false;
+        result.reason_code = "native_git_execution_context_review".into();
+        result.reason = "HOL Guard requires review because this Git read may execute a configured helper, or its effective configuration could not be verified.".into();
+    }
     let contained_test_reason =
         command_model.and_then(super::restricted_tests::readonly_test_reason);
     // The read-only credential-filtering backend currently exists on macOS.

@@ -97,10 +97,12 @@ fn github_read_capabilities_have_a_benign_floor_but_mutations_do_not() {
             ("gh run view 1 --json status", true),
             ("gh auth status", true),
             ("pwd; gh pr view 1 --json title; echo done", true),
-            ("git status --short && gh api repos/owner/repo/compare/base...main", true),
-            ("git -C project status --short; echo done", true),
-            ("git --no-pager -C project status --short", true),
-            ("git -C project --no-optional-locks status --short", true),
+            // This context-free fixture cannot inspect effective Git config.
+            // Verified repository positives live in pretool_git_helper_config.
+            ("git status --short && gh api repos/owner/repo/compare/base...main", false),
+            ("git -C project status --short; echo done", false),
+            ("git --no-pager -C project status --short", false),
+            ("git -C project --no-optional-locks status --short", false),
             ("git -Cproject status --short", false),
             ("git -C project rev-parse --show-toplevel", true),
             ("git -C project -c core.fsmonitor=payload status", false),

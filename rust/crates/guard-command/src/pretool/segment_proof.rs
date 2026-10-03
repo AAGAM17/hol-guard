@@ -4,7 +4,7 @@ use super::{
 };
 use crate::CanonicalCommandV1;
 
-fn verified_cwd_compound_context(
+pub(super) fn verified_cwd_compound_context(
     model: &CanonicalCommandV1,
     context: (Option<&str>, Option<&str>),
 ) -> Option<String> {

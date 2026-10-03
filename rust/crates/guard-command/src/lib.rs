@@ -1060,6 +1060,7 @@ mod tests {
 // RTM-019 pending modules — compile signal only until legs complete
 pub mod audit_receipt;
 pub mod cloud_audit_sync;
+#[cfg(unix)]
 pub mod guard_run_launch;
 pub mod install_time_event;
 pub mod local_supply_chain;

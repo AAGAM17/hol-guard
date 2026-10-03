@@ -138,13 +138,13 @@ pub fn guard_run_plan_for_command(
 /// when no extra prefix exists.
 #[allow(dead_code)]
 pub fn guard_run_executable_prefix(launch_plan: &GuardRunLaunchPlan) -> Option<Vec<String>> {
-    let args = &launch_plan.adapter_command[1..];
+    let adapter = &launch_plan.adapter_command;
     let exec = &launch_plan.execution_command;
-    if exec.len() < args.len() + 1 {
+    if exec.len() <= adapter.len() {
         return None;
     }
-    let prefix_len = exec.len() - args.len();
-    if !args.is_empty() && &exec[prefix_len..] != args {
+    let prefix_len = exec.len() - adapter.len();
+    if &exec[prefix_len..] != adapter {
         return None;
     }
     Some(exec[..prefix_len].to_vec())

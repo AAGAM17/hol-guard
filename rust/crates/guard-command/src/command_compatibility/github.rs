@@ -33,14 +33,15 @@ fn one(capability: &'static str) -> Capabilities {
 }
 
 pub(super) fn arguments_are_read_only(arguments: &[String]) -> bool {
-    // A glued `-Rowner/repo` selector is an unproven content read and stays
-    // on the review path. A separate `--repo` read keeps the benign floor.
+    // Repository selectors are unproven content reads and stay on the review path.
     !arguments.iter().any(|argument| {
         argument == "--web"
             || argument.starts_with("--web=")
             || argument == "--cache"
             || argument.starts_with("--cache=")
-            || (argument.starts_with("-R") && argument != "-R")
+            || argument == "--repo"
+            || argument.starts_with("--repo=")
+            || argument.starts_with("-R")
             || (argument.starts_with('-')
                 && !argument.starts_with("--")
                 && !argument.starts_with("-R")

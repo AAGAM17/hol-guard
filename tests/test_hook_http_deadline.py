@@ -14,35 +14,40 @@ from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon as daemo
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _render_bounded_hook_script
 
 
-def _identity_of(fd: int) -> str:
-    if os.path.isdir("/proc/self/fd"):
-        return os.readlink(f"/proc/self/fd/{fd}")
-    return str(fd)
+def identities_from_targets(targets: list[str | None]) -> set[str] | None:
+    """Keep stable descriptor targets. A missing target is not a number to compare."""
+
+    stable = {target for target in targets if target}
+    if not stable:
+        return None
+    return stable
+
+
+def _identity_of(fd: int) -> str | None:
+    root = "/proc/self/fd"
+    if not os.path.isdir(root):
+        return None
+    try:
+        return os.readlink(f"{root}/{fd}")
+    except OSError:
+        return None
 
 
 def open_descriptor_identities() -> set[str] | None:
-    """Return identities of descriptors the hook could leave open.
+    """Return stable targets for descriptors the hook could leave open."""
 
-    Linux exposes a stable target for each descriptor. Other platforms only
-    expose descriptor numbers. Either set grows when a socket outlives the RPC.
-    """
-
-    root = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+    root = "/proc/self/fd"
     if not os.path.isdir(root):
         return None
-    identities: set[str] = set()
+    targets: list[str | None] = []
     for name in os.listdir(root):
         if not name.isdigit():
             continue
-        path = os.path.join(root, name)
-        if root == "/proc/self/fd":
-            try:
-                identities.add(os.readlink(path))
-            except OSError:
-                continue
-        else:
-            identities.add(name)
-    return identities
+        try:
+            targets.append(os.readlink(os.path.join(root, name)))
+        except OSError:
+            targets.append(None)
+    return identities_from_targets(targets)
 
 
 @pytest.mark.parametrize("generated", [False, True])
@@ -121,6 +126,14 @@ def test_trickling_response_obeys_absolute_rpc_budget(tmp_path, monkeypatch, gen
             assert not leaked, f"hook RPC left file descriptors open: {sorted(leaked)}"
 
 
+def test_reused_descriptor_number_is_not_a_stable_identity() -> None:
+    assert identities_from_targets([None, None]) is None
+    before = identities_from_targets(["socket:[10]", "pipe:[2]"])
+    after = identities_from_targets(["socket:[99]", "pipe:[2]"])
+    assert before is not None and after is not None
+    assert after - before == {"socket:[99]"}
+
+
 def test_open_descriptor_identities_notice_a_new_socket() -> None:
     before = open_descriptor_identities()
     if before is None:
@@ -130,15 +143,16 @@ def test_open_descriptor_identities_notice_a_new_socket() -> None:
     try:
         sock.bind(("127.0.0.1", 0))
         ident = _identity_of(sock.fileno())
+        if ident is None:
+            pytest.skip("descriptor target unavailable")
         during = open_descriptor_identities() or set()
         leaked = {ident}
         assert ident in during and ident not in before
     finally:
         sock.close()
-        if os.path.isdir("/proc/self/fd"):
-            after = open_descriptor_identities()
-            if after is not None:
-                assert leaked.isdisjoint(after)
+        after = open_descriptor_identities()
+        if after is not None:
+            assert leaked.isdisjoint(after)
 
 
 @pytest.mark.parametrize("generated", [False, True])

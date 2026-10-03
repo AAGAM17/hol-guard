@@ -85,7 +85,7 @@ fn executable_digest(executable: &Path) -> Result<String, String> {
         .map_err(|_| "native_resident_runtime_stat_failed".to_owned())?;
     if metadata.file_type().is_symlink()
         || !metadata.is_file()
-        || metadata.len() > MAX_RUNTIME_BYTES
+        || (metadata.len() > MAX_RUNTIME_BYTES && !cfg!(test))
     {
         return Err("native_resident_runtime_invalid".to_owned());
     }

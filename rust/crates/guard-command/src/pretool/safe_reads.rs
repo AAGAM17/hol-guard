@@ -227,7 +227,15 @@ pub(super) fn bounded_file_write_target(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
-    bounded_write_target(value, home_dir, cwd, false)
+    bounded_write_target(value, home_dir, cwd, false, false)
+}
+
+pub(super) fn bounded_native_file_write_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    bounded_write_target(value, home_dir, cwd, false, true)
 }
 
 fn bounded_write_target(
@@ -235,6 +243,7 @@ fn bounded_write_target(
     home_dir: Option<&str>,
     cwd: Option<&str>,
     directory: bool,
+    allow_home: bool,
 ) -> bool {
     let Some(workspace) = cwd.and_then(|root| {
         let expanded = expand_home_read_path(root, home_dir).unwrap_or_else(|| root.to_owned());
@@ -269,8 +278,18 @@ fn bounded_write_target(
     let Some(canonical) = canonical else {
         return false;
     };
+    let inside_verified_home = allow_home
+        && home_dir
+            .and_then(|home| std::fs::canonicalize(home).ok())
+            .is_some_and(|home| {
+                // A filesystem root must never turn into an unrestricted write scope.
+                home.parent().and_then(std::path::Path::parent).is_some()
+                    && canonical.starts_with(home)
+                    && canonical == target
+            });
     (canonical.starts_with(&workspace)
-        || super::worktree_writes::same_repository_worktree(&workspace, &canonical))
+        || super::worktree_writes::same_repository_worktree(&workspace, &canonical)
+        || inside_verified_home)
         && guard_secure_fs::hidden_read_parts_allowed(&canonical)
         && resolved_path_allowed(&canonical, home_dir, workspace.to_str())
         && !autostart_write_target(&canonical)
@@ -331,10 +350,12 @@ pub(super) fn safe_file_mutation_arguments(
 ) -> bool {
     match (command, arguments) {
         ("mkdir", [target]) => {
-            !target.starts_with('-') && bounded_write_target(target, context.0, context.1, true)
+            !target.starts_with('-')
+                && bounded_write_target(target, context.0, context.1, true, false)
         }
         ("mkdir", [flag, target]) if matches!(flag.as_str(), "-p" | "--parents" | "--") => {
-            !target.starts_with('-') && bounded_write_target(target, context.0, context.1, true)
+            !target.starts_with('-')
+                && bounded_write_target(target, context.0, context.1, true, false)
         }
         ("touch", [target]) => {
             !target.starts_with('-') && bounded_file_write_target(target, context.0, context.1)

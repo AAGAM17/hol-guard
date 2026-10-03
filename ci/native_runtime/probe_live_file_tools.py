@@ -14,7 +14,8 @@ from ci.native_runtime import probe_installed_pi_output as probe
 from ci.native_runtime.probe_workflow_matrix import decode_events
 
 
-def assert_file_tools(events: list[dict], workspace: Path) -> None:
+def assert_file_tools(events: list[dict], workspace: Path, target_root: Path | None = None) -> None:
+    target_root = target_root or workspace
     starts = [event for event in events if event.get("type") == "tool_execution_start"]
     ends = [event for event in events if event.get("type") == "tool_execution_end"]
     expected = [
@@ -40,8 +41,10 @@ def assert_file_tools(events: list[dict], workspace: Path) -> None:
             anchored_target = None
             if isinstance(anchored, str):
                 headers = re.findall(r"^\[([^\n]+)\]$", anchored, flags=re.MULTILINE)
-                if len(headers) == 1 and re.fullmatch(r"copy\.txt#[0-9A-Fa-f]{4}", headers[0]):
-                    anchored_target = "copy.txt"
+                if len(headers) == 1:
+                    matched = re.fullmatch(r"(.+)#[0-9A-Fa-f]{4}", headers[0])
+                    if matched is not None:
+                        anchored_target = matched.group(1)
             if anchored_target is None or (target is not None and target != anchored_target):
                 raise AssertionError("Pi supplied conflicting or invalid anchored edit targets")
             target = anchored_target
@@ -50,15 +53,15 @@ def assert_file_tools(events: list[dict], workspace: Path) -> None:
         path = Path(target)
         if not path.is_absolute():
             path = workspace / path
-        if path.resolve() != (workspace / filename).resolve():
+        if path.resolve() != (target_root / filename).resolve():
             raise AssertionError("Pi changed the required file target")
         if not start.get("toolCallId") or start["toolCallId"] != end.get("toolCallId"):
             raise AssertionError("Pi file tool completion identity mismatched")
         if end.get("isError") is not False:
             raise AssertionError(f"Pi {name} failed")
-    if (workspace / "copy.txt").read_text() != "fixture-after\n":
+    if (target_root / "copy.txt").read_text() != "fixture-after\n":
         raise AssertionError("Pi did not complete the required write/edit side effects")
-    if (workspace / "seed.txt").read_text() != "fixture-before\n":
+    if (target_root / "seed.txt").read_text() != "fixture-before\n":
         raise AssertionError("Pi changed the read-only seed")
 
 
@@ -67,6 +70,7 @@ def main() -> int:
     parser.add_argument("--expected-source-sha", required=True)
     parser.add_argument("--model", default="devin/gpt-6-luna")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--outside-cwd", action="store_true", help="Use absolute targets in another project")
     args = parser.parse_args()
     executable = shutil.which("omp")
     if executable is None:
@@ -80,7 +84,11 @@ def main() -> int:
         home, workspace, guard_home = root / "home", root / "workspace", root / "guard-home"
         home.mkdir()
         workspace.mkdir()
-        (workspace / "seed.txt").write_text("fixture-before\n")
+        target_root = home / "other-project" if args.outside_cwd else workspace
+        target_root.mkdir(exist_ok=True)
+        (target_root / "seed.txt").write_text("fixture-before\n")
+        seed = json.dumps(str(target_root / "seed.txt") if args.outside_cwd else "seed.txt")
+        copy = json.dumps(str(target_root / "copy.txt") if args.outside_cwd else "copy.txt")
         daemon = probe._start_installed_daemon(
             guard_home=guard_home,
             home=home,
@@ -96,10 +104,10 @@ def main() -> int:
             before = worker.store.count_approval_requests(status=None)
             prompt = (
                 "Synthetic regression. Use these exact five tool calls in order, no other calls: "
-                "1. read seed.txt. 2. write copy.txt with exactly fixture-before followed by newline. "
-                "3. read copy.txt to obtain edit anchors. "
-                "4. edit copy.txt replacing fixture-before with fixture-after, retaining the newline. "
-                "5. read copy.txt. Stop if any tool is blocked. Do not use bash or python."
+                f"1. read {seed}. 2. write {copy} with exactly fixture-before followed by newline. "
+                f"3. read {copy} to obtain edit anchors. "
+                f"4. edit {copy} replacing fixture-before with fixture-after, retaining the newline. "
+                f"5. read {copy}. Stop if any tool is blocked. Do not use bash or python."
             )
             result = subprocess.run(
                 [
@@ -132,7 +140,7 @@ def main() -> int:
             (args.output / "pi-file-tools.log").write_text(result.stdout + "\n" + result.stderr)
             if result.returncode != 0:
                 raise AssertionError("Pi file workflow failed; inspect private event evidence")
-            assert_file_tools(decode_events(result.stdout), workspace)
+            assert_file_tools(decode_events(result.stdout), workspace, target_root)
             if worker.store.count_approval_requests(status=None) != before:
                 raise AssertionError("ordinary file tools created an approval")
             summary = {
@@ -140,6 +148,7 @@ def main() -> int:
                 "actual_pi_calls": 5,
                 "new_quiet_approvals": 0,
                 "installed_source_sha": capabilities.build_sha,
+                "outside_cwd": args.outside_cwd,
             }
             (args.output / "summary.json").write_text(json.dumps(summary, indent=2))
             print(json.dumps(summary))

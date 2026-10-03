@@ -62,6 +62,9 @@ It checks tool completion identities, exact targets, write contents, final file
 contents, an unchanged seed and zero new approvals in a disposable workspace.
 The model defaults to `devin/gpt-6-luna`; either runner accepts `--model`.
 Neither a model's success claim nor shell file operations can replace these calls.
+Repeat with `--outside-cwd` to verify the same native calls against absolute paths
+in another disposable project within the verified user home. Location alone must
+not trigger approval; sensitive paths and cross-scope symlink writes remain guarded.
 
 Add every newly reported regression to `workflow_matrix_cases.py` (or the
 protected suite), with an explicit expected outcome, before fixing policy. Keep

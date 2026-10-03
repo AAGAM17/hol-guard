@@ -51,6 +51,14 @@ def test_execution_lookup_context_is_feature_gated_and_omits_environment_values(
     monkeypatch.setenv("GIT_EXTERNAL_DIFF", "different-synthetic-value")
     changed = json.loads(_encode_hook_envelope(**arguments, execution_context_supported=True))
     assert changed["source"]["execution_environment"]["environment_digest"] != context["environment_digest"]
+    forwarded = {**context, "path": "/actual/caller/bin"}
+    arguments["payload"]["guard_execution_environment"] = forwarded
+    encoded = json.loads(_encode_hook_envelope(**arguments, execution_context_supported=True))
+    assert encoded["source"]["execution_environment"] == forwarded
+    assert "guard_execution_environment" not in encoded["raw_payload"]
+    arguments["payload"]["guard_execution_environment"] = None
+    unavailable = json.loads(_encode_hook_envelope(**arguments, execution_context_supported=True))
+    assert "execution_environment" not in unavailable["source"]
 
 
 def _edge_result() -> dict[str, object]:
@@ -421,9 +429,11 @@ def test_native_client_classifies_bounded_failure_states(
     assert native_resident_client_failure_code() == expected_code
 
 
+@pytest.mark.parametrize("execution_context_supported", [True, False])
 def test_raw_hook_bridge_preserves_payload_for_rust_parsing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    execution_context_supported: bool,
 ) -> None:
     runtime = tmp_path / "hol-guard-runtime"
     runtime.write_bytes(b"runtime")
@@ -443,6 +453,7 @@ def test_raw_hook_bridge_preserves_payload_for_rust_parsing(
             "hook-envelope-v2",
             "native-resident-client-v1",
             "pre-tool-generic-authority-v1",
+            *(["git-execution-context-v1"] if execution_context_supported else []),
         ),
     )
     monkeypatch.setattr(
@@ -482,6 +493,10 @@ def test_raw_hook_bridge_preserves_payload_for_rust_parsing(
         deadline=None,
         policy_snapshot={"generation": 1},
     )
+    if not execution_context_supported:
+        assert result is None
+        assert not captured
+        return
     assert result == _edge_result()
     encoded = captured["payload"]
     assert isinstance(encoded, bytes)

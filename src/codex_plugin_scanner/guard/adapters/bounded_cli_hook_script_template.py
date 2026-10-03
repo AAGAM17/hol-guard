@@ -6,6 +6,7 @@ BOUNDED_HOOK_SCRIPT_TEMPLATE = '''#!/usr/bin/env python3
 """Managed by HOL Guard. Re-run hol-guard install after moving Guard home."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -104,6 +105,25 @@ def _json_object(text: str) -> dict[str, object] | None:
     except json.JSONDecodeError:
         return None
     return raw if isinstance(raw, dict) else None
+
+
+def _stamp_hook_input(text: str) -> str:
+    payload = _json_object(text)
+    if payload is None:
+        return text
+    active = {key: value for key, value in os.environ.items() if value}
+    payload["guard_execution_environment"] = {
+        "path": os.environ.get("PATH", ""),
+        "environment_names": sorted(active),
+        "environment_digest": hashlib.sha256(
+            json.dumps(active, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "xdg_config_home": os.environ.get("XDG_CONFIG_HOME"),
+        "home": os.environ.get("HOME"),
+        "git_pager_disabled": os.environ.get("GIT_PAGER") in ("", "cat"),
+        "pager_disabled": os.environ.get("PAGER") in ("", "cat"),
+    }
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
 
 
 def _compact(event_name: str) -> str:
@@ -584,7 +604,7 @@ def main() -> int:
             prefix,
             reason="HOL Guard blocked this action because hook input exceeded the safe size limit.",
         )
-    result = _post_hook(prefix)
+    result = _post_hook(_stamp_hook_input(prefix))
     if result is None:
         return _fail(prefix)
     stdout, stderr, exit_code = result

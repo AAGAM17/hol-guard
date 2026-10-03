@@ -47,6 +47,22 @@ The final summary distinguishes mandatory cases from actual Pi calls.
 It records the installed native source SHA and rule digest. Release validation
 must specify the expected SHA so stale installed code cannot qualify a new PR.
 
+## Native File Tools
+
+Shell coverage alone does not qualify the host's native file tools. Also run:
+
+```sh
+python -m ci.native_runtime.probe_live_file_tools \
+  --expected-source-sha FULL_SHA_OF_THE_INSTALLED_BUILD \
+  --output /absolute/path/to/private-file-tool-evidence
+```
+
+This requires five actual calls in order: read, write, read, anchored edit, read.
+It checks tool completion identities, exact targets, write contents, final file
+contents, an unchanged seed and zero new approvals in a disposable workspace.
+The model defaults to `devin/gpt-6-luna`; either runner accepts `--model`.
+Neither a model's success claim nor shell file operations can replace these calls.
+
 Add every newly reported regression to `workflow_matrix_cases.py` (or the
 protected suite), with an explicit expected outcome, before fixing policy. Keep
 security-negative pairs alongside new benign proofs. Never turn a failing case

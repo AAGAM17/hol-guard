@@ -29,6 +29,12 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
             ("&& cd .. && cat one.txt", false),
             ("&& cp one.txt copy.txt", false),
             ("&& rm -rf project", false),
+            ("&& cat one.txt > copy.txt", false),
+            ("&& cat one.txt >> .env", false),
+            ("&& cat < .env", false),
+            ("&& cat one.txt &", false),
+            ("&& cat $(echo one.txt)", false),
+            ("&& cat one.txt && gh auth token", false),
         ] {
             let command = format!("cd {} {suffix}", project.display());
             let result = evaluate_pre_tool_envelope_with_context(
@@ -75,6 +81,21 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
         None,
     );
     assert_ne!(result.minimum_action, "allow");
+
+    let unicode_project = root.join("project-\u{00e9}");
+    std::fs::create_dir_all(&unicode_project).unwrap();
+    std::fs::write(unicode_project.join("one.txt"), "ordinary fixture\n").unwrap();
+    let command = format!("cd {} && cat one.txt | head -1", unicode_project.display());
+    let result = evaluate_pre_tool_envelope_with_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+        None,
+        None,
+        root.to_str(),
+        root.to_str(),
+    );
+    assert_eq!(result.minimum_action, "allow", "{command}");
 
     use guard_command::native_command_controls::CompiledNativeCommandControls;
     use guard_command::native_command_program::packaged_command_program;

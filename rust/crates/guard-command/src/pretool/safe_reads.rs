@@ -671,6 +671,72 @@ pub(super) fn safe_head_tail_stdin_arguments(arguments: &[String]) -> bool {
     safe_head_tail_with_targets(arguments, true, (None, None), false)
 }
 
+pub(super) fn safe_jq_stdin_arguments(arguments: &[String]) -> bool {
+    let mut filter = None;
+    for argument in arguments {
+        if filter.is_none()
+            && matches!(
+                argument.as_str(),
+                "-r" | "-c"
+                    | "-e"
+                    | "-M"
+                    | "--raw-output"
+                    | "--compact-output"
+                    | "--exit-status"
+                    | "--monochrome-output"
+            )
+        {
+            continue;
+        }
+        if filter.replace(argument.as_str()).is_some() {
+            return false;
+        }
+    }
+    let Some(filter) = filter else { return false };
+    // Only field/index projections: no functions, file operands, modules or env access.
+    if filter.len() > 256 || !filter.starts_with('.') {
+        return false;
+    }
+    let bytes = filter.as_bytes();
+    let mut index = 1;
+    while index < bytes.len() {
+        if bytes[index] == b'[' {
+            index += 1;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+            if bytes.get(index) != Some(&b']') {
+                return false;
+            }
+            index += 1;
+            if index < bytes.len() && !matches!(bytes[index], b'.' | b'[') {
+                return false;
+            }
+        } else {
+            if bytes[index] == b'.' {
+                if index == 1 {
+                    return false;
+                }
+                index += 1;
+            }
+            if index >= bytes.len() || !(bytes[index].is_ascii_alphabetic() || bytes[index] == b'_')
+            {
+                return false;
+            }
+            index += 1;
+            while index < bytes.len()
+                && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
+            {
+                index += 1;
+            }
+            if index < bytes.len() && !matches!(bytes[index], b'.' | b'[') {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 fn safe_head_tail_with_targets(
     arguments: &[String],
     piped_input: bool,

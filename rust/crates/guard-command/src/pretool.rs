@@ -304,8 +304,10 @@ pub(crate) fn benign_command_segments(
             let benign = exact_safe_segment_with_context(model, segment, false, context);
             let basename = executable_basename(segment.executable.as_deref().unwrap_or(""));
             let stdin_filter = segment.pipeline_index > 0
-                && matches!(basename, "head" | "tail")
-                && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments);
+                && ((matches!(basename, "head" | "tail")
+                    && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments))
+                    || (basename == "jq"
+                        && safe_reads::safe_jq_stdin_arguments(&segment.arguments)));
             let path_free = matches!(
                 basename,
                 "pwd"
@@ -378,6 +380,9 @@ fn exact_safe_segment_with_context(
         ),
         "git" => safe_git_arguments(&segment.arguments, allow_git_helper_context),
         "gh" => safe_gh_arguments(&segment.arguments),
+        "jq" => {
+            segment.pipeline_index > 0 && safe_reads::safe_jq_stdin_arguments(&segment.arguments)
+        }
         "rg" | "grep" => {
             search::safe_search_arguments_with_context(basename, &segment.arguments, context)
         }

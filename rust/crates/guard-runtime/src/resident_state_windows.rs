@@ -341,7 +341,10 @@ fn windows_acl_path(path: &Path) -> PathBuf {
     const EXTENDED_PREFIX: &[u16] = &[92, 92, 63, 92];
     const DEVICE_PREFIX: &[u16] = &[92, 92, 46, 92];
     let wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
-    if wide.starts_with(EXTENDED_PREFIX) || wide.starts_with(DEVICE_PREFIX) || !path.is_absolute() {
+    if wide.starts_with(EXTENDED_PREFIX)
+        || wide.starts_with(DEVICE_PREFIX)
+        || !path.is_absolute()
+    {
         return path.to_path_buf();
     }
 

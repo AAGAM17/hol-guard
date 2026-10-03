@@ -2361,6 +2361,7 @@ fn cached_supply_chain_bundle_payload(store: &dyn SupplyChainStore) -> Option<Ma
 }
 
 /// `_resolve_advisory_aliases_from_bundle` — upper-cased alias closure.
+#[cfg(unix)]
 fn resolve_advisory_aliases_from_bundle(
     bundle: Option<&Map<String, Value>>,
     advisory_ids: &[String],

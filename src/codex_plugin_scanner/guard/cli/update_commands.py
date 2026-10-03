@@ -377,9 +377,11 @@ def run_guard_update(
                 resident_update_lock=resident_update_lock,
             )
             if resident_update_lock.active:
-                payload, _exit_code = result
-                if _should_publish_runtime_digest(payload):
+                try:
                     _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
+                except NativeResidentUpdateLockError:
+                    if _should_publish_runtime_digest(result[0]):
+                        raise
                 resident_update_lock.release()
             return result
     except NativeResidentUpdateLockError as error:

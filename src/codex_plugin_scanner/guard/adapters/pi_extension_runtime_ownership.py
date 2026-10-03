@@ -22,16 +22,20 @@ class PiExtensionRuntimeOwnership:
     recovery_command: str
     recovery_args: tuple[str, ...]
     recovery_accepts_failure_kind: bool
+    cli_identity: dict[str, object] | None = None
 
 
 def resolve_pi_extension_runtime_ownership(
     *, guard_home: Path, home_dir: Path, harness: str, package_source: Path
 ) -> PiExtensionRuntimeOwnership:
+    from ..hook_execution_environment import verified_guard_cli_identity
+
+    cli_identity = verified_guard_cli_identity(cli_interpreter=sys.executable)
     guard_args = ["hook", "--json", "--guard-home", str(guard_home), "--harness", harness]
     if home_dir.resolve() != Path.home().resolve():
         guard_args.extend(["--home", str(home_dir)])
     if os.name != "nt":
-        cli_command = _stable_guard_cli_command(home_dir)
+        cli_command = _stable_guard_cli_command(home_dir, cli_identity=cli_identity)
         recovery_args = ["daemon", "recover", "--guard-home", str(guard_home)]
         if home_dir.resolve() != Path.home().resolve():
             recovery_args.extend(["--home", str(home_dir)])
@@ -43,6 +47,7 @@ def resolve_pi_extension_runtime_ownership(
             cli_command,
             tuple(recovery_args),
             True,
+            cli_identity,
         )
     package_root = package_source.resolve().parents[3]
     python = str(Path(sys.executable).expanduser().absolute())
@@ -54,16 +59,23 @@ def resolve_pi_extension_runtime_ownership(
         python,
         ("-I", "-c", _windows_recovery_bootstrap(package_root, guard_home=guard_home, home_dir=home_dir)),
         True,
+        cli_identity,
     )
 
 
-def _stable_guard_cli_command(home_dir: Path) -> str:
+def _stable_guard_cli_command(
+    home_dir: Path,
+    *,
+    cli_identity: dict[str, object] | None = None,
+) -> str:
     # AppImages prepend a transient mount to PATH. The official user install is
     # durable and must own hooks after the desktop process exits. Managed Core
     # under the Desktop app-data directory is also durable and must outrank a
     # PATH pipx hol-guard that would start a second, older daemon.
     durable_desktop = durable_desktop_current_hol_guard(home_dir)
+    attested_path = cli_identity.get("invocation_path") if cli_identity is not None else None
     candidates = (
+        attested_path if isinstance(attested_path, str) else None,
         os.environ.get(_DESKTOP_RUNTIME_OWNER_ENV),
         str(durable_desktop) if durable_desktop is not None else None,
         str(home_dir / ".local" / "bin" / "hol-guard"),
@@ -105,7 +117,8 @@ def _windows_cli_bootstrap(package_root: Path, *, guard_home: Path, harness: str
         "argv=json.loads(sys.argv[1]);config={'python_executable':sys.executable,"
         f"'package_root':{str(package_root)!r},'guard_home':{str(guard_home)!r},"
         f"'cli_args':argv,'harness':{harness!r},'timeout_seconds':0.75}};"
-        "raise SystemExit(run_bounded_cli_hook(config,input_text=stamp_hook_input_text(sys.stdin.read(1000001))))"
+        "raise SystemExit(run_bounded_cli_hook(config,input_text=stamp_hook_input_text("
+        "sys.stdin.read(1000001),cli_interpreter=sys.executable)))"
     )
 
 

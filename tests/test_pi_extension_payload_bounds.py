@@ -40,6 +40,12 @@ const metadata = {{
   home: "/outer/home",
   git_pager_disabled: true,
   pager_disabled: false,
+  cli_identity: {{
+    schema: "guard-cli-identity-v1",
+    invocation_path: "/outer/bin/hol-guard",
+    target_path: "/outer/bin/hol-guard-target",
+    target_sha256: "a".repeat(64),
+  }},
 }};
 const payload = {{
   hook_event_name: "PostToolUse",
@@ -262,6 +268,12 @@ def test_generated_reference_wrapper_preserves_caller_environment_metadata(tmp_p
         "home": "/outer/home",
         "git_pager_disabled": True,
         "pager_disabled": False,
+        "cli_identity": {
+            "schema": "guard-cli-identity-v1",
+            "invocation_path": "/outer/bin/hol-guard",
+            "target_path": "/outer/bin/hol-guard-target",
+            "target_sha256": "a" * 64,
+        },
     }
     assert result["keys"] == [
         "config_path",

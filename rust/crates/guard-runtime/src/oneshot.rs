@@ -224,9 +224,25 @@ pub(crate) fn evaluate_pre_tool_value(value: &Value) -> Result<Value, String> {
 }
 
 pub(crate) fn evaluate_pre_tool_request(
-    request: &CommandModelRequestV1,
+    request: &crate::resident_protocol::PreToolUseRequestV1,
 ) -> Result<Vec<u8>, String> {
-    crate::encode_response(&pre_tool_response(None, evaluate_pre_tool(request)?))
+    crate::encode_response(&pre_tool_response(
+        None,
+        guard_command::pretool::evaluate_pre_tool_with_execution_context(
+            &guard_command::CommandModelRequestV1 {
+                command: request.command.clone(),
+                dialect: request.dialect.clone(),
+                transport: request.transport.clone(),
+                extraction_provenance: request.extraction_provenance.clone(),
+            },
+            request
+                .execution_environment
+                .as_ref()
+                .and_then(|context| context.home.as_deref()),
+            None,
+            request.execution_environment.as_ref(),
+        )?,
+    ))
 }
 
 #[cfg_attr(not(test), allow(dead_code, unused_imports))]

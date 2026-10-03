@@ -9,6 +9,7 @@ use guard_contracts::{
 use guard_hook_core::review_post_tool;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crate::native_hook_receipt::{
@@ -347,6 +348,31 @@ fn validate_envelope_shape(envelope: &GuardHookEnvelopeV2) -> Result<(), String>
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {
             return Err("native_hook_source_metadata_invalid".to_owned());
+        }
+        if let Some(identity) = &context.cli_identity {
+            if identity.schema != guard_contracts::GUARD_CLI_IDENTITY_V1_SCHEMA
+                || identity.invocation_path.len() > MAX_PATH_BYTES
+                || identity.target_path.len() > MAX_PATH_BYTES
+                || identity.invocation_path.is_empty()
+                || identity.target_path.is_empty()
+                || identity.invocation_path.contains('\0')
+                || identity.target_path.contains('\0')
+                || identity.invocation_path.chars().any(char::is_control)
+                || identity.target_path.chars().any(char::is_control)
+                || !Path::new(&identity.invocation_path).is_absolute()
+                || !Path::new(&identity.target_path).is_absolute()
+                || identity.target_sha256.len() != 64
+                || !identity
+                    .target_sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                || identity
+                    .invocation_link_target
+                    .as_ref()
+                    .is_some_and(|target| target.len() > MAX_PATH_BYTES || target.contains('\0'))
+            {
+                return Err("native_hook_source_metadata_invalid".to_owned());
+            }
         }
     }
     let _ = request_identity(envelope)?;

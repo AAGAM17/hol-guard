@@ -15,6 +15,11 @@ use crate::native_command_program::{
 };
 use crate::CanonicalCommandV1;
 
+pub(crate) struct NativeExecutionContext<'a> {
+    pub(crate) source: (Option<&'a str>, Option<&'a str>),
+    pub(crate) environment: Option<&'a guard_contracts::GuardExecutionEnvironmentV1>,
+}
+
 #[derive(Debug)]
 pub struct CompiledNativeCommandControls {
     program: Arc<NativeCommandProgram>,
@@ -201,11 +206,33 @@ impl CompiledNativeCommandControls {
     pub(crate) fn apply_with_tool_and_context(
         &self,
         command: Option<&CanonicalCommandV1>,
-        mut result: PreToolResultV1,
+        result: PreToolResultV1,
         tool: Option<&str>,
         packages: &[String],
         deadline: Option<Instant>,
         context: (Option<&str>, Option<&str>),
+    ) -> PreToolResultV1 {
+        self.apply_with_tool_and_execution_context(
+            command,
+            result,
+            tool,
+            packages,
+            deadline,
+            NativeExecutionContext {
+                source: context,
+                environment: None,
+            },
+        )
+    }
+
+    pub(crate) fn apply_with_tool_and_execution_context(
+        &self,
+        command: Option<&CanonicalCommandV1>,
+        mut result: PreToolResultV1,
+        tool: Option<&str>,
+        packages: &[String],
+        deadline: Option<Instant>,
+        context: NativeExecutionContext<'_>,
     ) -> PreToolResultV1 {
         let observed = match command {
             Some(command) => self
@@ -336,7 +363,12 @@ impl CompiledNativeCommandControls {
             && floor == "allow"
             && binding.uncertainty_count == 0
             && command.is_some_and(|model| {
-                self.explicit_permissions_cover_command(model, &batch, context)
+                self.explicit_permissions_cover_command(
+                    model,
+                    &batch,
+                    context.source,
+                    context.environment,
+                )
             })
         {
             // Authenticated consent to every classified command segment can
@@ -370,6 +402,7 @@ impl CompiledNativeCommandControls {
         command: &CanonicalCommandV1,
         batch: &NativeCommandObservationBatchV1,
         context: (Option<&str>, Option<&str>),
+        execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
     ) -> bool {
         if command.confidence != "exact"
             || command.path_overridden
@@ -378,9 +411,10 @@ impl CompiledNativeCommandControls {
         {
             return false;
         }
-        let mut covered: BTreeSet<_> = crate::pretool::benign_command_segments(command, context)
-            .into_iter()
-            .collect();
+        let mut covered: BTreeSet<_> =
+            crate::pretool::benign_command_segments(command, context, execution_environment)
+                .into_iter()
+                .collect();
         for observation in &batch.observations {
             if observation.effective_segment_indexes.is_empty() {
                 continue;

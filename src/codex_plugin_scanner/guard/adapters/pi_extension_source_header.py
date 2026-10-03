@@ -7,6 +7,7 @@ from .pi_extension_source_header_shared_v1 import make_source_header_builder_v1
 
 build_extension_source_header = make_source_header_builder_v1(
     content_review_helpers_source=CONTENT_REVIEW_HELPERS_SOURCE,
+    include_cli_identity=True,
     structured_constants_source=(
         "// Python JSON responses can escape one astral character as two Unicode escapes.\n"
         "const GUARD_MAX_SERIALIZED_RESPONSE_CHARS =\n"

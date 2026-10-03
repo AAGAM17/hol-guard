@@ -26,6 +26,7 @@ pub const GUARD_HOOK_EDGE_RESULT_V2_SCHEMA: &str = "guard-hook-edge-result.v2";
 pub const PRE_TOOL_ACTION_V1_SCHEMA: &str = "guard-pre-tool-action.v1";
 pub const PRE_TOOL_RESULT_V1_SCHEMA: &str = "guard-pre-tool-result.v1";
 pub const PRE_TOOL_GENERIC_AUTHORITY_V1: &str = "pre-tool-generic-authority-v1";
+pub const GUARD_CLI_IDENTITY_V1_SCHEMA: &str = "guard-cli-identity-v1";
 pub const MAX_NATIVE_REQUEST_BYTES: usize = 6 * 1024 * 1024;
 pub const MAX_NATIVE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -60,6 +61,19 @@ pub struct GuardExecutionEnvironmentV1 {
     pub pager_disabled: bool,
     #[serde(default)]
     pub xdg_config_home: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cli_identity: Option<GuardCliIdentityV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GuardCliIdentityV1 {
+    pub schema: String,
+    pub invocation_path: String,
+    pub target_path: String,
+    pub target_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invocation_link_target: Option<String>,
 }
 
 impl GuardExecutionEnvironmentV1 {
@@ -72,6 +86,7 @@ impl GuardExecutionEnvironmentV1 {
             git_pager_disabled: false,
             pager_disabled: false,
             xdg_config_home: None,
+            cli_identity: None,
         }
     }
 }

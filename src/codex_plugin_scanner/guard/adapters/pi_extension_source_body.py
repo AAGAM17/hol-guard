@@ -22,6 +22,7 @@ _STRUCTURED_BLOCKED_REASON_PRELUDE = (
 
 
 def build_extension_source_body(*, harness: str, display_name: str) -> str:
+    cli_identity_line = "      cli_identity: GUARD_CLI_IDENTITY,\n"
     return (
         "type GuardDaemonConnection = { port: number; authToken: string };\n" + "type GuardDaemonAttempt = {\n"  # pyright: ignore[reportImplicitStringConcatenation]
         "  response: GuardResponse | null;\n"
@@ -236,7 +237,8 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "      home: typeof process.env.HOME === 'string' ? process.env.HOME : null,\n"
         "      git_pager_disabled: process.env.GIT_PAGER === '' || process.env.GIT_PAGER === 'cat',\n"
         "      pager_disabled: process.env.PAGER === '' || process.env.PAGER === 'cat',\n"
-        "    },\n"
+        + cli_identity_line
+        + "    },\n"
         "  };\n"
         "  let serializedPayload = '';\n"
         "  let cleanupPayloadReference = () => {};\n"

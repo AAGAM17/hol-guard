@@ -3,14 +3,14 @@ mod extract;
 #[path = "generic_result.rs"]
 mod result;
 
-use crate::native_command_controls::CompiledNativeCommandControls;
+use crate::native_command_controls::{CompiledNativeCommandControls, NativeExecutionContext};
 use crate::CommandModelRequestV1;
 use guard_contracts::{
     NativePromptRiskClassV1, PreToolActionTypeV1, PreToolOperationV1, PreToolResultV1,
 };
 use serde_json::Value;
 
-use super::{evaluate_pre_tool_with_context, PreToolDecisionV1};
+use super::{evaluate_pre_tool_with_execution_context, PreToolDecisionV1};
 use extract::{extract_generic_signals, GenericSignals};
 use result::{generic_action, generic_error_result, generic_result, review_reason};
 use std::time::Instant;
@@ -69,7 +69,7 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
         Err(error) => return generic_error_result(harness, event, error),
     };
     let command_decision = signals.command.as_deref().map(|command| {
-        evaluate_pre_tool_with_context(
+        evaluate_pre_tool_with_execution_context(
             &CommandModelRequestV1 {
                 command: command.to_owned(),
                 dialect: "posix".to_owned(),
@@ -78,6 +78,7 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
             },
             home_dir,
             cwd,
+            execution_environment,
         )
     });
     // Parsed benign commands may contain credential words as search patterns.
@@ -128,13 +129,16 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
         .and_then(|decision| decision.as_ref().ok())
         .map(|decision| &decision.command_model);
     let mut result = match (controls, command_model) {
-        (Some(controls), Some(model)) => controls.apply_with_tool_and_context(
+        (Some(controls), Some(model)) => controls.apply_with_tool_and_execution_context(
             Some(model),
             result,
             signals.tool_name.as_deref(),
             &signals.package_values,
             deadline,
-            (home_dir, cwd),
+            NativeExecutionContext {
+                source: (home_dir, cwd),
+                environment: execution_environment,
+            },
         ),
         (Some(controls), _) => controls.apply_with_tool(
             None,
@@ -153,7 +157,11 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
             let destination =
                 super::segment_proof::verified_cwd_compound_context(model, (home_dir, cwd));
             let context = (home_dir, destination.as_deref().or(cwd));
-            let benign = super::segment_proof::benign_command_segments(model, (home_dir, cwd));
+            let benign = super::segment_proof::benign_command_segments(
+                model,
+                (home_dir, cwd),
+                execution_environment,
+            );
             model.segments.iter().enumerate().any(|(index, segment)| {
                 segment.executable.as_deref().is_some_and(|executable| {
                     super::executable_basename(executable) == "git"

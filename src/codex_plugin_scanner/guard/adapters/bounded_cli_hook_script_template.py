@@ -20,6 +20,7 @@ from urllib.parse import quote, urlparse
 GUARD_HOME = __GUARD_HOME__
 HARNESS = __HARNESS__
 TIMEOUT_SECONDS = __TIMEOUT_SECONDS__
+CLI_IDENTITY = __CLI_IDENTITY__
 _MAX_INPUT_BYTES = 1_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -112,7 +113,7 @@ def _stamp_hook_input(text: str) -> str:
     if payload is None:
         return text
     active = {key: value for key, value in os.environ.items() if value}
-    payload["guard_execution_environment"] = {
+    execution_environment = {
         "path": os.environ.get("PATH", ""),
         "environment_names": sorted(active),
         "environment_digest": hashlib.sha256(
@@ -123,6 +124,9 @@ def _stamp_hook_input(text: str) -> str:
         "git_pager_disabled": os.environ.get("GIT_PAGER") in ("", "cat"),
         "pager_disabled": os.environ.get("PAGER") in ("", "cat"),
     }
+    if isinstance(CLI_IDENTITY, dict):
+        execution_environment["cli_identity"] = CLI_IDENTITY
+    payload["guard_execution_environment"] = execution_environment
     return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
 
 

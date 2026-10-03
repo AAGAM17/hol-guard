@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +115,66 @@ def test_missing_pretool_feature_records_fail_safe_provenance(
         is None
     )
     assert routes.native_hook_route() == "native_fail_safe"
+
+
+def test_standalone_pretool_captures_outer_cli_identity_before_resident_forwarding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_path = tmp_path / "hol-guard-runtime"
+    runtime_path.write_bytes(b"runtime")
+    monkeypatch.setattr(
+        pretool,
+        "native_runtime_status",
+        lambda: runtime.NativeRuntimeStatus(
+            mode="auto",
+            available=True,
+            compatible=True,
+            reason="ready",
+            identity=runtime.NativeRuntimeIdentity(
+                path=runtime_path,
+                size=runtime_path.stat().st_size,
+                mtime_ns=runtime_path.stat().st_mtime_ns,
+                sha256="0" * 64,
+            ),
+            capabilities=runtime.NativeRuntimeCapabilities(
+                protocol_version=2,
+                runtime_version="test",
+                rule_digest="1" * 64,
+                build_sha="2" * 40,
+                target="test",
+                features=("resident-protocol-v2", "pre-tool-command-authority-v1"),
+            ),
+        ),
+    )
+    identity = {
+        "schema": "guard-cli-identity-v1",
+        "invocation_path": "/venv/bin/hol-guard",
+        "target_path": "/venv/bin/hol-guard-target",
+        "target_sha256": "a" * 64,
+    }
+    monkeypatch.setattr(
+        pretool,
+        "collect_hook_execution_environment",
+        lambda: {"path": "/outer/bin", "cli_identity": identity},
+    )
+    captured: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(pretool, "native_resident_client_request", capture)
+    assert (
+        pretool.review_pre_tool_native(
+            "/venv/bin/hol-guard doctor",
+            guard_home=tmp_path,
+            cwd=tmp_path,
+            home_dir=tmp_path,
+        )
+        is None
+    )
+    request = json.loads(captured["payload"])
+    assert request["request"]["execution_environment"]["cli_identity"] == identity
 
 
 def test_policy_floor_uses_native_block(

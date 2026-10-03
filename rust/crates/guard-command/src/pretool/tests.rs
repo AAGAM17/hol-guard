@@ -154,6 +154,7 @@ fn allows_only_bounded_guard_doctor_diagnostics() {
         "timeout 120 hol-guard doctor 2>&1 | tail -45",
         "timeout 120 hol-guard doctor --json 2>&1 | tail -n 45",
         "timeout 120 hol-guard doctor 2>&1 | head -45",
+        "timeout 120 hol-guard doctor 2>&1 | tail -45 | wc -l",
         "true && hol-guard doctor --json",
         "hol-guard doctor --json && true",
         "hol-guard doctor --json | tail -45",
@@ -177,7 +178,6 @@ fn allows_only_bounded_guard_doctor_diagnostics() {
         "sudo -n hol-guard doctor",
         "env FOO=bar hol-guard doctor",
         "timeout --kill-after=1 120 hol-guard doctor 2>&1 | tail -45",
-        "timeout 120 hol-guard doctor 2>&1 | tail -45 | wc -l",
         "cat .env && hol-guard doctor",
         "hol-guard doctor && cat .env",
         "hol-guard doctor && unknown-command",
@@ -185,6 +185,105 @@ fn allows_only_bounded_guard_doctor_diagnostics() {
         let decision = evaluate_pre_tool(&request(command)).unwrap();
         assert_ne!(decision.minimum_action, "allow", "{command}");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn path_qualified_guard_doctor_requires_verified_outer_identity() {
+    use guard_contracts::{GuardCliIdentityV1, GuardExecutionEnvironmentV1};
+    use sha2::{Digest, Sha256};
+    use std::os::unix::fs::PermissionsExt;
+
+    let root =
+        std::env::temp_dir().join(format!("hol-guard-doctor-identity-{}", std::process::id()));
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let invocation = bin.join("hol-guard");
+    let body = b"#!/usr/bin/python3\nimport sys\nfrom codex_plugin_scanner.cli import main\nif __name__ == '__main__':\n    sys.argv[0] = sys.argv[0].removesuffix('.exe')\n    sys.exit(main())\n";
+    std::fs::write(&invocation, body).unwrap();
+    std::fs::set_permissions(&invocation, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let target = invocation.canonicalize().unwrap();
+    let identity = GuardCliIdentityV1 {
+        schema: guard_contracts::GUARD_CLI_IDENTITY_V1_SCHEMA.to_owned(),
+        invocation_path: invocation.to_string_lossy().into_owned(),
+        target_path: target.to_string_lossy().into_owned(),
+        target_sha256: hex::encode(Sha256::digest(body)),
+        invocation_link_target: None,
+    };
+    let environment = GuardExecutionEnvironmentV1 {
+        path: "/usr/bin:/bin".to_owned(),
+        environment_names: Vec::new(),
+        environment_digest: "a".repeat(64),
+        home: Some(root.to_string_lossy().into_owned()),
+        git_pager_disabled: false,
+        pager_disabled: false,
+        xdg_config_home: None,
+        cli_identity: Some(identity),
+    };
+    let evaluate = |command: &str| {
+        evaluate_pre_tool_with_execution_context(
+            &request(command),
+            environment.home.as_deref(),
+            None,
+            Some(&environment),
+        )
+        .unwrap()
+    };
+    for command in [
+        format!("{} doctor", invocation.display()),
+        "~/bin/hol-guard doctor".to_owned(),
+        format!(
+            "timeout 120 {} doctor 2>&1 | tail -45",
+            invocation.display()
+        ),
+        format!(
+            "{} doctor | grep -E 'Mode|Runtime|Approval' | head -12",
+            invocation.display()
+        ),
+        format!(
+            "timeout 120 {} doctor 2>&1 | grep -E 'Mode|Runtime|Approval' | head -12",
+            invocation.display()
+        ),
+        format!("{} doctor && true", invocation.display()),
+    ] {
+        assert_eq!(evaluate(&command).minimum_action, "allow", "{command}");
+    }
+    for command in [
+        format!("{} doctor --repair", invocation.display()),
+        format!("{} doctor --run-cli", invocation.display()),
+        format!("{} doctor", root.join("other/hol-guard").display()),
+        format!("{} doctor 2>&1 | cat .env", invocation.display()),
+        format!("{} doctor 2>&1 | unknown-consumer", invocation.display()),
+    ] {
+        assert_ne!(evaluate(&command).minimum_action, "allow", "{command}");
+    }
+    std::fs::write(&invocation, b"changed launcher\n").unwrap();
+    assert_ne!(
+        evaluate(&format!("{} doctor", invocation.display())).minimum_action,
+        "allow"
+    );
+    let malicious_body = b"#!/usr/bin/python3\nimport sys\nfrom codex_plugin_scanner.cli import main\nprint('unexpected side effect')\nif __name__ == '__main__':\n    sys.exit(main())\n";
+    std::fs::write(&invocation, malicious_body).unwrap();
+    let mut forged_environment = environment.clone();
+    forged_environment
+        .cli_identity
+        .as_mut()
+        .unwrap()
+        .target_sha256 = hex::encode(Sha256::digest(malicious_body));
+    let forged_evaluate = |command: &str| {
+        evaluate_pre_tool_with_execution_context(
+            &request(command),
+            forged_environment.home.as_deref(),
+            None,
+            Some(&forged_environment),
+        )
+        .unwrap()
+    };
+    assert_ne!(
+        forged_evaluate(&format!("{} doctor", invocation.display())).minimum_action,
+        "allow"
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

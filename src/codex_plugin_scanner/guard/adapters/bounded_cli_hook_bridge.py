@@ -14,7 +14,7 @@ from ..codex_hook_launch_runtime import (
     isolated_hook_environment,
     run_isolated_hook_process,
 )
-from ..hook_execution_environment import stamp_hook_input_text
+from ..hook_execution_environment import stamp_hook_input_text, verified_guard_cli_identity
 from ..stable_guard_cli import prune_safe_cli_executable
 from .adapter_safe_output import write_text_at_authorized_path
 from .bounded_cli_hook_failure import failure_payload as _failure_payload
@@ -50,8 +50,17 @@ def bounded_hook_script_path(guard_home: Path, harness: str) -> Path | None:
     return guard_home.joinpath(*_BOUNDED_HOOK_SCRIPT_DIR, f"{stem}.py")
 
 
-def _render_bounded_hook_script(*, guard_home: Path, harness: str, timeout_seconds: float) -> str:
+def _render_bounded_hook_script(
+    *,
+    guard_home: Path,
+    harness: str,
+    timeout_seconds: float,
+    cli_identity: Mapping[str, object] | None = None,
+) -> str:
     timeout_token = str(int(timeout_seconds)) if timeout_seconds == int(timeout_seconds) else str(timeout_seconds)
+    identity_token = "None" if cli_identity is None else json.dumps(
+        cli_identity, ensure_ascii=True, separators=(",", ":")
+    )
     return (
         BOUNDED_HOOK_SCRIPT_TEMPLATE.replace(
             "__GUARD_HOME__",
@@ -59,6 +68,7 @@ def _render_bounded_hook_script(*, guard_home: Path, harness: str, timeout_secon
         )
         .replace("__HARNESS__", json.dumps(harness.strip().lower().replace("_", "-")))
         .replace("__TIMEOUT_SECONDS__", timeout_token)
+        .replace("__CLI_IDENTITY__", identity_token)
     )
 
 
@@ -67,6 +77,7 @@ def _isolated_bounded_hook_command(
     guard_home: Path,
     harness: str,
     timeout_seconds: float,
+    cli_identity: Mapping[str, object] | None = None,
 ) -> tuple[str, ...] | None:
     interpreter = isolated_cursor_hook_python()
     script_path = bounded_hook_script_path(guard_home, harness)
@@ -80,6 +91,7 @@ def _isolated_bounded_hook_command(
                 guard_home=guard_home,
                 harness=harness,
                 timeout_seconds=timeout_seconds,
+                cli_identity=cli_identity,
             ),
         )
     except (OSError, RuntimeError, ValueError):
@@ -101,6 +113,7 @@ def bounded_cli_hook_command(
     frozen_launcher = bool(getattr(sys, "frozen", False))
     if frozen_launcher:
         python_executable = prune_safe_cli_executable(python_executable)
+    cli_identity = verified_guard_cli_identity(cli_interpreter=python_executable)
     config = {
         "python_executable": python_executable,
         "package_root": str(package_root.resolve()),
@@ -109,6 +122,7 @@ def bounded_cli_hook_command(
         "harness": harness,
         "timeout_seconds": timeout_seconds,
         "frozen_launcher": frozen_launcher,
+        "cli_identity": cli_identity,
     }
     bootstrap = (
         "import sys;"
@@ -125,6 +139,7 @@ def bounded_cli_hook_command(
             guard_home=guard_home,
             harness=harness,
             timeout_seconds=timeout_seconds,
+            cli_identity=cli_identity,
         )
         if isolated_command is not None:
             return isolated_command
@@ -469,7 +484,11 @@ def main_from_argv(argv: Sequence[str]) -> int:
             reason="HOL Guard blocked this action because hook input exceeded the safe size limit.",
             guard_home=guard_home,
         )
-    input_text = stamp_hook_input_text(input_text)
+    configured_interpreter = config.get("python_executable") if config is not None else None
+    input_text = stamp_hook_input_text(
+        input_text,
+        cli_interpreter=configured_interpreter if isinstance(configured_interpreter, str) else None,
+    )
     if config is None:
         return _emit_failure(harness=harness, input_text=input_text)
     return run_bounded_cli_hook(config, input_text=input_text)

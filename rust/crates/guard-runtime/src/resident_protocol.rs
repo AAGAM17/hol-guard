@@ -2,9 +2,10 @@ use guard_command::CommandModelRequestV1;
 use guard_contracts::{
     ApprovalChallengeRequestV3, ApprovalChallengeRequestV4, ApprovalConsumeRequestV3,
     ApprovalConsumeRequestV4, ApprovalValidateRequestV3, ApprovalValidateRequestV4,
-    ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1,
-    GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
-    NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    ContextDigestRequestV1, GuardExecutionEnvironmentV1, GuardHookEnvelopeV2, NativeHookRequestV1,
+    RuntimeCapabilitiesV1, GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES,
+    NATIVE_APPROVAL_ERROR_CODES, NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION,
+    NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use guard_hook_core::review_post_tool;
 use guard_policy_snapshot::canonical_json_bytes;
@@ -18,7 +19,7 @@ use crate::policy_store::PolicySnapshotStore;
 #[serde(tag = "operation", content = "request", rename_all = "snake_case")]
 pub(crate) enum ResidentOperationV1 {
     CommandModel(CommandModelRequestV1),
-    PreToolUse(CommandModelRequestV1),
+    PreToolUse(PreToolUseRequestV1),
     PolicySnapshotPush(Value),
     ApprovalChallenge(ApprovalChallengeRequestV3),
     ApprovalValidate(ApprovalValidateRequestV3),
@@ -32,6 +33,32 @@ pub(crate) enum ResidentOperationV1 {
     ContextDigest(ContextDigestRequestV1),
     Health(Value),
     Shutdown(Value),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreToolUseRequestV1 {
+    pub(crate) command: String,
+    #[serde(default = "default_dialect")]
+    pub(crate) dialect: String,
+    #[serde(default = "default_transport")]
+    pub(crate) transport: String,
+    #[serde(default = "default_provenance")]
+    pub(crate) extraction_provenance: String,
+    #[serde(default)]
+    pub(crate) execution_environment: Option<GuardExecutionEnvironmentV1>,
+}
+
+fn default_dialect() -> String {
+    "posix".to_owned()
+}
+
+fn default_transport() -> String {
+    "shell_string".to_owned()
+}
+
+fn default_provenance() -> String {
+    "guard-shell".to_owned()
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,7 +84,7 @@ pub(crate) struct WorkspaceReviewAuthorityEnrollRequestV1 {
 #[serde(untagged)]
 pub(crate) enum ResidentRequestV1 {
     Operation(Box<ResidentOperationV1>),
-    Edge(GuardHookEnvelopeV2),
+    Edge(Box<GuardHookEnvelopeV2>),
     Hook(NativeHookRequestV1),
 }
 
@@ -174,7 +201,7 @@ pub(crate) fn evaluate_resident_bytes(
         ResidentRequestV1::Edge(request) => {
             let policy_store =
                 policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-            crate::edge::evaluate_envelope_with_store(request, policy_store)
+            crate::edge::evaluate_envelope_with_store(*request, policy_store)
         }
         ResidentRequestV1::Operation(request) => match *request {
             ResidentOperationV1::CommandModel(request) => {

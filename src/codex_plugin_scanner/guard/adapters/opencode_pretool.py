@@ -66,7 +66,8 @@ def _pretool_hook_launcher_code(
         "package_root=Path(codex_plugin_scanner.__file__).resolve().parent.parent;"
         "config={'python_executable':sys.executable,'package_root':str(package_root),"
         "'guard_home':guard_home,'cli_args':argv,'harness':'opencode','timeout_seconds':25};"
-        "raise SystemExit(run_bounded_cli_hook(config,input_text=stamp_hook_input_text(sys.stdin.read(1000001))))"
+        "raise SystemExit(run_bounded_cli_hook(config,input_text=stamp_hook_input_text("
+        "sys.stdin.read(1000001),cli_interpreter=sys.executable)))"
     )
 
 

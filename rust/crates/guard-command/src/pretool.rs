@@ -277,7 +277,16 @@ fn exact_safe_command_with_context(
     allow_git_helper_context: bool,
     context: (Option<&str>, Option<&str>),
 ) -> bool {
-    if segment_proof::exact_safe_guard_doctor(model) {
+    exact_safe_command_with_execution_context(model, allow_git_helper_context, context, None)
+}
+
+fn exact_safe_command_with_execution_context(
+    model: &CanonicalCommandV1,
+    allow_git_helper_context: bool,
+    context: (Option<&str>, Option<&str>),
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    if segment_proof::exact_safe_guard_doctor(model, execution_environment) {
         return true;
     }
     if model.confidence != "exact"
@@ -287,7 +296,7 @@ fn exact_safe_command_with_context(
     {
         return false;
     }
-    if segment_proof::exact_safe_cwd_compound(model, context) {
+    if segment_proof::exact_safe_cwd_compound(model, context, execution_environment) {
         return true;
     }
     model.segments.iter().all(|segment| {
@@ -296,6 +305,7 @@ fn exact_safe_command_with_context(
             segment,
             allow_git_helper_context,
             context,
+            execution_environment,
         )
     })
 }
@@ -353,10 +363,19 @@ pub(super) fn evaluate_pre_tool_with_context(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<PreToolDecisionV1, String> {
+    evaluate_pre_tool_with_execution_context(request, home_dir, cwd, None)
+}
+
+pub fn evaluate_pre_tool_with_execution_context(
+    request: &CommandModelRequestV1,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> Result<PreToolDecisionV1, String> {
     let model = parse_command(request)?;
     let normalized = model.normalized_text.as_str();
     let context = (home_dir, cwd);
-    if exact_safe_command_with_context(&model, false, context)
+    if exact_safe_command_with_execution_context(&model, false, context, execution_environment)
         && model.segments.iter().all(|segment| {
             segment
                 .executable
@@ -415,7 +434,7 @@ pub(super) fn evaluate_pre_tool_with_context(
             "HOL Guard requires fresh approval for the privileged execution context.",
         ));
     }
-    if exact_safe_command_with_context(&model, false, context) {
+    if exact_safe_command_with_execution_context(&model, false, context, execution_environment) {
         return Ok(pretool_decision(
             model,
             "allow",

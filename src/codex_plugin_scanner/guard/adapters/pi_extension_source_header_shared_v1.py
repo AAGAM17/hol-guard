@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -39,9 +40,18 @@ class SourceHeaderRenderConfigV1:
     structured_constants_source: str
     structured_response_fields_source: str
     content_review_helpers_source: str
+    include_cli_identity: bool = False
 
 
 def build_source_header_v1(config: SourceHeaderRenderConfigV1) -> str:
+    cli_identity_value = json.dumps(
+        config.runtime.cli_identity, ensure_ascii=True, separators=(",", ":")
+    )
+    cli_identity_source = (
+        f"const GUARD_CLI_IDENTITY = {cli_identity_value};\n"
+        if config.include_cli_identity
+        else ""
+    )
     return (
         'import { spawn } from "node:child_process";\n'
         + 'import { createCipheriv, createHash, randomBytes } from "node:crypto";\n'  # pyright: ignore[reportImplicitStringConcatenation]
@@ -52,7 +62,8 @@ def build_source_header_v1(config: SourceHeaderRenderConfigV1) -> str:
         "\n"
         f"const GUARD_CLI_WRAPPER_COMMAND = {config.cli_wrapper_command_json};\n"
         f"const GUARD_CLI_WRAPPER_ARGS = {config.cli_wrapper_args_json};\n"
-        f"const GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS = {str(config.runtime.cli_accepts_json_args).lower()};\n"
+        + cli_identity_source
+        + f"const GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS = {str(config.runtime.cli_accepts_json_args).lower()};\n"
         f"const GUARD_DAEMON_RECOVERY_COMMAND = {config.recovery_command_json};\n"
         f"const GUARD_DAEMON_RECOVERY_ARGS = {config.recovery_args_json};\n"
         "const GUARD_DAEMON_RECOVERY_ACCEPTS_FAILURE_KIND = "
@@ -112,6 +123,7 @@ def make_source_header_builder_v1(
     structured_constants_source: str,
     structured_response_fields_source: str,
     content_review_helpers_source: str,
+    include_cli_identity: bool = False,
 ) -> HeaderBuilder:
     def build_source_header(
         *,
@@ -167,6 +179,7 @@ def make_source_header_builder_v1(
                 structured_constants_source=structured_constants_source,
                 structured_response_fields_source=structured_response_fields_source,
                 content_review_helpers_source=content_review_helpers_source,
+                include_cli_identity=include_cli_identity,
             )
         )
 

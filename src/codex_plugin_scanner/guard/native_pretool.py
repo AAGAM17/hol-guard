@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .hook_execution_environment import collect_hook_execution_environment
 from .native_resident_client import native_resident_client_request
 from .native_route_receipt import record_native_hook_result
 from .native_runtime import _isolated_environment, _native_error, native_runtime_status
@@ -224,6 +225,10 @@ def review_pre_tool_native(
         "dialect": "posix",
         "transport": "shell_string",
         "extraction_provenance": "guard-shell",
+        # Standalone callers have no raw hook envelope to carry the outer
+        # caller context. Capture it here before the resident boundary; never
+        # accept an execution context from command text or model payload.
+        "execution_environment": collect_hook_execution_environment(),
     }
     encoded = json.dumps(request, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     if len(encoded) > _MAX_REQUEST_BYTES:

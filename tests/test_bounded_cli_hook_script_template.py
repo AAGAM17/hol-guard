@@ -15,7 +15,13 @@ import pytest
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _render_bounded_hook_script
 
 
-def _load_script(tmp_path: Path, *, harness: str, timeout_seconds: float = 8) -> ModuleType:
+def _load_script(
+    tmp_path: Path,
+    *,
+    harness: str,
+    timeout_seconds: float = 8,
+    cli_identity: dict[str, object] | None = None,
+) -> ModuleType:
     guard_home = tmp_path / "guard-home"
     guard_home.mkdir(parents=True, exist_ok=True)
     guard_home.chmod(0o700)
@@ -23,6 +29,7 @@ def _load_script(tmp_path: Path, *, harness: str, timeout_seconds: float = 8) ->
         guard_home=guard_home,
         harness=harness,
         timeout_seconds=timeout_seconds,
+        cli_identity=cli_identity,
     )
     assert "daemon --serve" not in source
     path = guard_home / f"{harness}.py"
@@ -125,6 +132,22 @@ def test_generated_client_stamps_outer_environment_before_daemon_forwarding(
     assert "GIT_EXTERNAL_DIFF" in context["environment_names"]
     assert context["environment_digest"]
     assert "frozen-caller-secret-not-serialized" not in forwarded
+
+
+def test_generated_client_preserves_outer_cli_identity_in_forwarded_payload(tmp_path: Path) -> None:
+    identity = {
+        "schema": "guard-cli-identity-v1",
+        "invocation_path": "/venv/bin/hol-guard",
+        "target_path": "/venv/bin/hol-guard",
+        "target_sha256": "a" * 64,
+    }
+    module = _load_script(tmp_path, harness="zcode", cli_identity=identity)
+    payload = json.loads(
+        module._stamp_hook_input(
+            json.dumps({"command": "/venv/bin/hol-guard doctor"})
+        )
+    )
+    assert payload["guard_execution_environment"]["cli_identity"] == identity
 
 
 @pytest.mark.parametrize(

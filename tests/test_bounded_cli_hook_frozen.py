@@ -78,6 +78,7 @@ def test_frozen_hook_command_prefers_runtime_verified_signed_macos_proxy(
         "harness": "grok",
         "timeout_seconds": 25,
         "frozen_launcher": True,
+        "cli_identity": None,
     }
     assert command[8] == str(core)
 

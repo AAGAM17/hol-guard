@@ -18,7 +18,20 @@ def _write_console_script(
     *,
     extra: str = "",
     main_call: str = "main()",
+    uv_normalization: bool = False,
+    uv_branch_extra: str = "",
 ) -> None:
+    normalization = (
+        [
+            '    if sys.argv[0].endswith("-script.pyw"):',
+            '        sys.argv[0] = sys.argv[0][:-11]',
+            *([uv_branch_extra] if uv_branch_extra else []),
+            '    elif sys.argv[0].endswith(".exe"):',
+            '        sys.argv[0] = sys.argv[0][:-4]',
+        ]
+        if uv_normalization
+        else ["    sys.argv[0] = sys.argv[0].removesuffix('.exe')"]
+    )
     path.write_text(
         "\n".join(
             [
@@ -26,7 +39,7 @@ def _write_console_script(
                 "import sys",
                 "from codex_plugin_scanner.cli import main",
                 "if __name__ == '__main__':",
-                "    sys.argv[0] = sys.argv[0].removesuffix('.exe')",
+                *normalization,
                 f"    sys.exit({main_call})",
                 extra,
                 "",
@@ -123,6 +136,30 @@ def test_console_script_accepts_venv_interpreter_symlink(tmp_path: Path) -> None
     _write_console_script(cli, interpreter)
 
     assert module._python_console_script_matches(cli, package_root, str(interpreter))
+
+
+def test_console_script_accepts_uv_normalization_and_rejects_extra_branch_code(
+    tmp_path: Path,
+) -> None:
+    package_root = tmp_path / "site-packages"
+    package = package_root / "codex_plugin_scanner"
+    package.mkdir(parents=True)
+    (package / "cli.py").write_text("main = object()\n", encoding="utf-8")
+    interpreter = tmp_path / "venv" / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_bytes(b"python")
+    cli = interpreter.parent / "hol-guard"
+
+    _write_console_script(cli, interpreter, uv_normalization=True)
+    assert module._python_console_script_matches(cli, package_root, str(interpreter))
+
+    _write_console_script(
+        cli,
+        interpreter,
+        uv_normalization=True,
+        uv_branch_extra="        print('unexpected')",
+    )
+    assert not module._python_console_script_matches(cli, package_root, str(interpreter))
 
 
 def test_real_installed_guard_cli_candidate_is_attested_without_mutation() -> None:

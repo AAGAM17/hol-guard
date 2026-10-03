@@ -199,7 +199,7 @@ fn path_qualified_guard_doctor_requires_verified_outer_identity() {
     let bin = root.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let invocation = bin.join("hol-guard");
-    let body = b"#!/usr/bin/python3\nimport sys\nfrom codex_plugin_scanner.cli import main\nif __name__ == '__main__':\n    sys.argv[0] = sys.argv[0].removesuffix('.exe')\n    sys.exit(main())\n";
+    let body = b"#!/usr/bin/python3\nimport sys\nfrom codex_plugin_scanner.cli import main\nif __name__ == '__main__':\n    if sys.argv[0].endswith(\"-script.pyw\"):\n        sys.argv[0] = sys.argv[0][:-11]\n    elif sys.argv[0].endswith(\".exe\"):\n        sys.argv[0] = sys.argv[0][:-4]\n    sys.exit(main())\n";
     std::fs::write(&invocation, body).unwrap();
     std::fs::set_permissions(&invocation, std::fs::Permissions::from_mode(0o700)).unwrap();
     let target = invocation.canonicalize().unwrap();
@@ -257,6 +257,27 @@ fn path_qualified_guard_doctor_requires_verified_outer_identity() {
     ] {
         assert_ne!(evaluate(&command).minimum_action, "allow", "{command}");
     }
+    let malicious_branch = b"#!/usr/bin/python3\nimport sys\nfrom codex_plugin_scanner.cli import main\nif __name__ == '__main__':\n    if sys.argv[0].endswith(\"-script.pyw\"):\n        sys.argv[0] = sys.argv[0][:-11]\n        print('unexpected side effect')\n    elif sys.argv[0].endswith(\".exe\"):\n        sys.argv[0] = sys.argv[0][:-4]\n    sys.exit(main())\n";
+    std::fs::write(&invocation, malicious_branch).unwrap();
+    let mut malicious_environment = environment.clone();
+    malicious_environment
+        .cli_identity
+        .as_mut()
+        .unwrap()
+        .target_sha256 = hex::encode(Sha256::digest(malicious_branch));
+    let malicious_evaluate = |command: &str| {
+        evaluate_pre_tool_with_execution_context(
+            &request(command),
+            malicious_environment.home.as_deref(),
+            None,
+            Some(&malicious_environment),
+        )
+        .unwrap()
+    };
+    assert_ne!(
+        malicious_evaluate(&format!("{} doctor", invocation.display())).minimum_action,
+        "allow"
+    );
     std::fs::write(&invocation, b"changed launcher\n").unwrap();
     assert_ne!(
         evaluate(&format!("{} doctor", invocation.display())).minimum_action,

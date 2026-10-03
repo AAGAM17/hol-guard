@@ -78,7 +78,9 @@ fn strict_guard_cli_script_shape(content: &[u8]) -> bool {
         return false;
     }
     index += 1;
-    if let Some(line) = lines.get(index) {
+    if is_uv_argv_normalization(&lines, index) {
+        index += 4;
+    } else if let Some(line) = lines.get(index) {
         if *line == "    sys.argv[0] = sys.argv[0].removesuffix('.exe')"
             || *line == "    sys.argv[0] = sys.argv[0].removesuffix(\".exe\")"
             || *line == "    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])"
@@ -92,6 +94,38 @@ fn strict_guard_cli_script_shape(content: &[u8]) -> bool {
     }
     index += 1;
     lines[index..].iter().all(|line| line.is_empty())
+}
+
+fn is_uv_argv_normalization(lines: &[&str], index: usize) -> bool {
+    const VARIANTS: [&[&str]; 4] = [
+        &[
+            "    if sys.argv[0].endswith(\"-script.pyw\"):",
+            "        sys.argv[0] = sys.argv[0][:-11]",
+            "    elif sys.argv[0].endswith(\".exe\"):",
+            "        sys.argv[0] = sys.argv[0][:-4]",
+        ],
+        &[
+            "    if sys.argv[0].endswith('-script.pyw'):",
+            "        sys.argv[0] = sys.argv[0][:-11]",
+            "    elif sys.argv[0].endswith(\".exe\"):",
+            "        sys.argv[0] = sys.argv[0][:-4]",
+        ],
+        &[
+            "    if sys.argv[0].endswith(\"-script.pyw\"):",
+            "        sys.argv[0] = sys.argv[0][:-11]",
+            "    elif sys.argv[0].endswith('.exe'):",
+            "        sys.argv[0] = sys.argv[0][:-4]",
+        ],
+        &[
+            "    if sys.argv[0].endswith('-script.pyw'):",
+            "        sys.argv[0] = sys.argv[0][:-11]",
+            "    elif sys.argv[0].endswith('.exe'):",
+            "        sys.argv[0] = sys.argv[0][:-4]",
+        ],
+    ];
+    VARIANTS
+        .iter()
+        .any(|variant| lines.get(index..index + variant.len()) == Some(*variant))
 }
 
 fn valid_python_shebang(line: &str) -> bool {

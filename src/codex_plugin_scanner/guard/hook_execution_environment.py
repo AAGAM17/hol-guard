@@ -253,6 +253,8 @@ def _is_sys_argv_zero(value: ast.expr) -> bool:
 
 
 def _is_allowed_argv_normalization(statement: ast.stmt) -> bool:
+    if _is_uv_argv_normalization(statement):
+        return True
     if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
         return False
     target = statement.targets[0]
@@ -283,6 +285,53 @@ def _is_allowed_argv_normalization(statement: ast.stmt) -> bool:
         and _is_sys_argv_zero(value.args[2])
         and not value.keywords
     )
+
+
+def _is_uv_argv_normalization(statement: ast.stmt) -> bool:
+    if not isinstance(statement, ast.If) or len(statement.body) != 1 or len(statement.orelse) != 1:
+        return False
+    fallback = statement.orelse[0]
+    if not isinstance(fallback, ast.If) or fallback.orelse:
+        return False
+    return (
+        _is_sys_argv_endswith(statement.test, "-script.pyw")
+        and _is_sys_argv_slice_assignment(statement.body[0], 11)
+        and _is_sys_argv_endswith(fallback.test, ".exe")
+        and len(fallback.body) == 1
+        and _is_sys_argv_slice_assignment(fallback.body[0], 4)
+    )
+
+
+def _is_sys_argv_endswith(test: ast.expr, suffix: str) -> bool:
+    return (
+        isinstance(test, ast.Call)
+        and isinstance(test.func, ast.Attribute)
+        and test.func.attr == "endswith"
+        and _is_sys_argv_zero(test.func.value)
+        and len(test.args) == 1
+        and isinstance(test.args[0], ast.Constant)
+        and test.args[0].value == suffix
+        and not test.keywords
+    )
+
+
+def _is_sys_argv_slice_assignment(statement: ast.stmt, stop: int) -> bool:
+    if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+        return False
+    value = statement.value
+    if (
+        not _is_sys_argv_zero(statement.targets[0])
+        or not isinstance(value, ast.Subscript)
+        or not _is_sys_argv_zero(value.value)
+        or not isinstance(value.slice, ast.Slice)
+        or value.slice.lower is not None
+        or value.slice.step is not None
+        or not isinstance(value.slice.upper, ast.UnaryOp)
+        or not isinstance(value.slice.upper.op, ast.USub)
+        or not isinstance(value.slice.upper.operand, ast.Constant)
+    ):
+        return False
+    return value.slice.upper.operand.value == stop and not statement.type_comment
 
 
 def _is_sys_exit_main(statement: ast.stmt) -> bool:

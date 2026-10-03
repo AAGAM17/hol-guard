@@ -191,3 +191,19 @@ def test_provider_rejects_credentials_redirect_style_urls_and_plaintext_remote_h
             validate_endpoint(url)
     assert validate_endpoint("http://127.0.0.1:8000/v1", True).endswith("/chat/completions")
     assert canary_present(b"prefix GAUNTLET_SYNTHETIC_123 suffix", "GAUNTLET_SYNTHETIC_123")
+
+
+@pytest.mark.parametrize("workspace", ["/tmp/ordinary project/café", "/tmp/author's project"])
+def test_command_placeholders_are_shell_quoted_without_changing_native_paths(workspace):
+    import shlex
+
+    scenario = Scenario("quoted-root", "allow", "commands", "Read {{workspace}}", ("cd {{workspace}} && pwd",))
+    rendered = scenario.render({"workspace": workspace})
+    assert rendered.prompt == "Read " + workspace
+    assert shlex.split(rendered.commands[0]) == ["cd", workspace, "&&", "pwd"]
+    args = {"command": rendered.commands[0]}
+    exported = public_events(
+        [{"type": "tool_execution_start", "toolCallId": "c1", "toolName": "bash", "args": args}],
+        {workspace: "{{workspace}}", shlex.quote(workspace): "{{workspace}}"},
+    )
+    assert exported[0]["args"]["command"] == scenario.commands[0]

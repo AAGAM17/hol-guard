@@ -35,3 +35,21 @@ The local development runs were on Linux. macOS-only Git/Bun/Vitest containment 
 ## Regression policy
 
 Keep failed evidence. Identify whether the failure belongs to Guard, the host, the model or the provider. Add the expected task and its safety pair before changing runtime behavior. Do not lower protection or revive obsolete assertions merely to obtain a green unit suite. Re-run the complete declared profile on the final installed source before attaching merge qualification.
+
+
+## Resumed live checks and qualification hardening
+
+The resumed core run exercised native project edits, sibling-project writes,
+Unicode reads, pipeline filters, Git routing, documentation reads and synthetic
+negative calls in the actual OMP CLI. The full run was not qualified: one model
+removed required `cd` prefixes, another refused a synthetic environment probe,
+and one inference session ended after its tools completed. These outcomes remain
+`not-exercised` or `inference-error`, not product passes or evidence of a Guard bug.
+The scenario prompts now distinguish the explicit directory-transition test from
+a `cwd` argument and explain the generated marker's lack of authentication value.
+
+Two acceptance-system issues were corrected without changing Guard policy:
+fixture paths are shell-quoted when inserted into commands, including spaces and
+apostrophes; and the required CI consumer rechecks a verified test merge against
+the current PR base instead of accepting an old producer run indefinitely.
+Final qualification must rerun the whole catalog on the final installed source.

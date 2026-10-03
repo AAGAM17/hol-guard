@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,9 +26,9 @@ class Scenario:
     def render(self, values: dict[str, str]) -> Scenario:
         """Expand fixture placeholders without evaluating code."""
 
-        def expand(text: str) -> str:
+        def expand(text: str, *, command: bool = False) -> str:
             for key, value in values.items():
-                text = text.replace("{{" + key + "}}", value)
+                text = text.replace("{{" + key + "}}", shlex.quote(value) if command else value)
             if "{{" in text or "}}" in text:
                 raise ValueError(f"unresolved scenario placeholder: {self.id}")
             return text
@@ -37,7 +38,7 @@ class Scenario:
             self.expectation,
             self.oracle,
             expand(self.prompt),
-            tuple(expand(c) for c in self.commands),
+            tuple(expand(c, command=True) for c in self.commands),
             expand(self.path) if self.path is not None else None,
             self.required_tools,
             self.profiles,

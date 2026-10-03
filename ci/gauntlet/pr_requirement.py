@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .github_ci import CONTEXT, GitHubAPI, requires_gauntlet
+from .github_ci import CONTEXT, PASS_DESCRIPTION_PREFIX, GitHubAPI, requires_gauntlet
 
 EVIDENCE_WORKFLOW = ".github/workflows/guard-gauntlet-evidence.yml"
 
@@ -63,4 +63,12 @@ def require_evidence(api: GitHubAPI, event: dict[str, Any]) -> None:
     ]
     if len(names) != 1:
         raise RuntimeError("Gauntlet producer has no unique unexpired evidence artifact for this head")
+    # A once-green test merge must not qualify a different integration after
+    # main advances. Resolve the published source against the current PR base.
+    source_match = re.fullmatch(
+        re.escape(PASS_DESCRIPTION_PREFIX) + r"([0-9a-f]{40})", latest.get("description", "") or ""
+    )
+    if source_match is None:
+        raise RuntimeError("Gauntlet status is missing its verified source binding")
+    api.prove_source(source_match.group(1), candidate, pull["base"]["sha"])
     print(f"Guard Gauntlet: verified exact-head live evidence from trusted workflow run {run_id}")

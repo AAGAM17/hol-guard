@@ -59,7 +59,7 @@ python -m ci.gauntlet run \
 
 For a GitHub test-merge checkout, also pass `--candidate-sha FULL_PR_HEAD_SHA`. The tested checkout must be that candidate or its exact two-parent test merge. The installed native build must match the checkout, and the PR evidence publisher checks the merge parents against GitHub's current PR head and base.
 
-The default per-scenario host deadline is 300 seconds with at most 32 provider rounds. `--timeout` and `--max-inference-rounds` are explicit bounded controls. `--case ID` runs a targeted investigation but **cannot qualify the full profile**. Every run uses a fresh output directory and fresh disposable fixture; failed evidence is not overwritten.
+The default per-scenario host deadline is 300 seconds with at most 32 provider rounds. `--timeout` and `--max-inference-rounds` are explicit bounded controls. `--case ID` runs a targeted investigation but **cannot qualify the full profile**. Every run uses a fresh output directory and fresh disposable fixture; failed evidence is not overwritten. `--work-root` accepts a private parent directory, including spaces and Unicode. Command placeholders are shell-quoted separately from native file paths.
 
 A local live inference server can be selected with `--provider-url http://127.0.0.1:PORT/v1 --allow-loopback-provider --model MODEL --provider-identity ID`. The identity must truthfully describe the actual backend. Do not label an opaque helper as DeepSeek, Codex or another model whose identity was not verified.
 
@@ -95,7 +95,7 @@ The generated inputs contain `pr_number`, `candidate_sha`, `evidence_base64`, `e
 
 The read-only validation job checks the live report as data. It reads immutable candidate Git blobs through GitHub and never checks out or imports candidate code. A separate write-capable job publishes the exact-head status and a PR comment with the public artifact. A status claim alone is insufficient: the existing required `ci (3.12)` aggregate also requires a successful repository-owned evidence workflow and its unique unexpired candidate artifact.
 
-A first CI run can fail with “fresh real-agent evidence required.” After the evidence workflow finishes successfully, rerun the failed CI jobs. The agent performing the PR should complete this sequence rather than ask the maintainer to waive it. New enforcement commits invalidate old evidence. Unrelated documentation changes do not require a product run.
+A first CI run can fail with “fresh real-agent evidence required.” After the evidence workflow finishes successfully, rerun the failed CI jobs. The agent performing the PR should complete this sequence rather than ask the maintainer to waive it. New enforcement commits invalidate old evidence. The required check revalidates the verified source against the current PR base, so a stale test-merge report cannot silently qualify a newer integration. Unrelated documentation changes do not require a product run.
 
 No new branch-protection setting is needed: the gate is incorporated into the repository's already-required `ci (3.12)` check. No provider secret is automatically exposed to fork PRs. Fork contributions need a repository-writer-attested live run, not an untrusted uploaded `pass: true`.
 
@@ -123,4 +123,4 @@ Evidence hashes prove byte integrity, not authorship. Qualification additionally
 
 Start from a real user failure. Add a task with an explicit expected outcome and a paired harmful or benign case. Reproduce it in the actual harness before changing runtime code. Keep the old failure evidence, fix the responsible layer, then run the full profile on the final source. Do not weaken a protection rule to satisfy stale tests, and do not change a scenario to optional because it failed.
 
-The older `ci/native_runtime/WORKFLOW_MATRIX.md` remains the broader command and macOS contained-test suite. Gauntlet core does not silently replace its 114 admission cases, 67 positive shell calls, or actual protected Bun/Vitest execution. Those require their own complete live evidence on the supported platform. See `BATTLE_PLAN.md` and `FINDINGS.md` for the rollout and discoveries.
+The older `ci/native_runtime/WORKFLOW_MATRIX.md` remains the broader command and macOS contained-test suite. Gauntlet core does not silently replace its complete admission inventory, positive shell calls, or actual protected Bun/Vitest execution. Those require their own complete live evidence on the supported platform. See `BATTLE_PLAN.md` and `FINDINGS.md` for the rollout and discoveries.

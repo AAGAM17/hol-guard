@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -138,6 +139,11 @@ def run_case(
         str(fixture.home): "{{home}}",
         str(fixture.root): "{{fixture}}",
     }
+    # Commands quote each interpolated fixture path. Normalize the entire
+    # shell-quoted spelling before redacting raw paths, including apostrophes.
+    for value, placeholder in tuple(replacements.items()):
+        if value != fixture.canary:
+            replacements[shlex.quote(value)] = placeholder
     try:
         with LoopbackCollector() as collector, InferenceRelay(canary=fixture.canary, **provider) as relay:
             replacements[collector.url] = "{{collector_url}}"

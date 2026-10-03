@@ -16,6 +16,7 @@ from .source_identity import SHA
 from .submission import submitted_archive
 
 CONTEXT = "Guard Gauntlet"
+PASS_DESCRIPTION_PREFIX = "Real-agent evidence verified; source="
 
 
 def requires_gauntlet(paths: list[str]) -> bool:
@@ -165,7 +166,7 @@ def publish_result(api: GitHubAPI, event: dict[str, Any]) -> None:
     api.status(
         candidate,
         "success" if verified else "failure",
-        "Complete source-bound real-agent evidence verified" if verified else "Gauntlet evidence did not qualify",
+        PASS_DESCRIPTION_PREFIX + os.environ["TESTED_SOURCE_SHA"] if verified else "Gauntlet evidence did not qualify",
     )
     run_url = f"https://github.com/{api.repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
     explanation = (

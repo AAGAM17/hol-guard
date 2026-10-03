@@ -144,6 +144,19 @@ class QualifiedAPI(MetadataAPI):
         self.conclusion = "success"
         self.path = ".github/workflows/guard-gauntlet-evidence.yml"
         self.artifact = "guard-gauntlet-" + "a" * 40
+        self.description = "Real-agent evidence verified; source=" + "a" * 40
+        self.base = "b" * 40
+        self.tested_base = self.base
+        self.source_checks = []
+        self.source = "a" * 40
+
+    def pull(self, number, sha):
+        return {**super().pull(number, sha), "base": {"sha": self.base}}
+
+    def prove_source(self, source, candidate, base):
+        self.source_checks.append((source, candidate, base))
+        if source != candidate and (source != self.source or base != self.tested_base):
+            raise ValueError("evidence is not for the current test merge")
 
     def request(self, path):
         if path.startswith("/pulls/"):
@@ -153,6 +166,7 @@ class QualifiedAPI(MetadataAPI):
                 {
                     "context": "Guard Gauntlet",
                     "state": self.state,
+                    "description": self.description,
                     "target_url": "https://github.com/" + self.repo + "/actions/runs/123",
                 }
             ]
@@ -273,3 +287,27 @@ def test_github_manifest_rejects_unrelated_or_malformed_parentage_before_reading
 
     with pytest.raises(ValueError):
         source_manifest(API(), "d" * 40, "a" * 40)
+
+
+def test_required_ci_rechecks_verified_test_merge_against_current_base():
+    from ci.gauntlet.pr_requirement import require_evidence
+
+    api = QualifiedAPI()
+    api.source = "c" * 40
+    api.description = "Real-agent evidence verified; source=" + api.source
+    event = {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}}
+    require_evidence(api, event)
+    assert api.source_checks == [(api.source, "a" * 40, "b" * 40)]
+    api.base = "d" * 40
+    with pytest.raises(ValueError, match="current test merge"):
+        require_evidence(api, event)
+
+
+@pytest.mark.parametrize("description", [None, "verified", "Real-agent evidence verified; source=invalid"])
+def test_required_ci_rejects_unbound_legacy_status(description):
+    from ci.gauntlet.pr_requirement import require_evidence
+
+    api = QualifiedAPI()
+    api.description = description
+    with pytest.raises(RuntimeError, match="verified source binding"):
+        require_evidence(api, {"pull_request": {"number": 1, "head": {"sha": "a" * 40}}})

@@ -56,8 +56,9 @@ static AWS_SECRET_ACCESS_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .unwrap()
 });
-static NPM_TOKEN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?im)\b(_authToken|npm[_ -]?token)\s*[:=]\s*([^\s"',}]+)"#).unwrap());
+static NPM_TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?im)\b(_authToken|npm[_ -]?token)\s*[:=]\s*([^\s"',}]+)"#).unwrap()
+});
 static PYTHON_INDEX_TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?im)\b(index-url|extra-index-url)\s*[:=]\s*(https?://[^@\s]+@[^\s]+)").unwrap()
 });
@@ -66,14 +67,18 @@ static PRIVATE_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 static SECRET_ENV_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^([ \t]*)([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|KEY|CREDENTIAL)[A-Z0-9_]*)=(.+)$")
-        .unwrap()
+    Regex::new(
+        r"(?im)^([ \t]*)([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|KEY|CREDENTIAL)[A-Z0-9_]*)=(.+)$",
+    )
+    .unwrap()
 });
 static CONNECTION_ENV_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^([ \t]*)([A-Z0-9_]*(?:URL|URI|DSN))=([A-Za-z][A-Za-z0-9+.-]*://.+)$").unwrap()
+    Regex::new(r"(?im)^([ \t]*)([A-Z0-9_]*(?:URL|URI|DSN))=([A-Za-z][A-Za-z0-9+.-]*://.+)$")
+        .unwrap()
 });
 static CONNECTION_STRING_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)://[^\s"',}]+"#).unwrap()
+    Regex::new(r#"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)://[^\s"',}]+"#)
+        .unwrap()
 });
 static REMOTE_PAIRING_CODE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bHLG-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6,32}\b").unwrap());
@@ -155,9 +160,27 @@ pub fn redact_text(value: &str) -> RedactedText {
     let mut text = value.to_owned();
     let mut classifiers: Vec<&'static str> = Vec::new();
 
-    apply_pattern(&mut text, &mut classifiers, "bearer-token", &BEARER_TOKEN_RE, "${1} *****");
-    apply_pattern(&mut text, &mut classifiers, "openai-token", &OPENAI_TOKEN_RE, "sk-*****");
-    apply_pattern(&mut text, &mut classifiers, "github-token", &GITHUB_TOKEN_RE, "gh*****");
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "bearer-token",
+        &BEARER_TOKEN_RE,
+        "${1} *****",
+    );
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "openai-token",
+        &OPENAI_TOKEN_RE,
+        "sk-*****",
+    );
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "github-token",
+        &GITHUB_TOKEN_RE,
+        "gh*****",
+    );
     apply_pattern(
         &mut text,
         &mut classifiers,
@@ -172,7 +195,13 @@ pub fn redact_text(value: &str) -> RedactedText {
             classifiers.extend(std::iter::repeat("aws-secret-access-key").take(match_count));
         }
     }
-    apply_pattern(&mut text, &mut classifiers, "npm-token", &NPM_TOKEN_RE, "${1}=*****");
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "npm-token",
+        &NPM_TOKEN_RE,
+        "${1}=*****",
+    );
     apply_pattern(
         &mut text,
         &mut classifiers,
@@ -180,8 +209,20 @@ pub fn redact_text(value: &str) -> RedactedText {
         &PYTHON_INDEX_TOKEN_RE,
         "${1}=*****",
     );
-    apply_pattern(&mut text, &mut classifiers, "private-key", &PRIVATE_KEY_RE, "*****");
-    apply_pattern(&mut text, &mut classifiers, "secret-env", &SECRET_ENV_RE, "${1}${2}=*****");
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "private-key",
+        &PRIVATE_KEY_RE,
+        "*****",
+    );
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "secret-env",
+        &SECRET_ENV_RE,
+        "${1}${2}=*****",
+    );
     apply_pattern(
         &mut text,
         &mut classifiers,
@@ -189,7 +230,13 @@ pub fn redact_text(value: &str) -> RedactedText {
         &CONNECTION_ENV_RE,
         "${1}${2}=*****",
     );
-    apply_pattern(&mut text, &mut classifiers, "connection-string", &CONNECTION_STRING_RE, "*****");
+    apply_pattern(
+        &mut text,
+        &mut classifiers,
+        "connection-string",
+        &CONNECTION_STRING_RE,
+        "*****",
+    );
     apply_pattern(
         &mut text,
         &mut classifiers,
@@ -241,7 +288,10 @@ fn redact_command_token(token: &str) -> String {
 
 /// `redacted_command_tokens` (`local_supply_chain.py` :3267-3268).
 pub fn redacted_command_tokens(command: &[String]) -> Vec<String> {
-    command.iter().map(|token| redact_command_token(token)).collect()
+    command
+        .iter()
+        .map(|token| redact_command_token(token))
+        .collect()
 }
 
 #[cfg(test)]
@@ -298,7 +348,10 @@ mod tests {
                 tokens(&["https:example.com"]),
                 tokens(&["https:<redacted-source>"]),
             ),
-            (tokens(&["http:\\evil"]), tokens(&["http:<redacted-source>"])),
+            (
+                tokens(&["http:\\evil"]),
+                tokens(&["http:<redacted-source>"]),
+            ),
             (tokens(&["--token"]), tokens(&["--token"])),
             (tokens(&["password=hunter2"]), tokens(&["password=*****"])),
             (
@@ -345,18 +398,12 @@ mod tests {
             (tokens(&["sk-1234567"]), tokens(&["sk-1234567"])),
             (tokens(&["ghp_abcdefghijklmnop"]), tokens(&["gh*****"])),
             (tokens(&["gho_ABCDEFGH"]), tokens(&["gh*****"])),
-            (
-                tokens(&[&akia]),
-                tokens(&["AKIA****************"]),
-            ),
+            (tokens(&[&akia]), tokens(&["AKIA****************"])),
             (
                 tokens(&[&format!("x={akia}")]),
                 tokens(&["x=AKIA****************"]),
             ),
-            (
-                tokens(&[&format!("key={akia}")]),
-                tokens(&["key=*****"]),
-            ),
+            (tokens(&[&format!("key={akia}")]), tokens(&["key=*****"])),
             (
                 tokens(&["akiaiosfodnn7example"]),
                 tokens(&["akiaiosfodnn7example"]),
@@ -389,7 +436,10 @@ mod tests {
             (tokens(&[pem_multi_line.as_str()]), tokens(&["*****"])),
             (tokens(&[pem_no_end]), tokens(&[pem_no_end])),
             (tokens(&[pem_wrapped.as_str()]), tokens(&["pre ***** post"])),
-            (tokens(&["MY_PASSWORD: foo"]), tokens(&["MY_PASSWORD: *****"])),
+            (
+                tokens(&["MY_PASSWORD: foo"]),
+                tokens(&["MY_PASSWORD: *****"]),
+            ),
             (tokens(&["x=1"]), tokens(&["x=1"])),
             (
                 tokens(&["https://example.com/path?query=1"]),
@@ -419,7 +469,11 @@ mod tests {
         ];
 
         for (input, expected) in cases {
-            assert_eq!(redacted_command_tokens(&input), expected, "input: {input:?}");
+            assert_eq!(
+                redacted_command_tokens(&input),
+                expected,
+                "input: {input:?}"
+            );
         }
     }
 

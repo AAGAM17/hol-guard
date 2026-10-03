@@ -2053,7 +2053,6 @@ const UNRESOLVED_CODE_LAUNCHER_NAMES: &[&str] = &[
     "yarn.cmd",
 ];
 
-
 // ---------------------------------------------------------------------------
 // Package-supply-chain launch/advisory material
 // (`local_supply_chain.py` RTM-019).
@@ -2448,4 +2447,3 @@ mod tests {
         assert_eq!(package_advisory_ids(&package), vec!["GHSA-X"]);
     }
 }
-

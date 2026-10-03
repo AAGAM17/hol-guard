@@ -41,8 +41,7 @@ use crate::package_execution_context::{
 };
 use crate::package_intent_common::{
     build_package_request_artifact, composer_target, coordinate_target, js_target, python_target,
-    version_target, GuardArtifact, PackageIntent,
-    PackageIntentTarget,
+    version_target, GuardArtifact, PackageIntent, PackageIntentTarget,
 };
 use crate::package_manifest_diff::parse_manifest_dependencies;
 
@@ -2443,46 +2442,6 @@ fn audit_lockfile_warnings(
     warnings
 }
 
-/// `_package_advisory_ids` — deduped ordered id collection across camel/snake
-/// keys plus per-reason ids.
-fn package_advisory_ids(package: &Map<String, Value>) -> Vec<String> {
-    let mut advisory_ids: Vec<String> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut add_id = |value: Option<&Value>| {
-        if let Some(text) = value.and_then(Value::as_str) {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() && !seen.contains(trimmed) {
-                seen.insert(trimmed.to_string());
-                advisory_ids.push(trimmed.to_string());
-            }
-        }
-    };
-    for key in [
-        "advisoryIds",
-        "advisory_ids",
-        "relatedAdvisoryIds",
-        "related_advisory_ids",
-    ] {
-        if let Some(raw) = package.get(key).and_then(Value::as_array) {
-            for entry in raw {
-                add_id(Some(entry));
-            }
-        }
-    }
-    add_id(package.get("advisoryId"));
-    add_id(package.get("advisory_id"));
-    if let Some(reasons) = package.get("reasons").and_then(Value::as_array) {
-        for reason in reasons {
-            let Some(reason) = reason.as_object() else {
-                continue;
-            };
-            add_id(reason.get("advisoryId"));
-            add_id(reason.get("advisory_id"));
-        }
-    }
-    advisory_ids
-}
-
 /// `_cached_supply_chain_bundle_payload`
 fn cached_supply_chain_bundle_payload(store: &dyn SupplyChainStore) -> Option<Map<String, Value>> {
     let workspace_id = store.get_cloud_workspace_id()?;
@@ -2560,7 +2519,7 @@ fn enrich_package_with_advisory_aliases(
     {
         return package.clone();
     }
-    let advisory_ids = package_advisory_ids(package);
+    let advisory_ids = crate::launch_identity::package_advisory_ids(package);
     if advisory_ids.is_empty() {
         return package.clone();
     }
@@ -6961,36 +6920,6 @@ fn package_current_policy_context(
     out
 }
 
-/// `_package_launch_approval_identity` (py:2974-2990).
-#[allow(dead_code)]
-fn package_launch_approval_identity(
-    launch_identity: Option<&Map<String, Value>>,
-) -> Map<String, Value> {
-    let mut out = Map::new();
-    let Some(launch_identity) = launch_identity else {
-        out.insert("available".into(), json!(false));
-        return out;
-    };
-    let wrapper_resolution = launch_identity
-        .get("wrapper_resolution")
-        .filter(|v| v.is_object())
-        .cloned()
-        .unwrap_or_else(|| {
-            let mut direct = Map::new();
-            direct.insert("status".into(), json!("direct"));
-            Value::Object(direct)
-        });
-    out.insert(
-        "argv_sha256".into(),
-        launch_identity
-            .get("argv_sha256")
-            .cloned()
-            .unwrap_or(Value::Null),
-    );
-    out.insert("wrapper_resolution".into(), wrapper_resolution);
-    out
-}
-
 /// `_package_approval_identity` (py:2992-3052).
 #[allow(dead_code)]
 fn package_approval_identity(
@@ -7202,7 +7131,9 @@ fn package_request_artifact_hash(
     );
     identity.insert(
         "package_launch_identity".into(),
-        Value::Object(package_launch_approval_identity(launch_identity)),
+        Value::Object(
+            crate::launch_identity::package_request_launch_identity_material(launch_identity),
+        ),
     );
     identity.insert("publisher".into(), option_json(artifact.publisher.clone()));
     identity.insert(
@@ -7533,7 +7464,9 @@ fn apply_package_protect_projection(
     cmd_map.insert("redacted".to_owned(), json!(intent.redacted_command));
     cmd_map.insert(
         "tokens".to_owned(),
-        json!(crate::redacted_command_tokens::redacted_command_tokens(command)),
+        json!(crate::redacted_command_tokens::redacted_command_tokens(
+            command
+        )),
     );
     payload.insert("command".to_owned(), Value::Object(cmd_map));
 

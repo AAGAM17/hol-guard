@@ -140,6 +140,90 @@ fn cwd_compounds_validate_reads_in_the_successful_destination() {
             ("git worktree list".to_owned(), true),
             (
                 format!(
+                    "cd {} && git worktree list | sed -n -e '1,2p' -",
+                    project.display()
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -e 's/fixture/public/g'",
+                    project.display()
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -e 's/fixture/public/g' .env",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -e 's/fixture/public/g' -e '1r .env'",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -f one.txt",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -i -e 's/fixture/public/g'",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -e 's/fixture/public/w .env'",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed -n '1,2p'",
+                    project.display()
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed 's/fixture/public/g'",
+                    project.display()
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed 's/fixture/public/g' .env",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed 's/fixture/public/e'",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
+                    "cd {} && git worktree list | sed '1r .env'",
+                    project.display()
+                ),
+                false,
+            ),
+            (
+                format!(
                     "cd {} && git worktree list | rg --file=one.txt",
                     project.display()
                 ),

@@ -621,17 +621,35 @@ fn command_read_target(
     }
 }
 
-pub(super) fn safe_sed_arguments(
-    arguments: &[String],
-    piped_input: bool,
-    context: (Option<&str>, Option<&str>),
-) -> bool {
+fn sed_program_and_targets(arguments: &[String]) -> Option<(bool, &str, &[String])> {
     let (quiet, rest) = if arguments.first().is_some_and(|arg| arg == "-n") {
         (true, &arguments[1..])
     } else {
         (false, arguments)
     };
-    let Some((program, targets)) = rest.split_first() else {
+    let rest = if rest.first().is_some_and(|arg| arg == "-e") {
+        &rest[1..]
+    } else {
+        rest
+    };
+    let (program, targets) = rest.split_first()?;
+    Some((quiet, program, targets))
+}
+
+pub(super) fn safe_sed_stdin_arguments(arguments: &[String]) -> bool {
+    let Some((_, _, targets)) = sed_program_and_targets(arguments) else {
+        return false;
+    };
+    (targets.is_empty() || matches!(targets, [target] if target == "-"))
+        && safe_sed_arguments(arguments, true, (None, None))
+}
+
+pub(super) fn safe_sed_arguments(
+    arguments: &[String],
+    piped_input: bool,
+    context: (Option<&str>, Option<&str>),
+) -> bool {
+    let Some((quiet, program, targets)) = sed_program_and_targets(arguments) else {
         return false;
     };
     if program.len() > 256 || program.contains(['\n', '\r', '\\', ';']) {
@@ -656,7 +674,7 @@ pub(super) fn safe_sed_arguments(
             parts.len() == 3 && matches!(parts[2], "" | "g")
         });
     (bounded_print || substitution)
-        && (matches!(targets, [target] if !target.starts_with('-') && command_read_target(target, context, false))
+        && (matches!(targets, [target] if (target == "-" && piped_input) || (!target.starts_with('-') && command_read_target(target, context, false)))
             || (targets.is_empty() && piped_input))
 }
 

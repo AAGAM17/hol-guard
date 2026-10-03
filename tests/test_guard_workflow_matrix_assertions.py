@@ -40,6 +40,16 @@ def test_malformed_tool_arguments_fail_as_assertions(value):
         assert_execution([WorkflowCase("read", "cat ordinary.ts")], events)
 
 
+def test_partial_batch_preserves_the_tool_failure_instead_of_claiming_model_omission():
+    cases = [WorkflowCase("echo", "echo ok"), WorkflowCase("read", "cat ordinary.ts")]
+    events = [
+        {"type": "tool_execution_start", "args": {"command": "echo ok"}},
+        {"type": "tool_execution_end", "isError": True},
+    ]
+    with pytest.raises(AssertionError, match="tool execution failed"):
+        assert_execution(cases, events)
+
+
 def test_malformed_json_fails_as_an_assertion():
     with pytest.raises(AssertionError, match="malformed Pi event JSON"):
         decode_events('{"type":')
@@ -89,3 +99,20 @@ def test_native_file_workflow_requires_real_successful_calls_and_final_content(t
     destination.write_text("export const status = 'before';\n")
     with pytest.raises(AssertionError, match="required edit"):
         assert_native_file_execution(events, destination)
+
+
+def test_synthetic_project_does_not_inherit_source_repository_instructions(tmp_path, monkeypatch):
+    import tempfile
+
+    from ci.native_runtime.probe_workflow_matrix import workflow_fixture
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "AGENTS.md").write_text("Do not run tail.\n")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.chdir(repository)
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    with workflow_fixture() as fixture:
+        assert fixture.parent == scratch.resolve()
+        assert not fixture.is_relative_to(repository.resolve())

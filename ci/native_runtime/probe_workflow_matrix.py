@@ -23,7 +23,9 @@ from codex_plugin_scanner.guard.hook_execution_environment import collect_hook_e
 
 @contextmanager
 def workflow_fixture():
-    root = Path(tempfile.mkdtemp(prefix="guard-workflow-matrix-", dir=Path.cwd())).resolve()
+    # A synthetic project must not inherit the source repo's agent rules.
+    # Otherwise a harness can refuse fixture commands before Guard sees them.
+    root = Path(tempfile.mkdtemp(prefix="guard-workflow-matrix-")).resolve()
     try:
         yield root
     except BaseException:
@@ -90,6 +92,8 @@ def assert_execution(cases: list[WorkflowCase], events: list[dict[str, object]])
     events = [_event_object(event, "event") for event in events]
     starts = [event for event in events if event.get("type") == "tool_execution_start"]
     ends = [event for event in events if event.get("type") == "tool_execution_end"]
+    if any(event.get("isError") is True for event in ends):
+        raise AssertionError("Pi tool execution failed before workflow completion")
     if len(starts) != len(cases) or len(ends) != len(cases):
         raise AssertionError("Pi omitted or duplicated a workflow command")
     commands = []

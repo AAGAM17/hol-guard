@@ -117,7 +117,7 @@ pub(crate) fn verify_windows_private_file(file: &File) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn surfaced_state_write_error(error: &std::io::Error) -> String {
+fn surfaced_state_write_error(error: std::io::Error) -> String {
     let message = error.to_string();
     if (1..=128).contains(&message.len())
         && message.starts_with("native_")
@@ -157,7 +157,7 @@ pub(crate) fn private_file(
                 }
                 file
             }
-            Err(error) => return Err(surfaced_state_write_error(&error)),
+            Err(error) => return Err(surfaced_state_write_error(error)),
         };
         // CREATE_NEW already created an empty file; the existing-object case
         // returned above before opening or mutating it.

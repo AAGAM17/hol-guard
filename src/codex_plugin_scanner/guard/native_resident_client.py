@@ -233,8 +233,9 @@ def _pinned_state_dir(state_dir: Path) -> Path:
 
 def _directory_forms(path: Path) -> set[str]:
     forms = {str(path), os.path.abspath(path)}
-    with contextlib.suppress(OSError):
-        forms.add(str(path.expanduser().resolve()))
+    if _is_directory(path):
+        with contextlib.suppress(OSError):
+            forms.add(str(path.expanduser().resolve()))
     return {os.path.normcase(form) for form in forms}
 
 

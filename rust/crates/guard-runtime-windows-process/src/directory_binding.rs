@@ -440,7 +440,7 @@ fn canonicalize_existing_prefix(path: &Path) -> io::Result<PathBuf> {
     if let Some(long) = long_path_if_same_shape(&win32_path(&canonical)) {
         canonical = long;
     }
-    Ok(canonical)
+    Ok(extended_path_if_long(&canonical))
 }
 
 fn existing_alias_or_name(parent: &Path, name: &OsStr) -> std::ffi::OsString {
@@ -499,6 +499,25 @@ fn long_path_if_same_shape(path: &Path) -> Option<PathBuf> {
         return None;
     }
     Some(long)
+}
+
+fn extended_path_if_long(path: &Path) -> PathBuf {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let path = win32_path(path);
+    let wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.len() < 260 {
+        return path;
+    }
+    let mut extended = Vec::with_capacity(wide.len() + 8);
+    if wide.starts_with(&[92, 92]) {
+        extended.extend_from_slice(&[92, 92, 63, 92, 85, 78, 67, 92]);
+        extended.extend_from_slice(&wide[2..]);
+    } else {
+        extended.extend_from_slice(&[92, 92, 63, 92]);
+        extended.extend_from_slice(&wide);
+    }
+    PathBuf::from(std::ffi::OsString::from_wide(&extended))
 }
 
 /// Open the same directory under a spelling CreateFileW can resolve.

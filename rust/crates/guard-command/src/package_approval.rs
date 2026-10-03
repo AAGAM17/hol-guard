@@ -23,7 +23,9 @@
 use serde_json::{json, Map, Value};
 
 use crate::effect_decision::GuardAction;
-use crate::local_supply_chain::{stable_digest_hex, uuid4_hex, PackageRequestEvaluation, Timestamp};
+use crate::local_supply_chain::{
+    stable_digest_hex, uuid4_hex, PackageRequestEvaluation, Timestamp,
+};
 use crate::package_execution_context::{
     PackageExecutionContext, PACKAGE_EXECUTION_CONTEXT_VERSION,
 };
@@ -117,7 +119,10 @@ pub fn package_approval_identity(input: &PackageApprovalIdentityInput<'_>) -> Va
                 entry.insert("package_name".to_string(), get("package_name"));
                 entry.insert("raw_spec".to_string(), get("raw_spec"));
                 entry.insert("raw_spec_hash".to_string(), get("raw_spec_hash"));
-                entry.insert("requested_specifier".to_string(), get("requested_specifier"));
+                entry.insert(
+                    "requested_specifier".to_string(),
+                    get("requested_specifier"),
+                );
                 entry.insert(
                     "source_url_hash".to_string(),
                     source_url_hash.map_or(Value::Null, Value::String),
@@ -369,10 +374,7 @@ fn build_package_guard_receipt_dict(
         "changed_capabilities".to_string(),
         Value::Array(changed_capabilities.iter().map(|c| json!(c)).collect()),
     );
-    receipt.insert(
-        "provenance_summary".to_string(),
-        json!(provenance_summary),
-    );
+    receipt.insert("provenance_summary".to_string(), json!(provenance_summary));
     receipt.insert("user_override".to_string(), Value::Null);
     receipt.insert(
         "artifact_name".to_string(),
@@ -436,10 +438,7 @@ pub fn package_protect_verdict_context(
         "package_execution_context".to_string(),
         authority.execution_context.to_evidence(),
     );
-    receipt_policy_metadata.insert(
-        "package_manager".to_string(),
-        json!(intent.package_manager),
-    );
+    receipt_policy_metadata.insert("package_manager".to_string(), json!(intent.package_manager));
     receipt_policy_metadata.insert(
         "package_targets".to_string(),
         Value::Array(
@@ -449,10 +448,7 @@ pub fn package_protect_verdict_context(
                 .collect(),
         ),
     );
-    receipt_policy_metadata.insert(
-        "policy_action".to_string(),
-        json!(verdict_action.as_str()),
-    );
+    receipt_policy_metadata.insert("policy_action".to_string(), json!(verdict_action.as_str()));
     receipt_policy_metadata.insert(
         "policy_version".to_string(),
         evaluation
@@ -558,9 +554,7 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     use crate::package_execution_context::PackageExecutionContextComponent;
-    use crate::package_intent_common::{
-        GuardArtifact, PackageIntent, PackageIntentTarget,
-    };
+    use crate::package_intent_common::{GuardArtifact, PackageIntent, PackageIntentTarget};
 
     fn ctx() -> PackageExecutionContext {
         PackageExecutionContext {
@@ -747,12 +741,7 @@ mod tests {
             execution_context: &ctx(),
         };
         let identity = package_approval_identity(&input);
-        let keys: Vec<String> = identity
-            .as_object()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
+        let keys: Vec<String> = identity.as_object().unwrap().keys().cloned().collect();
         assert_eq!(
             keys,
             vec![
@@ -801,7 +790,8 @@ mod tests {
             observe_mode: true,
             invoking_harness: "codex",
         };
-        let vc = package_protect_verdict_context(&authority, &evaluation(), Some(GuardAction::Allow));
+        let vc =
+            package_protect_verdict_context(&authority, &evaluation(), Some(GuardAction::Allow));
 
         // matched_advisories
         assert_eq!(

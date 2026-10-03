@@ -383,9 +383,7 @@ def snapshot_bytes_v3(snapshot: Mapping[str, object]) -> bytes:
     return encoded
 
 
-def _policy_snapshot_push_bytes_v3(
-    snapshot: Mapping[str, object], *, deadline_budget_ms: int | None = None
-) -> bytes:
+def _policy_snapshot_push_bytes_v3(snapshot: Mapping[str, object], *, deadline_budget_ms: int | None = None) -> bytes:
     """Build the strict resident push envelope after validating its snapshot."""
 
     _validate_snapshot_v3(snapshot)

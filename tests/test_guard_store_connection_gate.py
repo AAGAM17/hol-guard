@@ -283,7 +283,8 @@ def test_storage_gate_and_sqlite_lock_consume_one_operation_budget(tmp_path: Pat
         try:
             with store._hold_storage_gate(exclusive=True):
                 gate_held.set()
-                assert caller_started.wait(timeout=2)
+                if not caller_started.wait(timeout=2):
+                    raise TimeoutError("storage gate holder was not released")
                 time.sleep(0.25)
         except BaseException as error:
             holder_errors.append(error)

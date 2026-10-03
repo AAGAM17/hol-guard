@@ -455,6 +455,11 @@ fn boundary_components(path: &Path) -> Vec<Component<'_>> {
 /// (`C:\` vs `\\?\C:\`, `\\server\share` vs `\\?\UNC\server\share`) and with
 /// filesystem case. Guard homes are created by this process; a case variant is
 /// the same NTFS directory, not a sibling escape. `..` is rejected earlier.
+fn os_eq_ignore_ascii_case(left: &OsStr, right: &OsStr) -> bool {
+    left.to_string_lossy()
+        .eq_ignore_ascii_case(&right.to_string_lossy())
+}
+
 fn boundary_component_eq(actual: &Component<'_>, expected: &Component<'_>) -> bool {
     match (actual, expected) {
         (Component::Prefix(left), Component::Prefix(right)) => windows_prefix_eq(left, right),

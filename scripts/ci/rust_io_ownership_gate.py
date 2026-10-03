@@ -87,6 +87,10 @@ _TRANSPORT_INTEGRITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_decision_receipt.py",
         "src/codex_plugin_scanner/guard/native_command_observations.py",
         "src/codex_plugin_scanner/guard/native_context.py",
+        # Execution-environment digest binds transport context without carrying
+        # the environment values themselves.
+        "src/codex_plugin_scanner/guard/hook_execution_environment.py",
+        "src/codex_plugin_scanner/guard/native_hook_edge.py",
         "src/codex_plugin_scanner/guard/daemon/hook_native_review_approval.py",
         # Retry lineage is local diagnostic metadata. Its digests protect
         # reattachment integrity but never authorize or evaluate an action.
@@ -442,6 +446,11 @@ def _calls(record: FunctionRecord) -> tuple[str, ...]:
 
 
 def _category(path: str, kind: str) -> str:
+    # These two decision-time evidence hashes moved from command_evaluation.
+    # Keep their original migration category; they are not asynchronous policy
+    # work and this exception must not admit file reads or decoders.
+    if path == "src/codex_plugin_scanner/guard/runtime/command_native_factors.py" and kind == "hash":
+        return "pending_authority_migration"
     if path in _COMPATIBILITY_PATHS:
         return "compatibility_only"
     if path in _STRUCTURED_OUTPUT_MEDIATION_PATHS and kind in {"hash", "decode"}:

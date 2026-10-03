@@ -62,7 +62,7 @@ def try_execute_contained_package_script(
         workspace,
         "bun",
         argv,
-        guard_home,
+        guard_home=guard_home,
         shim_directory=str(shim_directory),
         environment=environment,
         timeout_seconds=int(timeout_seconds),

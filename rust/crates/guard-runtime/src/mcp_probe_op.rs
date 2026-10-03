@@ -1,17 +1,11 @@
-//! `McpStdioProbe` resident op — drives `guard_command::local_mcp_stdio`
-//! through the stdio JSON-RPC initialize → tools/list handshake and returns
-//! the bounded catalog. `result: None` signals "not an MCP launch — fall back
-//! to Python"; `result: {"status":"failed","reason":...}` signals a real
-//! spawn/protocol failure.
+//! `McpStdioProbe` resident op — leave full protocol negotiation and catalog
+//! discovery to Python until the Rust path supports the same catalog contract.
+//! `result: None` asks the caller to fall back to that implementation.
 
-use std::path::PathBuf;
-
-use guard_command::local_mcp_stdio;
 use guard_contracts::{
     McpStdioProbeRequestV1, McpStdioProbeResultV1, MCP_STDIO_PROBE_REQUEST_SCHEMA,
     MCP_STDIO_PROBE_RESULT_SCHEMA,
 };
-use serde_json::json;
 
 pub(crate) fn evaluate_mcp_stdio_probe(
     request: &McpStdioProbeRequestV1,
@@ -19,45 +13,11 @@ pub(crate) fn evaluate_mcp_stdio_probe(
     if request.schema != MCP_STDIO_PROBE_REQUEST_SCHEMA {
         return Err(format!("schema_mismatch:{}", request.schema));
     }
-    let cwd = PathBuf::from(&request.cwd);
-    let argv = split_shell_words(&request.command_text);
-    if argv.is_empty() {
-        return crate::encode_response(&McpStdioProbeResultV1 {
-            schema: MCP_STDIO_PROBE_RESULT_SCHEMA.to_owned(),
-            result: None,
-        });
-    }
-    let exchange = local_mcp_stdio::run_mcp_stdio_probe(
-        &argv,
-        &cwd,
-        request.timeout_seconds.unwrap_or(6.0),
-        request.extra_env.as_ref(),
-        request.connection_identity_hash.as_deref(),
-    );
-    let payload = match exchange.protocol_version {
-        Some(protocol_version) => json!({
-            "status": "ok",
-            "tools": exchange.tools,
-            "server_info": exchange.server_info,
-            "capabilities": exchange.capabilities,
-            "protocol_version": protocol_version,
-        }),
-        None => {
-            if !request.report_failure {
-                return crate::encode_response(&McpStdioProbeResultV1 {
-                    schema: MCP_STDIO_PROBE_RESULT_SCHEMA.to_owned(),
-                    result: None,
-                });
-            }
-            json!({
-                "status": "failed",
-                "reason": exchange.reason.unwrap_or_else(|| "probe_failed".to_owned()),
-            })
-        }
-    };
+    // Catalog negotiation, pagination, and skills discovery remain Python-owned.
+    // Returning None asks the caller to use that complete negotiation path.
     crate::encode_response(&McpStdioProbeResultV1 {
         schema: MCP_STDIO_PROBE_RESULT_SCHEMA.to_owned(),
-        result: Some(payload),
+        result: None,
     })
 }
 /// Minimal POSIX-shell word splitter for the probe  field.

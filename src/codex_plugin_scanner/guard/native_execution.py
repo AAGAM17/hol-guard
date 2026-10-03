@@ -135,8 +135,8 @@ def contained_node_execute_native(
     guard_home: Path,
     evidence: dict[str, object] | None = None,
     timeout_seconds: float = 30.0,
-) -> dict[str, object] | None:
-    return _contained_request(
+) -> Any | None:
+    result = _contained_request(
         op_prefix="contained_node_execute",
         request_schema="guard-contained-node-execute-request.v1",
         workspace=workspace,
@@ -146,6 +146,12 @@ def contained_node_execute_native(
         evidence=evidence,
         timeout_seconds=timeout_seconds,
     )
+    if result is None:
+        return None
+    try:
+        return _contained_node_result(result)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def contained_typescript_execute_native(
@@ -156,8 +162,8 @@ def contained_typescript_execute_native(
     guard_home: Path,
     evidence: dict[str, object] | None = None,
     timeout_seconds: float = 30.0,
-) -> dict[str, object] | None:
-    return _contained_request(
+) -> Any | None:
+    result = _contained_request(
         op_prefix="contained_typescript_execute",
         request_schema="guard-contained-typescript-execute-request.v1",
         workspace=workspace,
@@ -167,6 +173,12 @@ def contained_typescript_execute_native(
         evidence=evidence,
         timeout_seconds=timeout_seconds,
     )
+    if result is None:
+        return None
+    try:
+        return _contained_typescript_result(result)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def contained_package_script_execute_native(

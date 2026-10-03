@@ -101,7 +101,7 @@ def try_execute_contained_workspace_write(
     native_result = _native_execution.contained_workspace_write_execute_native(
         workspace,
         _command_text,
-        guard_home,
+        guard_home=guard_home,
     )
     if native_result is not None:
         return native_result

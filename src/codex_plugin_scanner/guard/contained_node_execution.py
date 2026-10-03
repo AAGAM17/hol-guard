@@ -83,7 +83,7 @@ def try_execute_contained_node_command(
         workspace,
         normalized_manager,
         argv,
-        guard_home,
+        guard_home=guard_home,
         evidence=None,
     )
     if native_result is not None:

@@ -3383,6 +3383,16 @@ impl ContainedNodeResult {
                 .map(effect_decision_to_payload)
                 .unwrap_or(Value::Null),
         );
+        m.insert("stdout".to_owned(), json!(self.stdout));
+        m.insert("stderr".to_owned(), json!(self.stderr));
+        m.insert(
+            "proof".to_owned(),
+            self.proof
+                .as_ref()
+                .map(|p| serde_json::to_value(p).unwrap_or(Value::Null))
+                .unwrap_or(Value::Null),
+        );
+        m.insert("operation_id".to_owned(), json!(self.operation_id));
         Value::Object(m)
     }
 }

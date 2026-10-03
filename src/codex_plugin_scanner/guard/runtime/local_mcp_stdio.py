@@ -77,7 +77,8 @@ def run_mcp_catalog(
     from .. import native_execution as _native_execution
     _native_result = _native_execution.mcp_stdio_probe_native(
         _shlex_join_safe(list(argv)),
-        str(Path.cwd()),
+        cwd=Path.cwd(),
+        extra_env=extra_env,
         guard_home=Path.home() / ".hol-guard",
         timeout_seconds=timeout,
         connection_identity_hash=connection_identity_hash,

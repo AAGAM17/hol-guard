@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -147,7 +148,7 @@ def _execute_package_shim_operation(
         _native_status = _native_execution.shim_admin_native(
             "status",
             guard_home=command_context.guard_home,
-            path_env=None,
+            path_env=os.environ.get("PATH"),
         )
         if _native_status is not None:
             return _result(_native_status, generated_at=generated_at)
@@ -158,6 +159,7 @@ def _execute_package_shim_operation(
             "activate",
             guard_home=command_context.guard_home,
             install_managers=list(managers) if managers else None,
+            path_env=os.environ.get("PATH"),
         )
         if _native_install is not None:
             return _result(_native_install, generated_at=generated_at)

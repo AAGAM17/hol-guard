@@ -62,7 +62,7 @@ def try_execute_contained_typescript(
         workspace,
         manager.strip().lower(),
         argv,
-        guard_home,
+        guard_home=guard_home,
         evidence=None,
     )
     if native_result is not None:

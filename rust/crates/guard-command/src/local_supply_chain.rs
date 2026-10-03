@@ -24,16 +24,15 @@
 //! fail-closed stubs for subprocess/network shells.
 //! No subprocess is spawned directly by this module.
 
+use crate::cloud_audit_sync::{
+    build_cloud_audit_payload, normalize_cloud_audit_response,
+    normalized_supply_chain_batch_job_url, normalized_supply_chain_batch_url,
+    resolve_next_refresh_at, should_use_cloud_workspace_audit, EnvCloudAuditWorkspaceContext,
+};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use crate::cloud_audit_sync::{
-    build_cloud_audit_payload, normalize_cloud_audit_response,
-    normalized_supply_chain_batch_job_url, normalized_supply_chain_batch_url,
-    resolve_next_refresh_at, should_use_cloud_workspace_audit,
-    CloudAuditWorkspaceContextApi, EnvCloudAuditWorkspaceContext,
-};
 
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256, Sha512};
@@ -1594,7 +1593,6 @@ fn posture_health_status(
     "degraded"
 }
 
-
 /// `resolve_risk_action` (config.py :1065-1077) ported against the local
 /// `GuardConfig` mirror.
 pub fn resolve_risk_action(
@@ -2564,7 +2562,6 @@ fn inventory_summary(inventory: &[Map<String, Value>]) -> Map<String, Value> {
     out
 }
 
-
 /// `_ci_gate_result`
 fn ci_gate_result(evaluation: &Map<String, Value>, threshold: &str) -> Map<String, Value> {
     let threshold_rank = SEVERITY_RANK.get(threshold).copied().unwrap_or(3);
@@ -3237,111 +3234,6 @@ fn workspace_diff_audit_inventory(
     }
 }
 
-/// `_workspace_audit_path_hashes` — hashes of each manifest/lockfile.
-fn workspace_audit_path_hashes_map(
-    paths: &dyn PathSupportApi,
-    workspace_dir: &Path,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-) -> Map<String, Value> {
-    let manifest_hashes = hash_existing_paths(paths, workspace_dir, manifest_paths);
-    let lockfile_hashes = hash_existing_paths(paths, workspace_dir, lockfile_paths);
-    let mut out = Map::new();
-    out.insert("manifest_hashes".into(), json!(manifest_hashes));
-    out.insert("lockfile_hashes".into(), json!(lockfile_hashes));
-    out
-}
-
-/// `_build_workspace_context_payload` (:3823-3838).
-fn build_workspace_context_payload(
-    workspace_dir: &Path,
-    workspace_label: Option<&str>,
-    workspace_id: &str,
-    runner: &dyn RuntimeRunnerApi,
-) -> Map<String, Value> {
-    let codebase = read_git_origin_codebase(workspace_dir, runner)
-        .or_else(|| redacted_workspace_folder_path(workspace_dir));
-    let mut out = Map::new();
-    out.insert(
-        "codebase".into(),
-        codebase.map_or(Value::Null, Value::String),
-    );
-    out.insert("workspace_id".into(), json!(workspace_id));
-    if let Some(label) = workspace_label {
-        out.insert("workspace_label".into(), json!(label));
-    }
-    out.insert(
-        "machine".into(),
-        EnvCloudAuditWorkspaceContext.safe_machine_name().map_or(Value::Null, Value::String),
-    );
-    out
-}
-
-
-/// `_redacted_workspace_folder_path` (:3812-3819).
-fn redacted_workspace_folder_path(workspace_dir: &Path) -> Option<String> {
-    let name = workspace_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(str::to_string)?;
-    Some(name)
-}
-
-/// `_read_git_origin_codebase` (:3785-3801).
-fn read_git_origin_codebase(
-    workspace_dir: &Path,
-    _runner: &dyn RuntimeRunnerApi,
-) -> Option<String> {
-    let git_dir = workspace_dir.join(".git");
-    let config_path = git_dir.join("config");
-    let text = std::fs::read_to_string(config_path).ok()?;
-    let mut in_origin = false;
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_origin = trimmed.contains("remote") && trimmed.contains("origin");
-            continue;
-        }
-        if in_origin && trimmed.starts_with("url") {
-            let value = trimmed.split('=').nth(1)?.trim().to_string();
-            if !value.is_empty() {
-                return codebase_label_from_remote(&value);
-            }
-        }
-    }
-    None
-}
-
-/// `_codebase_label_from_remote` (:3768-3782).
-fn codebase_label_from_remote(remote: &str) -> Option<String> {
-    let normalized_remote = remote.trim().trim_end_matches('/');
-    if normalized_remote.is_empty() {
-        return None;
-    }
-    // "git@host:org/repo.git" or "https://host/org/repo.git"
-    let path_part = if let Some((_, rest)) = normalized_remote.split_once(':') {
-        if rest.starts_with("//") {
-            // https:// or ssh:// URL
-            let without_scheme = normalized_remote.split("://").nth(1).unwrap_or(rest);
-            without_scheme.split_once('/').map(|x| x.1).unwrap_or("")
-        } else {
-            rest
-        }
-    } else {
-        normalized_remote.rsplit('/').next().unwrap_or("")
-    };
-    let cleaned = path_part.trim_end_matches(".git");
-    let last = cleaned.rsplit('/').next().unwrap_or(cleaned);
-    if last.is_empty() {
-        None
-    } else {
-        Some(last.to_string())
-    }
-}
-
-
-
-
 /// `_run_cloud_workspace_audit` (:3659-3766).
 fn run_cloud_workspace_audit(
     runner: &dyn RuntimeRunnerApi,
@@ -3569,7 +3461,7 @@ pub fn build_workspace_audit_payload(
     sbom_paths: &[String],
     before_workspace_dir: Option<&Path>,
     workspace_id: &str,
-    workspace_label: Option<&str>,
+    _workspace_label: Option<&str>,
     threshold: Option<&str>,
     paths: &dyn PathSupportApi,
     manifest_parser: &dyn ManifestParserApi,
@@ -3577,8 +3469,6 @@ pub fn build_workspace_audit_payload(
     http: &dyn HttpTransport,
     eval_api: &dyn PackageEvalApi,
 ) -> Result<Map<String, Value>, LocalSupplyChainError> {
-    let context =
-        build_workspace_context_payload(workspace_dir, workspace_label, workspace_id, runner);
     let diff_inventory = before_workspace_dir.map(|before_dir| {
         workspace_diff_audit_inventory(
             before_dir,
@@ -3588,7 +3478,7 @@ pub fn build_workspace_audit_payload(
             manifest_parser,
         )
     });
-    let (manifest_paths, lockfile_paths, sbom_paths_resolved, package_items, summary) =
+    let (manifest_paths, lockfile_paths, _sbom_paths_resolved, package_items, _summary) =
         match &diff_inventory {
             Some(inv) => (
                 inv.manifest_paths.clone(),
@@ -3623,55 +3513,21 @@ pub fn build_workspace_audit_payload(
         manifest_parser,
     );
 
-    let path_hashes =
-        workspace_audit_path_hashes_map(paths, workspace_dir, &manifest_paths, &lockfile_paths);
-    let lockfile_context = workspace_audit_lockfile_context(
-        workspace_dir,
-        &manifest_paths,
-        &lockfile_paths,
-        &package_items,
-    );
-    let fingerprint = workspace_audit_fingerprint(
-        workspace_dir,
-        &manifest_paths,
-        &lockfile_paths,
-        &sbom_paths_resolved,
-        &package_items,
-    );
-
-    let request_payload = Map::from_iter([
-        ("operation".into(), json!("audit")),
-        ("workspace".into(), Value::Object(context)),
-        ("sbom_paths".into(), json!(sbom_paths_resolved)),
-        ("manifest_paths".into(), json!(manifest_paths)),
-        ("lockfile_paths".into(), json!(lockfile_paths)),
-        ("path_hashes".into(), Value::Object(path_hashes)),
-        (
-            "lockfile_context".into(),
-            lockfile_context.map(Value::Object).unwrap_or(Value::Null),
-        ),
-        ("audit_fingerprint".into(), json!(fingerprint)),
-        (
-            "inventory".into(),
-            json!({
-                "total_packages": package_items.len(),
-                "packages": package_items,
-            }),
-        ),
-        ("diff_summary".into(), Value::Object(summary)),
-    ]);
-
     let cloud_auth = runner
         .resolve_guard_sync_auth_context(store)
         .ok()
         .and_then(|value| value.as_object().cloned());
     let posture = {
         let summary = dict_payload(
-            store.get_sync_payload("supply_chain_bundle_summary").as_ref(),
+            store
+                .get_sync_payload("supply_chain_bundle_summary")
+                .as_ref(),
         )
         .unwrap_or_default();
         let entitlement = dict_payload(
-            store.get_sync_payload("supply_chain_bundle_entitlement").as_ref(),
+            store
+                .get_sync_payload("supply_chain_bundle_entitlement")
+                .as_ref(),
         )
         .unwrap_or_default();
         let bundle_payload = store
@@ -3690,11 +3546,8 @@ pub fn build_workspace_audit_payload(
     let use_cloud = should_use_cloud_workspace_audit(store, &posture);
 
     let evaluation_result = if use_cloud {
-        let inventory_values: Vec<Value> = package_items
-            .iter()
-            .cloned()
-            .map(Value::Object)
-            .collect();
+        let inventory_values: Vec<Value> =
+            package_items.iter().cloned().map(Value::Object).collect();
         let cloud_request_payload = build_cloud_audit_payload(
             workspace_dir,
             workspace_id,
@@ -3710,7 +3563,13 @@ pub fn build_workspace_audit_payload(
         .ok();
         match cloud_request_payload {
             Some(payload) => match run_cloud_workspace_audit(
-                runner, http, &payload, cloud_auth.as_ref(), None, None, workspace_id,
+                runner,
+                http,
+                &payload,
+                cloud_auth.as_ref(),
+                None,
+                None,
+                workspace_id,
             ) {
                 Ok(Some(response)) => Some(response),
                 Ok(None) | Err(_) => None,
@@ -5120,104 +4979,6 @@ fn resolve_parent_process_harness() -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// workspace_audit_lockfile_context / workspace_audit_fingerprint
-// ---------------------------------------------------------------------------
-
-/// `.local_supply_chain._workspace_audit_lockfile_context` (:4014-4040).
-fn workspace_audit_lockfile_context(
-    workspace_dir: &Path,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-    inventory: &[Map<String, Value>],
-) -> Option<Map<String, Value>> {
-    if lockfile_paths.is_empty() {
-        return None;
-    }
-    let lockfile_path = resolve_path_within_workspace(workspace_dir, &lockfile_paths[0])?;
-    if !lockfile_path.exists() {
-        return None;
-    }
-    let lockfile_text = read_text_within_workspace(workspace_dir, &lockfile_paths[0])?;
-    let manifest_hash = manifest_paths.first().map(|mp| {
-        let text = read_text_within_workspace(workspace_dir, mp).unwrap_or_default();
-        stable_digest_hex(text.as_bytes())
-    });
-    let lockfile_hash = stable_digest_hex(lockfile_text.as_bytes());
-    let mut ctx = Map::new();
-    ctx.insert("lockfilePath".to_string(), json!(lockfile_paths[0]));
-    ctx.insert("lockfileHash".to_string(), json!(lockfile_hash));
-    if let Some(h) = manifest_hash {
-        ctx.insert("manifestHash".to_string(), json!(h));
-    }
-    ctx.insert("inventoryCount".to_string(), json!(inventory.len()));
-    Some(ctx)
-}
-
-/// `.local_supply_chain._workspace_audit_fingerprint` (:4041-4062).
-fn workspace_audit_fingerprint(
-    workspace_dir: &Path,
-    manifest_paths: &[String],
-    lockfile_paths: &[String],
-    sbom_paths: &[String],
-    inventory: &[Map<String, Value>],
-) -> Map<String, Value> {
-    let manifest_hashes: Vec<Value> = manifest_paths
-        .iter()
-        .map(|p| {
-            let text = read_text_within_workspace(workspace_dir, p).unwrap_or_default();
-            json!(stable_digest_hex(text.as_bytes()))
-        })
-        .collect();
-    let lockfile_hashes: Vec<Value> = lockfile_paths
-        .iter()
-        .map(|p| {
-            let text = read_text_within_workspace(workspace_dir, p).unwrap_or_default();
-            json!(stable_digest_hex(text.as_bytes()))
-        })
-        .collect();
-    let sbom_hashes: Vec<Value> = sbom_paths
-        .iter()
-        .map(|p| {
-            let text = read_text_within_workspace(workspace_dir, p).unwrap_or_default();
-            json!(stable_digest_hex(text.as_bytes()))
-        })
-        .collect();
-    let inventory_digest = {
-        let canonical = serde_json::to_string(&inventory).unwrap_or_default();
-        stable_digest_hex(canonical.as_bytes())
-    };
-    let mut fp = Map::new();
-    fp.insert("manifestHashes".to_string(), json!(manifest_hashes));
-    fp.insert("lockfileHashes".to_string(), json!(lockfile_hashes));
-    fp.insert("sbomHashes".to_string(), json!(sbom_hashes));
-    fp.insert("inventoryDigest".to_string(), json!(inventory_digest));
-    fp
-}
-
-// ---------------------------------------------------------------------------
-// resolve_path_within_workspace / read_text_within_workspace
-// (workspace_path_guard.py ports)
-// ---------------------------------------------------------------------------
-
-/// `workspace_path_guard.resolve_path_within_workspace` (:8-23).
-fn resolve_path_within_workspace(workspace_dir: &Path, relative_path: &str) -> Option<PathBuf> {
-    let joined = workspace_dir.join(relative_path);
-    let canonical = joined.canonicalize().ok()?;
-    let ws_canonical = workspace_dir.canonicalize().ok()?;
-    if canonical.starts_with(&ws_canonical) {
-        Some(canonical)
-    } else {
-        None
-    }
-}
-
-/// `workspace_path_guard.read_text_within_workspace` (:25-33).
-fn read_text_within_workspace(workspace_dir: &Path, relative_path: &str) -> Option<String> {
-    let path = resolve_path_within_workspace(workspace_dir, relative_path)?;
-    std::fs::read_to_string(path).ok()
-}
-
-// ---------------------------------------------------------------------------
 // compose_current_package_policy_action — merge evaluation action with
 // additional policy context.
 // ---------------------------------------------------------------------------
@@ -5240,7 +5001,11 @@ fn compose_current_package_policy_action(
     // An additional current action (from the claim-resolution path) may
     // supersede everything else.
     if let Some(v) = additional_current_action {
-        action = Some(normalize_guard_action(v, GuardAction::Block).as_str().to_string());
+        action = Some(
+            normalize_guard_action(v, GuardAction::Block)
+                .as_str()
+                .to_string(),
+        );
     }
     action.map(Value::String)
 }
@@ -6893,8 +6658,6 @@ fn url_origin(url: &str) -> Option<String> {
     Some(url[..scheme_end + 3 + host_end].to_string())
 }
 
-
-
 /// `HTTPError` mapping for cloud audit calls — 403 plan-restriction check
 /// first, then retryable/not-available vs runtime, mirroring Python ordering.
 fn cloud_audit_http_error(
@@ -7010,7 +6773,6 @@ pub fn execute_cloud_workspace_audit_request(
     }
 }
 
-
 /// `_enqueue_cloud_workspace_audit_job` (:3961-3979).
 pub fn enqueue_cloud_workspace_audit_job(
     auth_context: &Map<String, Value>,
@@ -7109,7 +6871,6 @@ pub fn poll_cloud_workspace_audit_job(
 // ---------------------------------------------------------------------------
 // Job-mode audit payload (:3823-3899, :4014-4071)
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Managed workspace audit sync (:4165-4302)

@@ -497,4 +497,4 @@ fn stale_transport_retry_allowlist_preserves_auth_and_integrity_failures() {
 }
 
 #[path = "managed_resident_owner_lock_tests.rs"]
-mod owner_lock_tests;
+mod owner_lock_tests; // includes managed_owner_lock_rejects_second_process contention proof

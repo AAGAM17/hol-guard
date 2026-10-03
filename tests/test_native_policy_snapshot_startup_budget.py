@@ -49,6 +49,20 @@ def test_publication_budget_matches_cold_or_warm_resident(
     authority = NativePolicySnapshotPublisher(store=GuardStore(publisher.guard_home), status_provider=_status)
     try:
         controls = authority._compiled_command_extensions()
+        if replacement:
+            authority._snapshot = {"generation": 1}
+            authority._resident_startup_required = False
+            authority._input_fingerprint = ((), (("old-generation.json", 1, 1),))
+            authority._accept_resident_fingerprint(((), (("new-generation.json", 1, 1),)))
+            assert authority._resident_startup_required
+            assert authority._renewal_after_generation is None
+            publisher = authority
+        elif not cold:
+            authority._snapshot = {"generation": 1}
+            authority._resident_startup_required = False
+            authority.request_publish()
+            assert not authority._resident_startup_required
+            publisher = authority
     finally:
         authority.close()
     snapshot, generation = _publish_snapshot_v3(
@@ -59,7 +73,7 @@ def test_publication_budget_matches_cold_or_warm_resident(
         command_extensions=controls,
         master_key=b"k" * 32,
         client=client,
-        renew_after_generation=1 if replacement else None,
+        renew_after_generation=None,
     )
     assert snapshot["generation"] > 0
     assert generation == 1

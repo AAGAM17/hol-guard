@@ -94,7 +94,11 @@ def _publish_snapshot_v3(
         # consume the restart circuit on otherwise valid policy pushes.
         publish_timeout = (
             _PUBLISH_STARTUP_TIMEOUT_SECONDS
-            if getattr(publisher, "_snapshot", None) is None or renew_after_generation is not None
+            if (
+                getattr(publisher, "_snapshot", None) is None
+                or getattr(publisher, "_resident_startup_required", False)
+                or renew_after_generation is not None
+            )
             else _PUBLISH_TIMEOUT_SECONDS
         )
         snapshot = native_policy_snapshot_v3(

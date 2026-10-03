@@ -400,3 +400,20 @@ def test_evidence_jobs_run_only_from_trusted_default_or_pinned_bootstrap():
         assert "refs/tags/guard-gauntlet-bootstrap-v1" in condition
         assert "github.event_name == 'workflow_dispatch'" in condition
         assert "GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA" in workflow["jobs"][name]["env"]
+
+
+def test_required_ci_uses_trusted_base_or_exact_initial_verifier():
+    from pathlib import Path
+
+    import yaml
+
+    path = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+    job = yaml.safe_load(path.read_text())["jobs"]["ci-python-312"]
+    checkouts = [step["with"] for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")]
+    assert checkouts == [
+        {"ref": "${{ github.event.pull_request.base.sha }}", "path": "gauntlet-trusted", "persist-credentials": False},
+        {"ref": "a820693305e7c913285724a7aade92b085b55f09", "path": "gauntlet-trusted", "persist-credentials": False},
+    ]
+    requirement = next(step for step in job["steps"] if step.get("run") == "python3 -m ci.gauntlet.github_ci require")
+    assert requirement["working-directory"] == "gauntlet-trusted"
+    assert requirement["env"]["GUARD_GAUNTLET_BOOTSTRAP_VERIFIER_SHA"] == checkouts[1]["ref"]

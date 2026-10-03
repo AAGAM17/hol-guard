@@ -83,9 +83,9 @@ def _test_scanner(malicious_plugin: Path):
             fixture_path == malicious_plugin
             and payload is not None
             and not any(
-                finding.get("rule_id") == "RISKY_SKILL_INSTRUCTION"
+                finding.get("ruleId") == "RISKY_SKILL_INSTRUCTION"
                 and finding.get("severity") == "high"
-                and finding.get("file_path") == "skills/leaky-skill/SKILL.md"
+                and finding.get("filePath") == "skills/leaky-skill/SKILL.md"
                 for finding in payload.get("findings", [])
             )
         ):

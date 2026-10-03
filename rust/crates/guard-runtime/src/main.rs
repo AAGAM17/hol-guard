@@ -20,6 +20,7 @@ mod resident_state;
 mod resident_state_encoding;
 mod resident_transport;
 mod resident_transport_service;
+mod resident_update_lock;
 #[cfg(unix)]
 mod state_directory_lock;
 mod strict_json;

@@ -195,6 +195,7 @@ fn client_request_with_deadline(
         return Err("native_client_deadline_exceeded".to_owned());
     }
     let digest = runtime_digest()?;
+    let _update_lock = crate::resident_update_lock::acquire_shared(state_base, &digest)?;
     let scope = state_scope(state_base, &digest)?;
     if let Some(response) = try_home_states(state_base, payload, overall_deadline, &digest)? {
         return Ok(response);
@@ -290,6 +291,7 @@ pub(crate) fn stop_managed(state_base: &Path) -> Result<(), String> {
     else {
         return Err("native_resident_stop_unavailable".to_owned());
     };
+    lease::retire_clients_for_update(state_base, &digest, deadline)?;
     let process_ids = containment::state_process_identities(std::slice::from_ref(&state));
     let token = token_from_state(&state)?;
     let identity = crate::resident_client::ExpectedProcessIdentity {

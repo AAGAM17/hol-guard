@@ -106,6 +106,66 @@ fn expired_client_deadline_rejects_before_request_setup() {
     fs::remove_dir_all(root).expect("test state directory should be removable");
 }
 
+#[cfg(unix)]
+#[test]
+fn client_request_cannot_spawn_while_update_barrier_is_held() {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!(
+        "hol-guard-managed-update-barrier-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&root).expect("test state directory should be created");
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let lock_path = root.join(crate::resident_update_lock::RESIDENT_UPDATE_LOCK_FILE_NAME);
+    let digest = runtime_digest().unwrap();
+    let mut update_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .unwrap();
+    update_file
+        .write_all(format!("{digest}\n").as_bytes())
+        .unwrap();
+    update_file.sync_all().unwrap();
+    fs::set_permissions(&lock_path, fs::Permissions::from_mode(0o600)).unwrap();
+    fs2::FileExt::try_lock_exclusive(&update_file).unwrap();
+    let client_lease = lease::acquire(&root).expect("test lease should be acquired");
+
+    let result = client_request_with_deadline(
+        &root,
+        br"{}",
+        Instant::now() + Duration::from_secs(1),
+        &client_lease,
+    );
+    assert_eq!(result, Err("native_resident_update_in_progress".to_owned()));
+    let spawned_scope = fs::read_dir(&root)
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("resident-v3-")
+        });
+    assert!(
+        !spawned_scope,
+        "blocked request must not create resident state"
+    );
+
+    drop(client_lease);
+    fs2::FileExt::unlock(&update_file).unwrap();
+    drop(update_file);
+    fs::remove_dir_all(root).expect("test state directory should be removable");
+}
+
 #[test]
 fn client_stream_eof_is_clean_and_partial_headers_fail_closed() {
     use std::io::Cursor;
@@ -175,6 +235,74 @@ fn client_leases_keep_shared_resident_alive_until_last_client_closes() {
     drop(second);
     assert!(!lease::any_live(&root, &digest));
     fs::remove_file(foreign).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn retire_clients_for_update_terminates_exact_process() {
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+
+    if let Some(root) = std::env::var_os("HOL_GUARD_LEASE_RETIRE_CHILD") {
+        let root = PathBuf::from(root);
+        let _lease = lease::acquire(&root).expect("child lease should be acquired");
+        fs::write(root.join("child-ready"), []).expect("child readiness marker should be written");
+        std::thread::sleep(Duration::from_secs(10));
+        return;
+    }
+
+    let root = std::env::temp_dir().join(format!(
+        "hol-guard-managed-lease-retire-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&root).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let test_name = "managed_resident::tests::retire_clients_for_update_terminates_exact_process";
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .arg("--exact")
+        .arg(test_name)
+        .arg("--nocapture")
+        .env("HOL_GUARD_LEASE_RETIRE_CHILD", &root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    for _ in 0..200 {
+        if root.join("child-ready").is_file() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if !root.join("child-ready").is_file() {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = fs::remove_dir_all(&root);
+        panic!("child did not acquire a lease");
+    }
+    let digest = runtime_digest().unwrap();
+    let retirement =
+        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(2));
+    if let Err(error) = retirement {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = fs::remove_dir_all(&root);
+        panic!("authenticated client retirement should succeed: {error}");
+    }
+    let status = child.wait().unwrap();
+    assert!(!status.success(), "retired client should not exit normally");
+    let remaining_leases = fs::read_dir(root.join("resident-client-leases.v1"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|entry| entry.file_name().to_string_lossy().ends_with(".lease"));
+    assert!(
+        !remaining_leases,
+        "retired lease should be removed by identity"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

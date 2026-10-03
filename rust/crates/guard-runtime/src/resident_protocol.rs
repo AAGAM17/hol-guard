@@ -8,9 +8,8 @@ use guard_contracts::{
     ContainedTypescriptExecuteRequestV1, ContainedWorkspaceWriteExecuteRequestV1,
     ContextDigestRequestV1, GuardHookEnvelopeV2, McpStdioProbeRequestV1, NativeHookRequestV1,
     PackageAuthorityDecideRequestV1, PackageIntentParseRequestV1, PromptAnalyzeRequestV1,
-    RuntimeCapabilitiesV1, ShimAdminRequestV1, SupplyChainEvalRequestV1,
-    MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES, NATIVE_PROTOCOL_VERSION,
-    NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    RuntimeCapabilitiesV1, ShimAdminRequestV1, SupplyChainEvalRequestV1, MAX_NATIVE_RESPONSE_BYTES,
+    NATIVE_APPROVAL_ERROR_CODES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use serde::Deserialize;
 use serde_json::Value;

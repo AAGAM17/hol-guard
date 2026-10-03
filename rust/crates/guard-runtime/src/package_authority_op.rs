@@ -51,6 +51,25 @@ fn err_result(request_id: &str, request_sha256: &str, code: &str) -> Value {
     })
 }
 
+fn reject_empty_resident_paths(
+    request_id: &str,
+    request_sha256: &str,
+    store_path: &str,
+    guard_home: &str,
+) -> Option<Result<Vec<u8>, String>> {
+    if !store_path.is_empty() && !guard_home.is_empty() {
+        return None;
+    }
+    Some(
+        serde_json::to_vec(&err_result(
+            request_id,
+            request_sha256,
+            "native_package_authority_path_required",
+        ))
+        .map_err(|error| error.to_string()),
+    )
+}
+
 fn eval_error_code(e: &EvalError) -> &'static str {
     match e {
         EvalError::Validation(_) => "validation",
@@ -1379,6 +1398,14 @@ pub(crate) fn evaluate_supply_chain_eval(
         ))
         .map_err(|e| e.to_string());
     }
+    if let Some(rejected) = reject_empty_resident_paths(
+        &request.request_id,
+        &request_sha256,
+        &request.store_path,
+        &request.guard_home,
+    ) {
+        return rejected;
+    }
     let store_path = PathBuf::from(&request.store_path);
     let guard_home = PathBuf::from(&request.guard_home);
     let store = ResidentSupplyChainStore::new(&store_path, &guard_home);
@@ -1430,6 +1457,14 @@ pub(crate) fn evaluate_package_authority_decide(
             "schema_mismatch",
         ))
         .map_err(|e| e.to_string());
+    }
+    if let Some(rejected) = reject_empty_resident_paths(
+        &request.request_id,
+        &request_sha256,
+        &request.store_path,
+        &request.guard_home,
+    ) {
+        return rejected;
     }
     let workspace = request.workspace_dir.as_deref().map(Path::new);
     let intent = match parse_package_intent(&request.command_text, workspace, None, None, None) {

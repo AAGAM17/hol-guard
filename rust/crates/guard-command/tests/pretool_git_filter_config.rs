@@ -47,6 +47,7 @@ fn unused_global_filters_do_not_block_unrelated_repository_inspection() {
         .unwrap()
         .success());
     let controls = github_controls("enabled");
+    let absolute_status = format!("git --no-pager -C {} status --short", repository.display());
     for harness in ["omp", "zcode"] {
         for command in [
             "git status --short",
@@ -68,6 +69,20 @@ fn unused_global_filters_do_not_block_unrelated_repository_inspection() {
                 result.reason_code
             );
         }
+        let result = evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &json!({"tool_name":"bash", "tool_input":{"command":absolute_status.as_str()}}),
+            Some(&controls),
+            None,
+            home.to_str(),
+            repository.to_str(),
+        );
+        assert_eq!(
+            result.decision, "allow",
+            "{harness}: {}: {}",
+            absolute_status, result.reason_code
+        );
     }
     // Routing into src must not hide a filter attached to a root-level path.
     std::fs::write(
@@ -93,6 +108,17 @@ fn unused_global_filters_do_not_block_unrelated_repository_inspection() {
             assert_eq!(result.decision, "deny", "{harness}: {command}");
             assert_eq!(result.reason_code, "native_git_execution_context_review");
         }
+        let result = evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &json!({"tool_name":"bash", "tool_input":{"command":absolute_status.as_str()}}),
+            Some(&controls),
+            None,
+            home.to_str(),
+            repository.to_str(),
+        );
+        assert_eq!(result.decision, "deny", "{harness}: {absolute_status}");
+        assert_eq!(result.reason_code, "native_git_execution_context_review");
     }
     assert!(
         !marker.exists(),

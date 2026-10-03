@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -48,6 +49,14 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
         ("git-absolute-status", f"git --no-pager -C {repository} status --short"),
         ("git-routed-root", "git -C src rev-parse --show-toplevel"),
         ("list-source", "ls src"),
+        *(
+            [
+                ("list-source-stderr-null", "ls -la src 2>/dev/null"),
+                ("list-compound-stderr-null", "ls -la; echo ---; ls -la src 2>/dev/null; echo done"),
+            ]
+            if os.name == "posix"
+            else []
+        ),
         ("read-relative", "cat src/one.ts"),
         ("read-absolute", f"cat {file}"),
         ("read-quoted", 'cat "src/path with spaces.ts"'),
@@ -120,6 +129,9 @@ def create_cases(root: Path) -> tuple[Path, Path, list[WorkflowCase]]:
     ]
     negatives = [
         ("secret-read", "cat .env"),
+        ("secret-read-stderr-null", "cat .env 2>/dev/null"),
+        ("list-stderr-null-secret-compound", "ls src 2>/dev/null; cat .env"),
+        ("stderr-secret-write", "ls src 2> .env"),
         ("word-count-secret", "wc -l .env"),
         ("word-count-secret-pipeline", "cat .env | wc -l"),
         ("word-count-file-list", "wc --files0-from=src/one.ts"),

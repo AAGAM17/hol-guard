@@ -228,7 +228,7 @@ def contained_workspace_write_execute_native(
         "source": source,
         "target": target,
         "environment": dict(environment) if environment else None,
-        "timeout_seconds": timeout_seconds,
+        "timeout_seconds": int(timeout_seconds),
         "guard_home": str(guard_home),
     }
     decoded = _resident_request(
@@ -241,7 +241,12 @@ def contained_workspace_write_execute_native(
     if decoded is None:
         return None
     result = decoded.get("result")
-    return result if isinstance(result, dict) else None
+    if not isinstance(result, dict):
+        return None
+    try:
+        return _contained_workspace_write_result(result)
+    except (TypeError, ValueError, KeyError):
+        return None
 
 
 def contained_execute_native(

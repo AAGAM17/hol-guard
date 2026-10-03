@@ -96,8 +96,16 @@ def try_execute_contained_workspace_write(
 ) -> ContainedWorkspaceWriteResult | None:
     """Execute one exact operation and promote at most one declared output."""
 
+    try:
+        canonical_workspace = _canonical_directory(workspace)
+        _safe_relative(source, canonical_workspace, must_exist=True)
+        if target is not None:
+            _safe_relative(target, canonical_workspace, must_exist=False)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
     native_result = _native_execution.contained_workspace_write_execute_native(
-        workspace,
+        canonical_workspace,
         guard_home=guard_home,
         operation=operation,
         source=source,
@@ -108,7 +116,6 @@ def try_execute_contained_workspace_write(
     if native_result is not None:
         return native_result
     try:
-        canonical_workspace = _canonical_directory(workspace)
         invocation = _invocation(operation, source, target, canonical_workspace, environment or dict(os.environ))
         executable, argv, source_path, target_path = invocation
         workspace_digest, inputs = complete_workspace_snapshot(canonical_workspace)

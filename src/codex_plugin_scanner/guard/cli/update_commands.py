@@ -377,12 +377,21 @@ def run_guard_update(
                 resident_update_lock=resident_update_lock,
             )
             if resident_update_lock.active:
+                payload, _exit_code = result
                 try:
                     _ = resident_update_lock.publish_runtime_digest(_bundled_runtime_candidate())
-                except NativeResidentUpdateLockError:
-                    if _should_publish_runtime_digest(result[0]):
-                        raise
+                except NativeResidentUpdateLockError as error:
+                    if _should_publish_runtime_digest(payload):
+                        payload["status"] = "failed"
+                        payload["changed"] = True
+                        payload["reason_code"] = error.reason_code
+                        payload["message"] = _TRUSTED_UPDATE_FAILURE_MESSAGES.get(
+                            error.reason_code,
+                            "HOL Guard could not safely establish its native resident update barrier.",
+                        )
+                        _exit_code = 1
                 resident_update_lock.release()
+                result = payload, _exit_code
             return result
     except NativeResidentUpdateLockError as error:
         reason_code = error.reason_code

@@ -152,3 +152,48 @@ def test_run_guard_update_holds_barrier_through_installer_callback(
     lock_path = guard_home / "native-runtime" / "resident-update.v1.lock"
     assert _probe(lock_path, old_digest) == "rejected"
     assert _probe(lock_path, _digest(runtime)) == "accepted"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="probe uses POSIX flock directly")
+def test_run_guard_update_publishes_runtime_after_installer_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard_home = tmp_path / "guard-home"
+    wheel = tmp_path / "hol_guard-2.2.3-py3-none-any.whl"
+    wheel.write_bytes(b"fixture-wheel")
+    runtime = tmp_path / "hol-guard-runtime"
+    runtime.write_bytes(b"old-runtime")
+    runtime.chmod(0o700)
+    old_digest = _digest(runtime)
+
+    monkeypatch.setattr(update_commands, "build_trusted_update_context", build_legacy_update_context)
+    monkeypatch.setattr(update_commands, "_status_installed_distribution", build_legacy_status_distribution)
+    monkeypatch.setattr(update_commands, "stage_trusted_wheel", stage_legacy_wheel)
+    monkeypatch.setattr(update_commands, "load_managed_policy", lambda: ManagedPolicyState("absent", "test"))
+    monkeypatch.setattr(update_commands, "_current_version", lambda: "2.2.1")
+    monkeypatch.setattr(update_commands, "_latest_version_from_pypi", lambda: "2.2.3")
+    monkeypatch.setattr(update_commands, "_current_version_from_subprocess", lambda *_args, **_kwargs: "2.2.3")
+    monkeypatch.setattr(update_commands, "_direct_url_payload", lambda: None)
+    monkeypatch.setattr(update_commands, "_installer_kind", lambda: "pipx")
+    monkeypatch.setattr(update_commands, "_bundled_runtime_candidate", lambda: runtime)
+    monkeypatch.setattr(update_commands, "_retire_native_resident_before_update", lambda _guard_home: True)
+
+    def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        runtime.write_bytes(b"new-runtime")
+        runtime.chmod(0o700)
+        return subprocess.CompletedProcess(command, 1, "installed then failed", "failure")
+
+    monkeypatch.setattr(update_commands.subprocess, "run", fake_run)
+
+    payload, exit_code = update_commands.run_guard_update(
+        dry_run=False,
+        wheel=str(wheel),
+        guard_home=guard_home,
+    )
+
+    assert exit_code == 1
+    assert payload["status"] == "failed"
+    lock_path = guard_home / "native-runtime" / "resident-update.v1.lock"
+    assert _probe(lock_path, old_digest) == "rejected"
+    assert _probe(lock_path, _digest(runtime)) == "accepted"

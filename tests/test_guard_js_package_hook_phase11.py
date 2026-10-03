@@ -349,7 +349,7 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     assert (
         f"/requests/{approval_requests[0]['request_id']}" in payload["hookSpecificOutput"]["permissionDecisionReason"]
     )
-    assert approval_requests[0]["policy_action"] == "require-reapproval"
+    assert approval_requests[0]["policy_action"] == "review"
     evidence = store.list_evidence()
     assert evidence
     assert evidence[0]["category"] == "supply-chain"

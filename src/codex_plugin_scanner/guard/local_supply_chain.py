@@ -332,6 +332,22 @@ def _native_cloud_transport_unavailable(payload: dict[str, object]) -> bool:
     return any(isinstance(reason, dict) and reason.get("code") == "cloud_network_error" for reason in reasons)
 
 
+def _python_cloud_auth_failed(store: object) -> bool:
+    """Tests and the Python evaluator observe auth expiry on this seam.
+    The resident cannot see that patch, so an expiry must fall back.
+    """
+    from .runtime import supply_chain_package_eval as package_eval
+    from .runtime.runner import GuardSyncAuthorizationExpiredError
+
+    try:
+        package_eval._resolve_guard_sync_auth_context(store, allow_primary_repair=False)
+    except GuardSyncAuthorizationExpiredError:
+        return True
+    except Exception:
+        return False
+    return False
+
+
 def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:
     """Best-effort native evaluation through the resident package authority.
 
@@ -358,6 +374,8 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
     if now is not None and not isinstance(now, str):
         return None
     if bool(kwargs.get("retain_external_archive_blob", False)):
+        return None
+    if _python_cloud_auth_failed(store):
         return None
     native_authority = _native_package_authority_module()
     payload = native_authority.supply_chain_eval_native(

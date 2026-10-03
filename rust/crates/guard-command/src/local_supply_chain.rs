@@ -29,7 +29,7 @@ use crate::cloud_audit_sync::{
     normalized_supply_chain_batch_job_url, normalized_supply_chain_batch_url,
     resolve_next_refresh_at, should_use_cloud_workspace_audit, EnvCloudAuditWorkspaceContext,
 };
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -2410,8 +2410,8 @@ fn resolve_advisory_aliases_from_bundle(
     for advisory_id in advisory_ids {
         add(advisory_id);
         if let Some(resolved) = lookup.get(&advisory_id.to_uppercase()) {
-            for alias in resolved.clone() {
-                add(&alias);
+            for alias in resolved {
+                add(alias);
             }
         }
     }

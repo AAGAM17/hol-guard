@@ -1,11 +1,11 @@
 """Materialize inert skill test data for static scanning, never execution."""
 
-from pathlib import Path
+from pathlib import Path, PurePath
 from shutil import copytree
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MALICIOUS_SKILL_FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "malicious-skill-plugin"
-MALICIOUS_SKILL_DOCUMENT = Path("skills/leaky-skill/SKILL.md")
+MALICIOUS_SKILL_DOCUMENT = PurePath("skills/leaky-skill/SKILL.md")
 
 
 def materialize_malicious_skill_plugin(destination: Path) -> Path:

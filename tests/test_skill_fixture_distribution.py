@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.cli_ui import build_plain_text
 from codex_plugin_scanner.guard.skill_directory_discovery import discover_skill_documents
 from codex_plugin_scanner.models import ScanOptions
-from codex_plugin_scanner.reporting import format_json
+from codex_plugin_scanner.reporting import format_json, format_sarif
 from codex_plugin_scanner.scanner import scan_plugin
 from tests import e2e_droid_exec
 from tests.skill_fixture_support import (
@@ -73,9 +74,18 @@ def test_headless_scanner_materializes_and_removes_temporary_skill(monkeypatch):
 
 @pytest.mark.parametrize("remove_risky_finding", [False, True])
 def test_headless_scanner_checks_serialized_security_findings(monkeypatch, remove_risky_finding):
-    def static_scan(command, cwd):
+    def static_scan(command: list[str], cwd: Path | None) -> tuple[int, str, str]:
         plugin = Path(command[4])
-        payload = json.loads(format_json(scan_plugin(plugin, ScanOptions(cisco_skill_scan="off"))))
+        mode = command[command.index("--cisco-skill-scan") + 1] if "--cisco-skill-scan" in command else "auto"
+        assert mode == ("off" if plugin.name == "malicious-skill-plugin" else "auto")
+        result = scan_plugin(plugin, ScanOptions(cisco_skill_scan=mode))
+        output_format = command[command.index("--format") + 1]
+        if output_format == "text":
+            return 0, build_plain_text(result), ""
+        if output_format == "sarif":
+            return 0, format_sarif(result), ""
+        assert output_format == "json"
+        payload = json.loads(format_json(result))
         if remove_risky_finding and plugin.name == "malicious-skill-plugin":
             payload["findings"] = [
                 finding for finding in payload["findings"] if finding["ruleId"] != "RISKY_SKILL_INSTRUCTION"

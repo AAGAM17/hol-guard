@@ -3702,23 +3702,20 @@ pub fn build_workspace_audit_payload(
             &manifest_paths,
             &lockfile_paths,
             &inventory_values,
-            "audit",
-            Some(CLOUD_AUDIT_PAGE_SIZE as i64),
+            "paged",
+            None,
             paths,
             &EnvCloudAuditWorkspaceContext,
         )
         .ok();
-        match run_cloud_workspace_audit(
-            runner,
-            http,
-            cloud_request_payload.as_ref().unwrap_or(&request_payload),
-            cloud_auth.as_ref(),
-            None,
-            None,
-            workspace_id,
-        ) {
-            Ok(Some(response)) => Some(response),
-            Ok(None) | Err(_) => None,
+        match cloud_request_payload {
+            Some(payload) => match run_cloud_workspace_audit(
+                runner, http, &payload, cloud_auth.as_ref(), None, None, workspace_id,
+            ) {
+                Ok(Some(response)) => Some(response),
+                Ok(None) | Err(_) => None,
+            },
+            None => None,
         }
     } else {
         None

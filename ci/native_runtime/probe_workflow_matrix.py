@@ -143,8 +143,11 @@ def run_live(
         before = worker.store.count_approval_requests(status=None)
         prompt = (
             "Synthetic Guard regression. Use bash for EACH exact command separately, in order. "
+            "Issue exactly ONE tool call per turn and wait for its result before the next command. "
+            "Do not batch or parallelize tool calls, even when commands are independent. "
             "Do not change or omit commands. Stop only if an attempted bash call returns a block. "
-            "Do not infer that an unattempted command is blocked.\n" + "\n".join(case.command for case in batch)
+            "Do not infer that an unattempted command is blocked.\n"
+            + "\n".join(f"{number}. {case.command}" for number, case in enumerate(batch, 1))
         )
         # Contained calls include launch/attestation overhead for every command.
         budget_seconds = max(60, len(batch) * 20)

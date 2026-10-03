@@ -95,7 +95,7 @@ fn apply_pattern(
         return;
     }
     *text = pattern.replace_all(text, replacement).into_owned();
-    classifiers.extend(std::iter::repeat(classifier).take(match_count));
+    classifiers.extend(std::iter::repeat_n(classifier, match_count));
 }
 
 /// `pattern.subn` for the `aws-secret-access-key` rule. The original pattern
@@ -192,7 +192,7 @@ pub fn redact_text(value: &str) -> RedactedText {
         let (next, match_count) = subn_aws_secret_access_key(&text);
         if match_count > 0 {
             text = next;
-            classifiers.extend(std::iter::repeat("aws-secret-access-key").take(match_count));
+            classifiers.extend(std::iter::repeat_n("aws-secret-access-key", match_count));
         }
     }
     apply_pattern(

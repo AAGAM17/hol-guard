@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 import sys
 import time
 from collections.abc import Mapping
@@ -96,7 +95,7 @@ def _write_resident_authority(guard_home: Path, snapshot: Mapping[str, object], 
                 parent_path=binding.path,
                 parent_handle=binding.handle,
                 directory_handles=binding.handles,
-                temporary_name=f".policy-snapshot-v3.json.{secrets.token_hex(16)}.tmp",
+                temporary_name=".test-resident-authority.tmp",
                 destination_name=path.name,
                 payload=_canonical_json_bytes_v3(record),
                 maximum_bytes=POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES,

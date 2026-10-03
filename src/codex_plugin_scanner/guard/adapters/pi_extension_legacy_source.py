@@ -199,7 +199,7 @@ def legacy_managed_extension_source(
     payload_preflight = (
         "  if (\n"
         "    options?.enforceSizeCap === true &&\n"
-        "    !payloadWithinSerializedBudget(payload, deadlineAt)\n"
+        "    !payloadWithinSerializedBudget(payloadToSend, deadlineAt)\n"
         "  ) {\n"
         "    return {\n"
         '      decision: "deny",\n'

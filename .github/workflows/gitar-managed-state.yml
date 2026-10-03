@@ -20,7 +20,15 @@ concurrency:
 
 jobs:
   reconcile:
-    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request != null }}
+    if: >-
+      (
+        github.event_name == 'pull_request_target' &&
+        github.event.pull_request.state == 'open'
+      ) || (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        github.event.issue.state == 'open'
+      ) || github.event_name == 'workflow_dispatch'
     permissions:
       issues: write
       pull-requests: write

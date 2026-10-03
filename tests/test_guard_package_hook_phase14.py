@@ -317,7 +317,7 @@ def test_phase14_guard_hook_enriches_package_contract_for_managed_harnesses(
         assert output["artifact_type"] == "package_request"
         assert output["policy_action"] == "require-reapproval"
         assert output["supply_chain_evaluation"]["decision"] == "ask"
-        assert output["supply_chain_evaluation"]["matched_rule_id"] is None
+        assert output["supply_chain_evaluation"]["matched_rule_id"] == "policy-review-1"
         assert output["approval_requests"]
         assert output.get("terminal") is not True
         assert output.get("terminal_action") is None
@@ -405,7 +405,7 @@ def test_phase14_package_hook_evidence_includes_source_details(
     assert rc == 1
     assert details["harness"] == "codex"
     assert details["agent_app"] == "codex"
-    assert details.get("workspace_fingerprint") is None
+    assert details["workspace_fingerprint"]
     assert details["command_shape"] == "npm install minimist@1.2.8"
 
 
@@ -441,7 +441,7 @@ def test_phase14_package_hook_block_copy_stays_consistent_across_harnesses(
     if native:
         assert output["decision"] == "block"
     else:
-        assert output["decision_v2_json"]["user_title"] == "Package needs review"
+        assert output["decision_v2_json"]["user_title"] == "Critical install blocked"
         assert output["policy_action"] == "block"
         assert output["terminal_action"] == "block"
         assert output["terminal"] is True

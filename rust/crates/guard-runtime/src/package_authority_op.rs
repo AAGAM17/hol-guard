@@ -51,6 +51,28 @@ fn err_result(request_id: &str, request_sha256: &str, code: &str) -> Value {
     })
 }
 
+/// Convert a rusqlite `types::Value` cell into the equivalent `serde_json`
+/// value for `_row_to_payload`-style dict construction.
+fn db_value_to_json(v: rusqlite::types::Value) -> Value {
+    match v {
+        rusqlite::types::Value::Null => Value::Null,
+        rusqlite::types::Value::Integer(i) => Value::from(i),
+        rusqlite::types::Value::Real(f) => serde_json::Number::from_f64(f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        rusqlite::types::Value::Text(t) => Value::String(t),
+        rusqlite::types::Value::Blob(b) => Value::Array(b.into_iter().map(Value::from).collect()),
+    }
+}
+
+/// Resolve `guard_home` to the canonical absolute path the scoped secret ref
+/// is hashed from (`guard_home.expanduser().resolve()`), falling back to the
+/// raw path when it does not exist yet.
+fn resolve_runtime_home(guard_home: &Path) -> Option<PathBuf> {
+    let resolved = std::fs::canonicalize(guard_home).unwrap_or_else(|_| guard_home.to_path_buf());
+    Some(resolved)
+}
+
 fn reject_empty_resident_paths(
     request_id: &str,
     request_sha256: &str,
@@ -116,6 +138,134 @@ impl ResidentSupplyChainStore {
         let raw: String = row.get(0).ok()?;
         serde_json::from_str(&raw).ok()
     }
+
+    /// `store_oauth.py: get_oauth_local_credential_health` — derive the
+    /// `state` field; delegates to the shared free fn so `ResidentStoreExtras`
+    /// produces the identical result.
+    fn oauth_local_credentials_state(&self) -> String {
+        oauth_credential_state(&self.guard_home, self.oauth_local_credentials().as_ref())
+    }
+
+    /// `_row_to_payload` — map the raw column values to the request payload
+    /// dict. The canonical-surface re-derivation is intentionally not ported
+    /// here (no Rust `canonical_approval_surfaces`); the stored
+    /// `policy_action`/`decision_v2_json`/`action_envelope_json` are emitted
+    /// as persisted, and the JSON text columns are parsed to objects/arrays.
+    fn approval_row_payload(cols: &[&str], vals: &[Value]) -> Value {
+        let mut map = Map::new();
+        for (k, v) in cols.iter().zip(vals.iter()) {
+            map.insert(k.to_string(), v.clone());
+        }
+        let get = |m: &Map<String, Value>, k: &str| m.get(k).cloned().unwrap_or(Value::Null);
+        // JSON-list columns -> arrays.
+        for (src, dst) in [
+            ("changed_fields_json", "changed_fields"),
+            ("risk_signals_json", "risk_signals"),
+            ("scanner_evidence_json", "scanner_evidence"),
+        ] {
+            let parsed = get(&map, src)
+                .as_str()
+                .and_then(|t| serde_json::from_str::<Value>(t).ok())
+                .filter(|v| v.is_array())
+                .unwrap_or(Value::Array(Vec::new()));
+            map.insert(dst.to_string(), parsed);
+        }
+        // JSON-object columns -> objects (or Null).
+        for (src, dst) in [
+            ("browser_intent_json", "browser_intent"),
+            ("continuation_snapshot_json", "continuation_snapshot"),
+            ("action_envelope_json", "action_envelope_json"),
+            ("decision_v2_json", "decision_v2_json"),
+        ] {
+            let parsed = get(&map, src)
+                .as_str()
+                .and_then(|t| serde_json::from_str::<Value>(t).ok())
+                .unwrap_or(Value::Null);
+            map.insert(dst.to_string(), parsed);
+        }
+        // Integer/bool normalizations.
+        let dedupe = get(&map, "dedupe_count").as_i64().unwrap_or(1);
+        map.insert("dedupe_count".to_string(), Value::from(dedupe));
+        let watch = get(&map, "watch_only_observation").as_i64().unwrap_or(0) != 0;
+        map.insert("watch_only_observation".to_string(), Value::from(watch));
+        // display_status mirrors status; resolution_intent mirrors
+        // resolution_action in Python.
+        if let Some(st) = map.get("status").cloned() {
+            map.insert("display_status".to_string(), st);
+        }
+        if let Some(ra) = map.get("resolution_action").cloned() {
+            map.insert("resolution_intent".to_string(), ra);
+        }
+        Value::Object(map)
+    }
+}
+
+/// `store_oauth.py: get_oauth_local_credential_health` — `healthy` only when the
+/// oauth metadata is valid AND the referenced secret payload loads from the
+/// secret store AND yields a valid local-credentials result; `not_configured`
+/// when there is no payload; `degraded` on any earlier failure.
+fn oauth_credential_state(guard_home: &Path, payload: Option<&Value>) -> String {
+    let payload = match payload {
+        Some(p) if p.is_object() => p,
+        _ => return "not_configured".to_owned(),
+    };
+    let nonempty = |k: &str| {
+        payload
+            .get(k)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    };
+    if nonempty("issuer").is_none() || nonempty("client_id").is_none() {
+        return "degraded".to_owned();
+    }
+    let secret = match load_oauth_secret_payload(guard_home, payload) {
+        Some(s) => s,
+        None => return "degraded".to_owned(),
+    };
+    if valid_oauth_credentials_result(&secret) {
+        "healthy".to_owned()
+    } else {
+        "degraded".to_owned()
+    }
+}
+
+/// `_load_oauth_secret_payload` — resolve the scoped secret ref from
+/// `credentials_ref` (falling back to the home-scoped default ref) and read
+/// the JSON secret from the encrypted file store.
+fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value> {
+    let resolved_home = resolve_runtime_home(guard_home)?;
+    let default_ref = crate::policy_integrity_resolver::build_scoped_secret_ref(
+        "guard-oauth-local-credentials",
+        &resolved_home,
+    );
+    let secret_ref = payload
+        .get("credentials_ref")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+        .unwrap_or(default_ref);
+    let mut store = crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
+    let raw = store.get_secret(&secret_ref)?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// `_build_oauth_local_credentials_result` — a secret payload is usable only
+/// when it carries a non-empty refresh token plus DPoP key material.
+fn valid_oauth_credentials_result(secret: &Value) -> bool {
+    let nonempty = |v: Option<&Value>| {
+        v.and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some()
+    };
+    nonempty(secret.get("refresh_token"))
+        && nonempty(secret.get("dpop_private_key_pem"))
+        && secret
+            .get("dpop_public_jwk")
+            .map_or(false, Value::is_object)
+        && nonempty(secret.get("dpop_public_jwk_thumbprint"))
 }
 
 impl SupplyChainStore for ResidentSupplyChainStore {
@@ -125,7 +275,13 @@ impl SupplyChainStore for ResidentSupplyChainStore {
 
     fn get_cloud_sync_profile(&self) -> Option<Value> {
         // store_oauth.py: get_cloud_sync_profile reads oauth local credentials,
-        // not a separate profile row.
+        // not a separate profile row. Python gates the profile on
+        // `get_oauth_local_credential_health()["state"] == "healthy"` — a
+        // caller must not learn a usable sync target while the local grant is
+        // degraded or unverifiable.
+        if self.oauth_local_credentials_state() != "healthy" {
+            return None;
+        }
         let payload = self.oauth_local_credentials()?;
         let nonempty = |k: &str| {
             payload
@@ -207,11 +363,14 @@ impl SupplyChainStore for ResidentSupplyChainStore {
             Ok(c) => c,
             Err(_) => return Vec::new(),
         };
-        let mut stmt =
-            match conn.prepare("SELECT advisory_json FROM guard_advisories ORDER BY advisory_id") {
-                Ok(s) => s,
-                Err(_) => return Vec::new(),
-            };
+        let mut stmt = match conn.prepare(
+            "SELECT payload_json FROM publisher_cache \
+             WHERE publisher_key LIKE 'advisory:%' \
+             ORDER BY publisher_key ASC",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
         let rows = match stmt.query_map([], |row| row.get::<_, String>(0)) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
@@ -226,18 +385,38 @@ impl SupplyChainStore for ResidentSupplyChainStore {
             Ok(c) => c,
             Err(_) => return Vec::new(),
         };
-        let mut stmt = match conn
-            .prepare("SELECT install_json FROM guard_managed_installs ORDER BY install_id")
-        {
+        // `store_cloud_events.py:list_managed_installs` — rows carry
+        // `harness`, `active`, `workspace`, `manifest_json`, `updated_at`.
+        let mut stmt = match conn.prepare(
+            "SELECT harness, active, workspace, manifest_json, updated_at \
+             FROM managed_installs ORDER BY harness ASC",
+        ) {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
-        let rows = match stmt.query_map([], |row| row.get::<_, String>(0)) {
+        let rows = match stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        }) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };
         rows.flatten()
-            .filter_map(|raw| serde_json::from_str(&raw).ok())
+            .map(|(harness, active, workspace, manifest_json, updated_at)| {
+                let manifest = serde_json::from_str::<Value>(&manifest_json).unwrap_or(Value::Null);
+                serde_json::json!({
+                    "harness": harness,
+                    "active": active != 0,
+                    "workspace": workspace,
+                    "manifest": manifest,
+                    "updated_at": updated_at,
+                })
+            })
             .collect()
     }
 
@@ -248,35 +427,127 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         now: &str,
         reason: Option<&str>,
     ) {
-        // store_oauth.py: record_latest_guard_connect_sync_result
-        if let Ok(conn) = self.conn() {
-            let payload = json!({
-                "status": status,
-                "milestone": milestone,
-                "recorded_at": now,
-                "reason": reason,
-            });
-            let _ = conn.execute(
-                "INSERT INTO guard_oauth_metadata (key, value_json) \
-                 VALUES ('latest_guard_connect_sync_result', ?1) \
-                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
-                rusqlite::params![payload.to_string()],
-            );
+        // store_oauth.py: record_latest_guard_connect_sync_result (no
+        // request_id path). Find the most recent connect state that is
+        // already `connected`, then persist the sync result back onto it.
+        let conn = match self.conn() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let request_id: Option<String> = conn
+            .query_row(
+                "SELECT request_id FROM guard_connect_states \
+                 WHERE status IN ('connected', 'retry_required') \
+                 ORDER BY updated_at DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        let request_id = match request_id {
+            Some(id) => id,
+            None => return,
+        };
+        // With no request_id Python only mutates a state that is still
+        // `connected`; a `retry_required` row is returned unchanged.
+        let current: Option<String> = conn
+            .query_row(
+                "SELECT status FROM guard_connect_states WHERE request_id = ?1",
+                [&request_id],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        if current.as_deref() != Some("connected") {
+            return;
         }
+        let proof = json!({"milestone": milestone});
+        let _ = conn.execute(
+            "UPDATE guard_connect_states \
+             SET status = ?1, milestone = ?2, reason = ?3, \
+                 updated_at = ?4, proof_json = ?5 \
+             WHERE request_id = ?6",
+            rusqlite::params![
+                status,
+                milestone,
+                reason,
+                now,
+                proof.to_string(),
+                request_id
+            ],
+        );
     }
 
     fn get_approval_request(&self, request_id: &str) -> Option<Value> {
+        // store_approvals.py: get_approval_request -> _row_to_payload reads the
+        // real `approval_requests` row, not a serialized blob.
         let conn = self.conn().ok()?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT request_json FROM guard_approval_requests \
-                 WHERE request_id = ?1 LIMIT 1",
-            )
-            .ok()?;
-        let mut rows = stmt.query([request_id]).ok()?;
-        let row = rows.next().ok()??;
-        let raw: String = row.get(0).ok()?;
-        serde_json::from_str(&raw).ok()
+        let cols = [
+            "request_id",
+            "harness",
+            "artifact_id",
+            "artifact_name",
+            "artifact_type",
+            "artifact_hash",
+            "publisher",
+            "policy_action",
+            "recommended_scope",
+            "changed_fields_json",
+            "source_scope",
+            "oauth_source",
+            "config_path",
+            "workspace",
+            "launch_target",
+            "normalized_identity_key",
+            "action_identity",
+            "queue_group_id",
+            "dedupe_count",
+            "last_seen_at",
+            "transport",
+            "risk_summary",
+            "risk_signals_json",
+            "artifact_label",
+            "source_label",
+            "trigger_summary",
+            "why_now",
+            "launch_summary",
+            "risk_headline",
+            "action_envelope_json",
+            "decision_v2_json",
+            "fallback_cli_command",
+            "raw_command_text",
+            "continuation_snapshot_json",
+            "guard_version",
+            "first_seen_guard_version",
+            "last_seen_guard_version",
+            "watch_only_observation",
+            "review_command",
+            "approval_url",
+            "status",
+            "resolution_action",
+            "resolution_scope",
+            "reason",
+            "created_at",
+            "resolved_at",
+            "scanner_evidence_json",
+            "browser_intent_json",
+        ];
+        let sql = format!(
+            "SELECT {} FROM approval_requests WHERE request_id = ?1 LIMIT 1",
+            cols.join(", ")
+        );
+        let mut stmt = conn.prepare(&sql).ok()?;
+        let row_values: Option<Vec<Value>> = stmt
+            .query_row([request_id], |row| {
+                let mut out = Vec::with_capacity(cols.len());
+                for i in 0..cols.len() {
+                    let v: rusqlite::types::Value = row.get(i)?;
+                    out.push(db_value_to_json(v));
+                }
+                Ok(out)
+            })
+            .ok();
+        let row_values = row_values?;
+        Some(Self::approval_row_payload(&cols, &row_values))
     }
 
     fn resolve_policy_decision_lookup(
@@ -295,15 +566,61 @@ impl SupplyChainStore for ResidentSupplyChainStore {
             Ok(c) => c,
             Err(_) => return PolicyDecisionLookup::default(),
         };
-        let decision = conn
-            .query_row(
-                "SELECT decision_json FROM guard_policy_decisions \
-                 WHERE artifact_id = ?1 ORDER BY id DESC LIMIT 1",
-                [artifact_id],
-                |r| r.get::<_, String>(0),
-            )
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok());
+        // `_policy_row_payload` — project the `policy_decisions` columns into
+        // the decision dict the callers inspect.
+        let mut stmt = match conn.prepare(
+            "SELECT harness, scope, artifact_id, artifact_hash, workspace, \
+                    publisher, action, reason, owner, source, expires_at, \
+                    policy_document_schema_version, policy_document_id, \
+                    policy_document_digest, policy_rule_id, \
+                    policy_provenance_json, updated_at \
+             FROM policy_decisions \
+             WHERE artifact_id = ?1 ORDER BY decision_id DESC LIMIT 1",
+        ) {
+            Ok(st) => st,
+            Err(_) => return PolicyDecisionLookup::default(),
+        };
+        let decision = stmt
+            .query_row([artifact_id], |row| {
+                let mut map = Map::new();
+                for (i, name) in [
+                    "harness",
+                    "scope",
+                    "artifact_id",
+                    "artifact_hash",
+                    "workspace",
+                    "publisher",
+                    "action",
+                    "reason",
+                    "owner",
+                    "source",
+                    "expires_at",
+                    "policy_document_schema_version",
+                    "policy_document_id",
+                    "policy_document_digest",
+                    "policy_rule_id",
+                    "policy_provenance_json",
+                    "updated_at",
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let v: rusqlite::types::Value = row.get(i)?;
+                    let jv = db_value_to_json(v);
+                    // `policy_provenance_json` is stored as a JSON blob text —
+                    // emit it parsed like the Python `_row_to_payload` does.
+                    let jv = if *name == "policy_provenance_json" {
+                        jv.as_str()
+                            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+                            .unwrap_or(jv)
+                    } else {
+                        jv
+                    };
+                    map.insert(name.to_string(), jv);
+                }
+                Ok(Value::Object(map))
+            })
+            .ok();
         PolicyDecisionLookup {
             decision,
             ignored_local_integrity: None,
@@ -407,35 +724,96 @@ impl SupplyChainStore for ResidentSupplyChainStore {
     }
 
     fn add_receipt(&self, receipt: &Value) {
-        if let Ok(conn) = self.conn() {
-            let body = serde_json::to_string(receipt).unwrap_or_else(|_| "{}".into());
-            let receipt_id = receipt
-                .get("receipt_id")
-                .or_else(|| receipt.get("receiptId"))
+        // store_receipts.py:add_receipt — persist into `runtime_receipts`,
+        // not a serialized blob table. `receipt` is a `GuardReceipt.to_dict()`
+        // value; list fields are re-serialized to their `*_json` columns.
+        let conn = match self.conn() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let g = |k: &str| receipt.get(k).cloned().unwrap_or(Value::Null);
+        let txt = |k: &str| g(k).as_str().map(str::to_owned).unwrap_or_default();
+        let opt = |k: &str| {
+            receipt
+                .get(k)
+                .filter(|v| !v.is_null())
                 .and_then(Value::as_str)
-                .unwrap_or("");
-            let _ = conn.execute(
-                "INSERT INTO guard_receipts (receipt_id, receipt_json) VALUES (?1, ?2)",
-                rusqlite::params![receipt_id, body],
-            );
-        }
+                .map(str::to_owned)
+        };
+        let list_json = |k: &str| serde_json::to_string(&g(k)).unwrap_or_else(|_| "[]".into());
+        let receipt_id = txt("receipt_id");
+        let _ = conn.execute(
+            "INSERT INTO runtime_receipts ( \
+               receipt_id, harness, artifact_id, artifact_hash, policy_decision, \
+               capabilities_summary, changed_capabilities_json, provenance_summary, \
+               user_override, artifact_name, source_scope, scanner_evidence_json, \
+               diff_summary, approval_source, approval_request_id, timestamp, \
+               raw_command_text \
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+            rusqlite::params![
+                receipt_id,
+                txt("harness"),
+                txt("artifact_id"),
+                txt("artifact_hash"),
+                txt("policy_decision"),
+                txt("capabilities_summary"),
+                list_json("changed_capabilities"),
+                txt("provenance_summary"),
+                opt("user_override"),
+                opt("artifact_name"),
+                opt("source_scope"),
+                list_json("scanner_evidence"),
+                opt("diff_summary"),
+                opt("approval_source"),
+                opt("approval_request_id"),
+                txt("timestamp"),
+                opt("raw_command_text"),
+            ],
+        );
     }
 
     fn set_receipt_action_envelope(&self, receipt_id: &str, metadata: &Value) {
-        if let Ok(conn) = self.conn() {
-            let body = serde_json::to_string(metadata).unwrap_or_else(|_| "{}".into());
-            let _ = conn.execute(
-                "UPDATE guard_receipts SET action_envelope_json = ?2 WHERE receipt_id = ?1",
-                rusqlite::params![receipt_id, body],
-            );
+        // store_receipts.py:set_receipt_action_envelope — upsert into
+        // `runtime_receipt_envelopes` (only when the receipt exists). The
+        // canonical-rollup re-derivation isn't ported; `metadata` already
+        // carries the caller's full/redacted envelope.
+        let conn = match self.conn() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM runtime_receipts WHERE receipt_id = ?1 LIMIT 1",
+                [receipt_id],
+                |_| Ok(()),
+            )
+            .is_ok();
+        if !exists {
+            return;
         }
+        let full = serde_json::to_string(metadata).unwrap_or_else(|_| "null".into());
+        let redacted = metadata
+            .get("redacted")
+            .cloned()
+            .or_else(|| metadata.get("envelope_redacted").cloned())
+            .unwrap_or_else(|| metadata.clone());
+        let redacted = serde_json::to_string(&redacted).unwrap_or_else(|_| "null".into());
+        let _ = conn.execute(
+            "INSERT INTO runtime_receipt_envelopes \
+               (receipt_id, envelope_full_json, envelope_redacted_json) \
+             VALUES (?1, ?2, ?3) \
+             ON CONFLICT(receipt_id) DO UPDATE SET \
+               envelope_full_json = excluded.envelope_full_json, \
+               envelope_redacted_json = excluded.envelope_redacted_json",
+            rusqlite::params![receipt_id, full, redacted],
+        );
     }
 
     fn add_event(&self, kind: &str, payload: &Value, now: &str) {
         if let Ok(conn) = self.conn() {
             let body = serde_json::to_string(payload).unwrap_or_else(|_| "{}".into());
             let _ = conn.execute(
-                "INSERT INTO guard_events (kind, payload_json, created_at) \
+                "INSERT INTO guard_events (event_name, payload_json, occurred_at) \
                  VALUES (?1, ?2, ?3)",
                 rusqlite::params![kind, body, now],
             );
@@ -1145,11 +1523,28 @@ impl WorkspaceIoApi for ResidentWorkspaceIo {
 /// Eval-cache / evidence / OAuth-health extras on the same `guard.db` conn.
 struct ResidentStoreExtras {
     store_path: PathBuf,
+    guard_home: PathBuf,
 }
 
 impl ResidentStoreExtras {
     fn conn(&self) -> Result<Connection, rusqlite::Error> {
         Connection::open(&self.store_path)
+    }
+
+    /// `oauth_local_credentials` sync_state payload (`state_key` =
+    /// `oauth_local_credentials`); identical read to the supply-chain store.
+    fn oauth_local_credentials(&self) -> Option<Value> {
+        let conn = self.conn().ok()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT payload_json FROM sync_state \
+                 WHERE state_key = 'oauth_local_credentials' LIMIT 1",
+            )
+            .ok()?;
+        let mut rows = stmt.query([]).ok()?;
+        let row = rows.next().ok()??;
+        let raw: String = row.get(0).ok()?;
+        serde_json::from_str(&raw).ok()
     }
 }
 
@@ -1240,46 +1635,70 @@ impl StoreExtrasApi for ResidentStoreExtras {
     }
 
     fn add_evidence(&self, record: &Map<String, Value>) {
-        // store_evidence.py: add_evidence — append-only insert.
-        if let Ok(conn) = self.conn() {
-            let kind = record
-                .get("kind")
+        // store_evidence.py:store_evidence — `insert or replace` into
+        // `guard_evidence` real columns. `record` is the `EvidenceRecord` dict
+        // the caller built; `details` serializes to `details_json`.
+        let conn = match self.conn() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let txt = |k: &str| {
+            record
+                .get(k)
                 .and_then(Value::as_str)
-                .unwrap_or("package_eval");
-            let key = record.get("key").and_then(Value::as_str).unwrap_or("");
-            let now = record
-                .get("created_at")
-                .or_else(|| record.get("now"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let body = serde_json::to_string(&Value::Object(record.clone()))
-                .unwrap_or_else(|_| "{}".into());
-            let _ = conn.execute(
-                "INSERT INTO guard_evidence (kind, key, payload_json, created_at) \
-                 VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![kind, key, body, now],
-            );
-        }
+                .map(str::to_owned)
+                .unwrap_or_default()
+        };
+        let confidence = record
+            .get("confidence")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let details = record.get("details").cloned().unwrap_or(Value::Null);
+        let details_json = serde_json::to_string(&details).unwrap_or_else(|_| "{}".into());
+        let action_identity = record
+            .get("action_identity")
+            .filter(|v| !v.is_null())
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO guard_evidence \
+               (evidence_id, action_id, request_id, harness, workspace, signal_id, \
+                category, severity, confidence, summary, details_json, action_identity, \
+                created_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+            rusqlite::params![
+                txt("evidence_id"),
+                txt("action_id"),
+                txt("request_id"),
+                txt("harness"),
+                txt("workspace"),
+                txt("signal_id"),
+                txt("category"),
+                txt("severity"),
+                confidence,
+                txt("summary"),
+                details_json,
+                action_identity,
+                txt("created_at"),
+            ],
+        );
     }
 
     fn get_oauth_local_credential_health(&self) -> Map<String, Value> {
-        // store_oauth.py: get_oauth_local_credential_health
-        let conn = match self.conn() {
-            Ok(c) => c,
-            Err(_) => return Map::new(),
-        };
-        let raw: Option<String> = conn
-            .query_row(
-                "SELECT value_json FROM guard_oauth_metadata \
-                 WHERE key = 'local_credential_health' LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .ok();
-        match raw.and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
-            Some(Value::Object(m)) => m,
-            _ => Map::new(),
-        }
+        // store_oauth.py:get_oauth_local_credential_health — the health record
+        // is derived from the `oauth_local_credentials` sync_state payload plus
+        // the secret store, not a cached `guard_oauth_metadata` row.
+        let mut health = Map::new();
+        let payload = self.oauth_local_credentials();
+        let configured = payload.as_ref().map_or(false, Value::is_object);
+        health.insert("configured".to_string(), Value::Bool(configured));
+        health.insert(
+            "backend".to_string(),
+            Value::String("encrypted_file".to_string()),
+        );
+        let state = oauth_credential_state(&self.guard_home, payload.as_ref());
+        health.insert("state".to_string(), Value::String(state));
+        health
     }
 }
 
@@ -1333,7 +1752,7 @@ pub struct ResidentEvalDeps {
 }
 
 impl ResidentEvalDeps {
-    pub fn new(store_path: &Path) -> Self {
+    pub fn new(store_path: &Path, guard_home: &Path) -> Self {
         Self {
             guard_sync: ResidentGuardSyncRunner,
             lockfile: ResidentLockfileParse,
@@ -1347,6 +1766,7 @@ impl ResidentEvalDeps {
             workspace_io: ResidentWorkspaceIo,
             store_extras: ResidentStoreExtras {
                 store_path: store_path.to_path_buf(),
+                guard_home: guard_home.to_path_buf(),
             },
             entitlement: ResidentEntitlementRefresh,
             config: ResidentConfigLoader,
@@ -1461,7 +1881,7 @@ pub(crate) fn evaluate_supply_chain_eval(
     let store_path = PathBuf::from(&request.store_path);
     let guard_home = PathBuf::from(&request.guard_home);
     let store = ResidentSupplyChainStore::new(&store_path, &guard_home);
-    let deps_holder = ResidentEvalDeps::new(&store_path);
+    let deps_holder = ResidentEvalDeps::new(&store_path, &guard_home);
     let deps = deps_holder.as_deps();
     let mut artifact = artifact_from_value(&request.artifact);
     if let Some(private) = &request.runtime_private_metadata {
@@ -1533,12 +1953,19 @@ pub(crate) fn evaluate_package_authority_decide(
             return crate::encode_response(&result);
         }
     };
-    let artifact =
-        build_package_request_artifact(&request.artifact_kind, &intent, "", &request.artifact_type);
+    // `local_supply_chain.py:_workspace_local_evaluation` — the authority
+    // path always builds the package request artifact with the canonical
+    // config path + project scope; `artifact_type` is a label, not the scope.
+    let artifact = build_package_request_artifact(
+        &request.artifact_kind,
+        &intent,
+        "hol-guard.toml",
+        "project",
+    );
     let store_path = PathBuf::from(&request.store_path);
     let guard_home = PathBuf::from(&request.guard_home);
     let store = ResidentSupplyChainStore::new(&store_path, &guard_home);
-    let deps_holder = ResidentEvalDeps::new(&store_path);
+    let deps_holder = ResidentEvalDeps::new(&store_path, &guard_home);
     let deps = deps_holder.as_deps();
     let result = match evaluate_package_request_artifact(
         &artifact,

@@ -110,6 +110,7 @@ pub(crate) fn runtime_digest() -> Result<String, String> {
     RUNTIME_DIGEST
         .get_or_init(|| {
             let executable = std::env::current_exe()
+                .and_then(fs::canonicalize)
                 .map_err(|_| "native_resident_runtime_path_failed".to_owned())?;
             executable_digest(&executable)
         })

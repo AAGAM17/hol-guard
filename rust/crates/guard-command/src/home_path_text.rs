@@ -14,11 +14,9 @@ pub fn expand_home(value: &str, home_dir: Option<&Path>) -> String {
         let base = home_dir
             .map(|h| h.to_string_lossy().into_owned())
             .unwrap_or_else(default_home);
-        // `base / value[2:]` joins via the platform separator.
-        return Path::new(&base)
-            .join(&value[2..])
-            .to_string_lossy()
-            .into_owned();
+        // Normalize forward slashes in the suffix to the platform separator.
+        let suffix = value[2..].replace('/', &std::path::MAIN_SEPARATOR.to_string());
+        return Path::new(&base).join(suffix).to_string_lossy().into_owned();
     }
     value.to_owned()
 }

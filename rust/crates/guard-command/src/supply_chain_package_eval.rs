@@ -2927,12 +2927,72 @@ fn heuristic_result(
             ));
             continue;
         }
-        if let Some(warning) = lockfile_parse_warning_result(deps, workspace_dir, artifact, target) {
-            packages.push(warning);
+        let lockfile_parse_warning =
+            lockfile_parse_warning_result(deps, workspace_dir, artifact, target);
+        let ecosystem = optional_string(target.get("ecosystem")).unwrap_or_else(|| "npm".into());
+        let mut package_result = local_package_manifest_result(deps, target, artifact, workspace_dir)
+            .or_else(|| local_python_build_result(target, workspace_dir))
+            .or_else(|| {
+                matches!(ecosystem.as_str(), "homebrew" | "homebrew-cask" | "homebrew-tap")
+                    .then(|| homebrew_package_monitor_result(deps, target))
+            })
+            .or_else(|| {
+                (ecosystem == "system").then(|| system_package_monitor_result(target))
+            })
+            .or_else(|| {
+                (ecosystem == "unsupported").then(|| unsupported_ecosystem_result(deps, target))
+            })
+            .or_else(|| go_replace_result(deps, target, artifact, workspace_dir))
+            .or_else(|| local_source_dependency_result(target));
+        if package_result.is_none()
+            && source_url
+                .as_deref()
+                .is_some_and(|url| url.to_ascii_lowercase().starts_with("http:"))
+        {
+            package_result = Some(heuristic_package_result(
+                target,
+                "block",
+                "insecure_source_url",
+                "Package source uses insecure HTTP transport.",
+                "high",
+            ));
         }
-        // No specific heuristic matched. Leave the target for the unknown-package
-        // review fallback instead of inventing a monitor allow.
-        continue;
+        if package_result.is_none()
+            && source_url.as_deref().is_some_and(is_git_source_url)
+        {
+            let repository = optional_string(target.get("source_repository"))
+                .unwrap_or_else(|| "Git repository".to_string());
+            let revision_kind = optional_string(target.get("source_revision_kind"))
+                .unwrap_or_else(|| "missing".to_string());
+            package_result = Some(heuristic_package_result(
+                target,
+                "ask",
+                "git_dependency_source",
+                &format!("Git package source {repository} ({revision_kind}) requires review before install."),
+                "high",
+            ));
+        }
+        match package_result.take() {
+            None => {
+                if let Some(warning) = lockfile_parse_warning {
+                    packages.push(warning);
+                }
+                continue;
+            }
+            Some(package_result) => {
+                let package_result = if let Some(warning) = lockfile_parse_warning.as_ref() {
+                    if let Some(first_reason) = dict_items(warning.get("reasons")).into_iter().next()
+                    {
+                        with_package_reason(&package_result, first_reason)
+                    } else {
+                        package_result
+                    }
+                } else {
+                    package_result
+                };
+                packages.push(package_result);
+            }
+        }
     }
     if packages.is_empty() {
         return None;

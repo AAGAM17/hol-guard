@@ -187,6 +187,23 @@ fn explicit_command_permission_settles_only_its_covered_generic_review() {
             home_only.minimum_action, "allow",
             "home-only context cannot prove relative symlink targets"
         );
+        for cwd in [".", ""] {
+            let relative_context = crate::pretool::evaluate_pre_tool_envelope_with_context(
+                "omp",
+                "PreToolUse",
+                &serde_json::json!({"tool_name":"bash", "tool_input":{
+                    "command":"cat alias.txt; git push origin main"
+                }}),
+                Some(&controls),
+                None,
+                root.to_str(),
+                Some(cwd),
+            );
+            assert_ne!(
+                relative_context.minimum_action, "allow",
+                "relative or empty cwd cannot prove path targets: {cwd:?}"
+            );
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
     let mut mixed = binding.clone();

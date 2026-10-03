@@ -98,7 +98,8 @@ pub(crate) fn benign_command_segments(
             // a pre-execution path proof only holds while every predecessor is benign.
             (benign
                 && ls_has_explicit_target
-                && (!requires_path_context || (context.0.is_some() && context.1.is_some()))
+                && (!requires_path_context
+                    || safe_reads::verified_path_context(context.0, context.1))
                 && (path_free || all_previous_benign))
                 .then_some(index)
         })

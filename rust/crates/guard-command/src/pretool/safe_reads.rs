@@ -161,6 +161,26 @@ pub(super) fn bounded_read_target(
     safe_read_target(path)
 }
 
+pub(super) fn verified_path_context(home_dir: Option<&str>, cwd: Option<&str>) -> bool {
+    let (Some(home_dir), Some(cwd)) = (home_dir, cwd) else {
+        return false;
+    };
+    context_root_is_absolute(home_dir, Some(home_dir))
+        && context_root_is_absolute(cwd, Some(home_dir))
+}
+
+fn context_root_is_absolute(root: &str, home_dir: Option<&str>) -> bool {
+    if root.is_empty() || root.trim() != root {
+        return false;
+    }
+    let expanded = if std::path::Path::new(root).is_absolute() {
+        Some(root.to_owned())
+    } else {
+        expand_home_read_path(root, home_dir)
+    };
+    expanded.is_some_and(|root| std::path::Path::new(&root).is_absolute())
+}
+
 /// Location outside the workspace is not itself a risk. The resolved regular
 /// file must still clear every sensitive-path screen.
 fn resolved_path_allowed(

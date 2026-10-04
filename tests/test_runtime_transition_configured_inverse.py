@@ -264,7 +264,7 @@ def test_configured_native_inverse_restores_binding_store_and_selection(
             grant=grant,
         )
         assert result.phase == "FailedWithVerifiedRollback", (result.first_cause, result.recovery_causes, events)
-        assert result.first_cause == "ApprovalGateError"
+        assert result.first_cause == "injected_after_real_candidate_protection"
         assert password not in runtime.path.read_text() and grant.grant_id not in runtime.path.read_text()
         assert len(proofs) == 2
         assert all(proof.allow_receipt["authority"] == "rust" for proof in proofs)

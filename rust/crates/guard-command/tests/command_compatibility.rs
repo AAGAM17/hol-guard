@@ -120,7 +120,7 @@ fn github_reads_have_permission_attribution_without_fabricated_rules() {
 
 #[test]
 fn git_disabled_permission_attribution_is_not_lost_on_native_safe_commands() {
-    for subcommand in ["status", "diff", "log", "show"] {
+    for subcommand in ["status", "diff", "log", "show", "ls-files"] {
         let observed =
             compatibility_observations(&model(&format!("git {subcommand}")), None).unwrap();
         assert_eq!(observed.rule_matches.len(), 1, "{subcommand}");

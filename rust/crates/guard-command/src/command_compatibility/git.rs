@@ -89,7 +89,7 @@ fn read_only_plumbing(arguments: &[String]) -> bool {
     // read-only built-in. Forms that read arbitrary files, run configured
     // drivers, touch the network, or write are excluded.
     match command.as_str() {
-        "rev-parse" | "merge-base" | "show-ref" | "ls-tree" | "for-each-ref" | "ls-files" => true,
+        "rev-parse" | "merge-base" | "show-ref" | "ls-tree" | "for-each-ref" => true,
         "rev-list" => !rest.iter().any(|argument| {
             matches!(argument.as_str(), "--output" | "-o") || argument.starts_with("--output=")
         }),

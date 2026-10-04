@@ -319,9 +319,9 @@ def test_git_pathspec_environment_preserves_windows_loader_variable_case_insensi
         ("git diff --staged", "command.git.index-inspection", "review"),
         ("git diff HEAD~1", "command.git.diff", "review"),
         ("git diff -- src/", "command.git.diff", "review"),
-        ('git diff -- ":(glob)src/**/*.py"', "command.git.diff", "allow"),
+        ('git diff -- ":(glob)src/**/*.py"', "command.git.diff", "review"),
         ("git log --oneline", "command.git.log", "review"),
-        ("git show HEAD", "command.git.show", "allow"),
+        ("git show HEAD", "command.git.show", "review"),
     ),
 )
 def test_normal_git_workflows_preserve_native_ownership_and_proof_requirements(

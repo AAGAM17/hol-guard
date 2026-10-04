@@ -28,6 +28,10 @@ def _identity(metadata: os.stat_result) -> tuple[int, ...]:
         # permission bits keeps the tuple consistent across lstat, stat, and fstat —
         # Windows regular files have no user-meaningful POSIX permission semantics.
         values[2] = int(metadata.st_mode) & ~0o777
+        # CPython 3.12 preserves creation time in path stat().st_ctime but
+        # exposes change time from fstat(). Use explicit birth time to compare
+        # a path with its opened handle; raw handle changes are checked below.
+        values[6] = int(getattr(metadata, "st_birthtime_ns", metadata.st_ctime_ns))
     return (*values, int(getattr(metadata, "st_uid", -1)), int(getattr(metadata, "st_gid", -1)))
 
 
@@ -68,7 +72,8 @@ def _read_digest(path: Path, expected: tuple[int, ...]) -> str | None:
                 return None
             digest.update(chunk)
             remaining -= len(chunk)
-        if _identity(os.fstat(descriptor)) != expected:
+        closed = os.fstat(descriptor)
+        if _identity(closed) != expected or full_stat_identity(closed) != full_stat_identity(opened):
             return None
         return digest.hexdigest()
     finally:

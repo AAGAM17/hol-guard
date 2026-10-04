@@ -23,8 +23,11 @@ _IDENTITIES: OrderedDict[tuple[str, tuple[int, ...]], NativeRuntimeIdentity] = O
 def _identity(metadata: os.stat_result) -> tuple[int, ...]:
     values = list(full_stat_identity(metadata))
     if os.name == "nt":
-        # stat() adds 0o111 for .exe/.bat/.cmd/.com by name; fstat() cannot.
-        values[2] &= ~0o111
+        # stat()/lstat() synthesize 0o111 for .exe/.bat/.cmd/.com by extension while
+        # os.fstat() reports the raw filesystem mode (no exec bits). Zeroing all
+        # permission bits keeps the tuple consistent across lstat, stat, and fstat —
+        # Windows regular files have no user-meaningful POSIX permission semantics.
+        values[2] = int(metadata.st_mode) & ~0o777
     return (*values, int(getattr(metadata, "st_uid", -1)), int(getattr(metadata, "st_gid", -1)))
 
 

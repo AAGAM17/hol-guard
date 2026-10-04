@@ -95,7 +95,7 @@ def _existing_recovery_url(manager, guard_home: Path, deadline: float | None) ->
         _record_dead_process(manager, guard_home, state)
         current_url = manager.load_guard_daemon_url(guard_home)
         live_process_url = manager._authenticated_live_current_daemon_url(guard_home, state)
-        return current_url or live_process_url
+        return live_process_url or current_url
 
 
 def authenticated_live_current_daemon_url(guard_home: Path, state: dict[str, object] | None) -> str | None:

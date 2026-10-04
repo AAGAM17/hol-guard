@@ -53,7 +53,9 @@ jobs:
         run: |
           rustfmt --edition 2021 rust/crates/guard-command/src/lib.rs rust/crates/guard-runtime/src/main.rs
           git diff --check -- rust/crates/guard-command/src/lib.rs rust/crates/guard-runtime/src/main.rs
+      # CI/native-command-evaluators owns the required Linux proof on PRs and pushes.
       - name: Validate locked command workspace
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           cargo metadata --manifest-path rust/Cargo.toml --locked --format-version 1 --no-deps > /dev/null
           cargo clippy --manifest-path rust/Cargo.toml --locked --workspace --all-targets -- -D warnings

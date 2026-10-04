@@ -77,6 +77,8 @@ fn body_charset_and_encoding_must_be_explicit_and_agree() {
         mime.replace("UTF-8", "us-ascii").as_bytes(),
         Error::Unsupported,
     );
+    let unicode_control = format!("{header}ok\u{0085}still-control");
+    rejects(unicode_control.as_bytes(), Error::Unsupported);
     let mut invalid = BASIC.to_vec();
     invalid.push(255);
     rejects(&invalid, Error::Invalid);

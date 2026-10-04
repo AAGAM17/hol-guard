@@ -29,7 +29,10 @@ def _is_permission_event(event_name: str) -> bool:
 
 
 def _is_prompt_event(event_name: str) -> bool:
-    return event_name.strip().lower().replace("_", "").replace("-", "") in {"userpromptsubmit", "userpromptsubmitted"}
+    return event_name.strip().lower().replace("_", "").replace("-", "") in {
+        "userpromptsubmit",
+        "userpromptsubmitted",
+    }
 
 
 def watch_continue_payload(harness: str, event_name: str) -> dict[str, object]:

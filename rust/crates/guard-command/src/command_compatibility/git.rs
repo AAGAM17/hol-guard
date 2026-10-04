@@ -200,9 +200,16 @@ pub(super) fn observe_with_context(
     };
     let command = arguments[command_index].as_str();
     let inspection = inspection_arguments(arguments, context);
-    if (command_index == 0 && (bounded_inspection(arguments) || read_only_plumbing(arguments)))
-        || inspection
-            .is_some_and(|remaining| bounded_inspection(remaining) || read_only_plumbing(remaining))
+    let plumbing = (command_index == 0 && read_only_plumbing(arguments))
+        || inspection.is_some_and(|remaining| read_only_plumbing(remaining));
+    if plumbing {
+        // The command stays read-only, but a disabled Git permission or
+        // extension can still block it.
+        result.permission("command.git.permission.ls-files", index, false);
+    }
+    if plumbing
+        || (command_index == 0 && bounded_inspection(arguments))
+        || inspection.is_some_and(|remaining| bounded_inspection(remaining))
     {
         return;
     }

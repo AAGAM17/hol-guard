@@ -137,6 +137,7 @@ pub(super) fn join(
     projected.action.sensitive_target |= raw.action.sensitive_target;
     projected.action.bounded &= raw.action.bounded;
     if raw.reason_code != "native_command_review_required"
+        && raw.reason_code != "native_command_extension_evaluation_failed"
         && rank(&raw.minimum_action) > rank(&projected.minimum_action)
     {
         projected.minimum_action = raw.minimum_action;

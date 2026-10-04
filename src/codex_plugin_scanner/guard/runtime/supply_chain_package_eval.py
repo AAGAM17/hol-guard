@@ -66,8 +66,10 @@ from .package_manifest_diff import (
     _dependency_map_for_path,
     parse_manifest_dependencies,
 )
+from ..native_archive_inspection import inspect_archive_native as inspect_archive_native
 from .restricted_archive_download import (
     RestrictedArchiveDownload,
+    RestrictedArchiveFailure as RestrictedArchiveFailure,
     canonical_external_https_archive_source,
     is_external_https_archive_source,
 )
@@ -114,6 +116,13 @@ from .supply_chain_package_services import (
     _registry_resolved_target_version,
     _scan_external_tarball,
     _workspace_fingerprint,
+)
+from .supply_chain_package_services import (
+    _download_external_tarball as _download_external_tarball,
+)
+from .supply_chain_package_services import _lockfile_context as _lockfile_context
+from .supply_chain_package_services import (
+    _registry_package_name as _registry_package_name,
 )
 from .supply_chain_package_services import (
     _external_archive_request_timeout_result as _external_archive_request_timeout_result,

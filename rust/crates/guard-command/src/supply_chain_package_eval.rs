@@ -7343,7 +7343,7 @@ fn resolve_guard_sync_context(
         .guard_sync
         .resolve_guard_sync_auth_context(store, false, false)?;
     let sync_url = optional_string(auth_context.get("sync_url"))
-        .ok_or_else(|| EvalError::NotFound("guard sync URL unavailable".to_string()))?;
+        .ok_or_else(|| EvalError::Internal("guard sync URL unavailable".to_string()))?;
     let canonical = deps.guard_sync.validate_guard_sync_url(
         &sync_url,
         optional_string(auth_context.get("issuer")).as_deref(),

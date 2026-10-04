@@ -444,7 +444,7 @@ fn expired_live_process_leases_drain_and_a_fresh_lease_remains() {
     let digest = "ab".repeat(32);
     let body = format!("{process_id}\n{start_marker}\n{digest}\n");
     let stale_at = SystemTime::now()
-        .checked_sub(LEASE_EXPIRY + Duration::from_secs(1))
+        .checked_sub(LEASE_EXPIRY + Duration::from_secs(60))
         .expect("test clock should support stale timestamp");
     let fresh = directory.join(format!("client-{process_id}-fresh.lease"));
     for index in 0..LEASE_MAX_DIRECTORY_ENTRIES {

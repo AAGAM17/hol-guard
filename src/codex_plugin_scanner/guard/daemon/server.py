@@ -545,6 +545,8 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     containment_health_cache_lock: threading.Lock
     containment_health_refreshing: bool
     containment_health_refresh_event: threading.Event
+    containment_health_generation: int
+    containment_health_completed_generation: int
     network_supervisor: NetworkSupervisor
     active_hook_requests: int
     rejected_hook_requests: int
@@ -671,6 +673,8 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         self.containment_health_cache_lock = threading.Lock()
         self.containment_health_refreshing = False
         self.containment_health_refresh_event = threading.Event()
+        self.containment_health_generation = 0
+        self.containment_health_completed_generation = 0
         self.network_supervisor = NetworkSupervisor()
         self.active_hook_requests = 0
         self.rejected_hook_requests = 0
@@ -2507,8 +2511,12 @@ def cached_containment_health(
     when no payload exists yet.
     """
 
+    arrived_generation: int | None = None
+    probe_generation = 0
     while True:
         with server.containment_health_cache_lock:
+            if arrived_generation is None:
+                arrived_generation = server.containment_health_generation
             cached = server.containment_health_cache
             age = time.monotonic() - server.containment_health_cache_monotonic
             if cached is not None and age <= _CONTAINMENT_HEALTH_CACHE_SECONDS and not force_refresh:
@@ -2522,17 +2530,16 @@ def cached_containment_health(
                 event = threading.Event()
                 server.containment_health_refresh_event = event
                 server.containment_health_refreshing = True
+                server.containment_health_generation += 1
+                probe_generation = server.containment_health_generation
                 run_probe = True
         if not run_probe:
-            # A forced refresh that arrives during an older probe must not
-            # reuse that probe. Wait for it to finish, then run another one.
             event.wait()
-            if force_refresh:
-                continue
             with server.containment_health_cache_lock:
-                if server.containment_health_cache is not None:
-                    return dict(server.containment_health_cache)
-            return None
+                done = server.containment_health_completed_generation
+                if force_refresh and arrived_generation is not None and done <= arrived_generation:
+                    continue
+                return None if server.containment_health_cache is None else dict(server.containment_health_cache)
         break
     payload: dict[str, object] | None = None
     failed = False
@@ -2550,6 +2557,7 @@ def cached_containment_health(
                 server.containment_health_cache = None if payload is None else dict(payload)
                 server.containment_health_cache_monotonic = time.monotonic()
             server.containment_health_refreshing = False
+            server.containment_health_completed_generation = probe_generation
             event.set()
     return None if payload is None else dict(payload)
 

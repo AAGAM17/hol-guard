@@ -271,6 +271,21 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
     );
     assert!(!config_tripwire.exists());
 
+    #[cfg(target_os = "macos")]
+    if let Ok(relative) = root.strip_prefix("/private/tmp") {
+        let aliased_root = Path::new("/tmp").join(relative);
+        let aliased_repository = aliased_root.join("repository");
+        let aliased_destination = aliased_root.join("sleep-alias-child");
+        let aliased_command = format!(
+            "sleep 0.01; cd {} && git worktree add {} -b sleep-alias-worktree HEAD",
+            aliased_repository.display(),
+            aliased_destination.display()
+        );
+        let aliased = evaluate(&repository, &enabled, &aliased_command);
+        assert_eq!(aliased.minimum_action, "allow", "{aliased_command}");
+        assert_eq!(aliased.reason_code, "native_exact_safe_worktree_add");
+    }
+
     let config_destination = root.join("config-child");
     let config_command = format!(
         "git worktree add --quiet {} -b config-worktree HEAD",

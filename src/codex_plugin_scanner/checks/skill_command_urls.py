@@ -97,6 +97,8 @@ def is_read_only_curl(content: str, start: int) -> bool:
             parsed = urlsplit(token)
             if not parsed.hostname or parsed.username or parsed.password:
                 return False
+            if any(character in part for part in (parsed.path, parsed.query, parsed.fragment) for character in "[]"):
+                return False
         except ValueError:
             return False
         saw_url = True

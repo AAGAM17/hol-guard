@@ -383,6 +383,7 @@ jobs:
           cargo +1.88.0 build --manifest-path rust/Cargo.toml --locked --release \
             -p guard-command --bin guard-command-source
           python scripts/build_native_command_program.py --compiler rust/target/release/guard-command-source
+          echo "HOL_GUARD_BUILD_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
       - name: Build Guard package (hol-guard)
         env:
           HOL_GUARD_BUILD_SOURCE_COMPILER: rust/target/release/guard-command-source

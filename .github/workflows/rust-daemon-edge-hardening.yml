@@ -58,6 +58,7 @@ jobs:
         with:
           version: "0.9.26"
           enable-cache: true
+      - uses: ./.github/actions/stage-command-projections
       - run: uv sync --frozen --no-dev --extra dev --python 3.12
       - run: uv run --no-sync ruff check src/codex_plugin_scanner/guard/native_runtime_admission.py src/codex_plugin_scanner/guard/daemon/bounded_http.py tests/test_native_runtime_admission.py tests/test_daemon_bounded_http.py tests/test_rust_daemon_edge_hardening_contracts.py
       - run: uv run --no-sync ruff format --check src/codex_plugin_scanner/guard/native_runtime_admission.py src/codex_plugin_scanner/guard/daemon/bounded_http.py tests/test_native_runtime_admission.py tests/test_daemon_bounded_http.py tests/test_rust_daemon_edge_hardening_contracts.py
@@ -143,6 +144,7 @@ jobs:
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
         with:
           version: "0.9.26"
+      - uses: ./.github/actions/stage-command-projections
       - run: uv sync --frozen --no-dev --extra dev --python 3.12
       - name: Run with a constrained descriptor budget
         shell: bash

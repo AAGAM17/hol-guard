@@ -52,7 +52,7 @@ def run_case(
     matched_permission_id: str | None = None,
     reason_code: str | None = None,
 ) -> dict[str, object]:
-    binding = ready(daemon, workspace, revision, previous_publisher=previous_publisher)
+    binding = ready(daemon, workspace, revision, previous_publisher=previous_publisher, case_label=label)
     publisher = daemon._server.hook_worker.policy_snapshot_publisher
 
     def emit_phase(phase: str) -> None:
@@ -113,6 +113,8 @@ def run_case(
         )
     if matched_permission_id is not None:
         require(matched is not None, f"{label}:matched_permission_rule_missing")
+        # Matched-rule permissions are bound through the installed catalog;
+        # native permission_observations only reports standalone rows.
         matched_permission = permission_for_rule_id(matched)
         require(matched_permission is not None, f"{label}:matched_permission_mapping_missing")
         require(

@@ -26,7 +26,10 @@ from codex_plugin_scanner.guard.config import update_guard_settings
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
 from codex_plugin_scanner.guard.native_command_control_authority import AUTHORITY_FILE_NAME
 from codex_plugin_scanner.guard.native_hook_edge import review_raw_hook_native
-from codex_plugin_scanner.guard.native_policy_snapshot_constants import _PUBLISH_TIMEOUT_SECONDS
+from codex_plugin_scanner.guard.native_policy_snapshot_constants import (
+    _PUBLISH_STARTUP_TIMEOUT_SECONDS,
+    _PUBLISH_TIMEOUT_SECONDS,
+)
 from codex_plugin_scanner.guard.native_resident_client import (
     close_native_residents,
     native_resident_client_failure_code,
@@ -149,33 +152,32 @@ def ready(
     revision: int,
     *,
     previous_publisher: object | None = None,
+    case_label: str | None = None,
 ) -> dict[str, object]:
     worker = daemon._server.hook_worker
     # This functional fixture awaits a production publication, including a
     # cold Windows restart. Keep one bound for publication and admission, and
     # do not expire before the publisher's own platform timeout. Installed
     # readiness latency is enforced separately by native_slo_contract.
-    deadline = time.monotonic() + max(5.0, _PUBLISH_TIMEOUT_SECONDS)
+    require(_PUBLISH_STARTUP_TIMEOUT_SECONDS >= _PUBLISH_TIMEOUT_SECONDS, "publication_timeout_contract")
+    deadline = time.monotonic() + _PUBLISH_STARTUP_TIMEOUT_SECONDS
     publisher = worker.policy_snapshot_publisher
     publisher.register_workspace(workspace)
     publisher.start()
     # Await asynchronous control publication before measuring hook admission.
     published = publisher.wait_until_ready(deadline)
     if not published:
-        print(
-            json.dumps(
-                {
-                    "schema": "guard.installed-native-extension-readiness-failure.v1",
-                    "stage": "publication",
-                    "publisher": policy_readiness_diagnostic(publisher),
-                    "previous_publisher": (
-                        policy_readiness_diagnostic(previous_publisher) if previous_publisher is not None else None
-                    ),
-                },
-                sort_keys=True,
+        diagnostic = {
+            "schema": "guard.installed-native-extension-readiness-failure.v1",
+            "stage": "publication",
+            "publisher": policy_readiness_diagnostic(publisher),
+            "previous_publisher": (
+                policy_readiness_diagnostic(previous_publisher) if previous_publisher is not None else None
             ),
-            flush=True,
-        )
+        }
+        if case_label is not None:
+            diagnostic["case"] = case_label
+        print(json.dumps(diagnostic, sort_keys=True), flush=True)
     require(published, "policy_not_ready")
     binding = worker.prepare_workspace_policy(workspace, deadline=deadline)
     require(binding is not None, "policy_not_ready")

@@ -167,6 +167,73 @@ fn pi_unknown_and_recursive_harnesses_do_not_get_directory_allow() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn omp_directory_post_tool_rechecks_resolved_sensitive_target() {
+    let root = fixture_root();
+    let home = root.join("home");
+    let project = home.join("project");
+    let ordinary = home.join("ordinary");
+    let credentials = home.join(".ssh");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&ordinary).unwrap();
+    std::fs::create_dir_all(&credentials).unwrap();
+
+    let ordinary_target = ordinary.to_string_lossy().into_owned();
+    let ordinary_result = super::super::evaluate_pre_tool_envelope_with_context(
+        "omp",
+        "PostToolUse",
+        &serde_json::json!({
+            "tool_name": "read",
+            "tool_input": {"path": ordinary_target},
+            "tool_response": [{"type": "text", "text": "ordinary/"}],
+        }),
+        None,
+        None,
+        home.to_str(),
+        project.to_str(),
+    );
+    assert_ne!(ordinary_result.minimum_action, "allow");
+    assert!(!ordinary_result.explicitly_benign);
+
+    let credentials_target = credentials.to_string_lossy().into_owned();
+    let redirected_result = super::super::evaluate_pre_tool_envelope_with_context(
+        "omp",
+        "PostToolUse",
+        &serde_json::json!({
+            "tool_name": "read",
+            "tool_input": {"path": credentials_target},
+            "tool_response": [{"type": "text", "text": "id_ed25519"}],
+        }),
+        None,
+        None,
+        home.to_str(),
+        project.to_str(),
+    );
+    assert_ne!(redirected_result.minimum_action, "allow");
+    assert!(!redirected_result.explicitly_benign);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn omp_directory_parent_components_remain_reviewable() {
+    let root = fixture_root();
+    let home = root.join("home");
+    let project = home.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    for target in [
+        format!("{}/../project", project.display()),
+        format!("{}/../../", project.display()),
+    ] {
+        let decision = read_directory("omp", &target, &home, &project);
+        assert_ne!(decision.minimum_action, "allow", "{target}");
+        assert!(!decision.explicitly_benign, "{target}");
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[cfg(unix)]
 #[test]
 fn directory_symlink_escape_stays_reviewable() {

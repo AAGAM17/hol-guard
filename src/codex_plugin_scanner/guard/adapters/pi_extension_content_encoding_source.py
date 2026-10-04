@@ -263,7 +263,9 @@ function sourceFileRefForPostToolUse(
     details !== null &&
     typeof details === 'object' &&
     !Array.isArray(details) &&
-    (details as Record<string, unknown>).isDirectory === true
+    ((details as Record<string, unknown>).isDirectory === true ||
+      (details as Record<string, unknown>).isDirectory === undefined &&
+      typeof (details as Record<string, unknown>).resolvedPath === 'string')
   ) return null;
   if (!digest.sha256 || digest.traversalTruncated) return null;
   if (digest.chars > GUARD_SOURCE_REF_MAX_OUTPUT_CHARS) return null;

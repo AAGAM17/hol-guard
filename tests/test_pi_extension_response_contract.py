@@ -185,7 +185,11 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
         },
         tool_name="read",
         tool_input={"path": str(tmp_path / "workspace")},
-        details={"isDirectory": True, "resolvedPath": str(tmp_path / "workspace")},
+        details={
+            "isDirectory": True,
+            "resolvedPath": str(tmp_path / "workspace"),
+            "meta": {"source": {"type": "path", "value": str(tmp_path / "workspace")}},
+        },
     )
     regular_handler = _run_generated_callback_payload(
         source,
@@ -202,8 +206,31 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
 
     assert directory_handler["preserved"] is True
     assert "guard_source_ref" not in directory_handler["payload"]
+    assert directory_handler["payload"]["tool_input"] == {
+        "path": str(tmp_path / "workspace")
+    }
     assert regular_handler["preserved"] is True
     assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
+
+    # Older OMP event bridges may omit isDirectory while retaining the
+    # resolved directory path. Treat that shape conservatively as a listing.
+    legacy_directory_handler = _run_generated_callback_payload(
+        source,
+        content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": digest,
+        },
+        tool_name="read",
+        tool_input={"path": str(tmp_path / "workspace")},
+        details={
+            "resolvedPath": str(tmp_path / "workspace"),
+            "meta": {"source": {"type": "path", "value": str(tmp_path / "workspace")}},
+        },
+    )
+    assert legacy_directory_handler["preserved"] is True
+    assert "guard_source_ref" not in legacy_directory_handler["payload"]
 
 
 def test_generated_omp_selector_review_uses_host_resolved_source_path(tmp_path: Path) -> None:

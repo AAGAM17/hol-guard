@@ -175,6 +175,14 @@ fn envelope_target(payload: &Value) -> Option<String> {
     None
 }
 
+fn sensitive_envelope_target(payload: &Value) -> bool {
+    let Some(target) = envelope_target(payload) else {
+        return false;
+    };
+    let path = Path::new(target.trim());
+    sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
+}
+
 fn inline_local_content(payload: &Value) -> bool {
     let Some(input) = payload
         .get("tool_input")
@@ -519,6 +527,15 @@ pub fn review_post_tool(request: &NativeHookRequestV1) -> HookReviewResponseV1 {
         return HookReviewResponseV1::deny(
             "not_post_tool",
             "HOL Guard could not complete local hook review safely.",
+        );
+    }
+    // OMP directory reads are names-only and intentionally have no source-file
+    // proof. Recheck the host-resolved target here so a directory swapped after
+    // PreToolUse cannot make a sensitive root's listing model-visible.
+    if sensitive_envelope_target(&request.payload) {
+        return HookReviewResponseV1::deny(
+            "sensitive_path",
+            "HOL Guard blocked this output because the resolved tool target is sensitive.",
         );
     }
     let source = source_ref(&request.payload);

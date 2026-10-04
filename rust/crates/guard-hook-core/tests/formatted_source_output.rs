@@ -157,3 +157,36 @@ fn external_and_linked_plaintext_is_scanned_without_checkout_location_allowlists
         "allow_original"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn resolved_directory_target_is_rechecked_before_inline_output_allow() {
+    let root = TestRoot::new();
+    let workspace = root.path().join("workspace");
+    let ordinary = root.path().join("ordinary");
+    let credentials = root.path().join(".ssh");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::create_dir_all(&ordinary).unwrap();
+    std::fs::create_dir_all(&credentials).unwrap();
+
+    let mut ordinary_request = request(&workspace, "ordinary/\n");
+    ordinary_request
+        .payload
+        .as_object_mut()
+        .unwrap()
+        .remove("guard_source_ref");
+    ordinary_request.payload["tool_input"]["path"] = json!(ordinary.to_string_lossy());
+    let ordinary_result = review_post_tool(&ordinary_request);
+    assert_eq!(ordinary_result.model_output_action, "allow_original");
+
+    let mut redirected_request = request(&workspace, "id_ed25519\n");
+    redirected_request
+        .payload
+        .as_object_mut()
+        .unwrap()
+        .remove("guard_source_ref");
+    redirected_request.payload["tool_input"]["path"] = json!(credentials.to_string_lossy());
+    let redirected_result = review_post_tool(&redirected_request);
+    assert_eq!(redirected_result.reason_code, "sensitive_path");
+    assert_ne!(redirected_result.model_output_action, "allow_original");
+}

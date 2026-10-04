@@ -17,9 +17,12 @@ def test_install_and_uninstall_preserve_current_settings(tmp_path):
     user_handler = {"type": "command", "command": "echo user"}
     payload = {
         "ui": {"theme": "dark"},
-        "hooks": {"enabled": False, "events": {
-            "PreToolUse": [{"matcher": "Read", "hooks": [user_handler]}],
-        }},
+        "hooks": {
+            "enabled": False,
+            "events": {
+                "PreToolUse": [{"matcher": "Read", "hooks": [user_handler]}],
+            },
+        },
     }
     settings.write_text(json.dumps(payload))
     adapter = ZCodeHarnessAdapter()
@@ -35,11 +38,13 @@ def test_install_and_uninstall_preserve_current_settings(tmp_path):
     detected = adapter.detect(context)
     assert str(settings) in detected.config_paths
     assert str(legacy) in detected.config_paths
+    adapter.install(context)
     adapter.uninstall(context)
     remaining = json.loads(settings.read_text())
     assert remaining["ui"] == payload["ui"]
     handlers = [handler for group in remaining["hooks"]["events"]["PreToolUse"] for handler in group["hooks"]]
     assert handlers == [user_handler]
+    assert remaining["hooks"]["enabled"] is False
     assert legacy.read_bytes() == legacy_before
 
 
@@ -52,4 +57,29 @@ def test_invalid_current_settings_do_not_fall_back_to_legacy(tmp_path, contents)
     with pytest.raises(ValueError):
         ZCodeHarnessAdapter().prepare_install(context)
     assert settings.read_text() == contents
+    assert json.loads(legacy.read_text()) == {"legacy": True}
+
+
+def test_uninstall_prunes_hooks_copied_by_cli_migration(tmp_path):
+    context = _ctx(tmp_path)
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    legacy = context.home_dir / ".zcode/cli/config.json"
+    settings = legacy.with_name("setting.json")
+    settings.write_bytes(legacy.read_bytes())
+    adapter.uninstall(context)
+    for path in (legacy, settings):
+        assert "hooks" not in json.loads(path.read_text())
+
+
+def test_uninstall_handles_removed_current_settings(tmp_path):
+    context = _ctx(tmp_path)
+    legacy = _write_cli_config(context.home_dir, {"legacy": True})
+    settings = legacy.with_name("setting.json")
+    settings.write_text("{}")
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    settings.unlink()
+    adapter.uninstall(context)
+    assert not settings.exists()
     assert json.loads(legacy.read_text()) == {"legacy": True}

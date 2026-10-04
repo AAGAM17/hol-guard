@@ -23,7 +23,7 @@ introduce a competing authority.
 
 ## Current boundary
 
-The contract supports finite Google mail, Drive, and Calendar operation families.
+The contract supports finite Gmail, Google Drive, and Google Calendar operation families.
 It preserves To/Cc/Bcc distinctions, opaque account and resource bindings,
 attachment commitments, sensitivity labels, resource revision, field diff, batch manifest, counts,
 and explicit unknown/unsupported facts. A known inspection covers the complete

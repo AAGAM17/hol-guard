@@ -282,3 +282,22 @@ fn missing_duplicate_or_unknown_sensitivity_does_not_admit_complete_facts() {
     value["content"]["sensitivity_labels"] = json!(["public", "secret"]);
     decode(&value).unwrap().require_complete_facts().unwrap();
 }
+
+#[test]
+fn unknown_accounts_require_explicit_nullable_bindings() {
+    for state in ["unknown", "unsupported"] {
+        let mut value = prepared_mail();
+        value["provider"]["identity_state"] = json!(state);
+        value["provider"]["account_binding"] = Value::Null;
+        value["provider"]["tenant_binding"] = Value::Null;
+        assert_eq!(
+            decode(&value).unwrap().require_complete_facts(),
+            Err(BusinessActionErrorV1::Incomplete)
+        );
+        for field in ["account_binding", "tenant_binding"] {
+            let mut omitted = value.clone();
+            omitted["provider"].as_object_mut().unwrap().remove(field);
+            assert_eq!(decode(&omitted), Err(BusinessActionErrorV1::Invalid));
+        }
+    }
+}

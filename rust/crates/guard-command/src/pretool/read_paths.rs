@@ -147,8 +147,8 @@ fn absolute_path_spelling_matches(supplied: &std::path::Path, canonical: &std::p
         let Ok(alias_canonical) = std::fs::canonicalize(alias) else {
             return false;
         };
-        return alias_canonical == std::path::Path::new("/private/tmp")
-            && canonical == alias_canonical.join(relative);
+        alias_canonical == std::path::Path::new("/private/tmp")
+            && canonical == alias_canonical.join(relative)
     }
     #[cfg(not(target_os = "macos"))]
     {

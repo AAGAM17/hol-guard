@@ -226,6 +226,12 @@ fn omp_bounded_line_selectors_cover_files_and_directories() {
         assert!(decision.explicitly_benign, "{target}");
     }
 
+    for harness in ["pi", "unknown"] {
+        let target = format!("{}:1-5", source.display());
+        let decision = read_directory(harness, &target, &home, &project);
+        assert_ne!(decision.minimum_action, "allow", "{harness}: {target}");
+    }
+
     let _ = std::fs::remove_dir_all(root);
 }
 

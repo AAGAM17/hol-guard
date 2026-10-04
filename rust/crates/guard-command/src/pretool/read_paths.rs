@@ -34,6 +34,16 @@ pub(super) fn bounded_file_read_target(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
+    bounded_read_target(value, home_dir, cwd, false)
+}
+
+/// OMP's `read` tool accepts a bounded source selector after a literal-path
+/// probe. Keep that host-specific syntax out of shared command/file proofs.
+pub(super) fn bounded_omp_file_read_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
     match bounded_selector_path(value, home_dir, cwd) {
         BoundedSelectorPath::Base(base) => {
             return bounded_existing_file_read_target(&base, home_dir, cwd);
@@ -42,6 +52,17 @@ pub(super) fn bounded_file_read_target(
         BoundedSelectorPath::NotSelector => {}
     }
     bounded_read_target(value, home_dir, cwd, false)
+}
+
+pub(super) fn bounded_omp_selector_requires_review(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    matches!(
+        bounded_selector_path(value, home_dir, cwd),
+        BoundedSelectorPath::Unsupported
+    )
 }
 
 /// Prove the exact read-only directory target used by OMP's native tree

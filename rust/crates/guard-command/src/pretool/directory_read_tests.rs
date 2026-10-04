@@ -113,14 +113,16 @@ fn directory_allow_does_not_allow_dotenv_or_credential_file_reads() {
         assert!(!decision.explicitly_benign, "{target}");
     }
     #[cfg(unix)]
-    let foreign_user_home = std::path::Path::new(std::path::MAIN_SEPARATOR_STR)
-        .join("Users")
-        .join("Shared");
-    if foreign_user_home.is_dir() {
-        let target = foreign_user_home.to_string_lossy().into_owned();
-        let decision = read_directory("omp", &target, &home, &project);
-        assert_ne!(decision.minimum_action, "allow", "foreign user home");
-        assert!(!decision.explicitly_benign, "foreign user home");
+    {
+        let foreign_user_home = std::path::Path::new(std::path::MAIN_SEPARATOR_STR)
+            .join("Users")
+            .join("Shared");
+        if foreign_user_home.is_dir() {
+            let target = foreign_user_home.to_string_lossy().into_owned();
+            let decision = read_directory("omp", &target, &home, &project);
+            assert_ne!(decision.minimum_action, "allow", "foreign user home");
+            assert!(!decision.explicitly_benign, "foreign user home");
+        }
     }
 
     let _ = std::fs::remove_dir_all(root);

@@ -36,6 +36,7 @@ from ..stable_digest import stable_digest_hex
 from ..store import GuardStore
 from ..store_evidence import EvidenceRecord
 from ..text import ensure_terminal_punctuation as _ensure_terminal_punctuation
+from .js_semver import highest_js_version_for_selector as highest_js_version_for_selector
 from .js_semver import version_matches_js_selector
 from .lockfile_evaluation_support import (
     collect_lockfile_parse_results,
@@ -77,6 +78,7 @@ from .runner import (
     GuardSyncNotConfiguredError,
     _guard_sync_request,
     _is_timeout_error,
+    _normalized_receipts_sync_url as _normalized_receipts_sync_url,
     _resolve_guard_sync_auth_context,
     _urlopen_json_with_timeout_retry,
     _validate_guard_sync_url,
@@ -95,6 +97,34 @@ from .supply_chain_bundle_models import (
     SupplyChainBundleResponse,
 )
 from .supply_chain_bundle_runtime import _is_high_confidence_block
+
+# Retained cloud/registry/archive services live in supply_chain_package_services;
+# re-exported here so existing callers and monkeypatch seams keep working.
+from .supply_chain_package_services import (
+    _build_request_payload,
+    _normalized_supply_chain_evaluate_url,
+    _registry_resolved_target_version,
+    _scan_external_tarball,
+    _workspace_fingerprint,
+)
+from .supply_chain_package_services import (
+    _external_archive_request_timeout_result as _external_archive_request_timeout_result,
+)
+from .supply_chain_package_services import (
+    _normalized_pypi_requested_range as _normalized_pypi_requested_range,
+)
+from .supply_chain_package_services import (
+    _npm_registry_resolved_version as _npm_registry_resolved_version,
+)
+from .supply_chain_package_services import (
+    _pypi_caret_specifier as _pypi_caret_specifier,
+)
+from .supply_chain_package_services import (
+    _pypi_registry_resolved_version as _pypi_registry_resolved_version,
+)
+from .supply_chain_package_services import (
+    _pypi_tilde_specifier as _pypi_tilde_specifier,
+)
 from .supply_chain_package_identity import (
     CanonicalPackageIdentity,
     PackageIdentityError,
@@ -4821,30 +4851,3 @@ def _bundle_package_label(package: SupplyChainBundlePackage, *, version: str | N
     return f"{package_name}@{version or package.version}"
 
 
-# Retained cloud/registry/archive services live in supply_chain_package_services;
-# re-exported here so existing callers and monkeypatch seams keep working.
-from .supply_chain_package_services import (  # noqa: E402
-    _build_request_payload,
-    _normalized_supply_chain_evaluate_url,
-    _registry_resolved_target_version,
-    _scan_external_tarball,
-    _workspace_fingerprint,
-)
-from .supply_chain_package_services import (
-    _external_archive_request_timeout_result as _external_archive_request_timeout_result,
-)
-from .supply_chain_package_services import (
-    _normalized_pypi_requested_range as _normalized_pypi_requested_range,
-)
-from .supply_chain_package_services import (
-    _npm_registry_resolved_version as _npm_registry_resolved_version,
-)
-from .supply_chain_package_services import (
-    _pypi_caret_specifier as _pypi_caret_specifier,
-)
-from .supply_chain_package_services import (
-    _pypi_registry_resolved_version as _pypi_registry_resolved_version,
-)
-from .supply_chain_package_services import (
-    _pypi_tilde_specifier as _pypi_tilde_specifier,
-)

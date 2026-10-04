@@ -150,6 +150,8 @@ def test_pi_source_prepares_workspace_before_timed_tool_review(tmp_path: Path) -
     assert session_start < tool_call
     assert tool_readiness < semantic_review
     assert "native_route !== 'native_resident'" in source
+    assert "if (connection === null || connection.stateId === null)" in source
+    assert '"authenticated-control-plane-failure"' in source
     assert daemon_server_module._GuardDaemonHandler._requires_header_token(
         "/v1/hooks/omp/readiness",
         ["v1", "hooks", "omp", "readiness"],

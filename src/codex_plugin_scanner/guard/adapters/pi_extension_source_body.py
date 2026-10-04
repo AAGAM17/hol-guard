@@ -229,12 +229,12 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         '    return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
         "  }\n"
         "  let connection = loadGuardDaemonConnection();\n"
-        "  if (!connection) {\n"
+        "  if (connection === null || connection.stateId === null) {\n"
         "    let recovered = false;\n"
         "    try {\n"
         "      recovered = await recoverGuardDaemon(\n"
         "        Math.max(deadlineAt - Date.now(), 1),\n"
-        '        "transport-failure",\n'
+        '        "authenticated-control-plane-failure",\n'
         "      );\n"
         "    } catch {}\n"
         "    if (!recovered) return { ready: false, reasonCode: \"daemon_readiness_transport_failure\" };\n"

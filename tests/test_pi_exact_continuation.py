@@ -612,6 +612,8 @@ async function runGuard(payload) {{
     activeScenario.guardResponses.length - 1,
   )];
 }}
+async function ensureGuardWorkspaceReady() {{ return {{ ready: true }}; }}
+function readinessFailureReason(readiness) {{ return `readiness-${{readiness.reasonCode}}`; }}
 
 {handler}
 

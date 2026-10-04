@@ -104,6 +104,9 @@ def authenticated_live_current_daemon_url(guard_home: Path, state: dict[str, obj
     manager = _manager()
     if not isinstance(state, dict) or not manager._guard_daemon_state_matches_current_runtime(state):
         return None
+    state_id = state.get("state_id")
+    if not isinstance(state_id, str) or not state_id:
+        return None
     pid = state.get("pid")
     port = state.get("port")
     if (

@@ -453,16 +453,29 @@ class StoreCloudEventsMixin:
             ),
         )
 
-    def list_guard_events_v1(self, *, uploaded: bool | None = None, limit: int = 200) -> list[dict[str, object]]:
+    def list_guard_events_v1(
+        self,
+        *,
+        uploaded: bool | None = None,
+        limit: int = 200,
+        after: tuple[str, str] | None = None,
+    ) -> list[dict[str, object]]:
         query = """
             select event_id, idempotency_key, event_type, payload_json, occurred_at, uploaded_at
             from guard_cloud_events
         """
         params: list[object] = []
+        filters: list[str] = []
         if uploaded is True:
-            query += " where uploaded_at is not null"
+            filters.append("uploaded_at is not null")
         elif uploaded is False:
-            query += " where uploaded_at is null"
+            filters.append("uploaded_at is null")
+        if after is not None:
+            occurred_at, event_id = after
+            filters.append("(occurred_at > ? or (occurred_at = ? and event_id > ?))")
+            params.extend((occurred_at, occurred_at, event_id))
+        if filters:
+            query += " where " + " and ".join(filters)
         query += " order by occurred_at asc, event_id asc limit ?"
         params.append(limit)
         with self._connect() as connection:

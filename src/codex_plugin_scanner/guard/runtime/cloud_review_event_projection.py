@@ -19,6 +19,7 @@ from ..review_contracts import (
 )
 from ..store import GuardStore
 from ..store_review_event_outbox_schema import REVIEW_EVENT_SCHEMA_VERSION
+from .cloud_review_request_purpose import WIRE_EVENT_SCHEMA_VERSION, canonical_request_kind
 from .local_request_snapshots import (
     _cloud_safe_local_request_payload,  # pyright: ignore[reportPrivateUsage]
 )
@@ -192,7 +193,8 @@ def build_cloud_review_event(
         "localEventSequence": event_sequence,
         "eventType": _EVENT_TYPE_MAP[stored_status],
         "harnessId": str(item.get("harness") or "guard-review"),
-        "requestKind": str(item.get("review_kind") or item.get("harness") or "guard-review"),
+        "requestKind": canonical_request_kind(item)
+        or str(item.get("review_kind") or item.get("harness") or "guard-review"),
         "displayProvenance": resolve_display_provenance(
             has_command_details=bool(request_payload.get("command_text")),
             redaction_level=redaction_level,
@@ -273,6 +275,11 @@ def project_cloud_review_event(
                 "payload_snapshot_invalid",
                 "Stored Review event snapshot has no local request identifier.",
             )
+        if oauth is not None and event.get("reviewClaim") is None:
+            raise StoredReviewEventError(
+                "review_event_claim_invalid",
+                "review_event_claim_invalid:claim_missing",
+            )
         native_replay = False
         request_id = stored_event.snapshot.get("request_id")
         if (
@@ -315,6 +322,10 @@ def project_cloud_review_event(
             "payloadHash": stored_event.payload_hash,
         }
     )
+    kind = canonical_request_kind(stored_event.snapshot)
+    if kind is not None:
+        event["requestKind"] = kind
+        event["eventSchemaVersion"] = WIRE_EVENT_SCHEMA_VERSION
     if terminal_projection is not None:
         terminal_result, terminal_capability, terminal_completed_at = terminal_projection
         event["continuationResult"] = terminal_result

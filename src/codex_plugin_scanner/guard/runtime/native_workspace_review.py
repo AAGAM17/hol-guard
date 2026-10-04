@@ -22,6 +22,10 @@ from ..native_resident_client import (
 from ..native_runtime import _isolated_environment, native_runtime_status
 from ..store_native_workspace_review import NATIVE_WORKSPACE_REVIEW_RECEIPT_STATE_PREFIX
 from .exact_cloud_review import EXACT_CLOUD_REVIEW_REVOCATION_STATE_KEY
+from .native_transport_retry import (
+    native_transport_reconcile_before_retry,
+    native_transport_security_rejection,
+)
 
 _REQUEST_SCHEMA = "guard-native-workspace-review-request.v1"
 _REQUEST_VERSION = 1
@@ -337,8 +341,44 @@ def _native_response(
     )
     if len(payload) > _MAX_DECISION_BYTES:
         raise NativeWorkspaceReviewError("native_workspace_review_decision_invalid")
+    try:
+        return _submit_native_decision(
+            guard_home=guard_home,
+            executable=identity.path,
+            payload=payload,
+            request_id=request_id,
+            request_snapshot_digest=request_snapshot_digest,
+        )
+    except NativeWorkspaceReviewError as first_error:
+        if not native_transport_reconcile_before_retry(first_error.code):
+            raise
+        # The response was lost after the request may have been consumed.
+        # One identical resend either returns the consumed replay or a first
+        # verification. It does not authorize a different decision.
+        try:
+            return _submit_native_decision(
+                guard_home=guard_home,
+                executable=identity.path,
+                payload=payload,
+                request_id=request_id,
+                request_snapshot_digest=request_snapshot_digest,
+            )
+        except NativeWorkspaceReviewError as second_error:
+            if native_transport_security_rejection(second_error.code):
+                raise
+            raise first_error from None
+
+
+def _submit_native_decision(
+    *,
+    guard_home: Path,
+    executable: Path,
+    payload: bytes,
+    request_id: str,
+    request_snapshot_digest: str,
+) -> dict[str, object]:
     encoded = native_resident_client_request(
-        executable=identity.path,
+        executable=executable,
         guard_home=guard_home,
         environment=_isolated_environment(),
         payload=payload,

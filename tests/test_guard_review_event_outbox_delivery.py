@@ -29,6 +29,28 @@ _NOW = "2026-08-24T14:00:00+00:00"
 _LATER = "2026-08-24T14:00:01+00:00"
 
 
+@pytest.fixture(autouse=True)
+def _review_oauth_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The delivery binding in these tests is not a full secret-store profile."""
+
+    from codex_plugin_scanner.guard.review_contracts import GuardReviewOAuthMetadata
+    from codex_plugin_scanner.guard.runtime import cloud_review_sync as sync_module
+
+    monkeypatch.setattr(
+        sync_module,
+        "guard_review_oauth_metadata",
+        lambda _store: GuardReviewOAuthMetadata(
+            device_id="machine-1",
+            dpop_thumbprint=None,
+            grant_id="grant-1",
+            installation_id="installation-1",
+            machine_id="machine-1",
+            runtime_id="runtime-1",
+            workspace_id="workspace-1",
+        ),
+    )
+
+
 class _Binding(TypedDict):
     oauth_subject_hash: str
     workspace_id: str
@@ -465,3 +487,114 @@ def test_rehashed_noncanonical_snapshot_is_quarantined_before_projection(
     assert result["synced"] == 0
     assert captured == []
     assert _event_row(store)["quarantine_reason"] == expected_reason
+
+
+def test_invalid_claim_is_quarantined_without_starving_a_later_neighbor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard.review_contracts import GuardReviewContractError
+    from codex_plugin_scanner.guard.runtime import cloud_review_event_projection as projection
+
+    store = GuardStore(tmp_path / "guard")
+    binding = _connect(store)
+    store.add_approval_request(_request("poison"), _NOW)
+    store.add_approval_request(_request("neighbor"), _NOW)
+    original = projection.build_local_review_request_claim
+
+    def fail_poison(*, request_row: dict[str, object], oauth: object, store: GuardStore) -> dict[str, object]:
+        if request_row.get("request_id") == "poison":
+            raise GuardReviewContractError("missing_oauth_credentials")
+        return original(request_row=request_row, oauth=oauth, store=store)
+
+    monkeypatch.setattr(projection, "build_local_review_request_claim", fail_poison)
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(cloud_review_sync, "post_review_events", _accepting_transport(captured))
+
+    result = cloud_review_sync.sync_cloud_review_events_once(store, _auth(binding))
+
+    assert result["synced"] == 1
+    assert [event["localRequestId"] for event in captured] == ["neighbor"]
+    assert captured[0]["eventSchemaVersion"] == 2
+    assert captured[0]["requestKind"] == "reviewable_pause"
+    with store._connect() as connection:
+        rows = connection.execute(
+            "select payload_json, binding_status, quarantine_reason, acknowledged_at from guard_review_outbox_events"
+        ).fetchall()
+        cursor = connection.execute(
+            "select acknowledged_stream_sequence from guard_review_outbox_cursors"
+        ).fetchone()
+    assert len(rows) == 1
+    assert "poison" in rows[0]["payload_json"]
+    assert rows[0]["binding_status"] == "quarantined"
+    assert rows[0]["quarantine_reason"] == "review_event_claim_invalid"
+    assert rows[0]["acknowledged_at"] is None
+    assert cursor is not None
+    assert int(cursor["acknowledged_stream_sequence"]) > 0
+
+
+def test_watch_only_snapshot_projects_schema_two_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = GuardStore(tmp_path / "guard")
+    binding = _connect(store)
+    store.add_approval_request(_request("observed"), _NOW)
+    row = _event_row(store)
+    payload = json.loads(str(row["payload_json"]))
+    snapshot = payload["requestSnapshot"]
+    assert isinstance(snapshot, dict)
+    snapshot["watch_only_observation"] = 1
+    _replace_event_payload(store, row, payload)
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(cloud_review_sync, "post_review_events", _accepting_transport(captured))
+
+    result = cloud_review_sync.sync_cloud_review_events_once(store, _auth(binding))
+
+    assert result["synced"] == 1
+    assert captured[0]["requestKind"] == "watch_only_observation"
+    assert captured[0]["eventSchemaVersion"] == 2
+    assert captured[0]["reviewClaim"] is not None
+
+
+def test_unconnected_store_is_not_enrolled_and_does_not_deliver(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh store has no Cloud enrollment, so Review sync must not post."""
+
+    from codex_plugin_scanner.guard.runtime.exact_cloud_review import exact_cloud_review_status
+
+    store = GuardStore(tmp_path / "guard")
+    posted: list[object] = []
+
+    def refuse_http(*_args: object, **_kwargs: object) -> dict[str, object]:
+        posted.append(True)
+        raise AssertionError("local-only store must not post review events")
+
+    monkeypatch.setattr(cloud_review_sync, "post_review_events", refuse_http)
+    status = exact_cloud_review_status(store)
+    assert status["enabled"] is False
+    assert status["capability_valid"] is False
+    assert status["reason"] == "cloud_review_capability_missing"
+    assert store.get_sync_payload("oauth_local_credentials") is None
+    assert store.get_sync_payload("guard_exact_cloud_review_capability") is None
+    assert store.get_review_event_oauth_binding() is None
+    with pytest.raises(RuntimeError, match="matching source, OAuth subject"):
+        cloud_review_sync.sync_cloud_review_events_once(store, {})
+    with pytest.raises(RuntimeError, match="matching source, OAuth subject"):
+        cloud_review_sync.sync_cloud_review_events_once(
+            store,
+            {
+                "oauth_source": "default",
+                "oauth_subject_hash": "subject",
+                "workspace_id": "workspace-1",
+                "machine_id": "machine-1",
+                "machine_installation_id": "installation-1",
+            },
+        )
+    assert posted == []
+    with store._connect() as connection:
+        count = connection.execute("select count(*) from guard_review_outbox_events").fetchone()
+    assert count is not None
+    assert int(count[0]) == 0

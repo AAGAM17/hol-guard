@@ -3642,6 +3642,17 @@ def sync_supply_chain_bundle(
     return summary
 
 
+def _held_native_activity_event(event: dict[str, object]) -> bool:
+    """Keep a native activity event queued when projection itself failed."""
+
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        return False
+    inner = payload.get("payload")
+    candidate = inner if isinstance(inner, dict) else payload
+    return candidate.get("receiptKind") == "native_policy_decision"
+
+
 def sync_guard_events(
     store: GuardStore,
     *,
@@ -3655,8 +3666,24 @@ def sync_guard_events(
     total_events = 0
     total_accepted = 0
     synced_at = _now()
+    projection_eligibility = None
+    try:
+        from .native_activity_projection import (
+            project_native_policy_activity,
+            sendable_guard_cloud_events,
+        )
+
+        projection_eligibility = project_native_policy_activity(store).eligibility
+    except Exception as error:
+        store.set_sync_payload(
+            "native_activity_projection_error",
+            {"errorType": type(error).__name__},
+            synced_at,
+        )
+        sendable_guard_cloud_events = None
+    after: tuple[str, str] | None = None
     while True:
-        pending_events = store.list_guard_events_v1(uploaded=False, limit=200)
+        pending_events = store.list_guard_events_v1(uploaded=False, limit=200, after=after)
         if not pending_events:
             if (
                 total_events == 0
@@ -3666,7 +3693,25 @@ def sync_guard_events(
             ):
                 return previous_summary
             break
-        body = json.dumps({"events": [event["payload"] for event in pending_events]}).encode("utf-8")
+        ready_events = (
+            sendable_guard_cloud_events(
+                store,
+                pending_events,
+                eligibility=projection_eligibility,
+            )
+            if sendable_guard_cloud_events is not None
+            else [event for event in pending_events if not _held_native_activity_event(event)]
+        )
+        if not ready_events:
+            if len(pending_events) < 200:
+                break
+            last = pending_events[-1]
+            cursor = (str(last["occurred_at"]), str(last["event_id"]))
+            if cursor == after:
+                break
+            after = cursor
+            continue
+        body = json.dumps({"events": [event["payload"] for event in ready_events]}).encode("utf-8")
         request = _guard_sync_request(
             resolved_auth_context,
             request_url=sync_url,
@@ -3745,7 +3790,7 @@ def sync_guard_events(
         completed_ids = _completed_guard_event_ids(payload)
         synced_at = _sync_timestamp(payload)
         uploaded = store.mark_guard_events_v1_uploaded(completed_ids, synced_at)
-        total_events += len(pending_events)
+        total_events += len(ready_events)
         total_accepted += uploaded
         if uploaded == 0 or len(pending_events) < 200:
             break

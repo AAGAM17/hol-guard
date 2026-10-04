@@ -1901,6 +1901,52 @@ def _record_local_once_approval(
     return approval_id is not None
 
 
+def _read_cloud_review_recovery_health(store: GuardStore) -> dict[str, object] | None:
+    from .sqlite_cloud_review_recovery import read_cloud_review_recovery_health
+
+    return read_cloud_review_recovery_health(store)
+
+
+def _complete_current_binding_repair(store: GuardStore) -> dict[str, object]:
+    """One current-device confirmation. Failure leaves the recovery sentence in place."""
+
+    try:
+        from .sqlite_cloud_review_recovery import complete_authenticated_current_binding_repair
+
+        return complete_authenticated_current_binding_repair(
+            store,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception as repair_error:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Guard could not complete the current-binding Cloud repair: %s",
+            type(repair_error).__name__,
+        )
+        return {"status": "unavailable", "reason": "repair_check_failed"}
+
+
+def _runtime_cloud_state_detail_with_recovery(
+    cloud_state: str,
+    *,
+    recovery_detail: str,
+    oauth_repair_required: bool = False,
+    connect_retry_required: bool = False,
+    connect_retry_refresh_race: bool = False,
+    shared_proof_recorded: bool = False,
+) -> str:
+    if recovery_detail and not oauth_repair_required and not connect_retry_required:
+        return recovery_detail
+    return _runtime_cloud_state_detail(
+        cloud_state,
+        oauth_repair_required=oauth_repair_required,
+        connect_retry_required=connect_retry_required,
+        connect_retry_refresh_race=connect_retry_refresh_race,
+        shared_proof_recorded=shared_proof_recorded,
+    )
+
+
 def _build_runtime_cloud_context(
     store: GuardStore,
     latest_connect_state: dict[str, object] | None,
@@ -1933,6 +1979,12 @@ def _build_runtime_cloud_context(
         connect_retry_required=connect_retry_required,
     )
     dashboard_url, inbox_url, fleet_url, connect_url = _resolve_guard_urls(sync_url)
+    recovery_health = _read_cloud_review_recovery_health(store)
+    repair_status = _complete_current_binding_repair(store)
+    recovery_summary = recovery_health.get("summary") if recovery_health is not None else ""
+    recovery_detail = "" if repair_status.get("status") == "completed" else recovery_summary
+    if not isinstance(recovery_detail, str):
+        recovery_detail = ""
     sync_health = _build_cloud_sync_health(
         store,
         cloud_profile is not None,
@@ -1958,19 +2010,26 @@ def _build_runtime_cloud_context(
         "cloud_workspace_id": cloud_workspace_id,
         "cloud_state": cloud_state,
         "cloud_state_label": _runtime_cloud_state_label(cloud_state),
-        "cloud_state_detail": _runtime_cloud_state_detail(
+        "cloud_state_detail": _runtime_cloud_state_detail_with_recovery(
             cloud_state,
+            recovery_detail=recovery_detail if isinstance(recovery_detail, str) else "",
             oauth_repair_required=oauth_repair_required,
             connect_retry_required=connect_retry_required,
             connect_retry_refresh_race=connect_retry_refresh_race,
             shared_proof_recorded=bool(sync_summary) or remote_payload_active,
         ),
+        "cloud_review_recovery": recovery_health,
+        "cloud_review_recovery_repair": {
+            "reason": repair_status.get("reason"),
+            "status": repair_status.get("status"),
+        },
         "cloud_sync_health": sync_health,
         "cloud_pairing_state": {
             "state": cloud_state,
             "label": _runtime_cloud_state_label(cloud_state),
-            "detail": _runtime_cloud_state_detail(
+            "detail": _runtime_cloud_state_detail_with_recovery(
                 cloud_state,
+                recovery_detail=recovery_detail if isinstance(recovery_detail, str) else "",
                 oauth_repair_required=oauth_repair_required,
                 connect_retry_required=connect_retry_required,
                 connect_retry_refresh_race=connect_retry_refresh_race,

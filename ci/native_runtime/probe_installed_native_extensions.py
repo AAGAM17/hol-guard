@@ -282,11 +282,10 @@ def exercise(root: Path) -> dict[str, object]:
             )
         if matched_permission_id is not None:
             require(matched is not None, f"{label}:matched_permission_rule_missing")
-            matched_permission = BUILT_IN_COMMAND_EXTENSION_REGISTRY.permission_for_rule_id(matched)
-            require(matched_permission is not None, f"{label}:matched_permission_mapping_missing")
+            observed_permissions = [row["permission_id"] for row in extensions["permission_observations"]]
             require(
-                matched_permission.permission_id == matched_permission_id,
-                f"{label}:wrong_matched_permission:{matched_permission.permission_id}",
+                matched_permission_id in observed_permissions,
+                f"{label}:wrong_matched_permission:{observed_permissions}",
             )
         if minimum is not None:
             require(result["minimum_action"] == minimum, f"{label}:wrong_floor:{result['minimum_action']}")

@@ -73,7 +73,7 @@ python -m ci.gauntlet run \
   --output /absolute/path/outside-the-checkout/contained-evidence
 ```
 
-Its report is labeled `contained-bun-vitest-extended`, requires all seven reviewed Bun/Vitest commands to complete through the real `execute-contained-test` sink, and always reports `merge_qualified: false`. A local stub or simulated `gh` result is not part of this profile.
+Its report is labeled `contained-bun-vitest-extended`, requires all seven reviewed Bun/Vitest commands to complete through the real `execute-contained-test` sink, and always reports `merge_qualified: false`. The fixture oracle hashes a bounded manifest of every project file and publishes only a digest-bound request proof; raw request bytes remain private. Use `verify --exploratory` to independently check this additive report. A local stub or simulated `gh` result is not part of this profile.
 
 The default per-scenario host deadline is 300 seconds with at most 32 provider rounds. `--timeout` and `--max-inference-rounds` are explicit bounded controls. `--case ID` runs a targeted investigation but **cannot qualify the full profile**. Every run uses a fresh output directory and fresh disposable fixture; failed evidence is not overwritten. Qualification requires the entire Git working tree to be clean, including untracked files. Put downloaded wheels, public reports and scratch files outside the checkout. The start/end source snapshots detect drift during the run; publication independently rechecks immutable source bindings. `--work-root` accepts a private parent directory, including spaces and Unicode. Command placeholders are shell-quoted separately from native file paths.
 

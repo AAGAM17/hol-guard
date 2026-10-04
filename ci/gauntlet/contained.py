@@ -21,22 +21,25 @@ from ci.native_runtime import probe_installed_pi_output as probe
 from ci.native_runtime.probe_workflow_matrix import _workflow_prompt, contained_vitest_cases
 
 from .catalog import catalog_digest
+from .contained_judge import (
+    _CONTAINED_PROFILE,
+    _contained_project_checks,
+    _contained_project_snapshot,
+    _contained_snapshot_digest,
+    assess_contained_execution,
+)
 from .evidence import public_events, read_events
 from .fixtures import create_fixture, digest_file
 from .input_evidence import fixture_path_aliases, public_observations, redact_value
 from .provider import InferenceRelay, LoopbackCollector
 from .runner import (
-    _CONTAINED_PROFILE,
     HERE,
     REPO,
     _agent_configuration,
-    _contained_project_checks,
-    _contained_project_snapshot,
-    _contained_snapshot_digest,
-    assess_contained_execution,
     clean_environment,
     run_process,
 )
+from .source_files import digest_runner_files
 from .source_identity import source_identity
 
 
@@ -48,10 +51,6 @@ def _source_snapshots_match(
 ) -> bool:
     """Require source ancestry and every runner byte to remain stable during the run."""
     return initial_binding == current_binding and initial_runner_files == current_runner_files
-
-
-def _runner_files() -> dict[str, str]:
-    return {path.name: digest_file(path) for path in sorted(HERE.iterdir()) if path.is_file()}
 
 
 def _guard_wrapper_command(extension: Path) -> str:
@@ -92,7 +91,7 @@ class _ContainedRequestCapture:
     def _run(self) -> None:
         while not self._stop.is_set():
             self._scan_once()
-            self._stop.wait(0.01)
+            self._stop.wait(0.001)
 
     def _scan_once(self) -> None:
         for path in self._root.glob("hol-guard-contained-test-*/request.json"):
@@ -149,7 +148,7 @@ def run_contained_profile(
     if version != "omp/" + expected_version:
         raise RuntimeError("Oh My Pi version differs from the repository-pinned SDK")
     binding = source_identity(REPO, candidate_sha)
-    initial_runner_files = _runner_files()
+    initial_runner_files = digest_runner_files(HERE)
     started = time.monotonic()
     started_at = datetime.now(timezone.utc).isoformat()
     parent = (work_root or output.parent).resolve()
@@ -322,7 +321,7 @@ def run_contained_profile(
         execution_error=execution_error,
     )
     current_binding = source_identity(REPO, candidate_sha)
-    current_runner_files = _runner_files()
+    current_runner_files = digest_runner_files(HERE)
     source_unchanged = _source_snapshots_match(
         binding,
         current_binding,
@@ -376,6 +375,7 @@ def run_contained_profile(
     public.mkdir(parents=True, exist_ok=True)
     report["cases"] = []
     for index, (case, result) in enumerate(zip(cases, assessment["cases"], strict=True)):
+        request_proofs = assessment.get("request_proofs", [])
         case_evidence = {
             "id": case.name,
             "profile": _CONTAINED_PROFILE,
@@ -390,6 +390,7 @@ def run_contained_profile(
             "caller_workspace": public_callers[index],
             "target_workspace": public_targets[index],
             "tool_call_count": result["tool_calls"],
+            "request_proof": request_proofs[index] if index < len(request_proofs) else None,
         }
         case_path = public / f"{case.name}.json"
         case_path.write_text(json.dumps(case_evidence, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

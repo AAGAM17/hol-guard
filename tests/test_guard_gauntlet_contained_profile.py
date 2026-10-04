@@ -4,9 +4,13 @@ import json
 import pytest
 
 from ci.gauntlet.contained import _ContainedRequestCapture, _source_snapshots_match
+from ci.gauntlet.contained_judge import (
+    _contained_workspace_identity_matches,
+    _contained_wrapper_argv,
+    assess_contained_execution,
+)
 from ci.gauntlet.evidence import public_events
 from ci.gauntlet.input_evidence import input_digest
-from ci.gauntlet.runner import _contained_workspace_identity_matches, assess_contained_execution
 from ci.native_runtime.probe_workflow_matrix import contained_vitest_cases
 
 
@@ -171,6 +175,7 @@ def _assessment_inputs(case, *, filesystem=None, events=None, wrapper_workspace=
         or {
             "contained-test-files-unchanged": True,
             "contained-dependencies-unchanged": True,
+            "contained-project-files-unchanged": True,
             "contained-project-local-dependencies": True,
         },
         "returncode": 0,
@@ -250,6 +255,7 @@ def test_contained_assessment_requires_native_sink_and_physical_proof(tmp_path):
 
     assert result["profile_pass"] is True
     assert result["cases"][0]["outcome"] == "pass"
+    assert result["request_proofs"][0]["schema"] == "guard-contained-test-request-proof.v1"
 
     missing_route = {**inputs, "native_routes": {"python_fallback": 2}}
     result = assess_contained_execution([case], **missing_route)
@@ -260,6 +266,19 @@ def test_contained_assessment_requires_native_sink_and_physical_proof(tmp_path):
     result = assess_contained_execution([case], **missing_physical)
     assert result["profile_pass"] is False
     assert result["cases"][0]["outcome"] == "task-incomplete"
+
+
+def test_contained_snapshot_covers_new_project_files(tmp_path):
+    from ci.gauntlet.contained_judge import _contained_project_checks, _contained_project_snapshot
+
+    project = _project(tmp_path)
+    before = _contained_project_snapshot(project)
+    (project / "unreviewed-source.mjs").write_text("export const changed = true;\n")
+
+    checks, after = _contained_project_checks(project, before)
+
+    assert after is not None
+    assert checks["contained-project-files-unchanged"] is False
 
 
 def test_contained_assessment_binds_wrapper_and_cross_project_workspaces(tmp_path):
@@ -296,6 +315,30 @@ def test_contained_assessment_binds_equals_form_cross_project_workspace(tmp_path
     result = assess_contained_execution([case], **inputs)
 
     assert result["profile_pass"] is True
+
+
+def test_contained_wrapper_accepts_only_known_redacted_absolute_alias():
+    command = _contained_wrapper_command("{{contained_project}}").replace(
+        "'/fixture/bin/hol-guard'", "'{{contained_project}}/bin/hol-guard'"
+    )
+    valid = _contained_wrapper_argv(
+        command,
+        expected_wrapper="{{contained_project}}/bin/hol-guard",
+        expected_guard_home="/fixture/guard-home",
+        expected_workspace="{{contained_project}}",
+        expected_home="/fixture/home",
+    )
+    assert valid[1] is None
+
+    invalid = _contained_wrapper_argv(
+        command.replace("{{contained_project}}/bin", "relative/bin"),
+        expected_wrapper="relative/bin/hol-guard",
+        expected_guard_home="/fixture/guard-home",
+        expected_workspace="{{contained_project}}",
+        expected_home="/fixture/home",
+    )
+    assert invalid[0] is None
+    assert "absolute Guard CLI" in invalid[1]
 
 
 def test_contained_request_workspace_accepts_only_absolute_same_realpath(tmp_path):
@@ -404,3 +447,19 @@ def test_contained_profile_rejects_source_or_runner_drift():
         runner_files,
         {**runner_files, "runner.py": "changed"},
     )
+
+
+def test_contained_verifier_never_treats_profile_as_qualification(tmp_path):
+    from ci.gauntlet.verify import verify_report
+
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "schema": "hol.guard-gauntlet.contained-bun-vitest.evidence.v1",
+                "candidate_sha": "a" * 40,
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="additive"):
+        verify_report(tmp_path, expected_sha="a" * 40)

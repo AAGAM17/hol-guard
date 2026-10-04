@@ -172,9 +172,7 @@ impl CommandCatalog {
             .flat_map(|ext| ext.permissions.iter())
             .enumerate()
             .collect();
-        permissions.sort_by(|(_, left), (_, right)| {
-            left.permission_id.cmp(&right.permission_id)
-        });
+        permissions.sort_by(|(_, left), (_, right)| left.permission_id.cmp(&right.permission_id));
         for (permission_index, permission) in permissions {
             by_permission_id.insert(
                 permission.permission_id.trim().to_lowercase(),

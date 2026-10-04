@@ -14,10 +14,6 @@ class CommandProjectionBuildHook(BuildHookInterface):
     """Ship frozen, validated metadata without keeping copies in Git."""
 
     def initialize(self, version: str, build_data: dict) -> None:
-        # Editable environments are dependency setup, not a release build.
-        # CI stages projections with its exact compiler before test collection.
-        if version == "editable":
-            return
         root = Path(self.root)
         command = [sys.executable, str(root / "scripts/build_native_command_program.py"), "--projections-only"]
         compiler = os.environ.get("HOL_GUARD_BUILD_SOURCE_COMPILER")

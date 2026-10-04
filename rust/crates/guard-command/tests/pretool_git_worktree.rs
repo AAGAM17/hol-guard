@@ -135,6 +135,12 @@ fn git(repository: &Path, arguments: &[&str]) {
         .arg(repository)
         .env("HOME", home)
         .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_OBJECT_DIRECTORY")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
         .env_remove("GIT_AUTHOR_NAME")
         .env_remove("GIT_AUTHOR_EMAIL")
         .env_remove("GIT_COMMITTER_NAME")
@@ -287,6 +293,31 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
     assert!(config_destination.is_dir());
     assert!(!config_tripwire.exists());
 
+    let hook_config_tripwire = root.join("hook-config-tripwire");
+    std::fs::write(
+        root.join(".gitconfig"),
+        format!(
+            "[hook \"worktree-setup\"]\n\tevent = post-checkout\n\tcommand = !touch {}\n",
+            hook_config_tripwire.display()
+        ),
+    )
+    .unwrap();
+    let hook_config_destination = root.join("hook-config-child");
+    let hook_config_command = format!(
+        "git worktree add --quiet {} -b hook-config-worktree HEAD",
+        hook_config_destination.display()
+    );
+    let hook_config = evaluate(&repository, &enabled, &hook_config_command);
+    assert_ne!(hook_config.minimum_action, "allow", "{hook_config_command}");
+    assert!(!hook_config_tripwire.exists());
+    std::fs::write(
+        root.join(".gitconfig"),
+        format!(
+            "[alias]\n\tunused = {tripwire_command}\n[core]\n\teditor = {tripwire_command}\n[credential]\n\thelper = {tripwire_command}\n[diff \"unused\"]\n\texternal = {tripwire_command}\n[mergetool \"unused\"]\n\tcmd = {tripwire_command}\n"
+        ),
+    )
+    .unwrap();
+
     let unrelated_hook_tripwire = root.join("unrelated-hook-tripwire");
     let pre_commit = repository.join(".git/hooks/pre-commit");
     std::fs::write(
@@ -345,6 +376,11 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
             "sleep 0.01 | cd {} && git worktree add {} -b piped-sleep-worktree HEAD",
             repository.display(),
             root.join("piped-sleep-child").display()
+        ),
+        format!(
+            "GIT_CONFIG_GLOBAL={} git worktree add --quiet {} -b env-worktree HEAD",
+            root.join(".gitconfig").display(),
+            root.join("env-child").display()
         ),
     ] {
         let result = evaluate(&repository, &enabled, &command);
@@ -420,12 +456,18 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         "git worktree add --quiet --force -b blocked-force force-child HEAD",
         "git worktree add --quiet -b fixture-worktree second-child HEAD",
         "git worktree add --quiet -b second-child missing-ref HEAD~99",
-        "git -c core.hooksPath=/tmp/hooks worktree add --quiet -b second-child config-child HEAD",
         "git worktree add --quiet -b second-child -- filtered-child HEAD",
     ] {
         let result = evaluate(&repository, &enabled, command);
         assert_ne!(result.minimum_action, "allow", "{command}");
     }
+
+    let hooks_path_command = format!(
+        "git -c core.hooksPath={} worktree add --quiet -b second-child config-child HEAD",
+        root.join("custom-hooks").display()
+    );
+    let hooks_path_result = evaluate(&repository, &enabled, &hooks_path_command);
+    assert_ne!(hooks_path_result.minimum_action, "allow", "{hooks_path_command}");
 
     let symlink_target = root.join("outside");
     std::fs::create_dir_all(&symlink_target).unwrap();

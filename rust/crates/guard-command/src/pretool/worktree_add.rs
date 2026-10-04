@@ -83,7 +83,7 @@ pub(super) fn exact_safe_command(
             .executable
             .as_deref()
             .is_some_and(|value| super::executable_basename(value) == "tail")
-            && !super::git_config::trusted_pipeline_command(
+            && !super::git_worktree::trusted_pipeline_command(
                 "tail",
                 proof_context,
                 execution_environment,
@@ -162,13 +162,16 @@ fn safe_segment(
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> bool {
+    if !segment.environment_names.is_empty() {
+        return false;
+    }
     let Some(spec) = parse(segment) else {
         return false;
     };
     let Some(destination) = fresh_destination(spec.destination, context) else {
         return false;
     };
-    let result = super::git_config::worktree_add_execution_free(
+    let result = super::git_worktree::worktree_add_execution_free(
         segment.executable.as_deref().unwrap_or("git"),
         spec.leading,
         &destination,

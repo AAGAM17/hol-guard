@@ -13,6 +13,7 @@ pub struct PathContext<'a> {
 mod git_config;
 mod git_probe;
 mod git_routes;
+mod git_worktree;
 pub(crate) use git_routes::git_route_within_workspace;
 mod pure_expression;
 mod read_paths;

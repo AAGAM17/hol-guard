@@ -42,7 +42,7 @@ jobs:
 
   native-command-evaluators:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -50,9 +50,15 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: pytest-native-command
-          components: rustfmt
+          components: rustfmt clippy
       - name: Check native formatting before compilation
         run: cargo fmt --manifest-path rust/Cargo.toml --all --check
+      # One blocking Linux workspace proof, before any of the 128 Python shards.
+      # Specialized workflows retain their unique probes and non-Linux proofs.
+      - name: Lint the complete locked Rust workspace
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --workspace --all-targets -- -D warnings
+      - name: Test the complete locked Rust workspace
+        run: cargo test --manifest-path rust/Cargo.toml --locked --workspace --all-targets
       - name: Build native command evaluators once for pytest shards
         run: |
           cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime

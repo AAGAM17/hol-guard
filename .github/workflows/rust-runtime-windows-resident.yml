@@ -127,7 +127,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           components: rustfmt clippy
+      # The required CI preflight owns this Linux proof on PRs and pushes.
       - name: Check locked Rust workspace
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           cargo metadata --manifest-path rust/Cargo.toml --locked --format-version 1 --no-deps > /dev/null
           rustfmt --edition 2021 --check rust/crates/guard-runtime/src/main.rs

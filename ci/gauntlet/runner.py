@@ -360,13 +360,13 @@ def run_case(
                 timeout=timeout + 15,
             )
             time.sleep(0.1)
-            read_case_logs(case, raw_log, guard_log, replacements)
             case["native_routes"] = worker.metrics.snapshot().get("routes", {})
             case["approval_delta"] = worker.store.count_approval_requests(status=None) - before
             case["inference"] = relay.evidence()
             case["egress_requests"] = list(collector.requests)
             case["raw_transcript_sha256"] = digest_file(raw_log)
             case["stderr_sha256"] = digest_file(error_log)
+            read_case_logs(case, raw_log, guard_log, replacements)
             if scenario.oracle == "blocked-extension":
                 if extension_receipt_ids is None or extension_receipt_writer is None:
                     raise RuntimeError("native receipt correlation was not initialized")

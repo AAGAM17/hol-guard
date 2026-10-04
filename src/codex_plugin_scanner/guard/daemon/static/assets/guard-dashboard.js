@@ -14325,7 +14325,7 @@ function redactQueryAssignments(value) {
     const end = offset + assignment.length;
     if (end < value.length && (value[end] === "\"" || value[end] === "'")) {
       const next = value[end + 1];
-      if (next && !" \t\r\n;&|()<>[]{}".includes(next)) unsafeQuotedTail = true;
+      if (next && !" \t\r\n;&|".includes(next)) unsafeQuotedTail = true;
     }
     return `${separator}${key}=[redacted]`;
   });

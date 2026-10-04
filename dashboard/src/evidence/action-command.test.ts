@@ -33,6 +33,7 @@ for (const key of ["access_token", "access%5Ftoken", "API-KEY", "X-Amz-Signature
 for (const command of [
   `curl 'https://example.invalid/data?sig="fixture-query-value"'`,
   `curl 'https://example.invalid/data?access%5Ftoken=prefix"suffix'`,
+  `curl 'https://example.invalid/data?access%5Ftoken=prefix"(suffix'`,
 ]) {
   for (const entry of [
     { ...receipt, action_envelope_json: shellEnvelope(command) },

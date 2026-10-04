@@ -66,6 +66,7 @@ def test_preview_redacts_query_credentials(key: str) -> None:
     (
         "curl 'https://example.invalid/data?sig=\"fixture-query-value\"'",
         "curl 'https://example.invalid/data?access%5Ftoken=prefix\"suffix'",
+        "curl 'https://example.invalid/data?access%5Ftoken=prefix\"(suffix'",
     ),
 )
 def test_preview_omits_ambiguous_quoted_query_credentials(command: str) -> None:

@@ -36,7 +36,7 @@ _SENSITIVE_ARGUMENT_RE = re.compile(
 )
 
 _SENSITIVE_QUERY_ASSIGNMENT_RE = re.compile(r"([?&#])([^=&#\s\"']+)=([^&#\s\"']*)")
-_QUERY_QUOTE_BOUNDARY_CHARS = frozenset(" \t\r\n;&|()<>[]{}")
+_QUERY_QUOTE_BOUNDARY_CHARS = frozenset(" \t\r\n;&|")
 
 
 def _redact_sensitive_query_assignments(command: str) -> str | None:

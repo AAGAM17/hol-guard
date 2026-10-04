@@ -140,6 +140,8 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "      headers: {\n"
         "        'Content-Type': 'application/json',\n"
         "        'X-Guard-Token': connection.authToken,\n"
+        "        // The local daemon closes each response; never reuse a retiring socket.\n"
+        "        'Connection': 'close',\n"
         "      },\n"
         "      body: daemonPayload,\n"
         "      signal: controller?.signal,\n"

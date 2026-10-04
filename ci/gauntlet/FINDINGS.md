@@ -132,3 +132,35 @@ the judge to reject the otherwise identical target. Host and Guard evidence now
 share alias redactions only after both paths resolve to the same existing
 fixture. Different physical targets remain distinct. The full live profile must
 run again on the final source; rows from the failed run cannot be reused.
+
+
+## Closed daemon sockets were surfacing as ordinary-tool deadlines
+
+A private diagnostic replay of the two actual-model native-file tasks on
+`eda02c395fd8558bebde160e977df941501153aa` reproduced both failures. The
+failing fetch raised `ECONNRESET` roughly two milliseconds after it began,
+while the full 3,100 ms daemon budget was still available. Other native
+responses in the same session completed in tens of milliseconds. Cold CLI
+recovery then consumed the remaining host deadline. This was a transport
+failure, not a native policy deny or evidence of slow policy evaluation.
+
+The paired diagnostic changed only the daemon request's connection lifetime:
+`Connection: close` prevents Bun from pooling a socket that the local Python
+daemon closes after its response. Both original native-file tasks then completed
+in a single targeted live run: eleven actual model-selected calls, twenty-two
+native pre/post responses, no missing reviews, no ordinary approvals and no
+socket resets. An earlier corrected diagnostic had a model-selected wrong edit
+path; it remains unexercised rather than being counted as a product pass.
+
+The current managed extension now declares that connection lifetime explicitly.
+Authentication, payload bytes, deadlines, native policy and fail-closed behavior
+are unchanged. No tool replay or approval bypass was added. The frozen previous
+extension remains unchanged for migration matching. Source contracts check the
+current Pi/OMP requests and the previous-source boundary. The full final-source
+Gauntlet run, not these instrumented targeted diagnostics, supplies qualification.
+
+The diagnostic logs are retained as `headeda-deadline-diagnostic-01` and
+`headeda-fresh-connection-diagnostic-02`. The correction addresses the reproduced
+closed-socket failure; it does not prove every possible review timeout has this
+cause. Bun documents disabling connection reuse with the same header in its
+[fetch documentation](https://bun.com/docs/runtime/networking/fetch).

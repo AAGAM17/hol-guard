@@ -397,7 +397,6 @@ def exercise(root: Path) -> dict[str, object]:
             revision,
             matched="command.git.worktree",
             minimum="block",
-            matched_permission_id=worktree_permission.permission_id,
             reason_code="native_command_permission_disabled",
         )
         require(not worktree_target.exists(), "worktree_target_executed")

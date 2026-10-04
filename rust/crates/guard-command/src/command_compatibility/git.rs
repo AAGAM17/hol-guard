@@ -201,7 +201,7 @@ pub(super) fn observe_with_context(
     let command = arguments[command_index].as_str();
     let inspection = inspection_arguments(arguments, context);
     let plumbing = (command_index == 0 && read_only_plumbing(arguments))
-        || inspection.is_some_and(|remaining| read_only_plumbing(remaining));
+        || inspection.is_some_and(read_only_plumbing);
     if plumbing {
         // The command stays read-only, but a disabled Git permission or
         // extension can still block it.
@@ -209,7 +209,7 @@ pub(super) fn observe_with_context(
     }
     if plumbing
         || (command_index == 0 && bounded_inspection(arguments))
-        || inspection.is_some_and(|remaining| bounded_inspection(remaining))
+        || inspection.is_some_and(bounded_inspection)
     {
         return;
     }

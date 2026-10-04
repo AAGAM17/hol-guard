@@ -238,7 +238,9 @@ def test_watch_posture_with_stale_prompt_mode_does_not_block_codex_hook(tmp_path
     store = GuardStore(home_dir)
 
     assert rc == 0
-    assert captured.out == ""
+    response = json.loads(captured.out)
+    assert response["policy_action"] == "warn"
+    assert response["reason_code"] == "native_pre_tool_unavailable"
     pending = store.list_approval_requests(limit=5)
     assert len(pending) == 1
     assert pending[0]["scanner_evidence"][-1]["authoritative_action"] == "allow"

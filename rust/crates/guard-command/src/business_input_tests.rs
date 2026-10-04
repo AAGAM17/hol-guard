@@ -15,7 +15,7 @@ fn facts(primary: &[u8], attachments: &[Vec<u8>]) -> Value {
             {"identity_binding":"e".repeat(64), "domain":"example.test", "kind":"to"}
         ]},
         "content": {
-            "snapshot_digest":digest_bytes(primary),
+            "snapshot_digest":business_input_snapshot_digest(primary,attachments).unwrap(),
             "attachment_digests":attachments.iter().map(|bytes| digest_bytes(bytes)).collect::<Vec<_>>(),
             "inspection_state":"known", "inspected_bytes":total,
             "sensitivity_labels":["confidential"]
@@ -70,6 +70,31 @@ fn changed_body_attachment_order_count_or_bytes_cannot_prepare() {
             Err(PreparedBusinessInputErrorV1::ContentMismatch)
         ));
     }
+}
+
+#[test]
+fn complete_snapshot_matches_independent_vector_and_unambiguous_partitions() {
+    // Independently constructed with Python hashlib and struct.pack('>Q').
+    assert_eq!(
+        business_input_snapshot_digest(b"body", &[b"alpha".to_vec(), b"bravo".to_vec()]).unwrap(),
+        "80b3f2b70c5b3bd3135eca5c031f5c9685d20257c66695969453cd2572e4fbef"
+    );
+    assert_ne!(
+        business_input_snapshot_digest(b"ab", &[b"c".to_vec()]).unwrap(),
+        business_input_snapshot_digest(b"a", &[b"bc".to_vec()]).unwrap()
+    );
+    assert_ne!(
+        business_input_snapshot_digest(b"body", &[]).unwrap(),
+        business_input_snapshot_digest(b"body", &[vec![]]).unwrap()
+    );
+    let body = b"body".to_vec();
+    let attachments = vec![b"alpha".to_vec()];
+    let mut value = facts(&body, &attachments);
+    value["content"]["snapshot_digest"] = json!(digest_bytes(&body));
+    assert!(matches!(
+        prepare(&value, body, attachments),
+        Err(PreparedBusinessInputErrorV1::ContentMismatch)
+    ));
 }
 
 #[test]
@@ -140,6 +165,32 @@ fn commitment_is_canonical_and_changes_with_every_fact_dimension() {
     let original = prepare(&value, body.clone(), vec![]).unwrap();
     let pretty = serde_json::to_vec_pretty(&value).unwrap();
     let same = PreparedBusinessInputV1::prepare(&pretty, body.clone(), vec![]).unwrap();
+    assert_eq!(same.binding(), original.binding());
+    fn reordered(value: &Value) -> String {
+        match value {
+            Value::Object(object) => format!(
+                "{{{}}}",
+                object
+                    .iter()
+                    .rev()
+                    .map(|(key, value)| format!(
+                        "{}:{}",
+                        serde_json::to_string(key).unwrap(),
+                        reordered(value)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            Value::Array(items) => format!(
+                "[{}]",
+                items.iter().map(reordered).collect::<Vec<_>>().join(",")
+            ),
+            value => serde_json::to_string(value).unwrap(),
+        }
+    }
+    let reversed = reordered(&value);
+    assert_ne!(reversed.as_bytes(), serde_json::to_vec(&value).unwrap());
+    let same = PreparedBusinessInputV1::prepare(reversed.as_bytes(), body.clone(), vec![]).unwrap();
     assert_eq!(same.binding(), original.binding());
     for (section, key) in [
         ("provider", "account_binding"),

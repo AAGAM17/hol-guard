@@ -55,9 +55,14 @@ and a domain-separated commitment to the typed facts. JSON formatting and key
 order do not change that commitment. The value has no `Debug`, `Serialize`,
 `Clone`, or mutable accessors, keeping private bytes out of generic diagnostics.
 
-The primary payload is exactly the byte sequence committed by
-`content.snapshot_digest`; `volume.byte_count` and `content.inspected_bytes`
-cover that payload plus all attachment bytes. Attachments retain their order.
+`content.snapshot_digest` commits the complete frozen input, preserving the
+business contract's original semantics. `business_input_snapshot_digest` hashes
+the `hol-guard.business-input-snapshot.v1\0` domain, primary length and bytes,
+attachment count, and each ordered attachment's length and bytes. Lengths and
+counts use unsigned 64-bit big-endian integers, preventing ambiguous byte
+partitions. Individual attachment digests remain SHA-256 of attachment bytes.
+`volume.byte_count` and `content.inspected_bytes` cover the primary payload plus
+all attachments. Primary-only digests cannot substitute for the complete snapshot.
 Content inspection, account authentication, provider-request normalization,
 policy admission, and durable dispatch remain separate requirements. This API
 validates inspection claims against byte counts; it does not perform inspection.

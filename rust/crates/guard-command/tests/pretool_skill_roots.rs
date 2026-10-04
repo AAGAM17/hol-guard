@@ -3,11 +3,27 @@
 use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
+struct Fixture(std::path::PathBuf);
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn zcode_reads_markdown_only_in_supported_skill_locations() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/pretool-skill-roots")
-        .join(format!("home-{}", std::process::id()));
+        .join(format!(
+            "home-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    let _fixture = Fixture(root.clone());
     let roots = [
         ".agents/skills/example",
         ".claude/skills/example",
@@ -107,4 +123,32 @@ fn zcode_reads_markdown_only_in_supported_skill_locations() {
         evaluate(link.to_str().unwrap(), "Read").minimum_action,
         "allow"
     );
+    for (index, skill_root) in [
+        ".claude/skills",
+        ".codex/skills",
+        ".codex/superpowers/skills",
+        ".zcode/cli/plugins/cache",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let home = root.join(format!("aliased-root-{index}"));
+        let app = home.join(".other-app");
+        let target = app.join("market/example/1.0.0/skills/example/SKILL.md");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, "synthetic fixture\n").unwrap();
+        let link = home.join(skill_root);
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&app, &link).unwrap();
+        let result = evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &json!({"toolName": "Read", "toolInput": {"file_path": target}}),
+            None,
+            None,
+            home.to_str(),
+            home.to_str(),
+        );
+        assert_ne!(result.minimum_action, "allow", "{skill_root}");
+    }
 }

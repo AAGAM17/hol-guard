@@ -61,6 +61,7 @@ def test_windows_verifier_resolves_the_existing_compiler_suffix(monkeypatch, arg
     """Verify windows verifier resolves the existing compiler suffix."""
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sys, "argv", ["verify", "--compiler", argument])
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
     calls = []
     monkeypatch.setattr(verifier, "_run", calls.append)
     assert verifier.main() == 0

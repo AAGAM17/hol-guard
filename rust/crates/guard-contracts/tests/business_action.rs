@@ -26,7 +26,8 @@ fn prepared_mail() -> Value {
             "snapshot_digest": "1".repeat(64),
             "attachment_digests": ["2".repeat(64)],
             "inspection_state": "known",
-            "inspected_bytes": 128
+            "inspected_bytes": 128,
+            "sensitivity_labels": ["confidential"]
         },
         "target": {
             "resource_binding": "3".repeat(64),
@@ -264,4 +265,20 @@ fn identity_and_domain_errors_never_become_known_facts() {
         value["audience"]["recipients"][0]["domain"] = json!(invalid);
         assert_eq!(decode(&value), Err(BusinessActionErrorV1::Invalid));
     }
+}
+
+#[test]
+fn missing_duplicate_or_unknown_sensitivity_does_not_admit_complete_facts() {
+    let mut value = prepared_mail();
+    value["content"]["sensitivity_labels"] = json!([]);
+    assert_eq!(decode(&value), Err(BusinessActionErrorV1::Inconsistent));
+    value["content"]["sensitivity_labels"] = json!(["secret", "secret"]);
+    assert_eq!(decode(&value), Err(BusinessActionErrorV1::Inconsistent));
+    value["content"]["sensitivity_labels"] = json!(["unknown"]);
+    assert_eq!(
+        decode(&value).unwrap().require_complete_facts(),
+        Err(BusinessActionErrorV1::Incomplete)
+    );
+    value["content"]["sensitivity_labels"] = json!(["public", "secret"]);
+    decode(&value).unwrap().require_complete_facts().unwrap();
 }

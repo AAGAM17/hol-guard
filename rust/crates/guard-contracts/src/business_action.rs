@@ -114,6 +114,16 @@ pub struct BusinessAudienceV1 {
     pub recipients: Vec<BusinessRecipientV1>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum BusinessSensitivityV1 {
+    Public,
+    Personal,
+    Confidential,
+    Secret,
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BusinessContentV1 {
@@ -123,6 +133,7 @@ pub struct BusinessContentV1 {
     pub attachment_digests: Vec<String>,
     pub inspection_state: BusinessFactStateV1,
     pub inspected_bytes: u64,
+    pub sensitivity_labels: Vec<BusinessSensitivityV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -213,6 +224,7 @@ impl BusinessActionV1 {
         }
         if self.audience.recipients.len() > MAX_BUSINESS_ACTION_ITEMS
             || self.content.attachment_digests.len() > MAX_BUSINESS_ACTION_ITEMS
+            || self.content.sensitivity_labels.len() > 5
             || [
                 self.volume.recipient_count,
                 self.volume.record_count,
@@ -256,6 +268,17 @@ impl BusinessActionV1 {
         }
         if self.provider.identity_state == BusinessFactStateV1::Known
             && (self.provider.account_binding.is_none() || self.provider.tenant_binding.is_none())
+        {
+            return Err(Error::Inconsistent);
+        }
+        if self
+            .content
+            .sensitivity_labels
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != self.content.sensitivity_labels.len()
+            || self.content.sensitivity_labels.is_empty()
         {
             return Err(Error::Inconsistent);
         }
@@ -333,6 +356,10 @@ impl BusinessActionV1 {
         .iter()
         .any(|state| *state != BusinessFactStateV1::Known)
             || self.audience.kind == BusinessAudienceKindV1::Unknown
+            || self
+                .content
+                .sensitivity_labels
+                .contains(&BusinessSensitivityV1::Unknown)
         {
             return Err(BusinessActionErrorV1::Incomplete);
         }

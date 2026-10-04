@@ -175,7 +175,8 @@ def _verify_contained_case(case: dict[str, Any], row: dict[str, Any], expected_i
         raise ValueError("contained native observation lacks the authoritative Rust denial")
     if post[0].get("decision") != "allow" or post[0].get("input", {}).get("command") != wrapper:
         raise ValueError("contained post observation is not bound to the executed wrapper")
-    details = call.get("result", {}).get("details", {})
+    result = call.get("result")
+    details = result.get("details", {}) if isinstance(result, dict) else {}
     presentation = details.get("holGuardContainedTest") if isinstance(details, dict) else None
     if (
         not isinstance(presentation, dict)

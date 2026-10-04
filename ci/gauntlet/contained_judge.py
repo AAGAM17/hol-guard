@@ -110,7 +110,7 @@ def _contained_wrapper_argv(
         ("{{fixture}}/", "{{workspace}}/", "{{home}}/", "{{contained_project}}/")
     )
     if not (expected_wrapper.startswith("/") or public_wrapper) or not argv or argv[0] != expected_wrapper:
-        return None, "contained sink did not use the generated absolute Guard CLI"
+        return None, "contained sink did not use an approved Guard wrapper path"
     if len(argv) != 12 or argv[1:10] != [
         "execute-contained-test",
         "--guard-home",

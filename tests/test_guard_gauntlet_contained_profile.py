@@ -317,7 +317,7 @@ def test_contained_assessment_binds_wrapper_and_cross_project_workspaces(tmp_pat
     wrong_wrapper["expected_wrapper"] = "/fixture/bin/fake-wrapper"
     result = assess_contained_execution([case], **wrong_wrapper)
     assert result["profile_pass"] is False
-    assert "absolute Guard CLI" in result["cases"][0]["reason"]
+    assert "approved Guard wrapper path" in result["cases"][0]["reason"]
 
 
 def test_contained_assessment_binds_equals_form_cross_project_workspace(tmp_path):
@@ -353,7 +353,7 @@ def test_contained_wrapper_accepts_only_known_redacted_absolute_alias():
         expected_home="/fixture/home",
     )
     assert invalid[0] is None
-    assert "absolute Guard CLI" in invalid[1]
+    assert "approved Guard wrapper path" in invalid[1]
 
 
 def test_contained_request_workspace_accepts_only_absolute_same_realpath(tmp_path):

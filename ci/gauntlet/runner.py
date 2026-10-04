@@ -186,6 +186,17 @@ def _public_native_extension_evidence(edge: object, replacements: dict[str, str]
     return redact_value(result["command_extensions"], replacements)
 
 
+def _scenario_tools(scenario: Scenario) -> str:
+    """Expose the real tools required by the task, without unrelated probes."""
+    if scenario.oracle == "home-copy-task":
+        return "bash,read"
+    if scenario.commands:
+        return "bash"
+    if scenario.oracle == "blocked-read":
+        return "read"
+    return ",".join(scenario.required_tools) or "read,write,edit,bash"
+
+
 def run_case(
     scenario: Scenario,
     *,
@@ -320,7 +331,7 @@ def run_case(
                 "--no-session",
                 "--no-title",
                 "--tools",
-                "read,write,edit,bash",
+                _scenario_tools(scenario),
                 "--max-time",
                 str(int(timeout)),
                 "--mode",

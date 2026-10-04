@@ -15,6 +15,21 @@ from ci.gauntlet.proofs import task_tools_match
 from ci.gauntlet.provider import InferenceRelay, canary_present, validate_endpoint
 
 
+def test_scenario_tool_inventory_matches_actual_task():
+    from ci.gauntlet.runner import _scenario_tools
+
+    for scenario in load_catalog():
+        tools = set(_scenario_tools(scenario).split(","))
+        if scenario.oracle == "home-copy-task":
+            assert tools == {"bash", "read"}
+        elif scenario.commands:
+            assert tools == {"bash"}
+        elif scenario.oracle == "blocked-read":
+            assert tools == {"read"}
+        else:
+            assert set(scenario.required_tools) <= tools
+
+
 def observed_case(command="echo fixture", *, blocked=False):
     """Construct judge inputs only; no real runtime success is claimed here."""
     args = {"command": command}
@@ -304,6 +319,16 @@ def test_extension_permission_denial_requires_native_binding_evidence():
         "evaluation_error": None,
     }
     assert assess_case(scenario, case)["outcome"] == "pass"
+    permission_observation = case["native_extension_evidence"]["permission_observations"][0]
+    permission_observation["permission_id"] = "command.ollama.permission.push"
+    assert assess_case(scenario, case)["outcome"] != "pass"
+    permission_observation["permission_id"] = "command.ollama.permission.rm"
+    case["native_extension_evidence"]["permission_observations"] = []
+    binding["observation_count"] = 1
+    assert assess_case(scenario, case)["outcome"] == "pass"
+    case["extension_control"]["permission_id"] = "command.ollama.permission.push"
+    assert assess_case(scenario, case)["outcome"] != "pass"
+    case["extension_control"]["permission_id"] = "command.ollama.permission.rm"
     case["native_receipt"] = None
     assert assess_case(scenario, case)["outcome"] != "pass"
     case["native_receipt"] = dict(receipt)

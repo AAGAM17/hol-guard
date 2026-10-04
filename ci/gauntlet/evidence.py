@@ -14,6 +14,11 @@ from .proofs import BLOCK_REASONS, guard_inventory, required_checks, task_calls_
 from .transport import reconcile_rounds
 
 TRANSCRIPT_LIMIT = 16 * 1024 * 1024
+_OLLAMA_PERMISSION_RULE_CONTRACT = (
+    "command.ollama",
+    "command.ollama.rm",
+    "command.ollama.permission.rm",
+)
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -335,7 +340,7 @@ def _assess_extension_permission_block(
     if (
         control.get("extension_id") != "command.ollama"
         or control.get("rule_id") != "command.ollama.rm"
-        or not isinstance(control.get("permission_id"), str)
+        or control.get("permission_id") != "command.ollama.permission.rm"
         or control.get("control_revision") != binding["control_revision"]
         or control.get("permission_state") != "disabled"
     ):
@@ -363,6 +368,12 @@ def _assess_extension_permission_block(
     ]
     if len(matching_rules) != 1:
         return "harness-error", "native evidence does not match the configured ollama remove rule"
+    if (
+        matching_rules[0].get("extension_id"),
+        matching_rules[0].get("rule_id"),
+        control.get("permission_id"),
+    ) != _OLLAMA_PERMISSION_RULE_CONTRACT:
+        return "harness-error", "native rule is not independently mapped to the configured permission"
     matching_permissions = [
         row
         for row in permissions
@@ -373,6 +384,8 @@ def _assess_extension_permission_block(
         and isinstance(row.get("matcher_evidence"), list)
         and bool(row["matcher_evidence"])
     ]
-    if len(matching_permissions) != 1:
+    # Native v1 may omit a permission row when the matched rule is disabled;
+    # the reviewed rule-to-permission contract above remains the proof.
+    if permissions and (len(permissions) != 1 or len(matching_permissions) != 1):
         return "harness-error", "native evidence does not match the disabled ollama permission"
     return "pass", "actual OMP ollama command blocked by the configured native extension permission"

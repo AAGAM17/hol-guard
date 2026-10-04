@@ -40,6 +40,7 @@ pub(super) fn worktree_add_execution_free(
             "--no-pager",
             "config",
             "--includes",
+            "--show-scope",
             "--null",
             "--get-regexp",
             "^.*$",
@@ -225,16 +226,21 @@ fn git_path(
 
 fn safe_worktree_config(output: &[u8]) -> Option<bool> {
     let output = std::str::from_utf8(output).ok()?;
-    for record in output.split('\0').filter(|record| !record.is_empty()) {
+    let mut records = output.split('\0');
+    while let Some(scope) = records.next() {
+        if scope.is_empty() {
+            continue;
+        }
+        let record = records.next()?;
         let (key, value) = record.split_once('\n')?;
         let key = key.to_ascii_lowercase();
         if key == "core.bare" && super::git_config::enabled_boolean(value) {
             return Some(false);
         }
         // `worktree add` and each probe below use built-in commands, local
-        // refs, and no diff/editor/credential operation. Those unrelated
-        // settings are inert for this bounded operation; execution-capable
-        // checkout and transport settings remain denied below.
+        // refs, and no diff/editor operation. A global credential helper is
+        // not consulted for this local-ref operation; retain the deny floor
+        // for repository-scoped helpers and execution-capable settings.
         if key == "core.hookspath"
             || key == "core.worktree"
             || key == "core.fsmonitor"
@@ -245,7 +251,7 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
             || key.starts_with("hook.")
             || key.starts_with("pager.")
             || key.starts_with("filter.")
-            || key.starts_with("credential.")
+            || (key.starts_with("credential.") && scope != "global")
             || key.starts_with("include")
             || key.starts_with("extensions.")
             || key.starts_with("submodule.")

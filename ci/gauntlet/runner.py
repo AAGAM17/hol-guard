@@ -70,15 +70,21 @@ def run_process(
                 time.sleep(0.1)
         finally:
             # The session belongs to this run, including when the operator interrupts it.
-            if process.poll() is None:
+            previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+            try:
                 with suppress(ProcessLookupError):
                     os.killpg(process.pid, signal.SIGTERM)
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
+                    pass
+                finally:
+                    # Reaping the leader does not prove that its descendants exited.
                     with suppress(ProcessLookupError):
                         os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=5)
+            finally:
+                signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
     return process.returncode, timed_out
 
 

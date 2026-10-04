@@ -276,6 +276,135 @@ def test_interrupted_run_reaps_its_owned_host_process(tmp_path, monkeypatch):
     assert children[0].poll() is not None
 
 
+def test_completed_leader_does_not_leave_a_term_ignoring_descendant(tmp_path):
+    """A leader's normal exit must not let its process group escape cleanup."""
+    import os
+    import subprocess
+    import sys
+
+    from ci.gauntlet.runner import run_process
+
+    if os.name != "posix":
+        pytest.skip("Gauntlet process containment is POSIX-only")
+    child_code = (
+        "import os, signal, time; from pathlib import Path; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "Path('child.pid').write_text(str(os.getpid())); time.sleep(60)"
+    )
+    parent_code = (
+        "import subprocess, sys, time; from pathlib import Path; "
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
+        "\nwhile not Path('child.pid').exists(): time.sleep(0.01)"
+    )
+    code, timed_out = run_process(
+        [sys.executable, "-c", parent_code],
+        cwd=tmp_path,
+        env=dict(os.environ),
+        output=tmp_path / "stdout.log",
+        error_output=tmp_path / "stderr.log",
+        timeout=10,
+    )
+    assert (code, timed_out) == (0, False)
+    pid = int((tmp_path / "child.pid").read_text())
+    state = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, timeout=5)
+    assert not state.stdout.strip() or state.stdout.strip().startswith("Z")
+
+
+def test_interrupt_during_termination_still_kills_and_reaps(tmp_path, monkeypatch):
+    """An exception in the graceful wait must run the final kill and reap."""
+    import os
+    import subprocess
+    import sys
+
+    from ci.gauntlet import runner
+
+    if os.name != "posix":
+        pytest.skip("Gauntlet process containment is POSIX-only")
+    original_popen = subprocess.Popen
+    children = []
+
+    def interrupt_wait(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        original_wait = process.wait
+        waits = 0
+
+        def wait(*args, **kwargs):
+            nonlocal waits
+            waits += 1
+            if waits == 1:
+                raise KeyboardInterrupt
+            return original_wait(*args, **kwargs)
+
+        process.wait = wait
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", interrupt_wait)
+    with pytest.raises(KeyboardInterrupt):
+        runner.run_process(
+            [sys.executable, "-c", "pass"],
+            cwd=tmp_path,
+            env=dict(os.environ),
+            output=tmp_path / "stdout.log",
+            error_output=tmp_path / "stderr.log",
+            timeout=10,
+        )
+    assert len(children) == 1
+    assert children[0].poll() is not None
+
+
+def test_upstream_receives_stable_routing_headers():
+    """Check transport wiring, not only the header-construction helper."""
+    import threading
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    received = []
+
+    class Upstream(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            received.append(dict(self.headers))
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(b"data: [DONE]\n\n")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with InferenceRelay(
+            base_url=f"http://127.0.0.1:{server.server_port}/v1",
+            model="unit-transport-only",
+            api_key="test-only-key",
+            canary="synthetic-test-canary",
+            identity="unit-transport-only",
+            allow_loopback=True,
+        ) as relay:
+            for _ in range(2):
+                request = urllib.request.Request(
+                    relay.base_url + "/chat/completions",
+                    data=json.dumps({"model": "agent", "messages": []}).encode(),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    assert response.read() == b"data: [DONE]\n\n"
+        assert len(received) == 2
+        headers = [{key.lower(): value for key, value in row.items()} for row in received]
+        assert headers[0]["user-agent"] == "hol-guard-gauntlet/1.0"
+        assert headers[0]["x-opencode-session"] == headers[1]["x-opencode-session"]
+        assert headers[0]["authorization"] == "Bearer test-only-key"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 @pytest.mark.parametrize("workspace", ["/tmp/ordinary project/café", "/tmp/author's project"])
 def test_command_placeholders_are_shell_quoted_without_changing_native_paths(workspace):
     """Preserve paths with spaces or quotes through shell rendering and evidence redaction."""

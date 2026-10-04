@@ -141,6 +141,8 @@ fn bounded_selector_path(
     let Some((base, selector)) = path.rsplit_once(':') else {
         return BoundedSelectorPath::NotSelector;
     };
+    // This parser is reached only by the OMP-specific bounded read helpers;
+    // keep the host's non-range selector names here without widening generic reads.
     let selector_like = selector.eq_ignore_ascii_case("raw")
         || selector.eq_ignore_ascii_case("conflicts")
         || selector.eq_ignore_ascii_case("img")
@@ -256,6 +258,9 @@ fn verified_selector_candidate(
             };
             return Some(canonical_root.join(relative));
         }
+        // Location alone is not a denial reason for OMP's names-only listing.
+        // Callers still canonicalize this path and apply every sensitive-root,
+        // credential, foreign-home, and hidden-component check below.
         return Some(expanded_path.to_path_buf());
     }
     let root = cwd

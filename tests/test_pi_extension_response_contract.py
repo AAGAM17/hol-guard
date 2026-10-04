@@ -212,25 +212,28 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
     assert regular_handler["preserved"] is True
     assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
 
-    # Older OMP event bridges may omit isDirectory while retaining the
-    # resolved directory path. Treat that shape conservatively as a listing.
-    legacy_directory_handler = _run_generated_callback_payload(
+    # A resolved path without the explicit directory flag can also describe a
+    # file result. Keep the source-file re-read path for that ambiguous shape.
+    legacy_file_text = "print(1)\n"
+    legacy_file_digest = hashlib.sha256(legacy_file_text.encode()).hexdigest()
+    legacy_file_handler = _run_generated_callback_payload(
         source,
-        content,
+        [{"type": "text", "text": legacy_file_text}],
         {
             "decision": "allow",
             "model_output_action": "allow_original",
-            "reviewed_output_sha256": digest,
+            "reviewed_output_sha256": legacy_file_digest,
         },
         tool_name="read",
-        tool_input={"path": str(tmp_path / "workspace")},
+        tool_input={"path": str(tmp_path / "legacy.py")},
         details={
-            "resolvedPath": str(tmp_path / "workspace"),
-            "meta": {"source": {"type": "path", "value": str(tmp_path / "workspace")}},
+            "resolvedPath": str(tmp_path / "legacy.py"),
+            "meta": {"source": {"type": "path", "value": str(tmp_path / "legacy.py")}},
         },
     )
-    assert legacy_directory_handler["preserved"] is True
-    assert "guard_source_ref" not in legacy_directory_handler["payload"]
+    assert legacy_file_handler["preserved"] is True
+    assert legacy_file_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
+    assert legacy_file_handler["payload"]["guard_source_ref"]["path"] == str(tmp_path / "legacy.py")
 
 
 def test_generated_omp_selector_review_uses_host_resolved_source_path(tmp_path: Path) -> None:

@@ -344,7 +344,6 @@ def _run_resident_hook_request(
             claim_saved_approval=parsed.claim_saved_approval,
             claimed_saved_allow_hash=parsed.claimed_saved_allow_hash,
             claimed_approval_request_id=parsed.claimed_approval_request_id,
-            policy_snapshot=parsed.policy_snapshot,
         )
     except Exception:
         return _native_worker_fail_safe_result(

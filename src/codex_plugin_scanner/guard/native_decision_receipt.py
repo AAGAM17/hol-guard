@@ -31,8 +31,11 @@ _PROMPT_RISK_CLASSES = (
 )
 _OPTIONAL_FIELDS = frozenset(
     {
-        "command_extensions", "origin_authentication", "execution_intent_digest",
-        "prompt_risk_classes", "business_review_binding",
+        "command_extensions",
+        "origin_authentication",
+        "execution_intent_digest",
+        "prompt_risk_classes",
+        "business_review_binding",
     }
 )
 _REQUIRED_FIELDS = frozenset(

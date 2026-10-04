@@ -104,10 +104,16 @@ def test_business_review_binding_is_strict_and_changes_receipt_identity() -> Non
         assert validate_native_decision_receipt(_receipt(business_review_binding=invalid)) is None
     # Shared vector with native_hook_receipt::tests in the Rust producer.
     native_vector = _receipt(
-        request_id="request", harness="codex", event_name="PreToolUse",
-        policy_digest=None, rule_digest=None, runtime_identity=None,
-        model_output_action="not_applicable", reason_code="test",
-        deadline_budget_ms=100, business_review_binding="b" * 64,
+        request_id="request",
+        harness="codex",
+        event_name="PreToolUse",
+        policy_digest=None,
+        rule_digest=None,
+        runtime_identity=None,
+        model_output_action="not_applicable",
+        reason_code="test",
+        deadline_budget_ms=100,
+        business_review_binding="b" * 64,
     )
     assert validate_native_decision_receipt(native_vector) == native_vector
     assert native_vector["decision_id"] == "c3613993d236fb3d798bcbcd227fb80875328e5bb072590151e17bad67b424ed"

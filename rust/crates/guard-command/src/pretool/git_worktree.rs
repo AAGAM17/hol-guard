@@ -245,6 +245,7 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
             || key.starts_with("hook.")
             || key.starts_with("pager.")
             || key.starts_with("filter.")
+            || key.starts_with("credential.")
             || key.starts_with("include")
             || key.starts_with("extensions.")
             || key.starts_with("submodule.")

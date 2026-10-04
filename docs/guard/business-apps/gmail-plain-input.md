@@ -24,7 +24,8 @@ This is a deliberately narrow preparation profile, not general MIME support:
   parameters or alternate whitespace forms are unsupported. MIME-Version, if
   present, must be `1.0`. Only 7bit/8bit transfer encodings are supported; non-ASCII
   body text requires both explicit UTF-8 and 8bit. Body text must be valid UTF-8,
-  contain no NUL/control bytes except tab/CRLF, use CRLF line breaks and remain
+  contain no NUL/Unicode controls except tab/CRLF, reject Unicode line/paragraph
+  separators, use CRLF line breaks and remain
   within the 998-byte line limit. The entire wire already has a 256 KiB cap.
 - Attachments, multipart, HTML, base64/quoted-printable transfer bodies, threadId,
   reply/resend/sender overrides, folding and all other shapes reject. Never catch

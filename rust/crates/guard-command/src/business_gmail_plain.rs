@@ -176,10 +176,10 @@ impl GmailPlainInputV1 {
             return Err(Error::Invalid);
         }
         let body_text = std::str::from_utf8(body).map_err(|_| Error::Invalid)?;
-        if body_text
-            .chars()
-            .any(|ch| ch.is_control() && !matches!(ch, '\r' | '\n' | '\t'))
-        {
+        if body_text.chars().any(|ch| {
+            (ch.is_control() && !matches!(ch, '\r' | '\n' | '\t'))
+                || matches!(ch, '\u{2028}' | '\u{2029}')
+        }) {
             return Err(Error::Unsupported);
         }
         for (index, byte) in body.iter().enumerate() {

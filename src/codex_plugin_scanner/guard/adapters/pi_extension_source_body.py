@@ -264,7 +264,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "    });\n"
         "    if (response.status === 404 && options.allowRecovery !== false) {\n"
         "      clearTimeout(timeoutHandle);\n"
-        "      try { await response.body?.cancel(); } catch {}\n"
+        "      try { void response.body?.cancel().catch(() => {}); } catch {}\n"
         "      const remaining = deadlineAt - GUARD_DAEMON_READINESS_RESPONSE_RESERVE_MS - Date.now();\n"
         "      let recovered = false;\n"
         "      if (remaining > 0) {\n"

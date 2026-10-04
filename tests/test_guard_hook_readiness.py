@@ -307,7 +307,7 @@ globalThis.fetch = async (url, options) => {
   if (options.headers['X-Guard-Token'] !== 'fixture-token') throw Error('authentication');
   const status = statuses[fetches++];
   if (status === undefined) throw Error('unbounded retry');
-  return {status, ok: status === 200, body: {async cancel() {}},
+  return {status, ok: status === 200, body: {cancel() { return new Promise(() => {}); }},
     value: {ready: status === 200, native_required: true, native_route: 'native_resident',
       workspace_acknowledged: true, worker_ready: true}};
 };

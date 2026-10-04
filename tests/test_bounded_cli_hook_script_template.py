@@ -172,6 +172,22 @@ def test_generated_client_runs_under_macos_system_python(tmp_path: Path, event_n
         assert completed.returncode == 0
 
 
+@pytest.mark.parametrize("events", [("post_tool_use", "PreToolUse"), ("pre_tool_use", "PostToolUse")])
+def test_generated_grok_client_denies_conflicting_pretool_labels(tmp_path: Path, events) -> None:
+    module = _load_script(tmp_path, harness="grok")
+    system_python = sys.platform == "darwin" and Path("/usr/bin/python3").is_file()
+    interpreter = "/usr/bin/python3" if system_python else sys.executable
+    completed = subprocess.run(
+        [interpreter, "-I", module.__file__],
+        input=json.dumps({"hookEventName": events[0], "hook_event_name": events[1]}),
+        text=True,
+        capture_output=True,
+        timeout=5,
+    )
+    assert json.loads(completed.stdout)["decision"] == "deny"
+    assert "conflict" in completed.stdout
+
+
 @pytest.mark.parametrize("event_name", ["SessionStart", "UserPromptSubmit", "PreToolUse"])
 def test_generated_grok_observer_has_short_transport_budget(
     tmp_path: Path,

@@ -14,6 +14,22 @@ from .bounded_cli_hook_test_support import config as _config
 from .bounded_cli_hook_test_support import runner_result as _runner_result
 
 
+@pytest.mark.parametrize("events", [("post_tool_use", "PreToolUse"), ("pre_tool_use", "PostToolUse")])
+def test_frozen_grok_client_denies_conflicting_pretool_labels(tmp_path: Path, monkeypatch, events) -> None:
+    def unexpected_transport(*args, **kwargs):
+        raise AssertionError("conflicting event labels must not reach transport")
+
+    monkeypatch.setattr(bounded_cli_hook_daemon, "try_daemon_hook", unexpected_transport)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        code = bounded_cli_hook_bridge.run_bounded_cli_hook(
+            _config(tmp_path, harness="grok"),
+            input_text=json.dumps({"hookEventName": events[0], "hook_event_name": events[1]}),
+        )
+    assert code == 0
+    assert json.loads(output.getvalue())["decision"] == "deny"
+
+
 @pytest.mark.parametrize("event", ["SessionStart", "PostToolUse", "UserPromptSubmit", "PreToolUse"])
 def test_frozen_grok_transport_budget_and_failure(tmp_path: Path, event: str) -> None:
     from codex_plugin_scanner.guard.adapters.bounded_cli_hook_failure import failure_payload

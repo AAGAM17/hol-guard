@@ -146,6 +146,15 @@ def _compact(event_name: str) -> str:
     return event_name.replace("_", "").replace("-", "").lower()
 
 
+def _grok_pretool_event_conflict(input_text: str) -> bool:
+    payload = _json_object(input_text) or {}
+    events = {_compact(value.strip()) for key in _EVENT_NAME_KEYS if isinstance(value := payload.get(key), str)}
+    if "pretoolcall" in events:
+        events.discard("pretoolcall")
+        events.add("pretooluse")
+    return "pretooluse" in events and len(events) > 1
+
+
 def _event_name(input_text: str) -> str:
     payload = _json_object(input_text or "{}")
     if payload is not None:
@@ -482,6 +491,8 @@ def _failure_payload(event_name: str, reason: str) -> tuple[dict[str, object], i
 
 def _fail(input_text: str, *, reason: str = _FAILURE_REASON) -> int:
     event_name = _event_name(input_text)
+    if HARNESS == "grok" and _grok_pretool_event_conflict(input_text):
+        event_name = "PreToolUse"
     payload, exit_code = _failure_payload(event_name, reason)
     sys.stdout.write(json.dumps(payload, ensure_ascii=True, separators=(",", ":")) + "\\n")
     if exit_code == 2 and HARNESS in {"kimi", "zcode", "devin"}:
@@ -640,6 +651,8 @@ def main() -> int:
         )
     except (TimeoutError, OSError, ValueError):
         return _fail("{}")
+    if HARNESS == "grok" and _grok_pretool_event_conflict(prefix):
+        return _fail(prefix, reason="HOL Guard blocked this action because hook event labels conflict.")
     stamped_prefix = _stamp_hook_input(prefix)
     result = _post_hook(stamped_prefix)
     if result is None or time.monotonic() >= _HOOK_DEADLINE_MONOTONIC:

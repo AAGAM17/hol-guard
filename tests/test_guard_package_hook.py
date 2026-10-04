@@ -92,7 +92,7 @@ def _fingerprint(public_key_pem: bytes) -> str:
 
 
 def _bundle_response(*, action: str, policy_rules: list[dict[str, object]] | None = None) -> dict[str, object]:
-    generated_at = datetime(2026, 5, 19, tzinfo=timezone.utc)
+    generated_at = datetime.now(timezone.utc).replace(microsecond=0)
     expires_at = generated_at + timedelta(hours=12)
     bundle = {
         "advisories": [

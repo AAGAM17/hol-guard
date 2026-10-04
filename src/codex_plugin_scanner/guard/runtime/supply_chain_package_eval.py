@@ -43,6 +43,7 @@ from .lockfile_evaluation_support import (
     parse_lockfile_with_budget,
 )
 from .lockfile_parse_result import (
+    LOCKFILE_PARSER_VERSION as LOCKFILE_PARSER_VERSION,
     LockfileParseResult,
     incomplete_lockfile_result,
     parse_lockfile_text,
@@ -4820,6 +4821,7 @@ def _bundle_package_label(package: SupplyChainBundlePackage, *, version: str | N
 from .supply_chain_package_services import (  # noqa: E402
     _build_request_payload,
     _normalized_supply_chain_evaluate_url,
+    _npm_registry_resolved_version as _npm_registry_resolved_version,
     _registry_resolved_target_version,
     _scan_external_tarball,
     _workspace_fingerprint,

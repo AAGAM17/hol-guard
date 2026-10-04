@@ -147,8 +147,10 @@ fn payload_with_command(payload: &Value, command: &str) -> Value {
             }
         }
     }
-    if object.contains_key("command") {
-        object.insert("command".to_owned(), command.into());
+    for command_key in ["command", "cmd", "shell_command", "shellCommand"] {
+        if object.contains_key(command_key) {
+            object.insert(command_key.to_owned(), command.into());
+        }
     }
     projected
 }

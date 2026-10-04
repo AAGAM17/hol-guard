@@ -82,21 +82,7 @@ pub(super) fn bounded_omp_directory_read_target(
         return false;
     };
     canonical.is_dir()
-        && directory_listing_scope_allowed(&canonical, cwd)
         && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true)
-}
-
-fn directory_listing_scope_allowed(canonical: &std::path::Path, cwd: Option<&str>) -> bool {
-    let Some(cwd) = cwd else {
-        return false;
-    };
-    let Ok(workspace) = std::fs::canonicalize(cwd) else {
-        return false;
-    };
-    canonical.starts_with(&workspace)
-        || workspace
-            .parent()
-            .is_some_and(|parent| canonical.parent() == Some(parent))
 }
 
 pub(super) fn existing_regular_read_target(

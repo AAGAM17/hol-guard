@@ -1,15 +1,15 @@
 use super::super::safe_reads::bounded_omp_directory_read_target;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn fixture_root() -> std::path::PathBuf {
+    let nonce = FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target")
         .join(format!(
-            "guard-directory-read-{}-{}",
+            "guard-directory-read-{}-{nonce}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
         ))
 }
 
@@ -34,35 +34,36 @@ fn read_directory(
 }
 
 #[test]
-fn omp_directory_reads_allow_project_and_immediate_sibling_only() {
+fn omp_directory_reads_allow_verified_ordinary_directories() {
     let root = fixture_root();
     let home = root.join("home");
     let project = home.join("project");
     let sibling = home.join("sibling-project");
-    let unrelated = root.join("unrelated-project");
+    let nested_sibling = sibling.join("src");
+    let ordinary_home = home.join("other-ordinary-project");
+    let ordinary_outside_workspace = root.join("ordinary-outside-workspace");
     std::fs::create_dir_all(&project).unwrap();
-    std::fs::create_dir_all(&sibling).unwrap();
-    std::fs::create_dir_all(&unrelated).unwrap();
+    std::fs::create_dir_all(&nested_sibling).unwrap();
+    std::fs::create_dir_all(&ordinary_home).unwrap();
+    std::fs::create_dir_all(&ordinary_outside_workspace).unwrap();
 
-    let project_target = project.to_string_lossy().into_owned();
-    let project_decision = read_directory("omp", &project_target, &home, &project);
-    assert_eq!(project_decision.minimum_action, "allow");
-    assert_eq!(
-        project_decision.reason_code,
-        "native_exact_safe_directory_read"
-    );
-    assert!(project_decision.explicitly_benign);
-
-    let sibling_decision = read_directory("omp", "../sibling-project", &home, &project);
-    assert_eq!(sibling_decision.minimum_action, "allow");
-    assert_eq!(
-        sibling_decision.reason_code,
-        "native_exact_safe_directory_read"
-    );
-
-    let unrelated_target = unrelated.to_string_lossy().into_owned();
-    let unrelated_decision = read_directory("omp", &unrelated_target, &home, &project);
-    assert_ne!(unrelated_decision.minimum_action, "allow");
+    for target in [
+        &project,
+        &sibling,
+        &nested_sibling,
+        &ordinary_home,
+        &home,
+        &ordinary_outside_workspace,
+    ] {
+        let target = target.to_string_lossy().into_owned();
+        let decision = read_directory("omp", &target, &home, &project);
+        assert_eq!(decision.minimum_action, "allow", "{target}");
+        assert_eq!(
+            decision.reason_code, "native_exact_safe_directory_read",
+            "{target}"
+        );
+        assert!(decision.explicitly_benign, "{target}");
+    }
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -77,6 +78,7 @@ fn directory_allow_does_not_allow_dotenv_or_credential_file_reads() {
     std::fs::create_dir_all(&project).unwrap();
     std::fs::create_dir_all(&ssh).unwrap();
     std::fs::create_dir_all(&aws).unwrap();
+    std::fs::create_dir_all(home.join(".env")).unwrap();
     std::fs::write(project.join(".env"), "directory-listing-secret-canary").unwrap();
     std::fs::write(project.join("credentials.json"), "credential-canary").unwrap();
 
@@ -101,11 +103,20 @@ fn directory_allow_does_not_allow_dotenv_or_credential_file_reads() {
         project.join("credentials.json"),
         home.join(".ssh"),
         home.join(".aws"),
+        home.join(".env"),
+        std::path::PathBuf::from("/etc"),
+        std::path::PathBuf::from("/var"),
     ] {
         let target = target.to_string_lossy().into_owned();
         let decision = read_directory("omp", &target, &home, &project);
         assert_ne!(decision.minimum_action, "allow", "{target}");
         assert!(!decision.explicitly_benign, "{target}");
+    }
+    #[cfg(unix)]
+    if std::path::Path::new("/Users/Shared").is_dir() {
+        let decision = read_directory("omp", "/Users/Shared", &home, &project);
+        assert_ne!(decision.minimum_action, "allow", "foreign user home");
+        assert!(!decision.explicitly_benign, "foreign user home");
     }
 
     let _ = std::fs::remove_dir_all(root);

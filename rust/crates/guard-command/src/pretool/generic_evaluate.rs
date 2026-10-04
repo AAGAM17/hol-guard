@@ -177,6 +177,27 @@ pub(super) fn evaluate_signals(
         }
     }
     if action_type == PreToolActionTypeV1::FileRead
+        && event == "PreToolUse"
+        && harness == "omp"
+        && signals.tool_name.as_deref() == Some("read")
+        && !signals.sensitive_target
+        && signals.url_values.is_empty()
+        && signals.command.is_none()
+        && signals.path_values.len() == 1
+        && super::super::safe_reads::bounded_omp_directory_read_target(
+            &signals.path_values[0],
+            home_dir,
+            cwd,
+        )
+    {
+        return generic_result(
+            action,
+            "allow",
+            "native_exact_safe_directory_read",
+            "The Rust command authority proved this bounded directory listing explicitly benign without granting file-content access.",
+        );
+    }
+    if action_type == PreToolActionTypeV1::FileRead
         && !signals.sensitive_target
         && signals.url_values.is_empty()
         && signals.path_values.len() == 1

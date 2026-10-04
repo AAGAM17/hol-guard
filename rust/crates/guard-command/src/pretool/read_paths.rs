@@ -37,6 +37,68 @@ pub(super) fn bounded_file_read_target(
     bounded_read_target(value, home_dir, cwd, false)
 }
 
+/// Prove the exact read-only directory target used by OMP's native tree
+/// listing. This is deliberately separate from the file-read proof: a
+/// directory allow only authorizes bounded entry names, never file contents.
+pub(super) fn bounded_omp_directory_read_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    if value.trim() != value || !verified_path_context(home_dir, cwd) {
+        return false;
+    }
+    let path = value.strip_prefix(r"\\?\").unwrap_or(value);
+    if path.is_empty() || path.len() > 4096 {
+        return false;
+    }
+    if path.contains([
+        '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '*', '?', '[', ']', '{', '}',
+    ]) {
+        return false;
+    }
+    if path.starts_with('~') && expand_home_read_path(path, home_dir).is_none() {
+        return false;
+    }
+    let expanded = expand_home_read_path(path, home_dir).unwrap_or_else(|| path.to_owned());
+    let expanded_path = std::path::Path::new(&expanded);
+    let candidate = if expanded_path.is_absolute() {
+        expanded_path.to_path_buf()
+    } else {
+        let Some(root) = cwd
+            .and_then(|root| {
+                expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))
+            })
+            .filter(|root| std::path::Path::new(root).is_absolute())
+        else {
+            return false;
+        };
+        std::path::Path::new(&root).join(expanded_path)
+    };
+    if !candidate.is_absolute() || guard_secure_fs::contains_symlink_component(&candidate) {
+        return false;
+    }
+    let Ok(canonical) = std::fs::canonicalize(&candidate) else {
+        return false;
+    };
+    canonical.is_dir()
+        && directory_listing_scope_allowed(&canonical, cwd)
+        && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true)
+}
+
+fn directory_listing_scope_allowed(canonical: &std::path::Path, cwd: Option<&str>) -> bool {
+    let Some(cwd) = cwd else {
+        return false;
+    };
+    let Ok(workspace) = std::fs::canonicalize(cwd) else {
+        return false;
+    };
+    canonical.starts_with(&workspace)
+        || workspace
+            .parent()
+            .is_some_and(|parent| canonical.parent() == Some(parent))
+}
+
 pub(super) fn existing_regular_read_target(
     value: &str,
     home: Option<&str>,
@@ -361,3 +423,7 @@ pub(super) fn lexical_read_path(value: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "read_output_tests.rs"]
 mod execution_output_tests;
+
+#[cfg(test)]
+#[path = "directory_read_tests.rs"]
+mod directory_read_tests;

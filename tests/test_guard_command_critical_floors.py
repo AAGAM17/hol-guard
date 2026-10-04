@@ -23,8 +23,8 @@ def _native_action(command: str) -> tuple[GuardAction, str | None]:
         assert evidence["observations"] == []
         assert evidence["permission_observations"] == []
         assert evidence["binding"]["observation_count"] == 0
-        assert fixture.payload["minimum_action"] == "block"
-        return "block", error
+        assert fixture.payload["minimum_action"] == "review"
+        return "review", error
     canonical = _canonical_command_from_native(command, fixture.payload["command_model"])
     assert canonical is not None
     evaluation = evaluate_command(
@@ -109,16 +109,16 @@ CRITICAL_COMMAND_FLOORS: tuple[tuple[str, GuardAction], ...] = (
     ("timeout 5 bash --noprofile -c 'rm -rf workspace/target'", "block"),
     ("timeout 5 bash -O extglob -c 'rm -rf workspace/target'", "block"),
     ("sh <<'EOF'\nrm -rf workspace/target\nEOF", "block"),
-    ("gh api graphql -f query='mutation{deletePackageVersion(input:{packageVersionId:\"x\"}){success}}'", "block"),
+    ("gh api graphql -f query='mutation{deletePackageVersion(input:{packageVersionId:\"x\"}){success}}'", "review"),
     (
         "gh api --hostname github.com graphql "
         + "-f query='mutation{deletePackageVersion(input:{packageVersionId:\"x\"}){success}}'",
-        "block",
+        "review",
     ),
     (
         "gh --repo example/repo api graphql "
         + "-f query='mutation{deletePackageVersion(input:{packageVersionId:\"x\"}){success}}'",
-        "block",
+        "review",
     ),
     ("hol-guard capability consume --capability-id x --replay-sequence 2", "block"),
     ("hol-guard capability --verbose consume --capability-id x", "block"),

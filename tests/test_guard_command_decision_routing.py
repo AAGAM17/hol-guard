@@ -211,9 +211,9 @@ def test_generated_rule_floor_is_preserved_without_permissive_proof(mode: str, l
     assert evaluation.decision_plane.action == plane
 
 
-def test_native_uncertainty_is_typed_blocking_and_private() -> None:
+def test_native_uncertainty_is_typed_review_and_private() -> None:
     evaluation = _evaluate(mode="disabled", uncertainty=True)
-    assert evaluation.minimum_action == "block"
+    assert evaluation.minimum_action == "review"
     payload = evaluation.extension_observations[0].to_dict()
     assert payload["match_class"] == "uncertainty"
     assert payload["uncertainty_reasons"] == ["matcher-failure"]

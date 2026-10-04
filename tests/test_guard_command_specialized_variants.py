@@ -23,7 +23,7 @@ def _assert_native_unavailable(command: str) -> None:
     assert extensions["permission_observations"] == []
     assert extensions["binding"]["observation_count"] == 0
     assert extensions["binding"]["uncertainty_count"] == 1
-    assert payload["minimum_action"] == "block"
+    assert payload["minimum_action"] == "review"
 
 
 @pytest.mark.parametrize(

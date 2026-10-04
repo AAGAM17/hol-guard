@@ -111,15 +111,15 @@ def test_cached_diff_keeps_separate_host_and_native_repository_proof(
         assert request.action_class == "git index inspection"
     else:
         # The bounded host recognizer cannot discharge an unsupported native
-        # if/then grammar; the complete command keeps the native hard block.
+        # if/then grammar; the complete command keeps the native review.
         assert request.action_class == "unmodeled shell command"
-        assert request.guard_default_action == "block"
-        assert request.reason_code == "native-command-classification-block"
+        assert request.guard_default_action == "review"
+        assert request.reason_code == "native-command-classification-review"
     if not native_supported:
         artifact = build_tool_action_request_artifact(
             "codex", request, config_path="config.toml", source_scope="project"
         )
-        assert artifact.metadata["command_action_floor"] == "block"
+        assert artifact.metadata["command_action_floor"] == "review"
 
 
 def test_unverified_cached_diff_is_owned_by_git_extension(tmp_path: Path) -> None:

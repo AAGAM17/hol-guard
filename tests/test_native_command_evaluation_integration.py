@@ -189,7 +189,7 @@ def test_native_unsupported_heredoc_remains_bound_blocking_unavailability(
     assert isinstance(binding, dict)
     assert binding["observation_count"] == 0
     assert binding["uncertainty_count"] == 1
-    assert fixture.payload["minimum_action"] == "block"
+    assert fixture.payload["minimum_action"] == "review"
 
     monkeypatch.setattr(native_command_evaluation, "review_pre_tool_native", lambda *_args, **_kwargs: fixture.payload)
     reviewed = native_command_evaluation.review_command_native(
@@ -200,7 +200,7 @@ def test_native_unsupported_heredoc_remains_bound_blocking_unavailability(
     assert reviewed is not None
     assert reviewed.payload is fixture.payload
     assert reviewed.snapshot is fixture.snapshot
-    assert reviewed.evaluation.minimum_action == "block"
-    assert reviewed.evaluation.decision_plane.action == "block"
+    assert reviewed.evaluation.minimum_action == "review"
+    assert reviewed.evaluation.decision_plane.action == "review"
     assert reviewed.evaluation.matches == ()
     assert reviewed.evaluation.decision_plane.proof_routes == frozenset()

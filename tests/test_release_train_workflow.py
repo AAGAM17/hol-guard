@@ -353,9 +353,12 @@ def test_release_publication_reuses_one_hashed_build_artifact() -> None:
     guard_publish = next(step for step in main_steps if step.get("name") == "Publish HOL Guard to PyPI")
     scanner_publish = next(step for step in main_steps if step.get("name") == "Publish plugin-scanner to PyPI")
     assert "steps.pypi_quota.outputs.blocked != 'true'" in guard_publish["if"]
-    assert "steps.pypi_quota.outputs.blocked != 'true'" in scanner_publish["if"]
+    assert scanner_publish["if"] == "steps.pypi.outputs.plugin_scanner_upload == 'true'"
     main_verify = next(step for step in main_steps if step.get("name") == "Download and verify exact PyPI artifacts")
-    assert main_verify["if"] == "steps.pypi_quota.outputs.blocked != 'true'"
+    assert main_verify["if"] == (
+        "steps.pypi_quota.outputs.blocked != 'true' || steps.pypi.outputs.plugin_scanner_upload == 'true'"
+    )
+    assert jobs["publish-main-pypi"]["outputs"]["pypi_deferred"] == "${{ steps.pypi_quota.outputs.blocked }}"
     assert "--artifact-set full" in main_verify["run"]
     assert (
         main_verify["run"].find("for attempt in {1..60}")
@@ -374,6 +377,7 @@ def test_release_publication_reuses_one_hashed_build_artifact() -> None:
 
     workflow_text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
     assert "skip-existing" not in workflow_text
+    assert "--deferred-pypi" in workflow_text
 
 
 def test_alpha_tag_reservation_binds_version_to_build_source() -> None:
@@ -527,7 +531,7 @@ def test_registry_state_is_revalidated_at_each_publication_boundary() -> None:
         assert len(publish_steps) == 2
         assert {step["if"] for step in publish_steps} == {
             "steps.pypi.outputs.hol_guard_upload == 'true' && steps.pypi_quota.outputs.blocked != 'true'",
-            "steps.pypi.outputs.plugin_scanner_upload == 'true' && steps.pypi_quota.outputs.blocked != 'true'",
+            "steps.pypi.outputs.plugin_scanner_upload == 'true'",
         }
         assert {step["with"]["packages-dir"] for step in publish_steps} == {
             "dist-hol-guard/",

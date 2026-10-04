@@ -32,10 +32,7 @@ fn retain_live_failure(
     last_failure: &mut Option<String>,
 ) -> Result<Option<Vec<u8>>, String> {
     match result {
-        Err(error)
-            if error == "native_resident_live_request_failed"
-                || error.starts_with("native_resident_live_request_failed:") =>
-        {
+        Err(error) if error.starts_with("native_resident_live_request_failed:") => {
             *last_failure = Some(error);
             Ok(None)
         }

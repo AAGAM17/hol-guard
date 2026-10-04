@@ -8,7 +8,7 @@ from typing import cast, get_args
 
 import pytest
 
-from codex_plugin_scanner.guard import config, local_supply_chain, native_execution
+from codex_plugin_scanner.guard import config, local_supply_chain, native_execution, native_prompt
 from codex_plugin_scanner.guard.contained_workspace_write_execution import ContainedWriteOperation
 from codex_plugin_scanner.guard.models import GuardAction
 from codex_plugin_scanner.guard.runtime import local_mcp_stdio, runner
@@ -134,12 +134,13 @@ def test_mcp_probe_uses_resolved_or_explicit_guard_home(monkeypatch, tmp_path, e
 
 
 @pytest.mark.parametrize("error", [OSError("transport"), ValueError("payload")])
-def test_expected_prompt_transport_errors_fall_back(monkeypatch, error):
+def test_prompt_transport_errors_are_explicit(monkeypatch, error):
     def fail(*_args, **_kwargs):
         raise error
 
     monkeypatch.setattr(native_execution, "prompt_analyze_native", fail)
-    assert runner._prompt_analyze_native("extract", prompt_text="test") is None
+    with pytest.raises(native_prompt.NativePromptAnalysisError, match="native_prompt_analysis_unavailable"):
+        runner._prompt_analyze_native("extract", prompt_text="test")
 
 
 def test_prompt_programming_errors_are_not_hidden(monkeypatch):
@@ -152,34 +153,31 @@ def test_prompt_programming_errors_are_not_hidden(monkeypatch):
 
 
 @pytest.mark.parametrize("native", [[{"request_id": "r", "request_class": "read"}, None], [None]])
-def test_prompt_extraction_falls_back_on_any_malformed_item(monkeypatch, native):
-    fallback = [object()]
-    monkeypatch.setattr(runner, "_prompt_analyze_native", lambda *_args, **_kwargs: native)
-    monkeypatch.setattr(runner, "_extract_prompt_requests_python", lambda _: fallback)
-    assert runner.extract_prompt_requests("test") is fallback
+def test_prompt_extraction_rejects_every_malformed_native_result(monkeypatch, native):
+    monkeypatch.setattr(native_prompt, "analyze", lambda *_args, **_kwargs: native)
+    assert not hasattr(runner, "_extract_prompt_requests_python")
+    with pytest.raises(native_prompt.NativePromptAnalysisError, match="invalid_result"):
+        runner.extract_prompt_requests("test")
 
 
-def test_artifacts_fall_back_on_any_malformed_item(monkeypatch, tmp_path):
-    fallback = [object()]
+def test_artifact_translation_rejects_partial_native_results(monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "_prompt_policy_path", lambda *_: tmp_path / "policy")
     monkeypatch.setattr(runner, "_prompt_analyze_native", lambda *_args, **_kwargs: [{"artifact_id": "a"}, None])
-    monkeypatch.setattr(runner, "_prompt_requests_to_artifacts_python", lambda **_: fallback)
-    assert (
+    assert not hasattr(runner, "_prompt_requests_to_artifacts_python")
+    with pytest.raises(native_prompt.NativePromptAnalysisError, match="invalid_result"):
         runner.prompt_requests_to_artifacts(
-            detection=SimpleNamespace(harness="claude-code"), context=SimpleNamespace(), requests=[]
+            detection=SimpleNamespace(harness="claude-code"), context=SimpleNamespace(guard_home=tmp_path), requests=[]
         )
-        is fallback
-    )
 
 
 def test_approval_filter_cannot_turn_non_string_into_permission(monkeypatch):
     captured = {}
 
-    def unavailable(*_args, **kwargs):
+    def native_decision(*_args, **kwargs):
         captured.update(kwargs)
-        return None
+        return True
 
-    monkeypatch.setattr(runner, "_prompt_analyze_native", unavailable)
+    monkeypatch.setattr(native_prompt, "analyze", native_decision)
     # Exercise the approval filter independently of the stricter native decoder.
     request = PromptRequest(
         request_id="r",
@@ -278,6 +276,10 @@ def test_prompt_decoder_preserves_valid_remediation():
         {
             "request_id": "r",
             "request_class": "secret_read",
+            "summary": "Secret access",
+            "matched_text": ".env",
+            "severity": 8,
+            "confidence": 0.9,
             "remediation": [{"kind": "approve_once", "label": "Approve", "detail": "One call"}],
         }
     )

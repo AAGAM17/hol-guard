@@ -84,7 +84,12 @@ def _resident_request(
         return None
     if not isinstance(decoded, dict):
         return None
-    if decoded.get("status") != "ok":
+    if operation == "prompt_analyze":
+        # This versioned Rust result has no status field. Requiring status=ok
+        # discarded every successful native reply and hid the failed cutover.
+        if decoded.get("schema") != "guard-prompt-analyze-result.v1" or set(decoded) != {"schema", "result"}:
+            return None
+    elif decoded.get("status") != "ok":
         return None
     native_record_resident_success(status.identity.sha256, guard_home)
     return decoded
@@ -633,7 +638,7 @@ def prompt_analyze_native(
 
     Returns the decoded ``result`` payload (request dicts, artifact dicts,
     bool, or string per subop), or ``None`` on transport failure / missing
-    feature so the caller falls back to the Python body.
+    feature. The prompt client must stop the operation on missing authority.
     """
     if requests is not None and (
         not isinstance(requests, Sequence)

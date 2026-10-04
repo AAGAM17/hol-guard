@@ -1067,6 +1067,7 @@ pub mod local_supply_chain;
 pub mod package_approval;
 pub mod package_policy_override;
 pub mod package_protect_projection;
+pub mod prompt_analysis;
 pub mod redacted_command_tokens;
 pub mod supply_chain_package_eval;
 pub mod target_identities;

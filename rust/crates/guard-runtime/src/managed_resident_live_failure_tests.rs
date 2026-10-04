@@ -18,6 +18,7 @@ fn restart_mapping_retains_hard_failure_without_swallowing_unrelated_errors() {
         "native_resident_state_mac_invalid",
         "native_client_deadline_exceeded",
         "native_resident_live_request_failed_extra",
+        "native_resident_live_request_failed",
     ] {
         let error = code.to_owned();
         assert_eq!(

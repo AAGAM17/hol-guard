@@ -1,11 +1,11 @@
 //! `PromptAnalyze` resident op — subop-multiplexed dispatcher over
-//! `guard_command::guard_run_launch` prompt-analysis helpers.
+//! `guard_command::prompt_analysis` prompt-analysis helpers.
 //!
 //! Mirrors `shim_op.rs`: validate `schema`, match `subop`, delegate, return
 //! `PromptAnalyzeResultV1` via `crate::encode_response`. `result` is `None`
-//! when the subop could not run so the Python caller falls back.
+//! only on explicit unavailability; callers must not substitute a Python evaluator.
 
-use guard_command::guard_run_launch;
+use guard_command::prompt_analysis as guard_run_launch;
 use guard_contracts::{
     PromptAnalyzeRequestV1, PromptAnalyzeResultV1, PROMPT_ANALYZE_REQUEST_SCHEMA,
     PROMPT_ANALYZE_RESULT_SCHEMA,
@@ -72,6 +72,13 @@ pub(crate) fn evaluate_prompt_analyze(request: &PromptAnalyzeRequestV1) -> Resul
                 prior_policy_present,
                 &approved,
             ))
+        }
+        "trailing_secret_read_state" => {
+            let text = request
+                .prompt_text
+                .as_deref()
+                .ok_or_else(|| "missing_prompt_text".to_owned())?;
+            serde_json::json!({"state": guard_run_launch::trailing_secret_read_state(text)})
         }
         "request_id" => {
             let request_class = request

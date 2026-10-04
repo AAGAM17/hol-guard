@@ -11,10 +11,16 @@ import sqlite3
 import uuid
 from collections.abc import Mapping
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..config import MAX_APPROVAL_WAIT_TIMEOUT_SECONDS
+from ..live_process_identity import (
+    CODEX_BROWSER_WAIT_PROCESS_KEY,
+    bound_wait_timeout_seconds,
+    process_identity_matches,
+)
 from ..models import GuardApprovalRequest, format_local_http_origin
 from ..native_decision_receipt import validate_native_decision_receipt
 from ..runtime.actions import normalize_harness_payload
@@ -272,7 +278,102 @@ def queue_native_pre_tool_review(
         stored = lookup(persisted_id)
     except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
         return None
-    return stored if isinstance(stored, dict) else None
+    if not isinstance(stored, dict):
+        return None
+    _bind_live_codex_hook_wait(
+        store,
+        harness=harness,
+        payload=payload,
+        request_id=str(stored.get("request_id") or persisted_id),
+        workspace=workspace,
+    )
+    return stored
+
+
+def _bind_live_codex_hook_wait(
+    store: object,
+    *,
+    harness: str,
+    payload: Mapping[str, object],
+    request_id: str,
+    workspace: Path | None,
+) -> None:
+    """Record a proven waiting Codex hook so exact Cloud apply can resume it.
+
+    A native pause previously stored only the approval row. Continuation then
+    treated the still-running hook as retry-only and the original action stayed
+    denied. A process that is not this live bridge does not become authority.
+    """
+
+    if harness.strip().lower() != "codex":
+        return
+    from .hook_request_parsing import runtime_hook_event_name
+
+    if runtime_hook_event_name(payload) != "PreToolUse":
+        return
+    identity = _proven_codex_wait_process(payload)
+    timeout_seconds = bound_wait_timeout_seconds(payload, maximum=MAX_APPROVAL_WAIT_TIMEOUT_SECONDS)
+    if identity is None or timeout_seconds is None:
+        return
+    upsert_session = getattr(store, "upsert_guard_session", None)
+    upsert_operation = getattr(store, "upsert_guard_operation", None)
+    if not callable(upsert_session) or not callable(upsert_operation):
+        return
+    now = datetime.now(tz=timezone.utc)
+    now_text = now.isoformat()
+    try:
+        session = upsert_session(
+            session_id=uuid.uuid4().hex,
+            harness="codex",
+            surface="harness-adapter",
+            status="active",
+            client_name="codex-hook",
+            client_title="codex hook",
+            client_version="1.0.0",
+            workspace=str(workspace) if workspace is not None else None,
+            capabilities=["approval-resolution"],
+            now=now_text,
+        )
+        session_id = session.get("session_id") if isinstance(session, dict) else None
+        if not isinstance(session_id, str) or not session_id:
+            return
+        upsert_operation(
+            operation_id=uuid.uuid4().hex,
+            session_id=session_id,
+            harness="codex",
+            operation_type="tool_call",
+            status="waiting_on_approval",
+            approval_request_ids=[request_id],
+            resume_token=None,
+            metadata={
+                "codex_hook_waits_for_browser_approval": True,
+                "codex_browser_wait_deadline_at": (now + timedelta(seconds=timeout_seconds)).isoformat(),
+                "codex_browser_wait_process": identity,
+                "codex_browser_wait_timeout_seconds": timeout_seconds,
+                "hook_event_name": "PreToolUse",
+                "event": "PreToolUse",
+                "workspace": str(workspace) if workspace is not None else None,
+            },
+            now=now_text,
+        )
+        from ..codex_resume import seed_request_resume_record
+        from ..store import GuardStore
+
+        if isinstance(store, GuardStore):
+            seed_request_resume_record(store, request_id=request_id, now=now_text)
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+        _LOGGER.warning("Native Codex wait binding failed for %s", request_id)
+
+
+def _proven_codex_wait_process(payload: Mapping[str, object]) -> dict[str, object] | None:
+    raw = payload.get(CODEX_BROWSER_WAIT_PROCESS_KEY)
+    if not isinstance(raw, dict) or not process_identity_matches(raw):
+        return None
+    pid = raw.get("pid")
+    start_token = raw.get("startToken")
+    if not isinstance(pid, int) or isinstance(pid, bool) or not isinstance(start_token, str) or not start_token:
+        return None
+    return {"pid": pid, "startToken": start_token}
 
 
 def _native_review_artifact_id(harness: str, tool_name: str) -> str:

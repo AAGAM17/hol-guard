@@ -31,6 +31,7 @@ from packaging.version import InvalidVersion, Version
 from ..action_lattice import normalize_guard_action_result
 from ..config import load_guard_config, resolve_risk_action
 from ..models import GuardAction, GuardArtifact
+from ..native_archive_inspection import inspect_archive_native as inspect_archive_native
 from ..package_firewall_entitlement import resolve_package_firewall_entitlement
 from ..stable_digest import stable_digest_hex
 from ..store import GuardStore
@@ -66,13 +67,13 @@ from .package_manifest_diff import (
     _dependency_map_for_path,
     parse_manifest_dependencies,
 )
-from ..native_archive_inspection import inspect_archive_native as inspect_archive_native
 from .restricted_archive_download import (
     RestrictedArchiveDownload,
-    RestrictedArchiveFailure as RestrictedArchiveFailure,
     canonical_external_https_archive_source,
     is_external_https_archive_source,
 )
+from .restricted_archive_download import RestrictedArchiveDownloadResult as RestrictedArchiveDownloadResult
+from .restricted_archive_download import RestrictedArchiveFailure as RestrictedArchiveFailure
 from .restricted_archive_download import download_restricted_archive as download_restricted_archive
 from .runner import (
     GuardSyncAuthorizationExpiredError,
@@ -80,11 +81,11 @@ from .runner import (
     GuardSyncNotConfiguredError,
     _guard_sync_request,
     _is_timeout_error,
-    _normalized_receipts_sync_url as _normalized_receipts_sync_url,
     _resolve_guard_sync_auth_context,
     _urlopen_json_with_timeout_retry,
     _validate_guard_sync_url,
 )
+from .runner import _normalized_receipts_sync_url as _normalized_receipts_sync_url
 from .supply_chain import detect_supply_chain_risk
 from .supply_chain_bundle import (
     SupplyChainBundleExpiredError,
@@ -117,16 +118,11 @@ from .supply_chain_package_services import (
     _scan_external_tarball,
     _workspace_fingerprint,
 )
-from .supply_chain_package_services import (
-    _download_external_tarball as _download_external_tarball,
-)
-from .supply_chain_package_services import _lockfile_context as _lockfile_context
-from .supply_chain_package_services import (
-    _registry_package_name as _registry_package_name,
-)
+from .supply_chain_package_services import _download_external_tarball as _download_external_tarball
 from .supply_chain_package_services import (
     _external_archive_request_timeout_result as _external_archive_request_timeout_result,
 )
+from .supply_chain_package_services import _lockfile_context as _lockfile_context
 from .supply_chain_package_services import (
     _normalized_pypi_requested_range as _normalized_pypi_requested_range,
 )
@@ -142,6 +138,7 @@ from .supply_chain_package_services import (
 from .supply_chain_package_services import (
     _pypi_tilde_specifier as _pypi_tilde_specifier,
 )
+from .supply_chain_package_services import _registry_package_name as _registry_package_name
 from .supply_chain_support import ecosystem_support_metadata
 from .workspace_path_guard import (
     read_bytes_within_workspace,
@@ -4858,5 +4855,3 @@ def _bundle_reason_message(
 def _bundle_package_label(package: SupplyChainBundlePackage, *, version: str | None = None) -> str:
     package_name = f"{package.namespace}/{package.name}" if package.namespace is not None else package.name
     return f"{package_name}@{version or package.version}"
-
-

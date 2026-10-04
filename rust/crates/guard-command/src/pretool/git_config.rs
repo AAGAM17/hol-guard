@@ -287,21 +287,7 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
 }
 
 fn hooks_are_inert(path: &Path) -> bool {
-    const EXECUTABLE_HOOKS: &[&str] = &[
-        "post-checkout",
-        "post-merge",
-        "pre-commit",
-        "post-commit",
-        "pre-rebase",
-        "reference-transaction",
-        "update",
-        "pre-receive",
-        "receive-pack",
-        "post-receive",
-        "post-update",
-        "push-to-checkout",
-        "pre-push",
-    ];
+    const EXECUTABLE_HOOKS: &[&str] = &["post-checkout", "reference-transaction"];
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,

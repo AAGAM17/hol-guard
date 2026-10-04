@@ -287,6 +287,41 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
     assert!(config_destination.is_dir());
     assert!(!config_tripwire.exists());
 
+    let unrelated_hook_tripwire = root.join("unrelated-hook-tripwire");
+    let pre_commit = repository.join(".git/hooks/pre-commit");
+    std::fs::write(
+        &pre_commit,
+        format!("#!/bin/sh\ntouch {}\n", unrelated_hook_tripwire.display()),
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&pre_commit).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&pre_commit, permissions).unwrap();
+    let unrelated_hook_destination = root.join("unrelated-hook-child");
+    let unrelated_hook_command = format!(
+        "git worktree add --quiet {} -b unrelated-hook-worktree HEAD",
+        unrelated_hook_destination.display()
+    );
+    let unrelated_hook_allowed = evaluate(&repository, &enabled, &unrelated_hook_command);
+    assert_eq!(
+        unrelated_hook_allowed.minimum_action, "allow",
+        "{unrelated_hook_command}"
+    );
+    git(
+        &repository,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "unrelated-hook-worktree",
+            unrelated_hook_destination.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    assert!(unrelated_hook_destination.is_dir());
+    assert!(!unrelated_hook_tripwire.exists());
+
     let missing_cwd_command = format!(
         "sleep 0.01; cd {} && git worktree add {} -b missing-cwd-worktree HEAD",
         root.join("missing-cwd").display(),

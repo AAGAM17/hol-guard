@@ -366,6 +366,12 @@ def test_projection_reuses_connection_without_caching_authority(
         with pytest.raises(sqlite3.ProgrammingError, match="closed"):
             opened[0].execute("select 1")
 
+        assert publisher._compiled_command_extensions() == first["command_extensions"]
+        assert len(opened) == 2
+        assert opened[1] is not opened[0]
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            opened[1].execute("select 1")
+
         # A later read must authenticate fresh database contents, even if
         # the previous projection was protected and unchanged.
         with original_connect(store.path) as writer:

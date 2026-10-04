@@ -97,6 +97,14 @@ from .supply_chain_bundle_models import (
     SupplyChainBundleResponse,
 )
 from .supply_chain_bundle_runtime import _is_high_confidence_block
+from .supply_chain_package_identity import (
+    CanonicalPackageIdentity,
+    PackageIdentityError,
+    canonical_package_identity,
+    normalize_ecosystem,
+    normalize_qualified_package_name,
+    parse_package_identity,
+)
 
 # Retained cloud/registry/archive services live in supply_chain_package_services;
 # re-exported here so existing callers and monkeypatch seams keep working.
@@ -124,14 +132,6 @@ from .supply_chain_package_services import (
 )
 from .supply_chain_package_services import (
     _pypi_tilde_specifier as _pypi_tilde_specifier,
-)
-from .supply_chain_package_identity import (
-    CanonicalPackageIdentity,
-    PackageIdentityError,
-    canonical_package_identity,
-    normalize_ecosystem,
-    normalize_qualified_package_name,
-    parse_package_identity,
 )
 from .supply_chain_support import ecosystem_support_metadata
 from .workspace_path_guard import (

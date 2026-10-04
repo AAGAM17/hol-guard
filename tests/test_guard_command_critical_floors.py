@@ -214,9 +214,8 @@ def test_native_command_model_rejects_input_above_transport_budget() -> None:
     )
 
 
-# Frozen native baseline dispositions that are intentionally stricter than the
-# independent host factor. These preserve the pre-migration Rust behavior.
-NATIVE_STRICTER_CRITICAL_COMMANDS = frozenset(
+# Native uncertain-command dispositions now require review rather than a hard block.
+NATIVE_UNCERTAIN_CRITICAL_COMMANDS = frozenset(
     {
         "xargs gh pr merge 17 --repo example/repo --squash",
         "sh -c 'gh pr merge 17 --repo example/repo --squash'",
@@ -238,9 +237,7 @@ def test_real_native_critical_floor_matches_frozen_baseline(command: str, factor
     action, error = _native_action(command)
     expected = (
         "review"
-        if error is not None
-        else "block"
-        if command in NATIVE_STRICTER_CRITICAL_COMMANDS
+        if error is not None or command in NATIVE_UNCERTAIN_CRITICAL_COMMANDS
         else factor_floor
     )
     assert action == expected

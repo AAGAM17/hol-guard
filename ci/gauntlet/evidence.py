@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .catalog import Scenario
+from .catalog import WATCH_OUTPUT, Scenario
 from .input_evidence import redact_value
 from .proofs import BLOCK_REASONS, guard_inventory, required_checks, task_calls_in_scope, task_tools_match
 from .transport import reconcile_rounds
@@ -262,6 +262,16 @@ def _watch_evidence_error(
             return "Watch fixture lacks an authenticated resident policy binding"
     if len(calls) != 1:
         return "Watch requires one actual harmless command"
+    result = calls[0].get("result")
+    content = result.get("content") if isinstance(result, dict) else None
+    if not isinstance(content, list) or not any(
+        isinstance(item, dict)
+        and item.get("type") == "text"
+        and isinstance(item.get("text"), str)
+        and WATCH_OUTPUT in item["text"]
+        for item in content
+    ):
+        return "Watch command result lacks the expected fixture output"
     pre = [row for row in by_id[calls[0]["id"]] if row.get("event") == "PreToolUse"]
     observation = pre[0].get("native_observation") if len(pre) == 1 else None
     receipt = observation.get("native_receipt") if isinstance(observation, dict) else None

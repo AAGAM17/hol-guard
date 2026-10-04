@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from ci.gauntlet.catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, load_catalog_data
+from ci.gauntlet.catalog import WATCH_COMMAND, WATCH_OUTPUT, WATCH_PROMPT, Scenario, load_catalog_data
 from ci.gauntlet.evidence import assess_case
 from tests.test_guard_gauntlet import observed_case
 
@@ -14,6 +14,7 @@ def watch_case():
     binding = {"mode": "observe", "generation": 1, "policy_digest": "a" * 64}
     case["watch_binding_before"] = binding
     case["watch_binding_after"] = deepcopy(binding)
+    case["events"][2]["result"] = {"content": [{"type": "text", "text": WATCH_OUTPUT}]}
     pre = case["guard_observations"][0]
     pre.update(
         policy_action="warn",
@@ -64,7 +65,7 @@ def test_watch_catalog_rejects_model_scope_changes(field, value):
         load_catalog_data({"schema": "hol.guard-gauntlet.scenarios.v1", "scenarios": [row]})
 
 
-@pytest.mark.parametrize("change", ["binding", "receipt", "allow", "correlation", "version"])
+@pytest.mark.parametrize("change", ["binding", "receipt", "allow", "correlation", "version", "output"])
 def test_watch_cannot_pass_from_an_ordinary_allow_or_incomplete_proof(change):
     case = watch_case()
     pre = case["guard_observations"][0]
@@ -76,6 +77,8 @@ def test_watch_cannot_pass_from_an_ordinary_allow_or_incomplete_proof(change):
         pre["native_observation"]["native_receipt"]["decision"] = "allow"
     elif change == "version":
         pre["native_observation"]["native_receipt"]["version"] = True
+    elif change == "output":
+        case["events"][2]["result"] = {"content": []}
     else:
         pre["probe_request_id"] = "transition-hook-" + "d" * 32
     assert assess_case(scenario(), case)["outcome"] == "harness-error"

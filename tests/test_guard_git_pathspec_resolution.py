@@ -337,7 +337,8 @@ def test_normal_git_workflows_preserve_native_ownership_and_proof_requirements(
     # These pathspec forms must not invent a more specific owner merely from a token.
     assert payload["controlling_rule_id"] == rule_id
     action = payload["minimum_action"]
-    if command == "git diff":
+    if rule_id in {"command.git.diff", "command.git.log", "command.git.show"}:
+        # A clean host proves this repository has no diff helper and allows the read.
         assert action in {"allow", "review"}
     else:
         assert action == minimum_action

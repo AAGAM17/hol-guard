@@ -25,9 +25,9 @@ class CommandProjectionBuildHook(BuildHookInterface):
     """Ship frozen, validated metadata without keeping copies in Git."""
 
     def initialize(self, version: str, build_data: dict) -> None:
-        # Editable environments install dependencies without compiling Rust.
-        # CI prepares exact projections before any catalog-dependent imports.
-        """Validate projections before registering package contents; leave editable setup unchanged."""
+        """Validate packaged projections; dependency setup alone does not require Rust."""
+        # CI stages resources before imports, after downloading its native outputs.
+        # Compiling here would rebuild Rust independently in every coverage shard.
         if version == "editable":
             return
         root = Path(self.root)

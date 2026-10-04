@@ -58,7 +58,6 @@ from scripts.native_slo_capacity import (  # noqa: E402, F401
     measure_capacity,
 )
 from scripts.native_slo_contract import SIZE_CLASSES  # noqa: E402
-
 from scripts.native_slo_preflight import preflight_operation  # noqa: E402
 from scripts.native_slo_reporting import (  # noqa: E402
     SloMeasurements,

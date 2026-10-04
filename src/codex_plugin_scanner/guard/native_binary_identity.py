@@ -21,7 +21,11 @@ _IDENTITIES: OrderedDict[tuple[str, tuple[int, ...]], NativeRuntimeIdentity] = O
 
 
 def _identity(metadata: os.stat_result) -> tuple[int, ...]:
-    return (*full_stat_identity(metadata), int(getattr(metadata, "st_uid", -1)), int(getattr(metadata, "st_gid", -1)))
+    values = list(full_stat_identity(metadata))
+    if os.name == "nt":
+        # stat() adds 0o111 for .exe/.bat/.cmd/.com by name; fstat() cannot.
+        values[2] &= ~0o111
+    return (*values, int(getattr(metadata, "st_uid", -1)), int(getattr(metadata, "st_gid", -1)))
 
 
 def _trusted_regular_file(metadata: os.stat_result) -> bool:

@@ -185,6 +185,8 @@ fn command_from_value_at_depth(
             for key in [
                 "command",
                 "cmd",
+                "command_line",
+                "commandLine",
                 "shell_command",
                 "shellCommand",
                 "commands",

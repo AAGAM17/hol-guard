@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -98,7 +97,7 @@ class SonarClient:
             raise ValueError("Analysis-specific gate is missing")
         return gate
 
-    def main_analyses(self, *, current_id: str = "", before_sha: str = "") -> list[dict]:
+    def main_analyses(self, *, current_id: str = "", stop_id: str = "") -> list[dict]:
         analyses = []
         for page in range(1, 11):
             payload = self.read("/api/project_analyses/search", project=PROJECT, branch="main", p=page, ps=100)
@@ -109,14 +108,9 @@ class SonarClient:
             if type(total) is not int or total < 0 or not all(isinstance(item, dict) for item in batch):
                 raise ValueError("Invalid analysis history")
             analyses.extend(batch)
-            current = next((item for item in analyses if item.get("key") == current_id), None)
-            if current is not None and before_sha:
-                current_date = datetime.fromisoformat(current["date"])
-                if any(
-                    item.get("revision") == before_sha and datetime.fromisoformat(item["date"]) <= current_date
-                    for item in analyses
-                ):
-                    return analyses
+            keys = {item.get("key") for item in analyses}
+            if current_id and stop_id and {current_id, stop_id} <= keys:
+                return analyses
             if len(analyses) >= total:
                 return analyses
             if not batch:

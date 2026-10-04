@@ -64,35 +64,40 @@ def conditions(gate: dict) -> dict[str, dict]:
     return result
 
 
-def inherited_coverage_allowed(current: dict, baseline: dict) -> bool:
-    """A red coverage ancestor is debt, not permission for a further regression.
+def coverage_values(current: dict, baseline: dict) -> tuple[Decimal, Decimal] | None:
+    """Compare only identical, fully validated coverage scopes and thresholds."""
+    current_conditions, previous_conditions = conditions(current), conditions(baseline)
+    if current.get("ignoredConditions") is not False or baseline.get("ignoredConditions") is not False:
+        return None
+    periods = current.get("periods")
+    if not isinstance(periods, list) or len(periods) != 1 or periods != baseline.get("periods"):
+        return None
+    if not isinstance(periods[0], dict) or not all(periods[0].get(key) for key in ("index", "mode", "date")):
+        return None
+    if current_conditions.keys() != previous_conditions.keys() or "new_coverage" not in current_conditions:
+        return None
+    for metric, condition in current_conditions.items():
+        previous = previous_conditions[metric]
+        if any(condition.get(key) != previous.get(key) for key in ("comparator", "errorThreshold", "periodIndex")):
+            return None
+    coverage, previous_coverage = current_conditions["new_coverage"], previous_conditions["new_coverage"]
+    actual, old_actual = number(coverage["actualValue"]), number(previous_coverage["actualValue"])
+    if (
+        coverage["comparator"] != "LT"
+        or not Decimal(80) <= number(coverage["errorThreshold"]) <= Decimal(100)
+        or not Decimal(0) <= actual <= Decimal(100)
+        or not Decimal(0) <= old_actual <= Decimal(100)
+    ):
+        return None
+    return actual, old_actual
 
-    Callers must bind every compared ancestor to the authenticated main-push
-    history. PRs, releases and manual runs remain strict.
-    """
+
+def inherited_coverage_allowed(current: dict, baseline: dict) -> bool:
+    """Validate the explicit reviewed debt anchor; caller also enforces the high-water mark."""
     current_conditions, previous_conditions = conditions(current), conditions(baseline)
     failures = {key for key, value in current_conditions.items() if value["status"] == "ERROR"}
     previous_failures = {key for key, value in previous_conditions.items() if value["status"] == "ERROR"}
     if failures != {"new_coverage"} or previous_failures != {"new_coverage"}:
         return False
-    if current.get("ignoredConditions") is not False or baseline.get("ignoredConditions") is not False:
-        return False
-    periods = current.get("periods")
-    if not isinstance(periods, list) or len(periods) != 1 or periods != baseline.get("periods"):
-        return False
-    if not isinstance(periods[0], dict) or not all(periods[0].get(key) for key in ("index", "mode", "date")):
-        return False
-    if current_conditions.keys() != previous_conditions.keys():
-        return False
-    for metric, condition in current_conditions.items():
-        previous = previous_conditions[metric]
-        if any(condition.get(key) != previous.get(key) for key in ("comparator", "errorThreshold", "periodIndex")):
-            return False
-    coverage, previous_coverage = current_conditions["new_coverage"], previous_conditions["new_coverage"]
-    threshold = number(coverage["errorThreshold"])
-    actual, old_actual = number(coverage["actualValue"]), number(previous_coverage["actualValue"])
-    return (
-        coverage["comparator"] == "LT"
-        and Decimal(80) <= threshold <= Decimal(100)
-        and Decimal(0) <= old_actual <= actual <= Decimal(100)
-    )
+    values = coverage_values(current, baseline)
+    return values is not None and values[0] >= values[1]

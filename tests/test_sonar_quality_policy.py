@@ -12,6 +12,7 @@ from unittest.mock import Mock
 import pytest
 
 from scripts.ci import check_sonar_quality as runner
+from scripts.ci import sonar_coverage_ratchet as ratchet
 from scripts.ci.sonar_quality_policy import REQUIRED_METRICS, conditions, inherited_coverage_allowed, number
 
 
@@ -191,13 +192,14 @@ def history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         },
         {"key": "before", "revision": before, "date": "2026-10-04T14:00:00+0000", "projectVersion": "not provided"},
     ]
+    monkeypatch.setattr(ratchet, "ANCHOR", {"analysis_id": "before", "revision": before, "coverage": "61.7"})
     return environment, event, analyses
 
 
 def test_real_git_history_ignores_newer_unrelated_analysis(history) -> None:
     environment, event, analyses = history
     ancestors = runner.trusted_main_history(environment, event)
-    selected = runner.previous_analysis(analyses, "candidate", environment["GITHUB_SHA"], ancestors)
+    selected = ratchet.analyzed_window(analyses, "candidate", environment["GITHUB_SHA"], ancestors)[0]
     assert selected["key"] == "before"
     client = Mock()
     client.gate.side_effect = [gate(), gate()]
@@ -274,7 +276,7 @@ def test_history_or_baseline_ambiguity_fails_closed(history, change):
     else:
         analyses.append(copy.deepcopy(analyses[0]))
     with pytest.raises(ValueError):
-        runner.previous_analysis(
+        ratchet.analyzed_window(
             analyses, "candidate", environment["GITHUB_SHA"], runner.trusted_main_history(environment, event)
         )
 
@@ -286,3 +288,52 @@ def test_evidence_failure_is_nonzero_and_still_writes_a_report(tmp_path, monkeyp
     assert runner.main() == 1
     report = json.loads(Path("sonar-quality-evidence/quality.json").read_text())
     assert report["decision"] == "blocked" and "metadata unavailable" in report["error"]
+
+
+@pytest.mark.parametrize(
+    ("improved", "rejected", "current", "allowed"),
+    [
+        ("75", "50", "50", False),
+        ("75", "62", "62", False),
+        ("75", "62", "74.9", False),
+        ("75", "62", "75", True),
+        ("80", "79", "79", False),
+        ("79.9", "61.7", "70", False),
+    ],
+)
+def test_failed_push_cannot_poison_the_next_push_coverage_floor(monkeypatch, improved, rejected, current, allowed):
+    before, better, bad, head = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+    monkeypatch.setattr(ratchet, "ANCHOR", {"analysis_id": "anchor", "revision": before, "coverage": "61.7"})
+    analyses = [
+        {"key": key, "revision": revision, "date": f"2026-10-04T{hour}:00:00+0000", "projectVersion": "not provided"}
+        for key, revision, hour in [
+            ("current", head, "15"),
+            ("bad", bad, "14"),
+            ("better", better, "13"),
+            ("anchor", before, "12"),
+        ]
+    ]
+    gates = {"anchor": gate(), "better": gate(improved), "bad": gate(rejected)}
+    client = Mock()
+    client.main_analyses.return_value = analyses
+    client.gate.side_effect = lambda analysis: copy.deepcopy(gates[analysis])
+    report = {}
+    assert ratchet.permits(client, gate(current), "current", head, [bad, better, before], report) is allowed
+    assert report["baseline"]["key"] == "better"
+    assert report["coverage_high_water_mark"] == improved
+
+
+def test_even_a_higher_measurement_from_a_security_failed_scan_does_not_lower_the_floor(monkeypatch):
+    before, better, head = "a" * 40, "b" * 40, "d" * 40
+    monkeypatch.setattr(ratchet, "ANCHOR", {"analysis_id": "anchor", "revision": before, "coverage": "61.7"})
+    analyses = [
+        {"key": key, "revision": revision, "date": f"2026-10-04T{hour}:00:00+0000", "projectVersion": "not provided"}
+        for key, revision, hour in [("current", head, "15"), ("better", better, "13"), ("anchor", before, "12")]
+    ]
+    security_failure = gate("75")
+    row(security_failure, "new_security_rating").update(actualValue="2", status="ERROR")
+    client = Mock()
+    client.main_analyses.return_value = analyses
+    client.gate.side_effect = lambda key: gate() if key == "anchor" else security_failure
+    assert not ratchet.permits(client, gate("70"), "current", head, [better, before], {})
+    assert ratchet.permits(client, gate("75"), "current", head, [better, before], {})

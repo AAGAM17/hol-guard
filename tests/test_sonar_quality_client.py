@@ -151,7 +151,7 @@ def test_malformed_json_metadata_does_not_use_a_default_gate():
         client.gate("analysis-id")
 
 
-def test_large_projects_stop_once_the_exact_current_and_pre_push_analyses_are_found():
+def test_large_projects_stop_only_once_the_current_and_reviewed_anchor_are_found():
     client = SonarClient("test-only-token")
     client.read = Mock(
         return_value={
@@ -162,5 +162,5 @@ def test_large_projects_stop_once_the_exact_current_and_pre_push_analyses_are_fo
             ],
         }
     )
-    assert len(client.main_analyses(current_id="current", before_sha="b" * 40)) == 2
+    assert len(client.main_analyses(current_id="current", stop_id="before")) == 2
     assert client.read.call_count == 1

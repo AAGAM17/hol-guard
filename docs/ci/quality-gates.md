@@ -27,25 +27,33 @@ reliability, maintainability, duplication, and hotspot review remain blocking
 for every event. Missing conditions, weakened thresholds, unknown failed
 conditions, API errors, and incomplete analyses fail closed.
 
-For a normal push to `main` only, an inherited coverage-only failure can pass the
-CI policy when all of the following are proven:
+For a normal push to `main` only, the PR explicitly accepts the already-landed
+migration debt at analysis `2ca53ee4-9157-4df2-8dd4-e4df8b1cf840`, commit
+`846fe97cb2445bbf6e73a05d6c540e8470fc6904`, measured coverage 61.7%. This is a
+one-time, reviewable policy decision, not a claim that the original regression
+was acceptable or that the 80% goal has been met.
 
-1. The checkout, GitHub push event, repository, before SHA, and after SHA agree.
-2. The current Sonar analysis belongs to that exact after SHA.
-3. Analyzed pre-push first-parent ancestors are checked from newest to oldest
-   until a green gate anchors the accepted history. Never select an unrelated
-   branch or a later analysis; if no green anchor is found, the strict gate blocks.
-4. The same coverage period, project version, conditions, and thresholds apply.
-5. Each intervening failed gate has only the coverage condition failing, and
-   current coverage is at least every such ancestor's coverage. There is no
-   rounding tolerance or fixed low floor that permits further deterioration.
+The floor is the maximum measured coverage among that anchor and EVERY later
+analyzed first-parent main ancestor in the same coverage period and project
+version. A rejected lower scan cannot become the next baseline: after an
+improvement to 75%, both a drop to 50% and a subsequent unchanged 50% push fail.
+Even a higher measurement from a scan with another failed condition raises the
+floor; failing a security check cannot erase coverage history.
 
-A new fall from a green baseline is rejected. Period or version changes require
-the full gate rather than resetting the debt. Once coverage reaches 80%, the
-coverage exception no longer applies. The implementation does not set
-`sonar.projectVersion`, reset the new-code baseline, exclude Rust source, remove
-coverage reports, change the SonarCloud project gate, or convert security
-failures into warnings.
+The checkout, push event, repository, before SHA, after SHA, and exact Sonar
+analysis must agree. The reviewed anchor must exist in pre-push first-parent
+history. Unknown/missing history, altered anchor measurements, changed periods,
+changed thresholds, or changed project versions fail closed. There is no
+rounding allowance. The history client stops only after finding the exact
+current analysis and the explicit anchor, not at a recent failed scan.
+
+The bounded window permits up to 128 analyzed ancestor records and 2,000 Git
+ancestors. Before retention or that bound is reached, a maintainer must refresh
+the anchor through review with the proven high-water mark, never a lower value.
+A missing historical record causes a failure, not an automatic reset. Once
+coverage reaches 80%, the full gate must continue to pass. The implementation
+never changes `sonar.projectVersion`, resets the Sonar new-code period, excludes
+Rust source, removes coverage reports, or converts a security failure to a warning.
 
 ## Reading outcomes
 
@@ -58,10 +66,9 @@ ratchet must never be presented as 80% coverage or a green Sonar project.
 On October 4, 2026, main run 37212119011 had 146 successful jobs, three intended
 skips, and one failure: the final Sonar quality gate. Its new-code coverage was
 61.7%, versus the configured 80%. The earlier main analysis was 86.6%, before the
-large Rust migration landed. The new policy would still reject that original
-86.6-to-61.7 regression; it does not retroactively relabel that run as passing.
-The current repair addresses inherited debt so unrelated CI improvements can
-ship without hiding it or permitting another decrease.
+large Rust migration landed. The original run remains a failed coverage gate. This review explicitly
+accepts that existing debt as the bootstrap anchor while preserving the full
+80% PR gate and preventing any subsequent decrease from the high-water mark.
 
 Source evidence: GitHub main run 37212119011, Sonar analysis
 `2ca53ee4-9157-4df2-8dd4-e4df8b1cf840`, and prior analysis

@@ -18,6 +18,8 @@ const MAX_KEYS: u64 = 64 * 1024;
 const LIFETIME: u64 = 300;
 const CLOCK_SKEW: u64 = 30;
 
+pub mod oauth;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum IdentityError {
     Invalid,

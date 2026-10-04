@@ -23,7 +23,7 @@ fn signer() -> &'static Signer {
         Signer { key, jwk }
     })
 }
-fn keys() -> KeySet {
+pub(super) fn keys() -> KeySet {
     serde_json::from_value(json!({"keys":[signer().jwk]})).unwrap()
 }
 fn challenge(key: u8) -> GoogleLoginChallenge {
@@ -62,7 +62,7 @@ fn signed_bytes(header: &[u8], claims: &[u8]) -> String {
         Base64UrlUnpadded::encode_string(&signature)
     )
 }
-fn signed(header: &Value, claims: &Value) -> String {
+pub(super) fn signed(header: &Value, claims: &Value) -> String {
     signed_bytes(
         &serde_json::to_vec(header).unwrap(),
         &serde_json::to_vec(claims).unwrap(),

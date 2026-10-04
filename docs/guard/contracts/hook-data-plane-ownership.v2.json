@@ -542,7 +542,7 @@
     "rust/crates/guard-runtime-windows-process/**",
     "rust/crates/guard-google-identity/**"
    ],
-   "current": "PostToolUse output extraction, source validation, secure reads, identity, hashing, equivalence, scanning, OS-bound containment primitives, and bounded fixed-endpoint HTTPS Google signing-key retrieval with native identity verification",
+   "current": "PostToolUse output extraction, source validation, secure reads, identity, hashing, equivalence, scanning, OS-bound containment primitives, and bounded fixed-endpoint HTTPS Google signing-key retrieval and registered code exchange with native identity verification and private credential retention",
    "target": "all decision-critical hook content and source I/O"
   }
  ],

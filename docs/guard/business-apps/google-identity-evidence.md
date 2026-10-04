@@ -10,7 +10,10 @@ The worker creates a non-cloneable, non-serializable login challenge with a fres
 256-bit nonce. Client ID, approved hosted domains and the tenant pseudonym key must
 come from authenticated worker configuration. They must never come from browser,
 model or tool arguments. The callback must separately validate its OAuth state and
-complete the registered OAuth flow; this crate does not implement that flow.
+complete the registered OAuth flow. The `oauth` module now supplies a bounded
+registered code-exchange session; authenticated callback routing and worker
+configuration remain the caller's responsibility. See
+[worker OAuth](worker-oauth.md).
 
 Verification consumes the challenge on success or failure. It requires RS256,
 Google issuer, exact intended audience, matching authorized presenter when present,
@@ -46,8 +49,9 @@ before preparing and dispatching a business action. No producer is added here.
 
 Tests use generated synthetic RSA keys held only in memory. A separately invoked
 read-only test checks the actual public key endpoint and key shape; it is not a
-Google account or agent qualification. OAuth registration, consent, token exchange,
-refresh, isolated custody, managed transport and user journeys remain unfinished.
+Google account or agent qualification. OAuth registration, actual consent,
+callback routing, refresh, isolated custody, managed transport and user journeys
+remain unfinished. Code-exchange behavior has synthetic protocol evidence only.
 
 Primary references: [Google OIDC](https://developers.google.com/identity/openid-connect/openid-connect)
 and [Google discovery metadata](https://accounts.google.com/.well-known/openid-configuration).

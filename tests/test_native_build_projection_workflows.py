@@ -63,13 +63,28 @@ def test_windows_verifier_resolves_the_existing_compiler_suffix(monkeypatch, arg
     monkeypatch.delenv("GITHUB_ENV", raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sys, "argv", ["verify", "--compiler", argument])
-    monkeypatch.delenv("GITHUB_ENV", raising=False)
     calls = []
     monkeypatch.setattr(verifier, "_run", calls.append)
     assert verifier.main() == 0
     expected = argument if argument.endswith(".exe") else argument + ".exe"
     assert calls[0][-1] == expected
     assert calls[1] == [*calls[0], "--check"]
+
+
+def test_dependency_setup_does_not_compile_projections_in_each_coverage_shard() -> None:
+    """The native producer builds once; coverage consumers download matching outputs."""
+    action = yaml.safe_load((ROOT / ".github/actions/setup-ci-python/action.yml").read_text())
+    assert all("stage-command-projections" not in step.get("uses", "") for step in action["runs"]["steps"])
+    assert all("build_native_command_program.py" not in step.get("run", "") for step in action["runs"]["steps"])
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    steps = workflow["jobs"]["coverage"]["steps"]
+    download = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("with", {}).get("name") == "pytest-native-command-projections"
+    )
+    tests = next(index for index, step in enumerate(steps) if "run_projection_shard.py" in step.get("run", ""))
+    assert download < tests
 
 
 def test_native_identity_watches_production_inputs_not_the_whole_test_tree() -> None:

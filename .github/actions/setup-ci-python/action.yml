@@ -36,8 +36,6 @@ runs:
         cache-dependency-glob: ${{ inputs.cache-dependency-glob }}
         save-cache: ${{ inputs.save-cache }}
         prune-cache: false
-    - uses: ./.github/actions/stage-command-projections
-      if: ${{ hashFiles('src/codex_plugin_scanner/guard/contracts/data/extensions/command-catalog.v1.json') == '' || hashFiles('src/codex_plugin_scanner/guard/contracts/data/extensions/native-command-program.v1.json') == '' }}
     - name: Install locked test dependencies
       shell: bash
       env:

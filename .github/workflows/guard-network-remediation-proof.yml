@@ -64,7 +64,12 @@ jobs:
           --tb=short
       - name: Lint proof implementation
         run: uv run --frozen ruff check scripts/guard_network_remediation_proof.py tests/test_guard_network_remediation_proof.py
+      - uses: ./.github/actions/setup-rust
+      - name: Build source compiler
+        run: cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command --bin guard-command-source
       - name: Build wheel
+        env:
+          HOL_GUARD_BUILD_SOURCE_COMPILER: rust/target/release/guard-command-source
         run: uv build --wheel --out-dir dist
       - name: Inspect installed wheel
         run: |

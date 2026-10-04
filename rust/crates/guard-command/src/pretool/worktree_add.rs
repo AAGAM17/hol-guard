@@ -1,0 +1,260 @@
+use crate::{CanonicalCommandV1, CommandSegmentV1};
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+struct WorktreeAdd<'a> {
+    leading: &'a [String],
+    branch: &'a str,
+    destination: &'a str,
+    reference: Option<&'a str>,
+}
+
+const MAX_GIT_NAME_BYTES: usize = 256;
+const MAX_DESTINATION_BYTES: usize = 4096;
+
+pub(super) fn exact_safe_command(
+    model: &CanonicalCommandV1,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    if model.confidence != "exact"
+        || model.path_overridden
+        || model.segments.is_empty()
+        || !model.wrapper_chain.is_empty()
+    {
+        return false;
+    }
+    let cwd = super::segment_proof::verified_cwd_compound_context(model, context);
+    let proof_context = super::PathContext {
+        home_dir: context.home_dir,
+        cwd: cwd.as_deref().or(context.cwd),
+    };
+    let mut worktree_seen = false;
+    for (index, segment) in model.segments.iter().enumerate() {
+        let is_cd = segment.executable.as_deref() == Some("cd");
+        if is_cd {
+            if index != 0 || cwd.is_none() {
+                return false;
+            }
+            continue;
+        }
+        let is_worktree = segment
+            .executable
+            .as_deref()
+            .is_some_and(|value| super::executable_basename(value) == "git")
+            && parse(segment).is_some();
+        if is_worktree {
+            if worktree_seen
+                || segment.pipeline_index != 0
+                || !safe_segment(
+                    model,
+                    segment,
+                    proof_context,
+                    deadline,
+                    execution_environment,
+                )
+            {
+                return false;
+            }
+            worktree_seen = true;
+            continue;
+        }
+        if segment.pipeline_index > 0 {
+            let is_tail = segment
+                .executable
+                .as_deref()
+                .is_some_and(|value| super::executable_basename(value) == "tail");
+            if !is_tail || !super::safe_reads::safe_head_tail_stdin_arguments(&segment.arguments) {
+                return false;
+            }
+        }
+        if segment
+            .executable
+            .as_deref()
+            .is_some_and(|value| super::executable_basename(value) == "tail")
+            && !super::git_config::trusted_pipeline_command(
+                "tail",
+                proof_context,
+                execution_environment,
+            )
+        {
+            return false;
+        }
+        if !super::segment_proof::exact_safe_segment_with_context(
+            model,
+            segment,
+            false,
+            proof_context,
+        ) {
+            return false;
+        }
+    }
+    worktree_seen
+}
+
+fn safe_segment(
+    _model: &CanonicalCommandV1,
+    segment: &CommandSegmentV1,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    let Some(spec) = parse(segment) else {
+        return false;
+    };
+    let Some(destination) = fresh_destination(spec.destination, context) else {
+        return false;
+    };
+    let result = super::git_config::worktree_add_execution_free(
+        segment.executable.as_deref().unwrap_or("git"),
+        spec.leading,
+        &destination,
+        spec.branch,
+        spec.reference,
+        context,
+        deadline,
+        execution_environment,
+    )
+    .unwrap_or(false);
+    result
+}
+
+fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
+    let arguments = if segment
+        .arguments
+        .last()
+        .is_some_and(|argument| argument == "2>&1")
+    {
+        &segment.arguments[..segment.arguments.len() - 1]
+    } else {
+        &segment.arguments
+    };
+    let mut index = 0;
+    while matches!(
+        arguments.get(index).map(String::as_str),
+        Some("-P" | "--no-pager" | "--no-optional-locks")
+    ) {
+        index += 1;
+    }
+    if arguments.get(index).map(String::as_str) != Some("worktree") {
+        return None;
+    }
+    let leading = &arguments[..index];
+    index += 1;
+    if arguments.get(index).map(String::as_str) != Some("add") {
+        return None;
+    }
+    index += 1;
+    let mut branch = None;
+    let mut destination = None;
+    let mut reference = None;
+    while let Some(argument) = arguments.get(index) {
+        match argument.as_str() {
+            "-q" | "--quiet" => index += 1,
+            "-b" if branch.is_none() && reference.is_none() => {
+                branch = arguments.get(index + 1).map(String::as_str);
+                index += 2;
+            }
+            _ if argument.starts_with('-') => return None,
+            _ if destination.is_none() => {
+                destination = Some(argument.as_str());
+                index += 1;
+            }
+            _ if reference.is_none() => {
+                reference = Some(argument.as_str());
+                index += 1;
+            }
+            _ => return None,
+        }
+    }
+    let branch = branch.filter(|value| valid_branch_name(value))?;
+    let destination = destination.filter(|value| valid_path_text(value))?;
+    if reference.is_some_and(|value| !valid_local_reference(value)) {
+        return None;
+    }
+    Some(WorktreeAdd {
+        leading,
+        branch,
+        destination,
+        reference,
+    })
+}
+
+fn valid_branch_name(value: &str) -> bool {
+    valid_ref_component(value)
+        && !value.starts_with('-')
+        && !value.ends_with('.')
+        && !value.ends_with('/')
+        && !value.contains("..")
+        && !value.contains("@{")
+        && !value.ends_with(".lock")
+}
+
+fn valid_local_reference(value: &str) -> bool {
+    value == "HEAD"
+        || (value
+            .strip_prefix("refs/heads/")
+            .or_else(|| value.strip_prefix("refs/tags/"))
+            .or_else(|| value.strip_prefix("refs/remotes/"))
+            .or_else(|| value.strip_prefix("origin/"))
+            .is_some_and(valid_ref_component))
+}
+
+fn valid_ref_component(value: &str) -> bool {
+    value.len() <= MAX_GIT_NAME_BYTES
+        && !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/'))
+        && !value
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+        && !value.contains("..")
+        && !value.contains("@{")
+        && !value.ends_with('.')
+        && !value.ends_with('/')
+        && !value.ends_with(".lock")
+}
+
+fn valid_path_text(value: &str) -> bool {
+    let components = value.strip_prefix('/').unwrap_or(value);
+    value.len() <= MAX_DESTINATION_BYTES
+        && !components.is_empty()
+        && value.trim() == value
+        && !value.starts_with('~')
+        && !value.contains([
+            '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '*', '?', '[', ']', '{', '}', '\\',
+        ])
+        && !components
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+}
+
+fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<PathBuf> {
+    let home = std::fs::canonicalize(Path::new(context.home_dir?)).ok()?;
+    let cwd = std::fs::canonicalize(Path::new(context.cwd?)).ok()?;
+    if !home.is_dir() || !home.is_absolute() || !cwd.is_dir() || !cwd.is_absolute() {
+        return None;
+    }
+    let supplied = Path::new(value);
+    let target = if supplied.is_absolute() {
+        supplied.to_path_buf()
+    } else {
+        cwd.join(supplied)
+    };
+    let parent = target.parent()?;
+    match std::fs::symlink_metadata(&target) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        _ => return None,
+    }
+    let parent_metadata = std::fs::symlink_metadata(parent).ok()?;
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+        return None;
+    }
+    let canonical_parent = std::fs::canonicalize(parent).ok()?;
+    if !canonical_parent.starts_with(&home) {
+        return None;
+    }
+    Some(canonical_parent.join(target.file_name()?))
+}

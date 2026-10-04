@@ -22,6 +22,7 @@ mod safe_writes;
 mod search;
 mod segment_proof;
 mod stdin_filters;
+mod worktree_add;
 mod worktree_writes;
 
 pub mod generic;
@@ -373,6 +374,16 @@ pub(super) fn evaluate_pre_tool_with_context(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<PreToolDecisionV1, String> {
+    evaluate_pre_tool_with_execution_context(request, home_dir, cwd, None, None)
+}
+
+pub(super) fn evaluate_pre_tool_with_execution_context(
+    request: &CommandModelRequestV1,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    deadline: Option<std::time::Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> Result<PreToolDecisionV1, String> {
     let model = parse_command(request)?;
     let normalized = model.normalized_text.as_str();
     let context = crate::pretool::PathContext { home_dir, cwd };
@@ -433,6 +444,14 @@ pub(super) fn evaluate_pre_tool_with_context(
             "require-reapproval",
             "native_privileged_wrapper_reapproval",
             "HOL Guard requires fresh approval for the privileged execution context.",
+        ));
+    }
+    if worktree_add::exact_safe_command(&model, context, deadline, execution_environment) {
+        return Ok(pretool_decision(
+            model,
+            "allow",
+            "native_exact_safe_worktree_add",
+            "The Rust command authority proved this bounded worktree creation has a fresh contained destination, a local ref, and no executable Git routes.",
         ));
     }
     if exact_safe_command_with_context(&model, false, context) {

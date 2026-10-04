@@ -1,0 +1,335 @@
+#![cfg(unix)]
+
+#[path = "support/git_helper_fixture.rs"]
+mod fixture;
+
+use fixture::{evaluate_pre_tool_envelope_with_context, FixtureCleanup};
+use serde_json::json;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+
+fn worktree_controls(
+    state: Option<&str>,
+) -> guard_command::native_command_controls::CompiledNativeCommandControls {
+    let program = guard_command::native_command_program::packaged_command_program().unwrap();
+    let controls = state.map_or_else(Vec::new, |state| {
+        vec![json!({
+            "target_kind":"permission",
+            "target_id":"command.git.permission.worktree",
+            "state":state
+        })]
+    });
+    let mut binding: guard_contracts::NativeCommandControlBindingV1 =
+        serde_json::from_value(json!({
+            "schema":"guard.native-command-control-binding.v1",
+            "program_digest":program.program_digest,
+            "catalog_digest":program.catalog_digest,
+            "trust_digest":program.trust_digest,
+            "health":"protected",
+            "revision":1,
+            "managed_revision":0,
+            "effective_digest":"",
+            "layers":[{
+                "schema_version":"1.0.0",
+                "kind":"local-admin",
+                "catalog_digest":program.catalog_digest,
+                "global_lockdown":false,
+                "controls":controls
+            }]
+        }))
+        .unwrap();
+    binding.effective_digest = binding.compute_effective_digest().unwrap();
+    guard_command::native_command_controls::CompiledNativeCommandControls::new(&binding).unwrap()
+}
+
+fn git_extension_controls(
+    state: &str,
+) -> guard_command::native_command_controls::CompiledNativeCommandControls {
+    let program = guard_command::native_command_program::packaged_command_program().unwrap();
+    let mut binding: guard_contracts::NativeCommandControlBindingV1 =
+        serde_json::from_value(json!({
+            "schema":"guard.native-command-control-binding.v1",
+            "program_digest":program.program_digest,
+            "catalog_digest":program.catalog_digest,
+            "trust_digest":program.trust_digest,
+            "health":"protected",
+            "revision":1,
+            "managed_revision":0,
+            "effective_digest":"",
+            "layers":[{
+                "schema_version":"1.0.0",
+                "kind":"local-admin",
+                "catalog_digest":program.catalog_digest,
+                "global_lockdown":false,
+                "controls":[{
+                    "target_kind":"extension",
+                    "target_id":"command.git",
+                    "state":state
+                }]
+            }]
+        }))
+        .unwrap();
+    binding.effective_digest = binding.compute_effective_digest().unwrap();
+    guard_command::native_command_controls::CompiledNativeCommandControls::new(&binding).unwrap()
+}
+
+fn evaluate(
+    repository: &Path,
+    controls: &guard_command::native_command_controls::CompiledNativeCommandControls,
+    command: &str,
+) -> guard_contracts::PreToolResultV1 {
+    let home = repository.parent().unwrap();
+    evaluate_pre_tool_envelope_with_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+        Some(controls),
+        None,
+        home.to_str(),
+        repository.to_str(),
+    )
+}
+
+fn evaluate_with_path(
+    repository: &Path,
+    controls: &guard_command::native_command_controls::CompiledNativeCommandControls,
+    command: &str,
+    path: &str,
+) -> guard_contracts::PreToolResultV1 {
+    use sha2::{Digest, Sha256};
+
+    let home = repository.parent().unwrap();
+    let environment = std::collections::BTreeMap::from([
+        ("PATH", path.to_owned()),
+        ("GIT_CONFIG_NOSYSTEM", "1".to_owned()),
+        ("HOME", home.to_str().unwrap().to_owned()),
+    ]);
+    let context = guard_contracts::GuardExecutionEnvironmentV1 {
+        path: path.to_owned(),
+        environment_names: environment.keys().map(|key| (*key).to_owned()).collect(),
+        environment_digest: hex::encode(Sha256::digest(serde_json::to_vec(&environment).unwrap())),
+        home: Some(home.to_str().unwrap().to_owned()),
+        git_pager_disabled: false,
+        pager_disabled: false,
+        xdg_config_home: None,
+        git_config_no_system: true,
+    };
+    guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+        Some(controls),
+        None,
+        guard_command::pretool::PathContext {
+            home_dir: home.to_str(),
+            cwd: repository.to_str(),
+        },
+        Some(&context),
+    )
+}
+
+fn git(repository: &Path, arguments: &[&str]) {
+    let home = repository.parent().unwrap();
+    assert!(std::process::Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .env("HOME", home)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("GIT_AUTHOR_NAME")
+        .env_remove("GIT_AUTHOR_EMAIL")
+        .env_remove("GIT_COMMITTER_NAME")
+        .env_remove("GIT_COMMITTER_EMAIL")
+        .args(arguments)
+        .status()
+        .unwrap()
+        .success());
+}
+
+#[test]
+fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
+    let root = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"),
+    )
+    .unwrap()
+    .join(format!(
+        "guard-git-worktree-proof-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let repository = root.join("repository");
+    let _cleanup = FixtureCleanup(root.clone());
+    std::fs::create_dir_all(&repository).unwrap();
+    git(&repository, &["init", "--quiet"]);
+    git(&repository, &["config", "user.name", "Guard Fixture"]);
+    git(
+        &repository,
+        &["config", "user.email", "guard-fixture@example.invalid"],
+    );
+    std::fs::write(repository.join("tracked.txt"), "fixture\n").unwrap();
+    git(&repository, &["add", "tracked.txt"]);
+    git(&repository, &["commit", "--quiet", "-m", "fixture"]);
+
+    let enabled = fixture::github_controls("enabled");
+    let destination = root.join("sibling-child");
+    let command = format!(
+        "git worktree add --quiet {} -b fixture-worktree HEAD",
+        destination.display()
+    );
+    let admitted = evaluate(&repository, &enabled, &command);
+    assert_eq!(admitted.minimum_action, "allow", "{}", admitted.reason_code);
+    assert_eq!(admitted.reason_code, "native_exact_safe_worktree_add");
+    assert_eq!(
+        admitted
+            .command_extensions
+            .as_ref()
+            .unwrap()
+            .observations
+            .iter()
+            .find(|observation| observation.rule_id == "command.git.worktree")
+            .unwrap()
+            .effective_segment_indexes,
+        vec![0]
+    );
+
+    git(
+        &repository,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "fixture-worktree",
+            destination.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    assert!(destination.is_dir());
+
+    git(
+        &repository,
+        &["update-ref", "refs/remotes/origin/local", "HEAD"],
+    );
+    let remote_destination = root.join("remote-child");
+    let remote_command = format!(
+        "git worktree add --quiet -b remote-worktree {} origin/local",
+        remote_destination.display()
+    );
+    let remote_admitted = evaluate(&repository, &enabled, &remote_command);
+    assert_eq!(remote_admitted.minimum_action, "allow", "{remote_command}");
+    git(
+        &repository,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "remote-worktree",
+            remote_destination.to_str().unwrap(),
+            "origin/local",
+        ],
+    );
+    assert!(remote_destination.is_dir());
+
+    let compound_destination = root.join("compound-child");
+    let compound_command = format!(
+        "cd {} && git worktree add {} -b compound-worktree HEAD 2>&1 | tail -3",
+        repository.display(),
+        compound_destination.display()
+    );
+    let compound = evaluate(&repository, &enabled, &compound_command);
+    assert_eq!(compound.minimum_action, "allow", "{compound_command}");
+
+    let head_command = compound_command.replace("tail -3", "head -3");
+    let head = evaluate(&repository, &enabled, &head_command);
+    assert_ne!(head.minimum_action, "allow");
+
+    let shadow_bin = root.join("shadow-bin");
+    std::fs::create_dir_all(&shadow_bin).unwrap();
+    let shadow_tail = shadow_bin.join("tail");
+    std::fs::write(&shadow_tail, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut permissions = std::fs::metadata(&shadow_tail).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&shadow_tail, permissions).unwrap();
+    let shadow_path = format!(
+        "{}:{}",
+        shadow_bin.display(),
+        std::env::var("PATH").unwrap()
+    );
+    let shadowed_tail = evaluate_with_path(&repository, &enabled, &compound_command, &shadow_path);
+    assert_ne!(shadowed_tail.minimum_action, "allow");
+
+    let existing_destination_command = format!(
+        "git worktree add --quiet -b existing-destination {} HEAD",
+        destination.display()
+    );
+    let existing_destination = evaluate(&repository, &enabled, &existing_destination_command);
+    assert_ne!(
+        existing_destination.minimum_action, "allow",
+        "{existing_destination_command}"
+    );
+
+    for command in [
+        "git worktree add --quiet --force -b blocked-force force-child HEAD",
+        "git worktree add --quiet -b fixture-worktree second-child HEAD",
+        "git worktree add --quiet -b second-child missing-ref HEAD~99",
+        "git -c core.hooksPath=/tmp/hooks worktree add --quiet -b second-child config-child HEAD",
+        "git worktree add --quiet -b second-child -- filtered-child HEAD",
+    ] {
+        let result = evaluate(&repository, &enabled, command);
+        assert_ne!(result.minimum_action, "allow", "{command}");
+    }
+
+    let symlink_target = root.join("outside");
+    std::fs::create_dir_all(&symlink_target).unwrap();
+    std::os::unix::fs::symlink(&symlink_target, repository.join("symlink-child")).unwrap();
+    let symlink = evaluate(
+        &repository,
+        &enabled,
+        "git worktree add --quiet -b second-child symlink-child HEAD",
+    );
+    assert_ne!(symlink.minimum_action, "allow");
+
+    let hook = repository.join(".git/hooks/post-checkout");
+    std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut permissions = std::fs::metadata(&hook).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&hook, permissions).unwrap();
+    let hooked = evaluate(
+        &repository,
+        &enabled,
+        "git worktree add --quiet -b third-child hooked-child HEAD",
+    );
+    assert_ne!(hooked.minimum_action, "allow");
+
+    let extension_disabled = git_extension_controls("disabled");
+    let extension_result = evaluate(&repository, &extension_disabled, &command);
+    assert_eq!(extension_result.minimum_action, "block");
+    assert!(extension_result.reason_code.ends_with("disabled"));
+
+    git(&repository, &["config", "credential.helper", "!false"]);
+    let helper = evaluate(
+        &repository,
+        &enabled,
+        "git worktree add --quiet -b helper-worktree helper-child HEAD",
+    );
+    assert_ne!(helper.minimum_action, "allow");
+
+    git(
+        &repository,
+        &["config", "remote.origin.partialCloneFilter", "blob:none"],
+    );
+    let partial_clone = evaluate(
+        &repository,
+        &enabled,
+        "git worktree add --quiet -b partial-worktree partial-child HEAD",
+    );
+    assert_ne!(partial_clone.minimum_action, "allow");
+
+    let disabled = worktree_controls(Some("disabled"));
+    let denied = evaluate(&repository, &disabled, &command);
+    assert_eq!(denied.minimum_action, "block");
+    assert_eq!(denied.reason_code, "native_command_permission_disabled");
+}

@@ -14,6 +14,8 @@ class CommandProjectionBuildHook(BuildHookInterface):
     """Ship frozen, validated metadata without keeping copies in Git."""
 
     def initialize(self, version: str, build_data: dict) -> None:
+        if version == "editable":
+            return
         root = Path(self.root)
         command = [sys.executable, str(root / "scripts/build_native_command_program.py"), "--projections-only"]
         compiler = os.environ.get("HOL_GUARD_BUILD_SOURCE_COMPILER")
@@ -21,8 +23,7 @@ class CommandProjectionBuildHook(BuildHookInterface):
             compiler_path = Path(compiler)
             if not compiler_path.is_absolute():
                 compiler_path = root / compiler_path
-            if compiler_path.is_file():
-                command.extend(["--compiler", str(compiler_path)])
+            command.extend(["--compiler", str(compiler_path)])
         subprocess.run(command, cwd=root, check=True)
         subprocess.run([*command, "--check"], cwd=root, check=True)
         # Register only after generation so editable dependency setup works

@@ -13,8 +13,14 @@ _DECISION_HOOK_HARNESSES = frozenset({"grok", "hermes", "openclaw"})
 def grok_observe_event(harness: str, event_name: str) -> bool:
     compact = event_name.strip().lower().replace("_", "").replace("-", "")
     return harness == "grok" and compact in {
-        "userpromptsubmit", "userpromptsubmitted", "sessionstart", "sessionend",
-        "subagentstart", "subagentstop", "posttooluse", "permissiondenied",
+        "userpromptsubmit",
+        "userpromptsubmitted",
+        "sessionstart",
+        "sessionend",
+        "subagentstart",
+        "subagentstop",
+        "posttooluse",
+        "permissiondenied",
     }
 
 
@@ -23,7 +29,10 @@ def _is_permission_event(event_name: str) -> bool:
 
 
 def _is_prompt_event(event_name: str) -> bool:
-    return event_name.strip().lower().replace("_", "").replace("-", "") in {"userpromptsubmit", "userpromptsubmitted"}
+    return event_name.strip().lower().replace("_", "").replace("-", "") in {
+        "userpromptsubmit",
+        "userpromptsubmitted",
+    }
 
 
 def watch_continue_payload(harness: str, event_name: str) -> dict[str, object]:

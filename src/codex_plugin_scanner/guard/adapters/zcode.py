@@ -232,7 +232,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         )
 
     def _config_candidates(self, context: HarnessContext) -> list[Path]:
-        candidates = [self._cli_root(context) / name for name in ("setting.json", ZCODE_CLI_CONFIG_FILE)]
+        candidates = [self._config_path(context)]
         project_cli_root = self._project_cli_root(context)
         if project_cli_root is not None:
             candidates.append(project_cli_root / ZCODE_CLI_CONFIG_FILE)

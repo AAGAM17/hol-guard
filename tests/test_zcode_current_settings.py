@@ -37,7 +37,7 @@ def test_install_and_uninstall_preserve_current_settings(tmp_path):
     assert legacy.read_bytes() == legacy_before
     detected = adapter.detect(context)
     assert str(settings) in detected.config_paths
-    assert str(legacy) in detected.config_paths
+    assert str(legacy) not in detected.config_paths
     adapter.install(context)
     adapter.uninstall(context)
     remaining = json.loads(settings.read_text())

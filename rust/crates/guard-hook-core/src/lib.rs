@@ -180,13 +180,12 @@ fn sensitive_envelope_target(payload: &Value) -> bool {
     let resolved_directory_target = payload
         .get("resolved_directory_target")
         .and_then(Value::as_str);
-    [target.as_deref(), resolved_directory_target]
-        .into_iter()
-        .flatten()
-        .any(|target| {
-            let path = Path::new(target.trim());
-            sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
-        })
+    let is_sensitive = |target: &str| {
+        let path = Path::new(target.trim());
+        sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
+    };
+    target.as_deref().is_some_and(is_sensitive)
+        || resolved_directory_target.is_some_and(is_sensitive)
 }
 
 fn inline_local_content(payload: &Value) -> bool {

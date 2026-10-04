@@ -99,7 +99,7 @@ def build_extension_source_tail(
         "    if (resolvedDirectoryTarget !== undefined) {\n"
         "      guardPayload.resolved_directory_target = resolvedDirectoryTarget;\n"
         "    }\n"
-        "    // OMP's current ExtensionContext has no lifecycle signal. A managed\n"}
+        "    // OMP's current ExtensionContext has no lifecycle signal. A managed\n"
         "    // structured destination therefore stays fail-closed there unless the\n"
         "    // host supplies the feature-detected signal used by the tool-call path.\n"
         "    const structuredOutputJson = signal === undefined\n"

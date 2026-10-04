@@ -6,13 +6,15 @@ import json
 import os
 import re
 import subprocess
+from decimal import Decimal
 from html import escape
 from pathlib import Path
 
 from scripts.ci.sonar_quality_client import SonarClient, metadata_task
-from scripts.ci.sonar_quality_policy import conditions
+from scripts.ci.sonar_quality_policy import conditions, number
 
 REPOSITORY = "hashgraph-online/hol-guard"
+ANCHOR_COVERAGE = Decimal("61.7")
 
 
 def verify_main_push(environment: dict[str, str], event: dict) -> None:
@@ -49,6 +51,8 @@ def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str],
     failures = {key for key, value in checked.items() if value["status"] == "ERROR"}
     if failures != {"new_coverage"}:
         return False
+    if number(checked["new_coverage"]["actualValue"]) < ANCHOR_COVERAGE:
+        return False
     event_path = Path(environment["GITHUB_EVENT_PATH"])
     with event_path.open("rb") as stream:
         raw = stream.read(4 * 1024 * 1024 + 1)
@@ -80,9 +84,10 @@ def evidence(report: dict, environment: dict[str, str]) -> None:
     if report["decision"] == "main-coverage-debt-reported":
         lines += [
             "",
-            "Migration-wide main coverage is advisory, not fixed. The unchanged PR coverage gate "
-            "and every current non-coverage condition remain enforced. This is not a coverage ratchet, "
-            "an 80% result, or a green raw Sonar gate.",
+            "Migration-wide main coverage above the reviewed 61.7% bootstrap anchor is advisory, "
+            "not a fixed target. The unchanged PR coverage gate and every current non-coverage "
+            "condition remain enforced. This is not a historical coverage ratchet, an 80% result, "
+            "or a green raw Sonar gate.",
         ]
     if "error" in report:
         lines += ["", "Evidence error: " + escape(report["error"])]

@@ -182,7 +182,7 @@ def main_push(tmp_path, monkeypatch):
     return environment, event
 
 
-@pytest.mark.parametrize("coverage", ["61.7", "50", "79.9"])
+@pytest.mark.parametrize("coverage", ["61.7", "79.9"])
 def test_coverage_only_main_result_is_explicit_debt_not_a_false_green_or_ratchet(main_push, coverage):
     environment, _ = main_push
     client = Mock()
@@ -195,6 +195,16 @@ def test_coverage_only_main_result_is_explicit_debt_not_a_false_green_or_ratchet
     saved = json.loads(Path("sonar-quality-evidence/quality.json").read_text())
     assert row(saved["gate"], "new_coverage")["actualValue"] == coverage
     assert "not a coverage ratchet" in Path("sonar-quality-evidence/summary.md").read_text()
+
+
+@pytest.mark.parametrize("coverage", ["61.69", "50"])
+def test_coverage_below_reviewed_anchor_remains_blocked(main_push, coverage):
+    environment, _ = main_push
+    client = Mock()
+    client.gate.return_value = gate(coverage)
+    report = {}
+    assert not runner.evaluate(client, "analysis-id", environment, report)
+    assert "decision" not in report
 
 
 @pytest.mark.parametrize("change", ["pr", "release", "manual", "forced", "deleted", "foreign", "sha", "checkout"])

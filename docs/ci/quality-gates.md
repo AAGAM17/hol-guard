@@ -16,18 +16,20 @@ Sonar quality-gate action and configured 80% new-code coverage rule, including i
 existing handling of changes with no coverable source lines.
 
 On a normal main push only, the final CI decision treats the migration-wide
-coverage percentage as advisory. Security, reliability, maintainability,
-duplication, hotspot review, and any unknown failing condition remain blocking.
-Missing coverage evidence, ignored conditions, weakened configured thresholds,
-API errors, invalid task/project metadata, and checkout/event mismatches fail
+coverage percentage as advisory provided it remains at or above the reviewed
+61.7% bootstrap anchor. Security, reliability, maintainability, duplication,
+hotspot review, and any unknown failing condition remain blocking. Missing
+coverage evidence, ignored conditions, weakened configured thresholds, API
+errors, invalid task/project metadata, and checkout/event mismatches fail
 closed. The main reporter never changes SonarCloud settings or its raw result.
 
 This is an explicit policy tradeoff, NOT a historical coverage ratchet. Existing
-coverage debt remains debt. A main percentage can fall while the coverage-only
-reporting policy passes, so reviewers must continue inspecting PR coverage and
-the recorded main measurements. The complete test suites and existing required
-security checks are unchanged; the percentage rule is not a substitute for those
-security/behavior tests. New work keeps the existing per-PR coverage gate.
+coverage debt remains debt. Main coverage can fall only as far as the 61.7%
+anchor while the coverage-only reporting policy passes, so reviewers must
+continue inspecting PR coverage and the recorded main measurements. The complete
+test suites and existing required security checks are unchanged; the percentage
+rule is not a substitute for those security/behavior tests. New work keeps the
+existing per-PR coverage gate.
 
 `scripts/ci/check_sonar_quality.py` reads the exact completed analysis ID for the
 current scanner task, not a mutable latest-project result. Credentials go only

@@ -60,14 +60,20 @@ fn facts(value: &Value) -> BusinessActionV1 {
 #[test]
 fn dimensions_intersect_and_thresholds_are_inclusive() {
     let mut value = fixtures()["base"].clone();
-    let full = fixtures()["cases"][1]["patch"].clone();
+    let fixture = fixtures();
+    let full = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == "all-dimensions")
+        .unwrap()["patch"]
+        .clone();
     for (key, patch) in full.as_object().unwrap() {
         value[key] = patch.clone();
     }
     let action = facts(&facts_value());
     assert_eq!(selector(&value).unwrap().matches(&action), Ok(true));
     for (key, patch) in [
-        ("services", json!(["google_drive"])),
         ("operations", json!(["mail_read"])),
         ("accountBindings", json!(["0".repeat(64)])),
         ("audienceKinds", json!(["private"])),
@@ -97,7 +103,9 @@ fn dimensions_intersect_and_thresholds_are_inclusive() {
 fn uncertainty_is_an_error_even_before_a_nonmatching_service() {
     let mut value = fixtures()["base"].clone();
     value["services"] = json!(["google_drive"]);
+    value["operations"] = json!(["drive_share"]);
     let matcher = selector(&value).unwrap();
+    assert_eq!(matcher.matches(&facts(&facts_value())), Ok(false));
     for (object, field) in [
         ("provider", "identity_state"),
         ("audience", "expansion_state"),

@@ -8,6 +8,13 @@
   },
   "cases": [
     {"id":"minimal","patch":{},"valid":true},
+    {"id":"unknown-only-audience","patch":{"audienceKinds":["unknown"]},"valid":false},
+    {"id":"unknown-mixed-label","patch":{"sensitivityLabels":["secret","unknown"]},"valid":false},
+    {"id":"unknown-only-label","patch":{"sensitivityLabels":["unknown"]},"valid":false},
+    {"id":"mail-service-mismatch","patch":{"services":["google_drive"]},"valid":false},
+    {"id":"drive-service-mismatch","patch":{"operations":["drive_share"]},"valid":false},
+    {"id":"calendar-service-mismatch","patch":{"operations":["calendar_invite"]},"valid":false},
+    {"id":"service-alternatives","patch":{"services":["google_gmail","google_drive"],"operations":["mail_send","drive_share"]},"valid":true},
     {"id":"all-dimensions","patch":{"accountBindings":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"audienceKinds":["named"],"sensitivityLabels":["confidential"],"minRecipientCount":2,"minRecordCount":1,"minByteCount":128},"valid":true},
     {"id":"zero-count","patch":{"minRecipientCount":0,"minRecordCount":0,"minByteCount":0},"valid":true},
     {"id":"safe-integer-limit","patch":{"minByteCount":9007199254740991},"valid":true},

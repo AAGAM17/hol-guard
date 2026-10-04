@@ -108,8 +108,9 @@ jobs:
           components: rustfmt clippy
       - run: uv sync --frozen --no-dev --extra dev --python 3.12
       - name: Validate native workspace
-        # macOS remains platform-specific; Linux PR/push validation lives in required CI.
-        if: runner.os == 'macOS' || (runner.os == 'Linux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))
+        # macOS remains platform-specific; only main Linux PR/push duplicates are skipped.
+        if: >-
+          runner.os == 'macOS' || (runner.os == 'Linux' && !((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')))
         shell: bash
         run: |
           cargo fmt --manifest-path rust/Cargo.toml --all --check

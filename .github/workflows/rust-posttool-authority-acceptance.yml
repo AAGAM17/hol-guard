@@ -66,9 +66,10 @@ jobs:
           if 'PolicySnapshot' not in runtime and 'policy_snapshot' not in runtime:
               raise SystemExit('policy snapshot runtime use missing')
           PY
-      # Keep full standalone qualification; CI runs the required PR/push workspace proof once.
+      # Retain standalone qualification unless the required main CI already runs this proof.
       - name: Build and lint
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: >-
+          !((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         env:
           HOL_GUARD_BUILD_SHA: ${{ github.sha }}
         run: |

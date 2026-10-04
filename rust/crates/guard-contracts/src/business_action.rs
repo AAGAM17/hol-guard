@@ -69,7 +69,9 @@ pub enum BusinessFactStateV1 {
 pub struct BusinessProviderV1 {
     pub service: BusinessServiceV1,
     /// Native-private identity commitment, not a browser/model account claim.
+    #[serde(deserialize_with = "required_nullable")]
     pub account_binding: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
     pub tenant_binding: Option<String>,
     pub identity_state: BusinessFactStateV1,
     pub tool_identity_digest: String,
@@ -172,6 +174,10 @@ fn digest(value: &str) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn required_nullable<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(d)
 }
 
 fn domain(value: &str) -> bool {

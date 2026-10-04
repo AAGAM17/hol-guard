@@ -49,6 +49,19 @@ def test_source_only_native_changes_report_pending(detector, monkeypatch, capsys
     assert capsys.readouterr().out == "true\n"
 
 
+def test_clean_checkout_catalog_awaits_generation(detector, monkeypatch, tmp_path):
+    monkeypatch.setattr(detector, "CATALOG", tmp_path / "command-catalog.v1.json")
+    assert detector.catalog_ids() == set()
+
+
+def test_malformed_staged_catalog_is_not_treated_as_missing(detector, monkeypatch, tmp_path):
+    catalog = tmp_path / "command-catalog.v1.json"
+    catalog.write_text("invalid")
+    monkeypatch.setattr(detector, "CATALOG", catalog)
+    with pytest.raises(ValueError):
+        detector.catalog_ids()
+
+
 def test_unchanged_canonical_inputs_still_require_fresh_artifacts(detector, monkeypatch, capsys):
     """Verify unchanged canonical inputs still require fresh artifacts."""
     monkeypatch.setattr(

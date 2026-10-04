@@ -78,7 +78,9 @@ def contribution_ids() -> set[str]:
 
 
 def catalog_ids() -> set[str]:
-    """Read the identities covered by the checked-in generated catalog."""
+    """Read staged catalog identities; a clean checkout awaits generation."""
+    if not CATALOG.exists():
+        return set()
     catalog = json.loads(CATALOG.read_text())
     return {entry["extension_id"] for entry in catalog["catalog"]}
 

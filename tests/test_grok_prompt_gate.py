@@ -19,6 +19,7 @@ from .test_bounded_cli_hook_script_template import _load_script
 
 _PROMPT_EVENTS = ["UserPromptSubmit", "user_prompt_submit", "UserPromptSubmitted", "user_prompt_submitted"]
 
+
 @pytest.mark.parametrize("event", _PROMPT_EVENTS)
 @pytest.mark.parametrize("action", ["review", "require-reapproval", "sandbox-required", "block"])
 def test_restrictive_prompt_actions_use_grok_block(action: str, event: str) -> None:
@@ -30,9 +31,7 @@ def test_restrictive_prompt_actions_use_grok_block(action: str, event: str) -> N
         rendered,
         grok_hook_response_from_guard(policy_action=action, reason="Rejected prompt.", event_name=event),
     ):
-        stdout, _, code = transport._daemon_response_to_native(
-            response, harness="grok", event_name=event
-        )
+        stdout, _, code = transport._daemon_response_to_native(response, harness="grok", event_name=event)
         assert json.loads(stdout)["decision"] == "block"
         assert code == 2
 
@@ -47,9 +46,12 @@ def test_reviewed_benign_prompt_has_empty_success(action: str, event: str) -> No
 
 
 def test_acknowledged_watch_prompt_does_not_block() -> None:
-    assert grok_hook_response_from_guard(
-        policy_action="block", reason="Would block.", event_name="UserPromptSubmit", recording_only=True
-    ) == {}
+    assert (
+        grok_hook_response_from_guard(
+            policy_action="block", reason="Would block.", event_name="UserPromptSubmit", recording_only=True
+        )
+        == {}
+    )
 
 
 @pytest.mark.parametrize("event", _PROMPT_EVENTS)
@@ -91,7 +93,9 @@ def test_standalone_prompt_gate_blocks_offline_before_host_deadline(tmp_path: Pa
     completed = subprocess.run(
         [sys.executable, "-I", str(script)],
         input=json.dumps({"hook_event_name": event, "prompt": "Explain a README."}),
-        text=True, capture_output=True, timeout=3,
+        text=True,
+        capture_output=True,
+        timeout=3,
     )
     assert completed.returncode == 0
     assert json.loads(completed.stdout)["decision"] == "block"

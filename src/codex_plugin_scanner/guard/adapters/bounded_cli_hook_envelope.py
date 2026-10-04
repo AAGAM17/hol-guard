@@ -18,6 +18,7 @@ _EVENT_ALIASES = {
 
 _EVENT_NAME_KEYS = ("hook_event_name", "hookEventName", "event", "eventName", "hook_name", "hookName")
 
+
 def _grok_pretool_event_conflict(input_text: str) -> bool:
     payload = _json_object(input_text) or {}
     events = {
@@ -29,6 +30,7 @@ def _grok_pretool_event_conflict(input_text: str) -> bool:
         events.discard("pretoolcall")
         events.add("pretooluse")
     return "pretooluse" in events and len(events) > 1
+
 
 def _json_object(text: str) -> dict[str, object] | None:
     try:
@@ -43,12 +45,14 @@ def _json_object(text: str) -> dict[str, object] | None:
             payload[key] = value
     return payload
 
+
 def _canonical_event_token(value: str) -> str | None:
     stripped = value.strip()
     if not stripped:
         return None
     normalized = stripped.replace("_", "").replace("-", "").lower()
     return _EVENT_ALIASES.get(normalized, stripped)
+
 
 def _event_name(input_text: str) -> str:
     payload = _json_object(input_text or "{}")
@@ -70,6 +74,7 @@ def _event_name(input_text: str) -> str:
             if named is not None:
                 return named
     return "PreToolUse"
+
 
 def _has_json_object_line(output: str) -> bool:
     stripped = output.strip()

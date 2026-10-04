@@ -6,7 +6,8 @@ from .bounded_cli_hook_script_native import BOUNDED_HOOK_NATIVE_TEMPLATE
 from .hook_http_deadline import HOOK_HTTP_DEADLINE_TEMPLATE
 from .hook_input_reader import HOOK_INPUT_READER_TEMPLATE
 
-BOUNDED_HOOK_SCRIPT_TEMPLATE = '''#!/usr/bin/env python3
+BOUNDED_HOOK_SCRIPT_TEMPLATE = (
+    '''#!/usr/bin/env python3
 """Managed by HOL Guard. Re-run hol-guard install after moving Guard home."""
 from __future__ import annotations
 
@@ -469,6 +470,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-'''.replace("__HOOK_INPUT_READER__", HOOK_INPUT_READER_TEMPLATE).replace(
-    "__HOOK_HTTP_DEADLINE__", HOOK_HTTP_DEADLINE_TEMPLATE
-).replace("__HOOK_NATIVE_RESPONSES__\n", BOUNDED_HOOK_NATIVE_TEMPLATE)
+'''.replace("__HOOK_INPUT_READER__", HOOK_INPUT_READER_TEMPLATE)
+    .replace("__HOOK_HTTP_DEADLINE__", HOOK_HTTP_DEADLINE_TEMPLATE)
+    .replace("__HOOK_NATIVE_RESPONSES__\n", BOUNDED_HOOK_NATIVE_TEMPLATE)
+)

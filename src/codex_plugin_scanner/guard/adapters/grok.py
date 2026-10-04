@@ -128,7 +128,9 @@ class GrokHarnessAdapter(HarnessAdapter):
     @staticmethod
     def _version_probe(context: HarnessContext, resolution: GrokExecutableResolution) -> dict[str, object]:
         return probe_grok_version(
-            context, resolution, run_probe=_run_command_probe,
+            context,
+            resolution,
+            run_probe=_run_command_probe,
             sanitize_environment=sanitized_grok_launch_environment,
         )
 

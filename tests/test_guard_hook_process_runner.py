@@ -118,7 +118,7 @@ def test_daemon_start_timeout_scales_with_worker_ready_floor(monkeypatch: pytest
 
 def test_hook_worker_ready_timeout_honors_environment_floor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS", raising=False)
-    assert hook_worker_ready_timeout(14.0) == 14.0
+    assert hook_worker_ready_timeout(14.0) == 30.0
 
     monkeypatch.setenv("HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS", "45")
     assert hook_worker_ready_timeout(14.0) == 45.0
@@ -126,10 +126,10 @@ def test_hook_worker_ready_timeout_honors_environment_floor(monkeypatch: pytest.
     assert hook_worker_ready_timeout(200.0) == 45.0
 
     monkeypatch.setenv("HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS", "2")
-    assert hook_worker_ready_timeout(14.0) == 14.0
+    assert hook_worker_ready_timeout(14.0) == 30.0
 
     monkeypatch.setenv("HOL_GUARD_HOOK_WORKER_READY_TIMEOUT_SECONDS", "not-a-number")
-    assert hook_worker_ready_timeout(14.0) == 14.0
+    assert hook_worker_ready_timeout(14.0) == 30.0
 
 
 def test_hook_evaluator_ready_timeout_honors_environment(monkeypatch: pytest.MonkeyPatch) -> None:

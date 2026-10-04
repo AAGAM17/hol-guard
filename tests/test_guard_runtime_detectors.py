@@ -374,7 +374,7 @@ def test_default_prompt_injection_detector_emits_granular_categories(
     )
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.runtime.detectors.detect_prompt_injection_requests",
-        lambda prompt: (request,),
+        lambda prompt, *, guard_home: (request,),
     )
 
     result = DetectorRegistry((PromptInjectionDetector(),), clock=StepClock([0.0, 0.001])).run(

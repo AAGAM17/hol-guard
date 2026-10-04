@@ -137,8 +137,8 @@ def prompt_request_id(request_class: str, matched_text: str, normalized_prompt: 
     return result
 
 
-def trailing_secret_read_state(content: str) -> tuple[int, bool] | None:
-    result = analyze("trailing_secret_read_state", prompt_text=content)
+def trailing_secret_read_state(content: str, *, guard_home: Path | None = None) -> tuple[int, bool] | None:
+    result = analyze("trailing_secret_read_state", prompt_text=content, guard_home=guard_home)
     if not isinstance(result, dict) or "state" not in result:
         raise NativePromptAnalysisError("native_prompt_analysis_invalid_result")
     state = result["state"]

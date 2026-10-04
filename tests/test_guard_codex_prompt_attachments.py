@@ -108,7 +108,7 @@ def test_repeated_attachment_windows_reuse_guarded_classification() -> None:
             inherited_secret_read_state=None,
         ) == ((), None)
 
-    classify.assert_called_once_with("Routine release note.")
+    classify.assert_called_once_with("Routine release note.", guard_home=None)
 
 
 def test_large_benign_codex_attachment_has_bounded_peak_memory(tmp_path: Path) -> None:

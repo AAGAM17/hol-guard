@@ -35,7 +35,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download native command evaluators
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
@@ -43,6 +43,10 @@ jobs:
         run: |
           chmod 0755 rust/target/release/hol-guard-runtime
           echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-native-command-projections
+          path: .
       - uses: ./.github/actions/ci-job-quality
 
   native-command-evaluators:
@@ -62,10 +66,13 @@ jobs:
         run: |
           cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime
       - name: Verify generated native command catalogs before pytest fan-out
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           arguments=(--compiler rust/target/release/guard-command-source)
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            arguments+=(--changed-from "${{ github.event.pull_request.base.sha }}")
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            arguments+=(--changed-from "$BASE_SHA")
           fi
           python3 scripts/ci/verify_native_command_program.py "${arguments[@]}"
       - uses: ./.github/actions/setup-ci-python
@@ -119,7 +126,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download native command evaluators
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
@@ -167,17 +174,17 @@ jobs:
           python-version: ${{ env.CI_PYTHON_VERSION }}
           cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
       - name: Download pytest shard plan
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: pytest-shard-plan-3.12
           path: pytest-shards
       - name: Download native command evaluators
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: pytest-native-command-evaluators
           path: rust/target/release
       - name: Download matching native command projections
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: pytest-native-command-projections
           path: .
@@ -234,7 +241,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download pytest duration reports
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           pattern: pytest-durations-${{ github.run_attempt }}-*
           path: duration-reports
@@ -368,6 +375,11 @@ jobs:
     needs: [quality, coverage-plan, coverage, compatibility, scheduling-sensitive]
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: read
     steps:
       - name: Verify Python CI dependencies
         env:
@@ -384,6 +396,7 @@ jobs:
           test "$SCHEDULING_SENSITIVE_RESULT" = "success"
 
   pi-exact-continuation:
+    needs: native-command-evaluators
     name: Pi exact continuation (actual SDKs)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -391,6 +404,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-native-command-projections
+          path: .
       - uses: ./.github/actions/ci-job-pi-exact-continuation
 
   dashboard:

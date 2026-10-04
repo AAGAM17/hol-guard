@@ -852,6 +852,13 @@ def guard_run(
 ) -> dict[str, Any]:
     """Evaluate local harness state and optionally launch the harness."""
 
+    if passthrough_args:
+        # Guarded launch can be the first native caller in a fresh install.
+        # Reuse the publisher's store-derived verifier bootstrap; never create
+        # a separate authority or substitute Python when the resident is absent.
+        from ..native_policy_snapshot_publisher import provision_native_verifier_key_for_store
+
+        provision_native_verifier_key_for_store(store)
     detection = _detection_with_prompt_artifacts(detect_harness(harness, context), context, passthrough_args)
     launch_plan: _GuardRunLaunchPlan | None = None
     pending_approval_claims: list[tuple[Mapping[str, object], str, str]] = []

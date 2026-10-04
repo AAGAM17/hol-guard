@@ -126,6 +126,7 @@ def test_should_relax_configured_default_requires_review_tier_and_no_override(tm
     )
 
 
+@pytest.mark.usefixtures("native_prompt_runtime")
 def test_should_relax_configured_default_rejects_prompt_submit_without_clean_prompt(tmp_path) -> None:
     base = {
         "configured_action": "review",

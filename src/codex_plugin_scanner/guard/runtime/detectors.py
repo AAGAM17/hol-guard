@@ -197,10 +197,9 @@ class PromptInjectionDetector:
     categories: tuple[RiskSignalCategory, ...] = ("prompt", "secret", "network", "bypass", "filesystem", "execution")
 
     def detect(self, action: GuardActionEnvelope, context: DetectorContext) -> tuple[RiskSignalV2, ...]:
-        del context
         if action.action_type != "prompt" or action.prompt_excerpt is None:
             return ()
-        requests = detect_prompt_injection_requests(action.prompt_excerpt)
+        requests = detect_prompt_injection_requests(action.prompt_excerpt, guard_home=context.config.guard_home)
         return tuple(_prompt_request_signal(request) for request in requests)
 
 

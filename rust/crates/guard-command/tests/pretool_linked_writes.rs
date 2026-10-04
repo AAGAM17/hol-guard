@@ -20,7 +20,10 @@ fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
         ));
     std::fs::create_dir_all(&root).unwrap();
     let _cleanup = fixture::FixtureCleanup(root.clone());
-    let home = std::fs::canonicalize(&root).unwrap();
+    let canonical_home = std::fs::canonicalize(&root).unwrap();
+    // Model the caller's Windows drive path, not canonicalize's device prefix.
+    let spelling = canonical_home.to_str().unwrap();
+    let home = std::path::PathBuf::from(spelling.strip_prefix(r"\\?\").unwrap_or(spelling));
     let workspace = home.join("project");
     std::fs::create_dir(&workspace).unwrap();
     let protected = home.join(".env");

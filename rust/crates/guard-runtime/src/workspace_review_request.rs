@@ -141,8 +141,15 @@ pub(crate) fn load(
     // An admitted business policy requires authenticated native provenance for
     // every request, including generic ones. Removing the entire envelope must
     // not erase the distinction and reopen the legacy retry path.
-    let snapshot = policy_store.current_snapshot()?;
-    if snapshot.business_policy.is_some() {
+    // Historical generic requests may be read before any policy is installed.
+    // Claiming still requires a current snapshot in verify_and_claim_request.
+    // Expiry, authentication and all other policy failures remain errors.
+    let snapshot = match policy_store.current_snapshot() {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) if error == "native_policy_snapshot_missing" => None,
+        Err(error) => return Err(error),
+    };
+    if let Some(snapshot) = snapshot.filter(|s| s.business_policy.is_some()) {
         let origin = receipt
             .as_ref()
             .ok_or_else(|| "native_workspace_review_business_invalid".to_owned())?;

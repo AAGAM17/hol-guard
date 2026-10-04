@@ -263,7 +263,8 @@ def native_prompt_runtime(
     analyze = native_prompt.analyze
 
     def invoke(subop: str, **kwargs):
-        kwargs["guard_home"] = _native_context_home
+        if kwargs.get("guard_home") is None:
+            kwargs["guard_home"] = _native_context_home
         with monkeypatch.context() as transport:
             transport.setattr(native_execution, "native_runtime_status", native_context.native_runtime_status)
             return analyze(subop, **kwargs)

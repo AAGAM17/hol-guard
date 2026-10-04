@@ -15,6 +15,7 @@ from .fixtures import digest_file
 from .input_evidence import input_digest
 from .latency import summarize_hook_latency
 from .source_identity import source_identity, validate_identity
+from .transport import reconcile_rounds
 
 _CONTAINED_SCHEMA = "hol.guard-gauntlet.contained-bun-vitest.evidence.v1"
 _CONTAINED_PROFILE = "contained-bun-vitest-extended"
@@ -258,7 +259,8 @@ def verify_contained_report(
         or inference.get("canary_export_violations") != 0
         or not isinstance(inference.get("live_rounds"), list)
         or not inference["live_rounds"]
-        or not all(round_data.get("status") == "completed" for round_data in inference["live_rounds"])
+        or not all(isinstance(round_data, dict) for round_data in inference["live_rounds"])
+        or not reconcile_rounds(inference["live_rounds"])[0]
     ):
         raise ValueError("contained report lacks completed live inference evidence")
     if source_root is not None and source_manifest is not None:

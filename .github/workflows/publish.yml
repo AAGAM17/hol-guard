@@ -1619,22 +1619,43 @@ jobs:
           [[ "$scanner_status" == "absent" || "$scanner_status" == "exact" ]]
           [[ "$guard_status" == "absent" ]] && echo "hol_guard_upload=true" >> "$GITHUB_OUTPUT" || echo "hol_guard_upload=false" >> "$GITHUB_OUTPUT"
           [[ "$scanner_status" == "absent" ]] && echo "plugin_scanner_upload=true" >> "$GITHUB_OUTPUT" || echo "plugin_scanner_upload=false" >> "$GITHUB_OUTPUT"
-      - name: Refuse PyPI upload when the project is over quota
+      - name: Check PyPI quota admission
+        id: pypi_quota
         if: steps.pypi.outputs.hol_guard_upload == 'true'
-        run: uv run --with packaging==25.0 python scripts/pypi_project_storage.py --fail-if-over-limit --pending-dir dist-hol-guard
+        run: |
+          set -euo pipefail
+          quota_output=""
+          quota_exit=0
+          quota_output=$(uv run --with packaging==25.0 python scripts/pypi_project_storage.py \
+            --fail-if-over-limit --pending-dir dist-hol-guard) || quota_exit=$?
+          printf '%s\n' "$quota_output"
+          if [[ "$quota_exit" == "0" ]]; then
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+          elif jq -e '.over_limit == true' <<< "$quota_output" >/dev/null 2>&1; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### PyPI publication"
+              echo "PyPI publication was deferred after the quota admission check reported the project limit."
+              echo "The verified GitHub release path continues; PyPI publication remains pending."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PyPI quota admission check failed without a confirmed quota limit." >&2
+            exit "$quota_exit"
+          fi
       - name: Publish HOL Guard to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
-        if: steps.pypi.outputs.hol_guard_upload == 'true'
+        if: steps.pypi.outputs.hol_guard_upload == 'true' && steps.pypi_quota.outputs.blocked != 'true'
         with:
           packages-dir: dist-hol-guard/
       - name: Publish plugin-scanner to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
-        if: steps.pypi.outputs.plugin_scanner_upload == 'true'
+        if: steps.pypi.outputs.plugin_scanner_upload == 'true' && steps.pypi_quota.outputs.blocked != 'true'
         with:
           packages-dir: dist-plugin-scanner/
       - name: Remove generated upload attestations
         run: rm -f dist-hol-guard/*.publish.attestation dist-plugin-scanner/*.publish.attestation
       - name: Download and verify exact PyPI artifacts
+        if: steps.pypi_quota.outputs.blocked != 'true'
         env:
           SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
           VERSION: ${{ needs.build.outputs.version }}

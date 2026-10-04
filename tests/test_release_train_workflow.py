@@ -345,11 +345,17 @@ def test_release_publication_reuses_one_hashed_build_artifact() -> None:
     main_steps = jobs["publish-main-pypi"]["steps"]
     native_validate = next(step for step in main_steps if step.get("name") == "Validate native Guard release set")
     assert "validate-local" in native_validate["run"] and "--artifact-set full" in native_validate["run"]
-    main_quota = next(
-        step for step in main_steps if step.get("name") == "Refuse PyPI upload when the project is over quota"
-    )
-    assert "--pending-dir dist-hol-guard" in main_quota["run"]
+    main_quota = next(step for step in main_steps if step.get("name") == "Check PyPI quota admission")
+    assert main_quota["id"] == "pypi_quota"
+    assert "--fail-if-over-limit --pending-dir dist-hol-guard" in main_quota["run"]
+    assert "jq -e '.over_limit == true'" in main_quota["run"]
+    assert 'echo "blocked=true"' in main_quota["run"]
+    guard_publish = next(step for step in main_steps if step.get("name") == "Publish HOL Guard to PyPI")
+    scanner_publish = next(step for step in main_steps if step.get("name") == "Publish plugin-scanner to PyPI")
+    assert "steps.pypi_quota.outputs.blocked != 'true'" in guard_publish["if"]
+    assert "steps.pypi_quota.outputs.blocked != 'true'" in scanner_publish["if"]
     main_verify = next(step for step in main_steps if step.get("name") == "Download and verify exact PyPI artifacts")
+    assert main_verify["if"] == "steps.pypi_quota.outputs.blocked != 'true'"
     assert "--artifact-set full" in main_verify["run"]
     assert (
         main_verify["run"].find("for attempt in {1..60}")
@@ -520,8 +526,8 @@ def test_registry_state_is_revalidated_at_each_publication_boundary() -> None:
         assert "--project plugin-scanner" in inspect_step["run"]
         assert len(publish_steps) == 2
         assert {step["if"] for step in publish_steps} == {
-            "steps.pypi.outputs.hol_guard_upload == 'true'",
-            "steps.pypi.outputs.plugin_scanner_upload == 'true'",
+            "steps.pypi.outputs.hol_guard_upload == 'true' && steps.pypi_quota.outputs.blocked != 'true'",
+            "steps.pypi.outputs.plugin_scanner_upload == 'true' && steps.pypi_quota.outputs.blocked != 'true'",
         }
         assert {step["with"]["packages-dir"] for step in publish_steps} == {
             "dist-hol-guard/",

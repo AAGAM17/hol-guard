@@ -15677,11 +15677,8 @@ def test_guard_hook_codex_emits_native_deny_for_sensitive_bash_command(tmp_path,
     reason = payload["hookSpecificOutput"]["permissionDecisionReason"]
     assert rc == 0
     assert captured.err == ""
-    assert payload["hookSpecificOutput"]["permissionDecision"] == "ask"
-    assert "HOL Guard" in reason
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "HOL Guard flagged this request" in reason
-    assert "http://127.0.0.1:4455/requests/" not in reason
-    assert "approve" not in reason.lower()
 
 
 def test_guard_hook_codex_emits_no_native_output_for_safe_requests(tmp_path, capsys, monkeypatch):

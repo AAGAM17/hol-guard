@@ -195,8 +195,13 @@ fn contained_commands_with_an_output_redirect_keep_protected_execution() {
     .unwrap();
     let home = root.to_string_lossy().into_owned();
     let cwd = project.to_string_lossy().into_owned();
+    let contained = if cfg!(target_os = "macos") {
+        "sandbox-required"
+    } else {
+        "review"
+    };
     for (command, action) in [
-        ("pnpm test > out.log", "review"),
+        ("pnpm test > out.log", contained),
         ("pnpm test > /tmp/guard-test.log 2>&1", "review"),
     ] {
         let result = crate::pretool::evaluate_pre_tool_envelope_with_context(

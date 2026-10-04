@@ -1,6 +1,6 @@
 """Native response rendering embedded in the standalone hook client."""
 
-BOUNDED_HOOK_NATIVE_TEMPLATE = '''def _permission_decision(policy_action: str) -> str | None:
+BOUNDED_HOOK_NATIVE_TEMPLATE = """def _permission_decision(policy_action: str) -> str | None:
     if policy_action in {"allow", "warn"}:
         return "allow"
     if policy_action in {"review", "require-reapproval", "sandbox-required"}:
@@ -201,4 +201,4 @@ def _fail(input_text: str, *, reason: str = _FAILURE_REASON) -> int:
     return exit_code
 
 
-'''
+"""

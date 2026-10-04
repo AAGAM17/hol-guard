@@ -59,6 +59,8 @@ def test_native_python_proofs_stage_matching_resources(name: str) -> None:
 @pytest.mark.parametrize("argument", ["rust/target/release/guard-command-source", "compiler.exe"])
 def test_windows_verifier_resolves_the_existing_compiler_suffix(monkeypatch, argument: str) -> None:
     """Verify windows verifier resolves the existing compiler suffix."""
+    # This test mocks compilation, so it must not export into the runner environment.
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sys, "argv", ["verify", "--compiler", argument])
     monkeypatch.delenv("GITHUB_ENV", raising=False)

@@ -259,6 +259,10 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
         if key == "core.bare" && enabled_boolean(value) {
             return Some(false);
         }
+        // `worktree add` and each probe below use built-in commands, local
+        // refs, and no diff/editor/credential operation. Those unrelated
+        // settings are inert for this bounded operation; execution-capable
+        // checkout and transport settings remain denied below.
         if key == "core.hookspath"
             || key == "core.worktree"
             || key == "core.fsmonitor"
@@ -266,13 +270,8 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
             || key == "core.gitproxy"
             || key == "core.askpass"
             || key == "core.pager"
-            || key == "core.editor"
             || key.starts_with("pager.")
-            || key.starts_with("alias.")
             || key.starts_with("filter.")
-            || key.starts_with("diff.")
-            || key.starts_with("mergetool.")
-            || key.starts_with("credential.")
             || key.starts_with("include")
             || key.starts_with("extensions.")
             || key.starts_with("submodule.")

@@ -25,16 +25,26 @@ pub(super) fn exact_safe_command(
     {
         return false;
     }
-    let cwd = super::segment_proof::verified_cwd_compound_context(model, context);
+    let cwd_proof = model
+        .segments
+        .iter()
+        .position(|segment| segment.executable.as_deref() == Some("cd"))
+        .and_then(|cd_index| verified_worktree_cwd_context(model, cd_index, context));
     let proof_context = super::PathContext {
         home_dir: context.home_dir,
-        cwd: cwd.as_deref().or(context.cwd),
+        cwd: cwd_proof
+            .as_ref()
+            .map(|proof| proof.cwd.as_str())
+            .or(context.cwd),
     };
     let mut worktree_seen = false;
     for (index, segment) in model.segments.iter().enumerate() {
         let is_cd = segment.executable.as_deref() == Some("cd");
         if is_cd {
-            if index != 0 || cwd.is_none() {
+            if cwd_proof
+                .as_ref()
+                .is_none_or(|proof| proof.cd_index != index)
+            {
                 return false;
             }
             continue;
@@ -91,6 +101,58 @@ pub(super) fn exact_safe_command(
         }
     }
     worktree_seen
+}
+
+struct WorktreeCwdProof {
+    cd_index: usize,
+    cwd: String,
+}
+
+fn verified_worktree_cwd_context(
+    model: &CanonicalCommandV1,
+    cd_index: usize,
+    context: super::PathContext<'_>,
+) -> Option<WorktreeCwdProof> {
+    if cd_index > 0 {
+        for index in 0..cd_index {
+            let segment = model.segments.get(index)?;
+            if segment.executable.as_deref() != Some("sleep")
+                || segment.pipeline_index != 0
+                || !segment.environment_names.is_empty()
+                || !segment.wrapper_chain.is_empty()
+                || segment.path_overridden
+                || !super::safe_reads::safe_sleep_arguments(&segment.arguments)
+                || !separator_between(model, index, index + 1)
+                    .is_some_and(|separator| matches!(separator.trim(), ";" | "&&"))
+            {
+                return None;
+            }
+        }
+    }
+
+    // Keep the original spans and normalized text so the existing compound
+    // proof checks the separator immediately following the guarded `cd`.
+    let mut cwd_model = model.clone();
+    cwd_model.segments = model.segments.get(cd_index..)?.to_vec();
+    let cwd = super::segment_proof::verified_cwd_compound_context(&cwd_model, context)?;
+    Some(WorktreeCwdProof { cd_index, cwd })
+}
+
+fn separator_between(model: &CanonicalCommandV1, left: usize, right: usize) -> Option<String> {
+    let left_segment = model.segments.get(left)?;
+    let right_segment = model.segments.get(right)?;
+    let length = right_segment
+        .span
+        .start
+        .checked_sub(left_segment.span.end)?;
+    Some(
+        model
+            .normalized_text
+            .chars()
+            .skip(left_segment.span.end)
+            .take(length)
+            .collect(),
+    )
 }
 
 fn safe_segment(

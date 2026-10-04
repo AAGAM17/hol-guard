@@ -242,6 +242,80 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
     let compound = evaluate(&repository, &enabled, &compound_command);
     assert_eq!(compound.minimum_action, "allow", "{compound_command}");
 
+    let config_tripwire = root.join("config-tripwire");
+    let tripwire_command = format!("!touch {}", config_tripwire.display());
+    std::fs::write(
+        root.join(".gitconfig"),
+        format!(
+            "[alias]\n\tunused = {tripwire_command}\n[core]\n\teditor = {tripwire_command}\n[credential]\n\thelper = {tripwire_command}\n[diff \"unused\"]\n\texternal = {tripwire_command}\n[mergetool \"unused\"]\n\tcmd = {tripwire_command}\n"
+        ),
+    )
+    .unwrap();
+
+    let sleep_compound_destination = root.join("sleep-compound-child");
+    let sleep_compound_command = format!(
+        "sleep 0.01; cd {} && git worktree add {} -b sleep-compound-worktree HEAD",
+        repository.display(),
+        sleep_compound_destination.display()
+    );
+    let sleep_compound = evaluate(&repository, &enabled, &sleep_compound_command);
+    assert_eq!(
+        sleep_compound.minimum_action, "allow",
+        "{sleep_compound_command}"
+    );
+    assert!(!config_tripwire.exists());
+
+    let config_destination = root.join("config-child");
+    let config_command = format!(
+        "git worktree add --quiet {} -b config-worktree HEAD",
+        config_destination.display()
+    );
+    let config_allowed = evaluate(&repository, &enabled, &config_command);
+    assert_eq!(config_allowed.minimum_action, "allow", "{config_command}");
+    git(
+        &repository,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "config-worktree",
+            config_destination.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    assert!(config_destination.is_dir());
+    assert!(!config_tripwire.exists());
+
+    let missing_cwd_command = format!(
+        "sleep 0.01; cd {} && git worktree add {} -b missing-cwd-worktree HEAD",
+        root.join("missing-cwd").display(),
+        root.join("missing-cwd-child").display()
+    );
+    let missing_cwd = evaluate(&repository, &enabled, &missing_cwd_command);
+    assert_ne!(missing_cwd.minimum_action, "allow", "{missing_cwd_command}");
+
+    for command in [
+        format!(
+            "sleep 0.01; cd {} && git worktree add --force {} -b forced-sleep-worktree HEAD",
+            repository.display(),
+            root.join("forced-sleep-child").display()
+        ),
+        format!(
+            "sleep 0.01; cd {} && git worktree add {} -b $BRANCH HEAD",
+            repository.display(),
+            root.join("dynamic-sleep-child").display()
+        ),
+        format!(
+            "sleep 0.01 | cd {} && git worktree add {} -b piped-sleep-worktree HEAD",
+            repository.display(),
+            root.join("piped-sleep-child").display()
+        ),
+    ] {
+        let result = evaluate(&repository, &enabled, &command);
+        assert_ne!(result.minimum_action, "allow", "{command}");
+    }
+
     let head_command = compound_command.replace("tail -3", "head -3");
     let head = evaluate(&repository, &enabled, &head_command);
     assert_ne!(head.minimum_action, "allow");

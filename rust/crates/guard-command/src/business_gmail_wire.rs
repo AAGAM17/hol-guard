@@ -29,6 +29,7 @@ struct SendParams {
     user_id: String,
 }
 
+/// Distinguish an omitted optional selector from a present, invalid JSON null.
 fn present_string<'de, D>(d: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -58,6 +59,9 @@ pub struct GmailSendWireInputV1 {
 }
 
 impl GmailSendWireInputV1 {
+    /// Take ownership of bounded, strict parameter/body JSON and decode `raw`.
+    /// Reject unsupported principal selectors and ambiguous fields; success
+    /// provides private bytes only, with no identity or authorization claim.
     pub fn from_owned_json(params: Vec<u8>, body: Vec<u8>) -> Result<Self, GmailSendWireErrorV1> {
         use GmailSendWireErrorV1 as Error;
         if params.len() > GMAIL_SEND_MAX_PARAM_BYTES
@@ -116,22 +120,27 @@ impl GmailSendWireInputV1 {
         })
     }
 
+    /// Original immutable parameter bytes, including JSON formatting.
     pub fn params_bytes(&self) -> &[u8] {
         &self.params
     }
 
+    /// Original immutable body JSON; executors must not reread a mutable input.
     pub fn body_bytes(&self) -> &[u8] {
         &self.body
     }
 
+    /// Decoded private bytes, still requiring complete MIME semantic validation.
     pub fn mime_bytes(&self) -> &[u8] {
         &self.mime
     }
 
+    /// Unauthenticated resource selector, with no ownership or revision proof.
     pub fn thread_id(&self) -> Option<&str> {
         self.thread_id.as_deref()
     }
 
+    /// Framed SHA-256 preparation identity; never a review or dispatch grant.
     pub fn input_binding(&self) -> &str {
         &self.binding
     }

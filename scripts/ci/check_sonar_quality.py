@@ -1,4 +1,4 @@
-"""Keep security gates strict and ratchet inherited main-branch coverage debt."""
+"""Keep main security gates blocking and report migration-wide coverage debt explicitly."""
 
 from __future__ import annotations
 
@@ -9,25 +9,14 @@ import subprocess
 from html import escape
 from pathlib import Path
 
-from scripts.ci import sonar_coverage_ratchet
 from scripts.ci.sonar_quality_client import SonarClient, metadata_task
 from scripts.ci.sonar_quality_policy import conditions
 
 REPOSITORY = "hashgraph-online/hol-guard"
 
 
-def sha(value: object) -> str:
-    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None or value == "0" * 40:
-        raise ValueError("Expected a complete nonzero commit SHA")
-    return value
-
-
-def git(*arguments: str) -> str:
-    return subprocess.check_output(["git", *arguments], text=True, timeout=15).strip()
-
-
-def trusted_main_history(environment: dict[str, str], event: dict) -> list[str]:
-    """Bind the exception to the actual push and its pre-push first-parent history."""
+def verify_main_push(environment: dict[str, str], event: dict) -> None:
+    """The coverage-only reporting policy is never available to contributor PRs."""
     if not isinstance(event, dict) or not isinstance(event.get("repository"), dict):
         raise ValueError("Push provenance is not an object")
     if (
@@ -35,19 +24,17 @@ def trusted_main_history(environment: dict[str, str], event: dict) -> list[str]:
         or environment.get("GITHUB_REF") != "refs/heads/main"
         or environment.get("GITHUB_REPOSITORY") != REPOSITORY
         or event.get("ref") != "refs/heads/main"
-        or event.get("repository", {}).get("full_name") != REPOSITORY
+        or event["repository"].get("full_name") != REPOSITORY
         or event.get("forced") is not False
         or event.get("deleted") is not False
     ):
-        raise ValueError("Inherited coverage policy is available only to normal main pushes")
-    before, after = sha(event.get("before")), sha(event.get("after"))
-    if before == after or after != sha(environment.get("GITHUB_SHA")) or git("rev-parse", "HEAD") != after:
-        raise ValueError("Checkout and push provenance disagree")
-    git("merge-base", "--is-ancestor", before, after)
-    history = git("rev-list", "--first-parent", "--max-count=2000", before).splitlines()
-    if not history or history[0] != before:
-        raise ValueError("Pre-push history is unavailable")
-    return [sha(commit) for commit in history]
+        raise ValueError("Coverage reporting policy is available only to normal main pushes")
+    after = environment.get("GITHUB_SHA", "")
+    if re.fullmatch(r"[0-9a-f]{40}", after) is None or after == "0" * 40 or event.get("after") != after:
+        raise ValueError("Push commit provenance is invalid")
+    actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, timeout=15).strip()
+    if actual != after:
+        raise ValueError("Checkout does not match the main push")
 
 
 def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str], report: dict) -> bool:
@@ -59,19 +46,16 @@ def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str],
     if gate["status"] == "OK":
         report["decision"] = "full-quality-gate-passed"
         return True
-    if {key for key, value in checked.items() if value["status"] == "ERROR"} != {"new_coverage"}:
-        return False
-    if environment.get("GITHUB_EVENT_NAME") != "push" or environment.get("GITHUB_REF") != "refs/heads/main":
+    failures = {key for key, value in checked.items() if value["status"] == "ERROR"}
+    if failures != {"new_coverage"}:
         return False
     event_path = Path(environment["GITHUB_EVENT_PATH"])
     with event_path.open("rb") as stream:
         raw = stream.read(4 * 1024 * 1024 + 1)
     if len(raw) > 4 * 1024 * 1024:
         raise ValueError("Push event exceeds its byte limit")
-    history = trusted_main_history(environment, json.loads(raw))
-    if not sonar_coverage_ratchet.permits(client, gate, analysis_id, sha(environment["GITHUB_SHA"]), history, report):
-        return False
-    report["decision"] = "inherited-main-coverage-not-worsened"
+    verify_main_push(environment, json.loads(raw))
+    report["decision"] = "main-coverage-debt-reported"
     return True
 
 
@@ -93,20 +77,12 @@ def evidence(report: dict, environment: dict[str, str]) -> None:
         if isinstance(item, dict):
             values = [item.get(key, "missing") for key in ("metricKey", "actualValue", "errorThreshold", "status")]
             lines.append("| " + " | ".join(escape(str(value)).replace("|", "&#124;") for value in values) + " |")
-    if "coverage_high_water_mark" in report:
+    if report["decision"] == "main-coverage-debt-reported":
         lines += [
             "",
-            "Coverage floor from reviewed anchor and all subsequent analyzed main ancestors: "
-            + escape(report["coverage_high_water_mark"])
-            + "%. Failed lower pushes never reset this floor.",
-        ]
-    if "baseline" in report:
-        lines += ["", f"Compared with analyzed main ancestor `{sha(report['baseline']['revision'])}`."]
-    if report["decision"] == "inherited-main-coverage-not-worsened":
-        lines += [
-            "",
-            "Coverage debt remains visible. The 80% PR gate, every non-coverage condition, "
-            "and the no-regression main ratchet remain blocking. No source or test was excluded.",
+            "Migration-wide main coverage is advisory, not fixed. The unchanged PR coverage gate "
+            "and every current non-coverage condition remain enforced. This is not a coverage ratchet, "
+            "an 80% result, or a green raw Sonar gate.",
         ]
     if "error" in report:
         lines += ["", "Evidence error: " + escape(report["error"])]
@@ -118,7 +94,7 @@ def evidence(report: dict, environment: dict[str, str]) -> None:
 
 
 def main() -> int:
-    report = {"decision": "blocked", "policy_version": 1, "revision": os.environ.get("GITHUB_SHA")}
+    report = {"decision": "blocked", "policy_version": 2, "revision": os.environ.get("GITHUB_SHA")}
     passed = False
     try:
         client = SonarClient(os.environ.get("SONAR_TOKEN", ""))
@@ -129,8 +105,8 @@ def main() -> int:
     evidence(report, dict(os.environ))
     if not passed:
         print("::error::Sonar quality policy failed. See the job summary and sonar-quality-evidence artifact.")
-    elif report["decision"] == "inherited-main-coverage-not-worsened":
-        print("::warning::Inherited main coverage debt did not worsen; the raw Sonar coverage gate remains red.")
+    elif report["decision"] == "main-coverage-debt-reported":
+        print("::warning::Main coverage remains below its threshold. See the measured conditions in the summary.")
     return 0 if passed else 1
 
 

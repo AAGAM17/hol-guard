@@ -12,7 +12,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 PROJECT = "hashgraph-online_hol-guard"
 ORIGIN = "https://sonarcloud.io"
 MAX_BYTES = 4 * 1024 * 1024
-ENDPOINTS = {"/api/ce/task", "/api/qualitygates/project_status", "/api/project_analyses/search"}
+ENDPOINTS = {"/api/ce/task", "/api/qualitygates/project_status"}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -96,23 +96,3 @@ class SonarClient:
         if not isinstance(gate, dict):
             raise ValueError("Analysis-specific gate is missing")
         return gate
-
-    def main_analyses(self, *, current_id: str = "", stop_id: str = "") -> list[dict]:
-        analyses = []
-        for page in range(1, 11):
-            payload = self.read("/api/project_analyses/search", project=PROJECT, branch="main", p=page, ps=100)
-            batch, paging = payload.get("analyses"), payload.get("paging")
-            if not isinstance(batch, list) or not isinstance(paging, dict):
-                raise ValueError("Malformed analysis history")
-            total = paging.get("total")
-            if type(total) is not int or total < 0 or not all(isinstance(item, dict) for item in batch):
-                raise ValueError("Invalid analysis history")
-            analyses.extend(batch)
-            keys = {item.get("key") for item in analyses}
-            if current_id and stop_id and {current_id, stop_id} <= keys:
-                return analyses
-            if len(analyses) >= total:
-                return analyses
-            if not batch:
-                raise ValueError("Incomplete analysis history")
-        raise ValueError("Analysis history exceeds its bounded pagination limit")

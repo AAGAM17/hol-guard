@@ -129,38 +129,8 @@ def test_bad_task_cannot_produce_gate_evidence(change):
         client.analysis("task-id")
 
 
-def test_history_fetches_all_pages_and_rejects_silent_truncation():
-    client = SonarClient("test-only-token")
-    client.read = Mock(
-        side_effect=[
-            {"analyses": [{"key": "first"}], "paging": {"total": 2}},
-            {"analyses": [{"key": "second"}], "paging": {"total": 2}},
-        ]
-    )
-    assert client.main_analyses() == [{"key": "first"}, {"key": "second"}]
-    assert client.read.call_args_list[1].kwargs["p"] == 2
-    client.read = Mock(return_value={"analyses": [], "paging": {"total": 2}})
-    with pytest.raises(ValueError, match="Incomplete"):
-        client.main_analyses()
-
-
 def test_malformed_json_metadata_does_not_use_a_default_gate():
     client = SonarClient("test-only-token")
     client.read = Mock(return_value={"projectStatus": None})
     with pytest.raises(ValueError, match="missing"):
         client.gate("analysis-id")
-
-
-def test_large_projects_stop_only_once_the_current_and_reviewed_anchor_are_found():
-    client = SonarClient("test-only-token")
-    client.read = Mock(
-        return_value={
-            "paging": {"total": 5000},
-            "analyses": [
-                {"key": "current", "revision": "a" * 40, "date": "2026-10-04T12:00:00+0000"},
-                {"key": "before", "revision": "b" * 40, "date": "2026-10-04T11:00:00+0000"},
-            ],
-        }
-    )
-    assert len(client.main_analyses(current_id="current", stop_id="before")) == 2
-    assert client.read.call_count == 1

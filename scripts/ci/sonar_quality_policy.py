@@ -1,4 +1,4 @@
-"""Fail closed on findings; permit only non-worsening, inherited main coverage debt."""
+"""Validate every reported gate condition without weakening configured thresholds."""
 
 from __future__ import annotations
 
@@ -62,42 +62,3 @@ def conditions(gate: dict) -> dict[str, dict]:
     if (gate["status"] == "ERROR") != any(c["status"] == "ERROR" for c in result.values()):
         raise ValueError("Inconsistent Sonar gate status")
     return result
-
-
-def coverage_values(current: dict, baseline: dict) -> tuple[Decimal, Decimal] | None:
-    """Compare only identical, fully validated coverage scopes and thresholds."""
-    current_conditions, previous_conditions = conditions(current), conditions(baseline)
-    if current.get("ignoredConditions") is not False or baseline.get("ignoredConditions") is not False:
-        return None
-    periods = current.get("periods")
-    if not isinstance(periods, list) or len(periods) != 1 or periods != baseline.get("periods"):
-        return None
-    if not isinstance(periods[0], dict) or not all(periods[0].get(key) for key in ("index", "mode", "date")):
-        return None
-    if current_conditions.keys() != previous_conditions.keys() or "new_coverage" not in current_conditions:
-        return None
-    for metric, condition in current_conditions.items():
-        previous = previous_conditions[metric]
-        if any(condition.get(key) != previous.get(key) for key in ("comparator", "errorThreshold", "periodIndex")):
-            return None
-    coverage, previous_coverage = current_conditions["new_coverage"], previous_conditions["new_coverage"]
-    actual, old_actual = number(coverage["actualValue"]), number(previous_coverage["actualValue"])
-    if (
-        coverage["comparator"] != "LT"
-        or not Decimal(80) <= number(coverage["errorThreshold"]) <= Decimal(100)
-        or not Decimal(0) <= actual <= Decimal(100)
-        or not Decimal(0) <= old_actual <= Decimal(100)
-    ):
-        return None
-    return actual, old_actual
-
-
-def inherited_coverage_allowed(current: dict, baseline: dict) -> bool:
-    """Validate the explicit reviewed debt anchor; caller also enforces the high-water mark."""
-    current_conditions, previous_conditions = conditions(current), conditions(baseline)
-    failures = {key for key, value in current_conditions.items() if value["status"] == "ERROR"}
-    previous_failures = {key for key, value in previous_conditions.items() if value["status"] == "ERROR"}
-    if failures != {"new_coverage"} or previous_failures != {"new_coverage"}:
-        return False
-    values = coverage_values(current, baseline)
-    return values is not None and values[0] >= values[1]

@@ -344,6 +344,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             if (
                 isinstance(recorded_enabled, dict)
                 and isinstance(recorded_enabled.get("present"), bool)
+                and "value" in recorded_enabled
                 and (
                     not recorded_enabled["present"]
                     or isinstance(recorded_enabled.get("value"), (bool, type(None)))
@@ -441,6 +442,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                     state.get("managed_config_path") == str(candidate)
                     and isinstance(original, dict)
                     and isinstance(original.get("present"), bool)
+                    and "value" in original
                     and (
                         not original["present"]
                         or isinstance(original.get("value"), (bool, type(None)))

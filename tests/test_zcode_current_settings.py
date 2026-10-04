@@ -130,8 +130,24 @@ def test_reinstall_recovers_invalid_install_state(tmp_path, contents):
     assert isinstance(json.loads(state.read_text()), dict)
 
 
-@pytest.mark.parametrize("recorded_enabled", [None, False, "disabled", [], 1])
-def test_reinstall_recovers_invalid_saved_hook_preference(tmp_path, recorded_enabled):
+@pytest.mark.parametrize(
+    "recorded_enabled",
+    [
+        None,
+        False,
+        "disabled",
+        [],
+        1,
+        {},
+        {"present": True},
+        {"present": False},
+        {"value": True},
+        {"present": "yes", "value": True},
+        {"present": True, "value": "yes"},
+    ],
+)
+@pytest.mark.parametrize("reinstall", [True, False])
+def test_invalid_saved_hook_preference_preserves_current_setting(tmp_path, recorded_enabled, reinstall):
     context = _ctx(tmp_path)
     legacy = _write_cli_config(context.home_dir, {})
     settings = legacy.with_name("setting.json")
@@ -143,9 +159,9 @@ def test_reinstall_recovers_invalid_saved_hook_preference(tmp_path, recorded_ena
     saved["hooks_enabled_before"] = recorded_enabled
     state.write_text(json.dumps(saved))
 
-    adapter.install(context)
-
-    assert json.loads(state.read_text())["hooks_enabled_before"] == {"present": True, "value": True}
+    if reinstall:
+        adapter.install(context)
+        assert json.loads(state.read_text())["hooks_enabled_before"] == {"present": True, "value": True}
     adapter.uninstall(context)
     assert json.loads(settings.read_text())["hooks"]["enabled"] is True
 

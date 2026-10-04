@@ -102,6 +102,10 @@ impl BusinessPolicyMatchV1 {
         }
         if !valid_set(&self.services, 3)
             || !valid_set(&self.operations, 11)
+            || self
+                .operations
+                .iter()
+                .any(|op| !self.services.contains(&op.service()))
             || self.account_bindings.as_ref().is_some_and(|values| {
                 !valid_set(values, MAX_BUSINESS_ACTION_ITEMS)
                     || values.iter().any(|value| {
@@ -114,11 +118,17 @@ impl BusinessPolicyMatchV1 {
             || self
                 .audience_kinds
                 .as_ref()
-                .is_some_and(|values| !valid_set(values, 4))
+                .is_some_and(|values| {
+                    !valid_set(values, 3)
+                        || values.contains(&BusinessAudienceKindV1::Unknown)
+                })
             || self
                 .sensitivity_labels
                 .as_ref()
-                .is_some_and(|values| !valid_set(values, 5))
+                .is_some_and(|values| {
+                    !valid_set(values, 4)
+                        || values.contains(&BusinessSensitivityV1::Unknown)
+                })
         {
             return Err(Error::Invalid);
         }

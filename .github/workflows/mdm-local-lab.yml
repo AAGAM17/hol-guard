@@ -34,6 +34,7 @@ jobs:
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
         with:
           enable-cache: true
+      - uses: ./.github/actions/stage-command-projections
       - run: uv sync --python 3.12 --extra dev --frozen
       - run: uv run --python 3.12 --no-sync python scripts/mdm/run-local-lab.py --json --output mdm-local-conformance.json ${{ matrix.suites }}
       - if: always()

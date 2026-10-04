@@ -7484,8 +7484,8 @@ fn evaluate_with_cloud(
     workspace_id: Option<&str>,
     workspace_fingerprint: Option<&str>,
     bundle_meta: Option<&BTreeMap<String, String>>,
-    _bundle_defer_eligible: bool,
-    _bundle_decision: Option<&str>,
+    bundle_defer_eligible: bool,
+    bundle_decision: Option<&str>,
     bundle_evaluation: Option<&EvaluationDraft>,
 ) -> (Option<PackageEvalResult>, Option<Map<String, Value>>) {
     if targets.is_empty() || workspace_id.is_none() || workspace_fingerprint.is_none() {
@@ -7573,7 +7573,68 @@ fn evaluate_with_cloud(
             );
             return (Some(eval_result), None);
         }
-        Err(_) => (Value::Null, String::new()),
+        Err(EvalError::NotFound(_)) => {
+            // `GuardSyncNotConfiguredError`/`GuardSyncEndpointUntrustedError`
+            // (:1221-1242 in the Python evaluator): sync is not configured for
+            // this store. Do NOT attempt a fetch against an empty URL — mirror
+            // Python and resolve the not-configured path directly so a fresh
+            // non-block bundle (e.g. a cached `warn`) still governs instead of
+            // a phantom cloud-transport block.
+            let can_fallback = (bundle_defer_eligible && bundle_decision == Some("block"))
+                || (cloud_protection_is_explicitly_unpaid(&cloud_entitlement)
+                    && resolve_fail_closed(deps, store) != "block");
+            if can_fallback {
+                let credentials_configured = deps
+                    .store_extras
+                    .get_oauth_local_credential_health()
+                    .get("configured")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if credentials_configured {
+                    return (
+                        None,
+                        Some(cloud_fallback_reason(
+                            "cloud_auth_error",
+                            "Guard Cloud credentials were unavailable, so Guard used local package intelligence.",
+                        )),
+                    );
+                }
+                return (None, None);
+            }
+            return (
+                Some(cloud_fail_closed_evaluation_full(
+                    deps,
+                    "cloud_auth_error",
+                    "Guard Cloud credentials were unavailable. Guard blocked this package request rather than bypassing Cloud package protection.",
+                    artifact,
+                    targets,
+                    workspace_dir,
+                    Some(workspace_fingerprint),
+                    bundle_meta,
+                    &resolve_cloud_failure_decision(deps, store),
+                )),
+                None,
+            );
+        }
+        Err(_) => {
+            // Any other sync-resolution failure mirrors Python's
+            // `GuardSyncEndpointUntrustedError` residual (:1221-1229): fail
+            // closed — the request needs review rather than a silent bypass.
+            return (
+                Some(cloud_fail_closed_evaluation_full(
+                    deps,
+                    "cloud_validation_error",
+                    "Guard cloud evaluation endpoint was not trusted, so this package request needs review.",
+                    artifact,
+                    targets,
+                    workspace_dir,
+                    Some(workspace_fingerprint),
+                    bundle_meta,
+                    &resolve_cloud_failure_decision(deps, store),
+                )),
+                None,
+            );
+        }
     };
     let evaluate_url = normalized_supply_chain_evaluate_url(deps, &sync_url, workspace_id);
     let request_payload = build_request_payload(

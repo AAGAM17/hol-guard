@@ -256,5 +256,13 @@ fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<Pat
     if !canonical_parent.starts_with(&home) {
         return None;
     }
+    let relative = canonical_parent.strip_prefix(&home).ok()?;
+    if relative
+        .components()
+        .any(|component| component.as_os_str().to_string_lossy().starts_with('.'))
+        || guard_secure_fs::sensitive_path_family(&target).is_some()
+    {
+        return None;
+    }
     Some(canonical_parent.join(target.file_name()?))
 }

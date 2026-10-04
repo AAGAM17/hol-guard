@@ -291,6 +291,7 @@ fn hooks_are_inert(path: &Path) -> bool {
     const EXECUTABLE_HOOKS: &[&str] = &[
         "post-checkout",
         "post-merge",
+        "post-index-change",
         "pre-commit",
         "post-commit",
         "pre-rebase",

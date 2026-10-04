@@ -68,6 +68,34 @@ fn complete_facts_round_trip_preserves_hidden_audience_and_all_bindings() {
 }
 
 #[test]
+fn complete_drive_and_calendar_facts_round_trip() {
+    for (service, operation, recipient_kind) in [
+        ("google_drive", "drive_share", "collaborator"),
+        ("google_calendar", "calendar_invite", "calendar_attendee"),
+    ] {
+        let mut value = prepared_mail();
+        value["provider"]["service"] = json!(service);
+        value["operation"] = json!(operation);
+        for recipient in value["audience"]["recipients"].as_array_mut().unwrap() {
+            recipient["kind"] = json!(recipient_kind);
+        }
+        let action = decode(&value).unwrap();
+        action.require_complete_facts().unwrap();
+        assert_eq!(serde_json::to_value(action).unwrap(), value);
+    }
+    let mut public_share = prepared_mail();
+    public_share["provider"]["service"] = json!("google_drive");
+    public_share["operation"] = json!("drive_share");
+    public_share["audience"]["kind"] = json!("public");
+    public_share["audience"]["recipients"] = json!([]);
+    public_share["volume"]["recipient_count"] = json!(0);
+    decode(&public_share)
+        .unwrap()
+        .require_complete_facts()
+        .unwrap();
+}
+
+#[test]
 fn every_object_rejects_unknown_and_missing_fields() {
     for object in [
         None,

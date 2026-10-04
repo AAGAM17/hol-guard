@@ -194,3 +194,81 @@ fn directory_symlink_escape_stays_reviewable() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn omp_bounded_line_selectors_cover_files_and_directories() {
+    let root = fixture_root();
+    let home = root.join("home");
+    let project = home.join("project");
+    let source = project.join("main.rs");
+    let selected_directory = project.join("src");
+    let literal_colon_file = project.join("literal:1-5");
+    std::fs::create_dir_all(&selected_directory).unwrap();
+    std::fs::write(&source, "fn main() {}\n").unwrap();
+    std::fs::write(&literal_colon_file, "literal path\n").unwrap();
+
+    let source = std::fs::canonicalize(source).unwrap();
+    let selected_directory = std::fs::canonicalize(selected_directory).unwrap();
+    let literal_colon_file = std::fs::canonicalize(literal_colon_file).unwrap();
+
+    for target in [
+        format!("{}:1-5", source.display()),
+        format!("{}:1-5", selected_directory.display()),
+        "main.rs:1-5".to_owned(),
+        literal_colon_file.to_string_lossy().into_owned(),
+    ] {
+        let decision = read_directory("omp", &target, &home, &project);
+        assert_eq!(
+            decision.minimum_action, "allow",
+            "{target}: {} ({})",
+            decision.reason_code, decision.reason
+        );
+        assert!(decision.explicitly_benign, "{target}");
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn omp_bounded_line_selectors_keep_sensitive_and_unsupported_targets_denied() {
+    let root = fixture_root();
+    let home = root.join("home");
+    let project = home.join("project");
+    let ssh = home.join(".ssh");
+    let symlink_target = root.join("outside.txt");
+    let symlink = project.join("linked.txt");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&ssh).unwrap();
+    std::fs::write(project.join(".env"), "selector-secret\n").unwrap();
+    std::fs::write(ssh.join("id_ed25519"), "private-key\n").unwrap();
+    std::fs::write(&symlink_target, "outside\n").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&symlink_target, &symlink).unwrap();
+
+    for target in [
+        format!("{}:1-5", project.join(".env").display()),
+        format!("{}:1-5", ssh.join("id_ed25519").display()),
+        "src:1-".to_owned(),
+        "src:-5".to_owned(),
+        "src:1+5".to_owned(),
+        "src:1,5".to_owned(),
+        format!("{}:1-", project.display()),
+        format!("{}:-5", project.display()),
+        format!("{}:1+5", project.display()),
+        format!("{}:1,5", project.display()),
+    ] {
+        let decision = read_directory("omp", &target, &home, &project);
+        assert_ne!(decision.minimum_action, "allow", "{target}");
+        assert!(!decision.explicitly_benign, "{target}");
+    }
+
+    #[cfg(unix)]
+    {
+        let target = format!("{}:1-5", symlink.display());
+        let decision = read_directory("omp", &target, &home, &project);
+        assert_ne!(decision.minimum_action, "allow", "{target}");
+        assert!(!decision.explicitly_benign, "{target}");
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}

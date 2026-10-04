@@ -34,6 +34,13 @@ pub(super) fn bounded_file_read_target(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
+    match bounded_selector_path(value, home_dir, cwd) {
+        BoundedSelectorPath::Base(base) => {
+            return bounded_existing_file_read_target(&base, home_dir, cwd);
+        }
+        BoundedSelectorPath::Unsupported => return false,
+        BoundedSelectorPath::NotSelector => {}
+    }
     bounded_read_target(value, home_dir, cwd, false)
 }
 
@@ -41,6 +48,21 @@ pub(super) fn bounded_file_read_target(
 /// listing. This is deliberately separate from the file-read proof: a
 /// directory allow only authorizes bounded entry names, never file contents.
 pub(super) fn bounded_omp_directory_read_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    match bounded_selector_path(value, home_dir, cwd) {
+        BoundedSelectorPath::Base(base) => {
+            return bounded_omp_directory_read_target_without_selector(&base, home_dir, cwd);
+        }
+        BoundedSelectorPath::Unsupported => return false,
+        BoundedSelectorPath::NotSelector => {}
+    }
+    bounded_omp_directory_read_target_without_selector(value, home_dir, cwd)
+}
+
+fn bounded_omp_directory_read_target_without_selector(
     value: &str,
     home_dir: Option<&str>,
     cwd: Option<&str>,
@@ -85,6 +107,125 @@ pub(super) fn bounded_omp_directory_read_target(
         return false;
     };
     canonical.is_dir()
+        && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true)
+}
+
+enum BoundedSelectorPath {
+    NotSelector,
+    Unsupported,
+    Base(String),
+}
+
+/// OMP peels a selector only after proving that the complete input is not a
+/// literal filesystem path. Keep the native proof narrower than OMP: one
+/// positive bounded range (`:N-M`) only. Tails, open-ended ranges, compound
+/// selectors, and comma lists remain on the normal review path.
+fn bounded_selector_path(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> BoundedSelectorPath {
+    if value.trim() != value || !verified_path_context(home_dir, cwd) {
+        return BoundedSelectorPath::NotSelector;
+    }
+    let path = value.strip_prefix(r"\\?\").unwrap_or(value);
+    let Some((base, selector)) = path.rsplit_once(':') else {
+        return BoundedSelectorPath::NotSelector;
+    };
+    let selector_like = selector.eq_ignore_ascii_case("raw")
+        || selector.eq_ignore_ascii_case("conflicts")
+        || selector.eq_ignore_ascii_case("img")
+        || selector.bytes().any(|byte| byte.is_ascii_digit());
+
+    let expanded = expand_home_read_path(path, home_dir).unwrap_or_else(|| path.to_owned());
+    let expanded_path = std::path::Path::new(&expanded);
+    let candidate = if expanded_path.is_absolute() {
+        expanded_path.to_path_buf()
+    } else {
+        let Some(root) = cwd
+            .and_then(|root| {
+                expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))
+            })
+            .filter(|root| std::path::Path::new(root).is_absolute())
+        else {
+            return BoundedSelectorPath::NotSelector;
+        };
+        std::path::Path::new(&root).join(expanded_path)
+    };
+    // A literal path wins even when it is a symlink or otherwise fails the
+    // native proof; never reinterpret it as a selector in that case.
+    match std::fs::symlink_metadata(&candidate) {
+        Ok(_) => return BoundedSelectorPath::NotSelector,
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            return BoundedSelectorPath::NotSelector;
+        }
+        Err(_) => {}
+    }
+
+    if base.is_empty() || base.contains("://") || path.split(['/', '\\']).any(|part| part == "..") {
+        return if selector_like {
+            BoundedSelectorPath::Unsupported
+        } else {
+            BoundedSelectorPath::NotSelector
+        };
+    }
+    let Some((start, end)) = selector.split_once('-') else {
+        return if selector_like {
+            BoundedSelectorPath::Unsupported
+        } else {
+            BoundedSelectorPath::NotSelector
+        };
+    };
+    if start.is_empty()
+        || end.is_empty()
+        || !start.bytes().all(|byte| byte.is_ascii_digit())
+        || !end.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return if selector_like {
+            BoundedSelectorPath::Unsupported
+        } else {
+            BoundedSelectorPath::NotSelector
+        };
+    }
+    let Ok(start) = start.parse::<u64>() else {
+        return BoundedSelectorPath::Unsupported;
+    };
+    let Ok(end) = end.parse::<u64>() else {
+        return BoundedSelectorPath::Unsupported;
+    };
+    if start == 0 || end == 0 || end < start {
+        return BoundedSelectorPath::Unsupported;
+    }
+    BoundedSelectorPath::Base(base.to_owned())
+}
+
+fn bounded_existing_file_read_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    let expanded = expand_home_read_path(value, home_dir).unwrap_or_else(|| value.to_owned());
+    let path = std::path::Path::new(&expanded);
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        let Some(root) = cwd
+            .and_then(|root| {
+                expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))
+            })
+            .filter(|root| std::path::Path::new(root).is_absolute())
+        else {
+            return false;
+        };
+        std::path::Path::new(&root).join(path)
+    };
+    if guard_secure_fs::contains_symlink_component(&candidate) {
+        return false;
+    }
+    let Ok(canonical) = std::fs::canonicalize(candidate) else {
+        return false;
+    };
+    canonical.is_file()
         && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true)
 }
 

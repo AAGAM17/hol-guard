@@ -52,6 +52,9 @@ pub(super) fn bounded_omp_directory_read_target(
     if path.is_empty() || path.len() > 4096 {
         return false;
     }
+    if path.split(['/', '\\']).any(|part| part == "..") {
+        return false;
+    }
     if path.contains([
         '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '*', '?', '[', ']', '{', '}',
     ]) {

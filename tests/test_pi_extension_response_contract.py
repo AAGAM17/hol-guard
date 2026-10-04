@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from codex_plugin_scanner.guard.daemon.hook_worker_responses import (
@@ -159,7 +160,9 @@ def test_generated_omp_tool_result_preserves_daemon_allow_without_hash(tmp_path:
 
 def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Path) -> None:
     source = _generated_source(tmp_path)
-    content = [{"type": "text", "text": "workspace/\n.env\n"}]
+    content_text = "workspace/\n.env\n"
+    content = [{"type": "text", "text": content_text}]
+    digest = hashlib.sha256(content_text.encode()).hexdigest()
 
     regular = _run_generated_source_ref_fixture(source, content, tmp_path / "example.py")
     directory = _run_generated_source_ref_fixture(
@@ -171,6 +174,36 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
 
     assert regular["sourceRef"] is not None
     assert directory["sourceRef"] is None
+
+    directory_handler = _run_generated_callback_payload(
+        source,
+        content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": digest,
+        },
+        tool_name="read",
+        tool_input={"path": str(tmp_path / "workspace")},
+        details={"isDirectory": True, "resolvedPath": str(tmp_path / "workspace")},
+    )
+    regular_handler = _run_generated_callback_payload(
+        source,
+        content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": digest,
+        },
+        tool_name="read",
+        tool_input={"path": str(tmp_path / "workspace")},
+        details={"source": "fixture"},
+    )
+
+    assert directory_handler["preserved"] is True
+    assert "guard_source_ref" not in directory_handler["payload"]
+    assert regular_handler["preserved"] is True
+    assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
 
 
 def test_generated_tool_result_keeps_checked_excerpt_after_local_content_cap(tmp_path: Path) -> None:

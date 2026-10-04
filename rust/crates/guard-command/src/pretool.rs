@@ -18,6 +18,7 @@ mod pure_expression;
 mod read_paths;
 mod restricted_tests;
 mod safe_reads;
+mod safe_scalar;
 mod safe_writes;
 mod search;
 mod segment_proof;

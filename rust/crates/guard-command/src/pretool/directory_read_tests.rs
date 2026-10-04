@@ -5,12 +5,14 @@ static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn fixture_root() -> std::path::PathBuf {
     let nonce = FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target")
         .join(format!(
             "guard-directory-read-{}-{nonce}",
-            std::process::id(),
-        ))
+            std::process::id()
+        ));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::canonicalize(root).unwrap()
 }
 
 fn read_directory(
@@ -172,12 +174,18 @@ fn directory_symlink_escape_stays_reviewable() {
     let home = root.join("home");
     let project = home.join("project");
     let external = root.join("external");
+    let ordinary_sibling = home.join("ordinary-sibling");
     let link = project.join("linked-directory");
     std::fs::create_dir_all(&project).unwrap();
     std::fs::create_dir_all(&external).unwrap();
+    std::fs::create_dir_all(&ordinary_sibling).unwrap();
     std::os::unix::fs::symlink(&external, &link).unwrap();
 
-    for target in [link, project.join("../project/linked-directory")] {
+    for target in [
+        link,
+        project.join("../project/linked-directory"),
+        project.join("../ordinary-sibling"),
+    ] {
         let target = target.to_string_lossy().into_owned();
         let decision = read_directory("omp", &target, &home, &project);
         assert_ne!(decision.minimum_action, "allow", "{target}");

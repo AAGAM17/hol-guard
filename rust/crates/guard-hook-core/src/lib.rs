@@ -532,7 +532,10 @@ pub fn review_post_tool(request: &NativeHookRequestV1) -> HookReviewResponseV1 {
     // OMP directory reads are names-only and intentionally have no source-file
     // proof. Recheck the host-resolved target here so a directory swapped after
     // PreToolUse cannot make a sensitive root's listing model-visible.
-    if sensitive_envelope_target(&request.payload) {
+    if request.harness == "omp"
+        && source_ref(&request.payload).is_none()
+        && sensitive_envelope_target(&request.payload)
+    {
         return HookReviewResponseV1::deny(
             "sensitive_path",
             "HOL Guard blocked this output because the resolved tool target is sensitive.",

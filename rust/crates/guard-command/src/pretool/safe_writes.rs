@@ -117,6 +117,9 @@ pub(super) fn safe_copy_arguments(arguments: &[String], context: super::PathCont
     {
         return false;
     }
+    if !single_link_write_target(&destination) {
+        return false;
+    }
     // Only a single file-to-file copy. Flags, directory destinations and
     // recursive copies need separate evaluation; cp follows destination links.
     !paths.0.starts_with('-')

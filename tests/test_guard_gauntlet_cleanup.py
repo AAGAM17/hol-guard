@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ci.gauntlet import runner
+from ci.gauntlet import cleanup as lifecycle
 
 
 @pytest.mark.parametrize("failed_steps", [(), ("daemon",), ("native",), ("daemon", "native")])
@@ -21,10 +21,10 @@ def test_cleanup_attempts_both_steps_and_keeps_failure_details_private(
             except ValueError as exc:
                 raise RuntimeError("private cleanup context") from exc
 
-    monkeypatch.setattr(runner.probe, "_cleanup_installed_daemon", lambda _daemon: cleanup("daemon"))
-    monkeypatch.setattr(runner.probe, "_cleanup_native", lambda _identity, _home: cleanup("native"))
+    monkeypatch.setattr(lifecycle.probe, "_cleanup_installed_daemon", lambda _daemon: cleanup("daemon"))
+    monkeypatch.setattr(lifecycle.probe, "_cleanup_native", lambda _identity, _home: cleanup("native"))
 
-    result = runner._cleanup_case_resources(object(), object(), tmp_path / "guard-home", tmp_path)
+    result = lifecycle.cleanup_case_resources(object(), object(), tmp_path / "guard-home", tmp_path)
 
     assert calls == ["daemon", "native"]
     if failed_steps:

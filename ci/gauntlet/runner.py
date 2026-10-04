@@ -14,7 +14,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import traceback
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +23,7 @@ from ci.native_runtime import probe_installed_native_extensions as native_probe
 from ci.native_runtime import probe_installed_pi_output as probe
 
 from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
+from .cleanup import cleanup_case_resources
 from .evidence import TRANSCRIPT_LIMIT, assess_case, public_events, read_events, sha256_bytes
 from .fixtures import create_fixture, digest_file, filesystem_checks, scenario_fixture_name
 from .input_evidence import fixture_path_aliases, public_observations, redact_value
@@ -33,26 +33,6 @@ from .source_identity import source_identity
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-
-
-def _cleanup_case_resources(daemon: Any, identity: Any, guard_home: Path, private: Path) -> dict[str, Any]:
-    """Attempt both containment steps even when the first one fails."""
-    failures: list[Exception] = []
-    diagnostics: list[str] = []
-    for label, cleanup in (
-        ("installed-daemon", lambda: probe._cleanup_installed_daemon(daemon)),
-        ("native-resident", lambda: probe._cleanup_native(identity, guard_home)),
-    ):
-        try:
-            cleanup()
-        except Exception as exc:
-            failures.append(exc)
-            diagnostics.append(f"{label}\n{traceback.format_exc()}")
-    if failures:
-        # Exception messages and paths stay out of public evidence exports.
-        (private / "cleanup-error.txt").write_text("\n".join(diagnostics), encoding="utf-8")
-        return {"cleanup_ok": False, "cleanup_error": type(failures[0]).__name__}
-    return {"cleanup_ok": True}
 
 
 def _watch_binding(store: Any) -> dict[str, Any]:
@@ -470,7 +450,7 @@ def run_case(
     finally:
         case["filesystem"] = filesystem_checks(fixture, scenario.oracle, scenario.id)
         if daemon is not None:
-            case.update(_cleanup_case_resources(daemon, identity, fixture.root / "guard-home", private))
+            case.update(cleanup_case_resources(daemon, identity, fixture.root / "guard-home", private))
     case["elapsed_seconds"] = round(time.monotonic() - started, 3)
     case["hook_latency"] = summarize_hook_latency(case["guard_observations"])
     case["assessment"] = assess_case(scenario, case)

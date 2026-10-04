@@ -334,6 +334,9 @@ def test_phase14_package_hook_retry_after_block_reuses_saved_decision(
     workspace_dir.mkdir(parents=True, exist_ok=True)
     store = _seed_review_bundle(home_dir, harness_selector="codex")
     _offline_daemon(home_dir, monkeypatch)
+    (home_dir / "config.toml").write_text(
+        'approval_wait_timeout_seconds = 0\nblocked_request_mode = "ask"\n', encoding="utf-8"
+    )
     event = _event_for_harness("codex", "npm install minimist@1.2.8", workspace_dir)
     event["permission_mode"] = "default"
 

@@ -2507,27 +2507,33 @@ def cached_containment_health(
     when no payload exists yet.
     """
 
-    with server.containment_health_cache_lock:
-        cached = server.containment_health_cache
-        age = time.monotonic() - server.containment_health_cache_monotonic
-        if cached is not None and age <= _CONTAINMENT_HEALTH_CACHE_SECONDS and not force_refresh:
-            return dict(cached)
-        if server.containment_health_refreshing:
-            if cached is not None and not force_refresh:
-                return dict(cached)
-            event = server.containment_health_refresh_event
-            run_probe = False
-        else:
-            event = threading.Event()
-            server.containment_health_refresh_event = event
-            server.containment_health_refreshing = True
-            run_probe = True
-    if not run_probe:
-        event.wait()
+    while True:
         with server.containment_health_cache_lock:
-            if server.containment_health_cache is not None:
-                return dict(server.containment_health_cache)
-        return None
+            cached = server.containment_health_cache
+            age = time.monotonic() - server.containment_health_cache_monotonic
+            if cached is not None and age <= _CONTAINMENT_HEALTH_CACHE_SECONDS and not force_refresh:
+                return dict(cached)
+            if server.containment_health_refreshing:
+                if cached is not None and not force_refresh:
+                    return dict(cached)
+                event = server.containment_health_refresh_event
+                run_probe = False
+            else:
+                event = threading.Event()
+                server.containment_health_refresh_event = event
+                server.containment_health_refreshing = True
+                run_probe = True
+        if not run_probe:
+            # A forced refresh that arrives during an older probe must not
+            # reuse that probe. Wait for it to finish, then run another one.
+            event.wait()
+            if force_refresh:
+                continue
+            with server.containment_health_cache_lock:
+                if server.containment_health_cache is not None:
+                    return dict(server.containment_health_cache)
+            return None
+        break
     payload: dict[str, object] | None = None
     failed = False
     try:
@@ -2535,6 +2541,9 @@ def cached_containment_health(
     except (OSError, RuntimeError, TypeError, ValueError):
         payload = None
         failed = True
+    except BaseException:
+        failed = True
+        raise
     finally:
         with server.containment_health_cache_lock:
             if failed or payload is not None:

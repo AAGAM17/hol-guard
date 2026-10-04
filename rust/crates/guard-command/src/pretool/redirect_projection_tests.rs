@@ -180,3 +180,40 @@ fn a_redirect_never_lowers_the_floor_of_the_command_it_wraps() {
         "block"
     );
 }
+
+#[test]
+fn contained_commands_with_an_output_redirect_fall_back_to_review() {
+    let root =
+        std::env::temp_dir().join(format!("guard-redirect-contained-{}", std::process::id()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("package.json"),
+        r#"{"scripts":{"test":"vitest"}}"#,
+    )
+    .unwrap();
+    let home = root.to_string_lossy().into_owned();
+    let cwd = project.to_string_lossy().into_owned();
+    for command in [
+        "pnpm test > out.log",
+        "pnpm test > /tmp/guard-test.log 2>&1",
+    ] {
+        let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
+            "zcode",
+            "PreToolUse",
+            &serde_json::json!({"tool_name": "Bash", "tool_input": {"command": command}}),
+            Some(&controls()),
+            None,
+            Some(&home),
+            Some(&cwd),
+        );
+        assert_eq!(
+            result.minimum_action, "review",
+            "{command}: {}",
+            result.reason_code
+        );
+        let evidence = result.command_extensions.as_ref().unwrap();
+        assert_eq!(evidence.evaluation_error, None, "{command}");
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}

@@ -164,18 +164,21 @@ def pause_native_pre_tool_for_approval(
     except (OSError, RuntimeError, TypeError, ValueError):
         ask = False
     if not ask:
-        # The agent moves on without waiting, but the operator can still
-        # approve the exact action from the inbox for an identical retry.
-        queue_native_pre_tool_review(
-            store,
-            harness=harness,
-            payload=payload,
-            native_result=native_result,
-            native_receipt=native_receipt,
-            workspace=workspace,
-            guard_home=guard_home,
-            home_dir=home_dir,
-        )
+        # The agent moves on without waiting. Queue only a request whose exact
+        # command can be replayed after approval. Git, package scripts, and
+        # other mutable commands stay denied without an inbox row that could
+        # never take effect.
+        if identity is not None:
+            queue_native_pre_tool_review(
+                store,
+                harness=harness,
+                payload=payload,
+                native_result=native_result,
+                native_receipt=native_receipt,
+                workspace=workspace,
+                guard_home=guard_home,
+                home_dir=home_dir,
+            )
         blocked = dict(native_result)
         blocked.update(
             decision="deny",

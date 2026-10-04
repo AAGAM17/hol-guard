@@ -4307,7 +4307,7 @@ function SettingsWorkspace({ onApprovalGateChange }) {
                 children: /* @__PURE__ */ jsxRuntimeExports.jsxs("fieldset", { className: "space-y-3 py-3", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("legend", { className: "sr-only", children: "Blocked request behavior" }),
                   [
-                    { value: "safe-alternative", label: "Find a safe alternative (default)", description: "The agent gets the reason and moves on without waiting. Requests you can approve still land in your inbox, and approving one lets the same request run on the next try." },
+                    { value: "safe-alternative", label: "Find a safe alternative (default)", description: "The agent gets the reason and moves on without waiting. Read-only requests Guard can replay exactly, such as file reads, still land in your inbox, and approving one lets that request run on the next try. Choose Ask me for approval to decide on everything else." },
                     { value: "ask", label: "Ask me for approval", description: "Pause for an approval questionnaire in the harness or Guard. Decisions that require review can be approved; hard blocks stay blocked." }
                   ].map((option) => /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brand-blue", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(

@@ -159,7 +159,7 @@ fn evaluate_envelope(
             "tool_name": signals.tool_name.as_deref().unwrap_or("Bash"),
             "tool_input": {"command": projection.command},
         });
-        let projected = evaluate_envelope(
+        let mut projected = evaluate_envelope(
             harness,
             event,
             &projected_payload,
@@ -169,7 +169,17 @@ fn evaluate_envelope(
             execution_environment,
             false,
         );
-        if projected.minimum_action != "sandbox-required" {
+        // Contained execution runs the projected command without the
+        // redirect, so the redirected form falls back to ordinary review.
+        if projected.minimum_action == "sandbox-required" {
+            projected.minimum_action = "review".into();
+            projected.policy_action = "review".into();
+            projected.decision = "deny".into();
+            projected.explicitly_benign = false;
+            projected.reason_code = "native_command_redirect_containment_review".into();
+            projected.reason = "HOL Guard requires review because protected read-only execution cannot keep this command's output redirect.".into();
+        }
+        {
             let raw = evaluate_envelope(
                 harness,
                 event,

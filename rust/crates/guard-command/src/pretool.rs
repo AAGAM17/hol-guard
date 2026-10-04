@@ -229,6 +229,32 @@ fn git_helper_context_required(model: &CanonicalCommandV1) -> bool {
         })
 }
 
+// Only a harness-stamped execution environment can prove which configuration
+// the agent's own Git process will read.
+fn git_helpers_proven_inert(
+    model: &CanonicalCommandV1,
+    context: PathContext<'_>,
+    deadline: Option<std::time::Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    let Some(environment) = execution_environment else {
+        return false;
+    };
+    model.segments.iter().all(|segment| {
+        segment.executable.as_deref().is_none_or(|executable| {
+            executable_basename(executable) != "git"
+                || (segment.environment_names.is_empty()
+                    && git_config::execution_free(
+                        executable,
+                        &segment.arguments,
+                        context,
+                        deadline,
+                        Some(environment),
+                    ) == Some(true))
+        })
+    })
+}
+
 fn destructive_command(value: &str) -> bool {
     let lowered = normalized_haystack(value);
     let rm_force = lowered.contains("rm -rf") || lowered.contains("rm -fr");
@@ -481,6 +507,14 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
         ));
     }
     if git_helper_context_required(&model) {
+        if git_helpers_proven_inert(&model, context, deadline, execution_environment) {
+            return Ok(pretool_decision(
+                model,
+                "allow",
+                "native_exact_safe_command",
+                "The Rust command authority verified that the effective Git configuration defines no diff, textconv, pager, or filter helper for this read.",
+            ));
+        }
         return Ok(pretool_decision(
             model,
             "review",

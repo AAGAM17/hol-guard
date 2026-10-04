@@ -93,3 +93,17 @@ runs:
       SONAR_TOKEN: ${{ inputs.secret-sonar-token }}
       SONAR_SCANNER_JAVA_OPTS: -Xmx6g
     if: inputs.has-token == 'true'
+  - name: SonarQube Quality Gate check
+    if: inputs.has-token == 'true'
+    shell: bash
+    run: python -m scripts.ci.check_sonar_quality
+    env:
+      SONAR_TOKEN: ${{ inputs.secret-sonar-token }}
+  - name: Preserve analysis-specific quality evidence
+    if: always() && inputs.has-token == 'true'
+    uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+    with:
+      name: sonar-quality-evidence-${{ github.run_attempt }}
+      path: sonar-quality-evidence/
+      if-no-files-found: warn
+      retention-days: 14

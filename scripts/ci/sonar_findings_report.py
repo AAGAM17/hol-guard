@@ -48,6 +48,14 @@ def sonar_pages(path: str, field: str, **parameters: object) -> dict:
     raise ValueError("report exceeds the pagination limit")
 
 
+def _metric_value(metric: dict) -> float:
+    """Sonar returns new-code measurements in periods, not only period/value."""
+    periods = metric.get("periods", [])
+    if periods:
+        return float(periods[0]["value"])
+    return float(metric.get("period", {}).get("value", metric.get("value", "0")))
+
+
 def sonar_snapshot(pull_request: int | None) -> dict:
     scope = {} if pull_request is None else {"pullRequest": pull_request}
     issues = sonar_pages("/api/issues/search", "issues", componentKeys=PROJECT, resolved="false", **scope)
@@ -68,8 +76,7 @@ def sonar_snapshot(pull_request: int | None) -> dict:
         sources = {}
         for component in measures["components"]:
             has_gaps = any(
-                metric["metric"].startswith("new_uncovered")
-                and float(metric.get("period", {}).get("value", metric.get("value", "0"))) > 0
+                metric["metric"].startswith("new_uncovered") and _metric_value(metric) > 0
                 for metric in component.get("measures", [])
             )
             if has_gaps:

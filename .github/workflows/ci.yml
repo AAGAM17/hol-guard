@@ -327,12 +327,6 @@ jobs:
           has-token: ${{ steps.token-presence.outputs.has-token }}
           secret-sonar-token: ${{ secrets.SONAR_TOKEN }}
         if: steps.token-presence.outputs.has-token == 'true'
-      - name: SonarQube Quality Gate check
-        uses: sonarsource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        if: steps.token-presence.outputs.has-token == 'true'
 
   scheduling-sensitive:
     needs: native-command-evaluators

@@ -199,9 +199,12 @@ def test_snapshot_has_bucket_counters(recorder: HookMetricsRecorder) -> None:
 
 
 def test_rollup_retains_tail_latency(recorder: HookMetricsRecorder, store: GuardStore) -> None:
-    for latency in range(1, 101):
+    for latency in [*range(1, 100), 15000]:
         _record_one(recorder, latency_ms=latency)
     snapshot = recorder.snapshot()
+    assert snapshot["latency_p99_ms"] == 99
+    assert snapshot["latency_p95_ms"] == 95
+    assert snapshot["latency_p50_ms"] == 50
     recorder.maybe_flush_to_store(store, force=True)
     row = store.list_events(limit=1)[0]
     payload = row["payload"]

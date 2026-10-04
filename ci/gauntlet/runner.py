@@ -357,11 +357,26 @@ def run_suite(
         f"Samples: {report['hook_latency']['samples']}; missing: {report['hook_latency']['missing_samples']}; "
         f"failed attempts: {report['hook_latency']['failed_attempts']}",
         "",
-        "| p50 | p90 | p95 | p99 | max |",
-        "| ---: | ---: | ---: | ---: | ---: |",
+        "| p50 | p90 | p95 | p99 | mean | max |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: |",
         "| "
-        + " | ".join(str(report["hook_latency"][key]) for key in ("p50_ms", "p90_ms", "p95_ms", "p99_ms", "max_ms"))
+        + " | ".join(
+            str(report["hook_latency"][key]) for key in ("p50_ms", "p90_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms")
+        )
         + " |",
+        "",
+        "| Event | Samples | p50 | p90 | p95 | p99 | mean | max |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        *[
+            "| "
+            + event
+            + " | "
+            + " | ".join(
+                str(values[key]) for key in ("samples", "p50_ms", "p90_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms")
+            )
+            + " |"
+            for event, values in report["hook_latency"]["by_event"].items()
+        ],
         "",
         "| Scenario | Outcome | Actual tools |",
         "| --- | --- | ---: |",

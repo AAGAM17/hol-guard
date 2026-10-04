@@ -100,6 +100,7 @@ def verify_report(
             raise ValueError("Gauntlet runner changed after evidence was produced")
     results = []
     observations = []
+    missing_latency_cases = []
     for scenario, row in zip(expected, report["cases"], strict=True):
         path = directory / "cases" / f"{scenario.id}.json"
         case = _read_json(path, 8_000_000)
@@ -108,6 +109,8 @@ def verify_report(
         if digest_file(path) != row.get("evidence_sha256"):
             raise ValueError("scenario evidence bytes changed")
         observations.extend(case["guard_observations"])
+        if "hook_latency" not in case:
+            missing_latency_cases.append(scenario.id)
         if "hook_latency" in case and case["hook_latency"] != summarize_hook_latency(case["guard_observations"]):
             raise ValueError("claimed hook latency does not match observed evidence")
         result = assess_case(scenario, case)
@@ -126,4 +129,6 @@ def verify_report(
         "actual_tool_calls": sum(result["tool_calls"] for result in results),
         "merge_qualified": report["merge_qualified"],
         "hook_latency": latency,
+        "hook_latency_reported": "hook_latency" in report and not missing_latency_cases,
+        "cases_missing_latency_report": missing_latency_cases,
     }

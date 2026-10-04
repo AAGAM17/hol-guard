@@ -10,7 +10,7 @@ use guard_contracts::{
 };
 use serde_json::Value;
 
-use super::{evaluate_pre_tool, PreToolDecisionV1};
+use super::{evaluate_pre_tool_with_context, PreToolDecisionV1};
 use extract::{extract_generic_signals, GenericSignals};
 use result::{generic_action, generic_error_result, generic_result, review_reason};
 use std::time::Instant;
@@ -48,18 +48,52 @@ pub fn evaluate_pre_tool_envelope_with_context(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> PreToolResultV1 {
-    let signals = match extract_generic_signals(payload) {
+    evaluate_pre_tool_envelope_with_execution_context(
+        harness,
+        event,
+        payload,
+        controls,
+        deadline,
+        crate::pretool::PathContext { home_dir, cwd },
+        None,
+    )
+}
+
+pub fn evaluate_pre_tool_envelope_with_execution_context(
+    harness: &str,
+    event: &str,
+    payload: &Value,
+    controls: Option<&CompiledNativeCommandControls>,
+    deadline: Option<Instant>,
+    context: super::PathContext<'_>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> PreToolResultV1 {
+    let super::PathContext { home_dir, cwd } = context;
+    let mut signals = match extract_generic_signals(payload) {
         Ok(value) => value,
         Err(error) => return generic_error_result(harness, event, error),
     };
     let command_decision = signals.command.as_deref().map(|command| {
-        evaluate_pre_tool(&CommandModelRequestV1 {
-            command: command.to_owned(),
-            dialect: "posix".to_owned(),
-            transport: "shell_string".to_owned(),
-            extraction_provenance: "pre-tool-generic".to_owned(),
-        })
+        evaluate_pre_tool_with_context(
+            &CommandModelRequestV1 {
+                command: command.to_owned(),
+                dialect: "posix".to_owned(),
+                transport: "shell_string".to_owned(),
+                extraction_provenance: "pre-tool-generic".to_owned(),
+            },
+            home_dir,
+            cwd,
+        )
     });
+    // Parsed benign commands may contain credential words as search patterns.
+    // Preserve independent structured-path/content risk, not the raw-text hint.
+    if command_decision.as_ref().is_some_and(|decision| {
+        decision
+            .as_ref()
+            .is_ok_and(|decision| decision.explicitly_benign)
+    }) {
+        signals.sensitive_target = signals.independent_sensitive_target;
+    }
     let mut result = evaluate_signals(
         harness,
         event,
@@ -99,12 +133,13 @@ pub fn evaluate_pre_tool_envelope_with_context(
         .and_then(|decision| decision.as_ref().ok())
         .map(|decision| &decision.command_model);
     let mut result = match (controls, command_model) {
-        (Some(controls), Some(model)) => controls.apply_with_tool(
+        (Some(controls), Some(model)) => controls.apply_with_tool_and_context(
             Some(model),
             result,
             signals.tool_name.as_deref(),
             &signals.package_values,
             deadline,
+            super::PathContext { home_dir, cwd },
         ),
         (Some(controls), _) => controls.apply_with_tool(
             None,
@@ -115,13 +150,57 @@ pub fn evaluate_pre_tool_envelope_with_context(
         ),
         _ => result,
     };
+    if event == "PreToolUse"
+        // Existing helper-context review may delegate only to enforced
+        // read-only containment below; do not replace that protection.
+        && result.reason_code != "native_git_helper_context_review"
+        && command_model.is_some_and(|model| {
+            let destination =
+                super::segment_proof::verified_cwd_compound_context(model, super::PathContext { home_dir, cwd });
+            let context = super::PathContext { home_dir, cwd: destination.as_deref().or(cwd) };
+            let benign = super::segment_proof::benign_command_segments(model, super::PathContext { home_dir, cwd });
+            model.segments.iter().enumerate().any(|(index, segment)| {
+                segment.executable.as_deref().is_some_and(|executable| {
+                    if super::executable_basename(executable) != "git" {
+                        return false;
+                    }
+                    let inspection = super::git_config::execution_free(
+                        executable,
+                        &segment.arguments,
+                        context,
+                        deadline,
+                        execution_environment,
+                    );
+                    !segment.environment_names.is_empty()
+                        || inspection == Some(false)
+                        // Only inspection operations have a configuration proof
+                        // to invalidate. Other Git operations retain their own
+                        // native review/permission floors, not this read floor.
+                        || (inspection.is_some()
+                            && index > 0
+                            && (0..index).any(|prior| !benign.contains(&prior)))
+                })
+            })
+        })
+        && matches!(
+            result.minimum_action.as_str(),
+            "allow" | "warn" | "review"
+        )
+    {
+        result.minimum_action = "require-reapproval".into();
+        result.policy_action = "require-reapproval".into();
+        result.decision = "deny".into();
+        result.explicitly_benign = false;
+        result.reason_code = "native_git_execution_context_review".into();
+        result.reason = "HOL Guard requires review because this Git read may execute a configured helper, or its effective configuration could not be verified.".into();
+    }
     let contained_test_reason =
         command_model.and_then(super::restricted_tests::readonly_test_reason);
     // The read-only credential-filtering backend currently exists on macOS.
     // Other platforms retain review until they can enforce the same profile.
     if cfg!(target_os = "macos")
         && event == "PreToolUse"
-        && matches!(harness, "omp" | "oh-my-pi")
+        && matches!(harness, "omp" | "oh-my-pi" | "zcode")
         && cwd.is_some()
         && (result.action.action_type == PreToolActionTypeV1::Command
             || (matches!(
@@ -141,6 +220,7 @@ pub fn evaluate_pre_tool_envelope_with_context(
                 contained_test_reason,
                 Some(
                     "native_node_tool_readonly_containment_required"
+                        | "native_vitest_readonly_containment_required"
                         | "native_package_test_readonly_containment_required"
                         | "native_node_build_output_containment_required"
                 )
@@ -386,13 +466,17 @@ fn evaluate_signals(
         && signals.url_values.is_empty()
         && signals.command.is_none()
         && signals.path_values.len() == 1
-        && super::safe_reads::bounded_file_write_target(&signals.path_values[0], cwd)
+        && super::safe_reads::bounded_native_file_write_target(
+            &signals.path_values[0],
+            home_dir,
+            cwd,
+        )
     {
         return generic_result(
             action,
             "allow",
             "native_exact_safe_file_write",
-            "The Rust authority proved this ordinary file write stays inside the verified workspace.",
+            "The Rust authority proved this ordinary file write targets the verified workspace, a registered worktree, or the verified user home and clears sensitive-path checks.",
         );
     }
     let (reason_code, reason) = review_reason(action_type);

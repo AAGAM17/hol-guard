@@ -105,7 +105,7 @@ def test_daemon_start_timeout_scales_with_worker_ready_floor(monkeypatch: pytest
     # daemon can finish binding and writing state before the poll gives up.
     assert daemon_manager_module._default_guard_daemon_start_timeout() == max(  # pyright: ignore[reportPrivateUsage]
         daemon_manager_module.GUARD_DAEMON_START_TIMEOUT_SECONDS,
-        14.0 + margin,
+        30.0 + margin,
     )
 
     # Raised worker floor (QEMU / cold host): the client poll must outlast it

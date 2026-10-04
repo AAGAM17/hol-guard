@@ -19,8 +19,10 @@ absolute/relative executable paths. This profile does not override or disable
 Model Armor: sanitization options need a separately qualified execution path.
 Environment assignments, wrappers, redirects, pipelines, compound commands,
 active shell expansion and uncertain native parsing are rejected. Single-quoted
-JSON retains literal characters. Double-quoted JSON is supported only with
-the native parser's matching POSIX quote/backslash escapes. Neither paths nor
+JSON retains literal characters. Double-quoted JSON preserves ordinary JSON
+escapes such as `\u0061` and `\n`; unsupported escaped shell expansion and line
+continuation are rejected. Unquoted backslashes remain unsupported on Windows,
+where the general native parser preserves path separators. Neither paths nor
 stdin are read, and no target process is executed.
 
 The generic matcher parser does not evaluate shell variables. A literal-input
@@ -43,7 +45,8 @@ after approval does not establish credential isolation or exact dispatch.
 These values have no Debug, Serialize, Clone or mutable interface and must
 remain local; Cloud receives only the separately reviewed minimal metadata.
 
-Eight native tests cover quoting/order/assignment spellings, strict wire-field
+Nine native tests cover quoting/order/assignment spellings, preserved JSON
+escapes with continuing resource validation, strict wire-field
 delegation, duplicate/missing options, overrides and extra flags, compound and
 wrapper contexts, variable/glob expansion, bounded errors, size limits and
 source substitutions. They make zero provider calls and do not qualify an

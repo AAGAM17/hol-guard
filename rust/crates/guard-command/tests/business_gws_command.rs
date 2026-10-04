@@ -1,3 +1,4 @@
+use guard_command::business_gmail_wire::GmailSendWireErrorV1;
 use guard_command::business_gws_command::{GwsGmailCommandErrorV1, GwsGmailSendCommandInputV1};
 use guard_command::MAX_COMMAND_BYTES;
 
@@ -38,6 +39,39 @@ fn reordered_and_assignment_options_preserve_payload() {
             GwsGmailSendCommandInputV1::from_owned_posix_command(command(&options)).unwrap();
         assert_eq!(input.wire_input().params_bytes(), PARAMS.as_bytes());
         assert_eq!(input.wire_input().body_bytes(), BODY.as_bytes());
+    }
+}
+
+#[test]
+fn preserved_json_escapes_decode_but_invalid_resource_controls_still_fail() {
+    let candidate = command(
+        r#"--params "{\"userId\":\"\u006de\"}" --json "{\"raw\":\"Zg\",\"threadId\":\"thread-\u0061\"}""#,
+    );
+    let input = GwsGmailSendCommandInputV1::from_owned_posix_command(candidate).unwrap();
+    assert_eq!(
+        input.wire_input().params_bytes(),
+        br#"{"userId":"\u006de"}"#
+    );
+    assert_eq!(
+        input.wire_input().body_bytes(),
+        br#"{"raw":"Zg","threadId":"thread-\u0061"}"#
+    );
+    assert_eq!(input.wire_input().thread_id(), Some("thread-a"));
+    let control = command(
+        r#"--params "{\"userId\":\"me\"}" --json "{\"raw\":\"Zg\",\"threadId\":\"line\nfeed\"}""#,
+    );
+    assert_eq!(
+        GwsGmailSendCommandInputV1::from_owned_posix_command(control).err(),
+        Some(GwsGmailCommandErrorV1::Wire(GmailSendWireErrorV1::Invalid))
+    );
+    for escape in [r#"\$THREAD"#, r#"\`value\`"#] {
+        let unsupported = command(&format!(
+            r#"--params '{PARAMS}' --json "{{\"raw\":\"Zg\",\"threadId\":\"{escape}\"}}""#
+        ));
+        assert_eq!(
+            GwsGmailSendCommandInputV1::from_owned_posix_command(unsupported).err(),
+            Some(GwsGmailCommandErrorV1::UnsupportedContext)
+        );
     }
 }
 

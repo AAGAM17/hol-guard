@@ -42,8 +42,11 @@ fn literal_shell_input(command: &str) -> bool {
                 '"' => quote = None,
                 '$' | '`' | '\r' | '\n' => return false,
                 '\\' => {
-                    // Native token unescaping matches POSIX for these two.
-                    if !matches!(chars.next(), Some('"' | '\\')) {
+                    // POSIX and the native parser both preserve backslashes
+                    // before ordinary characters (including JSON n/u escapes).
+                    // The native parser does not match POSIX for escaped $/`
+                    // or line continuation, so those forms remain unsupported.
+                    if matches!(chars.next(), None | Some('$' | '`' | '\0' | '\r' | '\n')) {
                         return false;
                     }
                 }
@@ -54,9 +57,7 @@ fn literal_shell_input(command: &str) -> bool {
                 '$' | '`' | '*' | '?' | '[' | ']' | '~' | '{' | '}' | '(' | ')' | '<' | '>'
                 | '|' | '&' | ';' | '#' | '\r' | '\n' => return false,
                 '\\' => {
-                    if cfg!(windows)
-                        || matches!(chars.next(), None | Some('\0' | '\r' | '\n'))
-                    {
+                    if cfg!(windows) || matches!(chars.next(), None | Some('\0' | '\r' | '\n')) {
                         return false;
                     }
                 }

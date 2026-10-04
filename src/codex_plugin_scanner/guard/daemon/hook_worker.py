@@ -29,7 +29,7 @@ import time
 from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING, Protocol, cast, final
 
 from ..cli.commands_support_command_activity import (
     hook_post_succeeded,
@@ -193,7 +193,7 @@ class HookWorker(HookWorkerNativeMixin):
         if callable(current_runtime_status):
             status = current_runtime_status()
             if status is not None:
-                return status
+                return cast(NativeRuntimeStatus, status)
         return native_runtime_status()
 
     def close(self, *, deadline_monotonic: float | None = None) -> bool:

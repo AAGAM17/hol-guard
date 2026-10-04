@@ -137,3 +137,22 @@ def test_acceptance_packaging_uses_its_own_compiler_without_exporting_to_parent(
     assert os.environ["GITHUB_ENV"] == str(parent_environment)
     assert os.environ["HOL_GUARD_BUILD_SOURCE_COMPILER"] == "/parent/checkout/compiler"
     assert parent_environment.read_text() == "EXISTING=value\n"
+
+
+@pytest.mark.parametrize(
+    ("workflow_name", "job_name", "test_command"),
+    [
+        ("mdm-local-lab.yml", "conformance", "scripts/mdm/run-local-lab.py"),
+        ("guard-gauntlet-gate.yml", "contracts", "pytest"),
+        ("guard-gauntlet-evidence.yml", "contracts", "pytest"),
+    ],
+)
+def test_standalone_contract_jobs_stage_resources_before_test_imports(workflow_name, job_name, test_command):
+    """Local lab and evidence-judge imports require the same compiled package resources."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows" / workflow_name).read_text())
+    steps = workflow["jobs"][job_name]["steps"]
+    stage = next(i for i, step in enumerate(steps) if step.get("uses") == "./.github/actions/stage-command-projections")
+    test = next(i for i, step in enumerate(steps) if test_command in step.get("run", ""))
+    assert stage < test
+    assert not steps[stage].get("continue-on-error")
+    assert "if" not in steps[stage]

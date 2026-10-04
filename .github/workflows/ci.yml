@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main, release/3.0, release/3.1, release/3.2, fix/rust-authority-batch-2]
-  pull_request:
     branches: [main, release/3.0, release/3.1, release/3.2]
+  pull_request:
+    branches: [main, release/3.0, release/3.2]
   schedule:
     - cron: "0 5 * * 1"
   workflow_dispatch:
@@ -40,9 +40,35 @@ jobs:
           path: .
       - uses: ./.github/actions/ci-job-quality
 
-  native-command-evaluators:
+  # Rust validation is required, but is not on the artifact/Python fan-out critical path.
+  native-workspace:
+    name: Rust workspace (${{ matrix.check }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [clippy, test]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy
+      - name: Validate the locked Rust workspace
+        env:
+          CARGO_CHECK: ${{ matrix.check }}
+        run: |
+          case "$CARGO_CHECK" in
+            clippy) cargo clippy --manifest-path rust/Cargo.toml --locked --workspace --all-targets -- -D warnings ;;
+            test) cargo test --manifest-path rust/Cargo.toml --locked --workspace --all-targets ;;
+            *) echo "Unsupported workspace check" >&2; exit 64 ;;
+          esac
+
+  native-command-evaluators:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -50,15 +76,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache-key: pytest-native-command
-          components: rustfmt clippy
+          components: rustfmt
       - name: Check native formatting before compilation
         run: cargo fmt --manifest-path rust/Cargo.toml --all --check
-      # One blocking Linux workspace proof, before any of the 128 Python shards.
-      # Specialized workflows retain their unique probes and non-Linux proofs.
-      - name: Lint the complete locked Rust workspace
-        run: cargo clippy --manifest-path rust/Cargo.toml --locked --workspace --all-targets -- -D warnings
-      - name: Test the complete locked Rust workspace
-        run: cargo test --manifest-path rust/Cargo.toml --locked --workspace --all-targets
       - name: Build native command evaluators once for pytest shards
         run: |
           cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime
@@ -360,7 +380,7 @@ jobs:
   ci-python-312:
     name: ci (3.12)
     if: always()
-    needs: [quality, coverage-plan, coverage, compatibility, scheduling-sensitive]
+    needs: [native-workspace, quality, coverage-plan, coverage, compatibility, scheduling-sensitive]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -371,12 +391,14 @@ jobs:
     steps:
       - name: Verify Python CI dependencies
         env:
+          NATIVE_WORKSPACE_RESULT: ${{ needs.native-workspace.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           COVERAGE_PLAN_RESULT: ${{ needs.coverage-plan.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
           SCHEDULING_SENSITIVE_RESULT: ${{ needs.scheduling-sensitive.result }}
         run: |
+          test "$NATIVE_WORKSPACE_RESULT" = "success"
           test "$QUALITY_RESULT" = "success"
           test "$COVERAGE_PLAN_RESULT" = "success"
           test "$COVERAGE_RESULT" = "success"

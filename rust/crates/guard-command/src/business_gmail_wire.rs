@@ -15,10 +15,15 @@ pub const GWS_GMAIL_SEND_SCHEMA_DIGEST: &str =
 pub const GMAIL_SEND_MAX_PARAM_BYTES: usize = 4096;
 const INPUT_DOMAIN: &[u8] = b"hol-guard.gmail-send-wire-input.v1\0";
 
+/// Bounded preparation failures with no private input or account details.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GmailSendWireErrorV1 {
+    /// Invalid/ambiguous JSON, invalid thread selector, malformed base64url,
+    /// or empty decoded content; includes unsupported body/query fields.
     Invalid,
+    /// Parameter, combined wire or decoded-content byte limits were exceeded.
     BoundsExceeded,
+    /// A well-formed `userId` string selected something other than `me`.
     UnsupportedPrincipalSelector,
 }
 

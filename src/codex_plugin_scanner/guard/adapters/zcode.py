@@ -336,6 +336,10 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         if not isinstance(hooks, dict):
             hooks = {}
         payload["hooks"] = hooks
+        enabled_before = {"present": "enabled" in hooks, "value": hooks.get("enabled")}
+        previous_state = json.loads(state_before) if state_before is not None else {}
+        if previous_state.get("managed_config_path") == str(config_path):
+            enabled_before = previous_state.get("hooks_enabled_before", enabled_before)
 
         self._sync_managed_hook_groups(hooks, managed_hook_command)
         if config_path.name == "setting.json":
@@ -343,7 +347,10 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         config_mode = config_path.stat().st_mode & 0o777 if config_before is not None else 0o644
         backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else config_mode
         state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o644
-        state_after = (json.dumps({"managed_config_path": str(config_path)}, indent=2) + "\n").encode("utf-8")
+        state_after = (
+            json.dumps({"managed_config_path": str(config_path), "hooks_enabled_before": enabled_before}, indent=2)
+            + "\n"
+        ).encode("utf-8")
         files = (
             *prepared_shim.files,
             *hook_files,
@@ -402,19 +409,36 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             display_name="zcode",
         )
         config_path = self._config_path(context)
-        if config_path.is_file():
-            _ensure_path_within_root(self._zcode_home_dir(context), config_path, label="ZCode")
-            payload = _json_payload(config_path)
+        _state_dir, _backup_path, state_path = self._managed_state_paths(context)
+        state = _json_payload(state_path) if state_path.is_file() else {}
+        # Migration can copy managed hooks to settings after a legacy install.
+        for candidate in (self._cli_root(context) / "setting.json", self._cli_root(context) / ZCODE_CLI_CONFIG_FILE):
+            if not candidate.is_file():
+                continue
+            _ensure_path_within_root(self._zcode_home_dir(context), candidate, label="ZCode")
+            payload = _json_payload(candidate)
             hooks = payload.get("hooks")
             if isinstance(hooks, dict):
+                hooks_before = json.dumps(hooks, sort_keys=True)
                 self._prune_managed_hook_groups(hooks)
+                if json.dumps(hooks, sort_keys=True) == hooks_before:
+                    continue
+                original = state.get("hooks_enabled_before")
+                if (
+                    state.get("managed_config_path") == str(candidate)
+                    and isinstance(original, dict)
+                    and hooks.get("enabled") is True
+                ):
+                    if original.get("present"):
+                        hooks["enabled"] = original.get("value")
+                    else:
+                        hooks.pop("enabled", None)
                 if not hooks:
                     payload.pop("hooks", None)
                 else:
                     payload["hooks"] = hooks
-                config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                candidate.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-        _state_dir, _backup_path, state_path = self._managed_state_paths(context)
         if state_path.is_file():
             state_path.unlink()
 

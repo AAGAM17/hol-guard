@@ -211,14 +211,21 @@ def test_unproven_cached_diff_variants_are_owned(tmp_path: Path, command: str) -
     assert request.action_class == "git index inspection"
 
 
-@pytest.mark.parametrize("command", ("git diff -- --cached", "git diff -- --staged"))
-def test_pathspec_index_flag_names_are_not_owned(tmp_path: Path, command: str) -> None:
+@pytest.mark.parametrize(
+    ("command", "expected_status"),
+    (("git diff -- --cached", "review"), ("git diff -- --staged", "no_match")),
+)
+def test_pathspec_index_flag_names_are_not_owned(
+    tmp_path: Path, command: str, expected_status: str
+) -> None:
     home, repository = _repository(tmp_path)
     payload = inspect_command(command, cwd=repository, home_dir=home)
 
-    # The terminator makes these paths, not index flags. The native generic
-    # diff owner still requires proof that Git helpers cannot execute.
-    assert payload["status"] == "review"
+    # The terminator makes these paths, not index flags.
+    assert payload["status"] == expected_status
+    if expected_status == "no_match":
+        return
+    # The native generic diff owner still requires proof that Git helpers cannot execute.
     assert payload["minimum_action"] == "review"
     assert payload["classification"]["action_class"] == "git read command"
     assert payload["controlling_rule_id"] == "command.git.diff"

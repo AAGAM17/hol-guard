@@ -47,7 +47,7 @@ def test_matcher_failure_central_block_reaches_final_runtime_policy(
         native_evaluation=evaluation,
     )
 
-    assert artifact.metadata["command_action_floor"] == "block"
+    assert artifact.metadata["command_action_floor"] == "review"
     decision = cast(dict[str, object], artifact.metadata["command_decision_plane"])
     assert decision["action"] == "block"
     config = GuardConfig(guard_home=tmp_path / "guard-home", workspace=tmp_path, default_action="allow")

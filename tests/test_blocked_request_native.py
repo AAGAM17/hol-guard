@@ -1,4 +1,4 @@
-"""Default native denials never solicit operator approval."""
+"""Default native denials never pause the agent, but approvable ones reach the inbox."""
 
 from pathlib import Path
 
@@ -46,7 +46,9 @@ def test_native_review_defaults_to_safe_alternative(
     )
     assert response["policy_action"] == "block"
     assert response["prompted"] is False
-    assert store.list_approval_requests(status="pending") == []
+    assert "approval_request_id" not in response
+    assert "approval_url" not in response
+    assert len(store.list_approval_requests(status="pending")) == 1
     reason = response.get("reason") or response["hookSpecificOutput"]["permissionDecisionReason"]
     assert "safe, permitted alternative" in reason
     assert "bypass Guard" in reason
@@ -68,5 +70,6 @@ def test_malformed_config_denies_review_without_prompt(tmp_path, monkeypatch):
     )
     assert response["policy_action"] == "block"
     assert response["prompted"] is False
-    assert store.list_approval_requests() == []
+    assert "approval_url" not in response
+    assert len(store.list_approval_requests(status="pending")) == 1
     worker.close()

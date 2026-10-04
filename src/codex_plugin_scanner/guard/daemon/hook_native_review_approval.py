@@ -164,6 +164,18 @@ def pause_native_pre_tool_for_approval(
     except (OSError, RuntimeError, TypeError, ValueError):
         ask = False
     if not ask:
+        # The agent moves on without waiting, but the operator can still
+        # approve the exact action from the inbox for an identical retry.
+        queue_native_pre_tool_review(
+            store,
+            harness=harness,
+            payload=payload,
+            native_result=native_result,
+            native_receipt=native_receipt,
+            workspace=workspace,
+            guard_home=guard_home,
+            home_dir=home_dir,
+        )
         blocked = dict(native_result)
         blocked.update(
             decision="deny",

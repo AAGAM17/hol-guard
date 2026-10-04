@@ -4,6 +4,8 @@ use evaluate::evaluate_signals;
 
 #[path = "generic_extract.rs"]
 mod extract;
+#[path = "redirect_projection.rs"]
+mod redirect_projection;
 #[path = "generic_result.rs"]
 mod result;
 
@@ -119,11 +121,68 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
     context: super::PathContext<'_>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> PreToolResultV1 {
+    evaluate_envelope(
+        harness,
+        event,
+        payload,
+        controls,
+        deadline,
+        context,
+        execution_environment,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_envelope(
+    harness: &str,
+    event: &str,
+    payload: &Value,
+    controls: Option<&CompiledNativeCommandControls>,
+    deadline: Option<Instant>,
+    context: super::PathContext<'_>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+    project_redirects: bool,
+) -> PreToolResultV1 {
     let super::PathContext { home_dir, cwd } = context;
     let mut signals = match extract_generic_signals(payload) {
         Ok(value) => value,
         Err(error) => return generic_error_result(harness, event, error),
     };
+    if let Some(projection) = signals
+        .command
+        .as_deref()
+        .filter(|_| project_redirects)
+        .and_then(|command| redirect_projection::project(command, context))
+    {
+        let projected_payload = serde_json::json!({
+            "tool_name": signals.tool_name.as_deref().unwrap_or("Bash"),
+            "tool_input": {"command": projection.command},
+        });
+        let projected = evaluate_envelope(
+            harness,
+            event,
+            &projected_payload,
+            controls,
+            deadline,
+            context,
+            execution_environment,
+            false,
+        );
+        if projected.minimum_action != "sandbox-required" {
+            let raw = evaluate_envelope(
+                harness,
+                event,
+                payload,
+                None,
+                deadline,
+                context,
+                execution_environment,
+                false,
+            );
+            return redirect_projection::join(projected, raw, projection.writes_file);
+        }
+    }
     let task_metadata = event == "PreToolUse"
         && agent_metadata::bounded_task_list(payload, signals.tool_name.as_deref())
         && signals.command.is_none()

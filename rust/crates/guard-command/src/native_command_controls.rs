@@ -258,10 +258,33 @@ impl CompiledNativeCommandControls {
         } else {
             "native_command_extension_review"
         };
+        // An uncertain observation may belong to any of its candidate owners,
+        // so it takes the strongest of their floors and never less than review.
+        let mut uncertain_floor: Option<&'static str> = None;
         for observation in &batch.observations {
             if !observation.uncertainty_reasons.is_empty() {
-                floor = "block";
-                reason = "native_command_extension_uncertain";
+                let candidate = match self.rule_indices.get(&observation.rule_id) {
+                    Some(index) => {
+                        let rule = &self.program.rules[*index];
+                        if self
+                            .explicitly_enabled_permissions
+                            .contains(&rule.permission_id)
+                        {
+                            "review"
+                        } else {
+                            rule_floor(rule, self.program.extensions[rule.extension_index].required)
+                        }
+                    }
+                    None => "block",
+                };
+                let candidate = if rank(candidate) < rank("review") {
+                    "review"
+                } else {
+                    candidate
+                };
+                if uncertain_floor.is_none_or(|current| rank(candidate) > rank(current)) {
+                    uncertain_floor = Some(candidate);
+                }
             }
             if self.blocked_extensions.contains(&observation.extension_id) {
                 floor = "block";
@@ -292,9 +315,9 @@ impl CompiledNativeCommandControls {
             }
         }
         for observation in &batch.permission_observations {
+            // A ruleless permission has no declared floor to bound uncertainty.
             if !observation.uncertainty_reasons.is_empty() {
-                floor = "block";
-                reason = "native_command_extension_uncertain";
+                uncertain_floor = Some("block");
             }
             if self.blocked_extensions.contains(&observation.extension_id)
                 || self
@@ -303,6 +326,12 @@ impl CompiledNativeCommandControls {
             {
                 floor = "block";
                 reason = "native_command_permission_disabled";
+            }
+        }
+        if let Some(candidate) = uncertain_floor {
+            if rank(candidate) > rank(floor) {
+                floor = candidate;
+                reason = "native_command_extension_uncertain";
             }
         }
         let observations_digest =
@@ -470,6 +499,9 @@ fn strengthen(result: &mut PreToolResultV1, action: &str, reason: &str) {
             "native_command_extension_evaluation_failed" => {
                 "HOL Guard could not evaluate the extension controls for this command. Check Guard diagnostics before retrying."
             }
+            "native_command_extension_uncertain" => {
+                "HOL Guard requires review because it could not match this command to its extension permissions."
+            }
             _ => "HOL Guard requires the native command extension policy before this action can execute.",
         }
         .to_owned();
@@ -479,6 +511,10 @@ fn strengthen(result: &mut PreToolResultV1, action: &str, reason: &str) {
 #[cfg(test)]
 #[path = "native_command_controls_tests.rs"]
 mod review_regressions;
+
+#[cfg(test)]
+#[path = "native_command_uncertainty_tests.rs"]
+mod uncertainty_regressions;
 
 #[cfg(test)]
 #[path = "native_command_compound_controls_tests.rs"]

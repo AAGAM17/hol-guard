@@ -305,7 +305,9 @@ def _watch_evidence_error(
         or receipt.get("policy_generation") != before["generation"]
         or receipt.get("policy_digest") != before["policy_digest"]
         or receipt.get("runtime_identity") != before["runtime_identity"]
-        or receipt.get("observe_mode") is not True
+        # PreToolUse receipts describe the native hypothetical deny; the resident
+        # binding above proves that Watch rendered the deny as a warning/allow.
+        or receipt.get("observe_mode") is not False
         or not isinstance(receipt.get("decision_id"), str)
         or re.fullmatch(r"[0-9a-f]{64}", receipt["decision_id"]) is None
         or receipt.get("decision") != "deny"

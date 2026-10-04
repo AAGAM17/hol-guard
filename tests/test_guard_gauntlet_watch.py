@@ -36,7 +36,7 @@ def watch_case():
             "policy_generation": 1,
             "policy_digest": "a" * 64,
             "runtime_identity": "b" * 64,
-            "observe_mode": True,
+            "observe_mode": False,
             "decision_id": "c" * 64,
             "decision": "deny",
             "policy_action": "sandbox-required",

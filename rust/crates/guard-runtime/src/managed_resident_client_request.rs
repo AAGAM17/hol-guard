@@ -122,8 +122,10 @@ pub(super) fn client_request_with_deadline(
         &mut last_failure,
     )
     .map_err(|error| match last_failure {
-        Some(cause) => format!("{error};previous={cause}"),
-        None => error,
+        Some(cause) if !crate::resident_protocol::is_registered_error_code(&error) => {
+            format!("{error};previous={cause}")
+        }
+        _ => error,
     })
 }
 

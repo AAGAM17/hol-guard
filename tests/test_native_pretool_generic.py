@@ -82,8 +82,15 @@ def test_native_prompt_block_renders_supported_host_contracts() -> None:
     assert harness_json_from_native_prompt("grok", result) == {
         "decision": "block",
         "reason": "HOL Guard blocked this prompt because it asks to disable Guard protection.",
+        "systemMessage": "HOL Guard blocked this prompt because it asks to disable Guard protection.",
         "policy_action": "block",
         "reason_code": "native_guard_bypass_prompt",
+        "hookSpecificOutput": {"hookEventName": "UserPromptSubmit"},
+        "risk_signals": [
+            "Prompt requests a local .env file.",
+            "Prompt includes exfiltration-oriented transfer intent.",
+            "Prompt includes Guard bypass intent.",
+        ],
     }
 
 

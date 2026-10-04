@@ -92,6 +92,9 @@ fn directory_allow_does_not_allow_dotenv_or_credential_file_reads() {
         "{}: {}",
         listing.reason_code, listing.reason
     );
+    assert!(!serde_json::to_string(&listing)
+        .unwrap()
+        .contains("directory-listing-secret-canary"));
 
     for target in [
         project.join(".env"),

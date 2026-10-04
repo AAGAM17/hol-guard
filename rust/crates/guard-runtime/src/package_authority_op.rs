@@ -2472,17 +2472,20 @@ pub(crate) fn evaluate_supply_chain_eval(
     let store_path = PathBuf::from(&request.store_path);
     let guard_home = PathBuf::from(&request.guard_home);
     let store = ResidentSupplyChainStore::new(&store_path, &guard_home);
+    let test_overrides = std::env::var_os("HOL_GUARD_RESIDENT_TEST_SEAMS").is_some();
     let deps_holder = ResidentEvalDeps::with_sync_auth_override(
         &store_path,
         &guard_home,
         request
             .sync_auth_context_override
             .as_ref()
+            .filter(|_| test_overrides)
             .and_then(Value::as_object)
             .cloned(),
         request
             .package_entitlement_override
             .as_ref()
+            .filter(|_| test_overrides)
             .and_then(Value::as_object)
             .cloned(),
     );

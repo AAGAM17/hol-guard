@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 else:  # pragma: no cover - runtime compatibility
     tomllib = importlib.import_module("tomllib" if sys.version_info >= (3, 11) else "tomli")
 
+from packaging.specifiers import InvalidSpecifier as InvalidSpecifier
+from packaging.specifiers import SpecifierSet as SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from ..action_lattice import normalize_guard_action_result
@@ -62,6 +64,7 @@ from .package_manifest_diff import (
     _dependency_map_for_path,
     parse_manifest_dependencies,
 )
+from .restricted_archive_download import download_restricted_archive as download_restricted_archive
 from .restricted_archive_download import (
     RestrictedArchiveDownload,
     RestrictedArchiveFailure,
@@ -4824,8 +4827,13 @@ def _bundle_package_label(package: SupplyChainBundlePackage, *, version: str | N
 from .supply_chain_package_services import (  # noqa: E402
     _build_request_payload,
     _download_external_tarball,
+    _external_archive_request_timeout_result as _external_archive_request_timeout_result,
     _lockfile_context,
+    _normalized_pypi_requested_range as _normalized_pypi_requested_range,
     _normalized_supply_chain_evaluate_url,
+    _pypi_registry_resolved_version as _pypi_registry_resolved_version,
+    _pypi_caret_specifier as _pypi_caret_specifier,
+    _pypi_tilde_specifier as _pypi_tilde_specifier,
     _registry_package_name,
     _npm_registry_resolved_version as _npm_registry_resolved_version,
     _registry_resolved_target_version,

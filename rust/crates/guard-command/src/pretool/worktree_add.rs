@@ -321,7 +321,11 @@ fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<Pat
     if !canonical_parent.starts_with(&home) {
         return None;
     }
-    let destination = canonical_parent.join(target.file_name()?);
+    let leaf = target.file_name()?.to_str()?;
+    if leaf.starts_with('.') {
+        return None;
+    }
+    let destination = canonical_parent.join(leaf);
     if protected_worktree_destination(&destination)
         || !super::safe_writes::bounded_native_file_write_target(
             destination.to_str()?,

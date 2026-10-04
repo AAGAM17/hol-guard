@@ -233,6 +233,38 @@ def test_anchor_path_metadata_is_checked_instead_of_rejecting_real_omp_edits():
     assert not input_matches("edit", sibling_args, {**sibling_args, "paths": [sibling_args["path"]]})
 
 
+@pytest.mark.parametrize("path", ["src/one.ts", "./src/one.ts", "~/other-project/one.ts"])
+def test_resolved_read_post_inputs_remain_bound_to_original_target(path):
+    from ci.gauntlet.input_evidence import post_input_matches
+    from ci.gauntlet.proofs import guard_inventory
+
+    reviewed = {"path": path, "offset": 2, "limit": 4}
+    target = "{{home}}/" + path[2:] if path.startswith("~/") else "{{workspace}}/" + path.removeprefix("./")
+    completed = {**reviewed, "path": target}
+    assert post_input_matches("read", reviewed, completed)
+    rows = deepcopy(observed_case()["guard_observations"])
+    for row, value in zip(rows, (reviewed, completed), strict=True):
+        row.update(tool="read", input=value, input_sha256=input_digest(value))
+    calls = [{"id": "c1", "name": "read", "args": reviewed, "is_error": False}]
+    assert guard_inventory(calls, rows, {"native_resident": 2})[1] is None
+    for altered in [
+        {**completed, "path": "{{workspace}}/.env"},
+        {**completed, "offset": 1},
+        {**completed, "limit": 100},
+        {**completed, "file_path": target},
+    ]:
+        assert not post_input_matches("read", reviewed, altered)
+    rows[1]["input_sha256"] = "0" * 64
+    assert guard_inventory(calls, rows, {"native_resident": 2})[1] == "missing or inconsistent Guard input digest"
+
+
+@pytest.mark.parametrize("tool,path", [("write", "src/one.ts"), ("read", "../one.ts"), ("read", "src/../one.ts")])
+def test_post_input_resolution_does_not_hide_mutation_or_traversal(tool, path):
+    from ci.gauntlet.input_evidence import post_input_matches
+
+    assert not post_input_matches(tool, {"path": path}, {"path": "{{workspace}}/" + path})
+
+
 def test_public_guard_inputs_verify_original_bytes_then_share_host_redactions():
     """Verify raw input digests before redacting paths and recomputing the public digest."""
     import hashlib

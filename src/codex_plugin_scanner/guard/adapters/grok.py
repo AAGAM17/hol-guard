@@ -77,7 +77,7 @@ class GrokHarnessAdapter(HarnessAdapter):
         "catch-all PreToolUse hook and routes blocked actions to the local approval center."
     )
     fallback_hint = (
-        "Grok prompt hooks are observe-only; enforcement happens on PreToolUse. "
+        "Guard screens submitted prompts and intercepts tool calls on PreToolUse. "
         "Use the Guard approval center when a tool call is denied."
     )
 
@@ -452,7 +452,7 @@ class GrokHarnessAdapter(HarnessAdapter):
             "prompt_hook_path": str(prompt_path),
             "notes": [
                 "Guard catch-all PreToolUse hook installed in .grok/hooks/hol-guard-pretooluse.json",
-                "Guard observe hooks installed for prompts, session start, and subagent start",
+                "Guard prompt screening and lifecycle observation hooks installed",
                 "Guard permission rules and backup hooks installed in .grok/managed_config.toml",
                 *shim_notes,
             ],

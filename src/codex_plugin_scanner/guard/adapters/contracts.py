@@ -236,8 +236,8 @@ _BASE_HARNESS_CONTRACTS: tuple[HarnessProtectionContract, ...] = (
         browser_fallback=True,
         resume_support=True,
         known_blind_spots=(
-            "Grok UserPromptSubmit hooks are observe-only, so prompt screening cannot block the model from "
-            "seeing a prompt. Enforcement is the catch-all PreToolUse hook, including subagent and MCP tools. "
+            "Grok can reject user-typed prompts through UserPromptSubmit. Auto-wake and subagent prompt callbacks "
+            "are passive; tool enforcement uses the catch-all PreToolUse hook, including subagent and MCP tools. "
             "--always-approve and bypassPermissions weaken Grok's own prompt policy, but the Guard hook still "
             "returns a native deny when policy blocks a tool call."
         ),
@@ -653,19 +653,19 @@ _CAPABILITY_EVENTS_BY_HARNESS: dict[str, tuple[HarnessEventCapability, ...]] = {
             ("observe", "block", "approval"),
             "The catch-all pre-tool hook returns a native deny when Guard blocks the tool call.",
             "Grok must invoke the managed PreToolUse hook and honor its decision for tool and subagent calls.",
-            ("Prompt submission and post-tool events are observe-only.",),
+            ("Post-tool events do not prevent an action that already executed.",),
             "src/codex_plugin_scanner/guard/adapters/grok_hooks.py:grok_hook_response_from_guard",
         ),
         _capability(
             "grok",
             "UserPromptSubmit",
             "native_hook",
-            "observe",
-            ("observe",),
-            "Grok ignores a deny response for this prompt hook, so it cannot block prompt submission.",
-            "Grok must invoke the managed UserPromptSubmit hook for observation.",
-            ("Prompt observation does not prevent model-visible prompt delivery.",),
-            "src/codex_plugin_scanner/guard/adapters/grok_hooks.py:_OBSERVE_ONLY_EVENTS",
+            "blocking",
+            ("observe", "block"),
+            "Guard returns decision:block for protected prompts and unavailable prompt review.",
+            "Grok must honor UserPromptSubmit decision:block before delivering a user-typed prompt.",
+            ("Auto-wake and subagent prompts are passive; Grok fails open if the hook process crashes or times out.",),
+            "src/codex_plugin_scanner/guard/daemon/hook_worker_responses.py:harness_json_from_native_prompt",
         ),
         _capability(
             "grok",

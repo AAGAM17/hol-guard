@@ -43,8 +43,6 @@ _EVENT_ALIASES = {
 _EVENT_NAME_KEYS = ("hook_event_name", "hookEventName", "event", "eventName", "hook_name", "hookName")
 _GROK_OBSERVE_EVENTS = frozenset(
     {
-        "userpromptsubmit",
-        "userpromptsubmitted",
         "sessionstart",
         "sessionend",
         "subagentstart",
@@ -343,7 +341,7 @@ def _is_permission_event(event_name: str) -> bool:
 def _pauses_when_unavailable(event_name: str) -> bool:
     compact = _compact(event_name)
     if compact in {"userpromptsubmit", "userpromptsubmitted"}:
-        return HARNESS != "grok"
+        return True
     if compact in _LIFECYCLE_EVENTS or compact.startswith("after"):
         return False
     return compact not in {"posttooluse", "posttool"}
@@ -380,7 +378,10 @@ def _hermes_policy(daemon_response: dict[str, object]) -> tuple[str, str]:
 
 
 def _to_native(daemon_response: dict[str, object], event_name: str) -> tuple[str, str, int]:
-    if HARNESS == "grok" and not daemon_response and _compact(event_name) in _GROK_OBSERVE_EVENTS:
+    if HARNESS == "grok" and not daemon_response and (
+        _compact(event_name) in _GROK_OBSERVE_EVENTS
+        or _compact(event_name) in {"userpromptsubmit", "userpromptsubmitted"}
+    ):
         return "{}", "", 0
     if HARNESS == "hermes":
         policy_action, reason = _hermes_policy(daemon_response)

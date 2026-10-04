@@ -237,7 +237,7 @@ def _daemon_response_to_native(
     if canonical == "grok" and not daemon_response:
         from .grok_hooks import is_grok_observe_only_event
 
-        if is_grok_observe_only_event(event_name):
+        if is_grok_observe_only_event(event_name) or event_name == "UserPromptSubmit":
             return "{}", "", 0
 
     if "hookSpecificOutput" in daemon_response or "decision" in daemon_response:

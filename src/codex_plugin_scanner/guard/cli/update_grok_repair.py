@@ -72,6 +72,15 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
     command = _pretool_command(payload)
     if timeout != GROK_PRETOOL_HOOK_TIMEOUT_SECONDS:
         return False
+    from ..adapters.grok_config import GUARD_HOOK_PROMPT_FILE, build_observe_hook_json
+
+    prompt_path = GrokHarnessAdapter._hooks_dir(context) / GUARD_HOOK_PROMPT_FILE
+    try:
+        prompt_hooks = json.loads(prompt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if prompt_hooks != build_observe_hook_json(command):
+        return False
     if _isolated_bounded_hook_is_current(command, context=context):
         return True
     marker = f'"timeout_seconds":{GROK_HOOK_INTERNAL_TIMEOUT_SECONDS}'

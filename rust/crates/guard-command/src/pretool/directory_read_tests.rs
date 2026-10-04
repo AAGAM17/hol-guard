@@ -309,14 +309,14 @@ fn omp_bounded_line_selectors_keep_sensitive_and_unsupported_targets_denied() {
     let project = home.join("project");
     let ssh = home.join(".ssh");
     let symlink_target = root.join("outside.txt");
-    let symlink = project.join("linked.txt");
+    let _symlink = project.join("linked.txt");
     std::fs::create_dir_all(&project).unwrap();
     std::fs::create_dir_all(&ssh).unwrap();
     std::fs::write(project.join(".env"), "selector-secret\n").unwrap();
     std::fs::write(ssh.join("id_ed25519"), "private-key\n").unwrap();
     std::fs::write(&symlink_target, "outside\n").unwrap();
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&symlink_target, &symlink).unwrap();
+    std::os::unix::fs::symlink(&symlink_target, &_symlink).unwrap();
 
     for target in [
         format!("{}:1-5", project.join(".env").display()),

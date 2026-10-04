@@ -6336,9 +6336,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         del default_harness
         params = parse_qs(query)
         workspace_candidate = self._normalized_hook_workspace_string(
-            params.get("workspace", [None])[-1]
-            or payload.get("workspace")
-            or payload.get("cwd")
+            params.get("workspace", [None])[-1] or payload.get("workspace") or payload.get("cwd")
         )
         try:
             _ = self._validated_hook_guard_home(self._optional_string(params.get("guard-home", [None])[-1]))

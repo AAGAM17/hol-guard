@@ -198,6 +198,7 @@ def test_recovery_preserves_authenticated_live_process_when_health_probe_misses(
         "started_at": datetime.now(timezone.utc).isoformat(),
         "pid": 4321,
         "port": 4781,
+        "state_id": "live-generation",
     }
     monkeypatch.setattr(daemon_manager_module, "load_authenticated_daemon_state", lambda _home: state)
     monkeypatch.setattr(daemon_manager_module, "load_guard_daemon_url", lambda _home: None)
@@ -233,6 +234,7 @@ def test_transport_recovery_preserves_authenticated_process_when_health_probe_mi
         "started_at": datetime.now(timezone.utc).isoformat(),
         "pid": 4321,
         "port": 4781,
+        "state_id": "live-generation",
     }
     monkeypatch.setattr(daemon_manager_module, "load_authenticated_daemon_state", lambda _home: state)
     monkeypatch.setattr(daemon_manager_module, "load_guard_daemon_url", lambda _home: None)
@@ -273,6 +275,7 @@ def test_transport_recovery_preserves_verified_old_process_when_health_probe_mis
         **_old_generation(),
         "pid": 4321,
         "port": 4781,
+        "state_id": "old-live-generation",
     }
     retired: list[Path] = []
     monkeypatch.setattr(daemon_manager_module, "load_authenticated_daemon_state", lambda _home: state)

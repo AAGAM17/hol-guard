@@ -80,9 +80,7 @@ def build_source_tail_shared_v1(
         '      const reason = "HOL Guard could not capture an immutable tool-call snapshot.";\n'
         '      ctx.ui.notify(reason, "warning");\n'
         "      return { block: true, reason };\n"
-        "    }\n"
-        + workspace_readiness_source
-        + "    const signal = handlerAbortSignal(ctx);\n"
+        "    }\n" + workspace_readiness_source + "    const signal = handlerAbortSignal(ctx);\n"
         "    const activity = approvalContinuationActivity();\n"
         "    const response = await runGuard(snapshot.payload, snapshot.cwd);\n"
         "    if (signal?.aborted || (activity && !continuationIsActive(activity))) {\n"

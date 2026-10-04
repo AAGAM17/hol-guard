@@ -225,7 +225,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "\n"
         "async function daemonWorkspaceReadiness(cwd) {\n"
         "  const deadlineAt = Date.now() + GUARD_DAEMON_READINESS_TIMEOUT_MS;\n"
-        "  if (typeof fetch !== \"function\") {\n"
+        '  if (typeof fetch !== "function") {\n'
         '    return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
         "  }\n"
         "  let connection = loadGuardDaemonConnection();\n"
@@ -237,12 +237,12 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         '        "authenticated-control-plane-failure",\n'
         "      );\n"
         "    } catch {}\n"
-        "    if (!recovered) return { ready: false, reasonCode: \"daemon_readiness_transport_failure\" };\n"
+        '    if (!recovered) return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
         "    connection = loadGuardDaemonConnection();\n"
         "  }\n"
-        "  if (!connection) return { ready: false, reasonCode: \"daemon_readiness_transport_failure\" };\n"
-        "  if (connection.stateId === null) return { ready: false, reasonCode: \"daemon_identity_unavailable\" };\n"
-        "  const workspace = typeof cwd === \"string\" && cwd ? cwd : process.cwd();\n"
+        '  if (!connection) return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
+        '  if (connection.stateId === null) return { ready: false, reasonCode: "daemon_identity_unavailable" };\n'
+        '  const workspace = typeof cwd === "string" && cwd ? cwd : process.cwd();\n'
         "  const params = new URLSearchParams({ 'guard-home': GUARD_HOME, workspace });\n"
         "  if (!GUARD_HOME_DIR_IS_DEFAULT && GUARD_HOME_DIR) params.set('home', GUARD_HOME_DIR);\n"
         "  const controller = typeof AbortController === 'function' ? new AbortController() : undefined;\n"
@@ -269,7 +269,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "    const reasonCode = typeof readiness.reason_code === 'string' &&\n"
         "      /^[a-z0-9_]{1,96}$/.test(readiness.reason_code)\n"
         "      ? readiness.reason_code\n"
-        '      : `daemon_readiness_http_${response.status}`;\n'
+        "      : `daemon_readiness_http_${response.status}`;\n"
         "    if (!response.ok || readiness.ready !== true) return { ready: false, reasonCode };\n"
         "    if (readiness.native_required === true &&\n"
         "      (readiness.native_route !== 'native_resident' ||\n"
@@ -379,12 +379,12 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "        return workspaceReadiness.result;\n"
         "      }\n"
         "      if (!allowSetup) {\n"
-        "        return Promise.resolve({ ready: false, reasonCode: \"daemon_restarted_requires_session_setup\" });\n"
+        '        return Promise.resolve({ ready: false, reasonCode: "daemon_restarted_requires_session_setup" });\n'
         "      }\n"
         "      workspaceReadiness = null;\n"
         "    }\n"
         "    if (!allowSetup) {\n"
-        "      return Promise.resolve({ ready: false, reasonCode: \"native_workspace_setup_required\" });\n"
+        '      return Promise.resolve({ ready: false, reasonCode: "native_workspace_setup_required" });\n'
         "    }\n"
         "    const daemonStateId = loadGuardDaemonConnection()?.stateId ?? null;\n"
         "    const result = daemonWorkspaceReadiness(workspace);\n"
@@ -402,7 +402,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "    return ensureGuardWorkspaceReady(cwd, true);\n"
         "  };\n"
         "  const readinessFailureReason = (readiness) =>\n"
-        '    `HOL Guard blocked this tool call because native workspace readiness was not confirmed '
+        "    `HOL Guard blocked this tool call because native workspace readiness was not confirmed "
         '(${readiness.reasonCode ?? "native_workspace_not_ready"}).`;\n'
         "  const approvalContinuationActivity = (): ApprovalContinuationActivity => {\n"
         "    const generation = approvalContinuationGeneration;\n"
@@ -425,13 +425,13 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         '  pi.on("agent_start", async (_event, ctx) => {\n'
         "    invalidateApprovalContinuations();\n"
         "    const readiness = await prepareGuardWorkspaceForTurn(contextCwd(ctx) ?? process.cwd());\n"
-        "    if (!readiness.ready) ctx.ui.notify(readinessFailureReason(readiness), \"warning\");\n"
+        '    if (!readiness.ready) ctx.ui.notify(readinessFailureReason(readiness), "warning");\n'
         "  });\n"
         '  pi.on("agent_end", () => { invalidateToolApprovalContinuations(); });\n'
         '  pi.on("session_start", async (_event, ctx) => {\n'
         "    invalidateApprovalContinuations();\n"
         "    const readiness = await prepareGuardWorkspaceForTurn(contextCwd(ctx) ?? process.cwd());\n"
-        "    if (!readiness.ready) ctx.ui.notify(readinessFailureReason(readiness), \"warning\");\n"
+        '    if (!readiness.ready) ctx.ui.notify(readinessFailureReason(readiness), "warning");\n'
         "  });\n"
         '  pi.on("session_shutdown", () => { invalidateApprovalContinuations(); workspaceReadiness = null; });\n'
     )

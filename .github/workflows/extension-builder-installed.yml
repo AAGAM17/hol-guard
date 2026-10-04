@@ -72,7 +72,7 @@ jobs:
         run: |
           cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command --bin guard-command-source
           echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
-      - name: Verify compiler and native integration contracts
+      - name: Stage command projections
         uses: ./.github/actions/stage-command-projections
         with:
           compiler: rust/target/release/guard-command-source

@@ -16,6 +16,8 @@ def _server(**overrides: object) -> SimpleNamespace:
         containment_health_cache_lock=threading.Lock(),
         containment_health_refreshing=False,
         containment_health_refresh_event=threading.Event(),
+        containment_health_generation=0,
+        containment_health_completed_generation=0,
     )
     for key, value in overrides.items():
         setattr(server, key, value)

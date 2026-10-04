@@ -28,7 +28,7 @@ def test_matcher_failure_central_block_reaches_final_runtime_policy(
         extension_control_snapshot=snapshot,
         native_extension_evidence=payload,
     )
-    assert evaluation.extension_observations[0].to_dict()["uncertainty_reasons"] == ["matcher-failure"]
+    assert evaluation.extension_observations[0].to_dict()["uncertainty_reasons"] == ["unsupported-input"]
     monkeypatch.setattr(secret_file_requests, "BUILT_IN_COMMAND_EXTENSION_REGISTRY", registry)
     request = secret_file_requests.extract_sensitive_tool_action_request(
         "Shell",

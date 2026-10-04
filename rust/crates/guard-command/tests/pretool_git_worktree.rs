@@ -446,7 +446,10 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         symlink_parent_destination.display()
     );
     let symlink_parent_result = evaluate(&repository, &enabled, &symlink_parent_command);
-    assert_ne!(symlink_parent_result.minimum_action, "allow", "{symlink_parent_command}");
+    assert_ne!(
+        symlink_parent_result.minimum_action, "allow",
+        "{symlink_parent_command}"
+    );
     assert!(!symlink_parent_destination.exists());
 
     for command in [

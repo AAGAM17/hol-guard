@@ -84,7 +84,7 @@ def _installed_corpus(runtime: Path, expected_routes: int) -> dict[str, int]:
     """Exercise the canonical all-harness installed ingress corpus."""
 
     with tempfile.TemporaryDirectory(prefix="hol-guard-installed-corpus-") as temporary:
-        # Match AdapterSession: aliases on macOS must not register one workspace
+        # Match scripts/native_slo_session.py:AdapterSession: macOS aliases must not register one workspace
         # twice and invalidate its acknowledged native policy on first ingress.
         root = Path(temporary).resolve()
         report: Mapping[str, object] | None = None

@@ -185,7 +185,11 @@ def stress_request(endpoint: str, auth_token: str) -> float:
 
 
 def stress_warmup(endpoint: str, auth_token: str, count: int) -> None:
-    """Prime cold native policy, then retain the complete concurrent warm-up wave."""
+    """Prime once, then run ``count`` concurrent requests (``count + 1`` total).
+
+    The cold prime retains stress_request's bounded retries. The wave also uses
+    that request helper and preserves the existing six-second future waits.
+    """
 
     if count <= 0:
         raise ValueError("Warm-up count must be positive.")

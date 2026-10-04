@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
 import pytest
@@ -71,7 +72,7 @@ def test_installed_corpus_failure_still_propagates_after_cleanup(tmp_path, monke
 def test_warmup_primes_before_retaining_the_whole_concurrent_wave(monkeypatch, count):
     owner = threading.get_ident()
     primed = threading.Event()
-    barrier = threading.Barrier(count)
+    submitted = []
     calls = []
     lock = threading.Lock()
 
@@ -83,12 +84,31 @@ def test_warmup_primes_before_retaining_the_whole_concurrent_wave(monkeypatch, c
             primed.set()
         else:
             assert primed.is_set(), "Concurrent warm-up started before cold initialization completed"
-            barrier.wait(timeout=5)
             with lock:
                 calls.append("wave")
         return 1.0
 
+    class WaveResult:
+        def __init__(self, future):
+            self.future = future
+
+        def result(self, timeout):
+            assert len(submitted) == count, "The complete wave must be submitted before waiting"
+            assert timeout == 6
+            return self.future.result(timeout=timeout)
+
+    class ObservedExecutor(ThreadPoolExecutor):
+        def __init__(self, *, max_workers):
+            assert max_workers == count
+            super().__init__(max_workers=max_workers)
+
+        def submit(self, function, *args):
+            future = super().submit(function, *args)
+            submitted.append(future)
+            return WaveResult(future)
+
     monkeypatch.setattr(stress, "stress_request", request)
+    monkeypatch.setattr(stress, "ThreadPoolExecutor", ObservedExecutor)
     stress.stress_warmup("http://127.0.0.1/fixture", "fixture-token", count)
     assert calls == ["prime", *(["wave"] * count)]
 

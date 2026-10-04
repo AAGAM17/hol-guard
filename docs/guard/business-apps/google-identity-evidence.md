@@ -23,7 +23,12 @@ are refused. Admission time is checked again after key retrieval.
 Public signing keys come only from Google's fixed HTTPS key endpoint. No caller
 can supply a URL or key set. Redirects and environment-selected proxies are
 disabled; TLS uses the library's WebPKI roots. Retrieval has a five-second deadline,
-16-KiB header limit and 64-KiB body limit. Token bytes are never sent to Google
+16-KiB header limit and 64-KiB body limit. A serialized bounded public-key cache
+honors published max-age and Age, capped locally at one hour; no-cache/no-store
+or invalid directives prevent reuse. Expired keys are never an outage fallback.
+Unknown key IDs get at most one early refresh per 30 seconds. Unique key IDs are
+checked across the set, but RSA/algorithm/use checks apply to the selected key so
+an unrelated algorithm does not disable valid Google logins. Token bytes are never sent to Google
 tokeninfo or the key endpoint. Errors carry no token or claim text.
 
 Returned evidence contains only account and tenant HMAC bindings plus expiry.

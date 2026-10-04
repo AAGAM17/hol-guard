@@ -8,7 +8,8 @@ use ring::signature::{RsaPublicKeyComponents, RSA_PKCS1_2048_8192_SHA256};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const ISSUER: &str = "https://accounts.google.com";
 const KEYS_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
@@ -112,7 +113,7 @@ impl GoogleLoginChallenge {
         let observed = now()?;
         self.check_time(observed)?;
         let token = Token::parse(id_token, access_token)?;
-        let keys = fetch_keys()?;
+        let keys = cached_keys(&token.header.kid)?;
         // Network/key rotation work must not freeze the admission clock.
         self.verify_with_keys(token, access_token, &keys, now()?)
     }
@@ -138,8 +139,9 @@ impl GoogleLoginChallenge {
             .iter()
             .find(|k| k.kid == token.header.kid)
             .ok_or(IdentityError::Invalid)?;
-        let n = decode(&key.n, 1024)?;
-        let e = decode(&key.e, 8)?;
+        key.validate()?;
+        let n = decode(key.n.as_deref().ok_or(IdentityError::Invalid)?, 1024)?;
+        let e = decode(key.e.as_deref().ok_or(IdentityError::Invalid)?, 8)?;
         RsaPublicKeyComponents { n: &n, e: &e }
             .verify(
                 &RSA_PKCS1_2048_8192_SHA256,
@@ -292,11 +294,11 @@ struct KeySet {
 struct Jwk {
     kid: String,
     kty: String,
-    alg: String,
+    alg: Option<String>,
     #[serde(rename = "use")]
-    usage: String,
-    n: String,
-    e: String,
+    usage: Option<String>,
+    n: Option<String>,
+    e: Option<String>,
 }
 impl KeySet {
     fn validate(&self) -> Result<(), IdentityError> {
@@ -305,16 +307,7 @@ impl KeySet {
             return Err(IdentityError::Invalid);
         }
         for key in &self.keys {
-            if !bounded_ascii(&key.kid, 256)
-                || !ids.insert(&key.kid)
-                || key.kty != "RSA"
-                || key.alg != "RS256"
-                || key.usage != "sig"
-            {
-                return Err(IdentityError::Invalid);
-            }
-            let n = decode(&key.n, 1024)?;
-            if n.len() < 256 || n[0] == 0 || decode(&key.e, 8)? != [1, 0, 1] {
+            if !bounded_ascii(&key.kid, 256) || !ids.insert(&key.kid) {
                 return Err(IdentityError::Invalid);
             }
         }
@@ -322,7 +315,99 @@ impl KeySet {
     }
 }
 
-fn fetch_keys() -> Result<KeySet, IdentityError> {
+impl Jwk {
+    fn validate(&self) -> Result<(), IdentityError> {
+        if self.kty != "RSA"
+            || self.alg.as_deref() != Some("RS256")
+            || self.usage.as_deref() != Some("sig")
+        {
+            return Err(IdentityError::Invalid);
+        }
+        let n = decode(self.n.as_deref().ok_or(IdentityError::Invalid)?, 1024)?;
+        if n.len() < 256
+            || n[0] == 0
+            || decode(self.e.as_deref().ok_or(IdentityError::Invalid)?, 8)? != [1, 0, 1]
+        {
+            return Err(IdentityError::Invalid);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct KeyCache {
+    entry: Option<(Arc<KeySet>, Instant)>,
+    last_refresh: Option<Instant>,
+}
+impl KeyCache {
+    fn get(
+        &mut self,
+        observed: Instant,
+        kid: &str,
+        fetch: impl FnOnce() -> Result<(KeySet, Duration), IdentityError>,
+    ) -> Result<Arc<KeySet>, IdentityError> {
+        if let Some((keys, expires)) = &self.entry {
+            if observed < *expires {
+                if keys.keys.iter().any(|key| key.kid == kid) {
+                    return Ok(Arc::clone(keys));
+                }
+                // A rotated kid gets one bounded early refresh; attacker-chosen
+                // unknown kids cannot turn every verification into network I/O.
+                if self.last_refresh.is_some_and(|time| {
+                    observed.saturating_duration_since(time) < Duration::from_secs(30)
+                }) {
+                    return Err(IdentityError::Invalid);
+                }
+            }
+        }
+        self.last_refresh = Some(observed);
+        let (keys, lifetime) = fetch()?;
+        keys.validate()?;
+        let keys = Arc::new(keys);
+        self.entry = Some((Arc::clone(&keys), observed + lifetime));
+        Ok(keys)
+    }
+}
+
+fn cached_keys(kid: &str) -> Result<Arc<KeySet>, IdentityError> {
+    static CACHE: OnceLock<Mutex<KeyCache>> = OnceLock::new();
+    // Public keys only. The fixed endpoint's bounded refresh is serialized,
+    // and every admission rechecks the wall clock after acquiring keys.
+    CACHE
+        .get_or_init(|| Mutex::new(KeyCache::default()))
+        .lock()
+        .map_err(|_| IdentityError::KeyFetchUnavailable)?
+        .get(Instant::now(), kid, fetch_keys)
+}
+
+fn cache_lifetime(control: &str, age: Option<&str>) -> Duration {
+    let mut maximum = None;
+    for directive in control.split(',').map(str::trim) {
+        if directive.eq_ignore_ascii_case("no-store")
+            || directive.eq_ignore_ascii_case("no-cache")
+            || directive.to_ascii_lowercase().starts_with("no-cache=")
+        {
+            return Duration::ZERO;
+        }
+        if let Some((name, value)) = directive.split_once('=') {
+            if name.eq_ignore_ascii_case("max-age") {
+                if maximum.is_some() {
+                    return Duration::ZERO;
+                }
+                maximum = value.parse::<u64>().ok();
+                if maximum.is_none() {
+                    return Duration::ZERO;
+                }
+            }
+        }
+    }
+    let Some(age) = age.map_or(Some(0), |value| value.parse::<u64>().ok()) else {
+        return Duration::ZERO;
+    };
+    Duration::from_secs(maximum.unwrap_or(0).saturating_sub(age).min(3600))
+}
+
+fn fetch_keys() -> Result<(KeySet, Duration), IdentityError> {
     let config = ureq::Agent::config_builder()
         .https_only(true)
         .proxy(None)
@@ -338,13 +423,32 @@ fn fetch_keys() -> Result<KeySet, IdentityError> {
     if response.status().as_u16() != 200 {
         return Err(IdentityError::KeyFetchUnavailable);
     }
+    let controls = response
+        .headers()
+        .get_all("cache-control")
+        .iter()
+        .map(|v| v.to_str())
+        .collect::<Result<Vec<_>, _>>();
+    let ages = response
+        .headers()
+        .get_all("age")
+        .iter()
+        .map(|v| v.to_str())
+        .collect::<Result<Vec<_>, _>>();
+    let lifetime = match (controls, ages) {
+        (Ok(controls), Ok(ages)) if ages.len() <= 1 => {
+            cache_lifetime(&controls.join(","), ages.first().copied())
+        }
+        _ => Duration::ZERO,
+    };
     let bytes = response
         .body_mut()
         .with_config()
         .limit(MAX_KEYS)
         .read_to_vec()
         .map_err(|_| IdentityError::KeyFetchUnavailable)?;
-    serde_json::from_slice(&bytes).map_err(|_| IdentityError::KeyFetchUnavailable)
+    let keys = serde_json::from_slice(&bytes).map_err(|_| IdentityError::KeyFetchUnavailable)?;
+    Ok((keys, lifetime))
 }
 
 #[cfg(test)]

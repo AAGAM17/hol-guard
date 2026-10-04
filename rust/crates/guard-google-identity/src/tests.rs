@@ -279,7 +279,96 @@ fn algorithms_key_urls_critical_headers_duplicate_fields_and_encoding_fail_close
 #[test]
 #[ignore = "read-only public Google HTTPS endpoint; not account qualification"]
 fn public_google_key_endpoint_uses_valid_tls_and_supported_rsa_keys() {
-    fetch_keys().unwrap().validate().unwrap();
+    let (keys, _) = fetch_keys().unwrap();
+    keys.validate().unwrap();
+    for key in keys.keys {
+        key.validate().unwrap();
+    }
+}
+
+#[test]
+fn unrelated_algorithms_do_not_block_a_valid_selected_key() {
+    let set: KeySet = serde_json::from_value(json!({"keys":[
+        signer().jwk, {"kid":"unrelated-key","kty":"EC","alg":"ES256","crv":"P-256"}
+    ]}))
+    .unwrap();
+    let raw = token(&claims());
+    assert!(challenge(9)
+        .verify_with_keys(Token::parse(&raw, ACCESS).unwrap(), ACCESS, &set, NOW)
+        .is_ok());
+    let raw = signed(&json!({"alg":"RS256","kid":"unrelated-key"}), &claims());
+    assert!(challenge(9)
+        .verify_with_keys(Token::parse(&raw, ACCESS).unwrap(), ACCESS, &set, NOW)
+        .is_err());
+}
+
+#[test]
+fn public_key_cache_reuses_only_fresh_keys_and_bounds_rotation_refresh() {
+    use std::cell::Cell;
+    let calls = Cell::new(0);
+    let fetch = || {
+        calls.set(calls.get() + 1);
+        Ok((keys(), Duration::from_secs(60)))
+    };
+    let start = Instant::now();
+    let mut cache = KeyCache::default();
+    cache.get(start, "synthetic-key", fetch).unwrap();
+    cache
+        .get(start + Duration::from_secs(1), "synthetic-key", fetch)
+        .unwrap();
+    assert_eq!(calls.get(), 1);
+    assert!(cache
+        .get(start + Duration::from_secs(2), "unknown", fetch)
+        .is_err());
+    assert_eq!(calls.get(), 1);
+    cache
+        .get(start + Duration::from_secs(30), "unknown", fetch)
+        .unwrap();
+    assert_eq!(calls.get(), 2);
+    assert!(cache
+        .get(start + Duration::from_secs(31), "unknown", fetch)
+        .is_err());
+    assert!(cache
+        .get(start + Duration::from_secs(90), "synthetic-key", || Err(
+            IdentityError::KeyFetchUnavailable
+        ))
+        .is_err());
+    // An expired entry never becomes an outage fallback.
+    assert!(cache
+        .get(start + Duration::from_secs(91), "synthetic-key", || Err(
+            IdentityError::KeyFetchUnavailable
+        ))
+        .is_err());
+    assert_eq!(calls.get(), 2);
+    cache
+        .get(start + Duration::from_secs(92), "synthetic-key", fetch)
+        .unwrap();
+    assert_eq!(calls.get(), 3);
+    let mut uncached = KeyCache::default();
+    for _ in 0..2 {
+        uncached
+            .get(start, "synthetic-key", || Ok((keys(), Duration::ZERO)))
+            .unwrap();
+    }
+}
+
+#[test]
+fn cache_directives_age_and_local_ceiling_bound_key_lifetime() {
+    for (control, age, expected) in [
+        ("public, max-age=120", None, 120),
+        ("public, max-age=120", Some("20"), 100),
+        ("max-age=120", Some("121"), 0),
+        ("max-age=120", Some("invalid"), 0),
+        ("max-age=99999", None, 3600),
+        ("max-age=120, no-store", None, 0),
+        ("max-age=120, no-cache", None, 0),
+        ("max-age=120, no-cache=\"field\"", None, 0),
+        ("max-age=120, max-age=120", None, 0),
+        ("max-age=invalid", None, 0),
+        ("public", None, 0),
+    ] {
+        assert_eq!(cache_lifetime(control, age), Duration::from_secs(expected));
+    }
 }
 
 #[test]

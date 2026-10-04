@@ -25,7 +25,11 @@ class CommandProjectionBuildHook(BuildHookInterface):
     """Ship frozen, validated metadata without keeping copies in Git."""
 
     def initialize(self, version: str, build_data: dict) -> None:
-        """Validate projections before registering package contents."""
+        """Validate projections before registering package contents; leave editable setup unchanged."""
+        # Editable environments install dependencies without compiling Rust.
+        # CI prepares exact projections before any catalog-dependent imports.
+        if version == "editable":
+            return
         root = Path(self.root)
         archive = _archive_support()
         if (root / "PKG-INFO").is_file():

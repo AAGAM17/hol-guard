@@ -361,7 +361,8 @@ def run_suite(
         "| ---: | ---: | ---: | ---: | ---: | ---: |",
         "| "
         + " | ".join(
-            str(report["hook_latency"][key]) for key in ("p50_ms", "p90_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms")
+            json.dumps(report["hook_latency"][key])
+            for key in ("p50_ms", "p90_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms")
         )
         + " |",
         "",
@@ -372,7 +373,8 @@ def run_suite(
             + event
             + " | "
             + " | ".join(
-                str(values[key]) for key in ("samples", "p50_ms", "p90_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms")
+                json.dumps(values[key])
+                for key in ("samples", "p50_ms", "p90_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms")
             )
             + " |"
             for event, values in report["hook_latency"]["by_event"].items()

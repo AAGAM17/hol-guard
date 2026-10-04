@@ -153,7 +153,7 @@ def test_generated_client_keeps_empty_grok_observe_response(tmp_path: Path, even
 
 @pytest.mark.parametrize("event_name", ["SessionStart", "UserPromptSubmit", "PreToolUse"])
 def test_generated_client_runs_under_macos_system_python(tmp_path: Path, event_name: str) -> None:
-    if sys.platform != "darwin":
+    if sys.platform != "darwin" or not Path("/usr/bin/python3").is_file():
         pytest.skip("macOS system Python compatibility")
     module = _load_script(tmp_path, harness="grok")
     completed = subprocess.run(

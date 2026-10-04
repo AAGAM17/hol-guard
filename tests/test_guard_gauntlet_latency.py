@@ -15,6 +15,7 @@ def test_nearest_rank_and_event_distributions_include_tail_failures():
     assert result["samples"] == 100
     assert [result[key] for key in ("p50_ms", "p90_ms", "p95_ms", "p99_ms", "max_ms")] == [50, 90, 95, 99, 15000]
     assert result["failed_attempts"] == 1
+    assert result["mean_ms"] == 199.5
     assert result["by_event"]["SessionStart"]["p99_ms"] == 15000
 
 

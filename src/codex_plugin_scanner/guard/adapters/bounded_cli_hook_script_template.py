@@ -44,6 +44,7 @@ _EVENT_NAME_KEYS = ("hook_event_name", "hookEventName", "event", "eventName", "h
 _GROK_OBSERVE_EVENTS = frozenset(
     {
         "userpromptsubmit",
+        "userpromptsubmitted",
         "sessionstart",
         "sessionend",
         "subagentstart",
@@ -436,8 +437,6 @@ def _failure_payload(event_name: str, reason: str) -> tuple[dict[str, object], i
     # Local configuration cannot authenticate the mode of an unavailable evaluator.
     prompt_event = _compact(event_name) in {"userpromptsubmit", "userpromptsubmitted"}
     if prompt_event:
-        if HARNESS == "grok":
-            return {}, 0
         prompt_reason = "HOL Guard could not complete native prompt review safely."
         if HARNESS == "copilot":
             return {"behavior": "deny", "message": prompt_reason, "interrupt": False}, 0
@@ -620,7 +619,7 @@ def _post_hook(input_text: str) -> tuple[str, str, int] | None:
     url = _loopback_url(host, port, f"/v1/hooks/{HARNESS}")
     timeout = min(float(TIMEOUT_SECONDS) * 0.5, 5.0, _HOOK_DEADLINE_MONOTONIC - time.monotonic())
     if HARNESS == "grok" and _compact(_event_name(input_text)) in _GROK_OBSERVE_EVENTS:
-        # Grok ignores lifecycle enforcement decisions and kills hooks at 15s.
+        # Keep the daemon request within 1s of Grok's 15s outer hook lifetime.
         # Observations must not hold up a session on an unavailable daemon.
         timeout = min(timeout, 1.0)
     if timeout <= 0:

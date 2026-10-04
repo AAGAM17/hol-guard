@@ -14,6 +14,37 @@ from .bounded_cli_hook_test_support import config as _config
 from .bounded_cli_hook_test_support import runner_result as _runner_result
 
 
+@pytest.mark.parametrize("event", ["SessionStart", "PostToolUse", "UserPromptSubmit", "PreToolUse"])
+def test_frozen_grok_transport_budget_and_failure(tmp_path: Path, event: str) -> None:
+    from codex_plugin_scanner.guard.adapters.bounded_cli_hook_failure import failure_payload
+
+    captured = []
+
+    class Unavailable:
+        def open(self, request, *, timeout):
+            captured.append(timeout)
+            raise TimeoutError("fixture daemon unavailable")
+
+    result = bounded_cli_hook_daemon.try_daemon_hook(
+        guard_home=tmp_path,
+        harness="grok",
+        input_text=json.dumps({"hook_event_name": event}),
+        timeout_seconds=85,
+        _endpoint_loader=lambda *_: "http://127.0.0.1:7777/v1/hooks/grok",
+        _token_loader=lambda *_: "fixture-token",
+        _opener_builder=Unavailable,
+    )
+    assert result is None
+    payload, code = failure_payload(harness="grok", event_name=event, reason="unavailable", recording_only=False)
+    if event == "PreToolUse":
+        assert 4 < captured[0] <= 5
+        assert payload["decision"] == "deny"
+    else:
+        assert 0 < captured[0] <= 1
+        assert payload == {}
+    assert code == 0
+
+
 @pytest.mark.parametrize("harness", ["copilot", "grok", "hermes", "openclaw", "kimi", "zcode", "devin", "pi", "omp"])
 @pytest.mark.parametrize("explicit_block", [False, True])
 def test_unavailable_posttool_observation_preserves_explicit_decision(harness: str, explicit_block: bool) -> None:

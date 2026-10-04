@@ -26,21 +26,26 @@ function isGuard(input: RequestInfo | URL): boolean {
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   if (!isGuard(input)) return actualFetch(input, init);
   const started = performance.now();
+  // Capture the event before transport so timeouts retain their event group.
+  let request: Record<string, unknown> = {};
+  try { request = JSON.parse(typeof init?.body === "string" ? init.body : "{}"); } catch {}
+  const event = request?.hook_event_name;
+  const elapsed = () => Number((performance.now() - started).toFixed(3));
   let response: Response;
   try {
     response = await actualFetch(input, init);
   } catch (error) {
     record({
       transport_error: true,
-      elapsed_ms: Math.round((performance.now() - started) * 1000) / 1000,
+      event,
+      elapsed_ms: elapsed(),
     });
     throw error;
   }
   try {
-    const request = JSON.parse(typeof init?.body === "string" ? init.body : "{}");
     const body = await response.clone().json();
     record({
-      event: request.hook_event_name,
+      event,
       tool: request.tool_name,
       tool_call_id: request.tool_call_id,
       input_json: JSON.stringify(request.tool_input ?? null),
@@ -52,10 +57,10 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promis
       model_output_action: body.model_output_action,
       reviewed_output_sha256: body.reviewed_output_sha256,
       response_sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex"),
-      elapsed_ms: Math.round((performance.now() - started) * 1000) / 1000,
+      elapsed_ms: elapsed(),
     });
   } catch {
-    record({ observer_error: true, elapsed_ms: Math.round((performance.now() - started) * 1000) / 1000 });
+    record({ observer_error: true, event, elapsed_ms: elapsed() });
   }
   return response;
 }) as typeof fetch;

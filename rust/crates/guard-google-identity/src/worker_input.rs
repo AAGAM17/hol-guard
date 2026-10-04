@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum GoogleWorkerInputError {
+    Expired,
     Command,
     Mime,
     Sender,
@@ -29,12 +30,23 @@ impl GoogleSendCredential {
         self,
         command: String,
     ) -> Result<GoogleWorkerInput, GoogleWorkerInputError> {
+        if !self.is_current() {
+            return Err(GoogleWorkerInputError::Expired);
+        }
         let command = GwsGmailSendCommandInputV1::from_owned_posix_command(command)
             .map_err(|_| GoogleWorkerInputError::Command)?;
         let command_binding = command.input_binding().to_owned();
         let input = GmailPlainInputV1::from_owned_wire(command.into_wire_input())
             .map_err(|_| GoogleWorkerInputError::Mime)?;
-        if !self.authenticates_sender(input.sender()) {
+        if !self.is_current() {
+            return Err(GoogleWorkerInputError::Expired);
+        }
+        if !self
+            .identity()
+            .sender
+            .as_ref()
+            .is_some_and(|sender| sender.matches(input.sender()))
+        {
             return Err(GoogleWorkerInputError::Sender);
         }
         let mut digest = Sha256::new();

@@ -67,7 +67,7 @@ fn worker_refuses_foreign_sender_expired_credentials_and_shell_composition() {
         expired
             .prepare_command(command("sender@work.example", "body"))
             .err(),
-        Some(GoogleWorkerInputError::Sender)
+        Some(GoogleWorkerInputError::Expired)
     );
     assert_eq!(
         credential("subject-one")

@@ -6,6 +6,8 @@ parser and strict single-part plain MIME reader, then authenticates the exact
 MIME From mailbox against the credential's signed verified Google mailbox.
 Expired credentials, another sender, send-as aliases and unsupported command or
 MIME forms are refused. Errors contain no account, address, command or body text.
+Expired credentials return a distinct `Expired` error so setup can request
+reauthorization; mismatched mailboxes return `Sender`.
 
 The resulting non-cloneable, non-serializable `GoogleWorkerInput` owns the
 credential and immutable decoded input together. Its digest commits the original

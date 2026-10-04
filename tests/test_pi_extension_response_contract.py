@@ -206,9 +206,7 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
 
     assert directory_handler["preserved"] is True
     assert "guard_source_ref" not in directory_handler["payload"]
-    assert directory_handler["payload"]["tool_input"] == {
-        "path": str(tmp_path / "workspace")
-    }
+    assert directory_handler["payload"]["tool_input"] == {"path": str(tmp_path / "workspace")}
     assert regular_handler["preserved"] is True
     assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
 
@@ -250,9 +248,7 @@ def test_generated_omp_selector_review_uses_host_resolved_source_path(tmp_path: 
         },
     )
 
-    assert result["payload"]["tool_input"] == {
-        "path": "/tmp/project/src/example.ts"
-    }
+    assert result["payload"]["tool_input"] == {"path": "/tmp/project/src/example.ts"}
     assert result["preserved"] is True
 
 

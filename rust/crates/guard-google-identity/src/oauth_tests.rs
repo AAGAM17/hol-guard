@@ -77,7 +77,7 @@ fn registered_authorization_url_has_nonce_state_pkce_and_only_send_scopes() {
     assert!(!session.authorization_url().contains(SECRET));
     assert!(!session
         .authorization_url()
-        .contains(session.verifier.secret()));
+        .contains(session.verifier.as_str()));
     let second = self::session();
     assert_ne!(params["state"], pairs(second.authorization_url())["state"]);
     assert_ne!(
@@ -90,7 +90,7 @@ fn registered_authorization_url_has_nonce_state_pkce_and_only_send_scopes() {
 fn wrong_state_session_code_or_expired_challenge_has_zero_exchange_calls() {
     for failure in ["state", "session", "code", "expired"] {
         let mut session = session();
-        let mut state = session.state.secret().clone();
+        let mut state = session.state.to_string();
         let mut owner = binding();
         let mut code = "synthetic-code".to_owned();
         match failure {
@@ -118,8 +118,8 @@ fn wrong_state_session_code_or_expired_challenge_has_zero_exchange_calls() {
 #[test]
 fn code_exchange_uses_owned_verifier_registered_redirect_and_secret() {
     let session = session();
-    let expected_verifier = session.verifier.secret().clone();
-    let state = session.state.secret().clone();
+    let expected_verifier = session.verifier.to_string();
+    let state = session.state.to_string();
     let body = response(&claims(&session));
     let calls = Cell::new(0);
     let credential = session
@@ -176,7 +176,7 @@ fn grant_scope_type_expiry_and_missing_identity_fail_before_identity_admission()
         ("id_token", Value::Null),
     ] {
         let session = session();
-        let state = session.state.secret().clone();
+        let state = session.state.to_string();
         let mut body = response(&claims(&session));
         body[field] = value;
         let admitted = Cell::new(0);
@@ -204,7 +204,7 @@ fn exchanged_token_still_requires_google_signature_nonce_tenant_and_access_bindi
         ("at_hash", json!("wrong-access-hash")),
     ] {
         let session = session();
-        let state = session.state.secret().clone();
+        let state = session.state.to_string();
         let mut c = claims(&session);
         c[field] = value;
         let body = response(&c);
@@ -243,7 +243,7 @@ fn token_response_known_duplicates_and_generic_serialization_are_refused() {
 #[test]
 fn reconnecting_a_pinned_account_refuses_another_valid_subject() {
     let first = session();
-    let state = first.state.secret().clone();
+    let state = first.state.to_string();
     let body = response(&claims(&first));
     let enrolled = first
         .complete_with(
@@ -269,7 +269,7 @@ fn reconnecting_a_pinned_account_refuses_another_valid_subject() {
         binding(),
     )
     .unwrap();
-    let state = reconnect.state.secret().clone();
+    let state = reconnect.state.to_string();
     let mut c = claims(&reconnect);
     c["sub"] = json!("another-valid-subject");
     let body = response(&c);
@@ -312,4 +312,50 @@ fn configuration_rejects_unregistered_shape_and_unsafe_redirects() {
         .body(b"synthetic-code".to_vec())
         .unwrap();
     assert!(exchange_http(request).is_err());
+}
+
+#[test]
+fn token_deadline_starts_before_exchange_and_cannot_extend_after_clock_rollback() {
+    let mono = Instant::now();
+    let start = ExchangeStart {
+        wall: 100,
+        monotonic: mono,
+    };
+    let (wall, deadline) =
+        credential_deadline(&start, 103, 103, 400, 5, mono + Duration::from_secs(3)).unwrap();
+    assert_eq!(wall, 105);
+    assert_eq!(deadline, mono + Duration::from_secs(5));
+    assert!(credential_deadline(&start, 106, 106, 400, 5, mono + Duration::from_secs(6)).is_err());
+    assert!(credential_deadline(&start, 103, 103, 400, 5, mono + Duration::from_secs(5)).is_err());
+    assert!(credential_deadline(&start, 99, 100, 400, 5, mono).is_err());
+    assert!(credential_deadline(&start, 103, 102, 400, 5, mono).is_err());
+    let (wall, deadline) =
+        credential_deadline(&start, 101, 102, 104, 3600, mono + Duration::from_secs(2)).unwrap();
+    assert_eq!(wall, 104);
+    assert_eq!(deadline, mono + Duration::from_secs(4));
+}
+
+#[test]
+fn token_endpoint_requires_one_json_content_type() {
+    for (value, expected) in [
+        ("application/json", true),
+        ("application/json; charset=utf-8", true),
+        ("APPLICATION/JSON", true),
+        ("text/html", false),
+        ("text/json", false),
+    ] {
+        let response = oauth2::http::Response::builder()
+            .header("content-type", value)
+            .body(())
+            .unwrap();
+        assert_eq!(json_media_type(response.headers()), expected);
+    }
+    let response = oauth2::http::Response::builder().body(()).unwrap();
+    assert!(!json_media_type(response.headers()));
+    let response = oauth2::http::Response::builder()
+        .header("content-type", "application/json")
+        .header("content-type", "text/html")
+        .body(())
+        .unwrap();
+    assert!(!json_media_type(response.headers()));
 }

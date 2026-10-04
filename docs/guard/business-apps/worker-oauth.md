@@ -31,7 +31,9 @@ The HTTP adapter accepts no alternate URI/method; redirects and environment
 proxies are disabled. It uses WebPKI TLS, a five-second request/body deadline,
 16-KiB headers, 16-KiB outgoing body and 64-KiB response limits. Neither browser
 bearer tokens nor caller-selected endpoints are forwarded. Public signing-key
-retrieval remains separate and carries no ID/access/refresh token.
+retrieval remains separate and carries no ID/access/refresh token. A process-owned
+HTTP agent pools connections. Responses must have exactly one JSON media type.
+The owned outgoing form buffer is zeroized after use.
 
 The native response decoder rejects known duplicate fields and requires actual
 reported scopes, a bounded Bearer token, a one-hour-or-shorter positive expiry
@@ -39,6 +41,9 @@ and an ID token. Missing, extra or duplicated scopes are refused; requested
 scopes are not silently substituted for missing granted scopes. Google signature,
 issuer/audience, tenant, nonce and actual access-token hash are then verified.
 Admission clocks are checked again after exchange and key retrieval.
+Token expiry starts before the exchange, so its latency cannot extend a short
+lease. Currentness also has a monotonic deadline; a wall-clock rollback cannot
+extend the access-token or admitted evidence lease.
 
 `GoogleSendCredential` retains access/optional refresh material in zeroizing
 strings. It has no Clone, Debug, serialization or token getter. Its public
@@ -47,6 +52,13 @@ refresh credential exists. Generic token-response serialization fails; its
 diagnostic text is redacted. Currentness is bounded by fresh login evidence;
 refresh, durable enrollment and renewal are not implemented. Presence of a
 refresh token does not prove a successful refresh or offline protection.
+Pending client secret, state, PKCE verifier, authorization URL and native callback
+code are zeroizing buffers; the registered secret enters the SDK only after
+callback admission. Parsed ID/access/refresh fields are explicitly wiped on
+response drop using the SDK's supported ownership API. SDK request construction,
+partial decoding and TLS may retain transient copies that this library cannot
+guarantee to erase. These cleanup controls do not prove service isolation or
+whole-process memory erasure.
 
 No worker is launched, account is granted, credential is saved, Gmail action is
 dispatched or browser setup UI is activated by this library. It must be joined

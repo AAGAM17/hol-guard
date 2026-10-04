@@ -13,8 +13,9 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
-use std::time::Duration;
-use zeroize::Zeroizing;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+use zeroize::{Zeroize, Zeroizing};
 
 const AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -38,11 +39,12 @@ type RegisteredClient = Client<
 /// client session and must be re-derived from the authenticated callback session.
 pub struct GoogleSendAuthorization {
     client: RegisteredClient,
+    client_secret: Zeroizing<String>,
     challenge: GoogleLoginChallenge,
-    state: CsrfToken,
-    verifier: PkceCodeVerifier,
+    state: Zeroizing<String>,
+    verifier: Zeroizing<String>,
     client_session_binding: String,
-    authorization_url: String,
+    authorization_url: Zeroizing<String>,
 }
 
 /// Private credential material remains in the worker. No Clone, Debug,
@@ -52,6 +54,7 @@ pub struct GoogleSendCredential {
     refresh_token: Option<Zeroizing<String>>,
     identity: GoogleIdentityEvidence,
     expires_at: u64,
+    expires_monotonic: Instant,
 }
 impl GoogleSendCredential {
     pub fn identity(&self) -> &GoogleIdentityEvidence {
@@ -65,6 +68,7 @@ impl GoogleSendCredential {
     }
     pub fn is_current(&self) -> bool {
         bounded_ascii(&self.access_token, 8192)
+            && Instant::now() < self.expires_monotonic
             && now().is_ok_and(|time| time < self.expires_at && time < self.identity.expires_at())
     }
 }
@@ -76,8 +80,9 @@ impl GoogleSendAuthorization {
         registered_redirect_uri: String,
         authenticated_client_session_binding: String,
     ) -> Result<Self, IdentityError> {
+        let client_secret = Zeroizing::new(registered_client_secret);
         challenge.check_time(now()?)?;
-        if !bounded_ascii(&registered_client_secret, 4096)
+        if !bounded_ascii(&client_secret, 4096)
             || !valid_session_binding(&authenticated_client_session_binding)
             || registered_redirect_uri.len() > 2048
         {
@@ -96,7 +101,6 @@ impl GoogleSendAuthorization {
             return Err(IdentityError::Invalid);
         }
         let client = Client::new(ClientId::new(challenge.client_id.clone()))
-            .set_client_secret(ClientSecret::new(registered_client_secret))
             .set_auth_type(AuthType::RequestBody)
             .set_auth_uri(
                 AuthUrl::new(AUTHORIZE_URL.to_owned()).map_err(|_| IdentityError::Invalid)?,
@@ -116,11 +120,12 @@ impl GoogleSendAuthorization {
             .url();
         Ok(Self {
             client,
+            client_secret,
             challenge,
-            state,
-            verifier,
+            state: Zeroizing::new(state.into_secret()),
+            verifier: Zeroizing::new(verifier.into_secret()),
             client_session_binding: authenticated_client_session_binding,
-            authorization_url: url.to_string(),
+            authorization_url: Zeroizing::new(url.into()),
         })
     }
 
@@ -159,18 +164,28 @@ impl GoogleSendAuthorization {
             &str,
         ) -> Result<GoogleIdentityEvidence, IdentityError>,
     ) -> Result<GoogleSendCredential, IdentityError> {
+        let code = Zeroizing::new(code);
         self.challenge.check_time(now()?)?;
         if !bounded_ascii(callback_state, 256)
             || !bounded_ascii(&code, 8192)
-            || self.state != CsrfToken::new(callback_state.to_owned())
+            || !same_state(&self.state, callback_state)
             || self.client_session_binding != session_binding
         {
             return Err(IdentityError::Invalid);
         }
-        let response = self
+        let start = ExchangeStart {
+            wall: now()?,
+            monotonic: Instant::now(),
+        };
+        // The registered secret stays zeroizing in the pending session. The
+        // SDK needs transient owned copies while constructing this request;
+        // it does not provide zeroization for those internal allocations.
+        let client = self
             .client
-            .exchange_code(AuthorizationCode::new(code))
-            .set_pkce_verifier(self.verifier)
+            .set_client_secret(ClientSecret::new(self.client_secret.to_string()));
+        let response = client
+            .exchange_code(AuthorizationCode::new(code.to_string()))
+            .set_pkce_verifier(PkceCodeVerifier::new(self.verifier.to_string()))
             .request(&transport)
             .map_err(|_| IdentityError::Invalid)?;
         if response.token_type != BasicTokenType::Bearer
@@ -203,12 +218,14 @@ impl GoogleSendAuthorization {
         )?;
         // Google verification may fetch keys; both clocks are checked again.
         let observed = now()?;
-        let expires_at = received_at
-            .saturating_add(response.expires_in)
-            .min(identity.expires_at());
-        if observed >= expires_at || !bounded_ascii(response.access_token.secret(), 8192) {
-            return Err(IdentityError::Expired);
-        }
+        let (expires_at, expires_monotonic) = credential_deadline(
+            &start,
+            received_at,
+            observed,
+            identity.expires_at(),
+            response.expires_in,
+            Instant::now(),
+        )?;
         Ok(GoogleSendCredential {
             access_token: Zeroizing::new(response.access_token.secret().to_owned()),
             refresh_token: response
@@ -217,8 +234,47 @@ impl GoogleSendAuthorization {
                 .map(|value| Zeroizing::new(value.secret().to_owned())),
             identity,
             expires_at,
+            expires_monotonic,
         })
     }
+}
+
+fn same_state(expected: &str, presented: &str) -> bool {
+    let expected = CsrfToken::new(expected.to_owned());
+    let presented = CsrfToken::new(presented.to_owned());
+    let same = expected == presented;
+    // Preserve the SDK's timing-resistant comparison, then recover and wipe
+    // the temporary comparison strings through its supported ownership API.
+    drop(Zeroizing::new(expected.into_secret()));
+    drop(Zeroizing::new(presented.into_secret()));
+    same
+}
+
+struct ExchangeStart {
+    wall: u64,
+    monotonic: Instant,
+}
+fn credential_deadline(
+    start: &ExchangeStart,
+    received: u64,
+    observed: u64,
+    identity_expiry: u64,
+    lifetime: u64,
+    monotonic: Instant,
+) -> Result<(u64, Instant), IdentityError> {
+    let expiry = start.wall.saturating_add(lifetime).min(identity_expiry);
+    let access_deadline = start.monotonic + Duration::from_secs(lifetime);
+    if received < start.wall
+        || observed < received
+        || observed >= expiry
+        || monotonic >= access_deadline
+    {
+        return Err(IdentityError::Expired);
+    }
+    Ok((
+        expiry,
+        access_deadline.min(monotonic + Duration::from_secs(expiry - observed)),
+    ))
 }
 
 fn valid_session_binding(value: &str) -> bool {
@@ -240,6 +296,16 @@ struct GoogleTokenResponse {
     #[serde(rename = "scope", deserialize_with = "granted_scopes")]
     scopes: Vec<Scope>,
     id_token: String,
+}
+impl Drop for GoogleTokenResponse {
+    fn drop(&mut self) {
+        self.id_token.zeroize();
+        let access = std::mem::replace(&mut self.access_token, AccessToken::new(String::new()));
+        drop(Zeroizing::new(access.into_secret()));
+        if let Some(refresh) = self.refresh_token.take() {
+            drop(Zeroizing::new(refresh.into_secret()));
+        }
+    }
 }
 impl fmt::Debug for GoogleTokenResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -303,25 +369,45 @@ impl fmt::Display for ExchangeTransportError {
 }
 impl std::error::Error for ExchangeTransportError {}
 
+fn token_agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        let config = ureq::Agent::config_builder()
+            .https_only(true)
+            .proxy(None)
+            .max_redirects(0)
+            .max_response_header_size(16 * 1024)
+            .timeout_global(Some(Duration::from_secs(5)))
+            .build();
+        ureq::Agent::new_with_config(config)
+    })
+}
+
+fn json_media_type(headers: &oauth2::http::HeaderMap) -> bool {
+    let mut types = headers.get_all("content-type").iter();
+    let Some(value) = types.next().and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    types.next().is_none()
+        && value
+            .split(';')
+            .next()
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"))
+}
+
 fn exchange_http(request: HttpRequest) -> Result<HttpResponse, ExchangeTransportError> {
     if request.method() != "POST" || *request.uri() != TOKEN_URL || request.body().len() > 16 * 1024
     {
         return Err(ExchangeTransportError);
     }
-    let config = ureq::Agent::config_builder()
-        .https_only(true)
-        .proxy(None)
-        .max_redirects(0)
-        .max_response_header_size(16 * 1024)
-        .timeout_global(Some(Duration::from_secs(5)))
-        .build();
-    let mut response = ureq::Agent::new_with_config(config)
+    let body = Zeroizing::new(request.into_body());
+    let mut response = token_agent()
         .post(TOKEN_URL)
         .header("content-type", "application/x-www-form-urlencoded")
         .header("accept", "application/json")
-        .send(request.body())
+        .send(body.as_slice())
         .map_err(|_| ExchangeTransportError)?;
-    if response.status().as_u16() != 200 {
+    if response.status().as_u16() != 200 || !json_media_type(response.headers()) {
         return Err(ExchangeTransportError);
     }
     let bytes = response

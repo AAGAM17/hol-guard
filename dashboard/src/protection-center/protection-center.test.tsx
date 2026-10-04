@@ -279,6 +279,23 @@ assert.match(customMixed, /Needs review · 1/);
 assert.match(customMixed, /Reviewed · 1/);
 assert.doesNotMatch(customMixed, /custom-extensions-empty/);
 
+// When the section search is visible it must render in its own row below the
+// header, after the Add action — never inside the wrapping header flex row,
+// where a long description squeezes it into a floating box above the heading.
+const customSearched = renderToStaticMarkup(createElement(CustomExtensionsSection, {
+  items: Array.from({ length: 12 }, (_, index) => ({
+    ...baseCustomExtension,
+    cli_id: `local-cli.seeded-${index}`,
+    name: `Seeded tool ${index}`,
+  })),
+  onOpen: () => undefined, onAdd: () => undefined,
+}));
+assert.match(customSearched, /Search custom extensions/);
+assert.ok(
+  customSearched.indexOf(">Add custom extension<") < customSearched.indexOf("Search custom extensions"),
+  "the Add action must render before the section search row",
+);
+
 const customFiltered = renderToStaticMarkup(createElement(CustomExtensionsSection, {
   items: [], onOpen: () => undefined, onAdd: () => undefined, filteredOut: true,
   onClearFilters: () => undefined,

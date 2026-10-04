@@ -217,7 +217,13 @@ def _local_skill_instruction_findings(plugin_dir: Path, skills_dir: Path) -> tup
             content = skill_path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        content = re.sub(r"\\\r?\n", " ", content)
+        # A shell comment does not continue after its trailing backslash.
+        # Preserve physical comment lines so they cannot absorb executable text.
+        content = re.sub(
+            r"(?m)^[ \t]*#[^\r\n]*|\\\r?\n",
+            lambda match: match.group() if match.group().lstrip().startswith("#") else " ",
+            content,
+        )
         safe_curl_spans = read_only_curl_spans(content)
         relative_path = _relative_skill_path(plugin_dir, skill_path)
         for pattern, behavior in _RISKY_SKILL_PATTERNS:

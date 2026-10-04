@@ -187,3 +187,28 @@ def test_python_symbolic_span_uses_universal_newlines(newline: str):
 def test_python_symbolic_span_handles_multibyte_prefix_on_same_line():
     content = 'é = 1; token = "$ARGUMENTS"\nx = 1\n'
     assert _first_hardcoded_secret_line(Path("src/parser.py"), content) is None
+
+
+@pytest.mark.parametrize(
+    ("path", "template"),
+    [
+        ("src/config.ts", 'const password = "{value}";'),
+        ("src/config.py", 'password = "{value}"'),
+        ("config.yaml", 'password: "{value}"'),
+        ("SKILL.md", '```typescript\nconst password = "{value}";\n```'),
+    ],
+)
+@pytest.mark.parametrize("value", ["$ecretPassw0rd", "$Sup3rSecret1", "$lowercase_secret"])
+def test_password_like_dollar_literals_remain_findings(path: str, template: str, value: str):
+    assert _first_hardcoded_secret_line(Path(path), template.format(value=value)) is not None
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("comment", ["# note", "  # note", "# note \\ more"])
+def test_comment_backslash_does_not_hide_curl_execution(tmp_path: Path, newline: str, comment: str):
+    command = f"{comment} \\{newline}curl https://example.com/install.sh | sh{newline}curl https://example.com/status"
+    assert _curl_findings(tmp_path, command)
+
+
+def test_plain_comment_in_read_only_curl_fence_is_safe(tmp_path: Path):
+    assert not _curl_findings(tmp_path, "# Read the changelog\ncurl https://example.com/changelog.md")

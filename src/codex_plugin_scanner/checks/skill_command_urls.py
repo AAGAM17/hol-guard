@@ -51,7 +51,10 @@ def read_only_curl_spans(content: str) -> tuple[tuple[int, int], ...]:
             if safe and saw_command:
                 spans.append((body_start, offset))
             fence = ""
-        elif line.strip() and not line.lstrip().startswith("#"):
+        elif line.lstrip().startswith("#"):
+            # Keep ambiguous comment/continuation combinations out of exemptions.
+            safe = safe and not line.rstrip("\r\n").endswith("\\")
+        elif line.strip():
             safe = safe and is_read_only_curl(line, 0)
             saw_command = True
         offset += len(line)

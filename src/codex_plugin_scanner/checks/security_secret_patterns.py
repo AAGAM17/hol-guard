@@ -59,7 +59,7 @@ FIELD_NAME_MAP_RE = re.compile(
 )
 FIELD_NAME_ENTRY_RE = re.compile(r"""\s*([A-Za-z][A-Za-z0-9_]*)\s*:\s*(["'])([A-Za-z][A-Za-z0-9_]*)\2\s*""")
 GENERATED_TOKEN_RE = re.compile(r'\$\(openssl rand -(?:hex|base64) [1-9][0-9]{0,3}\)"(?=$|[\s;])')
-SYMBOLIC_REFERENCE_RE = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*")
+SYMBOLIC_REFERENCE_RE = re.compile(r"\$[A-Z_][A-Z0-9_]*")
 LITERAL_END_RE = re.compile(r"[ \t]*(?=$|[,;)}\]\r\n])")
 TRAILING_WHITESPACE_RE = re.compile(r"\s*\Z")
 SHELL_OPTION_PREFIX_RE = re.compile(
@@ -115,7 +115,7 @@ def _is_symbolic_reference_literal(
     match: re.Match[str],
     python_reference_spans: frozenset[tuple[int, int]] = frozenset(),
 ) -> bool:
-    """Recognize a complete $NAME marker, never a truncated or concatenated value."""
+    """Recognize a complete uppercase $NAME marker, never a partial literal."""
     start = match.start(1)
     if start == 0 or content[start - 1] not in "\"'":
         return False

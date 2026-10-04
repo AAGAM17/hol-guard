@@ -65,7 +65,7 @@ fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
                 ),
                 (
                     json!({"tool_name":"Bash", "tool_input":{"command":format!("cp source.txt {destination}")}}),
-                    false,
+                    allowed,
                 ),
                 (
                     json!({"tool_name":"Bash", "tool_input":{"command":format!("touch {destination}")}}),

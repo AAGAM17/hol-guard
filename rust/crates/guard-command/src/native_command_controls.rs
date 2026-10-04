@@ -10,9 +10,7 @@ use guard_contracts::{
     NATIVE_COMMAND_RECEIPT_BINDING_SCHEMA,
 };
 
-use crate::native_command_program::{
-    digest_value, packaged_command_program, NativeCommandProgram,
-};
+use crate::native_command_program::{digest_value, packaged_command_program, NativeCommandProgram};
 use crate::CanonicalCommandV1;
 
 #[derive(Debug)]

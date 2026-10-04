@@ -348,7 +348,7 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     assert f"/requests/{approval_requests[0]['request_id']}" in captured.err
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     decision_reason = payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
-    assert "guard cloud evaluation could not be reached" in decision_reason
+    assert "needs your approval" in decision_reason
     assert (
         f"/requests/{approval_requests[0]['request_id']}" in payload["hookSpecificOutput"]["permissionDecisionReason"]
     )

@@ -111,6 +111,7 @@ jobs:
         with:
           version: 0.9.26
           enable-cache: true
+      - uses: ./.github/actions/stage-command-projections
       - run: uv sync --frozen --no-dev --group ci-test --python 3.12
       - name: Run wheel-builder contracts
         run: uv run --no-sync pytest ci/native_runtime/test_native_hol_guard_wheel.py tests/test_native_source_compiler.py

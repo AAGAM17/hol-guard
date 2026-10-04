@@ -24,7 +24,14 @@ def hook(monkeypatch, tmp_path):
     spec = importlib.util.spec_from_file_location("command_projection_build_hook", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    archive = types.SimpleNamespace(
+        MANIFEST="contracts/extensions/command-projection-build.v1.json",
+        write_projection_manifest=lambda root: None,
+        verify_projection_manifest=lambda root: None,
+    )
+    monkeypatch.setattr(module, "_archive_support", lambda: archive)
     instance = module.CommandProjectionBuildHook()
+    instance.archive_test_support = archive
     instance.root = str(tmp_path)
     instance.target_name = "wheel"
     monkeypatch.delenv("HOL_GUARD_BUILD_SOURCE_COMPILER", raising=False)
@@ -58,10 +65,13 @@ def test_package_build_stages_and_verifies_before_registering_absent_outputs(hoo
     assert calls[1] == [*calls[0], "--check"]
     assert "--projections-only" in calls[0]
     prefix = "contracts/extensions" if target == "sdist" else "codex_plugin_scanner/guard/contracts/data/extensions"
-    assert set(data["force_include"].values()) == {
+    expected = {
         f"{prefix}/command-catalog.v1.json",
         f"{prefix}/native-command-program.v1.json",
     }
+    if target == "sdist":
+        expected.add(hook.archive_test_support.MANIFEST)
+    assert set(data["force_include"].values()) == expected
 
 
 @pytest.mark.parametrize("failing_call", [1, 2])
@@ -87,6 +97,32 @@ def test_pinned_compiler_is_used_for_generation_and_strict_check(hook, monkeypat
     monkeypatch.setattr(subprocess, "run", lambda command, **kwargs: calls.append(command))
     hook.initialize("standard", {"force_include": {}})
     assert all(command[command.index("--compiler") + 1] == compiler for command in calls)
+
+
+def test_frozen_source_archive_uses_verified_projections_without_rust(hook, monkeypatch):
+    (Path(hook.root) / "PKG-INFO").write_text("Metadata-Version: 2.4\n")
+    verified = []
+    hook.archive_test_support.verify_projection_manifest = verified.append
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("an unchanged source archive must not invoke Cargo")
+
+    monkeypatch.setattr(subprocess, "run", unexpected)
+    hook.initialize("standard", {"force_include": {}})
+    assert verified == [Path(hook.root)]
+
+
+def test_changed_source_archive_aborts_before_registering_outputs(hook, monkeypatch):
+    (Path(hook.root) / "PKG-INFO").write_text("Metadata-Version: 2.4\n")
+
+    def reject(root):
+        raise ValueError("changed build inputs")
+
+    hook.archive_test_support.verify_projection_manifest = reject
+    data = {"force_include": {}}
+    with pytest.raises(ValueError, match="changed build inputs"):
+        hook.initialize("standard", data)
+    assert not data["force_include"]
 
 
 def test_generated_path_gate_permits_removal_but_rejects_reintroduction():

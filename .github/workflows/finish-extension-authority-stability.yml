@@ -51,6 +51,7 @@ jobs:
       - name: Apply the reviewed refactor
         run: python scripts/ci/finish_extension_authority_stability.py
 
+      - uses: ./.github/actions/stage-command-projections
       - name: Install exact development environment
         run: uv sync --frozen --extra dev --python 3.12
 

@@ -159,6 +159,9 @@ reviewed trust map using Rust 1.88.0. Their contract files and packaged copies a
 ignored build outputs; do not commit them or resolve merge conflicts in them.
 The build rejects invalid sources and mismatched compiler identities. To reuse an
 already-built source compiler, set `HOL_GUARD_BUILD_SOURCE_COMPILER` to its path.
+Source archives include a build fingerprint and frozen projections. A wheel build
+from an unchanged archive verifies those inputs without requiring Rust; changing
+an authored source, native implementation, or generated projection rejects reuse.
 
 Editable dependency installation does not compile Rust or stage these projections.
 Before running Python tests from a fresh checkout, generate them explicitly:

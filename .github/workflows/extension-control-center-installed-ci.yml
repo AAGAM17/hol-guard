@@ -71,6 +71,7 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - uses: ./.github/actions/stage-command-projections
       - name: Build exact wheel and isolated installed interpreter
         shell: bash
         run: |

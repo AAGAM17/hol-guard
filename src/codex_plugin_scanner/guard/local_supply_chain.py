@@ -3321,7 +3321,9 @@ def _build_package_manager_protection(store: Any) -> dict[str, object]:
         guard_home=store.guard_home,
     )
     supported_managers = (
-        list(_native_managers) if isinstance(_native_managers, list) else list(package_shim_supported_managers())
+        list(_native_managers)
+        if isinstance(_native_managers, list) and all(isinstance(item, str) for item in _native_managers)
+        else list(package_shim_supported_managers())
     )
     detected_managers = sorted(set(_string_items(status.get("detected_managers"))))
     protected_managers = sorted(set(_string_items(status.get("protected_managers"))))

@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::canonical_command::CanonicalCommand;
 use crate::command_evaluation::evaluate_command;
-use crate::native_command_catalog::packaged_command_catalog;
+use crate::native_command_catalog::{packaged_command_catalog, CatalogExtension};
 use crate::{CanonicalCommandV1, CommandSegmentV1, CommandSpanV1};
 use guard_contracts::NativeCommandControlBindingV1;
 
@@ -84,7 +84,7 @@ struct OracleRow {
 }
 #[derive(Deserialize)]
 struct Fixture {
-    catalog_digest: String,
+    catalog_extensions: Vec<CatalogExtension>,
     snapshot: SnapshotRow,
     cases: Vec<OracleRow>,
 }
@@ -170,15 +170,23 @@ fn evaluate_command_matches_python_oracle() {
     let raw = include_str!("../testdata/evaluate_command_oracle.json");
     let mut fixture: Fixture = serde_json::from_str(raw).expect("oracle parses");
     let catalog = packaged_command_catalog().expect("packaged catalog loads");
-    let pinned_catalog_digest = fixture.catalog_digest.clone();
-    assert_eq!(
-        catalog.catalog_digest, pinned_catalog_digest,
-        "oracle was generated against a different catalog; regenerate testdata/evaluate_command_oracle.json"
+    // New, unrelated extensions rotate the catalog digest without changing
+    // any oracle input. Pin every original extension's typed semantics instead:
+    // removed/changed rules, permissions, defaults, aliases and trust still fail.
+    assert!(
+        !fixture.catalog_extensions.is_empty(),
+        "oracle catalog is empty"
     );
-    // The packaged program/catalog digests rotate whenever the compiled
-    // artifacts are regenerated (post-merge regen workflow). The binding check
-    // still rejects actual mismatches per row after substituting the live pair.
-    fixture.catalog_digest = catalog.catalog_digest.clone();
+    for expected in &fixture.catalog_extensions {
+        assert_eq!(
+            catalog.get(&expected.extension_id),
+            Some(expected),
+            "oracle catalog semantics changed for {}; regenerate the Python oracle",
+            expected.extension_id
+        );
+    }
+    // Bind observations to the live compiled identities. Full evaluation
+    // payload equality below remains the Python/Rust parity gate.
     for row in &mut fixture.cases {
         if let Some(binding) = row
             .native

@@ -67,6 +67,7 @@ def run_mcp_catalog(
     extra_env: Mapping[str, str] | None = None,
     cancel: threading.Event | None = None,
     connection_identity_hash: str | None = None,
+    guard_home: Path | None = None,
 ) -> McpCatalogResult:
     """Discover tools while retaining bounded partial results and their cause."""
 
@@ -75,12 +76,13 @@ def run_mcp_catalog(
     if cancel is not None and cancel.is_set():
         return McpCatalogResult(reason="cancelled")
     from .. import native_execution as _native_execution
+    from ..config import resolve_guard_home
 
     _native_result = _native_execution.mcp_stdio_probe_native(
         _shlex_join_safe(list(argv)),
         cwd=Path.cwd(),
         extra_env=extra_env,
-        guard_home=Path.home() / ".hol-guard",
+        guard_home=guard_home if guard_home is not None else resolve_guard_home(),
         timeout_seconds=timeout,
         connection_identity_hash=connection_identity_hash,
     )

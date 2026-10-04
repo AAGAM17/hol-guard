@@ -28,7 +28,7 @@ const EMBEDDED_CATALOG: &[u8] = &[];
 
 /// One rule's metadata — the fields `GeneratedCommandRule` exposes that the
 /// compiled `ProgramRule` does not carry.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct CatalogRule {
     pub rule_id: String,
     pub rule_version: String,
@@ -52,7 +52,7 @@ pub struct CatalogRule {
 /// One catalog safe variant — only `variant_id` is read by the evidence
 /// validator; the remaining fields are display metadata bound by the
 /// catalog digest.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct CatalogSafeVariant {
     pub variant_id: String,
     #[serde(default)]
@@ -64,7 +64,7 @@ pub struct CatalogSafeVariant {
 }
 
 /// One permission's metadata — `GeneratedCommandPermission`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct CatalogPermission {
     pub permission_id: String,
     pub extension_id: String,
@@ -81,7 +81,7 @@ pub struct CatalogPermission {
 }
 
 /// One extension's metadata — `GeneratedCommandExtension`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct CatalogExtension {
     pub extension_id: String,
     pub version: String,

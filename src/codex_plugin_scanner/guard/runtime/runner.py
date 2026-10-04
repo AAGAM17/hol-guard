@@ -2144,11 +2144,11 @@ def _prompt_analyze_native(subop: str, **kwargs) -> object:
     try:
         from ..config import resolve_guard_home
         from ..native_execution import prompt_analyze_native
-    except Exception:
+    except ImportError:
         return None
     try:
         return prompt_analyze_native(subop, guard_home=resolve_guard_home(), **kwargs)
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -2323,9 +2323,9 @@ def extract_prompt_requests(prompt_text: str) -> list[PromptRequest]:
     """
     native = _prompt_analyze_native("extract", prompt_text=prompt_text)
     if isinstance(native, list):
-        rebuilt = [_prompt_request_from_dict(item) for item in native]
-        if all(item is not None for item in rebuilt):
-            return [item for item in rebuilt if item is not None]
+        rebuilt = [request for item in native if (request := _prompt_request_from_dict(item)) is not None]
+        if len(rebuilt) == len(native):
+            return rebuilt
     return _extract_prompt_requests_python(prompt_text)
 
 
@@ -2432,7 +2432,8 @@ def should_force_reapproval(prompt_reqs: list[PromptRequest], prior_policy: dict
     """
     approved_classes_raw = prior_policy.get("approved_prompt_classes") if isinstance(prior_policy, dict) else None
     approved_classes = (
-        [str(item) for item in approved_classes_raw if isinstance(item, str)]
+        # Ignore malformed entries, as the Python oracle does; they never grant approval.
+        [item for item in approved_classes_raw if isinstance(item, str)]
         if isinstance(approved_classes_raw, list)
         else []
     )

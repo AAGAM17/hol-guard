@@ -9,11 +9,12 @@ Python body when ``None`` is returned.
 from __future__ import annotations
 
 import json
-import time
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 
+from .models import GuardAction
 from .native_resident_client import native_resident_client_request
 from .native_runtime import _isolated_environment, native_runtime_status
 from .native_runtime_resilience import (
@@ -28,13 +29,9 @@ _SHIM_ADMIN_FEATURE = "shim-admin-v1"
 _MCP_STDIO_PROBE_FEATURE = "mcp-stdio-probe-v1"
 _PROMPT_ANALYZE_FEATURE = "prompt-analyze-v1"
 
-_request_counter = 0
-
 
 def _request_id(prefix: str) -> str:
-    global _request_counter
-    _request_counter += 1
-    return f"{prefix}-{_request_counter}-{time.monotonic_ns()}"
+    return f"{prefix}-{uuid.uuid4().hex}"
 
 
 def _resident_request(
@@ -399,6 +396,13 @@ def _require_str(payload: dict, key: str) -> str:
     return value
 
 
+def _require_guard_action(payload: dict, key: str) -> GuardAction:
+    value = _require_str(payload, key)
+    if value not in get_args(GuardAction):
+        raise ValueError(f"invalid guard action: {key}")
+    return cast(GuardAction, value)
+
+
 def _require_int(payload: dict, key: str) -> int:
     value = payload.get(key)
     if not isinstance(value, int) or isinstance(value, bool):
@@ -443,13 +447,13 @@ def _decision_reason(item: dict) -> Any:
 
     source = _require_str(item, "source")
     reason_code = _require_str(item, "reason_code")
-    action_floor = _require_str(item, "action_floor")
+    action_floor = _require_guard_action(item, "action_floor")
     segment_ref = item.get("segment_ref")
     operation_ref = item.get("operation_ref")
     return DecisionReason(
         source=DecisionFactorSource(source),
         reason_code=reason_code,
-        action_floor=action_floor,  # type: ignore[arg-type]
+        action_floor=action_floor,
         segment_ref=segment_ref if isinstance(segment_ref, str) else None,
         operation_ref=operation_ref if isinstance(operation_ref, str) else None,
     )
@@ -459,13 +463,13 @@ def _effect_decision(payload: dict) -> Any:
     from .runtime.effect_contract import ProofRoute
     from .runtime.effect_decision import EffectDecision, FinalDisposition
 
-    action = _require_str(payload, "action")
+    action = _require_guard_action(payload, "action")
     disposition = _require_str(payload, "disposition")
     raw_routes = _require_list(payload, "proof_routes")
     raw_controlling = _require_list(payload, "controlling_reasons")
     raw_reasons = _require_list(payload, "reasons")
     return EffectDecision(
-        action=action,  # type: ignore[arg-type]
+        action=action,
         disposition=FinalDisposition(disposition),
         controlling_reasons=tuple(_decision_reason(r) for r in raw_controlling),
         reasons=tuple(_decision_reason(r) for r in raw_reasons),
@@ -581,6 +585,8 @@ def _contained_workspace_write_result(payload: dict) -> Any:
     proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
     decision = _effect_decision(decision_raw)
     op_raw = _require_str(payload, "operation_id")
+    if op_raw not in get_args(ContainedWriteOperation):
+        raise ValueError("invalid contained write operation")
     output_digest = payload.get("output_digest")
     return ContainedWorkspaceWriteResult(
         exit_code=exit_code,
@@ -618,6 +624,18 @@ def prompt_analyze_native(
     bool, or string per subop), or ``None`` on transport failure / missing
     feature so the caller falls back to the Python body.
     """
+    if requests is not None and (
+        not isinstance(requests, Sequence)
+        or isinstance(requests, (str, bytes, bytearray))
+        or not all(isinstance(item, Mapping) for item in requests)
+    ):
+        return None
+    if approved_classes is not None and (
+        not isinstance(approved_classes, Sequence)
+        or isinstance(approved_classes, (str, bytes, bytearray))
+        or not all(isinstance(item, str) for item in approved_classes)
+    ):
+        return None
     request: dict[str, object] = {
         "schema": "guard-prompt-analyze-request.v1",
         "request_id": _request_id("prompt_analyze"),

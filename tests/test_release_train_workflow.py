@@ -311,7 +311,7 @@ def test_release_publication_reuses_one_hashed_build_artifact() -> None:
     assert any("sha256sum --check distribution-sha256-native.txt" in step.get("run", "") for step in release_main_steps)
     release_tooling = next(step for step in release_main_steps if step.get("name") == "Checkout release-notes tooling")
     assert release_tooling["if"] == "needs.publish-main-pypi.outputs.pypi_deferred == 'true'"
-    assert release_tooling["with"] == {"fetch-depth": 1, "ref": "${{ github.sha }}", "path": ".release-tooling"}
+    assert release_tooling["with"] == {"fetch-depth": 1, "ref": "refs/heads/main", "path": ".release-tooling"}
     release_notes = next(step for step in release_main_steps if step.get("name") == "Generate release notes")
     assert 'notes_script=".release-tooling/scripts/ci/generate_release_notes.py"' in release_notes["run"]
     assert 'notes_script="scripts/ci/generate_release_notes.py"' in release_notes["run"]

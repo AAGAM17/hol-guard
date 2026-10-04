@@ -397,6 +397,10 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "    }).catch(() => {});\n"
         "    return result;\n"
         "  };\n"
+        "  const prepareGuardWorkspaceForTurn = async (cwd) => {\n"
+        "    workspaceReadiness = null;\n"
+        "    return ensureGuardWorkspaceReady(cwd, true);\n"
+        "  };\n"
         "  const readinessFailureReason = (readiness) =>\n"
         '    `HOL Guard blocked this tool call because native workspace readiness was not confirmed '
         '(${readiness.reasonCode ?? "native_workspace_not_ready"}).`;\n'
@@ -418,12 +422,15 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "    binding.generation === inputApprovalResumeGeneration &&\n"
         "    contextSessionId(ctx) === binding.sessionId &&\n"
         "    contextCwd(ctx) === binding.cwd;\n"
-        '  pi.on("agent_start", () => { invalidateApprovalContinuations(); });\n'
+        '  pi.on("agent_start", async (_event, ctx) => {\n'
+        "    invalidateApprovalContinuations();\n"
+        "    const readiness = await prepareGuardWorkspaceForTurn(contextCwd(ctx) ?? process.cwd());\n"
+        "    if (!readiness.ready) ctx.ui.notify(readinessFailureReason(readiness), \"warning\");\n"
+        "  });\n"
         '  pi.on("agent_end", () => { invalidateToolApprovalContinuations(); });\n'
         '  pi.on("session_start", async (_event, ctx) => {\n'
         "    invalidateApprovalContinuations();\n"
-        "    workspaceReadiness = null;\n"
-        "    const readiness = await ensureGuardWorkspaceReady(contextCwd(ctx) ?? process.cwd());\n"
+        "    const readiness = await prepareGuardWorkspaceForTurn(contextCwd(ctx) ?? process.cwd());\n"
         "    if (!readiness.ready) ctx.ui.notify(readinessFailureReason(readiness), \"warning\");\n"
         "  });\n"
         '  pi.on("session_shutdown", () => { invalidateApprovalContinuations(); workspaceReadiness = null; });\n'

@@ -138,13 +138,15 @@ def test_pi_source_prepares_workspace_before_timed_tool_review(tmp_path: Path) -
         harness="omp",
         display_name="Oh My Pi",
     )
+    agent_start = source.index('pi.on("agent_start", async (_event, ctx) => {')
     session_start = source.index('pi.on("session_start", async (_event, ctx) => {')
     tool_call = source.index('pi.on("tool_call", async (event, ctx) => {')
     readiness_request = source.index("/v1/hooks/omp/readiness")
     tool_readiness = source.index("ensureGuardWorkspaceReady(snapshot.cwd, false)", tool_call)
     semantic_review = source.index("const response = await runGuard(", tool_call)
 
-    assert readiness_request < session_start
+    assert readiness_request < agent_start
+    assert agent_start < session_start
     assert session_start < tool_call
     assert tool_readiness < semantic_review
     assert "native_route !== 'native_resident'" in source
@@ -153,7 +155,9 @@ def test_pi_source_prepares_workspace_before_timed_tool_review(tmp_path: Path) -
         ["v1", "hooks", "omp", "readiness"],
     )
     assert "'X-Guard-Token': connection.authToken" in source[readiness_request : readiness_request + 700]
+    assert "prepareGuardWorkspaceForTurn(contextCwd(ctx) ?? process.cwd())" in source
     assert "pi.on(\"session_start\", async (_event, ctx) => {" in source
+    assert "pi.on(\"agent_start\", async (_event, ctx) => {" in source
     assert "daemon_restarted_requires_session_setup" in source
 
 
@@ -168,11 +172,18 @@ def test_pi_readiness_cache_requires_session_setup_after_failure_or_restart(tmp_
     cache_start = source.index("  let workspaceReadiness = null;")
     cache_end = source.index("  const approvalContinuationActivity", cache_start)
     cache_source = source[cache_start:cache_end]
+    agent_start = source.index('  pi.on("agent_start", async (_event, ctx) => {')
+    agent_end = source.index('  pi.on("agent_end"', agent_start)
+    agent_start_source = source[agent_start:agent_end]
     javascript = (
         """
 let connection = { stateId: 'daemon-a' };
 let mode = 'failed';
 let readinessCalls = 0;
+const callbacks = {};
+const pi = { on(name, callback) { callbacks[name] = callback; } };
+function contextCwd(ctx) { return ctx?.cwd ?? null; }
+function invalidateApprovalContinuations() {}
 function loadGuardDaemonConnection() { return connection; }
 function daemonWorkspaceReadiness(_cwd) {
   readinessCalls += 1;
@@ -182,20 +193,33 @@ function daemonWorkspaceReadiness(_cwd) {
 }
 """
         + cache_source
+        + agent_start_source
         + """
-const first = await ensureGuardWorkspaceReady('/fixture', true);
+async function runAgentStart(cwd) {
+  await callbacks.agent_start({}, { cwd, ui: { notify() {} } });
+}
+await runAgentStart('/fixture');
+const first = await ensureGuardWorkspaceReady('/fixture', false);
 mode = 'ready';
 const sameSession = await ensureGuardWorkspaceReady('/fixture', false);
 const callsAfterFailure = readinessCalls;
-workspaceReadiness = null;
-const recovered = await ensureGuardWorkspaceReady('/fixture', true);
+await runAgentStart('/fixture');
+const recovered = await ensureGuardWorkspaceReady('/fixture', false);
 connection = { stateId: 'daemon-b' };
-const afterRestart = await ensureGuardWorkspaceReady('/fixture', false);
+await runAgentStart('/fixture');
+const afterRestartSetup = await ensureGuardWorkspaceReady('/fixture', false);
+const afterRestartTool = await ensureGuardWorkspaceReady('/fixture', false);
+await runAgentStart('/other-fixture');
+const contextChangedSetup = await ensureGuardWorkspaceReady('/other-fixture', false);
+const contextChangedTool = await ensureGuardWorkspaceReady('/other-fixture', false);
 console.log(JSON.stringify({
   first,
   sameSession,
   recovered,
-  afterRestart,
+  afterRestartSetup,
+  afterRestartTool,
+  contextChangedSetup,
+  contextChangedTool,
   callsAfterFailure,
   readinessCalls,
 }));
@@ -214,6 +238,8 @@ console.log(JSON.stringify({
     assert output["sameSession"]["reasonCode"] == "native_policy_not_ready"
     assert output["callsAfterFailure"] == 1
     assert output["recovered"]["ready"] is True
-    assert output["afterRestart"]["ready"] is False
-    assert output["afterRestart"]["reasonCode"] == "daemon_restarted_requires_session_setup"
-    assert output["readinessCalls"] == 2
+    assert output["afterRestartSetup"]["ready"] is True
+    assert output["afterRestartTool"]["ready"] is True
+    assert output["contextChangedSetup"]["ready"] is True
+    assert output["contextChangedTool"]["ready"] is True
+    assert output["readinessCalls"] == 4

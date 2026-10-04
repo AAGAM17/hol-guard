@@ -153,11 +153,14 @@ fn git(repository: &Path, arguments: &[&str]) {
 
 #[test]
 fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
-    let root = std::fs::canonicalize(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"),
-    )
-    .unwrap()
-    .join(format!(
+    let root_directory = if cfg!(target_os = "macos") {
+        std::path::PathBuf::from("/tmp")
+    } else {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target")
+    };
+    let root = std::fs::canonicalize(root_directory)
+        .unwrap()
+        .join(format!(
         "guard-git-worktree-proof-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()

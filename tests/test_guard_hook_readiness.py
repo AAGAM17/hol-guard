@@ -158,8 +158,8 @@ def test_pi_source_prepares_workspace_before_timed_tool_review(tmp_path: Path) -
     )
     assert "'X-Guard-Token': connection.authToken" in source[readiness_request : readiness_request + 700]
     assert "prepareGuardWorkspaceForTurn(contextCwd(ctx) ?? process.cwd())" in source
-    assert "pi.on(\"session_start\", async (_event, ctx) => {" in source
-    assert "pi.on(\"agent_start\", async (_event, ctx) => {" in source
+    assert 'pi.on("session_start", async (_event, ctx) => {' in source
+    assert 'pi.on("agent_start", async (_event, ctx) => {' in source
     assert "daemon_restarted_requires_session_setup" in source
 
 
@@ -200,6 +200,13 @@ function daemonWorkspaceReadiness(_cwd) {
 async function runAgentStart(cwd) {
   await callbacks.agent_start({}, { cwd, ui: { notify() {} } });
 }
+connection = { stateId: null };
+mode = 'ready';
+const inFlight = ensureGuardWorkspaceReady('/inflight', true);
+const inFlightTool = await ensureGuardWorkspaceReady('/inflight', false);
+await inFlight;
+connection = { stateId: 'daemon-a' };
+mode = 'failed';
 await runAgentStart('/fixture');
 const first = await ensureGuardWorkspaceReady('/fixture', false);
 mode = 'ready';
@@ -222,6 +229,7 @@ console.log(JSON.stringify({
   afterRestartTool,
   contextChangedSetup,
   contextChangedTool,
+  inFlightTool,
   callsAfterFailure,
   readinessCalls,
 }));
@@ -238,10 +246,11 @@ console.log(JSON.stringify({
     assert output["first"]["ready"] is False
     assert output["sameSession"]["ready"] is False
     assert output["sameSession"]["reasonCode"] == "native_policy_not_ready"
-    assert output["callsAfterFailure"] == 1
+    assert output["callsAfterFailure"] == 2
     assert output["recovered"]["ready"] is True
     assert output["afterRestartSetup"]["ready"] is True
     assert output["afterRestartTool"]["ready"] is True
     assert output["contextChangedSetup"]["ready"] is True
     assert output["contextChangedTool"]["ready"] is True
-    assert output["readinessCalls"] == 4
+    assert output["inFlightTool"]["ready"] is True
+    assert output["readinessCalls"] == 5

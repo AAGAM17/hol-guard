@@ -198,6 +198,8 @@ fn native_command_aliases_encoded_inputs_and_invalid_shapes_fail_closed() {
         for key in [
             "command",
             "cmd",
+            "command_line",
+            "commandLine",
             "shell_command",
             "shellCommand",
             "commands",
@@ -211,6 +213,7 @@ fn native_command_aliases_encoded_inputs_and_invalid_shapes_fail_closed() {
             ] {
                 payloads.push(json!({"tool_name":"bash","tool_input":{key:command}}));
             }
+            payloads.push(json!({"tool_name":"bash","tool_input":{"command":serde_json::to_string(&json!({key:"gws gmail users messages send"})).unwrap()}}));
         }
         for key in [
             "toolArgs",

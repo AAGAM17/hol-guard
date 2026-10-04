@@ -213,6 +213,8 @@ fn collect_commands(
         for key in [
             "command",
             "cmd",
+            "command_line",
+            "commandLine",
             "shell_command",
             "shellCommand",
             "commands",

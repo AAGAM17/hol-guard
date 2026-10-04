@@ -129,7 +129,8 @@ pub enum BusinessSensitivityV1 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BusinessContentV1 {
-    /// Digest of the complete frozen input, including bodies and attachments.
+    /// Digest of the frozen primary payload bytes only. Attachment bytes are
+    /// committed individually, in order, by `attachment_digests`.
     /// A digest is an integrity commitment, not proof of inspection or custody.
     pub snapshot_digest: String,
     pub attachment_digests: Vec<String>,

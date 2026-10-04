@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from argparse import Namespace
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -13,6 +14,24 @@ from .hook_process_protocol import HOOK_ENV_ALLOWLIST, as_string_object_dict
 if TYPE_CHECKING:
     from ..adapters.base import HarnessContext
     from ..store import GuardStore
+
+
+def _valid_policy_binding(value: dict[str, object]) -> bool:
+    required = {"generation", "policy_digest", "runtime_identity", "mode"}
+    generation = value.get("generation")
+    mode = value.get("mode")
+    return (
+        required <= value.keys() <= required | {"command_extensions_bound"}
+        and type(generation) is int
+        and generation > 0
+        and isinstance(mode, str)
+        and mode == "enforce"
+        and all(
+            isinstance(value.get(key), str) and re.fullmatch(r"[0-9a-f]{64}", str(value[key])) is not None
+            for key in ("policy_digest", "runtime_identity")
+        )
+        and ("command_extensions_bound" not in value or value["command_extensions_bound"] is True)
+    )
 
 
 def build_hook_process_review_request(
@@ -27,6 +46,7 @@ def build_hook_process_review_request(
     claimed_saved_allow_hash: str | None,
     claimed_approval_request_id: str | None,
     deadline: float | None = None,
+    policy_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "payload": dict(payload),
@@ -39,6 +59,12 @@ def build_hook_process_review_request(
         "claimed_saved_allow_hash": claimed_saved_allow_hash,
         "claimed_approval_request_id": claimed_approval_request_id,
         "deadline": deadline,
+        # Watch remains on the authenticated current-state read path. A
+        # transported stale Watch binding must never turn native rejection
+        # of a changed generation into a recording-only passthrough.
+        "policy_snapshot": (
+            dict(policy_snapshot) if policy_snapshot is not None and policy_snapshot.get("mode") == "enforce" else None
+        ),
     }
 
 
@@ -63,6 +89,7 @@ class ResidentHookRequest:
     claimed_saved_allow_hash: str | None
     claimed_approval_request_id: str | None
     deadline: float | None = None
+    policy_snapshot: dict[str, object] | None = None
 
 
 def coerce_resident_hook_request(request: dict[str, object]) -> ResidentHookRequest | None:
@@ -75,6 +102,10 @@ def coerce_resident_hook_request(request: dict[str, object]) -> ResidentHookRequ
     claimed_saved_allow_hash = request.get("claimed_saved_allow_hash")
     claimed_approval_request_id = request.get("claimed_approval_request_id")
     raw_deadline = request.get("deadline")
+    raw_snapshot = request.get("policy_snapshot")
+    snapshot = as_string_object_dict(raw_snapshot) if raw_snapshot is not None else None
+    if raw_snapshot is not None and (snapshot is None or not _valid_policy_binding(snapshot)):
+        return None
     typed_payload = as_string_object_dict(payload)
     if typed_payload is None or not isinstance(harness, str):
         return None
@@ -102,6 +133,7 @@ def coerce_resident_hook_request(request: dict[str, object]) -> ResidentHookRequ
             if isinstance(raw_deadline, (int, float)) and not isinstance(raw_deadline, bool)
             else None
         ),
+        policy_snapshot=snapshot,
     )
 
 

@@ -6890,6 +6890,9 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 workspace=workspace_path,
                 hook_env=hook_env,
                 deadline=process_deadline,
+                policy_snapshot=daemon_server.hook_worker.prepare_workspace_policy(
+                    workspace_path, deadline=process_deadline
+                ),
             )
         scheduler_stats = daemon_server.runtime_hook_process_scheduler.stats()
         daemon_server.hook_process_runner.observe_load(

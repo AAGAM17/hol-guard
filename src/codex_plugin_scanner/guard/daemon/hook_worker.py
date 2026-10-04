@@ -231,6 +231,7 @@ class HookWorker(HookWorkerNativeMixin):
         claim_saved_approval: bool = True,
         claimed_saved_allow_hash: str | None = None,
         claimed_approval_request_id: str | None = None,
+        policy_snapshot: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         """Review a hook HTTP payload and return harness JSON.
 
@@ -273,6 +274,7 @@ class HookWorker(HookWorkerNativeMixin):
                 claim_saved_approval=claim_saved_approval,
                 claimed_saved_allow_hash=claimed_saved_allow_hash,
                 claimed_approval_request_id=claimed_approval_request_id,
+                policy_snapshot=policy_snapshot,
             )
         mode_response = self._mode_surface_response(
             harness,

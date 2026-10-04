@@ -450,8 +450,13 @@ class HookWorkerNativeMixin:
         claim_saved_approval: bool = True,
         claimed_saved_allow_hash: str | None = None,
         claimed_approval_request_id: str | None = None,
+        policy_snapshot: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
-        policy_snapshot = self._native_policy_snapshot(workspace, deadline=deadline)
+        # Only the daemon's private process protocol supplies this binding.
+        # HTTP payload fields never establish snapshot authority. Rust still
+        # checks the resident generation, digest and all installed floors.
+        if policy_snapshot is None:
+            policy_snapshot = self._native_policy_snapshot(workspace, deadline=deadline)
         # Native evaluation and Python delivery use the same acknowledged
         # posture. A local Watch edit cannot weaken an enforcing snapshot
         # before its replacement is accepted. A missing binding takes the

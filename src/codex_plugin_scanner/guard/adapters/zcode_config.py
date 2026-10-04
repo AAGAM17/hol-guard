@@ -1,7 +1,10 @@
 """z.ai ZCode config, hook JSON, and detection helpers for HOL Guard.
 
 ZCode stores its CLI app config under ``~/.zcode/``. ``~/.zcode/cli/config.json``
-is Claude-Code-shaped: an ``mcp`` section (``mcp.servers.<name>``), a ``plugins``
+is the legacy configuration. New CLI releases use ``setting.json`` after a
+one-time migration and no longer read ``config.json``. Both are inventoried;
+existing current settings take precedence for managed hooks. Settings are
+Claude-Code-shaped: an ``mcp`` section (``mcp.servers.<name>``), a ``plugins``
 section (``plugins.enabledPlugins.<name@marketplace>``), and an optional
 ``hooks`` section. Current ZCode nests hook event groups under
 ``hooks.events.<Event>`` (with optional ``enabled``/``timeoutMs``/

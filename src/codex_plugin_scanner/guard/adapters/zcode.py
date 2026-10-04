@@ -107,7 +107,10 @@ class ZCodeHarnessAdapter(HarnessAdapter):
 
     @classmethod
     def _config_path(cls, context: HarnessContext) -> Path:
-        return cls._cli_root(context) / ZCODE_CLI_CONFIG_FILE
+        root = cls._cli_root(context)
+        settings = root / "setting.json"
+        # Current CLI releases migrate config.json once, then ignore it.
+        return settings if settings.exists() else root / ZCODE_CLI_CONFIG_FILE
 
     @classmethod
     def _plugins_root(cls, context: HarnessContext) -> Path:
@@ -228,7 +231,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         )
 
     def _config_candidates(self, context: HarnessContext) -> list[Path]:
-        candidates = [self._config_path(context)]
+        candidates = [self._cli_root(context) / name for name in ("setting.json", ZCODE_CLI_CONFIG_FILE)]
         project_cli_root = self._project_cli_root(context)
         if project_cli_root is not None:
             candidates.append(project_cli_root / ZCODE_CLI_CONFIG_FILE)
@@ -335,6 +338,8 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         payload["hooks"] = hooks
 
         self._sync_managed_hook_groups(hooks, managed_hook_command)
+        if config_path.name == "setting.json":
+            hooks["enabled"] = True
         config_mode = config_path.stat().st_mode & 0o777 if config_before is not None else 0o644
         backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else config_mode
         state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o644
@@ -377,7 +382,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             "config_path": str(config_path),
             **shim_manifest,
             "notes": [
-                "Guard hook entries added to ~/.zcode/cli/config.json under the hooks.events section",
+                "Guard hook entries added to the active ZCode CLI settings under hooks.events",
                 "User mcp, plugins, and any pre-existing hooks were preserved",
                 "Legacy flat hook groups were migrated into hooks.events for current ZCode",
                 "Hook entries carry a statusMessage label rendered by ZCode's Hooks settings UI",
@@ -423,7 +428,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             "config_path": str(config_path),
             **shim_manifest,
             "notes": [
-                "Guard-managed hook entries removed from ~/.zcode/cli/config.json",
+                "Guard-managed hook entries removed from the active ZCode CLI settings",
                 "User mcp, plugins, and any pre-existing hooks were preserved",
                 *shim_notes,
             ],

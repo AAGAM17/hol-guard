@@ -65,6 +65,7 @@ from .zcode_config import (
 )
 
 _ZCODE_HOME_ENV_VAR = "ZCODE_HOME"
+_MISSING = object()
 # Current ZCode renders this label beside the hook in its Hooks settings UI
 # instead of the full managed command string.
 _GUARD_HOOK_STATUS_MESSAGE = "HOL Guard runtime policy enforcement"
@@ -338,12 +339,18 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         payload["hooks"] = hooks
 
         self._sync_managed_hook_groups(hooks, managed_hook_command)
+        prior_enabled = hooks.get("enabled", _MISSING) if config_path.name == "setting.json" else _MISSING
         if config_path.name == "setting.json":
             hooks["enabled"] = True
         config_mode = config_path.stat().st_mode & 0o777 if config_before is not None else 0o644
         backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else config_mode
         state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o644
-        state_after = (json.dumps({"managed_config_path": str(config_path)}, indent=2) + "\n").encode("utf-8")
+        state: dict[str, object] = {"managed_config_path": str(config_path)}
+        if prior_enabled is not _MISSING:
+            state["prior_hooks_enabled"] = prior_enabled
+        elif config_path.name == "setting.json":
+            state["prior_hooks_enabled_absent"] = True
+        state_after = (json.dumps(state, indent=2) + "\n").encode("utf-8")
         files = (
             *prepared_shim.files,
             *hook_files,
@@ -401,6 +408,10 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             launcher_name=self.launcher_name,
             display_name="zcode",
         )
+        _state_dir, _backup_path, state_path = self._managed_state_paths(context)
+        state = _json_payload(state_path) if state_path.is_file() else {}
+        prior_enabled = state.get("prior_hooks_enabled", _MISSING)
+        prior_enabled_absent = state.get("prior_hooks_enabled_absent") is True
         config_path = self._config_path(context)
         if config_path.is_file():
             _ensure_path_within_root(self._zcode_home_dir(context), config_path, label="ZCode")
@@ -408,13 +419,17 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             hooks = payload.get("hooks")
             if isinstance(hooks, dict):
                 self._prune_managed_hook_groups(hooks)
+                if config_path.name == "setting.json":
+                    if prior_enabled is not _MISSING:
+                        hooks["enabled"] = prior_enabled
+                    elif prior_enabled_absent:
+                        hooks.pop("enabled", None)
                 if not hooks:
                     payload.pop("hooks", None)
                 else:
                     payload["hooks"] = hooks
                 config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-        _state_dir, _backup_path, state_path = self._managed_state_paths(context)
         if state_path.is_file():
             state_path.unlink()
 

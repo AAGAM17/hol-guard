@@ -1622,6 +1622,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn prompt_regex_span_vectors_match_native_patterns() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../testdata/prompt_regex_spans.json")).unwrap();
+        assert_eq!(fixture["schema"], "hol-guard.native-prompt-regex-spans.v1");
+        let families = fixture["families"].as_array().unwrap();
+        assert_eq!(families.len(), 2);
+        for family in families {
+            let pattern = match family["name"].as_str().unwrap() {
+                "following_secret_reference" => runner_following_secret_reference_pattern(),
+                "documentation_subject" => pi_documentation_subject_pattern(),
+                other => panic!("unknown prompt fixture family: {other}"),
+            };
+            assert_eq!(
+                pattern.captures_len(),
+                1,
+                "only the complete match may capture"
+            );
+            for case in family["cases"].as_array().unwrap() {
+                let text = case[0].as_str().unwrap();
+                let actual: Vec<_> = pattern
+                    .find_iter(text)
+                    .map(|result| {
+                        let found = result.unwrap();
+                        json!([found.start(), found.end()])
+                    })
+                    .collect();
+                assert_eq!(
+                    Value::Array(actual),
+                    case[1],
+                    "family={}, text={text:?}",
+                    family["name"]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn attachment_read_intent_retains_sentence_distance_and_polarity() {
         assert_eq!(trailing_secret_read_state("Read the file"), Some((0, true)));
         assert_eq!(

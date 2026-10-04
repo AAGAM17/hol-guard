@@ -2377,6 +2377,15 @@
    ],
    "status": "obsolete_implementation_assertion",
    "rationale": "The retired assertion required Python semantic fallback. Native unavailability must stop the request; malformed response and no-launch behavior remain covered."
+  },
+  {
+   "old_node": "tests/test_sonar_remaining_regexes.py::test_redundant_alternatives_keep_match_spans_and_groups",
+   "replacement_nodes": [
+    "tests/test_sonar_remaining_regexes.py::test_retained_service_regex_alternatives_keep_match_spans_and_groups",
+    "rust/crates/guard-command/src/prompt_analysis.rs::prompt_regex_span_vectors_match_native_patterns"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Split the mixed regex suite: retained Python service patterns keep their checks; deleted prompt patterns are verified by fixed language-neutral span vectors against the native owner."
   }
  ],
  "preserved_tests": [

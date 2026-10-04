@@ -139,3 +139,24 @@ def test_prompt_transport_rejects_wrong_or_ambiguous_response(monkeypatch, tmp_p
     monkeypatch.setattr(native_execution, "native_runtime_status", lambda: status)
     monkeypatch.setattr(native_execution, "native_resident_client_request", lambda **_: json.dumps(payload).encode())
     assert native_execution.prompt_analyze_native("extract", guard_home=tmp_path, prompt_text="hello") is None
+
+
+@pytest.fixture
+def no_compiled_prompt_runtime(monkeypatch):
+    for variable in (
+        "HOL_GUARD_NATIVE_BINARY",
+        "HOL_GUARD_NATIVE_SOURCE_COMPILER",
+        "HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+
+
+def test_control_only_fixture_does_not_require_a_native_binary(no_compiled_prompt_runtime, request):
+    # Resolving the fixture must not compile/select a runtime for control-only work.
+    assert request.getfixturevalue("native_prompt_runtime") is None
+
+
+def test_prompt_behavior_still_requires_compiled_native_runtime(no_compiled_prompt_runtime, request):
+    request.getfixturevalue("native_prompt_runtime")
+    with pytest.raises(pytest.fail.Exception, match="must explicitly name the compiled Rust runtime"):
+        native_prompt.extract_prompt_requests("Summarize public documentation.")

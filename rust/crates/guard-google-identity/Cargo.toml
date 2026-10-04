@@ -1,0 +1,24 @@
+[package]
+name = "guard-google-identity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64ct.workspace = true
+getrandom.workspace = true
+guard-contracts = { path = "../guard-contracts" }
+hex.workspace = true
+hmac.workspace = true
+ring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+ureq = { version = "=3.3.0", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+rsa.workspace = true
+
+[lints]
+workspace = true

@@ -253,3 +253,36 @@ def test_supply_chain_native_bridge_rejects_bad_call_shapes(monkeypatch: pytest.
         )
         is None
     )
+
+
+@pytest.mark.parametrize("features", [[], ["package-authority-v1"], ["supply-chain-cloud-transport-v1"]])
+def test_native_cloud_transport_requires_explicit_capability(monkeypatch, features):
+    monkeypatch.setattr(
+        native_package_authority,
+        "native_runtime_status",
+        lambda: SimpleNamespace(available=True, compatible=True, capabilities=SimpleNamespace(features=features)),
+    )
+    assert native_package_authority.supply_chain_cloud_transport_available() is (
+        "supply-chain-cloud-transport-v1" in features
+    )
+
+
+def test_cloud_bound_evaluation_skips_native_stub_before_it_can_persist_evidence(monkeypatch, tmp_path):
+    from codex_plugin_scanner.guard.runtime import supply_chain_package_eval as evaluator
+
+    sentinel = object()
+    native = SimpleNamespace(
+        supply_chain_cloud_transport_available=lambda: False,
+        supply_chain_eval_native=lambda **_: pytest.fail("unsupported Cloud transport must not execute"),
+    )
+    monkeypatch.setattr(local_supply_chain, "_native_package_authority_module", lambda: native)
+    monkeypatch.setattr(local_supply_chain, "_python_cloud_auth_failed", lambda _: False)
+    monkeypatch.setattr(evaluator, "evaluate_package_request_artifact", lambda **_: sentinel)
+    result = local_supply_chain.evaluate_package_request_artifact(
+        artifact=SimpleNamespace(to_dict=lambda: {}),
+        store=SimpleNamespace(
+            guard_home=tmp_path, path=tmp_path / "guard.db", get_cloud_workspace_id=lambda: "workspace"
+        ),
+        workspace_dir=tmp_path,
+    )
+    assert result is sentinel

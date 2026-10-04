@@ -383,6 +383,12 @@ def _evaluate_package_request_artifact_native(args: tuple[Any, ...], kwargs: dic
     if _python_cloud_auth_failed(store):
         return None
     native_authority = _native_package_authority_module()
+    workspace_id = getattr(store, "get_cloud_workspace_id", lambda: None)()
+    if workspace_id is not None and not native_authority.supply_chain_cloud_transport_available():
+        # Cloud service calls remain in Python until the native client supports
+        # both credential resolution and HTTP. Do not let the current stub
+        # persist a false terminal verdict before the real client runs.
+        return None
     payload = native_authority.supply_chain_eval_native(
         artifact=to_dict(),
         guard_home=guard_home,

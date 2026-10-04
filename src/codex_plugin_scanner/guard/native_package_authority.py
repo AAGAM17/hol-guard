@@ -126,6 +126,17 @@ def package_intent_parse_native(
     return payload if isinstance(payload, dict) else None
 
 
+def supply_chain_cloud_transport_available() -> bool:
+    """Whether native evaluation can own authenticated Cloud service calls."""
+    status = native_runtime_status()
+    return bool(
+        status.available
+        and status.compatible
+        and status.capabilities is not None
+        and "supply-chain-cloud-transport-v1" in status.capabilities.features
+    )
+
+
 def supply_chain_eval_native(
     artifact: Mapping[str, object],
     *,

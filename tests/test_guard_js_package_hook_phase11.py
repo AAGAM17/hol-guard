@@ -368,15 +368,17 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     assert (
         f"/requests/{approval_requests[0]['request_id']}" in payload["hookSpecificOutput"]["permissionDecisionReason"]
     )
-    # The expired sign-in forces `verify_registry_identity`; `vitest` has no
-    # lockfile/range identity to resolve offline, so the local fallback cannot
-    # confirm identity and escalates the unidentified package to
-    # `require-reapproval` (decision `ask`) rather than silently monitoring.
-    assert approval_requests[0]["policy_action"] == "require-reapproval"
+    # This fixture declares a repository-local runner and explicitly configures
+    # package_script="review". An unpaid Cloud outage preserves that local
+    # policy: execution stays denied and a review request is queued, rather
+    # than inventing a requirement to renew an existing approval.
+    assert approval_requests[0]["policy_action"] == "review"
     evidence = store.list_evidence()
     assert evidence
     assert evidence[0]["category"] == "supply-chain"
-    assert evidence[0]["details"]["decision"] == "ask"
+    # The stale cached package intelligence is monitor-only for this runner; the
+    # separate package-script policy above still requires explicit review.
+    assert evidence[0]["details"]["decision"] == "monitor"
     assert any(reason["code"] == "cloud_auth_error" for reason in evidence[0]["details"]["reasons"])
 
     request_id = str(store.list_approval_requests(limit=5)[0]["request_id"])
@@ -405,14 +407,13 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     )
     retry_capture = capsys.readouterr()
 
-    # `vitest` stays unidentifiable offline (the expired sign-in forces
-    # `verify_registry_identity` and no lockfile/range resolves it), so the
-    # recurring `require-reapproval` still prompts on retry rather than
-    # reusing the earlier artifact-scope `allow` — an unresolved package
-    # cannot earn a durable allow until it is identified.
+    # The lockfile identifies vitest@4.1.8 and the approval binds the exact
+    # local executable. An unchanged retry may reuse it; changing the runner
+    # below must still invalidate the approval and require another review.
     assert retry_rc == 0
-    assert json.loads(retry_capture.out)["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert store.list_approval_requests(status="pending", limit=5)
+    assert retry_capture.out == ""  # A permitted non-JSON hook retry is silent.
+    assert retry_capture.err == ""
+    assert not store.list_approval_requests(status="pending", limit=5)
 
     runner.write_text("#!/bin/sh\n# changed local runner\n", encoding="utf-8")
     changed_rc = main(

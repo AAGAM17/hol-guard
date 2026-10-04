@@ -13987,8 +13987,8 @@ def test_guard_run_headless_waits_for_local_approval_and_resumes(tmp_path, capsy
                         workspace=None,
                         reason="approved from test",
                     )
-                if not store.list_approval_requests(limit=10):
-                    return
+                # Detection may queue the next artifact after this batch drains.
+                # Keep servicing requests until the launch under test finishes.
             threading.Event().wait(0.03)
 
     worker = threading.Thread(target=resolve_pending, daemon=True)

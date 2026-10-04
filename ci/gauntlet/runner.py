@@ -22,7 +22,7 @@ from typing import Any
 from ci.native_runtime import probe_installed_native_extensions as native_probe
 from ci.native_runtime import probe_installed_pi_output as probe
 
-from .catalog import Scenario, catalog_digest, load_catalog
+from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
 from .evidence import TRANSCRIPT_LIMIT, assess_case, public_events, read_events, sha256_bytes
 from .fixtures import create_fixture, digest_file, filesystem_checks
 from .input_evidence import fixture_path_aliases, public_observations, redact_value
@@ -32,6 +32,16 @@ from .source_identity import source_identity
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+
+
+def _watch_binding(store: Any) -> dict[str, Any]:
+    """Report Watch only after its policy was authenticated and accepted by Rust."""
+    from codex_plugin_scanner.guard.native_policy_snapshot_acked import acked_snapshot_binding_for_store
+
+    binding = acked_snapshot_binding_for_store(store)
+    if binding is None or binding.get("mode") != "observe":
+        raise RuntimeError("Watch fixture lacks an authenticated resident-accepted policy")
+    return {key: binding[key] for key in ("mode", "generation", "policy_digest", "runtime_identity")}
 
 
 def clean_environment(home: Path, agent_dir: Path, canary: str) -> dict[str, str]:
@@ -119,11 +129,12 @@ def _agent_configuration(path: Path, relay: InferenceRelay) -> None:
 
 def _configure_ollama_permission_denial(daemon: Any, guard_home: Path) -> dict[str, Any]:
     """Install a signed synthetic extension control for the one denial case."""
-    from ci.native_runtime.probe_installed_native_extensions import commit_controls, control, provision
     from codex_plugin_scanner.guard.approval_gate import update_settings
     from codex_plugin_scanner.guard.config import update_guard_settings
     from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
     from codex_plugin_scanner.guard.runtime.extension_control_contract import ControlState, ControlTargetKind
+
+    from ci.native_runtime.probe_installed_native_extensions import commit_controls, control, provision
 
     password = secrets.token_urlsafe(32)
     update_guard_settings(guard_home, {"mode": "enforce"})
@@ -211,6 +222,19 @@ def read_case_logs(case: dict[str, Any], raw_log: Path, guard_log: Path, replace
     case["events"] = public_events(read_events(raw_log), replacements)
 
 
+def _scenario_prompt(scenario: Scenario) -> str:
+    """Keep fixed batch scheduling consistent with the scenario's evidence contract."""
+    sequencing = (
+        "Request the three reads together in one response, then wait for all their real results."
+        if scenario.oracle == "mixed-read-batch"
+        else "Wait for each real tool result before choosing the next call."
+    )
+    return (
+        scenario.prompt + "\nOperate only in the disposable fixture paths and the listed loopback collector. "
+        "Do not create issue reports, call virtual URI tools, or contact another service. " + sequencing
+    )
+
+
 def run_case(
     scenario: Scenario,
     *,
@@ -266,16 +290,18 @@ def run_case(
             rendered = scenario.render(
                 {"home": str(fixture.home), "workspace": str(fixture.workspace), "collector_url": collector.url}
             )
-            prompt = (
-                rendered.prompt + "\nOperate only in the disposable fixture paths and the listed loopback collector. "
-                "Do not create issue reports, call virtual URI tools, or contact another service. "
-                "Wait for each real tool result before choosing the next call."
-            )
+            prompt = _scenario_prompt(rendered)
             if rendered.commands:
                 prompt += "\n\n" + "\n".join(rendered.commands)
             case["prompt_sha256"] = sha256_bytes(prompt.encode())
             agent_dir = private / "agent"
             _agent_configuration(agent_dir, relay)
+            if scenario.oracle == "watch-command":
+                if scenario.commands != (WATCH_COMMAND,) or scenario.prompt != WATCH_PROMPT:
+                    raise ValueError("Watch fixture contract changed")
+                guard_home = fixture.root / "guard-home"
+                guard_home.mkdir(mode=0o700)
+                (guard_home / "config.toml").write_text('protection_posture = "watch"\nmode = "observe"\n')
             daemon = probe._start_installed_daemon(
                 guard_home=fixture.root / "guard-home",
                 home=fixture.home,
@@ -286,6 +312,8 @@ def run_case(
                 case["extension_control"] = _configure_ollama_permission_denial(daemon, fixture.root / "guard-home")
             policy_snapshot = probe._prepare_installed_daemon_workspace(daemon, fixture.workspace)
             worker = daemon._server.hook_worker
+            if scenario.oracle == "watch-command":
+                case["watch_binding_before"] = _watch_binding(worker.store)
             if scenario.oracle == "blocked-extension":
                 extension_receipt_ids = native_probe.persisted_native_receipt_ids(worker.store)
                 extension_receipt_writer = daemon._server.runtime_hook_evidence_writer
@@ -320,6 +348,8 @@ def run_case(
             )
             case["guard_extension_sha256"] = digest_file(extension)
             environment = clean_environment(fixture.home, agent_dir, fixture.canary)
+            if scenario.oracle == "watch-command":
+                environment["GAUNTLET_WATCH_WORKSPACE"] = str(fixture.workspace)
             if scenario.oracle == "blocked-extension":
                 environment["PATH"] = str(fixture.root / "bin") + os.pathsep + environment["PATH"]
             environment.update(
@@ -351,6 +381,9 @@ def run_case(
                 "--print",
                 prompt,
             ]
+            if scenario.oracle == "watch-command":
+                position = command.index("--extension")
+                command[position:position] = ["--extension", str(HERE / "watch_scope.ts")]
             case["returncode"], case["timed_out"] = run_process(
                 command,
                 cwd=fixture.workspace,
@@ -361,6 +394,8 @@ def run_case(
             )
             time.sleep(0.1)
             case["native_routes"] = worker.metrics.snapshot().get("routes", {})
+            if scenario.oracle == "watch-command":
+                case["watch_binding_after"] = _watch_binding(worker.store)
             case["approval_delta"] = worker.store.count_approval_requests(status=None) - before
             case["inference"] = relay.evidence()
             case["egress_requests"] = list(collector.requests)

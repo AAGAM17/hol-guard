@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+pub mod business_match;
+
 #[path = "policy_snapshot_canonical.rs"]
 mod canonical;
 #[path = "policy_snapshot_crypto.rs"]
@@ -23,6 +25,9 @@ pub use crypto::{
     config_digest, derive_verifier_key, digest_bytes, generation_floor_mac, integrity_mac,
     policy_digest, verifier_key_id,
 };
+
+pub mod local_authority_integrity;
+pub mod policy_integrity;
 
 #[cfg(test)]
 #[path = "policy_snapshot_tests.rs"]

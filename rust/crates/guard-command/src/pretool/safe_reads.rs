@@ -6,6 +6,49 @@ pub(super) use super::safe_writes::{
     bounded_native_file_write_target, safe_copy_arguments, safe_file_mutation_arguments,
 };
 
+pub(super) fn safe_file_predicate_arguments(
+    arguments: &[String],
+    context: super::PathContext<'_>,
+) -> bool {
+    let [predicate, target] = arguments else {
+        return false;
+    };
+    verified_path_context(context.home_dir, context.cwd)
+        && matches!(predicate.as_str(), "-f" | "-d" | "-e" | "-r")
+        && !target.starts_with('-')
+        && bounded_read_target(
+            target,
+            context.home_dir,
+            context.cwd,
+            matches!(predicate.as_str(), "-d" | "-e"),
+        )
+}
+
+pub(super) fn safe_find_listing_arguments(
+    arguments: &[String],
+    context: super::PathContext<'_>,
+) -> bool {
+    let arguments = arguments
+        .strip_prefix(&["-P".to_owned()])
+        .unwrap_or(arguments);
+    let (target, valid) = match arguments {
+        [target, kind, file] => (target, kind == "-type" && file == "f"),
+        [target, depth_option, depth, kind, file] => (
+            target,
+            depth_option == "-maxdepth"
+                && depth.bytes().all(|byte| byte.is_ascii_digit())
+                && depth.parse::<u8>().is_ok_and(|value| value <= 32)
+                && kind == "-type"
+                && file == "f",
+        ),
+        _ => return false,
+    };
+    valid
+        && verified_path_context(context.home_dir, context.cwd)
+        && !target.starts_with('-')
+        && bounded_read_target(target, context.home_dir, context.cwd, true)
+}
+
 pub(super) fn safe_sleep_arguments(arguments: &[String]) -> bool {
     const MAX_SAFE_SLEEP_SECONDS: f64 = 60.0;
 
@@ -236,6 +279,72 @@ pub(super) fn safe_word_count_arguments(
 
 pub(super) fn safe_word_count_stdin_arguments(arguments: &[String]) -> bool {
     safe_word_count_with_targets(arguments, true, super::PathContext::default(), false)
+}
+
+pub(super) fn safe_byte_dump_arguments(
+    arguments: &[String],
+    piped_input: bool,
+    context: super::PathContext<'_>,
+) -> bool {
+    safe_byte_dump_with_targets(arguments, piped_input, context, true)
+}
+
+pub(super) fn safe_byte_dump_stdin_arguments(arguments: &[String]) -> bool {
+    safe_byte_dump_with_targets(arguments, true, super::PathContext::default(), false)
+}
+
+fn safe_byte_dump_with_targets(
+    arguments: &[String],
+    piped_input: bool,
+    context: super::PathContext<'_>,
+    allow_targets: bool,
+) -> bool {
+    let mut options = true;
+    let mut target = false;
+    for argument in arguments {
+        if options && argument == "--" {
+            options = false;
+            continue;
+        }
+        if options
+            && matches!(
+                argument.as_str(),
+                "-a" | "-b"
+                    | "-c"
+                    | "-d"
+                    | "-f"
+                    | "-o"
+                    | "-s"
+                    | "-v"
+                    | "-x"
+                    | "-An"
+                    | "-Ad"
+                    | "-Ao"
+                    | "-Ax"
+                    | "-tc"
+                    | "-tx1"
+            )
+        {
+            continue;
+        }
+        if target {
+            return false;
+        }
+        if argument == "-" {
+            if !piped_input {
+                return false;
+            }
+        } else if argument.starts_with('-')
+            || !allow_targets
+            || !verified_path_context(context.home_dir, context.cwd)
+            || !command_read_target(argument, context, false)
+        {
+            return false;
+        }
+        options = false;
+        target = true;
+    }
+    target || piped_input
 }
 
 fn safe_word_count_with_targets(

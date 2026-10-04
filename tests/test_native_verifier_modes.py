@@ -9,6 +9,12 @@ import pytest
 from scripts.ci import verify_native_command_program as verifier
 
 
+@pytest.fixture(autouse=True)
+def isolate_mock_verifier_from_runner_environment(monkeypatch):
+    """Mock compilation must not publish fake compiler paths to the CI runner."""
+    monkeypatch.delenv("GITHUB_ENV", raising=False)
+
+
 @pytest.mark.parametrize("event", ["pull_request", "push", "schedule", "workflow_dispatch"])
 @pytest.mark.parametrize("base", [None, "a" * 40])
 def test_every_event_stages_then_strictly_verifies_current_sources(monkeypatch, event, base):

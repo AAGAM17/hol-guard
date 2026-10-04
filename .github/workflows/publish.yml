@@ -1841,7 +1841,7 @@ jobs:
                   --source-digest "$GITHUB_SHA" >/dev/null
               fi
             done
-            if [[ "$PYPI_DEFERRED" != "true" && -s "$RUNNER_TEMP/release-notes.md" ]]; then
+            if [[ -s "$RUNNER_TEMP/release-notes.md" ]]; then
               gh release edit "$tag" --notes-file "$RUNNER_TEMP/release-notes.md"
             fi
             exit 0

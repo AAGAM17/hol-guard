@@ -14,6 +14,17 @@ from ci.gauntlet.transport import reconcile_rounds
 from tests.test_guard_gauntlet import observed_case, ordinary
 
 
+def test_scenario_labels_do_not_influence_fixture_path_risk():
+    import re
+
+    from ci.gauntlet.catalog import load_catalog
+    from ci.gauntlet.fixtures import scenario_fixture_name
+
+    names = [scenario_fixture_name(scenario.id) for scenario in load_catalog()]
+    assert len(names) == len(set(names))
+    assert all(re.fullmatch(r"case-[0-9a-f]{64}", name) for name in names)
+
+
 def test_fixture_alias_redaction_preserves_host_guard_identity(monkeypatch):
     """Reconcile verified macOS display aliases without exporting private fixture paths."""
     import hashlib

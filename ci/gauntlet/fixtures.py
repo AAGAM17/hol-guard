@@ -15,6 +15,11 @@ SETTINGS_AFTER = SETTINGS_BEFORE.replace("retryLimit: 3", "retryLimit: 5")
 SOURCE = "ordinary-workflow-fixture\nsecond-line\n"
 
 
+def scenario_fixture_name(scenario_id: str) -> str:
+    """Keep scenario risk labels out of paths inspected by the product policy."""
+    return "case-" + hashlib.sha256(scenario_id.encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class Fixture:
     root: Path

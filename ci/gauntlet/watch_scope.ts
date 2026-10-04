@@ -12,6 +12,9 @@ export function permittedWatchInput(toolName: string, input: unknown, cwd = proc
   if (args.command !== WATCH_COMMAND || Object.keys(args).some(key => !["command", "timeout", "cwd"].includes(key))) return false;
   if (args.cwd !== undefined && args.cwd !== cwd) {
     if (typeof args.cwd !== "string" || typeof cwd !== "string") return false;
+    // Only macOS's system root spelling may differ; never accept a task-owned symlink.
+    const rootSpelling = (value: string) => value.replace(/^\/private(?=\/(?:tmp|var)(?:\/|$))/, "");
+    if (rootSpelling(args.cwd) !== rootSpelling(cwd)) return false;
     try {
       if (realpathSync(args.cwd) !== realpathSync(cwd)) return false;
     } catch {

@@ -24,7 +24,7 @@ from ci.native_runtime import probe_installed_pi_output as probe
 
 from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
 from .evidence import TRANSCRIPT_LIMIT, assess_case, public_events, read_events, sha256_bytes
-from .fixtures import create_fixture, digest_file, filesystem_checks
+from .fixtures import create_fixture, digest_file, filesystem_checks, scenario_fixture_name
 from .input_evidence import fixture_path_aliases, public_observations, redact_value
 from .latency import summarize_hook_latency
 from .provider import InferenceRelay, LoopbackCollector
@@ -129,12 +129,11 @@ def _agent_configuration(path: Path, relay: InferenceRelay) -> None:
 
 def _configure_ollama_permission_denial(daemon: Any, guard_home: Path) -> dict[str, Any]:
     """Install a signed synthetic extension control for the one denial case."""
+    from ci.native_runtime.probe_installed_native_extensions import commit_controls, control, provision
     from codex_plugin_scanner.guard.approval_gate import update_settings
     from codex_plugin_scanner.guard.config import update_guard_settings
     from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
     from codex_plugin_scanner.guard.runtime.extension_control_contract import ControlState, ControlTargetKind
-
-    from ci.native_runtime.probe_installed_native_extensions import commit_controls, control, provision
 
     password = secrets.token_urlsafe(32)
     update_guard_settings(guard_home, {"mode": "enforce"})
@@ -246,7 +245,7 @@ def run_case(
     timeout: float,
 ) -> dict[str, Any]:
     """Exercise one independent scenario, retaining failures and all evidence."""
-    fixture = create_fixture(root / scenario.id)
+    fixture = create_fixture(root / scenario_fixture_name(scenario.id))
     private = fixture.root / "private-evidence"
     private.mkdir(mode=0o700)
     raw_log, error_log = private / "omp.jsonl", private / "stderr.txt"

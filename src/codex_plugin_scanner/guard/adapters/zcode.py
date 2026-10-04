@@ -66,6 +66,7 @@ from .zcode_config import (
 )
 
 _ZCODE_HOME_ENV_VAR = "ZCODE_HOME"
+_MISSING = object()
 # Current ZCode renders this label beside the hook in its Hooks settings UI
 # instead of the full managed command string.
 _GUARD_HOOK_STATUS_MESSAGE = "HOL Guard runtime policy enforcement"
@@ -414,9 +415,9 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             launcher_name=self.launcher_name,
             display_name="zcode",
         )
-        config_path = self._config_path(context)
         _state_dir, _backup_path, state_path = self._managed_state_paths(context)
         state = _json_payload(state_path) if state_path.is_file() else {}
+        config_path = self._config_path(context)
         # Migration can copy managed hooks to settings after a legacy install.
         for candidate in (self._cli_root(context) / "setting.json", self._cli_root(context) / ZCODE_CLI_CONFIG_FILE):
             if not candidate.is_file():

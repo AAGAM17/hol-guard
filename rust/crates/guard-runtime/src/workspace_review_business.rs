@@ -3,6 +3,7 @@
 //! Private frozen business material for the existing review snapshot.
 //! Origin authentication proves local integrity, not provider identity or custody.
 
+use super::workspace_review_claim_index::valid_digest;
 use base64ct::{Base64, Encoding};
 use guard_command::business_input::PreparedBusinessInputV1;
 use guard_contracts::{
@@ -41,13 +42,6 @@ struct PrivateInput {
 
 fn invalid() -> String {
     INVALID.to_owned()
-}
-
-fn digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn prepare(value: Value) -> Result<PreparedBusinessInputV1, String> {
@@ -114,13 +108,15 @@ pub(super) fn load(
         return Ok(None);
     }
     let receipt = receipt.ok_or_else(invalid)?;
-    let proof = authenticated.filter(|s| digest(s)).ok_or_else(invalid)?;
+    let proof = authenticated
+        .filter(|s| valid_digest(s))
+        .ok_or_else(invalid)?;
     let context: Context =
         serde_json::from_value(raw.ok_or_else(invalid)?.clone()).map_err(|_| invalid())?;
     if context.schema != "guard.private-business-review.v1"
         || context.version != 1
-        || !digest(&context.prepared_input_binding)
-        || !digest(&context.snapshot_digest)
+        || !valid_digest(&context.prepared_input_binding)
+        || !valid_digest(&context.snapshot_digest)
         || origin_binding(request_id, &context, receipt)? != proof
     {
         return Err(invalid());

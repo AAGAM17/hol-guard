@@ -138,6 +138,23 @@ pub(crate) fn load(
     if let Some(receipt) = &receipt {
         super::native_review_origin::verify(policy_store, receipt)?;
     }
+    // An admitted business policy requires authenticated native provenance for
+    // every request, including generic ones. Removing the entire envelope must
+    // not erase the distinction and reopen the legacy retry path.
+    let snapshot = policy_store.current_snapshot()?;
+    if snapshot.business_policy.is_some() {
+        let origin = receipt
+            .as_ref()
+            .ok_or_else(|| "native_workspace_review_business_invalid".to_owned())?;
+        if origin.request_id != request_id
+            || origin.policy_generation != snapshot.generation
+            || origin.policy_digest.as_deref() != Some(snapshot.policy_digest.as_str())
+            || origin.rule_digest.as_deref() != Some(snapshot.rule_digest.as_str())
+            || origin.runtime_identity.as_deref() != Some(snapshot.runtime_identity.as_str())
+        {
+            return Err("native_workspace_review_business_invalid".to_owned());
+        }
+    }
     let business_input = super::workspace_review_business::load(
         policy_store,
         request_id,

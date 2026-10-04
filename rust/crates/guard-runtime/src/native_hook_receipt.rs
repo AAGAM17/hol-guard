@@ -277,6 +277,11 @@ mod tests {
         assert_ne!(ordinary.decision_id, first.decision_id);
         assert_ne!(first.decision_id, second.decision_id);
         assert_eq!(first.business_review_binding, Some("b".repeat(64)));
+        // Shared vector with the thin Python receipt validator.
+        assert_eq!(
+            first.decision_id,
+            "c3613993d236fb3d798bcbcd227fb80875328e5bb072590151e17bad67b424ed"
+        );
     }
 
     #[test]

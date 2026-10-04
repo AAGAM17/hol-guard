@@ -244,6 +244,21 @@ fn changed_account_audience_tool_revision_batch_or_content_invalidates_old_bindi
 fn missing_null_stripped_or_copied_context_cannot_downgrade_to_generic_review() {
     let f = Fixture::new("business-downgrade");
     let state = f.stage(&input(b"body", &[]));
+    for replacement in [json!({"action_envelope":{}}), json!({})] {
+        let mut changed = state.clone();
+        changed["action"] = replacement;
+        f.write_state(&changed);
+        assert!(f.load().is_err());
+        assert_eq!(
+            super::super::workspace_review_decision::verify_and_claim_request(
+                &f.store,
+                "business-test",
+                &json!({}),
+            )
+            .unwrap_err(),
+            "native_workspace_review_business_invalid"
+        );
+    }
     for field in ["native_origin_receipt", "business_context"] {
         let mut changed = state.clone();
         changed["action"]["action_envelope"]
@@ -345,8 +360,10 @@ fn malformed_base64_counts_unknown_fields_and_limits_are_rejected() {
 #[test]
 fn absent_business_data_preserves_generic_review_and_explicit_null_is_rejected() {
     let f = Fixture::new("business-absent");
+    let mut native_origin = receipt(&f.snapshot);
+    super::super::native_review_origin::authenticate(&f.store, &mut native_origin).unwrap();
     let state = json!({"schema":"guard-native-workspace-review-request.v1","version":1,"request_id":"business-test",
-        "status":"pending","action":{},"intent":{},"revision":{},"policy":{}});
+        "status":"pending","action":{"action_envelope":{"native_origin_receipt":native_origin}},"intent":{},"revision":{},"policy":{}});
     f.write_state(&state);
     assert!(f.load().unwrap().business_input.is_none());
     let mut origin = serde_json::to_value(receipt(&f.snapshot)).unwrap();

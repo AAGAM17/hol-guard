@@ -29,7 +29,13 @@ requirement into a human exception. Mutation of the file after loading does not
 change retained buffers; a later load rejects changed bytes.
 
 Missing, null, stripped, mismatched, copied or stale business context fails closed.
-When both business fields are absent, existing generic reviews remain available.
+An admitted business policy requires an authenticated native origin for every
+review request, including generic requests. Its request ID and policy/runtime
+identity must match the current store. Removing the whole envelope or both
+business provenance fields therefore cannot reopen an unsigned legacy request.
+When both business fields are absent, authenticated generic reviews remain
+available. The business policy is opt-in; stores without it retain the existing
+legacy request provenance behavior.
 The input has no diagnostic or serialization implementation; generic request
 diagnostics report only whether private material is present. Bodies and attachments
 do not enter the public review context or receipt.

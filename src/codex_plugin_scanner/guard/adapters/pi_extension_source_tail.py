@@ -14,7 +14,7 @@ def build_extension_source_tail(
     tool_approval_continuation_source: str,
 ) -> str:
     workspace_readiness_source = (
-        "    const workspaceReadiness = await ensureGuardWorkspaceReady(snapshot.cwd);\n"
+        "    const workspaceReadiness = await ensureGuardWorkspaceReady(snapshot.cwd, false);\n"
         "    if (!workspaceReadiness.ready) {\n"
         "      const reason = readinessFailureReason(workspaceReadiness);\n"
         '      ctx.ui.notify(reason, "warning");\n'

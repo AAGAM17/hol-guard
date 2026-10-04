@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -139,10 +141,79 @@ def test_pi_source_prepares_workspace_before_timed_tool_review(tmp_path: Path) -
     session_start = source.index('pi.on("session_start", async (_event, ctx) => {')
     tool_call = source.index('pi.on("tool_call", async (event, ctx) => {')
     readiness_request = source.index("/v1/hooks/omp/readiness")
-    tool_readiness = source.index("ensureGuardWorkspaceReady(snapshot.cwd)", tool_call)
+    tool_readiness = source.index("ensureGuardWorkspaceReady(snapshot.cwd, false)", tool_call)
     semantic_review = source.index("const response = await runGuard(", tool_call)
 
     assert readiness_request < session_start
     assert session_start < tool_call
     assert tool_readiness < semantic_review
     assert "native_route !== 'native_resident'" in source
+    assert daemon_server_module._GuardDaemonHandler._requires_header_token(
+        "/v1/hooks/omp/readiness",
+        ["v1", "hooks", "omp", "readiness"],
+    )
+    assert "'X-Guard-Token': connection.authToken" in source[readiness_request : readiness_request + 700]
+    assert "pi.on(\"session_start\", async (_event, ctx) => {" in source
+    assert "daemon_restarted_requires_session_setup" in source
+
+
+def test_pi_readiness_cache_requires_session_setup_after_failure_or_restart(tmp_path: Path) -> None:
+    source = managed_extension_source(
+        guard_home=tmp_path / "guard-home",
+        home_dir=tmp_path,
+        settings_path=tmp_path / "settings.json",
+        harness="omp",
+        display_name="Oh My Pi",
+    )
+    cache_start = source.index("  let workspaceReadiness = null;")
+    cache_end = source.index("  const approvalContinuationActivity", cache_start)
+    cache_source = source[cache_start:cache_end]
+    javascript = (
+        """
+let connection = { stateId: 'daemon-a' };
+let mode = 'failed';
+let readinessCalls = 0;
+function loadGuardDaemonConnection() { return connection; }
+function daemonWorkspaceReadiness(_cwd) {
+  readinessCalls += 1;
+  return Promise.resolve(mode === 'ready'
+    ? { ready: true, daemonStateId: connection.stateId }
+    : { ready: false, reasonCode: 'native_policy_not_ready', daemonStateId: connection.stateId });
+}
+"""
+        + cache_source
+        + """
+const first = await ensureGuardWorkspaceReady('/fixture', true);
+mode = 'ready';
+const sameSession = await ensureGuardWorkspaceReady('/fixture', false);
+const callsAfterFailure = readinessCalls;
+workspaceReadiness = null;
+const recovered = await ensureGuardWorkspaceReady('/fixture', true);
+connection = { stateId: 'daemon-b' };
+const afterRestart = await ensureGuardWorkspaceReady('/fixture', false);
+console.log(JSON.stringify({
+  first,
+  sameSession,
+  recovered,
+  afterRestart,
+  callsAfterFailure,
+  readinessCalls,
+}));
+"""
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", javascript],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    output = json.loads(result.stdout)
+    assert output["first"]["ready"] is False
+    assert output["sameSession"]["ready"] is False
+    assert output["sameSession"]["reasonCode"] == "native_policy_not_ready"
+    assert output["callsAfterFailure"] == 1
+    assert output["recovered"]["ready"] is True
+    assert output["afterRestart"]["ready"] is False
+    assert output["afterRestart"]["reasonCode"] == "daemon_restarted_requires_session_setup"
+    assert output["readinessCalls"] == 2

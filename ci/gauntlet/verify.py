@@ -91,7 +91,7 @@ def _verify_contained_case(case: dict[str, Any], row: dict[str, Any], expected_i
         raise ValueError("contained case identity mismatch")
     if digest_file(case["_path"]) != row.get("evidence_sha256"):
         raise ValueError("contained case evidence bytes changed")
-    if case.get("filesystem") != row.get("_filesystem"):
+    if case.get("filesystem") != case.get("_filesystem"):
         raise ValueError("contained case physical proof differs from the profile report")
     filesystem = case.get("filesystem")
     if (

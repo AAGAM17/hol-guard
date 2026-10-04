@@ -133,7 +133,7 @@ def test_ci_entry_point_and_extracted_actions_keep_bounded_reviewable_files():
         for step in document["runs"]["steps"]:
             assert "run" not in step or "shell" in step
     gate = next(s for s in expanded["jobs"]["sonar"]["steps"] if s.get("name") == "SonarQube Quality Gate check")
-    assert gate["run"] == "python -m scripts.ci.check_sonar_quality"
+    assert gate["run"] == "timeout --signal=TERM --kill-after=5s 300s python -m scripts.ci.check_sonar_quality"
     assert not gate.get("continue-on-error")
 
 

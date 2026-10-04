@@ -54,3 +54,24 @@ failure: the final Sonar quality gate. Coverage was 61.7% versus 80%, after the
 large Rust migration; all other gate conditions passed. The raw Sonar result
 remains red until that coverage debt is genuinely addressed. Passing CI must not
 be represented as 80% coverage or as a green Sonar project.
+
+
+## Live response and failure bounds
+
+Before merging, the public main analysis `a07c28e7-16d8-4dae-8f98-d98cb1e91ced`
+(revision `7399202ef348a022faa364d648f9a2bc95a95a87`) was retrieved by its exact
+analysis ID. It reports `ignoredConditions: false`, explicit 61.8% new-code
+coverage, and every required non-coverage condition passing. The unmodified
+public response and provenance are retained in
+`tests/fixtures/sonar-main-quality-gate.v1.json` and replayed by a regression test.
+This validates an actual main response, not just a synthetic API shape. It does
+not assert that Sonar can never omit fields: missing evidence still blocks the
+main-only exception and requires investigation rather than an implicit waiver.
+
+The custom gate has a 300-second outer process deadline, in addition to its
+280-second client budget. Composite-action steps do not accept the workflow's
+`timeout-minutes` key, so the Ubuntu process uses `timeout` and a five-second
+termination grace. Neither a stalled gate nor a failed gate becomes success.
+Report measurements with missing or malformed period values remain unknown and
+retain source evidence, rather than losing the entire findings report or
+presenting missing data as zero uncovered lines.

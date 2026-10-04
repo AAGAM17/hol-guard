@@ -56,7 +56,7 @@ def test_exact_analysis_gate_and_evidence_remain_in_the_scanned_job() -> None:
     index = next(i for i, step in enumerate(steps) if step.get("name") == "SonarQube Quality Gate check")
     gate = steps[index]
     assert scan < index and "continue-on-error" not in gate
-    assert gate["run"] == "python -m scripts.ci.check_sonar_quality"
+    assert gate["run"] == "timeout --signal=TERM --kill-after=5s 300s python -m scripts.ci.check_sonar_quality"
     assert gate["if"] == (
         "inputs.has-token == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'"
     )
@@ -84,8 +84,49 @@ def test_exact_analysis_gate_and_evidence_remain_in_the_scanned_job() -> None:
         ({"periods": [{"index": 1, "value": "42"}]}, 42),
         ({"period": {"value": "7"}}, 7),
         ({"value": "3"}, 3),
-        ({}, 0),
+        ({}, None),
+        ({"periods": [{"index": 2, "value": "99"}, {"index": 1, "value": "42"}]}, 42),
+        ({"periods": [{"index": 1, "value": None}]}, None),
+        ({"periods": [{"index": 1}]}, None),
+        ({"periods": [{"index": 2, "value": "99"}]}, None),
+        ({"periods": [{"index": 1, "value": "5"}, {"index": 1, "value": "6"}]}, None),
+        ({"periods": "invalid"}, None),
+        ({"periods": [None]}, None),
+        ({"periods": [{"index": True, "value": "42"}]}, None),
+        ({"periods": [{"value": "42"}]}, 42),
+        ({"periods": [], "period": {"value": "7"}}, 7),
+        ({"periods": None, "value": "3"}, 3),
+        ({"period": None}, None),
+        ({"period": "invalid"}, None),
+        ({"value": "NaN"}, None),
+        ({"value": "Infinity"}, None),
+        ({"value": -1}, None),
+        ({"value": True}, None),
     ],
 )
 def test_report_recognizes_all_supported_new_code_measurement_shapes(metric, expected):
     assert _metric_value(metric) == expected
+
+
+@pytest.mark.parametrize("periods", [[{"index": 1}], [{"index": 1, "value": None}], "malformed"])
+def test_unknown_gap_measurements_preserve_issues_and_request_source_evidence(monkeypatch, periods):
+    from scripts.ci import sonar_findings_report as report
+
+    component = {"key": "project:file", "measures": [{"metric": "new_uncovered_lines", "periods": periods}]}
+    monkeypatch.setattr(
+        report,
+        "sonar_pages",
+        lambda _path, field, **_kwargs: {field: [{"key": "issue"}] if field == "issues" else [component]},
+    )
+    calls = []
+
+    def read(_service, path, **parameters):
+        calls.append((path, parameters))
+        return {"raw": "retained"}
+
+    monkeypatch.setattr(report, "read_json", read)
+    snapshot = report.sonar_snapshot(3532)
+    assert snapshot["issues"]["issues"] == [{"key": "issue"}]
+    assert snapshot["coverage"]["components"] == [component]
+    assert snapshot["sources"]["project:file"] == {"raw": "retained"}
+    assert any(path == "/api/sources/lines" and params["pullRequest"] == 3532 for path, params in calls)

@@ -235,3 +235,18 @@ def test_missing_metadata_fails_with_preserved_evidence(tmp_path, monkeypatch):
     assert runner.main() == 1
     saved = json.loads(Path("sonar-quality-evidence/quality.json").read_text())
     assert saved["decision"] == "blocked" and "metadata unavailable" in saved["error"]
+
+
+def test_recorded_public_main_analysis_matches_the_actual_gate_contract(main_push):
+    fixture = Path(__file__).parent / "fixtures/sonar-main-quality-gate.v1.json"
+    captured = json.loads(fixture.read_text(encoding="utf-8"))
+    assert captured["project"] == "hashgraph-online_hol-guard"
+    assert captured["projectStatus"]["ignoredConditions"] is False
+    assert row(captured["projectStatus"], "new_coverage")["actualValue"] == "61.8"
+    client = Mock()
+    client.gate.return_value = captured["projectStatus"]
+    report = {}
+    assert runner.evaluate(client, captured["analysis_id"], main_push[0], report)
+    assert report["decision"] == "main-coverage-debt-reported"
+    assert report["sonar_status"] == "ERROR"
+    assert report["gate"] == captured["projectStatus"]

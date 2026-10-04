@@ -103,7 +103,8 @@ runs:
   - name: SonarQube Quality Gate check
     if: inputs.has-token == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     shell: bash
-    run: python -m scripts.ci.check_sonar_quality
+    # Composite steps lack timeout-minutes; the process cap backs up the client deadline.
+    run: timeout --signal=TERM --kill-after=5s 300s python -m scripts.ci.check_sonar_quality
     env:
       SONAR_TOKEN: ${{ inputs.secret-sonar-token }}
   - name: Preserve analysis-specific quality evidence

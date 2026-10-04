@@ -77,6 +77,19 @@ fn a_disabled_permission_still_blocks_uncertain_and_redirected_commands() {
 }
 
 #[test]
+fn a_disabled_git_read_permission_blocks_read_only_plumbing() {
+    let binding = binding_with_layers(disabled_permission_layer("command.git.ls-files"));
+    for command in ["git rev-parse HEAD", "git config --list --show-origin"] {
+        let result = evaluate(&binding, command);
+        assert_eq!(result.minimum_action, "block", "{command}");
+        assert_eq!(
+            result.reason_code, "native_command_permission_disabled",
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn global_lockdown_still_blocks_unparsed_commands() {
     let program = packaged_command_program().unwrap();
     let binding = binding_with_layers(serde_json::json!([{

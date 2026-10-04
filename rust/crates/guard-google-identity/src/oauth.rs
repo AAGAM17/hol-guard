@@ -163,7 +163,15 @@ impl GoogleSendAuthorization {
         };
         // Own the fixed exchange and its decoder so temporary credential
         // buffers never pass through the SDK's non-zeroizing response parser.
-        let body = oauth2::url::form_urlencoded::Serializer::new(String::with_capacity(16 * 1024))
+        // Percent encoding can expand each bounded byte threefold. Reserve
+        // that worst case so an intermediate allocation cannot retain secrets.
+        let capacity = 256
+            + 3 * (code.len()
+                + self.client_id.as_str().len()
+                + self.client_secret.len()
+                + self.redirect.url().as_str().len()
+                + self.verifier.len());
+        let body = oauth2::url::form_urlencoded::Serializer::new(String::with_capacity(capacity))
             .extend_pairs([
                 ("grant_type", "authorization_code"),
                 ("code", code.as_str()),

@@ -24,11 +24,10 @@ def hook(monkeypatch, tmp_path):
     spec = importlib.util.spec_from_file_location("command_projection_build_hook", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    archive = types.SimpleNamespace(
-        MANIFEST="contracts/extensions/command-projection-build.v1.json",
-        write_projection_manifest=lambda root: None,
-        verify_projection_manifest=lambda root: None,
-    )
+    archive = types.ModuleType("archive_test_support")
+    archive.MANIFEST = "contracts/extensions/command-projection-build.v1.json"
+    archive.write_projection_manifest = lambda root: None
+    archive.verify_projection_manifest = lambda root: None
     monkeypatch.setattr(module, "_archive_support", lambda: archive)
     instance = module.CommandProjectionBuildHook()
     instance.archive_test_support = archive

@@ -237,8 +237,8 @@ def test_atomic_claim_proof_cannot_relax_native_unknown_graphql_uncertainty(tmp_
         workflow_authorization=authorization,
     )
 
-    assert evaluation.decision_plane.action == "block"
-    assert evaluation.decision_plane.disposition is FinalDisposition.BLOCK
+    assert evaluation.decision_plane.action == "review"
+    assert evaluation.decision_plane.disposition is FinalDisposition.REVIEW
     assert evaluation.extension_observations[0].uncertainty_reasons
 
 

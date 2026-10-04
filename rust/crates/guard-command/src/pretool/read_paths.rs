@@ -267,9 +267,9 @@ pub(super) fn agent_skill_document(canonical: &std::path::Path, home_dir: Option
     let Some(home) = home_dir.and_then(|root| std::fs::canonicalize(root).ok()) else {
         return false;
     };
-    if !canonical
+    if canonical
         .extension()
-        .is_some_and(|extension| extension == "md")
+        .is_none_or(|extension| extension != "md")
     {
         return false;
     }

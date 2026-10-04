@@ -15865,6 +15865,7 @@ def test_guard_hook_codex_verified_benign_does_not_override_explicit_policy(
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+@pytest.mark.usefixtures("native_command_artifact_reviews")
 @pytest.mark.parametrize(
     "strict_config",
     (

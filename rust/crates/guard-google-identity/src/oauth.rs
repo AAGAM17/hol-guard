@@ -163,7 +163,7 @@ impl GoogleSendAuthorization {
         };
         // Own the fixed exchange and its decoder so temporary credential
         // buffers never pass through the SDK's non-zeroizing response parser.
-        let body = oauth2::url::form_urlencoded::Serializer::new(String::new())
+        let body = oauth2::url::form_urlencoded::Serializer::new(String::with_capacity(16 * 1024))
             .extend_pairs([
                 ("grant_type", "authorization_code"),
                 ("code", code.as_str()),
@@ -398,7 +398,7 @@ fn exchange_http(request: HttpRequest) -> Result<HttpResponse, ExchangeTransport
     if !json_media_type(response.headers()) {
         return Ok(HttpResponse::new(Vec::new()));
     }
-    let mut bytes = Zeroizing::new(Vec::new());
+    let mut bytes = Zeroizing::new(Vec::with_capacity(64 * 1024 + 1));
     response
         .body_mut()
         .as_reader()

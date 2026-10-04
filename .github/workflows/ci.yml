@@ -55,6 +55,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-rust
         with:
+          cache-key: ci-workspace-${{ matrix.check }}
           components: clippy
       - name: Validate the locked Rust workspace
         env:

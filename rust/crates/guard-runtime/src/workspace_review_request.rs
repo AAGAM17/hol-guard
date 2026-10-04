@@ -37,7 +37,6 @@ struct WorkspaceReviewRequestStateV1 {
     policy: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TrustedWorkspaceReviewRequest {
     pub(crate) request_id: String,
     pub(crate) request_snapshot_digest: String,
@@ -47,9 +46,20 @@ pub(crate) struct TrustedWorkspaceReviewRequest {
     pub(crate) revision_binding: String,
     pub(crate) policy_binding: String,
     pub(crate) retry_scope_binding: String,
+    pub(crate) business_input: Option<guard_command::business_input::PreparedBusinessInputV1>,
 }
 
-fn valid_request_id(value: &str) -> bool {
+impl std::fmt::Debug for TrustedWorkspaceReviewRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrustedWorkspaceReviewRequest")
+            .field("request_id", &self.request_id)
+            .field("request_snapshot_digest", &self.request_snapshot_digest)
+            .field("has_business_input", &self.business_input.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+pub(super) fn valid_request_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_REQUEST_ID_BYTES
         && value
@@ -117,15 +127,23 @@ pub(crate) fn load(
     {
         return Err("native_workspace_review_request_invalid".to_owned());
     }
-    if let Some(origin) = state
-        .action
-        .get("action_envelope")
+    let envelope = state.action.get("action_envelope");
+    let receipt = envelope
         .and_then(|envelope| envelope.get("native_origin_receipt"))
-    {
-        let receipt = serde_json::from_value(origin.clone())
-            .map_err(|_| "native_workspace_review_origin_invalid".to_owned())?;
-        super::native_review_origin::verify(policy_store, &receipt)?;
+        .map(|origin| {
+            serde_json::from_value::<guard_contracts::NativeHookDecisionReceiptV1>(origin.clone())
+        })
+        .transpose()
+        .map_err(|_| "native_workspace_review_origin_invalid".to_owned())?;
+    if let Some(receipt) = &receipt {
+        super::native_review_origin::verify(policy_store, receipt)?;
     }
+    let business_input = super::workspace_review_business::load(
+        policy_store,
+        request_id,
+        envelope,
+        receipt.as_ref(),
+    )?;
     let action_binding = binding(NATIVE_WORKSPACE_REVIEW_ACTION_BINDING_DOMAIN, &state.action)?;
     let intent_binding = binding(NATIVE_WORKSPACE_REVIEW_INTENT_BINDING_DOMAIN, &state.intent)?;
     let revision_binding = binding(
@@ -148,5 +166,6 @@ pub(crate) fn load(
         revision_binding,
         policy_binding,
         retry_scope_binding,
+        business_input,
     })
 }

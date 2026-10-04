@@ -64,6 +64,7 @@ fn execution_intent_evidence_is_authenticated_without_changing_decision_id() {
 fn every_receipt_field_is_authenticated() {
     let key = [0x5a; 32];
     let mut original = receipt();
+    original.business_review_binding = Some("f".repeat(64));
     authenticate_with_key(&mut original, &key).unwrap();
     let value = serde_json::to_value(&original).unwrap();
     for (field, previous) in value.as_object().unwrap() {

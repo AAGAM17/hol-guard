@@ -47,6 +47,8 @@ mod policy_store_validation;
 pub(crate) mod resident_workspace_review_context;
 #[path = "workspace_review_authority.rs"]
 pub(crate) mod workspace_review_authority;
+#[path = "workspace_review_business.rs"]
+pub(crate) mod workspace_review_business;
 #[path = "workspace_review_claim_index.rs"]
 pub(crate) mod workspace_review_claim_index;
 #[path = "workspace_review_decision.rs"]

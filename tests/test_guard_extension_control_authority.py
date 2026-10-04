@@ -141,6 +141,26 @@ def test_authenticated_recovery_rebuilds_unverifiable_authority(tmp_path: Path) 
     )
 
 
+@pytest.mark.parametrize("catalog_changed", (False, True))
+def test_authenticated_recovery_preserves_committed_controls_without_self_locking(
+    tmp_path: Path, catalog_changed: bool
+) -> None:
+    store = _store(tmp_path, MemorySecretStore())
+    _commit(store)
+    before = store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
+    registry = _upgraded_registry() if catalog_changed else BUILT_IN_COMMAND_EXTENSION_REGISTRY
+
+    recovered = store.recover_extension_control_authority(
+        catalog_digest=registry.catalog_digest,
+        migration_registry=registry,
+    )
+
+    assert recovered.health is AuthorityHealth.PROTECTED
+    assert recovered.revision == before.revision + int(catalog_changed)
+    assert recovered.catalog_digest == registry.catalog_digest
+    assert recovered.layers[0].controls == before.layers[0].controls
+
+
 def test_authenticated_recovery_rebuilds_snapshot_with_invalid_mac(tmp_path: Path) -> None:
     secrets = MemorySecretStore()
     store = _store(tmp_path, secrets)

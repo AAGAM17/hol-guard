@@ -659,6 +659,10 @@ class StoreExtensionControlAuthorityMixin(_ExtensionControlAuthorityTransitionMi
                             layers_json=_row_str(committed, "layers_json"),
                             occurred_at=_row_str(committed, "created_at"),
                         )
+                    # Catalog migration below uses its own transaction. Release
+                    # this event's writer lock before re-reading the authority;
+                    # the authority lock still excludes competing mutations.
+                    connection.commit()
                     recovered = self._read_extension_control_authority_locked(
                         catalog_digest,
                         migration_registry=migration_registry,

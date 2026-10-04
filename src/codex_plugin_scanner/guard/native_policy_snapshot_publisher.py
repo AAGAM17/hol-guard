@@ -245,7 +245,7 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             self.request_publish()
 
     def _accept_resident_fingerprint(self, fingerprint) -> None:
-        """Refresh Watch after resident metadata changes without hiding a policy edit.
+        """Handle resident metadata changes without hiding a policy edit.
 
         Resident mtime churn and a config change can land in one poll. Keeping
         the old observe snapshot in that case would let hooks run under Watch
@@ -272,6 +272,13 @@ class NativePolicySnapshotPublisher(NativePolicySnapshotPublisherInputs):
             self.request_publish()
             return
         if same_resident:
+            with self._condition:
+                if self._acked and self._snapshot is not None and self._snapshot.get("mode") == "enforce":
+                    # Metadata churn is not a new policy or resident generation.
+                    # Requests still carry the acknowledged generation and digest;
+                    # Rust rejects stale bindings independently on every review.
+                    # Revoking here makes ordinary hook traffic pause every harness.
+                    return
             self._republish_preserving_watch()
             return
         self.request_publish()

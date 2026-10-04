@@ -345,10 +345,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                 isinstance(recorded_enabled, dict)
                 and isinstance(recorded_enabled.get("present"), bool)
                 and "value" in recorded_enabled
-                and (
-                    not recorded_enabled["present"]
-                    or isinstance(recorded_enabled.get("value"), (bool, type(None)))
-                )
+                and (not recorded_enabled["present"] or isinstance(recorded_enabled.get("value"), (bool, type(None))))
             ):
                 enabled_before = recorded_enabled
 
@@ -443,10 +440,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                     and isinstance(original, dict)
                     and isinstance(original.get("present"), bool)
                     and "value" in original
-                    and (
-                        not original["present"]
-                        or isinstance(original.get("value"), (bool, type(None)))
-                    )
+                    and (not original["present"] or isinstance(original.get("value"), (bool, type(None))))
                     and hooks.get("enabled") is True
                 ):
                     if original.get("present"):

@@ -19,7 +19,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ci.native_runtime import probe_installed_native_extensions as native_probe
 from ci.native_runtime import probe_installed_pi_output as probe
 
 from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
@@ -246,6 +245,8 @@ def run_case(
     timeout: float,
 ) -> dict[str, Any]:
     """Exercise one independent scenario, retaining failures and all evidence."""
+    from ci.native_runtime import probe_installed_native_extensions as native_probe
+
     fixture = create_fixture(root / scenario.id)
     private = fixture.root / "private-evidence"
     private.mkdir(mode=0o700)

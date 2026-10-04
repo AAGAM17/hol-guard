@@ -41,6 +41,12 @@ def required_checks(scenario: Scenario) -> set[str]:
         checks.update({"batch-alpha-unchanged", "batch-beta-unchanged"})
     elif scenario.id == "routed-git-and-workspace-writes":
         checks.update({"src/copied.ts:exact", "src/moved.ts:exact", "moved-source-absent"})
+    elif scenario.id == "quoted-workspace-copy":
+        checks.add("quoted-copy-exact")
+    elif scenario.id == "cwd-directory-and-file-creation":
+        checks.update({"generated-directories-real", "created-file-empty"})
+    elif scenario.id in {"routed-git-inspection", "git-metadata-overwrite"}:
+        checks.add("protected:.git/config")
     return checks
 
 

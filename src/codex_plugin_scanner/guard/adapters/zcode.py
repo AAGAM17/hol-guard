@@ -338,7 +338,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             hooks = {}
         payload["hooks"] = hooks
         enabled_before = {"present": "enabled" in hooks, "value": hooks.get("enabled")}
-        previous_state = json.loads(state_before) if state_before is not None else {}
+        previous_state = _json_payload(state_path) if state_before is not None else {}
         if previous_state.get("managed_config_path") == str(config_path):
             enabled_before = previous_state.get("hooks_enabled_before", enabled_before)
 
@@ -427,8 +427,6 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             if isinstance(hooks, dict):
                 hooks_before = json.dumps(hooks, sort_keys=True)
                 self._prune_managed_hook_groups(hooks)
-                if json.dumps(hooks, sort_keys=True) == hooks_before:
-                    continue
                 original = state.get("hooks_enabled_before")
                 if (
                     state.get("managed_config_path") == str(candidate)
@@ -439,6 +437,8 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                         hooks["enabled"] = original.get("value")
                     else:
                         hooks.pop("enabled", None)
+                if json.dumps(hooks, sort_keys=True) == hooks_before:
+                    continue
                 if not hooks:
                     payload.pop("hooks", None)
                 else:

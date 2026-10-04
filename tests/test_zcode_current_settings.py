@@ -117,3 +117,26 @@ def test_uninstall_restores_disabled_empty_hooks_after_reinstall(tmp_path):
     adapter.install(context)
     adapter.uninstall(context)
     assert json.loads(settings.read_text())["hooks"]["enabled"] is False
+
+
+@pytest.mark.parametrize("contents", ["[]", "null", "not json"])
+def test_reinstall_recovers_invalid_install_state(tmp_path, contents):
+    context = _ctx(tmp_path)
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    state = context.guard_home / "managed/zcode/install.state.json"
+    state.write_text(contents)
+    adapter.install(context)
+    assert isinstance(json.loads(state.read_text()), dict)
+
+
+def test_uninstall_restores_preference_after_external_hook_cleanup(tmp_path):
+    context = _ctx(tmp_path)
+    legacy = _write_cli_config(context.home_dir, {})
+    settings = legacy.with_name("setting.json")
+    settings.write_text('{"hooks":{"enabled":false}}')
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    settings.write_text('{"hooks":{"enabled":true}}')
+    adapter.uninstall(context)
+    assert json.loads(settings.read_text())["hooks"]["enabled"] is False

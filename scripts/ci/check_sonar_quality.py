@@ -41,7 +41,9 @@ def verify_main_push(environment: dict[str, str], event: dict) -> None:
 
 def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str], report: dict) -> bool:
     gate = client.gate(analysis_id)
-    report.update(analysis_id=analysis_id, sonar_status=gate.get("status"), gate=gate)
+    report.update(
+        analysis_id=analysis_id, sonar_status=gate.get("status"), gate=gate, coverage_floor=str(ANCHOR_COVERAGE)
+    )
     checked = conditions(gate)
     if gate.get("ignoredConditions") is not False or "new_coverage" not in checked:
         raise ValueError("Main analysis omitted coverage evidence or ignored gate conditions")

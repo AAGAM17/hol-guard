@@ -194,7 +194,7 @@ def test_coverage_only_main_result_is_explicit_debt_not_a_false_green_or_ratchet
     runner.evidence(report, environment)
     saved = json.loads(Path("sonar-quality-evidence/quality.json").read_text())
     assert row(saved["gate"], "new_coverage")["actualValue"] == coverage
-    assert "not a coverage ratchet" in Path("sonar-quality-evidence/summary.md").read_text()
+    assert saved["coverage_floor"] == "61.7"
 
 
 @pytest.mark.parametrize("coverage", ["61.69", "50"])

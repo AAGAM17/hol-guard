@@ -30,6 +30,17 @@ for (const key of ["access_token", "access%5Ftoken", "API-KEY", "X-Amz-Signature
     assert.ok(preview.includes("page=2") && preview.includes("limit=3"));
   }
 }
+for (const command of [
+  `curl 'https://example.invalid/data?sig="fixture-query-value"'`,
+  `curl 'https://example.invalid/data?access%5Ftoken=prefix"suffix'`,
+]) {
+  for (const entry of [
+    { ...receipt, action_envelope_json: shellEnvelope(command) },
+    { ...receipt, artifact_name: "curl", provenance_summary: command },
+  ]) {
+    assert.equal(resolveActionCommand(entry), null, "ambiguous quoted query credentials must not be displayed");
+  }
+}
 for (const [command, secret] of [
   [`curl -u ${syntheticUserinfo} https://example.invalid`, syntheticUserinfo],
   [`curl --user=${syntheticUserinfo} https://example.invalid`, syntheticUserinfo],

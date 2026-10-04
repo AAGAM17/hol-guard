@@ -35,6 +35,29 @@ _SENSITIVE_ARGUMENT_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+_SENSITIVE_QUERY_ASSIGNMENT_RE = re.compile(r"([?&#])([^=&#\s\"']+)=([^&#\s\"']*)")
+_QUERY_QUOTE_BOUNDARY_CHARS = frozenset(" \t\r\n;&|()<>[]{}")
+
+
+def _redact_sensitive_query_assignments(command: str) -> str | None:
+    unsafe_quoted_tail = False
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal unsafe_quoted_tail
+        key = match[2]
+        if not _SENSITIVE_QUERY_NAME_RE.search(unquote_plus(key)):
+            return match[0]
+
+        end = match.end()
+        if end < len(command) and command[end] in {'"', "'"}:
+            next_index = end + 1
+            if next_index < len(command) and command[next_index] not in _QUERY_QUOTE_BOUNDARY_CHARS:
+                unsafe_quoted_tail = True
+        return f"{match[1]}{key}=[redacted]"
+
+    redacted = _SENSITIVE_QUERY_ASSIGNMENT_RE.sub(replace, command)
+    return None if unsafe_quoted_tail else redacted
+
 
 def action_preview(payload: Mapping[str, object]) -> str | None:
     inputs = payload.get("tool_input", payload.get("toolInput", payload.get("arguments")))
@@ -87,13 +110,9 @@ def action_preview(payload: Mapping[str, object]) -> str | None:
             command = command.replace(credential, "[redacted]")
 
     command = re.sub(r"(?i)(\b[a-z][a-z0-9+.-]*://)[^\s/@'\"]+@", r"\1[redacted]@", command)
-    command = re.sub(
-        r"([?&#])([^=&#\s\"']+)=([^&#\s\"']*)",
-        lambda match: (
-            f"{match[1]}{match[2]}=[redacted]" if _SENSITIVE_QUERY_NAME_RE.search(unquote_plus(match[2])) else match[0]
-        ),
-        command,
-    )
+    command = _redact_sensitive_query_assignments(command)
+    if command is None:
+        return None
 
     redacted_command = _SENSITIVE_ARGUMENT_RE.sub(
         lambda match: f"{match.group('prefix')}[redacted]",

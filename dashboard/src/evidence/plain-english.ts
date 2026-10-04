@@ -41,11 +41,23 @@ const REDACTED_QUOTED_ASSIGNMENT_TAIL_PATTERN =
   /(["'])[A-Za-z0-9_-]*(?:api[-_]?key|token|secret|password|credential|authorization|cookie)[A-Za-z0-9_-]*\s*[:=]\s*\[redacted\][^"']+\1/i;
 const SENSITIVE_QUERY_NAME = /api[-_]?key|token|secret|password|credential|authorization|cookie|signature|^(?:key|sig|auth)$/i;
 
-function redactQueryAssignments(value: string): string {
-  return value.replace(/([?&#])([^=&#\s"']+)=([^&#\s"']*)/g, (assignment, separator, key) => {
-    const decodedKey = new URLSearchParams(`${key}=`).keys().next().value ?? key;
-    return SENSITIVE_QUERY_NAME.test(decodedKey) ? `${separator}${key}=[redacted]` : assignment;
-  });
+function redactQueryAssignments(value: string): string | null {
+  let unsafeQuotedTail = false;
+  const redacted = value.replace(
+    /([?&#])([^=&#\s"']+)=([^&#\s"']*)/g,
+    (assignment: string, separator: string, key: string, _queryValue: string, offset: number) => {
+      const decodedKey = new URLSearchParams(`${key}=`).keys().next().value ?? key;
+      if (!SENSITIVE_QUERY_NAME.test(decodedKey)) return assignment;
+
+      const end = offset + assignment.length;
+      if (end < value.length && (value[end] === "\"" || value[end] === "'")) {
+        const next = value[end + 1];
+        if (next && !" \t\r\n;&|()<>[]{}".includes(next)) unsafeQuotedTail = true;
+      }
+      return `${separator}${key}=[redacted]`;
+    },
+  );
+  return unsafeQuotedTail ? null : redacted;
 }
 
 /** Keep command/provenance structure visible without guessing at ambiguous secret values. */
@@ -53,7 +65,10 @@ export function redactDisplayText(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed || hasAmbiguousUnquotedAssignment(trimmed)) return null;
 
-  const redacted = redactQueryAssignments(trimmed)
+  const queryRedacted = redactQueryAssignments(trimmed);
+  if (queryRedacted === null) return null;
+
+  const redacted = queryRedacted
     .replace(/\bBasic\s+[A-Za-z0-9+/=]+/gi, "Basic [redacted]")
     .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@'\"]+@/gi, "$1[redacted]@")
     .replace(/((?:^|\s)(?:--user|--proxy-user)(?:=|\s+)|(?:^|\s)-[uU]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/g, "$1[redacted]")

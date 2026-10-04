@@ -61,6 +61,17 @@ def test_preview_redacts_query_credentials(key: str) -> None:
     assert "https://example.invalid/data?page=2" in preview
 
 
+@pytest.mark.parametrize(
+    "command",
+    (
+        "curl 'https://example.invalid/data?sig=\"fixture-query-value\"'",
+        "curl 'https://example.invalid/data?access%5Ftoken=prefix\"suffix'",
+    ),
+)
+def test_preview_omits_ambiguous_quoted_query_credentials(command: str) -> None:
+    assert action_preview({"command": command}) is None
+
+
 def test_preview_bounds_match_dashboard_utf16_units() -> None:
     preview = action_preview({"command": "echo " + "\U0001f600" * 2048})
     assert preview is not None

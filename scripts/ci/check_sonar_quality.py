@@ -50,8 +50,8 @@ def trusted_main_history(environment: dict[str, str], event: dict) -> list[str]:
     return [sha(commit) for commit in history]
 
 
-def previous_analysis(analyses: list[dict], current_id: str, current_sha: str, history: list[str]) -> dict:
-    """Never compare with an unrelated, future, PR, or stale current-branch analysis."""
+def previous_analyses(analyses: list[dict], current_id: str, current_sha: str, history: list[str]) -> list[dict]:
+    """Order analyzed pre-push ancestors from newest to oldest, excluding stale and unrelated analyses."""
     current = [item for item in analyses if item.get("key") == current_id]
     if len(current) != 1 or current[0].get("revision") != current_sha:
         raise ValueError("Current analysis does not match the checked-out main commit")
@@ -70,11 +70,18 @@ def previous_analysis(analyses: list[dict], current_id: str, current_sha: str, h
             candidates.append((ranks[item["revision"]], -date.timestamp(), item))
     if not candidates:
         raise ValueError("No analyzed pre-push ancestor is available; strict gate remains blocking")
-    baseline = min(candidates, key=lambda item: item[:2])[2]
-    identifier(baseline.get("key"))
-    if baseline.get("projectVersion") != current[0].get("projectVersion"):
-        raise ValueError("Version changed; strict coverage gate remains blocking")
-    return baseline
+    ordered = []
+    seen_revisions = set()
+    for _, _, candidate in sorted(candidates, key=lambda item: item[:2]):
+        revision = candidate["revision"]
+        if revision in seen_revisions:
+            continue
+        seen_revisions.add(revision)
+        identifier(candidate.get("key"))
+        if candidate.get("projectVersion") != current[0].get("projectVersion"):
+            raise ValueError("Version changed; strict coverage gate remains blocking")
+        ordered.append(candidate)
+    return ordered
 
 
 def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str], report: dict) -> bool:
@@ -94,16 +101,27 @@ def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str],
     if len(raw) > 4 * 1024 * 1024:
         raise ValueError("Push event exceeds its byte limit")
     history = trusted_main_history(environment, json.loads(raw))
-    baseline = previous_analysis(
+    ancestors = previous_analyses(
         client.main_analyses(current_id=analysis_id, before_sha=history[0]),
         analysis_id,
         sha(environment["GITHUB_SHA"]),
         history,
     )
-    previous = client.gate(baseline["key"])
-    report.update(baseline=baseline, baseline_gate=previous)
-    if not inherited_coverage_allowed(gate, previous):
-        return False
+    baseline = None
+    baseline_gate = None
+    for candidate in ancestors:
+        previous = client.gate(candidate["key"])
+        if previous["status"] == "OK":
+            if baseline is None:
+                baseline, baseline_gate = candidate, previous
+            break
+        if not inherited_coverage_allowed(gate, previous):
+            return False
+        if baseline is None:
+            baseline, baseline_gate = candidate, previous
+    else:
+        raise ValueError("No accepted baseline in bounded history; strict gate remains blocking")
+    report.update(baseline=baseline, baseline_gate=baseline_gate)
     report["decision"] = "inherited-main-coverage-not-worsened"
     return True
 

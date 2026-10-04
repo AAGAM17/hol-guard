@@ -32,12 +32,13 @@ CI policy when all of the following are proven:
 
 1. The checkout, GitHub push event, repository, before SHA, and after SHA agree.
 2. The current Sonar analysis belongs to that exact after SHA.
-3. The baseline belongs to an analyzed pre-push first-parent ancestor. Prefer
-   the exact before SHA; never select an unrelated branch or a later analysis.
+3. Analyzed pre-push first-parent ancestors are checked from newest to oldest
+   until a green gate anchors the accepted history. Never select an unrelated
+   branch or a later analysis; if no green anchor is found, the strict gate blocks.
 4. The same coverage period, project version, conditions, and thresholds apply.
-5. Both gates have only the coverage condition failing, and current coverage is
-   at least the baseline coverage. There is no rounding tolerance or fixed low
-   floor that permits further deterioration.
+5. Each intervening failed gate has only the coverage condition failing, and
+   current coverage is at least every such ancestor's coverage. There is no
+   rounding tolerance or fixed low floor that permits further deterioration.
 
 A new fall from a green baseline is rejected. Period or version changes require
 the full gate rather than resetting the debt. Once coverage reaches 80%, the

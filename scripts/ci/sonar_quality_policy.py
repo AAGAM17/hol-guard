@@ -65,10 +65,10 @@ def conditions(gate: dict) -> dict[str, dict]:
 
 
 def inherited_coverage_allowed(current: dict, baseline: dict) -> bool:
-    """A red coverage baseline is debt, not permission for a further regression.
+    """A red coverage ancestor is debt, not permission for a further regression.
 
-    Caller must authenticate the main-push scope and bind baseline to an actual
-    earlier first-parent commit. PRs, releases and manual runs remain strict.
+    Callers must bind every compared ancestor to the authenticated main-push
+    history. PRs, releases and manual runs remain strict.
     """
     current_conditions, previous_conditions = conditions(current), conditions(baseline)
     failures = {key for key, value in current_conditions.items() if value["status"] == "ERROR"}

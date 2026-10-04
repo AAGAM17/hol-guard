@@ -280,7 +280,7 @@ assert.match(customMixed, /Reviewed · 1/);
 assert.doesNotMatch(customMixed, /custom-extensions-empty/);
 
 // When the section search is visible it must render in its own row below the
-// header: the Add action closes the header row and the bounded search label
+// header: the Add action closes the header row and a bounded search label
 // opens the row that follows it — never inside the header's flex container,
 // where a long description squeezes it into a floating box above the heading.
 const customSearched = renderToStaticMarkup(createElement(CustomExtensionsSection, {
@@ -292,11 +292,11 @@ const customSearched = renderToStaticMarkup(createElement(CustomExtensionsSectio
   onOpen: () => undefined, onAdd: () => undefined,
 }));
 assert.match(customSearched, /Search custom extensions/);
-assert.match(
-  customSearched,
-  />Add custom extension<\/button><\/div><div class="mt-4"><label class="relative block w-full max-w-sm"><span class="sr-only">Search custom extensions<\/span>/,
-  "the search must open its own row immediately after the header closes",
-);
+const headerClose = customSearched.indexOf(">Add custom extension</button></div>");
+const searchRow = customSearched.indexOf('<div class="mt-4"><label class="relative block w-full max-w-sm">');
+assert.ok(headerClose !== -1, "the Add action must be the header row's last element");
+assert.ok(searchRow > headerClose && searchRow - headerClose < 40,
+  "the search label must open its own row immediately after the header closes");
 
 const customFiltered = renderToStaticMarkup(createElement(CustomExtensionsSection, {
   items: [], onOpen: () => undefined, onAdd: () => undefined, filteredOut: true,

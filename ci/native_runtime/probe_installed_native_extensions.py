@@ -219,6 +219,8 @@ def exercise(root: Path) -> dict[str, object]:
         minimum_at_least: str | None = None,
         tool_payload: dict[str, object] | None = None,
         permission_id: str | None = None,
+        matched_permission_id: str | None = None,
+        reason_code: str | None = None,
     ) -> dict:
         binding = ready(daemon, workspace, revision, previous_publisher=previous_publisher)
         publisher = daemon._server.hook_worker.policy_snapshot_publisher
@@ -278,6 +280,14 @@ def exercise(root: Path) -> dict[str, object]:
                 any(row["permission_id"] == permission_id for row in extensions["permission_observations"]),
                 f"{label}:owned_permission_missing",
             )
+        if matched_permission_id is not None:
+            require(matched is not None, f"{label}:matched_permission_rule_missing")
+            matched_permission = BUILT_IN_COMMAND_EXTENSION_REGISTRY.permission_for_rule_id(matched)
+            require(matched_permission is not None, f"{label}:matched_permission_mapping_missing")
+            require(
+                matched_permission.permission_id == matched_permission_id,
+                f"{label}:wrong_matched_permission:{matched_permission.permission_id}",
+            )
         if minimum is not None:
             require(result["minimum_action"] == minimum, f"{label}:wrong_floor:{result['minimum_action']}")
         if minimum_at_least is not None:
@@ -289,6 +299,8 @@ def exercise(root: Path) -> dict[str, object]:
                 and _ACTION_RANK[actual] >= _ACTION_RANK[minimum_at_least],
                 f"{label}:floor_below_{minimum_at_least}:{actual}",
             )
+        if reason_code is not None:
+            require(result.get("reason_code") == reason_code, f"{label}:wrong_reason:{result.get('reason_code')}")
         require(result["decision"] == "deny", f"{label}:unsafe_allow")
         known_receipt_ids = persisted_native_receipt_ids(store)
         receipt_writer = daemon._server.runtime_hook_evidence_writer
@@ -323,6 +335,8 @@ def exercise(root: Path) -> dict[str, object]:
             print(json.dumps({"case": label, "completed_cases": len(rows), **diagnostic}, sort_keys=True), flush=True)
         require(receipt.get("command_extensions") == extensions["binding"], f"{label}:receipt_generation_mismatch")
         require(receipt["decision"] == result["decision"], f"{label}:http_decision_mismatch")
+        if reason_code is not None:
+            require(receipt.get("reason_code") == reason_code, f"{label}:receipt_wrong_reason")
         all_receipts.append(receipt["decision_id"])
         rows.append(
             {
@@ -332,6 +346,7 @@ def exercise(root: Path) -> dict[str, object]:
                 "minimum_action": result["minimum_action"],
                 "rule_ids": ids,
                 "permission_ids": [row["permission_id"] for row in extensions["permission_observations"]],
+                "matched_permission_id": matched_permission_id,
                 "observations": extensions["binding"]["observation_count"],
             }
         )
@@ -361,6 +376,32 @@ def exercise(root: Path) -> dict[str, object]:
             (enabled, control(ControlTargetKind.PERMISSION, permission.permission_id, ControlState.DISABLED)),
         )
         case("permission-disabled", "ollama rm example-model", revision, matched="command.ollama.rm", minimum="block")
+        worktree_permission = BUILT_IN_COMMAND_EXTENSION_REGISTRY.permission_for_rule_id("command.git.worktree")
+        require(worktree_permission is not None, "worktree_permission_missing")
+        worktree_target = workspace / "native-worktree-target"
+        revision = commit_controls(
+            store,
+            password,
+            (
+                control(ControlTargetKind.EXTENSION, "command.git", ControlState.ENABLED),
+                control(ControlTargetKind.PERMISSION, worktree_permission.permission_id, ControlState.DISABLED),
+            ),
+        )
+        worktree_command = (
+            f"sleep 0.01; cd {workspace} && git worktree add {worktree_target} "
+            "-b fixture-native-worktree HEAD 2>&1 | tail -3"
+        )
+        require(not worktree_target.exists(), "worktree_target_preexisting")
+        case(
+            "git-worktree-compound-permission-disabled",
+            worktree_command,
+            revision,
+            matched="command.git.worktree",
+            minimum="block",
+            matched_permission_id=worktree_permission.permission_id,
+            reason_code="native_command_permission_disabled",
+        )
+        require(not worktree_target.exists(), "worktree_target_executed")
         revision = commit_controls(
             store, password, (control(ControlTargetKind.EXTENSION, "command.ollama", ControlState.DISABLED),)
         )

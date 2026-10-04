@@ -493,6 +493,7 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         "git worktree add --quiet -b third-child hooked-child HEAD",
     );
     assert_ne!(hooked.minimum_action, "allow");
+    std::fs::remove_file(&hook).unwrap();
 
     let extension_disabled = git_extension_controls("disabled");
     let extension_result = evaluate(&repository, &extension_disabled, &command);
@@ -506,6 +507,7 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         "git worktree add --quiet -b helper-worktree helper-child HEAD",
     );
     assert_ne!(helper.minimum_action, "allow");
+    git(&repository, &["config", "--unset", "credential.helper"]);
 
     git(
         &repository,

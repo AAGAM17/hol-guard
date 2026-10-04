@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,7 +47,7 @@ def prepare_workspace_policy(
             )
             no_publication_error = last_error is None or (isinstance(last_error, str) and not last_error.strip())
             if callable(wait_until_ready) and (transient_publication_error or no_publication_error):
-                readiness_deadline = owner.time.monotonic() + owner._NATIVE_POLICY_READY_TIMEOUT_SECONDS
+                readiness_deadline = time.monotonic() + owner._NATIVE_POLICY_READY_TIMEOUT_SECONDS
                 if deadline is not None:
                     readiness_deadline = min(readiness_deadline, deadline)
                 _ = wait_until_ready(readiness_deadline)

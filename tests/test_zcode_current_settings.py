@@ -144,6 +144,7 @@ def test_reinstall_recovers_invalid_install_state(tmp_path, contents):
         {"value": True},
         {"present": "yes", "value": True},
         {"present": True, "value": "yes"},
+        {"present": True, "value": None},
     ],
 )
 @pytest.mark.parametrize("reinstall", [True, False])

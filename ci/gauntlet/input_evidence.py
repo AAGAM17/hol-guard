@@ -94,7 +94,7 @@ def input_matches(tool: str, executed: dict, reviewed: dict) -> bool:
     return actual == enriched
 
 
-def post_input_matches(tool: str, reviewed: dict, completed: dict) -> bool:
+def post_input_matches(tool: str, reviewed: dict[str, Any], completed: dict[str, Any]) -> bool:
     """Bind resolved read paths without accepting a different target or read options."""
     if reviewed == completed:
         return True

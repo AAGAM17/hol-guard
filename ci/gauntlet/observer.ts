@@ -26,7 +26,16 @@ function isGuard(input: RequestInfo | URL): boolean {
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   if (!isGuard(input)) return actualFetch(input, init);
   const started = performance.now();
-  const response = await actualFetch(input, init);
+  let response: Response;
+  try {
+    response = await actualFetch(input, init);
+  } catch (error) {
+    record({
+      transport_error: true,
+      elapsed_ms: Math.round((performance.now() - started) * 1000) / 1000,
+    });
+    throw error;
+  }
   try {
     const request = JSON.parse(typeof init?.body === "string" ? init.body : "{}");
     const body = await response.clone().json();
@@ -46,7 +55,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promis
       elapsed_ms: Math.round((performance.now() - started) * 1000) / 1000,
     });
   } catch {
-    record({ observer_error: true });
+    record({ observer_error: true, elapsed_ms: Math.round((performance.now() - started) * 1000) / 1000 });
   }
   return response;
 }) as typeof fetch;

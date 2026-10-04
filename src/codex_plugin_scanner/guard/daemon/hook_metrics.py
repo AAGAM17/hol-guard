@@ -23,11 +23,11 @@ SIZE_BUCKETS = (
     (5 * 1024 * 1024, "1m-5m"),
 )
 _MAX_COUNTER_KEYS = 256
-_HARNESSES = {"pi", "omp", "codex", "claude-code", "cursor", "opencode"}
+_HARNESSES = {"pi", "omp", "codex", "claude-code", "cursor", "opencode", "grok", "zcode"}
 _DECISIONS = {"allow", "deny", "ask", "block", "warn", "error"}
 _CACHE_STATUSES = {"hit", "miss", "bypass", "disabled", "error"}
 _FALLBACK_KINDS = {"none", "fail_closed", "local", "cache", "error"}
-_EVENTS = {"pretooluse", "posttooluse", "permissionrequest", "userpromptsubmit"}
+_EVENTS = {"pretooluse", "posttooluse", "permissionrequest", "userpromptsubmit", "sessionstart", "subagentstart"}
 _ROUTES = {"native_resident", "native_oneshot", "native_fail_safe", "native_degraded", "python_semantic"}
 
 
@@ -164,6 +164,9 @@ class HookMetricsRecorder:
                 ),
                 "latency_p95_ms": round(
                     sorted(self._latencies)[int(len(self._latencies) * 0.95)] if self._latencies else 0.0, 2
+                ),
+                "latency_p99_ms": round(
+                    sorted(self._latencies)[int(len(self._latencies) * 0.99)] if self._latencies else 0.0, 2
                 ),
                 "total_decisions": len(self._latencies),
                 "routes": dict(self._routes),

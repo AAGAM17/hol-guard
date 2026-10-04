@@ -431,6 +431,8 @@ def _to_native(daemon_response: dict[str, object], event_name: str) -> tuple[str
 
 
 def _failure_payload(event_name: str, reason: str) -> tuple[dict[str, object], int]:
+    if HARNESS == "grok" and _compact(event_name) in _GROK_OBSERVE_EVENTS:
+        return {}, 0
     # Local configuration cannot authenticate the mode of an unavailable evaluator.
     prompt_event = _compact(event_name) in {"userpromptsubmit", "userpromptsubmitted"}
     if prompt_event:
@@ -617,6 +619,10 @@ def _post_hook(input_text: str) -> tuple[str, str, int] | None:
     host, port, token = auth
     url = _loopback_url(host, port, f"/v1/hooks/{HARNESS}")
     timeout = min(float(TIMEOUT_SECONDS) * 0.5, 5.0, _HOOK_DEADLINE_MONOTONIC - time.monotonic())
+    if HARNESS == "grok" and _compact(_event_name(input_text)) in _GROK_OBSERVE_EVENTS:
+        # Grok ignores lifecycle enforcement decisions and kills hooks at 15s.
+        # Observations must not hold up a session on an unavailable daemon.
+        timeout = min(timeout, 1.0)
     if timeout <= 0:
         return None
     parsed = _http_json(url, token, data=input_text.encode("utf-8"), timeout=timeout)

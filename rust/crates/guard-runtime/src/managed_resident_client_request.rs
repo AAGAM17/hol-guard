@@ -121,11 +121,14 @@ pub(super) fn client_request_with_deadline(
         client_lease,
         &mut last_failure,
     )
-    .map_err(|error| match last_failure {
-        Some(cause) if !crate::resident_protocol::is_registered_error_code(&error) => {
-            format!("{error};previous={cause}")
+    .inspect_err(|_| {
+        if let Some(cause) = last_failure.as_deref() {
+            // Keep the finite wire error vocabulary unchanged. The native CLI
+            // exposes this bounded diagnostic separately on stderr, followed
+            // by the original registered failure from main(). No request data
+            // or filesystem paths are included.
+            eprintln!("native_resident_recovery_previous_failure={cause}");
         }
-        _ => error,
     })
 }
 

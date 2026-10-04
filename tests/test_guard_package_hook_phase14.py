@@ -315,12 +315,19 @@ def test_phase14_guard_hook_enriches_package_contract_for_managed_harnesses(
         assert output["decision"] == "block"
     else:
         assert output["artifact_type"] == "package_request"
-        assert output["policy_action"] == "block"
-        assert output["supply_chain_evaluation"]["decision"] == "block"
-        assert output["approval_requests"] == []
-        assert output.get("terminal") is True
-        assert output.get("terminal_action") == "block"
-    assert pending == []
+        assert output["policy_action"] == "require-reapproval"
+        assert output["supply_chain_evaluation"]["decision"] == "ask"
+        assert output["supply_chain_evaluation"]["matched_rule_id"] == "policy-review-1"
+        assert output["approval_requests"]
+        assert output.get("terminal") is not True
+        assert output.get("terminal_action") is None
+    assert pending
+    assert pending[0]["artifact_type"] == "package_request"
+    assert pending[0]["action_envelope_json"]["package_manager"] == "npm"
+    assert pending[0]["action_envelope_json"]["package_name"] == "minimist"
+    assert pending[0]["action_envelope_json"]["package_intent_kind"] == "install"
+    assert pending[0]["action_envelope_json"]["package_targets"] == ["minimist@1.2.8"]
+    assert pending[0]["action_envelope_json"]["pre_execution_result"] == "require-reapproval"
 
 
 @pytest.mark.usefixtures("native_hook_force")

@@ -187,8 +187,7 @@ impl CommandCatalog {
                     .or_insert(permission_index);
             }
             for capability in &permission.typed_capabilities {
-                permission_by_capability
-                    .insert(capability.trim().to_lowercase(), permission_index);
+                permission_by_capability.insert(capability.trim().to_lowercase(), permission_index);
             }
         }
 

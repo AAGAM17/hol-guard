@@ -6,6 +6,7 @@ import ctypes
 import os
 import secrets
 from pathlib import Path
+from typing import ClassVar
 
 _DELETE = 0x00010000
 _FILE_ATTRIBUTE_NORMAL = 0x00000080
@@ -33,7 +34,7 @@ class _FileAttributeTagInfo(ctypes.Structure):
 
 
 class _FileRenameMode(ctypes.Union):
-    _fields_ = [("replace_if_exists", ctypes.c_ubyte), ("flags", ctypes.c_uint32)]
+    _fields_: ClassVar[list[tuple[str, type]]] = [("replace_if_exists", ctypes.c_ubyte), ("flags", ctypes.c_uint32)]
 
 
 class _FileRenameInfo(ctypes.Structure):
@@ -47,7 +48,7 @@ class _FileRenameInfo(ctypes.Structure):
 
 
 class _IoStatusValue(ctypes.Union):
-    _fields_ = [("status", ctypes.c_long), ("pointer", ctypes.c_void_p)]
+    _fields_: ClassVar[list[tuple[str, type]]] = [("status", ctypes.c_long), ("pointer", ctypes.c_void_p)]
 
 
 class _IoStatusBlock(ctypes.Structure):

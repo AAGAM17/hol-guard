@@ -284,7 +284,7 @@ async function pollApprovalResolution(
     try {
       const response = await fetch(`http://127.0.0.1:${connection.port}${pollPath}`, {
         method: 'GET',
-        headers: { 'X-Guard-Token': connection.authToken, 'Connection': 'close' },
+        headers: { 'X-Guard-Token': connection.authToken },
         signal: controller?.signal,
       });
       if (signal?.aborted || !continuationIsActive(activity)) return 'aborted';

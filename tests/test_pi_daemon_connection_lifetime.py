@@ -21,6 +21,7 @@ def test_current_daemon_review_declares_one_request_per_connection(harness, disp
     assert "body: daemonPayload," in request
     assert "signal: controller?.signal," in request
     assert request.count("'Connection':") == 1
+    assert "headers: { 'X-Guard-Token': connection.authToken, 'Connection': 'close' }," in source
 
 
 @pytest.mark.parametrize("harness", ["pi", "omp"])

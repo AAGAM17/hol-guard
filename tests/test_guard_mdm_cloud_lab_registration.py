@@ -64,7 +64,10 @@ def test_workflow_runs_focused_docker_and_security_gates_with_pinned_actions() -
     assert "down --volumes --remove-orphans" in workflow
     uses = re.findall(r"uses:\s*([^\s]+)", workflow)
     assert uses
-    assert all("@" in value and len(value.rsplit("@", 1)[1]) == 40 for value in uses)
+    local = [value for value in uses if value.startswith("./")]
+    assert local == ["./.github/actions/stage-command-projections"]
+    remote = [value for value in uses if not value.startswith("./")]
+    assert all("@" in value and len(value.rsplit("@", 1)[1]) == 40 for value in remote)
 
 
 def test_report_schema_accepts_only_bounded_honest_result_shape() -> None:

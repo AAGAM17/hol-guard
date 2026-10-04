@@ -102,6 +102,11 @@ def exercise(root: Path, target: Path, results: list[dict[str, object]]) -> None
         CARGO_PROFILE_DEV_INCREMENTAL="false",
     )
     compiler = target / "debug" / ("guard-command-source.exe" if os.name == "nt" else "guard-command-source")
+    # This checkout intentionally changes authored sources. Packaging must use
+    # its rebuilt compiler, never an inherited parent-checkout compiler. Keep
+    # temporary compiler paths out of the caller's workflow environment.
+    env["HOL_GUARD_BUILD_SOURCE_COMPILER"] = str(compiler)
+    env.pop("GITHUB_ENV", None)
     build_command = [
         "cargo",
         "+1.88.0",
@@ -337,7 +342,7 @@ def main() -> int:
     failure = None
     target = args.target_dir.resolve()
     with tempfile.TemporaryDirectory(prefix="guard-fixture-acceptance-") as temporary:
-        checkout = Path(temporary) / "checkout"
+        checkout = Path(temporary).resolve() / "checkout"
         subprocess.run(["git", "worktree", "add", "--detach", str(checkout), "HEAD"], cwd=ROOT, check=True)
         try:
             exercise(checkout, target, results)

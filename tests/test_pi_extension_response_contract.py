@@ -207,6 +207,26 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
     assert directory_handler["preserved"] is True
     assert "guard_source_ref" not in directory_handler["payload"]
     assert directory_handler["payload"]["tool_input"] == {"path": str(tmp_path / "workspace")}
+
+    selector_directory_handler = _run_generated_callback_payload(
+        source,
+        content,
+        {
+            "decision": "allow",
+            "model_output_action": "allow_original",
+            "reviewed_output_sha256": digest,
+        },
+        tool_name="read",
+        tool_input={"path": f"{tmp_path / 'workspace'}:1-5"},
+        details={
+            "isDirectory": True,
+            "resolvedPath": str(tmp_path / "workspace"),
+            "meta": {"source": {"type": "path", "value": str(tmp_path / "workspace")}},
+        },
+    )
+    assert selector_directory_handler["preserved"] is True
+    assert selector_directory_handler["payload"]["tool_input"] == {"path": f"{tmp_path / 'workspace'}:1-5"}
+
     assert regular_handler["preserved"] is True
     assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
 

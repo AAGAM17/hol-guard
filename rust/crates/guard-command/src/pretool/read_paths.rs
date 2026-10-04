@@ -106,20 +106,8 @@ fn bounded_omp_directory_read_target_without_selector(
     if path.starts_with('~') && expand_home_read_path(path, home_dir).is_none() {
         return false;
     }
-    let expanded = expand_home_read_path(path, home_dir).unwrap_or_else(|| path.to_owned());
-    let expanded_path = std::path::Path::new(&expanded);
-    let candidate = if expanded_path.is_absolute() {
-        expanded_path.to_path_buf()
-    } else {
-        let Some(root) = cwd
-            .and_then(|root| {
-                expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))
-            })
-            .filter(|root| std::path::Path::new(root).is_absolute())
-        else {
-            return false;
-        };
-        std::path::Path::new(&root).join(expanded_path)
+    let Some(candidate) = verified_selector_candidate(path, home_dir, cwd) else {
+        return false;
     };
     if !candidate.is_absolute() || guard_secure_fs::contains_symlink_component(&candidate) {
         return false;
@@ -225,20 +213,8 @@ fn bounded_existing_file_read_target(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
-    let expanded = expand_home_read_path(value, home_dir).unwrap_or_else(|| value.to_owned());
-    let path = std::path::Path::new(&expanded);
-    let candidate = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        let Some(root) = cwd
-            .and_then(|root| {
-                expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))
-            })
-            .filter(|root| std::path::Path::new(root).is_absolute())
-        else {
-            return false;
-        };
-        std::path::Path::new(&root).join(path)
+    let Some(candidate) = verified_selector_candidate(value, home_dir, cwd) else {
+        return false;
     };
     if guard_secure_fs::contains_symlink_component(&candidate) {
         return false;
@@ -248,6 +224,35 @@ fn bounded_existing_file_read_target(
     };
     canonical.is_file()
         && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true)
+}
+
+/// Resolve selector targets through the verified context roots first. macOS
+/// exposes `/tmp` as a symlink to `/private/tmp`; that trusted system alias
+/// must not make an ordinary OMP selector look like an untrusted path. Any
+/// symlink remaining below the canonical home/cwd roots is still rejected.
+fn verified_selector_candidate(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> Option<std::path::PathBuf> {
+    let expanded = expand_home_read_path(value, home_dir).unwrap_or_else(|| value.to_owned());
+    let expanded_path = std::path::Path::new(&expanded);
+    if expanded_path.is_absolute() {
+        for root in [home_dir, cwd].into_iter().flatten() {
+            let root = expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))?;
+            let root_path = std::path::Path::new(&root);
+            let Ok(relative) = expanded_path.strip_prefix(root_path) else {
+                continue;
+            };
+            let canonical_root = std::fs::canonicalize(root_path).ok()?;
+            return Some(canonical_root.join(relative));
+        }
+        return Some(expanded_path.to_path_buf());
+    }
+    let root = cwd
+        .and_then(|root| expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned())))
+        .filter(|root| std::path::Path::new(root).is_absolute())?;
+    Some(std::fs::canonicalize(root).ok()?.join(expanded_path))
 }
 
 pub(super) fn existing_regular_read_target(

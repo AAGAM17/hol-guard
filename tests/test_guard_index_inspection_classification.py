@@ -213,7 +213,7 @@ def test_unproven_cached_diff_variants_are_owned(tmp_path: Path, command: str) -
 
 @pytest.mark.parametrize(
     ("command", "expected_status"),
-    (("git diff -- --cached", "review"), ("git diff -- --staged", "no_match")),
+    (("git diff -- --cached", "review"), ("git diff -- --staged", "review")),
 )
 def test_pathspec_index_flag_names_are_not_owned(
     tmp_path: Path, command: str, expected_status: str

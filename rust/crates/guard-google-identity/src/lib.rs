@@ -25,6 +25,7 @@ pub enum IdentityError {
     Invalid,
     Expired,
     KeyFetchUnavailable,
+    ExchangeUnavailable,
 }
 
 // No Clone, Debug or serialization: challenge/key material belongs to the

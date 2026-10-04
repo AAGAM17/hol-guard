@@ -53,11 +53,14 @@ diagnostic text is redacted. Currentness is bounded by fresh login evidence;
 refresh, durable enrollment and renewal are not implemented. Presence of a
 refresh token does not prove a successful refresh or offline protection.
 Pending client secret, state, PKCE verifier, authorization URL and native callback
-code are zeroizing buffers; the registered secret enters the SDK only after
-callback admission. Parsed ID/access/refresh fields are explicitly wiped on
-response drop using the SDK's supported ownership API. SDK request construction,
-partial decoding and TLS may retain transient copies that this library cannot
-guarantee to erase. These cleanup controls do not prove service isolation or
+code are zeroizing buffers. The OAuth SDK supplies authorization URL, state and
+PKCE generation. The fixed native code exchange uses its form encoder and owns
+request/response buffers; successful decoded ID/access/refresh fields are
+zeroizing even when another field subsequently fails decoding. Credentials move
+into retention without copying. Transport failures, HTTP 429 and server failures
+return `ExchangeUnavailable`; refused or malformed grants return `Invalid`.
+TLS, HTTP internals and JSON decoder scratch allocations may retain transient
+copies that this library cannot guarantee to erase. These cleanup controls do not prove service isolation or
 whole-process memory erasure.
 
 No worker is launched, account is granted, credential is saved, Gmail action is

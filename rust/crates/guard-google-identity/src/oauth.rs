@@ -2,43 +2,27 @@
 //! export, account enrollment, custody proof or execution authority is added.
 
 use super::{bounded_ascii, now, GoogleIdentityEvidence, GoogleLoginChallenge, IdentityError};
-use oauth2::basic::{
-    BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse,
-    BasicTokenType,
-};
+use oauth2::basic::{BasicClient, BasicTokenType};
 use oauth2::{
-    AccessToken, AuthType, AuthUrl, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken,
-    EndpointNotSet, EndpointSet, HttpRequest, HttpResponse, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, RefreshToken, Scope, StandardRevocableToken, TokenResponse, TokenUrl,
+    AuthUrl, ClientId, CsrfToken, HttpRequest, HttpResponse, PkceCodeChallenge, RedirectUrl, Scope,
 };
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
+use std::io::Read;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 const AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const SEND_SCOPE: &str = "https://www.googleapis.com/auth/gmail.send";
 
-type RegisteredClient = Client<
-    BasicErrorResponse,
-    GoogleTokenResponse,
-    BasicTokenIntrospectionResponse,
-    StandardRevocableToken,
-    BasicRevocationErrorResponse,
-    EndpointSet,
-    EndpointNotSet,
-    EndpointNotSet,
-    EndpointNotSet,
-    EndpointSet,
->;
-
 /// Configuration must come from the authenticated worker, not callback/tool
 /// arguments. The client session binding is owned by that worker's authorized
 /// client session and must be re-derived from the authenticated callback session.
 pub struct GoogleSendAuthorization {
-    client: RegisteredClient,
+    client_id: ClientId,
+    redirect: RedirectUrl,
     client_secret: Zeroizing<String>,
     challenge: GoogleLoginChallenge,
     state: Zeroizing<String>,
@@ -100,13 +84,12 @@ impl GoogleSendAuthorization {
         {
             return Err(IdentityError::Invalid);
         }
-        let client = Client::new(ClientId::new(challenge.client_id.clone()))
-            .set_auth_type(AuthType::RequestBody)
+        let client_id = ClientId::new(challenge.client_id.clone());
+        let client = BasicClient::new(client_id.clone())
             .set_auth_uri(
                 AuthUrl::new(AUTHORIZE_URL.to_owned()).map_err(|_| IdentityError::Invalid)?,
             )
-            .set_token_uri(TokenUrl::new(TOKEN_URL.to_owned()).map_err(|_| IdentityError::Invalid)?)
-            .set_redirect_uri(redirect);
+            .set_redirect_uri(redirect.clone());
         let (pkce, verifier) = PkceCodeChallenge::new_random_sha256();
         let (url, state) = client
             .authorize_url(CsrfToken::new_random)
@@ -119,7 +102,8 @@ impl GoogleSendAuthorization {
             .add_extra_param("prompt", "select_account consent")
             .url();
         Ok(Self {
-            client,
+            client_id,
+            redirect,
             client_secret,
             challenge,
             state: Zeroizing::new(state.into_secret()),
@@ -177,19 +161,40 @@ impl GoogleSendAuthorization {
             wall: now()?,
             monotonic: Instant::now(),
         };
-        // The registered secret stays zeroizing in the pending session. The
-        // SDK needs transient owned copies while constructing this request;
-        // it does not provide zeroization for those internal allocations.
-        let client = self
-            .client
-            .set_client_secret(ClientSecret::new(self.client_secret.to_string()));
-        let response = client
-            .exchange_code(AuthorizationCode::new(code.to_string()))
-            .set_pkce_verifier(PkceCodeVerifier::new(self.verifier.to_string()))
-            .request(&transport)
-            .map_err(|_| IdentityError::Invalid)?;
+        // Own the fixed exchange and its decoder so temporary credential
+        // buffers never pass through the SDK's non-zeroizing response parser.
+        let body = oauth2::url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs([
+                ("grant_type", "authorization_code"),
+                ("code", code.as_str()),
+                ("client_id", self.client_id.as_str()),
+                ("client_secret", self.client_secret.as_str()),
+                ("redirect_uri", self.redirect.url().as_str()),
+                ("code_verifier", self.verifier.as_str()),
+            ])
+            .finish()
+            .into_bytes();
+        let mut request = HttpRequest::new(body);
+        *request.method_mut() = oauth2::http::Method::POST;
+        *request.uri_mut() = oauth2::http::Uri::from_static(TOKEN_URL);
+        request.headers_mut().insert(
+            "content-type",
+            oauth2::http::HeaderValue::from_static("application/x-www-form-urlencoded"),
+        );
+        let response = transport(request).map_err(|_| IdentityError::ExchangeUnavailable)?;
+        let status = response.status();
+        let json = json_media_type(response.headers());
+        let bytes = Zeroizing::new(response.into_body());
+        if status.is_server_error() || status.as_u16() == 429 {
+            return Err(IdentityError::ExchangeUnavailable);
+        }
+        if status.as_u16() != 200 || !json || bytes.len() > 64 * 1024 {
+            return Err(IdentityError::Invalid);
+        }
+        let response: GoogleTokenResponse =
+            serde_json::from_slice(&bytes).map_err(|_| IdentityError::Invalid)?;
         if response.token_type != BasicTokenType::Bearer
-            || !bounded_ascii(response.access_token.secret(), 8192)
+            || !bounded_ascii(&response.access_token, 8192)
             || !bounded_ascii(&response.id_token, super::MAX_TOKEN)
             || response.expires_in == 0
             || response.expires_in > 3600
@@ -205,17 +210,13 @@ impl GoogleSendAuthorization {
             || response
                 .refresh_token
                 .as_ref()
-                .is_some_and(|token| !bounded_ascii(token.secret(), 8192))
+                .is_some_and(|token| !bounded_ascii(token, 8192))
         {
             return Err(IdentityError::Invalid);
         }
         let received_at = now()?;
         self.challenge.check_time(received_at)?;
-        let identity = verify_identity(
-            self.challenge,
-            &response.id_token,
-            response.access_token.secret(),
-        )?;
+        let identity = verify_identity(self.challenge, &response.id_token, &response.access_token)?;
         // Google verification may fetch keys; both clocks are checked again.
         let observed = now()?;
         let (expires_at, expires_monotonic) = credential_deadline(
@@ -227,11 +228,8 @@ impl GoogleSendAuthorization {
             Instant::now(),
         )?;
         Ok(GoogleSendCredential {
-            access_token: Zeroizing::new(response.access_token.secret().to_owned()),
-            refresh_token: response
-                .refresh_token
-                .as_ref()
-                .map(|value| Zeroizing::new(value.secret().to_owned())),
+            access_token: response.access_token,
+            refresh_token: response.refresh_token,
             identity,
             expires_at,
             expires_monotonic,
@@ -288,24 +286,25 @@ fn valid_session_binding(value: &str) -> bool {
 // serialization can expose its code/token material through generic utilities.
 #[derive(Deserialize)]
 struct GoogleTokenResponse {
-    access_token: AccessToken,
+    #[serde(deserialize_with = "secret_string")]
+    access_token: Zeroizing<String>,
     #[serde(deserialize_with = "bearer_type")]
     token_type: BasicTokenType,
     expires_in: u64,
-    refresh_token: Option<RefreshToken>,
+    #[serde(default, deserialize_with = "optional_secret_string")]
+    refresh_token: Option<Zeroizing<String>>,
     #[serde(rename = "scope", deserialize_with = "granted_scopes")]
     scopes: Vec<Scope>,
-    id_token: String,
+    #[serde(deserialize_with = "secret_string")]
+    id_token: Zeroizing<String>,
 }
-impl Drop for GoogleTokenResponse {
-    fn drop(&mut self) {
-        self.id_token.zeroize();
-        let access = std::mem::replace(&mut self.access_token, AccessToken::new(String::new()));
-        drop(Zeroizing::new(access.into_secret()));
-        if let Some(refresh) = self.refresh_token.take() {
-            drop(Zeroizing::new(refresh.into_secret()));
-        }
-    }
+fn secret_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Zeroizing<String>, D::Error> {
+    String::deserialize(d).map(Zeroizing::new)
+}
+fn optional_secret_string<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Zeroizing<String>>, D::Error> {
+    Option::<String>::deserialize(d).map(|value| value.map(Zeroizing::new))
 }
 impl fmt::Debug for GoogleTokenResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -317,24 +316,6 @@ impl Serialize for GoogleTokenResponse {
         Err(serde::ser::Error::custom(
             "credential serialization disabled",
         ))
-    }
-}
-impl TokenResponse for GoogleTokenResponse {
-    type TokenType = BasicTokenType;
-    fn access_token(&self) -> &AccessToken {
-        &self.access_token
-    }
-    fn token_type(&self) -> &BasicTokenType {
-        &self.token_type
-    }
-    fn expires_in(&self) -> Option<Duration> {
-        Some(Duration::from_secs(self.expires_in))
-    }
-    fn refresh_token(&self) -> Option<&RefreshToken> {
-        self.refresh_token.as_ref()
-    }
-    fn scopes(&self) -> Option<&Vec<Scope>> {
-        Some(&self.scopes)
     }
 }
 fn bearer_type<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BasicTokenType, D::Error> {
@@ -374,6 +355,7 @@ fn token_agent() -> &'static ureq::Agent {
     AGENT.get_or_init(|| {
         let config = ureq::Agent::config_builder()
             .https_only(true)
+            .http_status_as_error(false)
             .proxy(None)
             .max_redirects(0)
             .max_response_header_size(16 * 1024)
@@ -396,31 +378,43 @@ fn json_media_type(headers: &oauth2::http::HeaderMap) -> bool {
 }
 
 fn exchange_http(request: HttpRequest) -> Result<HttpResponse, ExchangeTransportError> {
-    if request.method() != "POST" || *request.uri() != TOKEN_URL || request.body().len() > 16 * 1024
-    {
+    let valid = request.method() == "POST" && *request.uri() == TOKEN_URL;
+    let body = Zeroizing::new(request.into_body());
+    if !valid || body.len() > 16 * 1024 {
         return Err(ExchangeTransportError);
     }
-    let body = Zeroizing::new(request.into_body());
     let mut response = token_agent()
         .post(TOKEN_URL)
         .header("content-type", "application/x-www-form-urlencoded")
         .header("accept", "application/json")
         .send(body.as_slice())
         .map_err(|_| ExchangeTransportError)?;
-    if response.status().as_u16() != 200 || !json_media_type(response.headers()) {
-        return Err(ExchangeTransportError);
+    let status = response.status();
+    if status.as_u16() != 200 {
+        let mut result = HttpResponse::new(Vec::new());
+        *result.status_mut() = status;
+        return Ok(result);
     }
-    let bytes = response
+    if !json_media_type(response.headers()) {
+        return Ok(HttpResponse::new(Vec::new()));
+    }
+    let mut bytes = Zeroizing::new(Vec::new());
+    response
         .body_mut()
-        .with_config()
-        .limit(64 * 1024)
-        .read_to_vec()
+        .as_reader()
+        .take(64 * 1024 + 1)
+        .read_to_end(&mut bytes)
         .map_err(|_| ExchangeTransportError)?;
-    oauth2::http::Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(bytes)
-        .map_err(|_| ExchangeTransportError)
+    if bytes.len() > 64 * 1024 {
+        return Ok(HttpResponse::new(Vec::new()));
+    }
+    // Transfer allocation ownership directly to the native zeroizing decoder.
+    let mut result = HttpResponse::new(std::mem::take(&mut *bytes));
+    result.headers_mut().insert(
+        "content-type",
+        oauth2::http::HeaderValue::from_static("application/json"),
+    );
+    Ok(result)
 }
 
 #[cfg(test)]

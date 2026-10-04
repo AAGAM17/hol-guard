@@ -116,6 +116,59 @@ fn wrong_state_session_code_or_expired_challenge_has_zero_exchange_calls() {
 }
 
 #[test]
+fn exchange_outages_are_distinct_from_refused_or_malformed_grants() {
+    for status in [400, 401, 429, 500, 503] {
+        let session = session();
+        let state = session.state.to_string();
+        let result = session.complete_with(
+            &state,
+            "synthetic-code".into(),
+            &binding(),
+            |_| {
+                let mut response = HttpResponse::new(b"private provider diagnostic".to_vec());
+                *response.status_mut() = oauth2::http::StatusCode::from_u16(status).unwrap();
+                Ok::<_, ExchangeTransportError>(response)
+            },
+            |_, _, _| panic!("failed exchange must not admit identity"),
+        );
+        let expected = if status == 429 || status >= 500 {
+            IdentityError::ExchangeUnavailable
+        } else {
+            IdentityError::Invalid
+        };
+        assert_eq!(result.err(), Some(expected));
+    }
+    let session = session();
+    let state = session.state.to_string();
+    assert_eq!(
+        session
+            .complete_with(
+                &state,
+                "synthetic-code".into(),
+                &binding(),
+                |_| Err(ExchangeTransportError),
+                verify
+            )
+            .err(),
+        Some(IdentityError::ExchangeUnavailable)
+    );
+    let session = self::session();
+    let state = session.state.to_string();
+    assert_eq!(
+        session
+            .complete_with(
+                &state,
+                "synthetic-code".into(),
+                &binding(),
+                |_| Ok::<_, ExchangeTransportError>(http_response(&json!({}))),
+                verify
+            )
+            .err(),
+        Some(IdentityError::Invalid)
+    );
+}
+
+#[test]
 fn code_exchange_uses_owned_verifier_registered_redirect_and_secret() {
     let session = session();
     let expected_verifier = session.verifier.to_string();

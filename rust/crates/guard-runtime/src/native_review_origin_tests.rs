@@ -164,10 +164,6 @@ fn private_request_loading_rejects_forged_origin_and_preserves_legacy_review() {
     key.write_all(&key_bytes).unwrap();
     drop(key);
     let store = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
-    let snapshot = crate::policy_store::signed_snapshot_for_test(1, &key_bytes, &root);
-    store
-        .push(&json!({"schema": "guard-policy-snapshot-push.v1", "snapshot": snapshot}))
-        .unwrap();
     let directory = crate::resident_state::ensure_private_directory(
         &root.join("workspace-review-requests"),
         true,
@@ -194,6 +190,22 @@ fn private_request_loading_rejects_forged_origin_and_preserves_legacy_review() {
     };
     write(&state);
     super::super::workspace_review_request::load(&store, "request-1").unwrap();
+    assert_eq!(
+        super::super::workspace_review_decision::verify_and_claim_request(
+            &store,
+            "request-1",
+            &json!({}),
+        )
+        .unwrap_err(),
+        "native_policy_snapshot_missing"
+    );
+    // Also cover loading after ordinary policy admission, preserving the
+    // bot-added fixture while checking the missing-policy boundary first.
+    let snapshot = super::super::tests::signed_snapshot(1, &key_bytes, &root);
+    store
+        .push(&json!({"schema":"guard-policy-snapshot-push.v1", "snapshot":snapshot}))
+        .unwrap();
+    super::super::workspace_review_request::load(&store, "request-1").unwrap();
     state["action"]["action_envelope"]["native_origin_receipt"]["request_digest"] =
         json!("c".repeat(64));
     write(&state);
@@ -205,14 +217,5 @@ fn private_request_loading_rejects_forged_origin_and_preserves_legacy_review() {
     write(&state);
     // Historical business requests stay reviewable. Absence cannot become retry authority.
     super::super::workspace_review_request::load(&store, "request-1").unwrap();
-    assert_eq!(
-        super::super::workspace_review_decision::verify_and_claim_request(
-            &store,
-            "request-1",
-            &json!({}),
-        )
-        .unwrap_err(),
-        "native_policy_snapshot_missing"
-    );
     std::fs::remove_dir_all(root).unwrap();
 }

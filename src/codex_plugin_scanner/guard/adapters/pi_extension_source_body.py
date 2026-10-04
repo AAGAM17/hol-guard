@@ -221,7 +221,8 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "  }\n"
         "}\n"
         "\n"
-        "const GUARD_DAEMON_READINESS_TIMEOUT_MS = 25_000;\n"
+        "const GUARD_DAEMON_READINESS_TIMEOUT_MS = 26_000;\n"
+        "const GUARD_DAEMON_READINESS_RESPONSE_RESERVE_MS = 1_000;\n"
         "\n"
         "async function daemonWorkspaceReadiness(cwd) {\n"
         "  const deadlineAt = Date.now() + GUARD_DAEMON_READINESS_TIMEOUT_MS;\n"
@@ -242,6 +243,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "  }\n"
         '  if (!connection) return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
         '  if (connection.stateId === null) return { ready: false, reasonCode: "daemon_identity_unavailable" };\n'
+        "  const readinessStateId = connection.stateId;\n"
         '  const workspace = typeof cwd === "string" && cwd ? cwd : process.cwd();\n'
         "  const params = new URLSearchParams({ 'guard-home': GUARD_HOME, workspace });\n"
         "  if (!GUARD_HOME_DIR_IS_DEFAULT && GUARD_HOME_DIR) params.set('home', GUARD_HOME_DIR);\n"
@@ -260,7 +262,11 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "    });\n"
         "    let readiness = {};\n"
         "    try {\n"
-        "      const raw = await boundedResponseText(response, GUARD_TEXT_LIMIT_CHARS, deadlineAt);\n"
+        "      const responseDeadlineAt = Math.max(\n"
+        "        deadlineAt - GUARD_DAEMON_READINESS_RESPONSE_RESERVE_MS,\n"
+        "        Date.now() + 1,\n"
+        "      );\n"
+        "      const raw = await boundedResponseText(response, GUARD_TEXT_LIMIT_CHARS, responseDeadlineAt);\n"
         "      const parsed = raw === null ? null : JSON.parse(raw) as unknown;\n"
         "      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {\n"
         "        readiness = parsed as Record<string, unknown>;\n"
@@ -270,15 +276,18 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "      /^[a-z0-9_]{1,96}$/.test(readiness.reason_code)\n"
         "      ? readiness.reason_code\n"
         "      : `daemon_readiness_http_${response.status}`;\n"
-        "    if (!response.ok || readiness.ready !== true) return { ready: false, reasonCode };\n"
+        "    if (!response.ok || readiness.ready !== true) {\n"
+        "      return { ready: false, reasonCode, daemonStateId: readinessStateId };\n"
+        "    }\n"
         "    if (readiness.native_required === true &&\n"
         "      (readiness.native_route !== 'native_resident' ||\n"
         "        readiness.workspace_acknowledged !== true || readiness.worker_ready !== true)) {\n"
-        '      return { ready: false, reasonCode: "native_readiness_unconfirmed" };\n'
+        '      return { ready: false, reasonCode: "native_readiness_unconfirmed", daemonStateId: readinessStateId };\n'
         "    }\n"
         "    return { ready: true, daemonStateId: connection.stateId };\n"
         "  } catch {\n"
-        '    return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
+        '    return { ready: false, reasonCode: "daemon_readiness_transport_failure", '
+        "daemonStateId: readinessStateId };\n"
         "  } finally {\n"
         "    clearTimeout(timeoutHandle);\n"
         "  }\n"

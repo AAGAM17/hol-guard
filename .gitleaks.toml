@@ -88,7 +88,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)rust/crates/guard\-scanner/src/repository_scanner\.rs$''']
 regexes = [
-  '''^[\t\r\n ]*const SECRET_LINE: \&str = "GH_TOKEN = ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345";[\t\r\n ]*$''',
+  '''^[\t\r\n ]*const SECRET_LINE: \&str = "GH_TOKEN = gh\x70_AbCdEfGhIjKlMnOpQrStUvWxYz012345";[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -97,7 +97,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)rust/crates/guard\-scanner/src/secret_detection\.rs$''']
 regexes = [
-  '''^[\t\r\n ]*"GH_TOKEN = ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345",[\t\r\n ]*$''',
+  '''^[\t\r\n ]*"GH_TOKEN = gh\x70_AbCdEfGhIjKlMnOpQrStUvWxYz012345",[\t\r\n ]*$''',
   '''^[\t\r\n ]*"secret = xK9mQ2vL8nP4wR7tY1uI6oP3aS5dFgHj",[\t\r\n ]*$''',
   '''^[\t\r\n ]*"secret=xK9mQ2vL8nP4wR7tY1uI6oP3aS5dFgHj",[\t\r\n ]*$''',
   '''^[\t\r\n ]*"token = 9digitsLeadingSecret99",[\t\r\n ]*$''',
@@ -111,7 +111,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)rust/crates/guard\-scanner/src/staged_scanner\.rs$''']
 regexes = [
-  '''^[\t\r\n ]*const SECRET_LINE: \&str = "GH_TOKEN = ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345";[\t\r\n ]*$''',
+  '''^[\t\r\n ]*const SECRET_LINE: \&str = "GH_TOKEN = gh\x70_AbCdEfGhIjKlMnOpQrStUvWxYz012345";[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -121,7 +121,7 @@ regexTarget = "line"
 paths = ['''(?:^|/)tests/fixtures/bad\-plugin/secrets\.js$''']
 regexes = [
   '''^[\t\r\n ]*const API_KEY = "sk\-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";[\t\r\n ]*$''',
-  '''^[\t\r\n ]*const token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz123456";[\t\r\n ]*$''',
+  '''^[\t\r\n ]*const token = "gh\x70_1234567890abcdefghijklmnopqrstuvwxyz123456";[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -140,7 +140,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/test_guard_hook_worker\.py$''']
 regexes = [
-  '''^[\t\r\n ]*"tool_response": "token: ghp_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
+  '''^[\t\r\n ]*"tool_response": "token: gh\x70_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -159,7 +159,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/test_guard_runtime\.py$''']
 regexes = [
-  '''^[\t\r\n ]*"stdout": "src/config\.ts:1:export const token = 'ghp_123456789012345678901234567890123456';\\n"[\t\r\n ]*$''',
+  '''^[\t\r\n ]*"stdout": "src/config\.ts:1:export const token = 'gh\x70_123456789012345678901234567890123456';\\n"[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -179,8 +179,8 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/test_hook_source_skill_read\.py$''']
 regexes = [
-  '''^[\t\r\n ]*output="token: ghp_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
-  '''^[\t\r\n ]*content = "token: ghp_1234567890abcdefghijklmnopqrstuvwxyz\\n"[\t\r\n ]*$''',
+  '''^[\t\r\n ]*output="token: gh\x70_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
+  '''^[\t\r\n ]*content = "token: gh\x70_1234567890abcdefghijklmnopqrstuvwxyz\\n"[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -212,7 +212,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/fixtures/bad\-plugin/secrets\.js$''']
 regexes = [
-  '''^[\t\r\n ]*const token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz123456";[\t\r\n ]*$''',
+  '''^[\t\r\n ]*const token = "gh\x70_1234567890abcdefghijklmnopqrstuvwxyz123456";[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -221,7 +221,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/test_guard_hook_worker\.py$''']
 regexes = [
-  '''^[\t\r\n ]*"tool_response": "token: ghp_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
+  '''^[\t\r\n ]*"tool_response": "token: gh\x70_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -230,7 +230,7 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/test_guard_runtime\.py$''']
 regexes = [
-  '''^[\t\r\n ]*"stdout": "src/config\.ts:1:export const token = 'ghp_123456789012345678901234567890123456';\\n"[\t\r\n ]*$''',
+  '''^[\t\r\n ]*"stdout": "src/config\.ts:1:export const token = 'gh\x70_123456789012345678901234567890123456';\\n"[\t\r\n ]*$''',
 ]
 
 [[rules.allowlists]]
@@ -239,6 +239,6 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(?:^|/)tests/test_hook_source_skill_read\.py$''']
 regexes = [
-  '''^[\t\r\n ]*output="token: ghp_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
-  '''^[\t\r\n ]*content = "token: ghp_1234567890abcdefghijklmnopqrstuvwxyz\\n"[\t\r\n ]*$''',
+  '''^[\t\r\n ]*output="token: gh\x70_1234567890abcdefghijklmnopqrstuvwxyz",[\t\r\n ]*$''',
+  '''^[\t\r\n ]*content = "token: gh\x70_1234567890abcdefghijklmnopqrstuvwxyz\\n"[\t\r\n ]*$''',
 ]

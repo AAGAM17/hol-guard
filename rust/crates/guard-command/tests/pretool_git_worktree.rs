@@ -425,6 +425,7 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         root.join(".hol-support/native-worktree"),
         root.join(".agents/native-worktree"),
         root.join(".env"),
+        root.join(".private-worktree"),
     ];
     for (index, destination) in sensitive_destinations.iter().enumerate() {
         let command = format!(

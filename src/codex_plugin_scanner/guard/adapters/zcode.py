@@ -337,20 +337,21 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         if not isinstance(hooks, dict):
             hooks = {}
         payload["hooks"] = hooks
+        enabled_before = {"present": "enabled" in hooks, "value": hooks.get("enabled")}
+        previous_state = json.loads(state_before) if state_before is not None else {}
+        if previous_state.get("managed_config_path") == str(config_path):
+            enabled_before = previous_state.get("hooks_enabled_before", enabled_before)
 
         self._sync_managed_hook_groups(hooks, managed_hook_command)
-        prior_enabled = hooks.get("enabled", _MISSING) if config_path.name == "setting.json" else _MISSING
         if config_path.name == "setting.json":
             hooks["enabled"] = True
         config_mode = config_path.stat().st_mode & 0o777 if config_before is not None else 0o644
         backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else config_mode
         state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o644
-        state: dict[str, object] = {"managed_config_path": str(config_path)}
-        if prior_enabled is not _MISSING:
-            state["prior_hooks_enabled"] = prior_enabled
-        elif config_path.name == "setting.json":
-            state["prior_hooks_enabled_absent"] = True
-        state_after = (json.dumps(state, indent=2) + "\n").encode("utf-8")
+        state_after = (
+            json.dumps({"managed_config_path": str(config_path), "hooks_enabled_before": enabled_before}, indent=2)
+            + "\n"
+        ).encode("utf-8")
         files = (
             *prepared_shim.files,
             *hook_files,
@@ -410,25 +411,34 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         )
         _state_dir, _backup_path, state_path = self._managed_state_paths(context)
         state = _json_payload(state_path) if state_path.is_file() else {}
-        prior_enabled = state.get("prior_hooks_enabled", _MISSING)
-        prior_enabled_absent = state.get("prior_hooks_enabled_absent") is True
         config_path = self._config_path(context)
-        if config_path.is_file():
-            _ensure_path_within_root(self._zcode_home_dir(context), config_path, label="ZCode")
-            payload = _json_payload(config_path)
+        # Migration can copy managed hooks to settings after a legacy install.
+        for candidate in (self._cli_root(context) / "setting.json", self._cli_root(context) / ZCODE_CLI_CONFIG_FILE):
+            if not candidate.is_file():
+                continue
+            _ensure_path_within_root(self._zcode_home_dir(context), candidate, label="ZCode")
+            payload = _json_payload(candidate)
             hooks = payload.get("hooks")
             if isinstance(hooks, dict):
+                hooks_before = json.dumps(hooks, sort_keys=True)
                 self._prune_managed_hook_groups(hooks)
-                if config_path.name == "setting.json":
-                    if prior_enabled is not _MISSING:
-                        hooks["enabled"] = prior_enabled
-                    elif prior_enabled_absent:
+                if json.dumps(hooks, sort_keys=True) == hooks_before:
+                    continue
+                original = state.get("hooks_enabled_before")
+                if (
+                    state.get("managed_config_path") == str(candidate)
+                    and isinstance(original, dict)
+                    and hooks.get("enabled") is True
+                ):
+                    if original.get("present"):
+                        hooks["enabled"] = original.get("value")
+                    else:
                         hooks.pop("enabled", None)
                 if not hooks:
                     payload.pop("hooks", None)
                 else:
                     payload["hooks"] = hooks
-                config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                candidate.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
         if state_path.is_file():
             state_path.unlink()

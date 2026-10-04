@@ -81,8 +81,12 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
     if hook_config is None:
         return False
     if hook_config.get("frozen_launcher") and isolated_cursor_hook_python() is not None:
-        # Migrate frozen launchers when a lightweight interpreter becomes usable.
-        return False
+        from ..adapters.bounded_cli_hook_bridge import _FROZEN_BRIDGE_COMMAND
+
+        argv = _split_hook_command(command, posix=True) or _split_hook_command(command, posix=False)
+        if _FROZEN_BRIDGE_COMMAND in argv:
+            # Plain frozen bridge: migrate to the lightweight client. Desktop proxies are preferred by the installer.
+            return False
     executable = hook_config.get("python_executable")
     cli_args = hook_config.get("cli_args")
     if not isinstance(executable, str) or not executable.strip():

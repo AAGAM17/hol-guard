@@ -467,7 +467,10 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         root.join("custom-hooks").display()
     );
     let hooks_path_result = evaluate(&repository, &enabled, &hooks_path_command);
-    assert_ne!(hooks_path_result.minimum_action, "allow", "{hooks_path_command}");
+    assert_ne!(
+        hooks_path_result.minimum_action, "allow",
+        "{hooks_path_command}"
+    );
 
     let symlink_target = root.join("outside");
     std::fs::create_dir_all(&symlink_target).unwrap();

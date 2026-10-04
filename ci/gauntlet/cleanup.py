@@ -24,6 +24,10 @@ def cleanup_case_resources(daemon: Any, identity: Any, guard_home: Path, private
             diagnostics.append(f"{label}\n{traceback.format_exc()}")
     if failures:
         # Exception messages and paths stay out of public evidence exports.
-        (private / "cleanup-error.txt").write_text("\n".join(diagnostics), encoding="utf-8")
-        return {"cleanup_ok": False, "cleanup_error": type(failures[0]).__name__}
+        result = {"cleanup_ok": False, "cleanup_error": type(failures[0]).__name__}
+        try:
+            (private / "cleanup-error.txt").write_text("\n".join(diagnostics), encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            result["cleanup_diagnostic_error"] = type(exc).__name__
+        return result
     return {"cleanup_ok": True}

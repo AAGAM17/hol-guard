@@ -98,6 +98,23 @@ pub struct SupplyChainEvalRequestV1 {
     /// public target hashes against the private spec.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_private_metadata: Option<Value>,
+    /// Test-only Guard Cloud auth-context override forwarded by
+    /// `supply_chain_eval_native` when `PYTEST_CURRENT_TEST` +
+    /// `HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON` are set. Kept out of the
+    /// `package_authority_decide` request surface; only the discrete
+    /// `supply_chain_eval` op honors it so coverage tests exercise the
+    /// resident's auth-expired / cloud-transport branches hermetically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_auth_context_override: Option<Value>,
+    /// Test-only Guard Cloud entitlement override forwarded by
+    /// `supply_chain_eval_native` when `PYTEST_CURRENT_TEST` +
+    /// `HOL_GUARD_TEST_PACKAGE_ENTITLEMENT_JSON` are set. Lets coverage tests
+    /// exercise the resident's unpaid-entitlement fallback (an expired cloud
+    /// session under `paid_guard_cloud_required` degrades to local bundle
+    /// intelligence rather than fail-closing) without monkeypatching a
+    /// Python-only resolver the resident never runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_entitlement_override: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -7264,6 +7264,30 @@ fn fallback_package_results(
 // Batch F ports — `_evaluate_with_cloud` (:1092-1505) and supporting helpers.
 // ---------------------------------------------------------------------------
 
+/// `_with_additional_reason` (:5102-5119) — result-level variant: append one
+/// reason dict to the evaluation's `reasons` list AND to every package's
+/// `reasons`, mirroring how the Python helper stamps the fallback reason onto
+/// each package so persisted evidence (`details.reasons` reads the package
+/// reasons) carries it.
+fn with_additional_reason_result(
+    mut evaluation: PackageEvalResult,
+    reason: Map<String, Value>,
+) -> PackageEvalResult {
+    evaluation.reasons.push(reason.clone());
+    for package in evaluation.packages.iter_mut() {
+        match package.get_mut("reasons") {
+            Some(Value::Array(existing)) => existing.push(Value::Object(reason.clone())),
+            _ => {
+                package.insert(
+                    "reasons".to_string(),
+                    Value::Array(vec![Value::Object(reason.clone())]),
+                );
+            }
+        }
+    }
+    evaluation
+}
+
 /// `_with_cloud_auth_reconnect_copy` (:1658-1683) — result-level variant:
 /// appends the `hol-guard connect` reconnect prompt to the user copy and
 /// re-normalizes it against the current policy action.
@@ -7509,6 +7533,46 @@ fn evaluate_with_cloud(
     // Resolve auth context + evaluate URL + request payload (:1318-1336).
     let (auth_context, sync_url) = match resolve_guard_sync_context(deps, store, workspace_dir) {
         Ok((ctx, url, _)) => (Value::Object(ctx), url),
+        Err(EvalError::Validation(_)) => {
+            // `GuardSyncAuthorizationExpiredError` (:1196-1220). When the
+            // account is explicitly unpaid and the local fail-closed decision
+            // is not a hard block, an expired sign-in degrades to local-only
+            // (`can_fallback_from_cloud_failure`) and the cached bundle /
+            // heuristic path produces the package decision — the resident just
+            // records a `cloud_auth_error` fallback reason. Otherwise emit a
+            // fail-closed evaluation; an expired sign-in is a credential-state
+            // failure, not a package verdict, so a configured `block` demotes
+            // to `ask` to reach the approval queue.
+            let can_fallback = cloud_protection_is_explicitly_unpaid(&cloud_entitlement)
+                && resolve_fail_closed(deps, store) != "block";
+            if can_fallback {
+                // Keep the `cloud_auth_error` code (evidence contract) but use
+                // the unreachable phrasing: from the operator's seat an expired
+                // sign-in means Guard Cloud could not be reached, which is the
+                // copy the hook surfaces in `permissionDecisionReason`.
+                let reason = cloud_fallback_reason(
+                    "cloud_auth_error",
+                    "Guard cloud evaluation could not be reached, so Guard used local package intelligence.",
+                );
+                return (None, Some(reason));
+            }
+            let mut failure_decision = resolve_cloud_failure_decision(deps, store);
+            if failure_decision == "block" && resolve_fail_closed(deps, store) != "block" {
+                failure_decision = "ask".to_string();
+            }
+            let eval_result = cloud_fail_closed_evaluation_full(
+                deps,
+                "cloud_auth_error",
+                "Guard cloud evaluation was not authorized, so this package request needs review.",
+                artifact,
+                targets,
+                workspace_dir,
+                Some(workspace_fingerprint),
+                bundle_meta,
+                &failure_decision,
+            );
+            return (Some(eval_result), None);
+        }
         Err(_) => (Value::Null, String::new()),
     };
     let evaluate_url = normalized_supply_chain_evaluate_url(deps, &sync_url, workspace_id);
@@ -8170,7 +8234,7 @@ fn evaluate_package_request_artifact_uncached(
             workspace_fingerprint,
         );
         if let Some(reason) = cloud_fallback_reason.as_ref() {
-            fallback.reasons.push(reason.clone());
+            fallback = with_additional_reason_result(fallback, reason.clone());
             if cloud_fallback_requires_reconnect_copy(reason) {
                 fallback = with_cloud_auth_reconnect_copy_result(fallback);
             }
@@ -8316,7 +8380,7 @@ fn evaluate_package_request_artifact_uncached(
         workspace_fingerprint,
     );
     if let Some(reason) = cloud_fallback_reason.as_ref() {
-        result.reasons.push(reason.clone());
+        result = with_additional_reason_result(result, reason.clone());
         if cloud_fallback_requires_reconnect_copy(reason) {
             result = with_cloud_auth_reconnect_copy_result(result);
         }

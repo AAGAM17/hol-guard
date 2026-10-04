@@ -1283,7 +1283,21 @@ impl SupplyChainStore for ResidentSupplyChainStore {
 
 /// Fails closed — resident has no HTTP transport for guard-sync; eval falls
 /// back to local-only exactly like Python `GuardSyncNotConfiguredError`.
-struct ResidentGuardSyncRunner;
+///
+/// `auth_context_override` is a test-only seam: when the originating Python
+/// process is running under pytest (`PYTEST_CURRENT_TEST` set) and exports
+/// `HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON`, `supply_chain_eval_native` forwards
+/// the parsed dict on the request as `sync_auth_context_override`. Two forms:
+///   * `{"sync_url": ..., "access_token": ...}` — used verbatim as the auth
+///     context so the resident reaches the (still stubbed) transport and
+///     surfaces `cloud_http_error` rather than silently degrading;
+///   * `{"error": "authorization_expired"}` — surfaces as
+///     `EvalError::Validation`, which `evaluate_with_cloud` maps to the
+///     `cloud_auth_error` fail-closed path (parity with
+///     `GuardSyncAuthorizationExpiredError`).
+struct ResidentGuardSyncRunner {
+    auth_context_override: Option<Map<String, Value>>,
+}
 
 impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
     fn resolve_guard_sync_auth_context(
@@ -1292,6 +1306,14 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
         _allow_primary_repair: bool,
         _force_refresh: bool,
     ) -> EvalResult<Map<String, Value>> {
+        if let Some(override_ctx) = &self.auth_context_override {
+            if override_ctx.get("error").and_then(Value::as_str) == Some("authorization_expired") {
+                return Err(EvalError::Validation(
+                    "guard sync authorization expired (test override)".into(),
+                ));
+            }
+            return Ok(override_ctx.clone());
+        }
         Err(EvalError::NotFound(
             "guard sync auth context unavailable in resident".into(),
         ))
@@ -2244,6 +2266,11 @@ impl PackageFirewallEntitlementApi for ResidentPackageFirewallEntitlement {
 struct ResidentEntitlementRefresh {
     runner: ResidentRuntimeRunner,
     entitlement_api: ResidentPackageFirewallEntitlement,
+    /// Test-only `package_entitlement_override` forwarded on the request when
+    /// pytest exports `HOL_GUARD_TEST_PACKAGE_ENTITLEMENT_JSON`. Short-circuits
+    /// the store read so the resident exercises the unpaid-entitlement
+    /// fallback hermetically (parity with `_force_unpaid_entitlement`).
+    entitlement_override: Option<Map<String, Value>>,
 }
 
 impl EntitlementRefreshApi for ResidentEntitlementRefresh {
@@ -2251,6 +2278,9 @@ impl EntitlementRefreshApi for ResidentEntitlementRefresh {
         &self,
         store: &dyn SupplyChainStore,
     ) -> EvalResult<Map<String, Value>> {
+        if let Some(override_entitlement) = &self.entitlement_override {
+            return Ok(override_entitlement.clone());
+        }
         let value = resolve_package_firewall_entitlement_with_refresh(
             store,
             &self.runner,
@@ -2299,8 +2329,19 @@ pub struct ResidentEvalDeps {
 
 impl ResidentEvalDeps {
     pub fn new(store_path: &Path, guard_home: &Path) -> Self {
+        Self::with_sync_auth_override(store_path, guard_home, None, None)
+    }
+
+    pub fn with_sync_auth_override(
+        store_path: &Path,
+        guard_home: &Path,
+        auth_context_override: Option<Map<String, Value>>,
+        entitlement_override: Option<Map<String, Value>>,
+    ) -> Self {
         Self {
-            guard_sync: ResidentGuardSyncRunner,
+            guard_sync: ResidentGuardSyncRunner {
+                auth_context_override,
+            },
             lockfile: ResidentLockfileParse,
             bundle: ResidentBundle,
             semver: ResidentSemver,
@@ -2317,6 +2358,7 @@ impl ResidentEvalDeps {
             entitlement: ResidentEntitlementRefresh {
                 runner: ResidentRuntimeRunner,
                 entitlement_api: ResidentPackageFirewallEntitlement,
+                entitlement_override,
             },
             config: ResidentConfigLoader,
         }
@@ -2430,7 +2472,20 @@ pub(crate) fn evaluate_supply_chain_eval(
     let store_path = PathBuf::from(&request.store_path);
     let guard_home = PathBuf::from(&request.guard_home);
     let store = ResidentSupplyChainStore::new(&store_path, &guard_home);
-    let deps_holder = ResidentEvalDeps::new(&store_path, &guard_home);
+    let deps_holder = ResidentEvalDeps::with_sync_auth_override(
+        &store_path,
+        &guard_home,
+        request
+            .sync_auth_context_override
+            .as_ref()
+            .and_then(Value::as_object)
+            .cloned(),
+        request
+            .package_entitlement_override
+            .as_ref()
+            .and_then(Value::as_object)
+            .cloned(),
+    );
     let deps = deps_holder.as_deps();
     let mut artifact = artifact_from_value(&request.artifact);
     if let Some(private) = &request.runtime_private_metadata {

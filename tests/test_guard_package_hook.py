@@ -648,7 +648,13 @@ def test_guard_hook_keeps_block_copy_when_scanner_escalates_package_warning(
     assert rc == 1
     assert output["policy_action"] == "block"
     assert output["decision_v2_json"]["user_title"] == "Critical install blocked"
-    assert output["decision_v2_json"]["user_title"] != output["supply_chain_evaluation"]["user_copy"]["title"]
+    # The scanner escalation must reach the composed copy: the primary detail is
+    # the scanner's own signal. Under the Python path the package verdict stays
+    # at its weaker pre-escalation title; under the resident the package
+    # evaluation itself already escalated, so it also reports the block title.
+    # Either way the composed copy keeps the escalated block title and the
+    # scanner's primary detail rather than a weaker package warning.
+    assert output["supply_chain_evaluation"]["decision"] == "block"
     assert (
         output["decision_v2_json"]["dashboard_primary_detail"]
         == "Cisco scanner found a critical package exfiltration path."

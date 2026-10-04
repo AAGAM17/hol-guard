@@ -5321,6 +5321,14 @@ def _test_sync_auth_context_from_env() -> dict[str, object] | None:
         return None
     if not isinstance(payload, dict):
         return None
+    # Error form: `{"error": "authorization_expired"}` makes the resolver raise
+    # `GuardSyncAuthorizationExpiredError`, mirroring a resident seam where the
+    # same JSON is forwarded as `sync_auth_context_override` and surfaces as
+    # `EvalError::Validation` → `cloud_auth_error` fail-closed.
+    if payload.get("error") == "authorization_expired":
+        raise GuardSyncAuthorizationExpiredError(
+            "Guard authorization expired (test override). Run `hol-guard connect` to sign in again."
+        )
     sync_url = payload.get("sync_url")
     access_token = payload.get("access_token")
     if not isinstance(sync_url, str) or not isinstance(access_token, str):

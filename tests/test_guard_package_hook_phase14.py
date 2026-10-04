@@ -474,17 +474,15 @@ def test_phase14_claude_compatibility_hook_enforces_package_install_without_node
     (guard_home / "config.toml").write_text(
         'approval_wait_timeout_seconds = 0\nblocked_request_mode = "ask"\n', encoding="utf-8"
     )
-    # The fallback runs in a child process, so carry the same test-only auth
-    # context across the process boundary instead of attempting a live refresh.
+    # The fallback runs in a child process, so carry the test-only auth fault
+    # across the process boundary via the env override rather than a Python
+    # monkeypatch (the resident subprocess never executes injected code).
+    # `{"error": "authorization_expired"}` surfaces as
+    # `GuardSyncAuthorizationExpiredError` on the Python path and as
+    # `EvalError::Validation` → `cloud_auth_error` on the resident path.
     monkeypatch.setenv(
         "HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON",
-        json.dumps(
-            {
-                "sync_url": "https://hol.org/api/guard/receipts/sync",
-                "access_token": "demo-token",
-            },
-            separators=(",", ":"),
-        ),
+        json.dumps({"error": "authorization_expired"}, separators=(",", ":")),
     )
 
     adapter = ClaudeCodeHarnessAdapter()
@@ -493,21 +491,6 @@ def test_phase14_claude_compatibility_hook_enforces_package_install_without_node
     fallback_command = bridge_config["fallback_command"]
     assert isinstance(fallback_command, list)
     assert all(isinstance(part, str) for part in fallback_command)
-    # The parent clock/auth fixtures do not cross this real subprocess boundary.
-    # Inject the expired authorization fault rather than contacting OAuth with
-    # demo credentials and depending on a timeout versus rejection response.
-    expired_auth_fixture = (
-        "import codex_plugin_scanner.guard.runtime.supply_chain_package_eval as evaluator\n"
-        "from codex_plugin_scanner.guard.runtime.runner import GuardSyncAuthorizationExpiredError\n"
-        "def expired_auth(*args, **kwargs):\n"
-        "    raise GuardSyncAuthorizationExpiredError('Injected expired authorization')\n"
-        "evaluator._resolve_guard_sync_auth_context = expired_auth\n"
-    )
-    assert "from codex_plugin_scanner.cli import main;" in fallback_command[2]
-    fallback_command[2] = fallback_command[2].replace(
-        "from codex_plugin_scanner.cli import main;",
-        f"exec({expired_auth_fixture!r});from codex_plugin_scanner.cli import main;",
-    )
     event = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Bash",
@@ -528,5 +511,10 @@ def test_phase14_claude_compatibility_hook_enforces_package_install_without_node
     assert result.stderr in ("",) or result.stderr.startswith("HOL Guard intercepted Claude's attempt to use Bash.")
     assert "minimist@1.2.8" in result.stdout
     assert payload["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
-    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "blocked" in payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
+    # `blocked_request_mode="ask"` opts this surface into prompting, so the
+    # expired-sign-in fail-closed decision surfaces as a claude `ask` (the
+    # resident emits `require-reapproval`; `_native_hook_permission_decision`
+    # maps it to `ask` for the claude PreToolUse surface).
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "ask"
+    reason = payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
+    assert "was not authorized" in reason

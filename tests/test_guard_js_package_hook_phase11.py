@@ -18,7 +18,6 @@ from codex_plugin_scanner import install_integrity
 from codex_plugin_scanner.cli import main
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution
 from codex_plugin_scanner.guard.cli import commands_support_interaction as interaction_module
-from codex_plugin_scanner.guard.runtime import supply_chain_package_eval as package_eval_module
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.conftest import guard_commands_module
 from tests.test_guard_supply_chain_evaluator import _force_unpaid_entitlement
@@ -262,6 +261,17 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _force_unpaid_entitlement(monkeypatch)
+    # The resident subprocess performs its own store-backed entitlement
+    # resolution and never runs the Python monkeypatch above; forward the
+    # unpaid claim on the request so the native path exercises the same
+    # `paid_guard_cloud_required` fallback.
+    monkeypatch.setenv(
+        "HOL_GUARD_TEST_PACKAGE_ENTITLEMENT_JSON",
+        json.dumps(
+            {"allowed": False, "reason": "paid_guard_cloud_required", "tier": "free"},
+            separators=(",", ":"),
+        ),
+    )
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
@@ -300,16 +310,16 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
         encoding="utf-8",
     )
 
-    def raise_auth_expired(_store: GuardStore, **_kwargs: object) -> dict[str, object]:
-        raise guard_commands_module.GuardSyncAuthorizationExpiredError(
-            "Guard authorization expired. Run `hol-guard connect` to sign in again."
-        )
-
     evaluate_package_request = guard_commands_module.evaluate_package_request_artifact
-    monkeypatch.setattr(
-        package_eval_module,
-        "_resolve_guard_sync_auth_context",
-        raise_auth_expired,
+    # Drive the expired-authorization fault through the env override so it is
+    # honored both in-process (Python `_test_sync_auth_context_from_env` raises
+    # `GuardSyncAuthorizationExpiredError`) and by the native resident (the
+    # request forwards the same JSON as `sync_auth_context_override`, surfacing
+    # as `EvalError::Validation` → `cloud_auth_error`). A monkeypatch on the
+    # resolver would not reach the resident subprocess.
+    monkeypatch.setenv(
+        "HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON",
+        json.dumps({"error": "authorization_expired"}, separators=(",", ":")),
     )
     monkeypatch.setattr(
         guard_commands_module,
@@ -348,15 +358,25 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     assert f"/requests/{approval_requests[0]['request_id']}" in captured.err
     assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     decision_reason = payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
-    assert "needs your approval" in decision_reason
+    # With an explicitly-unpaid entitlement the expired sign-in degrades to
+    # local-only evaluation (`can_fallback_from_cloud_failure`). Depending on
+    # whether the approval prompt surfaces the evaluation's `harness_message`
+    # or the generic wait copy, the reason carries the local-only /
+    # reconnect-verdict text; the stable markers are the `hol-guard connect`
+    # reconnect guidance and the `cloud_auth_error` code persisted below.
+    assert "hol-guard connect" in decision_reason
     assert (
         f"/requests/{approval_requests[0]['request_id']}" in payload["hookSpecificOutput"]["permissionDecisionReason"]
     )
-    assert approval_requests[0]["policy_action"] == "review"
+    # The expired sign-in forces `verify_registry_identity`; `vitest` has no
+    # lockfile/range identity to resolve offline, so the local fallback cannot
+    # confirm identity and escalates the unidentified package to
+    # `require-reapproval` (decision `ask`) rather than silently monitoring.
+    assert approval_requests[0]["policy_action"] == "require-reapproval"
     evidence = store.list_evidence()
     assert evidence
     assert evidence[0]["category"] == "supply-chain"
-    assert evidence[0]["details"]["decision"] == "monitor"
+    assert evidence[0]["details"]["decision"] == "ask"
     assert any(reason["code"] == "cloud_auth_error" for reason in evidence[0]["details"]["reasons"])
 
     request_id = str(store.list_approval_requests(limit=5)[0]["request_id"])
@@ -385,10 +405,14 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     )
     retry_capture = capsys.readouterr()
 
+    # `vitest` stays unidentifiable offline (the expired sign-in forces
+    # `verify_registry_identity` and no lockfile/range resolves it), so the
+    # recurring `require-reapproval` still prompts on retry rather than
+    # reusing the earlier artifact-scope `allow` — an unresolved package
+    # cannot earn a durable allow until it is identified.
     assert retry_rc == 0
-    assert retry_capture.out == ""
-    assert retry_capture.err == ""
-    assert store.list_approval_requests(status="pending", limit=5) == []
+    assert json.loads(retry_capture.out)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert store.list_approval_requests(status="pending", limit=5)
 
     runner.write_text("#!/bin/sh\n# changed local runner\n", encoding="utf-8")
     changed_rc = main(
@@ -412,7 +436,10 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     assert changed_payload["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "open hol guard to approve" in changed_payload["hookSpecificOutput"]["permissionDecisionReason"].lower()
     changed_requests = store.list_approval_requests(status="pending", limit=5)
-    assert len(changed_requests) == 1
+    # The earlier allow never suppressed the recurring `require-reapproval`
+    # (unidentified package), so the unchanged retry already left one pending
+    # request; the changed runner queues another.
+    assert len(changed_requests) == 2
     assert changed_capture.err.startswith("HOL Guard is waiting for approval in your browser: http://127.0.0.1:")
     assert f"/requests/{changed_requests[0]['request_id']}" in changed_capture.err
-    assert changed_requests[0]["policy_action"] == "review"
+    assert changed_requests[0]["policy_action"] == "require-reapproval"

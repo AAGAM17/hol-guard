@@ -15,6 +15,7 @@ missing entirely, matching the approval-gate bridge contract.
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -151,6 +152,32 @@ def supply_chain_eval_native(
     }
     if runtime_private_metadata:
         request["runtime_private_metadata"] = dict(runtime_private_metadata)
+    # Test-only seam: when running under pytest and the env exports a Guard
+    # Cloud auth-context override, forward it to the resident so coverage tests
+    # exercise the native auth-expired / cloud-transport branches hermetically
+    # (the resident subprocess does not run Python monkeypatches). Mirrors the
+    # in-process `runner._test_sync_auth_context_from_env` seam.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        raw_override = os.environ.get("HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON")
+        if raw_override:
+            try:
+                parsed = json.loads(raw_override)
+            except (TypeError, ValueError):
+                parsed = None
+            if isinstance(parsed, dict):
+                request["sync_auth_context_override"] = parsed
+        # Companion test-only seam: forward a Guard Cloud package entitlement
+        # override so the resident's unpaid-entitlement fallback
+        # (`paid_guard_cloud_required`) runs without monkeypatching the
+        # store-reading resolver the resident performs natively.
+        raw_entitlement = os.environ.get("HOL_GUARD_TEST_PACKAGE_ENTITLEMENT_JSON")
+        if raw_entitlement:
+            try:
+                parsed_entitlement = json.loads(raw_entitlement)
+            except (TypeError, ValueError):
+                parsed_entitlement = None
+            if isinstance(parsed_entitlement, dict):
+                request["package_entitlement_override"] = parsed_entitlement
     response = _resident_request(
         operation="supply_chain_eval",
         request=request,

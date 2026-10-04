@@ -54,7 +54,9 @@ fn literal_shell_input(command: &str) -> bool {
                 '$' | '`' | '*' | '?' | '[' | ']' | '~' | '{' | '}' | '(' | ')' | '<' | '>'
                 | '|' | '&' | ';' | '#' | '\r' | '\n' => return false,
                 '\\' => {
-                    if matches!(chars.next(), None | Some('\0' | '\r' | '\n')) {
+                    if cfg!(windows)
+                        || matches!(chars.next(), None | Some('\0' | '\r' | '\n'))
+                    {
                         return false;
                     }
                 }

@@ -131,7 +131,9 @@ fn active_expansions_are_rejected_even_when_general_parser_has_exact_tokens() {
         "{a,b}",
         "~",
     ] {
-        let candidate = command(&format!("--params '{PARAMS}' --json={{\\\"raw\\\":\\\"Zg\\\",\\\"threadId\\\":\\\"{suffix}\\\"}}"));
+        let candidate = command(&format!(
+            "--params '{PARAMS}' --json '{{\"raw\":\"Zg\",\"threadId\":\"'{suffix}'\"}}'"
+        ));
         assert_eq!(
             GwsGmailSendCommandInputV1::from_owned_posix_command(candidate).err(),
             Some(GwsGmailCommandErrorV1::UnsupportedContext)

@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 pub mod action_lattice;
 pub mod approval_reuse;
-pub mod canonical_command;
 pub mod business_gmail_wire;
 pub mod business_gws_command;
 pub mod business_input;
+pub mod canonical_command;
 mod command_ascii_comparison;
 mod command_candidate_common;
 mod command_common_cli_matchers;

@@ -335,6 +335,7 @@ def test_phase14_package_hook_retry_after_block_reuses_saved_decision(
     store = _seed_review_bundle(home_dir, harness_selector="codex")
     _offline_daemon(home_dir, monkeypatch)
     event = _event_for_harness("codex", "npm install minimist@1.2.8", workspace_dir)
+    event["permission_mode"] = "default"
 
     first_rc, first_output = _run_guard_hook(
         home_dir=home_dir,

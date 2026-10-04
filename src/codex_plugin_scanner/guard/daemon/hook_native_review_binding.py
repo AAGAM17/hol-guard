@@ -135,6 +135,43 @@ def native_review_matching_allow(
         return False
 
 
+def _accept_unconsumed_exact_cloud_allow(
+    store: object,
+    *,
+    harness: str,
+    artifact_id: str,
+    identity: str,
+    claimed_approval_request_id: str | None,
+    claim_saved_approval: bool,
+) -> bool:
+    """Recognize one request-bound Cloud grant without consuming it here.
+
+    Generic once-approval lookup stays blind to these rows. The waiting hook's
+    fresh check may see the grant, and the live completion path consumes it.
+    """
+
+    if claim_saved_approval or claimed_approval_request_id is None:
+        return False
+    peek = getattr(store, "peek_exact_cloud_local_once_approval", None)
+    if not callable(peek):
+        return False
+    try:
+        decision = peek(
+            request_id=claimed_approval_request_id,
+            now=datetime.now(tz=timezone.utc).isoformat(),
+        )
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+        return False
+    if not isinstance(decision, Mapping) or decision.get("action") != "allow":
+        return False
+    if decision.get("request_id") != claimed_approval_request_id or decision.get("harness") != harness:
+        return False
+    artifact_hash = decision.get("artifact_hash")
+    if not isinstance(artifact_hash, str) or not hmac.compare_digest(artifact_hash, identity):
+        return False
+    return decision.get("artifact_id") == artifact_id
+
+
 def native_review_claimed_allow(
     store: object,
     *,
@@ -164,10 +201,22 @@ def native_review_claimed_allow(
         )
     except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
         return False
-    if not isinstance(decision, Mapping) or decision.get("action") != "allow":
-        return False
-    if claimed_approval_request_id is not None and decision.get("request_id") != claimed_approval_request_id:
-        return False
+    if (
+        not isinstance(decision, Mapping)
+        or decision.get("action") != "allow"
+        or (
+            claimed_approval_request_id is not None
+            and decision.get("request_id") != claimed_approval_request_id
+        )
+    ):
+        return _accept_unconsumed_exact_cloud_allow(
+            store,
+            harness=harness,
+            artifact_id=artifact_id,
+            identity=identity,
+            claimed_approval_request_id=claimed_approval_request_id,
+            claim_saved_approval=claim_saved_approval,
+        )
     if not claim_saved_approval:
         return True
     approval_id = decision.get("approval_id")

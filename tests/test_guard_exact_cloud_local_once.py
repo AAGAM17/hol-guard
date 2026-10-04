@@ -9,6 +9,7 @@ import pytest
 
 import codex_plugin_scanner.guard.codex_live_decision as live_decision_module
 from codex_plugin_scanner.guard.codex_live_decision import complete_codex_live_decision
+from codex_plugin_scanner.guard.daemon.hook_native_review_binding import native_review_claimed_allow
 from codex_plugin_scanner.guard.local_authority_integrity import sign_local_authority_payload
 from codex_plugin_scanner.guard.models import PolicyDecision
 from codex_plugin_scanner.guard.runtime.exact_cloud_review import enable_exact_cloud_review
@@ -279,3 +280,67 @@ def test_live_completion_fails_closed_when_authority_revision_changes_before_cla
     )
     resume = store.get_request_resume("exact-live-revision-race")
     assert resume is not None and resume["status"] == "pending"
+
+
+def test_fresh_review_sees_exact_cloud_grant_without_consuming_it(tmp_path: Path) -> None:
+    store = connected_exact_review_store(tmp_path)
+    request = review_request("exact-fresh-review")
+    add_review_request(store, request)
+    _ = enable_exact_cloud_review(store)
+    resolution = apply_exact_cloud_review(
+        store,
+        remote_approval=remote_approval(store, request.request_id, receipt_id="exact-fresh-review-receipt"),
+    )
+    resolved_at = str(resolution.resolved_request["resolved_at"])
+    workspace = Path(str(request.workspace))
+
+    assert native_review_claimed_allow(
+        store,
+        harness=request.harness,
+        artifact_id=request.artifact_id,
+        workspace=workspace,
+        identity=request.artifact_hash,
+        claimed_saved_allow_hash=request.artifact_hash,
+        claimed_approval_request_id=request.request_id,
+        claim_saved_approval=False,
+    )
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity="hash-other-action",
+            claimed_saved_allow_hash="hash-other-action",
+            claimed_approval_request_id=request.request_id,
+            claim_saved_approval=False,
+        )
+        is False
+    )
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity=request.artifact_hash,
+            claimed_saved_allow_hash=request.artifact_hash,
+            claimed_approval_request_id="exact-fresh-review-other",
+            claim_saved_approval=False,
+        )
+        is False
+    )
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity=request.artifact_hash,
+            claimed_saved_allow_hash=request.artifact_hash,
+            claimed_approval_request_id=request.request_id,
+            claim_saved_approval=True,
+        )
+        is False
+    )
+    assert store.peek_exact_cloud_local_once_approval(request_id=request.request_id, now=resolved_at) is not None

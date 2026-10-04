@@ -63,6 +63,7 @@ def installed_native_case_runner():
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(callable(getattr(module, "run_case", None)), "case_runner_missing")
     return module.run_case
 
 

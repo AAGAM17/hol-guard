@@ -69,6 +69,26 @@ pub const CLOUD_AUDIT_SYNC_PAGE_SIZE: usize = 25;
 pub const MAX_SBOM_BYTES: u64 = 10 * 1024 * 1024;
 pub const PACKAGE_FIREWALL_REFRESH_MIN_INTERVAL_SECONDS: f64 = 300.0;
 pub const PACKAGE_FIREWALL_REFRESH_STATE_FILE: &str = "package-firewall-refresh.json";
+/// `package_firewall_defaults.PACKAGE_FIREWALL_PAID_TIERS` — tiers that unlock
+/// package-firewall actions.
+pub const PACKAGE_FIREWALL_PAID_TIERS: &[&str] = &[
+    "paid",
+    "premium",
+    "pro",
+    "team",
+    "enterprise",
+    "guard_cloud",
+    "guard-cloud",
+];
+/// `package_firewall_entitlement.PACKAGE_FIREWALL_CONNECT_CTA`.
+pub const PACKAGE_FIREWALL_CONNECT_CTA: &str =
+    "Connect HOL Guard Cloud to check package firewall access and run package firewall actions.";
+/// `package_firewall_entitlement.PACKAGE_FIREWALL_RECONNECT_CTA`.
+pub const PACKAGE_FIREWALL_RECONNECT_CTA: &str =
+    "Reconnect HOL Guard Cloud to refresh package firewall access.";
+/// `package_firewall_entitlement.PACKAGE_FIREWALL_UPGRADE_CTA`.
+pub const PACKAGE_FIREWALL_UPGRADE_CTA: &str =
+    "Upgrade to HOL Guard Cloud to run package firewall actions.";
 pub const LOCAL_SUPPLY_CHAIN_HARNESS: &str = "local-supply-chain";
 /// `.runtime.supply_chain_package_eval.LOCKFILE_PARSER_VERSION` mirror.
 /// TODO(deps): keep in sync with the Rust lockfile parser port.
@@ -211,6 +231,20 @@ pub trait SupplyChainStore {
     fn get_sync_payload(&self, key: &str) -> Option<Value>;
     /// `store.set_sync_payload(key, payload)`
     fn set_sync_payload(&self, key: &str, payload: &Value);
+
+    /// `store.get_oauth_local_credential_health()` -> `{configured, state, ...}`.
+    /// Defaults to `None` (not configured) so non-resident stores that never
+    /// reach the OAuth path do not need to implement it.
+    fn get_oauth_local_credential_health(&self) -> Option<Map<String, Value>> {
+        None
+    }
+    /// `store.get_effective_guard_connect_state(now=)` -> connect-state dict |
+    /// `None`. Defaults to `None` (no persisted connect state) for the same
+    /// reason.
+    fn get_effective_guard_connect_state(&self, now: &str) -> Option<Value> {
+        let _ = now;
+        None
+    }
     /// `store.list_cached_advisories()` -> tuple[dict, ...]
     fn list_cached_advisories(&self) -> Vec<Value>;
     /// `store.list_managed_installs()` -> tuple[dict, ...]
@@ -2097,6 +2131,423 @@ pub fn resolve_package_firewall_entitlement_with_refresh(
         }
     }
     entitlement_api.resolve_package_firewall_entitlement(store)
+}
+
+// ---------------------------------------------------------------------------
+// package_firewall_entitlement.py — `resolve_package_firewall_entitlement`.
+//
+// Read-only resolver over `SupplyChainStore`. Never writes. Mirrors Python
+// `src/codex_plugin_scanner/guard/package_firewall_entitlement.py` lines
+// 68-318.
+// ---------------------------------------------------------------------------
+
+/// `_optional_string` — non-empty trimmed string.
+fn entitlement_optional_string(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::String(s)) => {
+            let t = s.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_owned())
+            }
+        }
+        _ => None,
+    }
+}
+
+fn entitlement_is_paid_tier(tier: &str) -> bool {
+    PACKAGE_FIREWALL_PAID_TIERS.contains(&tier)
+}
+
+/// `_bundle_entitlement` (:68) — `supply_chain_bundle_entitlement` sync payload.
+fn bundle_entitlement(payload: Option<&Value>) -> Option<Map<String, Value>> {
+    let payload = payload?.as_object()?;
+    let tier = entitlement_optional_string(payload.get("tier"))?;
+    let normalized_tier = tier.to_lowercase();
+    let allowed = entitlement_is_paid_tier(&normalized_tier);
+    let mut m = Map::new();
+    m.insert("allowed".to_string(), Value::Bool(allowed));
+    m.insert(
+        "reason".to_string(),
+        Value::String(
+            if allowed {
+                "paid_entitlement_active"
+            } else {
+                "paid_guard_cloud_required"
+            }
+            .to_string(),
+        ),
+    );
+    m.insert("tier".to_string(), Value::String(normalized_tier));
+    m.insert(
+        "upgrade_cta".to_string(),
+        if allowed {
+            Value::Null
+        } else {
+            Value::String(PACKAGE_FIREWALL_UPGRADE_CTA.to_string())
+        },
+    );
+    Some(m)
+}
+
+/// `_oauth_entitlement_fields_from_sync_payload` (:84) — normalized OAuth
+/// claim fields, `None` unless `supply_chain_plan_id` is present.
+fn oauth_entitlement_fields_from_sync_payload(
+    payload: Option<&Value>,
+) -> Option<Map<String, Value>> {
+    let payload = payload?.as_object()?;
+    let mut fields = Map::new();
+    for key in [
+        "supply_chain_plan_id",
+        "supply_chain_firewall",
+        "supply_chain_entitlement_expires_at",
+        "workspace_id",
+    ] {
+        let value = payload.get(key);
+        if let Some(Value::String(s)) = value {
+            let t = s.trim();
+            if !t.is_empty() {
+                fields.insert(key.to_string(), Value::String(t.to_owned()));
+            }
+        } else if key == "supply_chain_firewall" {
+            if let Some(Value::Bool(b)) = value {
+                fields.insert(key.to_string(), Value::Bool(*b));
+            }
+        }
+    }
+    entitlement_optional_string(fields.get("supply_chain_plan_id"))?;
+    Some(fields)
+}
+
+/// `_oauth_entitlement` (:104) — claim-time entitlement from OAuth fields.
+fn oauth_entitlement(
+    credentials: Option<&Map<String, Value>>,
+    now: &Timestamp,
+) -> Option<Map<String, Value>> {
+    let credentials = credentials?;
+    let plan_id = entitlement_optional_string(credentials.get("supply_chain_plan_id"))?;
+    let normalized_tier = plan_id.to_lowercase();
+    let firewall_value = credentials.get("supply_chain_firewall");
+    let firewall_allowed = match firewall_value {
+        Some(Value::Bool(b)) => *b,
+        _ => entitlement_is_paid_tier(&normalized_tier),
+    };
+    let expires_at_raw = credentials.get("supply_chain_entitlement_expires_at");
+    let expires_at = expires_at_raw
+        .and_then(Value::as_str)
+        .and_then(parse_timestamp);
+    if firewall_allowed && expires_at.is_none() {
+        let mut m = Map::new();
+        m.insert("allowed".to_string(), Value::Bool(false));
+        m.insert(
+            "reason".to_string(),
+            Value::String("guard_cloud_reconnect_required".to_string()),
+        );
+        m.insert("tier".to_string(), Value::String(normalized_tier));
+        m.insert(
+            "upgrade_cta".to_string(),
+            Value::String(PACKAGE_FIREWALL_RECONNECT_CTA.to_string()),
+        );
+        return Some(m);
+    }
+    if firewall_allowed && expires_at.is_some_and(|e| e <= *now) {
+        let mut m = Map::new();
+        m.insert("allowed".to_string(), Value::Bool(false));
+        m.insert(
+            "reason".to_string(),
+            Value::String("guard_cloud_reconnect_required".to_string()),
+        );
+        m.insert("tier".to_string(), Value::String(normalized_tier));
+        m.insert(
+            "upgrade_cta".to_string(),
+            Value::String(PACKAGE_FIREWALL_RECONNECT_CTA.to_string()),
+        );
+        return Some(m);
+    }
+    if firewall_allowed {
+        let mut m = Map::new();
+        m.insert("allowed".to_string(), Value::Bool(true));
+        m.insert(
+            "reason".to_string(),
+            Value::String("paid_oauth_entitlement_active".to_string()),
+        );
+        m.insert("tier".to_string(), Value::String(normalized_tier));
+        m.insert("upgrade_cta".to_string(), Value::Null);
+        return Some(m);
+    }
+    if entitlement_is_paid_tier(&normalized_tier)
+        && (expires_at.is_none() || expires_at.is_some_and(|e| e <= *now))
+    {
+        // Paid plan whose firewall claim is missing or expired: stale record,
+        // reconnect refreshes the entitlement.
+        let mut m = Map::new();
+        m.insert("allowed".to_string(), Value::Bool(false));
+        m.insert(
+            "reason".to_string(),
+            Value::String("guard_cloud_reconnect_required".to_string()),
+        );
+        m.insert("tier".to_string(), Value::String(normalized_tier));
+        m.insert(
+            "upgrade_cta".to_string(),
+            Value::String(PACKAGE_FIREWALL_RECONNECT_CTA.to_string()),
+        );
+        return Some(m);
+    }
+    let mut m = Map::new();
+    m.insert("allowed".to_string(), Value::Bool(false));
+    m.insert(
+        "reason".to_string(),
+        Value::String("paid_guard_cloud_required".to_string()),
+    );
+    m.insert("tier".to_string(), Value::String(normalized_tier));
+    m.insert(
+        "upgrade_cta".to_string(),
+        Value::String(PACKAGE_FIREWALL_UPGRADE_CTA.to_string()),
+    );
+    Some(m)
+}
+
+/// `_connect_state_entitlement` (:156) — reconnect verdict from the persisted
+/// guard-connect state when it asserts a failed/expired connect.
+fn connect_state_entitlement(
+    store: &dyn SupplyChainStore,
+    now: &Timestamp,
+) -> Option<Map<String, Value>> {
+    let oauth_payload = store.get_sync_payload("oauth_local_credentials");
+    let oauth_fields = oauth_entitlement_fields_from_sync_payload(oauth_payload.as_ref());
+    if let Some(fields) = &oauth_fields {
+        if let Some(plan_id) = entitlement_optional_string(fields.get("supply_chain_plan_id")) {
+            if !entitlement_is_paid_tier(&plan_id.to_lowercase()) {
+                return None;
+            }
+        }
+    }
+    let latest_state = store.get_effective_guard_connect_state(&now.isoformat());
+    let latest_state = latest_state.as_ref()?.as_object()?;
+    let status = entitlement_optional_string(latest_state.get("status"));
+    let milestone = entitlement_optional_string(latest_state.get("milestone"));
+    let missing_oauth_after_success = status.as_deref() == Some("connected")
+        && milestone.as_deref() == Some("first_sync_succeeded")
+        && !oauth_payload.as_ref().is_some_and(Value::is_object);
+    if !missing_oauth_after_success {
+        let status_blocks = matches!(status.as_deref(), Some("retry_required") | Some("expired"));
+        let milestone_blocks = matches!(
+            milestone.as_deref(),
+            Some("first_sync_failed") | Some("expired") | Some("sync_not_available")
+        );
+        if !status_blocks && !milestone_blocks {
+            return None;
+        }
+    }
+    let mut tier = "unknown".to_string();
+    if let Some(fields) = &oauth_fields {
+        if let Some(plan) = entitlement_optional_string(fields.get("supply_chain_plan_id")) {
+            tier = plan;
+        }
+    }
+    let mut m = Map::new();
+    m.insert("allowed".to_string(), Value::Bool(false));
+    m.insert(
+        "reason".to_string(),
+        Value::String("guard_cloud_reconnect_required".to_string()),
+    );
+    m.insert("tier".to_string(), Value::String(tier));
+    m.insert(
+        "upgrade_cta".to_string(),
+        Value::String(PACKAGE_FIREWALL_RECONNECT_CTA.to_string()),
+    );
+    Some(m)
+}
+
+/// `_reconnect_required_entitlement` (:193).
+fn reconnect_required_entitlement(
+    bundle: Option<&Map<String, Value>>,
+    oauth: Option<&Map<String, Value>>,
+    oauth_payload: Option<&Value>,
+) -> Map<String, Value> {
+    let mut tier = "unknown".to_string();
+    if let Some(o) = oauth {
+        if let Some(t) = entitlement_optional_string(o.get("tier")) {
+            tier = t;
+        }
+    }
+    if tier == "unknown" {
+        if let Some(b) = bundle {
+            if let Some(t) = entitlement_optional_string(b.get("tier")) {
+                tier = t;
+            }
+        }
+    }
+    if tier == "unknown" {
+        if let Some(Value::Object(p)) = oauth_payload {
+            if let Some(t) = entitlement_optional_string(p.get("supply_chain_plan_id")) {
+                tier = t;
+            }
+        }
+    }
+    let mut m = Map::new();
+    m.insert("allowed".to_string(), Value::Bool(false));
+    m.insert(
+        "reason".to_string(),
+        Value::String("guard_cloud_reconnect_required".to_string()),
+    );
+    m.insert("tier".to_string(), Value::String(tier.to_lowercase()));
+    m.insert(
+        "upgrade_cta".to_string(),
+        Value::String(PACKAGE_FIREWALL_RECONNECT_CTA.to_string()),
+    );
+    m
+}
+
+/// `_connect_required_entitlement` (:214).
+fn connect_required_entitlement(store: &dyn SupplyChainStore) -> Map<String, Value> {
+    let oauth_payload = store.get_sync_payload("oauth_local_credentials");
+    let mut tier = "unknown".to_string();
+    if let Some(Value::Object(p)) = &oauth_payload {
+        if let Some(plan_id) = entitlement_optional_string(p.get("supply_chain_plan_id")) {
+            tier = plan_id.to_lowercase();
+        }
+    }
+    let mut m = Map::new();
+    m.insert("allowed".to_string(), Value::Bool(false));
+    m.insert(
+        "reason".to_string(),
+        Value::String("guard_cloud_connect_required".to_string()),
+    );
+    m.insert("tier".to_string(), Value::String(tier));
+    m.insert(
+        "upgrade_cta".to_string(),
+        Value::String(PACKAGE_FIREWALL_CONNECT_CTA.to_string()),
+    );
+    m
+}
+
+/// `_requires_guard_cloud_connect` (:229) — whether a fresh Guard Cloud
+/// connect is required before trusting the bundle/OAuth claim.
+fn requires_guard_cloud_connect(
+    store: &dyn SupplyChainStore,
+    bundle: Option<&Map<String, Value>>,
+    _oauth: Option<&Map<String, Value>>,
+) -> bool {
+    let oauth_health = store.get_oauth_local_credential_health();
+    let oauth_configured = oauth_health
+        .as_ref()
+        .and_then(|h| h.get("configured"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let oauth_state = oauth_health
+        .as_ref()
+        .and_then(|h| h.get("state"))
+        .and_then(Value::as_str);
+    let cloud_profile = store.get_cloud_sync_profile();
+    if oauth_configured && oauth_state == Some("healthy") {
+        return false;
+    }
+    if cloud_profile.is_some() {
+        return false;
+    }
+    if oauth_configured {
+        return true;
+    }
+    !(bundle.is_some()
+        && bundle
+            .unwrap()
+            .get("allowed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false))
+}
+
+/// `resolve_package_firewall_entitlement` (:275) — read-only entitlement
+/// resolution. Ported 1:1 from Python.
+pub fn resolve_package_firewall_entitlement(store: &dyn SupplyChainStore) -> Map<String, Value> {
+    let now = Timestamp::now_utc();
+    let bundle = bundle_entitlement(
+        store
+            .get_sync_payload("supply_chain_bundle_entitlement")
+            .as_ref(),
+    );
+    let oauth_health = store.get_oauth_local_credential_health();
+    let oauth_payload = store.get_sync_payload("oauth_local_credentials");
+    // Python gates `oauth_fields` on a healthy credential so a degraded secret
+    // cannot mint a paid/unpaid claim from stale metadata.
+    let oauth_fields = if oauth_health
+        .as_ref()
+        .and_then(|h| h.get("state"))
+        .and_then(Value::as_str)
+        == Some("healthy")
+    {
+        oauth_entitlement_fields_from_sync_payload(oauth_payload.as_ref())
+    } else {
+        None
+    };
+    let oauth = oauth_entitlement(oauth_fields.as_ref(), &now);
+    let connect_state = connect_state_entitlement(store, &now);
+    let is_healthy_profile = oauth_health
+        .as_ref()
+        .and_then(|h| h.get("state"))
+        .and_then(Value::as_str)
+        == Some("healthy");
+    let has_profile_backed_bundle = bundle
+        .as_ref()
+        .is_some_and(|b| b.get("allowed").and_then(Value::as_bool).unwrap_or(false))
+        && is_healthy_profile;
+    if let Some(state) = connect_state {
+        if !has_profile_backed_bundle {
+            return state;
+        }
+    }
+    if requires_guard_cloud_connect(store, bundle.as_ref(), oauth.as_ref()) {
+        if bundle
+            .as_ref()
+            .is_some_and(|b| b.get("allowed").and_then(Value::as_bool).unwrap_or(false))
+        {
+            return reconnect_required_entitlement(
+                bundle.as_ref(),
+                oauth.as_ref(),
+                oauth_payload.as_ref(),
+            );
+        }
+        return connect_required_entitlement(store);
+    }
+    if bundle
+        .as_ref()
+        .is_some_and(|b| b.get("allowed").and_then(Value::as_bool).unwrap_or(false))
+    {
+        return bundle.unwrap();
+    }
+    if let Some(o) = &oauth {
+        if o.get("allowed").and_then(Value::as_bool).unwrap_or(false) {
+            return o.clone();
+        }
+    }
+    if let Some(o) = &oauth {
+        if o.get("reason").and_then(Value::as_str) == Some("guard_cloud_reconnect_required") {
+            return o.clone();
+        }
+    }
+    if let Some(b) = &bundle {
+        let oauth_plan = oauth_payload
+            .as_ref()
+            .and_then(Value::as_object)
+            .and_then(|p| entitlement_optional_string(p.get("supply_chain_plan_id")));
+        if let Some(o) = &oauth {
+            if o.get("reason").and_then(Value::as_str) == Some("paid_guard_cloud_required") {
+                return o.clone();
+            }
+        }
+        if oauth_plan
+            .as_deref()
+            .is_some_and(|p| entitlement_is_paid_tier(&p.to_lowercase()))
+        {
+            return reconnect_required_entitlement(Some(b), oauth.as_ref(), oauth_payload.as_ref());
+        }
+        return b.clone();
+    }
+    if let Some(o) = &oauth {
+        return o.clone();
+    }
+    connect_required_entitlement(store)
 }
 
 // ---------------------------------------------------------------------------

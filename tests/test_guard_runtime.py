@@ -15338,6 +15338,14 @@ def test_runtime_hook_package_without_workspace_invalidates_allow_after_lockfile
 
 
 def test_guard_hook_saved_file_read_allow_does_not_lower_current_reapproval(tmp_path, capsys, monkeypatch):
+    # The approval CLI refuses mutations invoked inside a known agent hook
+    # context (self-approval defense). Clear ambient harness markers so the
+    # in-process approve below runs as the operator path it simulates.
+    from codex_plugin_scanner.guard.runtime.self_approval import _AGENT_ENV_MARKERS
+
+    for marker in _AGENT_ENV_MARKERS:
+        monkeypatch.delenv(marker, raising=False)
+
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"
     _build_guard_fixture(home_dir, workspace_dir)

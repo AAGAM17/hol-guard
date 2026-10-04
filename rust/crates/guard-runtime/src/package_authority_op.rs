@@ -14,7 +14,11 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use guard_command::local_supply_chain::{GuardConfig, PolicyDecisionLookup, SupplyChainStore};
+use guard_command::local_supply_chain::{
+    resolve_package_firewall_entitlement, resolve_package_firewall_entitlement_with_refresh,
+    CommandExecution, GuardConfig, LocalSupplyChainError, PackageFirewallEntitlementApi,
+    PolicyDecisionLookup, RuntimeRunnerApi, SupplyChainStore,
+};
 use guard_command::package_intent_common::{
     build_package_request_artifact, resolve_path_within_workspace, GuardArtifact,
 };
@@ -144,6 +148,350 @@ impl ResidentSupplyChainStore {
     /// produces the identical result.
     fn oauth_local_credentials_state(&self) -> String {
         oauth_credential_state(&self.guard_home, self.oauth_local_credentials().as_ref())
+    }
+
+    /// `store_connect.py: get_latest_connect_state` — most-recent
+    /// `guard_connect_states` row as a dict (request_id, sync_url,
+    /// allowed_origin, status, milestone, reason, created_at, updated_at,
+    /// expires_at, completed_at, proof).
+    fn latest_connect_state(&self, now: &str) -> Option<Map<String, Value>> {
+        let conn = self.conn().ok()?;
+        let request_id: String = conn
+            .query_row(
+                "SELECT request_id FROM guard_connect_states                  ORDER BY updated_at DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok()?;
+        self.connect_state(&conn, &request_id, now)
+    }
+
+    /// `store_connect.py: load_connect_state` — read one connect-state row and
+    /// flip a still-waiting browser pairing to expired when past `expires_at`.
+    fn connect_state(
+        &self,
+        conn: &Connection,
+        request_id: &str,
+        now: &str,
+    ) -> Option<Map<String, Value>> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT request_id, sync_url, allowed_origin, status, milestone, reason,                         created_at, updated_at, expires_at, completed_at, proof_json                  FROM guard_connect_states WHERE request_id = ?1",
+            )
+            .ok()?;
+        let mut rows = stmt.query([request_id]).ok()?;
+        let row = rows.next().ok()??;
+        let proof_raw: String = row.get(10).ok()?;
+        let proof = serde_json::from_str::<Value>(&proof_raw)
+            .ok()
+            .filter(Value::is_object)
+            .unwrap_or_else(|| json!({}));
+        let get = |i: usize| -> Value {
+            row.get::<_, Option<String>>(i)
+                .ok()
+                .flatten()
+                .map(Value::String)
+                .unwrap_or(Value::Null)
+        };
+        let mut m = Map::new();
+        m.insert("request_id".to_string(), get(0));
+        m.insert("sync_url".to_string(), get(1));
+        m.insert("allowed_origin".to_string(), get(2));
+        m.insert("status".to_string(), get(3));
+        m.insert("milestone".to_string(), get(4));
+        m.insert("reason".to_string(), get(5));
+        m.insert("created_at".to_string(), get(6));
+        m.insert("updated_at".to_string(), get(7));
+        m.insert("expires_at".to_string(), get(8));
+        m.insert("completed_at".to_string(), get(9));
+        m.insert("proof".to_string(), proof);
+        // `load_connect_state` flips a still-waiting pairing to expired.
+        if m.get("status").and_then(Value::as_str) == Some("waiting")
+            && m.get("milestone").and_then(Value::as_str) == Some("waiting_for_browser")
+        {
+            let expires = m
+                .get("expires_at")
+                .and_then(Value::as_str)
+                .and_then(guard_command::local_supply_chain::parse_timestamp);
+            let now_ts = guard_command::local_supply_chain::parse_timestamp(now);
+            if let (Some(e), Some(n)) = (expires, now_ts) {
+                if e <= n {
+                    let _ = conn.execute(
+                        "UPDATE guard_connect_states                          SET status = 'expired', milestone = 'expired',                              reason = 'request_expired', updated_at = ?1                          WHERE request_id = ?2",
+                        rusqlite::params![now, request_id],
+                    );
+                    m.insert("status".to_string(), Value::String("expired".into()));
+                    m.insert("milestone".to_string(), Value::String("expired".into()));
+                    m.insert(
+                        "reason".to_string(),
+                        Value::String("request_expired".into()),
+                    );
+                    m.insert("updated_at".to_string(), Value::String(now.into()));
+                }
+            }
+        }
+        Some(m)
+    }
+
+    /// `store_oauth.py: _guard_connect_state_requires_oauth`.
+    fn connect_state_requires_oauth(latest_state: &Map<String, Value>) -> bool {
+        let request_id = latest_state
+            .get("request_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if request_id.trim().is_empty() {
+            return false;
+        }
+        latest_state.get("status").and_then(Value::as_str) == Some("connected")
+    }
+
+    /// `store_oauth.py: _coerce_guard_connect_state_status` — rebuild the
+    /// connect-state dict with a new status/milestone/reason, folding
+    /// `sync_summary` into the proof. Does not persist (read path only).
+    fn coerce_connect_state(
+        state: Map<String, Value>,
+        status: &str,
+        milestone: &str,
+        reason: Option<&str>,
+        sync_summary: Option<&Map<String, Value>>,
+        now: &str,
+    ) -> Map<String, Value> {
+        let mut proof = state
+            .get("proof")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let synced_at = sync_summary
+            .and_then(|s| s.get("synced_at"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned);
+        if let Some(sa) = synced_at {
+            proof.insert("first_synced_at".to_string(), Value::String(sa));
+        } else {
+            proof
+                .entry("first_synced_at".to_string())
+                .or_insert(Value::Null);
+        }
+        let receipts = sync_summary
+            .and_then(|s| s.get("receipts_stored"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .max(0);
+        let existing_receipts = proof
+            .get("receipts_stored")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        proof.insert(
+            "receipts_stored".to_string(),
+            Value::from(receipts.max(existing_receipts)),
+        );
+        let inventory = sync_summary
+            .and_then(|s| s.get("inventory_tracked").or_else(|| s.get("inventory")))
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .max(0);
+        let existing_inventory = proof
+            .get("inventory_items")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        proof.insert(
+            "inventory_items".to_string(),
+            Value::from(inventory.max(existing_inventory)),
+        );
+        if let Some(rsid) = sync_summary
+            .and_then(|s| s.get("runtime_session_id"))
+            .and_then(Value::as_str)
+        {
+            proof.insert(
+                "runtime_session_id".to_string(),
+                Value::String(rsid.to_owned()),
+            );
+        }
+        if let Some(rat) = sync_summary
+            .and_then(|s| s.get("runtime_session_synced_at"))
+            .and_then(Value::as_str)
+        {
+            proof.insert(
+                "runtime_session_synced_at".to_string(),
+                Value::String(rat.to_owned()),
+            );
+        }
+        proof
+            .entry("pairing_completed_at".to_string())
+            .or_insert_with(|| state.get("completed_at").cloned().unwrap_or(Value::Null));
+
+        let mut m = Map::new();
+        m.insert(
+            "request_id".to_string(),
+            state.get("request_id").cloned().unwrap_or(Value::Null),
+        );
+        m.insert(
+            "sync_url".to_string(),
+            state.get("sync_url").cloned().unwrap_or(Value::Null),
+        );
+        m.insert(
+            "allowed_origin".to_string(),
+            state.get("allowed_origin").cloned().unwrap_or(Value::Null),
+        );
+        m.insert("status".to_string(), Value::String(status.to_owned()));
+        m.insert("milestone".to_string(), Value::String(milestone.to_owned()));
+        m.insert(
+            "reason".to_string(),
+            reason
+                .map(|r| Value::String(r.to_owned()))
+                .unwrap_or(Value::Null),
+        );
+        m.insert(
+            "created_at".to_string(),
+            state.get("created_at").cloned().unwrap_or(Value::Null),
+        );
+        m.insert(
+            "updated_at".to_string(),
+            state
+                .get("updated_at")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(|s| Value::String(s.to_owned()))
+                .unwrap_or_else(|| Value::String(now.to_owned())),
+        );
+        m.insert(
+            "expires_at".to_string(),
+            state.get("expires_at").cloned().unwrap_or(Value::Null),
+        );
+        m.insert(
+            "completed_at".to_string(),
+            state
+                .get("completed_at")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(|s| Value::String(s.to_owned()))
+                .or_else(|| proof.get("pairing_completed_at").cloned())
+                .unwrap_or(Value::Null),
+        );
+        m.insert("proof".to_string(), Value::Object(proof));
+        m
+    }
+
+    /// `store_oauth.py: _allowed_origin_from_sync_url` — `scheme://netloc`.
+    fn allowed_origin_from_sync_url(sync_url: &str) -> Option<String> {
+        let (scheme, rest) = sync_url.split_once("://")?;
+        if scheme.is_empty() {
+            return None;
+        }
+        let netloc = rest.split('/').next().unwrap_or("");
+        if netloc.is_empty() {
+            return None;
+        }
+        Some(format!("{scheme}://{netloc}"))
+    }
+
+    /// `store_oauth.py: _hydrate_guard_connect_state_from_cloud_profile`.
+    fn hydrate_connect_state_from_cloud_profile(
+        latest_state: Option<Map<String, Value>>,
+        cloud_profile: &Map<String, Value>,
+        sync_summary: Option<&Map<String, Value>>,
+        now: &str,
+    ) -> Option<Map<String, Value>> {
+        let sync_url = cloud_profile
+            .get("sync_url")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let allowed_origin = Self::allowed_origin_from_sync_url(&sync_url);
+        let milestone = if sync_summary.is_some() {
+            "first_sync_succeeded"
+        } else {
+            "first_sync_pending"
+        };
+        let reason = if sync_summary.is_some() {
+            Some("first_sync_succeeded")
+        } else {
+            Some("waiting_for_first_sync")
+        };
+        match latest_state {
+            None => Some(Self::coerce_connect_state(
+                {
+                    let mut s = Map::new();
+                    s.insert("request_id".to_string(), Value::Null);
+                    s.insert("sync_url".to_string(), Value::String(sync_url));
+                    s.insert(
+                        "allowed_origin".to_string(),
+                        allowed_origin
+                            .clone()
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
+                    );
+                    s.insert("status".to_string(), Value::String("connected".into()));
+                    s.insert(
+                        "milestone".to_string(),
+                        Value::String("first_sync_pending".into()),
+                    );
+                    s.insert(
+                        "reason".to_string(),
+                        Value::String("waiting_for_first_sync".into()),
+                    );
+                    s.insert("created_at".to_string(), Value::Null);
+                    s.insert("updated_at".to_string(), Value::String(now.to_owned()));
+                    s.insert("expires_at".to_string(), Value::Null);
+                    s.insert("completed_at".to_string(), Value::Null);
+                    s.insert("proof".to_string(), Value::Object(Map::new()));
+                    s
+                },
+                "connected",
+                milestone,
+                reason,
+                sync_summary,
+                now,
+            )),
+            Some(state) => {
+                // Keep persisted sync_url/allowed_origin when present, else
+                // hydrate from the live cloud profile.
+                let mut s = state;
+                let existing_url = s
+                    .get("sync_url")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_owned);
+                s.insert(
+                    "sync_url".to_string(),
+                    Value::String(existing_url.unwrap_or(sync_url)),
+                );
+                let existing_origin = s
+                    .get("allowed_origin")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_owned);
+                s.insert(
+                    "allowed_origin".to_string(),
+                    Value::String(existing_origin.or(allowed_origin).unwrap_or_default()),
+                );
+                let status = s
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("connected")
+                    .to_owned();
+                let milestone_owned = s
+                    .get("milestone")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| milestone.to_owned());
+                let reason_owned = match s.get("reason") {
+                    Some(Value::String(r)) => Some(r.clone()),
+                    _ => reason.map(str::to_owned),
+                };
+                Some(Self::coerce_connect_state(
+                    s,
+                    &status,
+                    &milestone_owned,
+                    reason_owned.as_deref(),
+                    sync_summary,
+                    now,
+                ))
+            }
+        }
     }
 
     /// `_row_to_payload` — map the raw column values to the request payload
@@ -343,6 +691,99 @@ impl SupplyChainStore for ResidentSupplyChainStore {
         let row = rows.next().ok()??;
         let raw: String = row.get(0).ok()?;
         serde_json::from_str(&raw).ok()
+    }
+
+    fn get_oauth_local_credential_health(&self) -> Option<Map<String, Value>> {
+        // store_oauth.py: get_oauth_local_credential_health — derive the
+        // record the same way `ResidentStoreExtras` does.
+        let mut health = Map::new();
+        let payload = self.oauth_local_credentials();
+        let configured = payload.as_ref().is_some_and(Value::is_object);
+        health.insert("configured".to_string(), Value::Bool(configured));
+        health.insert(
+            "backend".to_string(),
+            Value::String("encrypted_file".to_string()),
+        );
+        health.insert(
+            "state".to_string(),
+            Value::String(oauth_credential_state(&self.guard_home, payload.as_ref())),
+        );
+        Some(health)
+    }
+
+    fn get_effective_guard_connect_state(&self, now: &str) -> Option<Value> {
+        // store_oauth.py: get_effective_guard_connect_state — normalize the
+        // persisted connect state against the live cloud profile + sync summary.
+        let latest_state = self.latest_connect_state(now);
+        let cloud_profile = self.get_cloud_sync_profile();
+        let sync_summary = self
+            .get_sync_payload("sync_summary")
+            .and_then(|v| v.as_object().cloned());
+        let latest_state = match cloud_profile.as_ref().and_then(Value::as_object) {
+            None => {
+                // No cloud profile: a connected state that requires OAuth is
+                // coerced to retry_required; anything else is returned as-is.
+                match latest_state {
+                    Some(state) if Self::connect_state_requires_oauth(&state) => {
+                        Some(Self::coerce_connect_state(
+                            state,
+                            "retry_required",
+                            "first_sync_failed",
+                            Some(
+                                "Guard Cloud authorization on this machine is incomplete. Run hol-guard connect again.",
+                            ),
+                            sync_summary.as_ref(),
+                            now,
+                        ))
+                    }
+                    other => other,
+                }
+            }
+            Some(profile) => {
+                let normalized = Self::hydrate_connect_state_from_cloud_profile(
+                    latest_state,
+                    profile,
+                    sync_summary.as_ref(),
+                    now,
+                )?;
+                let status = normalized
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let milestone = normalized
+                    .get("milestone")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let has_sync_summary = sync_summary.is_some();
+                if has_sync_summary
+                    && status != "retry_required"
+                    && !matches!(milestone, "first_sync_failed" | "sync_not_available")
+                {
+                    Some(Self::coerce_connect_state(
+                        normalized,
+                        "connected",
+                        "first_sync_succeeded",
+                        Some("first_sync_succeeded"),
+                        sync_summary.as_ref(),
+                        now,
+                    ))
+                } else if matches!(status, "expired" | "waiting")
+                    || matches!(milestone, "expired" | "waiting_for_browser")
+                {
+                    Some(Self::coerce_connect_state(
+                        normalized,
+                        "connected",
+                        "first_sync_pending",
+                        Some("waiting_for_first_sync"),
+                        sync_summary.as_ref(),
+                        now,
+                    ))
+                } else {
+                    Some(normalized)
+                }
+            }
+        };
+        latest_state.map(Value::Object)
     }
 
     fn set_sync_payload(&self, key: &str, payload: &Value) {
@@ -1718,17 +2159,107 @@ impl StoreExtrasApi for ResidentStoreExtras {
 }
 
 /// Entitlement-refresh seam — `resolve_package_firewall_entitlement_with_refresh`
-/// takes the full deps aggregate not yet assembled here; fail closed.
-struct ResidentEntitlementRefresh;
+/// `.runtime.runner` seam for the resident edge. The resident has no
+/// guard-cloud transport, so the sync/auth methods fail like the Python
+/// `runner.GuardSyncNotAvailableError`/`OSError` path — `with_refresh` treats
+/// them as non-fatal and still returns a freshly computed entitlement.
+struct ResidentRuntimeRunner;
+
+impl RuntimeRunnerApi for ResidentRuntimeRunner {
+    fn resolve_guard_sync_auth_context(
+        &self,
+        _store: &dyn SupplyChainStore,
+    ) -> Result<Value, LocalSupplyChainError> {
+        Err(LocalSupplyChainError::NotAvailable {
+            message: "guard sync auth context unavailable in resident".into(),
+            retryable: true,
+        })
+    }
+    fn sync_local_guard_cloud_proof(
+        &self,
+        _store: &dyn SupplyChainStore,
+        _auth_context: Option<&Value>,
+    ) -> Result<Value, LocalSupplyChainError> {
+        Err(LocalSupplyChainError::NotAvailable {
+            message: "guard-cloud sync unavailable in resident".into(),
+            retryable: true,
+        })
+    }
+    fn sync_supply_chain_bundle(
+        &self,
+        _store: &dyn SupplyChainStore,
+        _auth_context: Option<&Value>,
+    ) -> Result<Option<Value>, LocalSupplyChainError> {
+        Err(LocalSupplyChainError::NotAvailable {
+            message: "supply-chain bundle sync unavailable in resident".into(),
+            retryable: true,
+        })
+    }
+    fn guard_sync_headers(&self, _auth_context: &Value) -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+    fn check_plan_restriction_403(&self, _status: u16, _body: &str) -> (bool, String) {
+        (false, String::new())
+    }
+    fn guard_cloud_http_error_details(&self, status: u16, body: &str) -> (String, bool) {
+        (format!("guard cloud HTTP {status}: {body}"), status >= 500)
+    }
+    fn sync_url_error_message(&self, error: &str) -> String {
+        error.to_owned()
+    }
+    fn execute_package_command(
+        &self,
+        _command: &[String],
+        _cwd: &Path,
+        _environment: &BTreeMap<String, String>,
+    ) -> Result<CommandExecution, String> {
+        Err("package command execution unavailable in resident".into())
+    }
+}
+
+/// `.package_firewall_entitlement` seam — read-only resolver + opportunistic
+/// refresh. `resolve` is the store-reading port; `refresh` runs the
+/// `with_refresh` heal loop (no-op in resident since the runner's sync always
+/// fails, but the re-resolve still picks up any connect-state the store had).
+struct ResidentPackageFirewallEntitlement;
+
+impl PackageFirewallEntitlementApi for ResidentPackageFirewallEntitlement {
+    fn resolve_package_firewall_entitlement(&self, store: &dyn SupplyChainStore) -> Value {
+        Value::Object(resolve_package_firewall_entitlement(store))
+    }
+    fn refresh_package_firewall_entitlements(
+        &self,
+        store: &dyn SupplyChainStore,
+        auth_context: Option<&Value>,
+    ) -> Result<Value, LocalSupplyChainError> {
+        let _ = auth_context;
+        Ok(Value::Object(resolve_package_firewall_entitlement(store)))
+    }
+}
+
+/// Entitlement-refresh seam — `resolve_package_firewall_entitlement_with_refresh`
+/// now runs the real resolver over the resident store; the resident runner's
+/// sync always fails so the refresh is a re-resolve, matching Python's
+/// unavailable-transport path.
+struct ResidentEntitlementRefresh {
+    runner: ResidentRuntimeRunner,
+    entitlement_api: ResidentPackageFirewallEntitlement,
+}
 
 impl EntitlementRefreshApi for ResidentEntitlementRefresh {
     fn resolve_package_firewall_entitlement_with_refresh(
         &self,
-        _store: &dyn SupplyChainStore,
+        store: &dyn SupplyChainStore,
     ) -> EvalResult<Map<String, Value>> {
-        Err(EvalError::Internal(
-            "entitlement refresh unavailable in resident".into(),
-        ))
+        let value = resolve_package_firewall_entitlement_with_refresh(
+            store,
+            &self.runner,
+            &self.entitlement_api,
+        );
+        value
+            .as_object()
+            .cloned()
+            .ok_or_else(|| EvalError::Internal("entitlement resolution failed".into()))
     }
 }
 
@@ -1783,7 +2314,10 @@ impl ResidentEvalDeps {
                 store_path: store_path.to_path_buf(),
                 guard_home: guard_home.to_path_buf(),
             },
-            entitlement: ResidentEntitlementRefresh,
+            entitlement: ResidentEntitlementRefresh {
+                runner: ResidentRuntimeRunner,
+                entitlement_api: ResidentPackageFirewallEntitlement,
+            },
             config: ResidentConfigLoader,
         }
     }

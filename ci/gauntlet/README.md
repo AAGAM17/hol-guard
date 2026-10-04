@@ -44,6 +44,8 @@ Do not use `uv run` without `--no-sync` after installing the wheel: an automatic
 
 Use an OpenAI-compatible **Chat Completions streaming** provider endpoint and a model that supports tool calls. DeepSeek or another compatible provider can be configured directly. A Codex subscription is not automatically an API credential. A local compatible server is supported explicitly; prerecorded responses are not qualification evidence.
 
+The relay identifies itself as `hol-guard-gauntlet/1.0` and supplies a stable, random `x-opencode-session` for each scenario. These routing headers support coding-agent providers without borrowing another client's identity. Session identifiers and provider credentials are never included in public evidence. Interrupting a run terminates and reaps its owned agent process group.
+
 Set these variables through your normal secret manager or terminal environment. Use a dedicated key with a spend cap, never a repository-automation, release or production key.
 
 ```sh

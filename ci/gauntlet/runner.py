@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -57,21 +58,27 @@ def run_process(
     timed_out = False
     with output.open("wb") as out, error_output.open("wb") as err:
         process = subprocess.Popen(command, cwd=cwd, env=env, stdout=out, stderr=err, start_new_session=True)
-        while process.poll() is None:
-            if (
-                time.monotonic() - started > timeout
-                or output.stat().st_size > TRANSCRIPT_LIMIT
-                or error_output.stat().st_size > TRANSCRIPT_LIMIT
-            ):
-                timed_out = True
-                os.killpg(process.pid, signal.SIGTERM)
+        try:
+            while process.poll() is None:
+                if (
+                    time.monotonic() - started > timeout
+                    or output.stat().st_size > TRANSCRIPT_LIMIT
+                    or error_output.stat().st_size > TRANSCRIPT_LIMIT
+                ):
+                    timed_out = True
+                    break
+                time.sleep(0.1)
+        finally:
+            # The session belongs to this run, including when the operator interrupts it.
+            if process.poll() is None:
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGTERM)
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=5)
-                break
-            time.sleep(0.1)
     return process.returncode, timed_out
 
 

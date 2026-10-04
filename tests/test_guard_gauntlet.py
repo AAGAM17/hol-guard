@@ -11,7 +11,7 @@ from ci.gauntlet.catalog import Scenario, load_catalog
 from ci.gauntlet.evidence import assess_case, public_events, reconcile
 from ci.gauntlet.fixtures import create_fixture, filesystem_checks
 from ci.gauntlet.input_evidence import input_digest
-from ci.gauntlet.provider import canary_present, validate_endpoint
+from ci.gauntlet.provider import InferenceRelay, canary_present, validate_endpoint
 
 
 def observed_case(command="echo fixture", *, blocked=False):
@@ -212,6 +212,68 @@ def test_provider_rejects_credentials_redirect_style_urls_and_plaintext_remote_h
             validate_endpoint(url)
     assert validate_endpoint("http://127.0.0.1:8000/v1", True).endswith("/chat/completions")
     assert canary_present(b"prefix GAUNTLET_SYNTHETIC_123 suffix", "GAUNTLET_SYNTHETIC_123")
+
+
+def test_provider_session_is_stable_private_and_unique_per_scenario():
+    """Routing headers must not expose operator identity or inference credentials."""
+    from uuid import UUID
+
+    options = dict(
+        base_url="https://example.com/v1", model="live", api_key="test-only-key", canary="synthetic", identity="test"
+    )
+    with InferenceRelay(**options) as first, InferenceRelay(**options) as second:
+        headers = first._request_headers()
+        assert headers == first._request_headers()
+        assert headers["User-Agent"] == "hol-guard-gauntlet/1.0"
+        assert UUID(headers["x-opencode-session"]).version == 4
+        assert headers["x-opencode-session"] != second._request_headers()["x-opencode-session"]
+        assert headers["Authorization"] == "Bearer test-only-key"
+        exported = json.dumps(first.evidence())
+        assert "test-only-key" not in exported
+        assert headers["x-opencode-session"] not in exported
+
+
+def test_interrupted_run_reaps_its_owned_host_process(tmp_path, monkeypatch):
+    """Cancellation must not leave the actual agent running after its logs close."""
+    import os
+    import subprocess
+    import sys
+    import time
+
+    from ci.gauntlet import runner
+
+    if os.name != "posix":
+        pytest.skip("Gauntlet process containment is POSIX-only")
+    original_popen = subprocess.Popen
+    original_sleep = time.sleep
+    children = []
+    interrupted = False
+
+    def capture_child(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        children.append(process)
+        return process
+
+    def interrupt_once(seconds):
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        original_sleep(seconds)
+
+    monkeypatch.setattr(runner.subprocess, "Popen", capture_child)
+    monkeypatch.setattr(runner.time, "sleep", interrupt_once)
+    with pytest.raises(KeyboardInterrupt):
+        runner.run_process(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            cwd=tmp_path,
+            env=dict(os.environ),
+            output=tmp_path / "stdout.log",
+            error_output=tmp_path / "stderr.log",
+            timeout=30,
+        )
+    assert len(children) == 1
+    assert children[0].poll() is not None
 
 
 @pytest.mark.parametrize("workspace", ["/tmp/ordinary project/café", "/tmp/author's project"])

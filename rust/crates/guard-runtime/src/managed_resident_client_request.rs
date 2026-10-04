@@ -94,7 +94,7 @@ pub(super) fn client_request_with_deadline(
     let digest = runtime_digest()?;
     let _update_lock = crate::resident_update_lock::acquire_shared(state_base, &digest)?;
     let scope = state_scope(state_base, &digest)?;
-    if let Some(response) = try_home_states(state_base, payload, overall_deadline, &digest)? {
+    if let Some(response) = try_live_or_restart(state_base, payload, overall_deadline, &digest)? {
         return Ok(response);
     }
     if Instant::now() >= overall_deadline {

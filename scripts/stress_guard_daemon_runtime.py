@@ -185,8 +185,13 @@ def stress_request(endpoint: str, auth_token: str) -> float:
 
 
 def stress_warmup(endpoint: str, auth_token: str, count: int) -> None:
-    """Run a bounded request wave before the measured stress batches."""
+    """Prime cold native policy, then retain the complete concurrent warm-up wave."""
 
+    if count <= 0:
+        raise ValueError("Warm-up count must be positive.")
+    # Liveness does not imply that the first native policy/worker is initialized.
+    # One successful synthetic request must precede the burst; failures still raise.
+    stress_request(endpoint, auth_token)
     with ThreadPoolExecutor(max_workers=count) as executor:
         futures = [executor.submit(stress_request, endpoint, auth_token) for _ in range(count)]
         for future in futures:

@@ -58,6 +58,7 @@ from scripts.native_slo_capacity import (  # noqa: E402, F401
     measure_capacity,
 )
 from scripts.native_slo_contract import SIZE_CLASSES  # noqa: E402
+
 from scripts.native_slo_preflight import preflight_operation  # noqa: E402
 from scripts.native_slo_reporting import (  # noqa: E402
     SloMeasurements,
@@ -84,7 +85,9 @@ def _installed_corpus(runtime: Path, expected_routes: int) -> dict[str, int]:
     """Exercise the canonical all-harness installed ingress corpus."""
 
     with tempfile.TemporaryDirectory(prefix="hol-guard-installed-corpus-") as temporary:
-        root = Path(temporary)
+        # Match AdapterSession: aliases on macOS must not register one workspace
+        # twice and invalidate its acknowledged native policy on first ingress.
+        root = Path(temporary).resolve()
         report: Mapping[str, object] | None = None
         try:
             candidate = _installed_hook_corpus(root)

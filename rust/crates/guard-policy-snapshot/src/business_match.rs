@@ -115,20 +115,12 @@ impl BusinessPolicyMatchV1 {
                                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
                     })
             })
-            || self
-                .audience_kinds
-                .as_ref()
-                .is_some_and(|values| {
-                    !valid_set(values, 3)
-                        || values.contains(&BusinessAudienceKindV1::Unknown)
-                })
-            || self
-                .sensitivity_labels
-                .as_ref()
-                .is_some_and(|values| {
-                    !valid_set(values, 4)
-                        || values.contains(&BusinessSensitivityV1::Unknown)
-                })
+            || self.audience_kinds.as_ref().is_some_and(|values| {
+                !valid_set(values, 3) || values.contains(&BusinessAudienceKindV1::Unknown)
+            })
+            || self.sensitivity_labels.as_ref().is_some_and(|values| {
+                !valid_set(values, 4) || values.contains(&BusinessSensitivityV1::Unknown)
+            })
         {
             return Err(Error::Invalid);
         }

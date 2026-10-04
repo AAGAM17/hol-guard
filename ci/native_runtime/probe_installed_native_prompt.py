@@ -24,7 +24,7 @@ def require(condition: bool, code: str) -> None:
 
 def verify(expected_source: str) -> dict[str, object]:
     distribution = importlib.metadata.distribution("hol-guard")
-    package_file = distribution.locate_file("codex_plugin_scanner/__init__.py").resolve()
+    package_file = Path(str(distribution.locate_file("codex_plugin_scanner/__init__.py"))).resolve()
     require(Path(codex_plugin_scanner.__file__).resolve() == package_file, "not_installed_package")
     os.environ.pop("HOL_GUARD_NATIVE_BINARY", None)
     os.environ.pop("HOL_GUARD_NATIVE", None)

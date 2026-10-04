@@ -64,7 +64,6 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         guard_contracts::CLAIM_APPROVAL_REUSE_FEATURE.into(),
         guard_contracts::APPROVAL_GATE_FEATURE.into(),
         guard_contracts::PACKAGE_AUTHORITY_FEATURE.into(),
-        guard_contracts::CONTAINED_EXECUTION_FEATURE.into(),
         guard_contracts::SHIM_ADMIN_FEATURE.into(),
         guard_contracts::MCP_STDIO_PROBE_FEATURE.into(),
         guard_contracts::PROMPT_ANALYZE_FEATURE.into(),
@@ -74,6 +73,9 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
     }
     if cfg!(unix) {
         features.push("authenticated-unix-resident-v1".into());
+        // Contained execution dispatch is Unix-only. Do not advertise an
+        // operation that can only return platform-unavailable on Windows.
+        features.push(guard_contracts::CONTAINED_EXECUTION_FEATURE.into());
     }
     let (program_digest, catalog_digest, trust_digest) =
         guard_command::native_command_program::packaged_program_digests();
@@ -313,5 +315,22 @@ mod tests {
         );
         drop(store);
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod capability_platform_tests {
+    #[test]
+    fn prompt_capability_is_portable_and_containment_matches_dispatch() {
+        let features = super::capabilities().features;
+        assert!(features
+            .iter()
+            .any(|feature| feature == guard_contracts::PROMPT_ANALYZE_FEATURE));
+        assert_eq!(
+            features
+                .iter()
+                .any(|feature| feature == guard_contracts::CONTAINED_EXECUTION_FEATURE),
+            cfg!(unix)
+        );
     }
 }

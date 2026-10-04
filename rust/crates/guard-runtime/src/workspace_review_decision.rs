@@ -7,6 +7,7 @@
 
 use guard_contracts::{
     WorkspaceReviewDecisionEnvelopeV1, NATIVE_WORKSPACE_REVIEW_AUTHORITY_PURPOSE,
+    NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_OWNED_DISPATCH,
     NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_RETRY_ONLY, NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN,
     NATIVE_WORKSPACE_REVIEW_DECISION_V1_SCHEMA, NATIVE_WORKSPACE_REVIEW_DECISION_V1_VERSION,
     NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES, NATIVE_WORKSPACE_REVIEW_MAX_TTL_MS,
@@ -205,11 +206,28 @@ fn validate_context(context: &WorkspaceReviewDecisionContext<'_>) -> Result<(), 
     }
 }
 
+#[cfg(test)]
 fn verify_envelope(
     envelope: &WorkspaceReviewDecisionEnvelopeV1,
     authority: &VerifiedWorkspaceReviewAuthority,
     context: &WorkspaceReviewDecisionContext<'_>,
     now_ms: u64,
+) -> Result<(VerifiedWorkspaceReviewDecision, Vec<u8>), String> {
+    verify_envelope_mode(
+        envelope,
+        authority,
+        context,
+        now_ms,
+        NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_RETRY_ONLY,
+    )
+}
+
+fn verify_envelope_mode(
+    envelope: &WorkspaceReviewDecisionEnvelopeV1,
+    authority: &VerifiedWorkspaceReviewAuthority,
+    context: &WorkspaceReviewDecisionContext<'_>,
+    now_ms: u64,
+    delivery_mode: &str,
 ) -> Result<(VerifiedWorkspaceReviewDecision, Vec<u8>), String> {
     validate_context(context)?;
     if envelope.schema != NATIVE_WORKSPACE_REVIEW_DECISION_V1_SCHEMA
@@ -229,7 +247,7 @@ fn verify_envelope(
         || !valid_lower_hex(&envelope.policy_binding)
         || !valid_lower_hex(&envelope.retry_scope_binding)
         || !valid_lower_hex(&envelope.claim_id)
-        || envelope.delivery_mode != NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_RETRY_ONLY
+        || envelope.delivery_mode != delivery_mode
         || !matches!(envelope.decision.as_str(), "allow" | "deny")
         || envelope.issued_at_ms == 0
         || envelope.expires_at_ms <= envelope.issued_at_ms
@@ -314,6 +332,22 @@ fn verify_and_claim_at(
     context: &WorkspaceReviewDecisionContext<'_>,
     now_ms: u64,
 ) -> Result<VerifiedWorkspaceReviewDecision, String> {
+    verify_and_claim_at_mode(
+        state_base,
+        envelope,
+        context,
+        now_ms,
+        NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_RETRY_ONLY,
+    )
+}
+
+fn verify_and_claim_at_mode(
+    state_base: &Path,
+    envelope: &WorkspaceReviewDecisionEnvelopeV1,
+    context: &WorkspaceReviewDecisionContext<'_>,
+    now_ms: u64,
+    delivery_mode: &str,
+) -> Result<VerifiedWorkspaceReviewDecision, String> {
     let mut state = super::workspace_review_secure_state::load(state_base)?
         .ok_or_else(|| "native_workspace_review_secure_state_unavailable".to_owned())?;
     let mut floor_changed = false;
@@ -365,9 +399,12 @@ fn verify_and_claim_at(
     if !state.matches_authority(&authority) {
         return Err("native_workspace_review_authority_provenance_mismatch".to_owned());
     }
-    let (verified, _) = verify_envelope(envelope, &authority, context, now_ms)?;
+    let (verified, _) = verify_envelope_mode(envelope, &authority, context, now_ms, delivery_mode)?;
     let semantic_digest = semantic_decision_digest(envelope)?;
     if consume_or_replay_claim(state_base, &mut state, &verified, &semantic_digest)? {
+        if delivery_mode == NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_OWNED_DISPATCH {
+            return Err("native_workspace_review_business_dispatch_replay".to_owned());
+        }
         let mut resumed = verified;
         resumed.replayed = true;
         return Ok(resumed);
@@ -423,6 +460,43 @@ pub(crate) fn verify_and_claim_request(
     request_id: &str,
     decision: &Value,
 ) -> Result<VerifiedWorkspaceReviewDecision, String> {
+    claim_request(policy_store, request_id, decision, false).map(|(verified, _)| verified)
+}
+
+/// Private native-worker boundary. No serializable grant or mutable retry:
+/// the worker receives owned input only after a fresh purpose-specific claim.
+/// There is deliberately no resident RPC for exporting this value.
+#[allow(dead_code)] // Worker routing is a separate integration; never enable legacy RPC dispatch.
+pub(crate) fn claim_owned_business_request(
+    policy_store: &super::PolicySnapshotStore,
+    request_id: &str,
+    decision: &Value,
+) -> Result<
+    (
+        VerifiedWorkspaceReviewDecision,
+        guard_command::business_input::PreparedBusinessInputV1,
+    ),
+    String,
+> {
+    let (verified, input) = claim_request(policy_store, request_id, decision, true)?;
+    Ok((
+        verified,
+        input.ok_or_else(|| "native_workspace_review_business_input_missing".to_owned())?,
+    ))
+}
+
+fn claim_request(
+    policy_store: &super::PolicySnapshotStore,
+    request_id: &str,
+    decision: &Value,
+    owned_dispatch: bool,
+) -> Result<
+    (
+        VerifiedWorkspaceReviewDecision,
+        Option<guard_command::business_input::PreparedBusinessInputV1>,
+    ),
+    String,
+> {
     let observed_time_ms = now_ms()?;
     let state_base = policy_store.state_base();
     super::approval_enrollment::with_transition_lock(state_base, || {
@@ -437,8 +511,14 @@ pub(crate) fn verify_and_claim_request(
         let request = super::workspace_review_request::load(policy_store, request_id)?;
         // This legacy response returns bindings, not owned provider bytes.
         // Never consume a business grant through a mutable-command retry path.
-        if request.business_input.is_some() {
+        if !owned_dispatch && request.business_input.is_some() {
             return Err("native_workspace_review_business_dispatch_unavailable".to_owned());
+        }
+        if owned_dispatch
+            && (request.business_input.is_none()
+                || decision.get("decision").and_then(Value::as_str) != Some("allow"))
+        {
+            return Err("native_workspace_review_business_dispatch_invalid".to_owned());
         }
         let authority =
             super::workspace_review_authority::read_installed_record_without_time(state_base)?
@@ -462,10 +542,21 @@ pub(crate) fn verify_and_claim_request(
         };
         let bytes = canonical_json_bytes(decision)
             .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-        let mut verified =
-            verify_and_claim_bytes_at(state_base, &bytes, &context, observed_time_ms)?;
+        let mut verified = if owned_dispatch {
+            let envelope: WorkspaceReviewDecisionEnvelopeV1 = serde_json::from_slice(&bytes)
+                .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+            verify_and_claim_at_mode(
+                state_base,
+                &envelope,
+                &context,
+                observed_time_ms,
+                NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_OWNED_DISPATCH,
+            )?
+        } else {
+            verify_and_claim_bytes_at(state_base, &bytes, &context, observed_time_ms)?
+        };
         verified.request_snapshot_digest = Some(request.request_snapshot_digest);
-        Ok(verified)
+        Ok((verified, request.business_input))
     })
 }
 
@@ -492,7 +583,7 @@ pub(crate) fn verify_and_claim_bytes_at(
 
 #[cfg(test)]
 #[path = "workspace_review_decision_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "workspace_review_decision_renewal_tests.rs"]

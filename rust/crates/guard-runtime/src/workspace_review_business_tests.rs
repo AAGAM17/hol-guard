@@ -5,6 +5,131 @@ use serde_json::json;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+fn owned_decision(fixture: &Fixture) -> Value {
+    use super::super::workspace_review_decision::{
+        self as decision, WorkspaceReviewDecisionContext,
+    };
+    use ring::signature::Ed25519KeyPair;
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let request =
+        super::super::workspace_review_request::load(&fixture.store, "business-test").unwrap();
+    let (workspace, scope) = decision::current_native_workspace_review_bindings(
+        &fixture.root,
+        &fixture.snapshot.scope_contract.scope_digest,
+    )
+    .unwrap();
+    let mut record = decision::tests::authority_record();
+    record.workspace_binding = workspace.clone();
+    record.scope_binding = scope.clone();
+    record.issued_at_ms = time - 1000;
+    record.expires_at_ms = time + 60_000;
+    let mut signed = guard_contracts::NATIVE_WORKSPACE_REVIEW_ENROLLMENT_DOMAIN.to_vec();
+    signed.extend_from_slice(
+        &super::super::workspace_review_authority::signing_bytes(&record).unwrap(),
+    );
+    record.enrollment_signature = hex::encode(
+        Ed25519KeyPair::from_seed_unchecked(&[42; 32])
+            .unwrap()
+            .sign(&signed)
+            .as_ref(),
+    );
+    super::super::approval_enrollment::write_test_enrollment_bindings(
+        &fixture.root,
+        &record.device_binding,
+        &record.installation_binding,
+    )
+    .unwrap();
+    let candidate = decision::tests::write_authority_candidate(&fixture.root, &record);
+    super::super::workspace_review_authority::install_record_at_for_test(
+        &fixture.root,
+        &candidate,
+        time,
+    )
+    .unwrap();
+    let authority =
+        super::super::workspace_review_authority::read_installed_record(&fixture.root, time)
+            .unwrap()
+            .unwrap();
+    let context = WorkspaceReviewDecisionContext {
+        workspace_binding: &workspace,
+        scope_binding: &scope,
+        device_binding: &record.device_binding,
+        installation_binding: &record.installation_binding,
+        request_binding: &request.request_binding,
+        action_binding: &request.action_binding,
+        intent_binding: &request.intent_binding,
+        revision_binding: &request.revision_binding,
+        policy_binding: &request.policy_binding,
+        retry_scope_binding: &request.retry_scope_binding,
+    };
+    let mut envelope = decision::tests::signed_envelope(
+        &authority,
+        &context,
+        53,
+        time,
+        time + 60_000,
+        guard_contracts::NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN,
+    );
+    envelope.delivery_mode =
+        guard_contracts::NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_OWNED_DISPATCH.into();
+    let mut signed = guard_contracts::NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN.to_vec();
+    signed.extend_from_slice(&decision::signing_bytes(&envelope).unwrap());
+    envelope.decision_signature = hex::encode(
+        Ed25519KeyPair::from_seed_unchecked(&[9; 32])
+            .unwrap()
+            .sign(&signed)
+            .as_ref(),
+    );
+    serde_json::to_value(envelope).unwrap()
+}
+
+#[test]
+fn owned_business_claim_keeps_frozen_bytes_and_never_returns_a_retry_grant() {
+    let fixture = Fixture::new("owned-dispatch");
+    let value = input(b"synthetic frozen mail", &[]);
+    fixture.stage(&value);
+    let decision = owned_decision(&fixture);
+    assert_eq!(
+        super::super::workspace_review_decision::verify_and_claim_request(
+            &fixture.store,
+            "business-test",
+            &decision
+        )
+        .unwrap_err(),
+        "native_workspace_review_business_dispatch_unavailable"
+    );
+    let (claim, retained) = super::super::workspace_review_decision::claim_owned_business_request(
+        &fixture.store,
+        "business-test",
+        &decision,
+    )
+    .unwrap();
+    assert!(!claim.replayed);
+    assert_eq!(retained.primary_bytes(), b"synthetic frozen mail");
+    assert!(
+        super::super::workspace_review_decision::claim_owned_business_request(
+            &fixture.store,
+            "business-test",
+            &decision
+        )
+        .is_err()
+    );
+    let replacement = input(b"changed after approval", &[]);
+    write(&fixture.root, &fixture.input_path(&value), &replacement);
+    assert_eq!(retained.primary_bytes(), b"synthetic frozen mail");
+    assert!(
+        super::super::workspace_review_decision::claim_owned_business_request(
+            &fixture.store,
+            "business-test",
+            &decision
+        )
+        .is_err()
+    );
+}
+
 fn input(primary: &[u8], attachments: &[Vec<u8>]) -> Value {
     let total = primary.len() + attachments.iter().map(Vec::len).sum::<usize>();
     json!({"schema":"guard.private-business-input.v1","version":1,

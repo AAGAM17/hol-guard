@@ -59,6 +59,8 @@ def repair_grok_install(
 
 
 def _grok_hooks_are_current(context: HarnessContext) -> bool:
+    from ..adapters.cursor_hook_config import isolated_cursor_hook_python
+
     hook_path = GrokHarnessAdapter._hooks_dir(context) / GUARD_HOOK_PRETOOL_FILE
     if not hook_path.is_file():
         return False
@@ -78,6 +80,9 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
     hook_config = _hook_config_from_command(command)
     if hook_config is None:
         return False
+    if hook_config.get("frozen_launcher") and isolated_cursor_hook_python() is not None:
+        # Migrate frozen launchers when a lightweight interpreter becomes usable.
+        return False
     executable = hook_config.get("python_executable")
     cli_args = hook_config.get("cli_args")
     if not isinstance(executable, str) or not executable.strip():
@@ -95,7 +100,7 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
 
 
 def _isolated_bounded_hook_is_current(command: str, *, context: HarnessContext) -> bool:
-    from ..adapters.bounded_cli_hook_bridge import bounded_hook_script_path
+    from ..adapters.bounded_cli_hook_bridge import _render_bounded_hook_script, bounded_hook_script_path
     from ..adapters.cursor_hook_config import isolated_cursor_hook_python
 
     interpreter = isolated_cursor_hook_python()
@@ -115,7 +120,11 @@ def _isolated_bounded_hook_is_current(command: str, *, context: HarnessContext) 
         source = expected_script.read_text(encoding="utf-8")
     except OSError:
         return False
-    return 'HARNESS = "grok"' in source and f"TIMEOUT_SECONDS = {GROK_HOOK_INTERNAL_TIMEOUT_SECONDS}" in source
+    return source == _render_bounded_hook_script(
+        guard_home=context.guard_home,
+        harness="grok",
+        timeout_seconds=GROK_HOOK_INTERNAL_TIMEOUT_SECONDS,
+    )
 
 
 def _hook_config_from_command(command: str) -> dict[str, object] | None:

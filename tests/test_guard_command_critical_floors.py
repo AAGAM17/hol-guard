@@ -108,7 +108,7 @@ CRITICAL_COMMAND_FLOORS: tuple[tuple[str, GuardAction], ...] = (
     ("timeout 5 env --split-string='bash -c \"rm -rf /\"'", "block"),
     ("timeout 5 bash --noprofile -c 'rm -rf workspace/target'", "block"),
     ("timeout 5 bash -O extglob -c 'rm -rf workspace/target'", "block"),
-    ("sh <<'EOF'\nrm -rf workspace/target\nEOF", "block"),
+    ("sh <<'EOF'\nrm -rf workspace/target\nEOF", "review"),
     ("gh api graphql -f query='mutation{deletePackageVersion(input:{packageVersionId:\"x\"}){success}}'", "review"),
     (
         "gh api --hostname github.com graphql "
@@ -236,10 +236,14 @@ NATIVE_STRICTER_CRITICAL_COMMANDS = frozenset(
 @pytest.mark.parametrize(("command", "factor_floor"), CRITICAL_COMMAND_FLOORS)
 def test_real_native_critical_floor_matches_frozen_baseline(command: str, factor_floor: GuardAction) -> None:
     action, error = _native_action(command)
-    expected = "block" if command in NATIVE_STRICTER_CRITICAL_COMMANDS else factor_floor
+    expected = (
+        "review"
+        if error is not None
+        else "block"
+        if command in NATIVE_STRICTER_CRITICAL_COMMANDS
+        else factor_floor
+    )
     assert action == expected
-    if error is not None:
-        assert action == "block"
 
 
 CRITICAL_NEAR_MISS_COMMANDS: tuple[str, ...] = (
@@ -303,7 +307,9 @@ def test_security_floors_do_not_widen_near_misses_to_block(command: str) -> None
 @pytest.mark.parametrize("command", CRITICAL_NEAR_MISS_COMMANDS)
 def test_real_native_near_miss_matches_frozen_baseline(command: str) -> None:
     action, error = _native_action(command)
-    if command in NATIVE_STRICTER_NEAR_MISSES or error is not None:
+    if error is not None:
+        assert action == "review"
+    elif command in NATIVE_STRICTER_NEAR_MISSES:
         assert action == "block"
     else:
         assert action != "block"

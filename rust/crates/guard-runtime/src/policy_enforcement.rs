@@ -32,6 +32,27 @@ mod policy_enforcement_mcp_provider;
 mod policy_enforcement_policy;
 pub(crate) use policy_enforcement_matrix::{validate_pre_tool_result_matrix, ActionFloor};
 
+/// Recheck business rules above the authenticated native receipt's intrinsic
+/// floor. This validates review eligibility; it grants no execution authority.
+pub(crate) fn ensure_business_review_permitted(
+    snapshot: &PolicySnapshotV3,
+    facts: &guard_contracts::BusinessActionV1,
+    intrinsic: &str,
+) -> Result<(), String> {
+    let binding = snapshot
+        .business_policy
+        .as_ref()
+        .ok_or_else(|| "native_workspace_review_business_invalid".to_owned())?;
+    let intrinsic = ActionFloor::parse(intrinsic)
+        .ok_or_else(|| "native_workspace_review_business_invalid".to_owned())?;
+    let policy = policy_enforcement_business::CompiledBusinessPolicy::new(binding)?;
+    let floor = policy.floor(intrinsic, Some(facts));
+    if floor.action >= ActionFloor::SandboxRequired {
+        return Err("native_workspace_review_business_blocked".to_owned());
+    }
+    Ok(())
+}
+
 use policy_enforcement_facts::{
     classify_tool_name, collect_fact_maps, payload_facts, preferred_tool_name, PATH_KEYS,
 };

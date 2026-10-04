@@ -166,7 +166,12 @@ def test_required_status_aggregators_run_after_cancellation() -> None:
         "native-wheel-ci.yml": ["linux-x64", "windows-x64", "macos", "native-regression-complete"],
     }.items():
         workflow = expand_ci_job_actions(yaml.safe_load((ROOT / ".github/workflows" / filename).read_text()))
-        assert workflow["concurrency"]["cancel-in-progress"] is True
+        expected_cancellation = (
+            "${{ !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}"
+            if filename == "ci.yml"
+            else True
+        )
+        assert workflow["concurrency"]["cancel-in-progress"] == expected_cancellation
         for name in names:
             gate = workflow["jobs"][name]
             assert gate["if"] == "always()"

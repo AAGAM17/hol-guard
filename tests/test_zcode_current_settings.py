@@ -130,6 +130,26 @@ def test_reinstall_recovers_invalid_install_state(tmp_path, contents):
     assert isinstance(json.loads(state.read_text()), dict)
 
 
+@pytest.mark.parametrize("recorded_enabled", [None, False, "disabled", [], 1])
+def test_reinstall_recovers_invalid_saved_hook_preference(tmp_path, recorded_enabled):
+    context = _ctx(tmp_path)
+    legacy = _write_cli_config(context.home_dir, {})
+    settings = legacy.with_name("setting.json")
+    settings.write_text('{"hooks":{"enabled":true}}')
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    state = context.guard_home / "managed/zcode/install.state.json"
+    saved = json.loads(state.read_text())
+    saved["hooks_enabled_before"] = recorded_enabled
+    state.write_text(json.dumps(saved))
+
+    adapter.install(context)
+
+    assert json.loads(state.read_text())["hooks_enabled_before"] == {"present": True, "value": True}
+    adapter.uninstall(context)
+    assert json.loads(settings.read_text())["hooks"]["enabled"] is True
+
+
 def test_uninstall_restores_preference_after_external_hook_cleanup(tmp_path):
     context = _ctx(tmp_path)
     legacy = _write_cli_config(context.home_dir, {})

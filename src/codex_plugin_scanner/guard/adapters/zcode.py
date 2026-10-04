@@ -340,7 +340,9 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         enabled_before = {"present": "enabled" in hooks, "value": hooks.get("enabled")}
         previous_state = _json_payload(state_path) if state_before is not None else {}
         if previous_state.get("managed_config_path") == str(config_path):
-            enabled_before = previous_state.get("hooks_enabled_before", enabled_before)
+            recorded_enabled = previous_state.get("hooks_enabled_before")
+            if isinstance(recorded_enabled, dict):
+                enabled_before = recorded_enabled
 
         if config_path.name == "setting.json" and hooks.get("enabled") is False:
             groups = hook_event_groups(hooks)

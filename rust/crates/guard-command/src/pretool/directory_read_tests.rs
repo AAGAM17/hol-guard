@@ -337,7 +337,7 @@ fn omp_bounded_line_selectors_keep_sensitive_and_unsupported_targets_denied() {
 
     #[cfg(unix)]
     {
-        let target = format!("{}:1-5", symlink.display());
+        let target = format!("{}:1-5", _symlink.display());
         let decision = read_directory("omp", &target, &home, &project);
         assert_ne!(decision.minimum_action, "allow", "{target}");
         assert!(!decision.explicitly_benign, "{target}");

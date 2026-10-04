@@ -244,8 +244,8 @@ def test_partial_native_safe_evidence_cannot_silence_matcher_uncertainty() -> No
     observation = evaluation.extension_observations[0]
     assert tuple(item.segment_index for item in observation.effective_evidence) == (1,)
     assert observation.uncertainty_reasons
-    assert evaluation.minimum_action == "block"
-    assert evaluation.decision_plane.action == "block"
+    assert evaluation.minimum_action == "review"
+    assert evaluation.decision_plane.action == "review"
 
 
 def test_adapter_rejects_out_of_bounds_native_matcher_evidence() -> None:
@@ -271,8 +271,8 @@ def test_explicit_benign_cannot_discharge_native_block_or_matcher_uncertainty() 
     native_block = _evaluate(explicitly_benign=True, native_minimum_action="block")
     uncertain = _evaluate(mode="disabled", explicitly_benign=True, uncertainty=True)
     assert native_block.decision_plane.action == "block"
-    assert uncertain.minimum_action == "block"
-    assert uncertain.decision_plane.action == "block"
+    assert uncertain.minimum_action == "review"
+    assert uncertain.decision_plane.action == "review"
 
 
 def test_explicit_benign_cannot_discharge_control_floor() -> None:

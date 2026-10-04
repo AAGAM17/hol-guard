@@ -54,6 +54,8 @@ def evaluate(client: SonarClient, analysis_id: str, environment: dict[str, str],
     gate = client.gate(analysis_id)
     report.update(analysis_id=analysis_id, sonar_status=gate.get("status"), gate=gate)
     checked = conditions(gate)
+    if gate.get("ignoredConditions") is not False or "new_coverage" not in checked:
+        raise ValueError("Main analysis omitted coverage evidence or ignored gate conditions")
     if gate["status"] == "OK":
         report["decision"] = "full-quality-gate-passed"
         return True

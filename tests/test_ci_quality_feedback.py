@@ -57,10 +57,22 @@ def test_exact_analysis_gate_and_evidence_remain_in_the_scanned_job() -> None:
     gate = steps[index]
     assert scan < index and "continue-on-error" not in gate
     assert gate["run"] == "python -m scripts.ci.check_sonar_quality"
-    assert gate["if"] == "inputs.has-token == 'true'"
+    assert gate["if"] == (
+        "inputs.has-token == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    )
+    vendor = next(step for step in steps if step.get("name") == "Check standard Sonar gate for PRs and qualification")
+    assert vendor["uses"] == "sonarsource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa"
+    assert vendor["if"] == (
+        "inputs.has-token == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/main')"
+    )
+    assert vendor["with"]["pollingTimeoutSec"] == 280
+    assert "continue-on-error" not in vendor
+
     assert gate["env"] == {"SONAR_TOKEN": "${{ inputs.secret-sonar-token }}"}
     evidence = next(step for step in steps if step.get("name") == "Preserve analysis-specific quality evidence")
-    assert evidence["if"] == "always() && inputs.has-token == 'true'"
+    assert evidence["if"] == (
+        "always() && inputs.has-token == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    )
     assert evidence["with"]["path"] == "sonar-quality-evidence/"
     properties = (ROOT / "sonar-project.properties").read_text()
     assert "sonar.coverage.exclusions" not in properties and "sonar.sources=src,rust" in properties

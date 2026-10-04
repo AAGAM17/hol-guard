@@ -21,11 +21,13 @@ this scanner task, never the mutable latest project gate. Its client sends the
 existing scanner token only to fixed SonarCloud endpoints, refuses redirects,
 and bounds response sizes, polling time, metadata, and history pagination.
 
-PRs, release branches, scheduled runs, and manual runs use the full Sonar gate.
-The existing 80% new-code coverage requirement is not lowered. Security,
-reliability, maintainability, duplication, and hotspot review remain blocking
-for every event. Missing conditions, weakened thresholds, unknown failed
-conditions, API errors, and incomplete analyses fail closed.
+PRs, release branches, scheduled runs, and manual runs retain the same pinned
+Sonar quality-gate action and configured 80% rule, including the vendor's existing
+no-new-code handling. The custom policy runs only on normal main pushes. Its
+green path also requires an explicit coverage measurement and confirmation that
+no gate conditions were ignored. Missing evidence is not interpreted as zero.
+Security, reliability, maintainability, duplication, and hotspot failures remain
+blocking. No contributor PR gains a new coverage-debt exception.
 
 For a normal push to `main` only, the PR explicitly accepts the already-landed
 migration debt at analysis `2ca53ee4-9157-4df2-8dd4-e4df8b1cf840`, commit
@@ -50,10 +52,9 @@ current analysis and the explicit anchor, not at a recent failed scan.
 The bounded window permits up to 128 analyzed ancestor records and 2,000 Git
 ancestors. Before retention or that bound is reached, a maintainer must refresh
 the anchor through review with the proven high-water mark, never a lower value.
-The immediate pre-push main analysis must survive in the window; if housekeeping
-purges it, the gate fails closed rather than deriving a lower floor. A missing
-historical record causes a failure, not an automatic reset. Once coverage reaches
-80%, the full gate must continue to pass. The implementation
+The immediate pre-push main analysis must also be present; an absent or purged
+record fails closed rather than allowing a lower coverage floor. Once
+coverage reaches 80%, the full gate must continue to pass. The implementation
 never changes `sonar.projectVersion`, resets the Sonar new-code period, excludes
 Rust source, removes coverage reports, or converts a security failure to a warning.
 

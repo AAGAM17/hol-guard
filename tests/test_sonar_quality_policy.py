@@ -231,13 +231,14 @@ def test_pr_release_and_manual_coverage_remain_strict(event_name, ref):
     client.main_analyses.assert_not_called()
 
 
-def test_green_pr_without_coverable_lines_passes_without_ancestry_lookup():
+def test_custom_main_policy_rejects_green_without_coverage_evidence():
     payload = gate("95")
     payload["conditions"].remove(row(payload, "new_coverage"))
     payload["periods"] = []
     client = Mock()
     client.gate.return_value = payload
-    assert runner.evaluate(client, "candidate", {"GITHUB_EVENT_NAME": "pull_request"}, {})
+    with pytest.raises(ValueError, match="omitted coverage evidence"):
+        runner.evaluate(client, "candidate", {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main"}, {})
     client.main_analyses.assert_not_called()
 
 
@@ -337,3 +338,14 @@ def test_even_a_higher_measurement_from_a_security_failed_scan_does_not_lower_th
     client.gate.side_effect = lambda key: gate() if key == "anchor" else security_failure
     assert not ratchet.permits(client, gate("70"), "current", head, [better, before], {})
     assert ratchet.permits(client, gate("75"), "current", head, [better, before], {})
+
+
+@pytest.mark.parametrize("ignored", [True, None, "false"])
+def test_green_main_analysis_must_explicitly_confirm_conditions_were_not_ignored(ignored):
+    payload = gate("95")
+    payload["ignoredConditions"] = ignored
+    client = Mock()
+    client.gate.return_value = payload
+    with pytest.raises(ValueError, match="ignored gate conditions"):
+        runner.evaluate(client, "candidate", {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main"}, {})
+    client.main_analyses.assert_not_called()

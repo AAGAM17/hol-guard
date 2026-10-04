@@ -37,6 +37,7 @@ def _run_generated_callback_payload(
         "(event as { toolInput?: Record<string, unknown> })": "event",
         "(event as { arguments?: Record<string, unknown> })": "event",
         "event as Record<string, unknown>": "event",
+        " as Record<string, unknown>": "",
         "const guardPayload: Record<string, unknown>": "const guardPayload",
         " as string": "",
     }.items():

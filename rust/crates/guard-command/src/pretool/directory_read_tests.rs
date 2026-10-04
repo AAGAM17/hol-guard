@@ -312,8 +312,24 @@ fn omp_selectors_accept_verified_tmp_alias_but_reject_child_symlinks() {
         assert_eq!(decision.minimum_action, "allow", "{target}");
         assert_eq!(decision.reason_code, reason_code, "{target}");
     }
+    let canonical_home = std::fs::canonicalize(&home).unwrap();
+    let canonical_project = std::fs::canonicalize(&project).unwrap();
+    for (target, reason_code) in [
+        (
+            format!("{}:1-5", source.display()),
+            "native_exact_safe_file_read",
+        ),
+        (
+            format!("{}:1-5", selected_directory.display()),
+            "native_exact_safe_directory_read",
+        ),
+    ] {
+        let decision = read_directory("omp", &target, &canonical_home, &canonical_project);
+        assert_eq!(decision.minimum_action, "allow", "{target}");
+        assert_eq!(decision.reason_code, reason_code, "{target}");
+    }
     let symlink_target = format!("{}:1-5", link.display());
-    let decision = read_directory("omp", &symlink_target, &home, &project);
+    let decision = read_directory("omp", &symlink_target, &canonical_home, &canonical_project);
     assert_ne!(decision.minimum_action, "allow", "{symlink_target}");
     assert!(!decision.explicitly_benign, "{symlink_target}");
 

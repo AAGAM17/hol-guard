@@ -206,6 +206,26 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
     assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
 
 
+def test_generated_omp_selector_review_uses_host_resolved_source_path(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    result = _run_generated_callback_payload(
+        source,
+        [{"type": "text", "text": "selected source"}],
+        {"decision": "allow", "notice": "reviewed"},
+        tool_name="read",
+        tool_input={"path": "/tmp/project/src/example.ts:1-5"},
+        details={
+            "isDirectory": False,
+            "meta": {"source": {"value": "/tmp/project/src/example.ts"}},
+        },
+    )
+
+    assert result["payload"]["tool_input"] == {
+        "path": "/tmp/project/src/example.ts"
+    }
+    assert result["preserved"] is True
+
+
 def test_generated_tool_result_keeps_checked_excerpt_after_local_content_cap(tmp_path: Path) -> None:
     source = _generated_source(tmp_path)
     content = [{"type": "text", "text": f"block-{index}"} for index in range(25)]

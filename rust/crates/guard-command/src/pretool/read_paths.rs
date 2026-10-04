@@ -241,10 +241,19 @@ fn verified_selector_candidate(
         for root in [home_dir, cwd].into_iter().flatten() {
             let root = expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))?;
             let root_path = std::path::Path::new(&root);
-            let Ok(relative) = expanded_path.strip_prefix(root_path) else {
-                continue;
-            };
             let canonical_root = std::fs::canonicalize(root_path).ok()?;
+            let Ok(relative) = expanded_path.strip_prefix(root_path) else {
+                let tmp_alias = std::path::Path::new("/tmp");
+                let Ok(tmp_relative) = expanded_path.strip_prefix(tmp_alias) else {
+                    continue;
+                };
+                let canonical_tmp = std::fs::canonicalize(tmp_alias).ok()?;
+                let mapped = canonical_tmp.join(tmp_relative);
+                let Ok(relative) = mapped.strip_prefix(&canonical_root) else {
+                    continue;
+                };
+                return Some(canonical_root.join(relative));
+            };
             return Some(canonical_root.join(relative));
         }
         return Some(expanded_path.to_path_buf());

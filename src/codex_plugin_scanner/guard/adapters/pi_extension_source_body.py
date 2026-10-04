@@ -225,7 +225,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "const GUARD_DAEMON_READINESS_RESPONSE_RESERVE_MS = 1_000;\n"
         "\n"
         "async function daemonWorkspaceReadiness(\n"
-        "  cwd, options: { deadlineAt?: number; allowRecovery?: boolean } = {},\n"
+        "  cwd: string, options: { deadlineAt?: number; allowRecovery?: boolean } = {},\n"
         ") {\n"
         "  const deadlineAt = options.deadlineAt ?? Date.now() + GUARD_DAEMON_READINESS_TIMEOUT_MS;\n"
         '  if (typeof fetch !== "function") {\n'

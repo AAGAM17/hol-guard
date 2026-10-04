@@ -259,20 +259,20 @@ console.log(JSON.stringify({
 
 
 @pytest.mark.parametrize(
-    ("statuses", "recovery_delay", "recovery_success", "ready", "attempts", "requests"),
+    ("statuses", "recovery_delay", "recovery_success", "ready", "attempts", "requests", "cancel_calls"),
     [
-        ([404, 200], 0, True, True, 1, 2),
-        ([404, 404], 0, True, False, 1, 2),
-        ([404], 0, False, False, 1, 1),
-        ([404, 200], 26_000, True, False, 1, 1),
-        ([503], 0, True, False, 0, 1),
-        ([401], 0, True, False, 0, 1),
-        ([200], 0, True, True, 0, 1),
+        ([404, 200], 0, True, True, 1, 2, 1),
+        ([404, 404], 0, True, False, 1, 2, 1),
+        ([404], 0, False, False, 1, 1, 1),
+        ([404, 200], 26_000, True, False, 1, 1, 1),
+        ([503], 0, True, False, 0, 1, 0),
+        ([401], 0, True, False, 0, 1, 0),
+        ([200], 0, True, True, 0, 1, 0),
     ],
 )
 def test_pi_readiness_recovers_missing_endpoint_once_within_setup_budget(
     tmp_path: Path, statuses: list[int], recovery_delay: int, recovery_success: bool,
-    ready: bool, attempts: int, requests: int
+    ready: bool, attempts: int, requests: int, cancel_calls: int
 ) -> None:
     source = managed_extension_source(
         guard_home=tmp_path / "guard-home",
@@ -284,6 +284,7 @@ def test_pi_readiness_recovers_missing_endpoint_once_within_setup_budget(
     start = source.index("const GUARD_DAEMON_READINESS_TIMEOUT_MS")
     end = source.index("async function runGuard(", start)
     readiness = source[start:end].replace(" as unknown", "").replace(" as Record<string, unknown>", "")
+    readiness = readiness.replace("cwd: string,", "cwd,")
     readiness = readiness.replace("options: { deadlineAt?: number; allowRecovery?: boolean }", "options")
     javascript = (
         f"const statuses = {json.dumps(statuses)}; const recoveryDelay = {recovery_delay};\n"
@@ -291,7 +292,7 @@ def test_pi_readiness_recovers_missing_endpoint_once_within_setup_budget(
         + """
 const GUARD_HOME = '/fixture', GUARD_HOME_DIR = '/home/fixture';
 const GUARD_HOME_DIR_IS_DEFAULT = false, GUARD_TEXT_LIMIT_CHARS = 32768;
-let clock = 1000, recoveryAttempts = 0, fetches = 0;
+let clock = 1000, recoveryAttempts = 0, fetches = 0, cancelCalls = 0;
 Date.now = () => clock;
 let connection = {port: 12345, authToken: 'fixture-token', stateId: 'old'};
 function loadGuardDaemonConnection() { return connection; }
@@ -307,14 +308,14 @@ globalThis.fetch = async (url, options) => {
   if (options.headers['X-Guard-Token'] !== 'fixture-token') throw Error('authentication');
   const status = statuses[fetches++];
   if (status === undefined) throw Error('unbounded retry');
-  return {status, ok: status === 200, body: {cancel() { return new Promise(() => {}); }},
+  return {status, ok: status === 200, body: {cancel() { cancelCalls++; return new Promise(() => {}); }},
     value: {ready: status === 200, native_required: true, native_route: 'native_resident',
       workspace_acknowledged: true, worker_ready: true}};
 };
 """
         + readiness
         + "const result = await daemonWorkspaceReadiness('/fixture');\n"
-        + "console.log(JSON.stringify({result, recoveryAttempts, fetches}));\n"
+        + "console.log(JSON.stringify({result, recoveryAttempts, fetches, cancelCalls}));\n"
     )
     result = subprocess.run(
         ["node", "--input-type=module", "-e", javascript],
@@ -324,5 +325,6 @@ globalThis.fetch = async (url, options) => {
     assert output["result"]["ready"] is ready
     assert output["recoveryAttempts"] == attempts
     assert output["fetches"] == requests
+    assert output["cancelCalls"] == cancel_calls
     if attempts and ready:
         assert output["result"]["daemonStateId"] == "new"

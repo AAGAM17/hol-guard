@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 from uuid import uuid4
 
 from cryptography.hazmat.primitives import hashes, serialization
@@ -91,7 +91,7 @@ from ..review_contracts import validated_review_verification_keys_from_sync
 from ..shims import package_shim_cloud_coverage
 from ..store import GuardStore
 from ..synced_policy import cached_policy_bundle_validation, validated_synced_policy_bundle
-from ..types import PromptRequest, RemediationAction
+from ..types import PromptRequest, PromptRequestClass, RemediationAction, RemediationActionKind
 from .actions import GuardActionEnvelope, redacted_workspace_label
 from .approval_context import (
     build_runtime_launch_identity,
@@ -2116,24 +2116,37 @@ def _prompt_request_from_dict(value: object) -> PromptRequest | None:
     if not isinstance(value, dict):
         return None
     try:
+        request_class = value["request_class"]
+        if not isinstance(request_class, str) or request_class not in get_args(PromptRequestClass):
+            return None
         remediation_items = value.get("remediation") or []
-        remediation = tuple(
-            RemediationAction(
-                kind=str(item.get("kind") or ""),
-                label=str(item.get("label") or ""),
-                detail=item.get("detail"),
+        if not isinstance(remediation_items, list):
+            return None
+        remediation: list[RemediationAction] = []
+        for item in remediation_items:
+            if not isinstance(item, dict):
+                return None
+            kind = item.get("kind")
+            if not isinstance(kind, str) or kind not in get_args(RemediationActionKind):
+                return None
+            detail = item.get("detail")
+            if detail is not None and not isinstance(detail, str):
+                return None
+            remediation.append(
+                RemediationAction(
+                    kind=cast(RemediationActionKind, kind),
+                    label=str(item.get("label") or ""),
+                    detail=detail,
+                )
             )
-            for item in remediation_items
-            if isinstance(item, dict)
-        )
         return PromptRequest(
             request_id=str(value["request_id"]),
-            request_class=str(value["request_class"]),
+            request_class=cast(PromptRequestClass, request_class),
             summary=str(value.get("summary") or ""),
             matched_text=str(value.get("matched_text") or ""),
             severity=int(value.get("severity") or 0),
             confidence=float(value.get("confidence") or 0.0),
-            remediation=remediation,
+            remediation=tuple(remediation),
         )
     except (KeyError, TypeError, ValueError):
         return None

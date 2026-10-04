@@ -53,7 +53,35 @@ class McpCatalogResult:
     skills_reason: str | None = None
 
 
-def _shlex_join_safe(argv: list) -> str:
+def _native_catalog_result(payload: dict[str, object]) -> McpCatalogResult | None:
+    """Accept only a well-typed native catalog; malformed payloads use Python."""
+    if payload.get("status") != "ok":
+        reason = payload.get("reason", "native_failed")
+        return McpCatalogResult(reason=reason) if reason is None or isinstance(reason, str) else None
+    tools = payload.get("tools")
+    protocol_version = payload.get("protocol_version")
+    server_info = payload.get("server_info")
+    capabilities = payload.get("capabilities")
+    if not isinstance(tools, list) or len(tools) > MAX_MCP_PROBE_TOOLS:
+        return None
+    if any(not isinstance(tool, dict) or any(not isinstance(key, str) for key in tool) for tool in tools):
+        return None
+    if protocol_version is not None and not isinstance(protocol_version, str):
+        return None
+    if server_info is not None and not isinstance(server_info, dict):
+        return None
+    if capabilities is not None and not isinstance(capabilities, dict):
+        return None
+    return McpCatalogResult(
+        tools=tuple(tools),
+        complete=True,
+        protocol_version=protocol_version,
+        server_info=server_info,
+        capabilities=capabilities,
+    )
+
+
+def _shlex_join_safe(argv: list[str]) -> str:
     try:
         return shlex.join(argv)
     except Exception:
@@ -87,15 +115,9 @@ def run_mcp_catalog(
         connection_identity_hash=connection_identity_hash,
     )
     if _native_result is not None:
-        if _native_result.get("status") == "ok":
-            return McpCatalogResult(
-                tools=tuple(_native_result.get("tools") or ()),
-                complete=True,
-                protocol_version=_native_result.get("protocol_version"),
-                server_info=_native_result.get("server_info"),
-                capabilities=_native_result.get("capabilities"),
-            )
-        return McpCatalogResult(reason=_native_result.get("reason", "native_failed"))
+        native_catalog = _native_catalog_result(_native_result)
+        if native_catalog is not None:
+            return native_catalog
     try:
         with tempfile.TemporaryDirectory(prefix="hol-guard-mcp-probe-") as tmp:
             return _exchange_tools_list(

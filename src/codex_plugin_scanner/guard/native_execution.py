@@ -12,7 +12,7 @@ import json
 import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast, get_args
+from typing import TYPE_CHECKING, Any, cast, get_args
 
 from .models import GuardAction
 from .native_resident_client import native_resident_client_request
@@ -21,6 +21,15 @@ from .native_runtime_resilience import (
     native_record_resident_failure,
     native_record_resident_success,
 )
+
+if TYPE_CHECKING:
+    from .contained_node_execution import ContainedNodeResult
+    from .contained_package_script_execution import ContainedPackageScriptResult
+    from .contained_typescript_execution import ContainedTypeScriptResult
+    from .contained_workspace_write_execution import ContainedWorkspaceWriteResult
+    from .runtime.containment_contract import ContainmentAttestation
+    from .runtime.containment_outputs import ContainmentCapturedOutput
+    from .runtime.effect_decision import DecisionReason, EffectDecision, PositiveProof
 
 _MAX_REQUEST_BYTES = 256 * 1024
 _RESIDENT_PROTOCOL_FEATURE = "resident-protocol-v2"
@@ -130,7 +139,7 @@ def contained_node_execute_native(
     guard_home: Path,
     evidence: dict[str, object] | None = None,
     timeout_seconds: float = 30.0,
-) -> Any | None:
+) -> ContainedNodeResult | None:
     result = _contained_request(
         op_prefix="contained_node_execute",
         request_schema="guard-contained-node-execute-request.v1",
@@ -157,7 +166,7 @@ def contained_typescript_execute_native(
     guard_home: Path,
     evidence: dict[str, object] | None = None,
     timeout_seconds: float = 30.0,
-) -> Any | None:
+) -> ContainedTypeScriptResult | None:
     result = _contained_request(
         op_prefix="contained_typescript_execute",
         request_schema="guard-contained-typescript-execute-request.v1",
@@ -185,8 +194,8 @@ def contained_package_script_execute_native(
     shim_directory: Path | None = None,
     environment: Mapping[str, str] | None = None,
     timeout_seconds: float = 30.0,
-) -> dict[str, object] | None:
-    return _contained_request(
+) -> ContainedPackageScriptResult | None:
+    result = _contained_request(
         op_prefix="contained_package_script_execute",
         request_schema="guard-contained-package-script-execute-request.v1",
         workspace=workspace,
@@ -200,6 +209,12 @@ def contained_package_script_execute_native(
         },
         timeout_seconds=timeout_seconds,
     )
+    if result is None:
+        return None
+    try:
+        return _contained_package_script_result(result)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def contained_workspace_write_execute_native(
@@ -212,7 +227,7 @@ def contained_workspace_write_execute_native(
     source: str | None = None,
     target: str | None = None,
     environment: Mapping[str, str] | None = None,
-) -> dict[str, object] | None:
+) -> ContainedWorkspaceWriteResult | None:
     request: dict[str, object] = {
         "schema": "guard-contained-workspace-write-execute-request.v1",
         "request_id": _request_id("contained_workspace_write_execute"),
@@ -389,42 +404,42 @@ def mcp_stdio_probe_native(
 # ---------------------------------------------------------------------------
 
 
-def _require_str(payload: dict, key: str) -> str:
+def _require_str(payload: dict[str, Any], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str):
         raise ValueError(f"missing or non-string field: {key}")
     return value
 
 
-def _require_guard_action(payload: dict, key: str) -> GuardAction:
+def _require_guard_action(payload: dict[str, Any], key: str) -> GuardAction:
     value = _require_str(payload, key)
     if value not in get_args(GuardAction):
         raise ValueError(f"invalid guard action: {key}")
     return cast(GuardAction, value)
 
 
-def _require_int(payload: dict, key: str) -> int:
+def _require_int(payload: dict[str, Any], key: str) -> int:
     value = payload.get(key)
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"missing or non-int field: {key}")
     return value
 
 
-def _require_list(payload: dict, key: str) -> list:
+def _require_list(payload: dict[str, Any], key: str) -> list[Any]:
     value = payload.get(key)
     if not isinstance(value, list):
         raise ValueError(f"missing or non-list field: {key}")
     return value
 
 
-def _require_dict(payload: dict, key: str) -> dict:
+def _require_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:
     value = payload.get(key)
     if not isinstance(value, dict):
         raise ValueError(f"missing or non-dict field: {key}")
     return value
 
 
-def _positive_proof(payload: dict) -> Any:
+def _positive_proof(payload: dict[str, Any]) -> PositiveProof:
     from .runtime.effect_contract import ProofRequirement, ProofRoute
     from .runtime.effect_decision import PositiveProof
 
@@ -442,7 +457,7 @@ def _positive_proof(payload: dict) -> Any:
     )
 
 
-def _decision_reason(item: dict) -> Any:
+def _decision_reason(item: dict[str, Any]) -> DecisionReason:
     from .runtime.effect_decision import DecisionFactorSource, DecisionReason
 
     source = _require_str(item, "source")
@@ -459,7 +474,7 @@ def _decision_reason(item: dict) -> Any:
     )
 
 
-def _effect_decision(payload: dict) -> Any:
+def _effect_decision(payload: dict[str, Any]) -> EffectDecision:
     from .runtime.effect_contract import ProofRoute
     from .runtime.effect_decision import EffectDecision, FinalDisposition
 
@@ -477,7 +492,7 @@ def _effect_decision(payload: dict) -> Any:
     )
 
 
-def _containment_attestation(payload: dict) -> Any:
+def _containment_attestation(payload: dict[str, Any]) -> ContainmentAttestation:
     from .runtime.containment_contract import ContainmentAttestation, ContainmentBackend, ContainmentFailure
 
     backend = _require_str(payload, "backend")
@@ -494,7 +509,7 @@ def _containment_attestation(payload: dict) -> Any:
     )
 
 
-def _captured_output(item: dict) -> Any:
+def _captured_output(item: dict[str, Any]) -> ContainmentCapturedOutput:
     from .runtime.containment_outputs import ContainmentCapturedOutput
 
     return ContainmentCapturedOutput(
@@ -504,7 +519,7 @@ def _captured_output(item: dict) -> Any:
     )
 
 
-def _contained_node_result(payload: dict) -> Any:
+def _contained_node_result(payload: dict[str, Any]) -> ContainedNodeResult:
     from .contained_node_execution import ContainedNodeResult
 
     attestation = _require_dict(payload, "attestation")
@@ -512,8 +527,7 @@ def _contained_node_result(payload: dict) -> Any:
     exit_code = _require_int(attestation, "exit_code")
     stdout = _require_str(payload, "stdout")
     stderr = _require_str(payload, "stderr")
-    proof_raw = payload.get("proof")
-    proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
+    proof = _positive_proof(_require_dict(payload, "proof"))
     decision = _effect_decision(decision_raw)
     operation_id = _require_str(payload, "operation_id")
     return ContainedNodeResult(
@@ -526,7 +540,7 @@ def _contained_node_result(payload: dict) -> Any:
     )
 
 
-def _contained_typescript_result(payload: dict) -> Any:
+def _contained_typescript_result(payload: dict[str, Any]) -> ContainedTypeScriptResult:
     from .contained_typescript_execution import ContainedTypeScriptResult
 
     attestation = _require_dict(payload, "attestation")
@@ -534,8 +548,7 @@ def _contained_typescript_result(payload: dict) -> Any:
     exit_code = _require_int(attestation, "exit_code")
     stdout = _require_str(payload, "stdout")
     stderr = _require_str(payload, "stderr")
-    proof_raw = payload.get("proof")
-    proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
+    proof = _positive_proof(_require_dict(payload, "proof"))
     decision = _effect_decision(decision_raw)
     operation_id = _require_str(payload, "operation_id")
     return ContainedTypeScriptResult(
@@ -548,7 +561,7 @@ def _contained_typescript_result(payload: dict) -> Any:
     )
 
 
-def _contained_package_script_result(payload: dict) -> Any:
+def _contained_package_script_result(payload: dict[str, Any]) -> ContainedPackageScriptResult:
     from .contained_package_script_execution import ContainedPackageScriptResult
 
     attestation = _require_dict(payload, "attestation")
@@ -556,8 +569,7 @@ def _contained_package_script_result(payload: dict) -> Any:
     exit_code = _require_int(attestation, "exit_code")
     stdout = _require_str(payload, "stdout")
     stderr = _require_str(payload, "stderr")
-    proof_raw = payload.get("proof")
-    proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
+    proof = _positive_proof(_require_dict(payload, "proof"))
     decision = _effect_decision(decision_raw)
     operation_id = _require_str(payload, "operation_id")
     return ContainedPackageScriptResult(
@@ -570,7 +582,7 @@ def _contained_package_script_result(payload: dict) -> Any:
     )
 
 
-def _contained_workspace_write_result(payload: dict) -> Any:
+def _contained_workspace_write_result(payload: dict[str, Any]) -> ContainedWorkspaceWriteResult:
     from .contained_workspace_write_execution import (
         ContainedWorkspaceWriteResult,
         ContainedWriteOperation,
@@ -581,8 +593,7 @@ def _contained_workspace_write_result(payload: dict) -> Any:
     exit_code = _require_int(attestation, "exit_code")
     stdout = _require_str(payload, "stdout")
     stderr = _require_str(payload, "stderr")
-    proof_raw = payload.get("proof")
-    proof = _positive_proof(proof_raw) if isinstance(proof_raw, dict) else None
+    proof = _positive_proof(_require_dict(payload, "proof"))
     decision = _effect_decision(decision_raw)
     op_raw = _require_str(payload, "operation_id")
     if op_raw not in get_args(ContainedWriteOperation):

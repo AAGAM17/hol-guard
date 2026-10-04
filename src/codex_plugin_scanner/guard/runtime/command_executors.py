@@ -150,7 +150,7 @@ def _execute_package_shim_operation(
             guard_home=command_context.guard_home,
             path_env=os.environ.get("PATH"),
         )
-        if _native_status is not None:
+        if isinstance(_native_status, dict):
             return _result(_native_status, generated_at=generated_at)
         return _result(package_shim_status(command_context), generated_at=generated_at)
     if operation == "guard.packageShims.install":
@@ -161,7 +161,7 @@ def _execute_package_shim_operation(
             install_managers=list(managers) if managers else None,
             path_env=os.environ.get("PATH"),
         )
-        if _native_install is not None:
+        if isinstance(_native_install, dict):
             return _result(_native_install, generated_at=generated_at)
         return _result(activate_package_shims(command_context, managers=managers), generated_at=generated_at)
     if operation == "guard.packageShims.repair":
@@ -171,7 +171,7 @@ def _execute_package_shim_operation(
             guard_home=command_context.guard_home,
             install_managers=list(managers) if managers else None,
         )
-        if _native_repair is not None:
+        if isinstance(_native_repair, dict):
             return _result(_native_repair, generated_at=generated_at)
         return _result(
             activate_package_shims(command_context, managers=managers, repair=True),
@@ -191,7 +191,7 @@ def _execute_package_shim_operation(
             managers=list(managers) if managers else None,
             workspace_dir=command_context.workspace_dir,
         )
-        if _native_probe is not None:
+        if isinstance(_native_probe, dict):
             return _result(_native_probe, generated_at=generated_at)
         return _result(
             probe_package_shim_intercepts(

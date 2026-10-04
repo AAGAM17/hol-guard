@@ -11,6 +11,15 @@ from __future__ import annotations
 
 import importlib
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ..models import GuardArtifact
+
+if TYPE_CHECKING:
+    from packaging.version import Version
+
+    from .restricted_archive_download import RestrictedArchiveDownload, RestrictedArchiveDownloadResult
 
 _NPM_REGISTRY_METADATA_BASE_URL = "https://registry.npmjs.org"
 _PYPI_REGISTRY_METADATA_BASE_URL = "https://pypi.org/pypi"
@@ -36,8 +45,8 @@ def _pe():
 def _workspace_fingerprint(
     workspace_id: str,
     *,
-    workspace_dir: _pe().Path | None,
-    artifact: _pe().GuardArtifact,
+    workspace_dir: Path | None,
+    artifact: GuardArtifact,
     bundle_meta: dict[str, str] | None,
 ) -> str:
     manifest_hashes = _pe()._hash_paths(workspace_dir, artifact.metadata.get("manifest_paths"))
@@ -56,9 +65,9 @@ def _workspace_fingerprint(
 
 def _build_request_payload(
     *,
-    artifact: _pe().GuardArtifact,
+    artifact: GuardArtifact,
     targets: tuple[dict[str, object], ...],
-    workspace_dir: _pe().Path | None,
+    workspace_dir: Path | None,
     workspace_fingerprint: str,
     policy_version: str,
 ) -> dict[str, object]:
@@ -104,7 +113,7 @@ def _build_request_payload(
     return payload
 
 
-def _lockfile_context(workspace_dir: _pe().Path | None, artifact: _pe().GuardArtifact) -> dict[str, object] | None:
+def _lockfile_context(workspace_dir: Path | None, artifact: GuardArtifact) -> dict[str, object] | None:
     if workspace_dir is None:
         return None
     lockfile_paths = artifact.metadata.get("lockfile_paths")
@@ -145,8 +154,8 @@ def _scan_external_tarball(
     *,
     retain_download: bool = False,
     request_deadline: float | None = None,
-    guard_home: _pe().Path,
-) -> tuple[dict[str, str] | None, _pe().RestrictedArchiveDownload | None]:
+    guard_home: Path,
+) -> tuple[dict[str, str] | None, RestrictedArchiveDownload | None]:
     download_timeout = _TARBALL_SCAN_TIMEOUT_SECONDS
     if request_deadline is not None:
         remaining = request_deadline - _pe().time.monotonic()
@@ -223,7 +232,7 @@ def _download_external_tarball(
     source_url: str,
     *,
     timeout_seconds: float = _TARBALL_SCAN_TIMEOUT_SECONDS,
-) -> _pe().RestrictedArchiveDownloadResult:
+) -> RestrictedArchiveDownloadResult:
     return _pe().download_restricted_archive(
         source_url,
         max_bytes=_TARBALL_SCAN_MAX_BYTES,
@@ -309,7 +318,7 @@ def _pypi_registry_resolved_version(*, package_name: str, requested_range: str) 
         specifier = _pe().SpecifierSet(normalized_range)
     except _pe().InvalidSpecifier:
         return None
-    matching_versions: list[_pe().Version] = []
+    matching_versions: list[Version] = []
     for release in releases_payload:
         if not isinstance(release, str):
             continue

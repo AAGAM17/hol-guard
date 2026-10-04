@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
-from typing import get_args
+from typing import cast, get_args
 
 import pytest
 
@@ -13,6 +13,7 @@ from codex_plugin_scanner.guard.contained_workspace_write_execution import Conta
 from codex_plugin_scanner.guard.models import GuardAction
 from codex_plugin_scanner.guard.runtime import local_mcp_stdio, runner
 from codex_plugin_scanner.guard.runtime.effect_decision import FinalDisposition
+from codex_plugin_scanner.guard.types import PromptRequest, PromptRequestClass
 
 
 def _decision(**overrides):
@@ -33,6 +34,12 @@ def _write_payload(operation):
         "stdout": "",
         "stderr": "",
         "operation_id": operation,
+        "proof": {
+            "route": "contained",
+            "binding_digest": "a" * 64,
+            "satisfied_requirements": ["containment-identity"],
+            "enforced": True,
+        },
     }
 
 
@@ -173,8 +180,15 @@ def test_approval_filter_cannot_turn_non_string_into_permission(monkeypatch):
         return None
 
     monkeypatch.setattr(runner, "_prompt_analyze_native", unavailable)
-    request = runner._prompt_request_from_dict({"request_id": "r", "request_class": "42", "severity": 1})
-    assert request is not None
+    # Exercise the approval filter independently of the stricter native decoder.
+    request = PromptRequest(
+        request_id="r",
+        request_class=cast(PromptRequestClass, "42"),
+        summary="test",
+        matched_text="test",
+        severity=1,
+        confidence=1.0,
+    )
     assert runner.should_force_reapproval([request], {"approved_prompt_classes": [42, "read"]})
     assert captured["approved_classes"] == ["read"]
 
@@ -186,3 +200,124 @@ def test_supported_manager_list_is_validated(monkeypatch, tmp_path, native, expe
     monkeypatch.setattr(native_execution, "shim_admin_native", lambda *_args, **_kwargs: native)
     result = local_supply_chain._build_package_manager_protection(SimpleNamespace(guard_home=tmp_path))
     assert result["supported_managers"] == expected
+
+
+@pytest.mark.parametrize(
+    "translator",
+    [
+        native_execution._contained_node_result,
+        native_execution._contained_typescript_result,
+        native_execution._contained_package_script_result,
+        native_execution._contained_workspace_write_result,
+    ],
+)
+@pytest.mark.parametrize("proof", [None, "not-a-proof", []])
+def test_contained_result_requires_typed_positive_proof(translator, proof):
+    payload = _write_payload("patch-check")
+    payload["proof"] = proof
+    with pytest.raises(ValueError, match="proof"):
+        translator(payload)
+
+
+def test_package_script_native_returns_dataclass_not_unvalidated_dict(monkeypatch, tmp_path):
+    from codex_plugin_scanner.guard.contained_package_script_execution import ContainedPackageScriptResult
+    from codex_plugin_scanner.guard.runtime.effect_decision import PositiveProof
+
+    payload = _write_payload("bun:test")
+    monkeypatch.setattr(native_execution, "_contained_request", lambda **_: payload)
+    result = native_execution.contained_package_script_execute_native(
+        tmp_path,
+        "bun",
+        ["run", "test"],
+        guard_home=tmp_path,
+    )
+    assert isinstance(result, ContainedPackageScriptResult)
+    assert isinstance(result.proof, PositiveProof)
+    assert result.operation_id == "bun:test"
+    payload.pop("proof")
+    assert (
+        native_execution.contained_package_script_execute_native(
+            tmp_path,
+            "bun",
+            ["run", "test"],
+            guard_home=tmp_path,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("request_class", ["42", "unknown", None, 42])
+def test_prompt_decoder_rejects_unknown_request_classes(request_class):
+    assert runner._prompt_request_from_dict({"request_id": "r", "request_class": request_class}) is None
+
+
+@pytest.mark.parametrize(
+    "remediation",
+    [
+        [{"kind": "unknown", "label": "test"}],
+        [{"kind": "approve_once", "label": "test"}, None],
+        [{"kind": "approve_once", "label": "test", "detail": 42}],
+        "not-a-list",
+    ],
+)
+def test_prompt_decoder_rejects_partial_or_unknown_remediation(remediation):
+    assert (
+        runner._prompt_request_from_dict(
+            {
+                "request_id": "r",
+                "request_class": "secret_read",
+                "remediation": remediation,
+            }
+        )
+        is None
+    )
+
+
+def test_prompt_decoder_preserves_valid_remediation():
+    result = runner._prompt_request_from_dict(
+        {
+            "request_id": "r",
+            "request_class": "secret_read",
+            "remediation": [{"kind": "approve_once", "label": "Approve", "detail": "One call"}],
+        }
+    )
+    assert result is not None
+    assert result.request_class == "secret_read"
+    assert result.remediation[0].kind == "approve_once"
+    assert result.remediation[0].detail == "One call"
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"tools": "not-a-list"},
+        {"tools": [None]},
+        {"tools": [{1: "bad-key"}]},
+        {"protocol_version": 1},
+        {"server_info": []},
+        {"capabilities": "invalid"},
+    ],
+)
+def test_mcp_native_catalog_falls_back_for_malformed_payload(monkeypatch, fields):
+    fallback = local_mcp_stdio.McpCatalogResult(reason="python-fallback")
+    native = {"status": "ok", "tools": [], **fields}
+    monkeypatch.setattr(native_execution, "mcp_stdio_probe_native", lambda *_a, **_k: native)
+    monkeypatch.setattr(local_mcp_stdio, "_exchange_tools_list", lambda *_a, **_k: fallback)
+    assert local_mcp_stdio.run_mcp_catalog(["test-server"]) is fallback
+
+
+def test_mcp_native_catalog_preserves_valid_fields():
+    tools = [{"name": "read_file", "inputSchema": {"type": "object"}}]
+    result = local_mcp_stdio._native_catalog_result(
+        {
+            "status": "ok",
+            "tools": tools,
+            "protocol_version": "2025-11-25",
+            "server_info": {"name": "test"},
+            "capabilities": {"tools": {}},
+        }
+    )
+    assert result is not None and result.complete
+    assert result.tools == tuple(tools)
+    assert result.server_info == {"name": "test"}
+    assert result.capabilities == {"tools": {}}

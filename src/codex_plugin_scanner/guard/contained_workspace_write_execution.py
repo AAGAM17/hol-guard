@@ -109,7 +109,7 @@ def try_execute_contained_workspace_write(
         operation=operation,
         source=source,
         target=target,
-        environment=_clean_environment(environment or dict(os.environ)),
+        environment=dict(_clean_environment(environment or dict(os.environ))),
         timeout_seconds=timeout_seconds,
     )
     if native_result is not None:

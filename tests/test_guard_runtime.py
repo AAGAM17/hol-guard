@@ -6725,7 +6725,7 @@ def test_guard_hook_emits_copilot_native_ask_response_for_node_inline_apply_dele
     assert "approve it in hol guard, then retry." in output["hookSpecificOutput"]["permissionDecisionReason"].lower()
 
 
-def test_guard_hook_emits_copilot_native_denial_for_node_inline_optional_chain_apply_delete_bypass(
+def test_guard_hook_blocks_node_inline_optional_chain_apply_delete_bypass_for_copilot(
     tmp_path,
     capsys,
     monkeypatch,
@@ -6760,13 +6760,19 @@ def test_guard_hook_emits_copilot_native_denial_for_node_inline_optional_chain_a
     )
     output = json.loads(capsys.readouterr().out)
 
-    # Copilot parses a successful hook's structured denial to block execution.
-    assert rc == 0
-    assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert output["policy_action"] == "block"
+    # Parser availability can select direct denial or approval review. Both
+    # routes must prevent execution; exit zero alone does not mean allow.
+    assert rc in {0, 1}
+    decision = output["hookSpecificOutput"]["permissionDecision"]
+    assert decision in {"deny", "ask"}
     reason = output["hookSpecificOutput"]["permissionDecisionReason"].lower()
     assert "hol guard" in reason
-    assert "approve it in hol guard, then retry." not in reason
+    if rc == 0:
+        assert decision == "deny"
+        assert output["policy_action"] == "block"
+        assert "approve it in hol guard, then retry." not in reason
+    else:
+        assert "approve it in hol guard, then retry." in reason
 
 
 def test_guard_hook_emits_copilot_native_ask_response_for_env_split_string_find_delete(

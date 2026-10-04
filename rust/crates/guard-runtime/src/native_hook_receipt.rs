@@ -158,7 +158,7 @@ pub(crate) fn receipt_from_pre_tool(
             observed_policy_action: None,
             reason_code: &result.reason_code,
             reviewed_output_sha256: None,
-            observe_mode: false,
+            observe_mode: snapshot.is_some_and(|snapshot| snapshot.mode == "observe"),
             command_extensions: result
                 .command_extensions
                 .as_ref()

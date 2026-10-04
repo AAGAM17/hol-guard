@@ -51,11 +51,23 @@ fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
             ("existing.txt", true),
             ("new.txt", true),
         ] {
-            for input in [
-                json!({"tool_name":"write", "tool_input":{"path": destination, "content":"replacement\n"}}),
-                json!({"tool_name":"edit", "tool_input":{"path": destination, "oldText":"ordinary", "newText":"replacement"}}),
-                json!({"tool_name":"Bash", "tool_input":{"command":format!("cp source.txt {destination}")}}),
-                json!({"tool_name":"Bash", "tool_input":{"command":format!("touch {destination}")}}),
+            for (input, input_allowed) in [
+                (
+                    json!({"tool_name":"write", "tool_input":{"path": destination, "content":"replacement\n"}}),
+                    allowed,
+                ),
+                (
+                    json!({"tool_name":"edit", "tool_input":{"path": destination, "oldText":"ordinary", "newText":"replacement"}}),
+                    allowed,
+                ),
+                (
+                    json!({"tool_name":"Bash", "tool_input":{"command":format!("cp source.txt {destination}")}}),
+                    false,
+                ),
+                (
+                    json!({"tool_name":"Bash", "tool_input":{"command":format!("touch {destination}")}}),
+                    allowed,
+                ),
             ] {
                 let result = evaluate_pre_tool_envelope_with_context(
                     harness,
@@ -68,7 +80,7 @@ fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
                 );
                 assert_eq!(
                     result.minimum_action == "allow",
-                    allowed,
+                    input_allowed,
                     "{harness}: {input}: {result:?}"
                 );
             }

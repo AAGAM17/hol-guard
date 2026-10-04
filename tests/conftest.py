@@ -249,7 +249,7 @@ def _ambient_context_digest_home(
 def native_prompt_runtime(
     _native_context_home: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[Path]:
+) -> Iterator[None]:
     """Exercise prompt behavior through the real authenticated native resident.
 
     The test suite's independent off-mode hooks stay unchanged. This fixture
@@ -262,11 +262,14 @@ def native_prompt_runtime(
     from codex_plugin_scanner.guard.native_resident_client import close_native_residents
     from codex_plugin_scanner.guard.runtime import runner
 
-    runtime = _resolve_native_hook_runtime()
+    runtime: Path | None = None
     analyze = native_prompt.analyze
     provisioned: set[Path] = set()
 
     def invoke(subop: str, **kwargs):
+        nonlocal runtime
+        if runtime is None:
+            runtime = _resolve_native_hook_runtime()
         home = kwargs.get("guard_home")
         if home is None:
             kwargs["guard_home"] = _native_context_home
@@ -286,7 +289,7 @@ def native_prompt_runtime(
     monkeypatch.setattr(native_prompt, "analyze", invoke)
     monkeypatch.setattr(runner, "_prompt_analyze_native", invoke)
     try:
-        yield runtime
+        yield
     finally:
         for home in provisioned:
             close_native_residents(home)

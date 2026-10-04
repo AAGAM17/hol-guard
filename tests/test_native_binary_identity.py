@@ -182,3 +182,56 @@ def test_aged_cached_binary_detects_same_size_restored_mtime_mutation(tmp_path):
     os.utime(path, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
     after = identity.validate_native_binary(path)
     assert after is not None and after.sha256 != before.sha256
+
+
+def _windows_metadata(*, change_time: int, mode: int = 0o100666):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        st_dev=17,
+        st_ino=23,
+        st_mode=mode,
+        st_nlink=1,
+        st_size=3,
+        st_mtime=1.0,
+        st_mtime_ns=1_000_000_000,
+        st_ctime=change_time / 1_000_000_000,
+        st_ctime_ns=change_time,
+        st_birthtime_ns=100_000_000,
+        st_file_attributes=32,
+        st_uid=0,
+        st_gid=0,
+    )
+
+
+def test_windows_path_and_handle_use_creation_time_for_cross_api_identity(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(identity, "os", SimpleNamespace(name="nt"))
+    path = _windows_metadata(change_time=100_000_000, mode=0o100777)
+    handle = _windows_metadata(change_time=500_000_000)
+    assert identity._identity(path) == identity._identity(handle)
+    handle.st_ino += 1
+    assert identity._identity(path) != identity._identity(handle)
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_windows_hash_still_detects_raw_handle_change_time(monkeypatch, tmp_path, changed):
+    from types import SimpleNamespace
+
+    path = tmp_path / "runtime.exe"
+    path.write_bytes(b"abc")
+    initial = _windows_metadata(change_time=500_000_000)
+    final = _windows_metadata(change_time=600_000_000 if changed else 500_000_000)
+    snapshots = iter((initial, final))
+    os_calls = SimpleNamespace(
+        name="nt",
+        O_RDONLY=os.O_RDONLY,
+        open=os.open,
+        read=os.read,
+        close=os.close,
+        fstat=lambda _: next(snapshots),
+    )
+    monkeypatch.setattr(identity, "os", os_calls)
+    digest = identity._read_digest(path, identity._identity(initial))
+    assert digest == (None if changed else hashlib.sha256(b"abc").hexdigest())

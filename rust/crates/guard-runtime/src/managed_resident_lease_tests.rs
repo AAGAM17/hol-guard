@@ -459,6 +459,15 @@ fn expired_live_process_leases_drain_and_a_fresh_lease_remains() {
 
     let mut retained = false;
     for _ in 0..4 {
+        // Model a live client's heartbeat between bounded cleanup sweeps.
+        // Verify the prior sweep kept it before refreshing, so renewal cannot
+        // hide an incorrect deletion. Slow Windows I/O must not make the
+        // supposedly fresh fixture expire during this multi-sweep test.
+        assert!(
+            fresh.is_file(),
+            "the previous sweep removed the fresh lease"
+        );
+        fixture_file(&fresh, body.as_bytes());
         retained = any_live_for_home(&root);
     }
 

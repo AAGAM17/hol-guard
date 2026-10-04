@@ -36,6 +36,7 @@ _GROK_TOOL_ALIASES: dict[str, str] = {
 _GROK_EVENT_NAMES: dict[str, str] = {
     "pretooluse": "PreToolUse",
     "userpromptsubmit": "UserPromptSubmit",
+    "userpromptsubmitted": "UserPromptSubmit",
     "posttooluse": "PostToolUse",
     "posttoolusefailure": "PostToolUse",
     "sessionstart": "SessionStart",

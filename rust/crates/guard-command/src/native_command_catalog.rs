@@ -161,19 +161,21 @@ impl CommandCatalog {
         for (flat_rule, (extension_index, rule_index)) in rule_entries.iter().enumerate() {
             let rule = &extensions[*extension_index].rules[*rule_index];
             by_rule_id.insert(rule.rule_id.trim().to_lowercase(), flat_rule);
-            if !rule.compatibility_fallback {
+            if rule.compatibility_fallback {
                 for action in &rule.action_classes {
-                    rule_by_action_class
-                        .entry(action.trim().to_lowercase())
-                        .or_insert(flat_rule);
+                    rule_by_action_class.insert(action.trim().to_lowercase(), flat_rule);
                 }
             }
         }
-        for (permission_index, permission) in extensions
+        let mut permissions: Vec<_> = extensions
             .iter()
             .flat_map(|ext| ext.permissions.iter())
             .enumerate()
-        {
+            .collect();
+        permissions.sort_by(|(_, left), (_, right)| {
+            left.permission_id.cmp(&right.permission_id)
+        });
+        for (permission_index, permission) in permissions {
             by_permission_id.insert(
                 permission.permission_id.trim().to_lowercase(),
                 permission_index,
@@ -188,8 +190,7 @@ impl CommandCatalog {
             }
             for capability in &permission.typed_capabilities {
                 permission_by_capability
-                    .entry(capability.trim().to_lowercase())
-                    .or_insert(permission_index);
+                    .insert(capability.trim().to_lowercase(), permission_index);
             }
         }
 

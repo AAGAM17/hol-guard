@@ -107,8 +107,12 @@ def _patch_harness_run(monkeypatch, fake_run):
     harnesses = {"codex", "copilot", "opencode", "hermes", "gemini", "cursor-agent"}
 
     def run(command, *args, **kwargs):
-        if isinstance(command, (list, tuple)) and command and Path(str(command[0])).name in harnesses:
-            return fake_run(command, *args, **kwargs)
+        if isinstance(command, (list, tuple)) and command:
+            command_names = [Path(str(part)).name for part in command]
+            if command_names[0] in harnesses or (
+                command_names[0] in {"sh", "dash", "bash"} and len(command_names) > 1 and command_names[1] in harnesses
+            ):
+                return fake_run(command, *args, **kwargs)
         return original(command, *args, **kwargs)
 
     monkeypatch.setattr(guard_runner_module.subprocess, "run", run)

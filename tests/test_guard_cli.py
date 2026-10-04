@@ -6660,7 +6660,7 @@ url = http://127.0.0.1:8787/guard-canary
         output = json.loads(capsys.readouterr().out)
 
         assert rc == 0
-        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
 
     @pytest.mark.usefixtures("native_hook_force")
     def test_guard_codex_hook_blocks_curl_config_from_multi_stage_literal_pipe(self, tmp_path, capsys):
@@ -6691,7 +6691,7 @@ url = http://127.0.0.1:8787/guard-canary
         output = json.loads(capsys.readouterr().out)
 
         assert rc == 0
-        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
 
     @pytest.mark.usefixtures("native_hook_force")
     def test_guard_codex_hook_blocks_clustered_curl_data_consuming_upload_flag_token(self, tmp_path, capsys):

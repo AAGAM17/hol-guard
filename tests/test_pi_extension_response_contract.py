@@ -8,7 +8,10 @@ from codex_plugin_scanner.guard.daemon.hook_worker_responses import (
     harness_json_from_native_pre_tool,
     observe_lifecycle_fail_safe_response,
 )
-from tests.pi_extension_response_callback_support import _run_generated_callback_payload
+from tests.pi_extension_response_callback_support import (
+    _run_generated_callback_payload,
+    _run_generated_source_ref_fixture,
+)
 from tests.pi_extension_response_runtime_support import (
     _run_generated_fixture,
     _run_generated_tool_result_fixture,
@@ -152,6 +155,22 @@ def test_generated_omp_tool_result_preserves_daemon_allow_without_hash(tmp_path:
     assert result["reviewed_excerpt"]["content"][0]["text"] == "reviewed-long"
     assert result["reviewed_excerpt"].get("isError") is not True
     assert result["observe_mode"] is True
+
+
+def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Path) -> None:
+    source = _generated_source(tmp_path)
+    content = [{"type": "text", "text": "workspace/\n.env\n"}]
+
+    regular = _run_generated_source_ref_fixture(source, content, tmp_path / "example.py")
+    directory = _run_generated_source_ref_fixture(
+        source,
+        content,
+        tmp_path / "workspace",
+        details={"isDirectory": True, "resolvedPath": str(tmp_path / "workspace")},
+    )
+
+    assert regular["sourceRef"] is not None
+    assert directory["sourceRef"] is None
 
 
 def test_generated_tool_result_keeps_checked_excerpt_after_local_content_cap(tmp_path: Path) -> None:

@@ -162,6 +162,8 @@ def _run_generated_source_ref_fixture(
     source: str,
     content: object,
     path: Path,
+    *,
+    details: object | None = None,
 ) -> dict[str, object]:
     source_path_start = source.index("function sourcePathFromToolInput(")
     source_path_end = source.index("\n\nfunction isVirtualSourcePath(", source_path_start)
@@ -191,7 +193,7 @@ def _run_generated_source_ref_fixture(
   toolInput,
   digest,
 ) {""",
-    )
+    ).replace("(details as Record<string, unknown>)", "details")
     javascript = f"""\
 import {{ createHash }} from "node:crypto";
 
@@ -214,7 +216,7 @@ const GUARD_SOURCE_REF_ALLOWED_TOOL_NAMES = new Set(["Read"]);
 {virtual}
 {source_ref}
 
-const event = {{ toolName: "Read" }};
+const event = {{ toolName: "Read", details: {json.dumps(details)} }};
 const toolInput = {{ file_path: {json.dumps(str(path))} }};
 const content = JSON.parse({json.dumps(json.dumps(content))});
 const digest = digestOutputText(content);

@@ -135,6 +135,8 @@ def run_contained_profile(
     executable = omp or shutil.which("omp")
     if not executable or not Path(executable).is_file():
         raise RuntimeError("install the repository-pinned Oh My Pi CLI before running the contained profile")
+    if platform.system() != "Darwin":
+        raise RuntimeError("the contained Bun/Vitest sink is only generated on macOS")
     for name in ("git", "rg", "curl", "bun"):
         if shutil.which(name) is None:
             raise RuntimeError(f"Gauntlet prerequisite is missing: {name}")

@@ -283,9 +283,7 @@ def run_case(
                 identity=identity,
             )
             if scenario.oracle == "blocked-extension":
-                case["extension_control"] = _configure_ollama_permission_denial(
-                    daemon, fixture.root / "guard-home"
-                )
+                case["extension_control"] = _configure_ollama_permission_denial(daemon, fixture.root / "guard-home")
             policy_snapshot = probe._prepare_installed_daemon_workspace(daemon, fixture.workspace)
             worker = daemon._server.hook_worker
             if scenario.oracle == "blocked-extension":

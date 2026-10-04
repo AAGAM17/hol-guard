@@ -66,7 +66,6 @@ from .zcode_config import (
 )
 
 _ZCODE_HOME_ENV_VAR = "ZCODE_HOME"
-_MISSING = object()
 # Current ZCode renders this label beside the hook in its Hooks settings UI
 # instead of the full managed command string.
 _GUARD_HOOK_STATUS_MESSAGE = "HOL Guard runtime policy enforcement"

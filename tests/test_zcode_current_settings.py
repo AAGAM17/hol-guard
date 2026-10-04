@@ -42,7 +42,6 @@ def test_install_and_uninstall_preserve_current_settings(tmp_path):
     adapter.uninstall(context)
     remaining = json.loads(settings.read_text())
     assert remaining["ui"] == payload["ui"]
-    assert remaining["hooks"]["enabled"] is False
     handlers = [handler for group in remaining["hooks"]["events"]["PreToolUse"] for handler in group["hooks"]]
     assert handlers == [user_handler]
     assert remaining["hooks"]["enabled"] is True

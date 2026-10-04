@@ -87,7 +87,7 @@ def build_extension_source_tail(
         "      return r.isDirectory === true && typeof r.resolvedPath === 'string' && r.resolvedPath.trim()\n"
         "        ? r.resolvedPath.trim() : undefined;\n"
         "    })();\n"
-        "    const guardPayload: Record<string, unknown> = {\n"}
+        "    const guardPayload: Record<string, unknown> = {\n"
         '        hook_event_name: "PostToolUse",\n'
         "        config_path: GUARD_CONFIG_PATH,\n"
         "        tool_call_id: event.toolCallId,\n"

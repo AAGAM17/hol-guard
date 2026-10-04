@@ -543,6 +543,8 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     containment_health_cache: dict[str, object] | None
     containment_health_cache_monotonic: float
     containment_health_cache_lock: threading.Lock
+    containment_health_refreshing: bool
+    containment_health_refresh_event: threading.Event
     network_supervisor: NetworkSupervisor
     active_hook_requests: int
     rejected_hook_requests: int
@@ -667,6 +669,8 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         self.containment_health_cache = None
         self.containment_health_cache_monotonic = 0.0
         self.containment_health_cache_lock = threading.Lock()
+        self.containment_health_refreshing = False
+        self.containment_health_refresh_event = threading.Event()
         self.network_supervisor = NetworkSupervisor()
         self.active_hook_requests = 0
         self.rejected_hook_requests = 0
@@ -2486,6 +2490,59 @@ def _repair_command_activity_persistence_health(store: GuardStore) -> str | None
 
 
 _GuardDaemonHttpServer = _GuardDaemonHTTPServer
+
+_CONTAINMENT_HEALTH_CACHE_SECONDS = 10.0
+
+
+def cached_containment_health(
+    server: _GuardDaemonHttpServer,
+    *,
+    force_refresh: bool,
+    probe: Callable[[], dict[str, object]],
+) -> dict[str, object] | None:
+    """Return containment health without holding the cache lock across the probe.
+
+    A fresh cache is shared. When the cache is due, one caller runs the probe
+    and everyone else keeps the previous payload. Callers only wait together
+    when no payload exists yet.
+    """
+
+    with server.containment_health_cache_lock:
+        cached = server.containment_health_cache
+        age = time.monotonic() - server.containment_health_cache_monotonic
+        if cached is not None and age <= _CONTAINMENT_HEALTH_CACHE_SECONDS and not force_refresh:
+            return dict(cached)
+        if server.containment_health_refreshing:
+            if cached is not None and not force_refresh:
+                return dict(cached)
+            event = server.containment_health_refresh_event
+            run_probe = False
+        else:
+            event = threading.Event()
+            server.containment_health_refresh_event = event
+            server.containment_health_refreshing = True
+            run_probe = True
+    if not run_probe:
+        event.wait()
+        with server.containment_health_cache_lock:
+            if server.containment_health_cache is not None:
+                return dict(server.containment_health_cache)
+        return None
+    payload: dict[str, object] | None = None
+    failed = False
+    try:
+        payload = probe()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        payload = None
+        failed = True
+    finally:
+        with server.containment_health_cache_lock:
+            if failed or payload is not None:
+                server.containment_health_cache = None if payload is None else dict(payload)
+                server.containment_health_cache_monotonic = time.monotonic()
+            server.containment_health_refreshing = False
+            event.set()
+    return None if payload is None else dict(payload)
 
 
 class _GuardDaemonHandler(BaseHTTPRequestHandler):
@@ -7793,22 +7850,12 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
     def _containment_health_payload(self, *, force_refresh: bool = False) -> dict[str, object] | None:
         from ..runtime.containment_health import probe_containment_health
 
-        server = self._daemon_server()
-        with server.containment_health_cache_lock:
-            age = time.monotonic() - server.containment_health_cache_monotonic
-            if not force_refresh and server.containment_health_cache is not None and age <= 10.0:
-                return dict(server.containment_health_cache)
-            try:
-                payload = probe_containment_health(
-                    daemon_fingerprint=current_guard_daemon_runtime_fingerprint(),
-                ).to_dict()
-            except (OSError, RuntimeError, TypeError, ValueError):
-                server.containment_health_cache = None
-                server.containment_health_cache_monotonic = time.monotonic()
-                return None
-            server.containment_health_cache = payload
-            server.containment_health_cache_monotonic = time.monotonic()
-            return dict(payload)
+        def probe() -> dict[str, object]:
+            return probe_containment_health(
+                daemon_fingerprint=current_guard_daemon_runtime_fingerprint(),
+            ).to_dict()
+
+        return cached_containment_health(self._daemon_server(), force_refresh=force_refresh, probe=probe)
 
     def _detailed_healthz_payload(self) -> dict[str, object]:
         uptime = round(time.monotonic() - self.server.start_monotonic, 1)  # type: ignore[attr-defined]

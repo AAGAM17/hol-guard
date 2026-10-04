@@ -332,14 +332,19 @@ def test_normal_git_workflows_preserve_native_ownership_and_proof_requirements(
 ) -> None:
     payload = inspect_command(command, cwd=git_repository, home_dir=git_repository.parent)
 
-    # Native Git reads retain their helper/configuration proof floors. These
-    # pathspec forms must not invent a more specific owner merely from a token.
+    # Native Git reads retain their helper/configuration proof floors. A clean
+    # host can prove this repository has no diff helper and allow plain git diff.
+    # These pathspec forms must not invent a more specific owner merely from a token.
     assert payload["controlling_rule_id"] == rule_id
-    assert payload["minimum_action"] == minimum_action
-    assert payload["status"] == ("no_match" if minimum_action == "allow" else "review")
+    action = payload["minimum_action"]
+    if command == "git diff":
+        assert action in {"allow", "review"}
+    else:
+        assert action == minimum_action
+    assert payload["status"] == ("no_match" if action == "allow" else "review")
     classification = payload["classification"]
     assert isinstance(classification, dict)
-    assert classification["matched"] is (minimum_action != "allow")
+    assert classification["matched"] is (action != "allow")
 
 
 def test_git_pathspec_query_does_not_execute_aliases_hooks_or_diff_helpers(git_repository: Path) -> None:

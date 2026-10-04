@@ -95,6 +95,7 @@ fn keeps_redirects_that_can_execute_hide_input_or_reach_sensitive_paths_unprojec
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn file_writes_never_follow_an_existing_symlink() {
     let root = std::env::temp_dir().join(format!("hg-redirect-{}", std::process::id()));

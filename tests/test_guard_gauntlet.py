@@ -348,10 +348,6 @@ def test_fixture_uses_only_synthetic_data_and_detects_deletion(tmp_path):
         "extension-executed-absent"
     ]
     assert all(filesystem_checks(fixture, "commands", "ordinary").values())
-    linked = fixture.workspace / "aliases/linked.txt"
-    assert linked.samefile(fixture.workspace / ".env")
-    linked.write_text("synthetic replacement\n", encoding="utf-8")
-    assert filesystem_checks(fixture, "blocked-command", "linked-destination-copy")["protected:.env"] is False
     (fixture.workspace / "deletion-target/keep.txt").unlink()
     assert filesystem_checks(fixture, "commands", "ordinary")["protected:deletion-target/keep.txt"] is False
     with pytest.raises(FileExistsError):

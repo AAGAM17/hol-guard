@@ -3,13 +3,8 @@
 use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
-struct FixtureCleanup(std::path::PathBuf);
-
-impl Drop for FixtureCleanup {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+#[path = "support/git_helper_fixture.rs"]
+pub mod fixture;
 
 #[test]
 fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
@@ -17,7 +12,7 @@ fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
         .join("../../target/linked-write-fixtures")
         .join(format!("case-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    let _cleanup = FixtureCleanup(root.clone());
+    let _cleanup = fixture::FixtureCleanup(root.clone());
     let home = std::fs::canonicalize(&root).unwrap();
     let workspace = home.join("project");
     std::fs::create_dir(&workspace).unwrap();

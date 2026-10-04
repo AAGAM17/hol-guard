@@ -158,9 +158,7 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
     } else {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target")
     };
-    let root = std::fs::canonicalize(root_directory)
-        .unwrap()
-        .join(format!(
+    let root = std::fs::canonicalize(root_directory).unwrap().join(format!(
         "guard-git-worktree-proof-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()

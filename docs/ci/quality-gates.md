@@ -50,8 +50,10 @@ current analysis and the explicit anchor, not at a recent failed scan.
 The bounded window permits up to 128 analyzed ancestor records and 2,000 Git
 ancestors. Before retention or that bound is reached, a maintainer must refresh
 the anchor through review with the proven high-water mark, never a lower value.
-A missing historical record causes a failure, not an automatic reset. Once
-coverage reaches 80%, the full gate must continue to pass. The implementation
+The immediate pre-push main analysis must survive in the window; if housekeeping
+purges it, the gate fails closed rather than deriving a lower floor. A missing
+historical record causes a failure, not an automatic reset. Once coverage reaches
+80%, the full gate must continue to pass. The implementation
 never changes `sonar.projectVersion`, resets the Sonar new-code period, excludes
 Rust source, removes coverage reports, or converts a security failure to a warning.
 

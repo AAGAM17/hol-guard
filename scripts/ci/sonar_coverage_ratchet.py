@@ -48,6 +48,8 @@ def analyzed_window(analyses: list[dict], current_id: str, current_sha: str, his
             raise ValueError("Duplicate analysis or changed project version in coverage history")
         seen.add(key)
         window.append(item)
+    if not any(item.get("revision") == history[0] for item in window):
+        raise ValueError("Pre-push main analysis is missing (possibly purged); strict gate remains blocking")
     if ANCHOR["analysis_id"] not in seen or len(window) > 128:
         raise ValueError("Coverage history is missing or exceeds its bounded review window")
     return window

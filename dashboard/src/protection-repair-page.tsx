@@ -25,7 +25,7 @@ const REPAIRABLE_HEALTH = new Set(["tampered", "recovery-required"]);
 export function protectionRepairView(health: string, gateReady: boolean): ProtectionRepairView {
   if (health === "protected") {
     return {
-      title: "Trusted settings are repaired",
+      title: "Trusted settings are protected",
       body: "Trusted settings pass their integrity check. Retry the blocked action. If it still fails, open Home to check Guard.",
       action: "home",
       actionLabel: "Back to Home",

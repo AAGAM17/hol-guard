@@ -40,6 +40,36 @@ def test_empty_and_single_sample_distributions():
     assert result["p99_ms"] == result["max_ms"] == 0
 
 
+def test_transcript_failure_retains_independent_guard_timings(tmp_path):
+    import json
+
+    from ci.gauntlet.runner import read_case_logs
+
+    raw = tmp_path / "omp.jsonl"
+    guard = tmp_path / "guard.jsonl"
+    raw.write_text("broken transcript\n")
+    guard.write_text(json.dumps({"event": "PreToolUse", "elapsed_ms": 1500, "transport_error": True}) + "\n")
+    case = {"events": [], "guard_observations": []}
+    with pytest.raises(json.JSONDecodeError):
+        read_case_logs(case, raw, guard, {})
+    latency = summarize_hook_latency(case["guard_observations"])
+    assert latency["p99_ms"] == 1500
+    assert latency["failed_attempts"] == 1
+
+
+def test_guard_log_failure_is_reported_separately(tmp_path):
+    from ci.gauntlet.runner import read_case_logs
+
+    raw = tmp_path / "omp.jsonl"
+    guard = tmp_path / "guard.jsonl"
+    raw.write_text('{"type":"tool_execution_start","toolName":"bash","toolCallId":"call"}\n')
+    guard.write_text("broken guard log\n")
+    case = {"events": [], "guard_observations": []}
+    read_case_logs(case, raw, guard, {})
+    assert case["guard_observation_error"] == "JSONDecodeError"
+    assert len(case["events"]) == 1
+
+
 @pytest.mark.parametrize("reported", [False, True])
 def test_verifier_labels_legacy_reports_without_claiming_latency(tmp_path, monkeypatch, reported):
     import json

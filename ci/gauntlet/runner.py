@@ -198,6 +198,19 @@ def _scenario_tools(scenario: Scenario) -> str:
     return ",".join(scenario.required_tools) or "read,write,edit,bash"
 
 
+def read_case_logs(case: dict[str, Any], raw_log: Path, guard_log: Path, replacements: dict[str, str]) -> None:
+    """Retain Guard timings even when the independently parsed host transcript fails."""
+    if guard_log.exists():
+        try:
+            rows = [json.loads(line) for line in guard_log.read_text().splitlines() if line.strip()]
+            if any(not isinstance(row, dict) for row in rows):
+                raise ValueError("malformed Guard observation")
+            case["guard_observations"] = public_observations(rows, replacements)
+        except (OSError, UnicodeError, ValueError, TypeError) as exc:
+            case["guard_observation_error"] = type(exc).__name__
+    case["events"] = public_events(read_events(raw_log), replacements)
+
+
 def run_case(
     scenario: Scenario,
     *,
@@ -349,17 +362,13 @@ def run_case(
                 timeout=timeout + 15,
             )
             time.sleep(0.1)
+            read_case_logs(case, raw_log, guard_log, replacements)
             case["native_routes"] = worker.metrics.snapshot().get("routes", {})
             case["approval_delta"] = worker.store.count_approval_requests(status=None) - before
             case["inference"] = relay.evidence()
             case["egress_requests"] = list(collector.requests)
-            case["events"] = public_events(read_events(raw_log), replacements)
             case["raw_transcript_sha256"] = digest_file(raw_log)
             case["stderr_sha256"] = digest_file(error_log)
-            if guard_log.exists():
-                case["guard_observations"] = public_observations(
-                    [json.loads(line) for line in guard_log.read_text().splitlines()], replacements
-                )
             if scenario.oracle == "blocked-extension":
                 if extension_receipt_ids is None or extension_receipt_writer is None:
                     raise RuntimeError("native receipt correlation was not initialized")

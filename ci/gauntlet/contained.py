@@ -42,6 +42,15 @@ from .runner import (
 from .source_files import digest_runner_files
 from .source_identity import source_identity
 
+_CONTAINED_CROSS_PROJECT_CASES = frozenset({"bun-cross-project", "bun-cross-project-equals"})
+
+
+def _contained_case_batches(cases: list[Any], project: Path, workspace: Path) -> tuple[tuple[list[Any], Path], ...]:
+    """Partition by the reviewed case identity so caller and target cannot drift apart."""
+    local = [case for case in cases if case.name not in _CONTAINED_CROSS_PROJECT_CASES]
+    cross_project = [case for case in cases if case.name in _CONTAINED_CROSS_PROJECT_CASES]
+    return tuple(batch for batch in ((local, project), (cross_project, workspace)) if batch[0])
+
 
 def _source_snapshots_match(
     initial_binding: dict[str, Any],
@@ -192,8 +201,12 @@ def run_contained_profile(
     wrapper_command: str | None = None
     wrapper_sha256: str | None = None
     request_records: dict[str, bytes] = {}
-    caller_workspaces = [project] * 5 + [fixture.workspace] * 2
-    target_workspaces: list[Path | None] = [None] * 5 + [project] * 2
+    caller_workspaces = [
+        fixture.workspace if case.name in _CONTAINED_CROSS_PROJECT_CASES else project for case in cases
+    ]
+    target_workspaces: list[Path | None] = [
+        project if case.name in _CONTAINED_CROSS_PROJECT_CASES else None for case in cases
+    ]
     try:
         with LoopbackCollector() as collector, InferenceRelay(canary=fixture.canary, **provider) as relay:
             agent_dir = private / "agent"
@@ -223,7 +236,7 @@ def run_contained_profile(
             )
             returncodes: list[int] = []
             timeouts: list[bool] = []
-            batches = ((cases[:5], project), (cases[5:], fixture.workspace))
+            batches = _contained_case_batches(cases, project, fixture.workspace)
             with _ContainedRequestCapture(request_tmp) as capture:
                 for index, (batch, cwd) in enumerate(batches):
                     command = [

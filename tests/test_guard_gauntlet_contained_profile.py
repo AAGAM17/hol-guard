@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from ci.gauntlet.contained import _ContainedRequestCapture, _source_snapshots_match
+from ci.gauntlet.contained import _contained_case_batches, _ContainedRequestCapture, _source_snapshots_match
 from ci.gauntlet.contained_judge import (
     _contained_workspace_identity_matches,
     _contained_wrapper_argv,
@@ -208,6 +208,21 @@ def test_contained_factory_returns_the_reviewed_seven_commands(tmp_path):
     ]
     assert all(case.protected_reason == "native_vitest_readonly_containment_required" for case in cases)
     assert all("execute-contained-test" not in case.command for case in cases)
+
+
+def test_contained_batches_derive_caller_workspace_from_case_identity(tmp_path):
+    project = _project(tmp_path)
+    workspace = tmp_path / "caller-workspace"
+    workspace.mkdir()
+    cases = contained_vitest_cases(project)
+
+    batches = _contained_case_batches(cases, project, workspace)
+
+    assert [[case.name for case in batch] for batch, _ in batches] == [
+        [case.name for case in cases[:5]],
+        ["bun-cross-project", "bun-cross-project-equals"],
+    ]
+    assert [cwd for _, cwd in batches] == [project, workspace]
 
 
 def test_contained_factory_requires_both_fixture_tests_and_local_dependencies(tmp_path):

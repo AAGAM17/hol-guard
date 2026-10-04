@@ -63,7 +63,7 @@ python -m ci.gauntlet run \
 
 For a GitHub test-merge checkout, also pass `--candidate-sha FULL_PR_HEAD_SHA`. The tested checkout must be that candidate or its exact two-parent test merge. The installed native build must match the checkout, and the PR evidence publisher checks the merge parents against GitHub's current PR head and base.
 
-The additive contained Bun/Vitest profile is selected explicitly and requires an existing isolated fixture project with project-local `node_modules`; it never installs dependencies and does not qualify or replace core20:
+The additive contained Bun/Vitest profile is selected explicitly, runs only on macOS, and requires an existing isolated fixture project with project-local `node_modules`; it never installs dependencies and does not qualify or replace core20:
 
 ```sh
 python -m ci.gauntlet run \

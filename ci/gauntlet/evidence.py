@@ -249,6 +249,7 @@ def _watch_evidence_error(
     case: dict[str, Any], calls: list[dict[str, Any]], by_id: dict[str, list[dict[str, Any]]]
 ) -> str | None:
     """A plain allow is not proof that Watch recorded a would-have-stopped action."""
+    bindings = []
     for key in ("watch_binding_before", "watch_binding_after"):
         binding = case.get(key)
         if (
@@ -258,8 +259,14 @@ def _watch_evidence_error(
             or binding["generation"] <= 0
             or not isinstance(binding.get("policy_digest"), str)
             or re.fullmatch(r"[0-9a-f]{64}", binding["policy_digest"]) is None
+            or not isinstance(binding.get("runtime_identity"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", binding["runtime_identity"]) is None
         ):
             return "Watch fixture lacks an authenticated resident policy binding"
+        bindings.append(binding)
+    before, after = bindings
+    if any(before[field] != after[field] for field in ("mode", "generation", "policy_digest", "runtime_identity")):
+        return "Watch resident policy binding changed during the command"
     if len(calls) != 1:
         return "Watch requires one actual harmless command"
     result = calls[0].get("result")
@@ -292,6 +299,13 @@ def _watch_evidence_error(
         or receipt.get("harness") != "omp"
         or receipt.get("event_name") != "PreToolUse"
         or receipt.get("request_id") != observation["request_id"]
+        or not isinstance(receipt.get("request_digest"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", receipt["request_digest"]) is None
+        or type(receipt.get("policy_generation")) is not int
+        or receipt.get("policy_generation") != before["generation"]
+        or receipt.get("policy_digest") != before["policy_digest"]
+        or receipt.get("runtime_identity") != before["runtime_identity"]
+        or receipt.get("observe_mode") is not True
         or not isinstance(receipt.get("decision_id"), str)
         or re.fullmatch(r"[0-9a-f]{64}", receipt["decision_id"]) is None
         or receipt.get("decision") != "deny"

@@ -41,7 +41,7 @@ def _watch_binding(store: Any) -> dict[str, Any]:
     binding = acked_snapshot_binding_for_store(store)
     if binding is None or binding.get("mode") != "observe":
         raise RuntimeError("Watch fixture lacks an authenticated resident-accepted policy")
-    return {key: binding[key] for key in ("mode", "generation", "policy_digest")}
+    return {key: binding[key] for key in ("mode", "generation", "policy_digest", "runtime_identity")}
 
 
 def clean_environment(home: Path, agent_dir: Path, canary: str) -> dict[str, str]:

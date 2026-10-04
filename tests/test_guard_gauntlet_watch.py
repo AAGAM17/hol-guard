@@ -11,7 +11,7 @@ from tests.test_guard_gauntlet import observed_case
 
 def watch_case():
     case = observed_case(WATCH_COMMAND)
-    binding = {"mode": "observe", "generation": 1, "policy_digest": "a" * 64}
+    binding = {"mode": "observe", "generation": 1, "policy_digest": "a" * 64, "runtime_identity": "b" * 64}
     case["watch_binding_before"] = binding
     case["watch_binding_after"] = deepcopy(binding)
     case["events"][2]["result"] = {"content": [{"type": "text", "text": WATCH_OUTPUT}]}
@@ -32,6 +32,11 @@ def watch_case():
             "harness": "omp",
             "event_name": "PreToolUse",
             "request_id": pre["probe_request_id"],
+            "request_digest": "d" * 64,
+            "policy_generation": 1,
+            "policy_digest": "a" * 64,
+            "runtime_identity": "b" * 64,
+            "observe_mode": True,
             "decision_id": "c" * 64,
             "decision": "deny",
             "policy_action": "sandbox-required",
@@ -65,7 +70,7 @@ def test_watch_catalog_rejects_model_scope_changes(field, value):
         load_catalog_data({"schema": "hol.guard-gauntlet.scenarios.v1", "scenarios": [row]})
 
 
-@pytest.mark.parametrize("change", ["binding", "receipt", "allow", "correlation", "version", "output"])
+@pytest.mark.parametrize("change", ["binding", "receipt", "allow", "correlation", "version", "output", "policy"])
 def test_watch_cannot_pass_from_an_ordinary_allow_or_incomplete_proof(change):
     case = watch_case()
     pre = case["guard_observations"][0]
@@ -79,6 +84,8 @@ def test_watch_cannot_pass_from_an_ordinary_allow_or_incomplete_proof(change):
         pre["native_observation"]["native_receipt"]["version"] = True
     elif change == "output":
         case["events"][2]["result"] = {"content": []}
+    elif change == "policy":
+        pre["native_observation"]["native_receipt"]["policy_digest"] = "e" * 64
     else:
         pre["probe_request_id"] = "transition-hook-" + "d" * 32
     assert assess_case(scenario(), case)["outcome"] == "harness-error"

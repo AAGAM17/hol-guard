@@ -1,9 +1,13 @@
 // Watch is recording-only. This fixture scope prevents model substitutions from executing.
 export const WATCH_COMMAND = `python -I -S -c 'print("ordinary-watch-fixture")'`;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 export function permittedWatchInput(toolName: string, input: unknown, cwd = process.env.GAUNTLET_WATCH_WORKSPACE): boolean {
-  if (toolName !== "bash" || !input || typeof input !== "object" || Array.isArray(input)) return false;
-  const args = input as Record<string, unknown>;
+  if (toolName !== "bash" || !isRecord(input)) return false;
+  const args = input;
   if (args.command !== WATCH_COMMAND || Object.keys(args).some(key => !["command", "timeout", "cwd"].includes(key))) return false;
   if (args.cwd !== undefined && (typeof cwd !== "string" || args.cwd !== cwd)) return false;
   return args.timeout === undefined || (

@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,26 @@ from .source_identity import source_identity
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+
+
+def _cleanup_case_resources(daemon: Any, identity: Any, guard_home: Path, private: Path) -> dict[str, Any]:
+    """Attempt both containment steps even when the first one fails."""
+    failures: list[Exception] = []
+    diagnostics: list[str] = []
+    for label, cleanup in (
+        ("installed-daemon", lambda: probe._cleanup_installed_daemon(daemon)),
+        ("native-resident", lambda: probe._cleanup_native(identity, guard_home)),
+    ):
+        try:
+            cleanup()
+        except Exception as exc:
+            failures.append(exc)
+            diagnostics.append(f"{label}\n{traceback.format_exc()}")
+    if failures:
+        # Exception messages and paths stay out of public evidence exports.
+        (private / "cleanup-error.txt").write_text("\n".join(diagnostics), encoding="utf-8")
+        return {"cleanup_ok": False, "cleanup_error": type(failures[0]).__name__}
+    return {"cleanup_ok": True}
 
 
 def _watch_binding(store: Any) -> dict[str, Any]:
@@ -449,12 +470,7 @@ def run_case(
     finally:
         case["filesystem"] = filesystem_checks(fixture, scenario.oracle, scenario.id)
         if daemon is not None:
-            try:
-                probe._cleanup_installed_daemon(daemon)
-                probe._cleanup_native(identity, fixture.root / "guard-home")
-                case["cleanup_ok"] = True
-            except Exception as exc:
-                case["cleanup_error"] = type(exc).__name__
+            case.update(_cleanup_case_resources(daemon, identity, fixture.root / "guard-home", private))
     case["elapsed_seconds"] = round(time.monotonic() - started, 3)
     case["hook_latency"] = summarize_hook_latency(case["guard_observations"])
     case["assessment"] = assess_case(scenario, case)

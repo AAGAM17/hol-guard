@@ -12,6 +12,7 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 
 def _archive_support():
+    """Load archive verification beside the hook without importing the application."""
     spec = importlib.util.spec_from_file_location(
         "command_projection_sdist", Path(__file__).with_name("command_projection_sdist.py")
     )
@@ -26,6 +27,7 @@ class CommandProjectionBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         # Editable environments install dependencies without compiling Rust.
         # CI prepares exact projections before any catalog-dependent imports.
+        """Validate projections before registering package contents; leave editable setup unchanged."""
         if version == "editable":
             return
         root = Path(self.root)

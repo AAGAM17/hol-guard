@@ -11,6 +11,7 @@ MANIFEST = "contracts/extensions/command-projection-build.v1.json"
 
 
 def _generator(root: Path):
+    """Load the archived generator so fingerprints use the same canonical input rules."""
     spec = importlib.util.spec_from_file_location(
         "command_projection_generator", root / "scripts/build_native_command_program.py"
     )
@@ -35,6 +36,7 @@ def projection_manifest(root: Path) -> dict:
 
 
 def write_projection_manifest(root: Path) -> None:
+    """Record the source and output fingerprints shipped in the source archive."""
     generator = _generator(root)
     destination = root / MANIFEST
     if destination.is_symlink():

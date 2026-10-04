@@ -112,3 +112,28 @@ def test_source_only_acceptance_runs_on_main_and_pull_requests() -> None:
         if "check_extension_fixture_isolation.py" in step.get("run", "") and "--output" in step["run"]
     )
     assert "continue-on-error" not in acceptance and "if" not in acceptance
+
+
+@pytest.mark.parametrize("name", ["guard-command-source", "guard-command-source.exe"])
+def test_acceptance_packaging_uses_its_own_compiler_without_exporting_to_parent(monkeypatch, tmp_path, name):
+    """A changed acceptance checkout must never reuse the parent checkout's compiler."""
+    import os
+
+    from scripts.ci.check_extension_fixture_isolation import acceptance_environment
+
+    root = tmp_path / "isolated checkout"
+    target = tmp_path / "isolated target"
+    compiler = target / "debug" / name
+    parent_environment = tmp_path / "parent-github-env"
+    parent_environment.write_text("EXISTING=value\n")
+    monkeypatch.setenv("GITHUB_ENV", str(parent_environment))
+    monkeypatch.setenv("HOL_GUARD_BUILD_SOURCE_COMPILER", "/parent/checkout/compiler")
+    monkeypatch.setenv("CARGO_TARGET_DIR", "/parent/checkout/target")
+    env = acceptance_environment(root, target, compiler)
+    assert env["HOL_GUARD_BUILD_SOURCE_COMPILER"] == str(compiler)
+    assert env["CARGO_TARGET_DIR"] == str(target)
+    assert env["PYTHONPATH"] == os.pathsep.join((str(root / "src"), str(root)))
+    assert "GITHUB_ENV" not in env
+    assert os.environ["GITHUB_ENV"] == str(parent_environment)
+    assert os.environ["HOL_GUARD_BUILD_SOURCE_COMPILER"] == "/parent/checkout/compiler"
+    assert parent_environment.read_text() == "EXISTING=value\n"

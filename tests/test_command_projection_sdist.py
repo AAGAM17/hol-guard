@@ -12,6 +12,7 @@ import pytest
 
 @pytest.fixture
 def archive(tmp_path):
+    """Create a minimal source archive with fingerprints for authored inputs and outputs."""
     root = Path(__file__).parents[1]
     spec = importlib.util.spec_from_file_location(
         "command_projection_sdist_test", root / "scripts/command_projection_sdist.py"
@@ -42,6 +43,7 @@ def archive(tmp_path):
 
 
 def test_frozen_archive_inputs_verify_without_invoking_rust(archive):
+    """Unmodified archive fingerprints verify using Python alone."""
     module, root = archive
     module.verify_projection_manifest(root)
 
@@ -58,6 +60,7 @@ def test_frozen_archive_inputs_verify_without_invoking_rust(archive):
     ],
 )
 def test_changed_archive_input_or_output_is_rejected(archive, relative):
+    """Changes to any bound source, implementation, or projection invalidate the archive."""
     module, root = archive
     path = root / relative
     if path.suffix == ".json":
@@ -71,6 +74,7 @@ def test_changed_archive_input_or_output_is_rejected(archive, relative):
 
 
 def test_new_canonical_source_is_rejected(archive):
+    """Adding an authored source must invalidate the existing archive fingerprint."""
     module, root = archive
     (root / "contributions/command-sources/command.added.json").write_text(
         json.dumps({"extension": {"extension_id": "command.added"}})

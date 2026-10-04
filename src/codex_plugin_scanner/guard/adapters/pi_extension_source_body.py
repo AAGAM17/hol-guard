@@ -233,6 +233,9 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "  }\n"
         "  let connection = loadGuardDaemonConnection();\n"
         "  if (connection === null || connection.stateId === null) {\n"
+        "    if (options.allowRecovery === false) {\n"
+        '      return { ready: false, reasonCode: "daemon_readiness_transport_failure" };\n'
+        "    }\n"
         "    let recovered = false;\n"
         "    try {\n"
         "      recovered = await recoverGuardDaemon(\n"

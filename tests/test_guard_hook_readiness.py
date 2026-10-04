@@ -328,3 +328,44 @@ globalThis.fetch = async (url, options) => {
     assert output["cancelCalls"] == cancel_calls
     if attempts and ready:
         assert output["result"]["daemonStateId"] == "new"
+
+
+def test_pi_readiness_does_not_recover_again_when_retry_loses_identity(tmp_path: Path) -> None:
+    source = managed_extension_source(
+        guard_home=tmp_path / "guard-home",
+        home_dir=tmp_path,
+        settings_path=tmp_path / "settings.json",
+        harness="omp",
+        display_name="Oh My Pi",
+    )
+    start = source.index("const GUARD_DAEMON_READINESS_TIMEOUT_MS")
+    end = source.index("async function runGuard(", start)
+    readiness = source[start:end].replace(" as unknown", "").replace(" as Record<string, unknown>", "")
+    readiness = readiness.replace("cwd: string,", "cwd,")
+    readiness = readiness.replace("options: { deadlineAt?: number; allowRecovery?: boolean }", "options")
+    javascript = (
+        """
+const GUARD_HOME = '/fixture', GUARD_HOME_DIR = '/home/fixture';
+const GUARD_HOME_DIR_IS_DEFAULT = false, GUARD_TEXT_LIMIT_CHARS = 32768;
+let connection = {port: 12345, authToken: 'fixture-token', stateId: 'old'};
+let recoveryAttempts = 0;
+function loadGuardDaemonConnection() { return connection; }
+async function recoverGuardDaemon() {
+  recoveryAttempts++;
+  connection = null;
+  return true;
+}
+globalThis.fetch = async () => ({status: 404, ok: false, body: {cancel() { return Promise.resolve(); }}});
+"""
+        + readiness
+        + "const result = await daemonWorkspaceReadiness('/fixture');\n"
+        + "console.log(JSON.stringify({result, recoveryAttempts}));\n"
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", javascript],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    output = json.loads(result.stdout)
+    assert output["result"]["ready"] is False
+    assert output["result"]["reasonCode"] == "daemon_readiness_transport_failure"
+    assert output["recoveryAttempts"] == 1

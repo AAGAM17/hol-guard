@@ -19,6 +19,10 @@ decision and records its durable semantic claim before returning the owned
 input. Only an explicit signed allow can enter this path. The returned input
 has no Clone, Debug or serialization implementation; later private-file changes
 cannot change its retained bytes.
+The size cap applies before either decision is decoded. Verification obtains a
+fresh timestamp after snapshot loading. Owned-input release rechecks time after
+durable storage against both decision and policy expiry; expiry or a clock
+rollback leaves the attempt consumed but releases no input.
 
 The generic resident RPC still refuses all business snapshots before consuming
 a claim. There is no RPC that exports this owned input or turns the new mode

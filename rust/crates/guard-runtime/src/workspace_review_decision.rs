@@ -452,113 +452,13 @@ pub(crate) fn ensure_current_native_workspace_review_provenance(
     Ok(())
 }
 
-/// Verify one decision against the request snapshot selected by `request_id`.
-/// The selector is not a binding input: all request and action material comes
-/// from the private snapshot loaded by the resident.
-pub(crate) fn verify_and_claim_request(
-    policy_store: &super::PolicySnapshotStore,
-    request_id: &str,
-    decision: &Value,
-) -> Result<VerifiedWorkspaceReviewDecision, String> {
-    claim_request(policy_store, request_id, decision, false).map(|(verified, _)| verified)
-}
-
-/// Private native-worker boundary. No serializable grant or mutable retry:
-/// the worker receives owned input only after a fresh purpose-specific claim.
-/// There is deliberately no resident RPC for exporting this value.
-#[allow(dead_code)] // Worker routing is a separate integration; never enable legacy RPC dispatch.
-pub(crate) fn claim_owned_business_request(
-    policy_store: &super::PolicySnapshotStore,
-    request_id: &str,
-    decision: &Value,
-) -> Result<
-    (
-        VerifiedWorkspaceReviewDecision,
-        guard_command::business_input::PreparedBusinessInputV1,
-    ),
-    String,
-> {
-    let (verified, input) = claim_request(policy_store, request_id, decision, true)?;
-    Ok((
-        verified,
-        input.ok_or_else(|| "native_workspace_review_business_input_missing".to_owned())?,
-    ))
-}
-
-fn claim_request(
-    policy_store: &super::PolicySnapshotStore,
-    request_id: &str,
-    decision: &Value,
-    owned_dispatch: bool,
-) -> Result<
-    (
-        VerifiedWorkspaceReviewDecision,
-        Option<guard_command::business_input::PreparedBusinessInputV1>,
-    ),
-    String,
-> {
-    let observed_time_ms = now_ms()?;
-    let state_base = policy_store.state_base();
-    super::approval_enrollment::with_transition_lock(state_base, || {
-        // The request snapshot supplies only action material. Workspace and
-        // scope come from the current native policy store and state path, so
-        // Python metadata cannot choose the authority's provenance.
-        let snapshot = policy_store.current_snapshot()?;
-        let (workspace_binding, scope_binding) = current_native_workspace_review_bindings(
-            state_base,
-            &snapshot.scope_contract.scope_digest,
-        )?;
-        let request = super::workspace_review_request::load(policy_store, request_id)?;
-        // This legacy response returns bindings, not owned provider bytes.
-        // Never consume a business grant through a mutable-command retry path.
-        if !owned_dispatch && request.business_input.is_some() {
-            return Err("native_workspace_review_business_dispatch_unavailable".to_owned());
-        }
-        if owned_dispatch
-            && (request.business_input.is_none()
-                || decision.get("decision").and_then(Value::as_str) != Some("allow"))
-        {
-            return Err("native_workspace_review_business_dispatch_invalid".to_owned());
-        }
-        let authority =
-            super::workspace_review_authority::read_installed_record_without_time(state_base)?
-                .ok_or_else(|| "native_workspace_review_authority_missing".to_owned())?;
-        ensure_current_native_workspace_review_provenance(
-            &authority,
-            &workspace_binding,
-            &scope_binding,
-        )?;
-        let context = WorkspaceReviewDecisionContext {
-            workspace_binding: &workspace_binding,
-            device_binding: &authority.device_binding,
-            installation_binding: &authority.installation_binding,
-            scope_binding: &scope_binding,
-            request_binding: &request.request_binding,
-            action_binding: &request.action_binding,
-            intent_binding: &request.intent_binding,
-            revision_binding: &request.revision_binding,
-            policy_binding: &request.policy_binding,
-            retry_scope_binding: &request.retry_scope_binding,
-        };
-        let bytes = canonical_json_bytes(decision)
-            .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-        let mut verified = if owned_dispatch {
-            let envelope: WorkspaceReviewDecisionEnvelopeV1 = serde_json::from_slice(&bytes)
-                .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-            verify_and_claim_at_mode(
-                state_base,
-                &envelope,
-                &context,
-                observed_time_ms,
-                NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_OWNED_DISPATCH,
-            )?
-        } else {
-            verify_and_claim_bytes_at(state_base, &bytes, &context, observed_time_ms)?
-        };
-        verified.request_snapshot_digest = Some(request.request_snapshot_digest);
-        Ok((verified, request.business_input))
-    })
-}
+#[path = "workspace_review_decision_request.rs"]
+mod request_claim;
+#[allow(unused_imports)] // Private worker routing is not enabled yet.
+pub(crate) use request_claim::claim_owned_business_request;
+#[cfg(test)]
+pub(crate) use request_claim::claim_owned_business_request_at_for_test;
+pub(crate) use request_claim::verify_and_claim_request;
 
 pub(crate) fn verify_and_claim_bytes_at(
     state_base: &Path,

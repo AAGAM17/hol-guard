@@ -164,6 +164,10 @@ fn private_request_loading_rejects_forged_origin_and_preserves_legacy_review() {
     key.write_all(&key_bytes).unwrap();
     drop(key);
     let store = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+    let snapshot = crate::policy_store::signed_snapshot_for_test(1, &key_bytes, &root);
+    store
+        .push(&json!({"schema": "guard-policy-snapshot-push.v1", "snapshot": snapshot}))
+        .unwrap();
     let directory = crate::resident_state::ensure_private_directory(
         &root.join("workspace-review-requests"),
         true,

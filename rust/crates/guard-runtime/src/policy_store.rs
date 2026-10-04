@@ -72,6 +72,16 @@ mod scope_tests;
 #[cfg(test)]
 #[path = "policy_store_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+pub(crate) fn signed_snapshot_for_test(
+    generation: u64,
+    key: &[u8],
+    guard_home: &Path,
+) -> PolicySnapshotV3 {
+    tests::signed_snapshot(generation, key, guard_home)
+}
+
 const SNAPSHOT_FILE_NAME: &str = "policy-snapshot-v3.json";
 const GENERATION_FLOOR_FILE_NAME: &str = "policy-snapshot-generation-floor.json";
 pub(crate) const VERIFIER_KEY_FILE_NAME: &str = "policy-verifier.key";

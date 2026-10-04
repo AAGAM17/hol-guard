@@ -87,6 +87,17 @@ def test_dependency_setup_does_not_compile_projections_in_each_coverage_shard() 
     assert download < tests
 
 
+@pytest.mark.parametrize("name", ["mdm-local-lab.yml", "mdm-artifacts.yml"])
+def test_mdm_labs_generate_resources_before_indirect_test_collection(name: str) -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
+    steps = workflow["jobs"].get("conformance", workflow["jobs"].get("tests"))["steps"]
+    prepare = next(
+        index for index, step in enumerate(steps) if step.get("uses") == "./.github/actions/stage-command-projections"
+    )
+    collect = next(index for index, step in enumerate(steps) if "scripts/mdm/run-local-lab.py" in step.get("run", ""))
+    assert prepare < collect
+
+
 def test_native_identity_watches_production_inputs_not_the_whole_test_tree() -> None:
     """Verify native identity watches production inputs not the whole test tree."""
     identity = (ROOT / "rust/build_support/command_identity.rs").read_text()

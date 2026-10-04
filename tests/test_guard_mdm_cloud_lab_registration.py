@@ -63,7 +63,11 @@ def assert_pinned_actions(document: str, ancestry: frozenset[str] = frozenset())
             assert re.fullmatch(r"\./\.github/actions/[a-z0-9-]+", value)
             assert value not in ancestry, "local action dependency cycle"
             local = read(value[2:] + "/action.yml")
-            assert yaml.safe_load(local)["runs"]["using"] == "composite"
+            action = yaml.safe_load(local)
+            assert isinstance(action, dict), "local action must be a mapping"
+            runs = action.get("runs")
+            assert isinstance(runs, dict), "local action must declare runs"
+            assert runs.get("using") == "composite", "local action must be composite"
             assert_pinned_actions(local, ancestry | {value})
         else:
             assert re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", value), value
@@ -103,3 +107,10 @@ def test_local_composite_cycles_cannot_skip_dependency_validation(monkeypatch) -
     monkeypatch.setitem(assert_pinned_actions.__globals__, "read", lambda _path: document)
     with pytest.raises(AssertionError, match="dependency cycle"):
         assert_pinned_actions(document)
+
+
+@pytest.mark.parametrize("document", ["", "[]", "runs: null", "runs: {}"])
+def test_malformed_local_action_is_rejected_explicitly(monkeypatch, document: str) -> None:
+    monkeypatch.setitem(assert_pinned_actions.__globals__, "read", lambda _path: document)
+    with pytest.raises(AssertionError, match="local action"):
+        assert_pinned_actions("steps:\n  - uses: ./.github/actions/stage-command-projections\n")

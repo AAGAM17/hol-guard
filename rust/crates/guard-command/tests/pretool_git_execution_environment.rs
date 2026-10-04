@@ -13,7 +13,18 @@ fn git_query_uses_bounded_request_context_not_resident_path() {
     let _cleanup = FixtureCleanup(root.clone());
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&repository).unwrap();
-    assert!(std::process::Command::new("git")
+    let mut init = std::process::Command::new("git");
+    for name in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_NAMESPACE",
+    ] {
+        init.env_remove(name);
+    }
+    assert!(init
         .args(["init", "--quiet"])
         .arg(&repository)
         .status()
@@ -227,7 +238,18 @@ fn stamped_git_reads_allow_only_when_no_diff_helper_is_configured() {
     let _cleanup = FixtureCleanup(root.clone());
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&repository).unwrap();
-    assert!(std::process::Command::new("git")
+    let mut init = std::process::Command::new("git");
+    for name in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_NAMESPACE",
+    ] {
+        init.env_remove(name);
+    }
+    assert!(init
         .args(["init", "--quiet"])
         .arg(&repository)
         .status()

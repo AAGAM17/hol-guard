@@ -183,7 +183,7 @@ fn a_redirect_never_lowers_the_floor_of_the_command_it_wraps() {
 }
 
 #[test]
-fn contained_commands_with_an_output_redirect_fall_back_to_review() {
+fn contained_commands_with_an_output_redirect_keep_protected_execution() {
     let root =
         std::env::temp_dir().join(format!("guard-redirect-contained-{}", std::process::id()));
     let project = root.join("project");
@@ -195,9 +195,9 @@ fn contained_commands_with_an_output_redirect_fall_back_to_review() {
     .unwrap();
     let home = root.to_string_lossy().into_owned();
     let cwd = project.to_string_lossy().into_owned();
-    for command in [
-        "pnpm test > out.log",
-        "pnpm test > /tmp/guard-test.log 2>&1",
+    for (command, action) in [
+        ("pnpm test > out.log", "sandbox-required"),
+        ("pnpm test > /tmp/guard-test.log 2>&1", "review"),
     ] {
         let result = crate::pretool::evaluate_pre_tool_envelope_with_context(
             "zcode",
@@ -209,7 +209,7 @@ fn contained_commands_with_an_output_redirect_fall_back_to_review() {
             Some(&cwd),
         );
         assert_eq!(
-            result.minimum_action, "review",
+            result.minimum_action, action,
             "{command}: {}",
             result.reason_code
         );

@@ -133,6 +133,26 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
     )
 }
 
+fn payload_with_command(payload: &Value, command: &str) -> Value {
+    let mut projected = payload.clone();
+    let Some(object) = projected.as_object_mut() else {
+        return projected;
+    };
+    for key in ["tool_input", "arguments", "input"] {
+        if let Some(nested) = object.get_mut(key).and_then(|value| value.as_object_mut()) {
+            for command_key in ["command", "cmd", "shell_command", "shellCommand"] {
+                if nested.contains_key(command_key) {
+                    nested.insert(command_key.to_owned(), command.into());
+                }
+            }
+        }
+    }
+    if object.contains_key("command") {
+        object.insert("command".to_owned(), command.into());
+    }
+    projected
+}
+
 #[allow(clippy::too_many_arguments)]
 fn evaluate_envelope(
     harness: &str,
@@ -155,11 +175,8 @@ fn evaluate_envelope(
         .filter(|_| project_redirects)
         .and_then(|command| redirect_projection::project(command, context))
     {
-        let projected_payload = serde_json::json!({
-            "tool_name": signals.tool_name.as_deref().unwrap_or("Bash"),
-            "tool_input": {"command": projection.command},
-        });
-        let mut projected = evaluate_envelope(
+        let projected_payload = payload_with_command(payload, &projection.command);
+        let projected = evaluate_envelope(
             harness,
             event,
             &projected_payload,
@@ -169,16 +186,6 @@ fn evaluate_envelope(
             execution_environment,
             false,
         );
-        // Contained execution runs the projected command without the
-        // redirect, so the redirected form falls back to ordinary review.
-        if projected.minimum_action == "sandbox-required" {
-            projected.minimum_action = "review".into();
-            projected.policy_action = "review".into();
-            projected.decision = "deny".into();
-            projected.explicitly_benign = false;
-            projected.reason_code = "native_command_redirect_containment_review".into();
-            projected.reason = "HOL Guard requires review because protected read-only execution cannot keep this command's output redirect.".into();
-        }
         {
             let raw = evaluate_envelope(
                 harness,

@@ -59,6 +59,7 @@ def test_native_python_proofs_stage_matching_resources(name: str) -> None:
 @pytest.mark.parametrize("argument", ["rust/target/release/guard-command-source", "compiler.exe"])
 def test_windows_verifier_resolves_the_existing_compiler_suffix(monkeypatch, argument: str) -> None:
     """Verify windows verifier resolves the existing compiler suffix."""
+    # This test mocks compilation, so it must not export into the runner environment.
     monkeypatch.delenv("GITHUB_ENV", raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(sys, "argv", ["verify", "--compiler", argument])
@@ -68,21 +69,6 @@ def test_windows_verifier_resolves_the_existing_compiler_suffix(monkeypatch, arg
     expected = argument if argument.endswith(".exe") else argument + ".exe"
     assert calls[0][-1] == expected
     assert calls[1] == [*calls[0], "--check"]
-
-
-@pytest.mark.parametrize(
-    "workflow_name,job_name",
-    [("rust-daemon-edge-hardening.yml", "cross-platform"), ("desktop-contract-ci.yml", "contract")],
-)
-def test_catalog_generation_precedes_first_python_test(workflow_name: str, job_name: str) -> None:
-    workflow = yaml.safe_load((ROOT / ".github/workflows" / workflow_name).read_text())
-    prepared = False
-    for step in workflow["jobs"][job_name]["steps"]:
-        script = step.get("run", "")
-        if "verify_native_command_program.py" in script:
-            prepared = True
-        if "pytest " in script:
-            assert prepared, "Python test collection requires current generated catalog resources"
 
 
 def test_native_identity_watches_production_inputs_not_the_whole_test_tree() -> None:

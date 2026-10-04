@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from codex_plugin_scanner.guard.adapters.pi_extension_source import managed_extension_source
 from codex_plugin_scanner.guard.daemon import server as daemon_server_module
 
@@ -254,3 +256,73 @@ console.log(JSON.stringify({
     assert output["contextChangedTool"]["ready"] is True
     assert output["inFlightTool"]["ready"] is True
     assert output["readinessCalls"] == 5
+
+
+@pytest.mark.parametrize(
+    ("statuses", "recovery_delay", "recovery_success", "ready", "attempts", "requests"),
+    [
+        ([404, 200], 0, True, True, 1, 2),
+        ([404, 404], 0, True, False, 1, 2),
+        ([404], 0, False, False, 1, 1),
+        ([404, 200], 26_000, True, False, 1, 1),
+        ([503], 0, True, False, 0, 1),
+        ([401], 0, True, False, 0, 1),
+        ([200], 0, True, True, 0, 1),
+    ],
+)
+def test_pi_readiness_recovers_missing_endpoint_once_within_setup_budget(
+    tmp_path: Path, statuses: list[int], recovery_delay: int, recovery_success: bool,
+    ready: bool, attempts: int, requests: int
+) -> None:
+    source = managed_extension_source(
+        guard_home=tmp_path / "guard-home",
+        home_dir=tmp_path,
+        settings_path=tmp_path / "settings.json",
+        harness="omp",
+        display_name="Oh My Pi",
+    )
+    start = source.index("const GUARD_DAEMON_READINESS_TIMEOUT_MS")
+    end = source.index("async function runGuard(", start)
+    readiness = source[start:end].replace(" as unknown", "").replace(" as Record<string, unknown>", "")
+    readiness = readiness.replace("options: { deadlineAt?: number; allowRecovery?: boolean }", "options")
+    javascript = (
+        f"const statuses = {json.dumps(statuses)}; const recoveryDelay = {recovery_delay};\n"
+        + f"const recoverySuccess = {json.dumps(recovery_success)};\n"
+        + """
+const GUARD_HOME = '/fixture', GUARD_HOME_DIR = '/home/fixture';
+const GUARD_HOME_DIR_IS_DEFAULT = false, GUARD_TEXT_LIMIT_CHARS = 32768;
+let clock = 1000, recoveryAttempts = 0, fetches = 0;
+Date.now = () => clock;
+let connection = {port: 12345, authToken: 'fixture-token', stateId: 'old'};
+function loadGuardDaemonConnection() { return connection; }
+async function recoverGuardDaemon(timeout, kind) {
+  if (timeout > 26000 || timeout <= 0 || kind !== 'authenticated-control-plane-failure') throw Error('budget');
+  recoveryAttempts++;
+  clock += recoveryDelay;
+  connection = {...connection, stateId: 'new'};
+  return recoverySuccess;
+}
+async function boundedResponseText(response) { return JSON.stringify(response.value); }
+globalThis.fetch = async (url, options) => {
+  if (options.headers['X-Guard-Token'] !== 'fixture-token') throw Error('authentication');
+  const status = statuses[fetches++];
+  if (status === undefined) throw Error('unbounded retry');
+  return {status, ok: status === 200, body: {async cancel() {}},
+    value: {ready: status === 200, native_required: true, native_route: 'native_resident',
+      workspace_acknowledged: true, worker_ready: true}};
+};
+"""
+        + readiness
+        + "const result = await daemonWorkspaceReadiness('/fixture');\n"
+        + "console.log(JSON.stringify({result, recoveryAttempts, fetches}));\n"
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", javascript],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    output = json.loads(result.stdout)
+    assert output["result"]["ready"] is ready
+    assert output["recoveryAttempts"] == attempts
+    assert output["fetches"] == requests
+    if attempts and ready:
+        assert output["result"]["daemonStateId"] == "new"

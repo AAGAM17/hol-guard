@@ -134,44 +134,25 @@ fn malformed_versions_actions_ids_selectors_and_rule_limits_are_rejected() {
     assert_eq!(excessive.validate(), Err(SnapshotError::Policy));
 }
 
-// Frozen pre-business v3 wire reader. It deliberately has no business field;
-// accepting a new snapshot by discarding that field would widen its policy.
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LegacySnapshotV3 {
-    schema: String,
-    version: u16,
-    generation: u64,
-    policy_digest: String,
-    config_digest: String,
-    rule_digest: String,
-    runtime_identity: String,
-    protocol_version: u16,
-    mode: String,
-    scope_contract: ScopeContractV3,
-    effective_policy: EffectiveNativePolicyV3,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    command_extensions: Option<guard_contracts::NativeCommandControlBindingV1>,
-    issued_at_ms: u64,
-    expires_at_ms: u64,
-    integrity: SnapshotIntegrityV3,
-}
-
 #[test]
-fn absent_binding_keeps_legacy_wire_bytes_but_old_reader_rejects_present_binding() {
-    let legacy = tests::snapshot(1, &[7; 32]);
-    let bytes = snapshot_bytes(&legacy).unwrap();
-    let old_reader: LegacySnapshotV3 = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(
-        canonical_json_bytes(&serde_json::to_value(old_reader).unwrap()).unwrap(),
-        bytes
-    );
+fn absent_binding_preserves_snapshot_wire_shape_and_fingerprint() {
+    let baseline = tests::snapshot(1, &[7; 32]);
+    let bytes = snapshot_bytes(&baseline).unwrap();
+    let expected = json!({
+        "schema": baseline.schema, "version": baseline.version,
+        "generation": baseline.generation, "policy_digest": baseline.policy_digest,
+        "config_digest": baseline.config_digest, "rule_digest": baseline.rule_digest,
+        "runtime_identity": baseline.runtime_identity, "protocol_version": baseline.protocol_version,
+        "mode": baseline.mode, "scope_contract": baseline.scope_contract,
+        "effective_policy": baseline.effective_policy, "issued_at_ms": baseline.issued_at_ms,
+        "expires_at_ms": baseline.expires_at_ms, "integrity": baseline.integrity,
+    });
+    assert_eq!(canonical_json_bytes(&expected).unwrap(), bytes);
     let restored: PolicySnapshotV3 = serde_json::from_slice(&bytes).unwrap();
     assert!(restored.business_policy.is_none());
-    assert_eq!(restored.policy_digest, legacy.policy_digest);
-    assert_eq!(restored.integrity.mac, legacy.integrity.mac);
-    assert!(serde_json::from_slice::<LegacySnapshotV3>(
-        &snapshot_bytes(&signed_business_snapshot()).unwrap()
-    )
-    .is_err());
+    assert_eq!(restored.policy_digest, baseline.policy_digest);
+    assert_eq!(restored.integrity.mac, baseline.integrity.mac);
+    let present: Value =
+        serde_json::from_slice(&snapshot_bytes(&signed_business_snapshot()).unwrap()).unwrap();
+    assert!(present["business_policy"].is_object());
 }

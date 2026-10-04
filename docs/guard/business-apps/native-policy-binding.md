@@ -25,8 +25,10 @@ evaluator. With this binding installed, native-parsed `gws` and `gog` commands a
 explicit business-action markers block pending authenticated native context.
 Uncertain command parsing also blocks in this opt-in lane: an unresolved wrapper
 or expansion cannot prove execution stays outside business operations. These
-blocks remain authoritative in observe mode. Oversized command inputs fail with
-a bounded error without echoing command text.
+blocks remain authoritative in observe mode. Empty, ambiguous, malformed and
+oversized command inputs also produce deterministic blocks without echoing text.
+Command aliases, array forms and encoded argument objects share the existing
+bounded native extractor.
 
 This is a refusal boundary, not a managed provider executor. Renamed programs,
 direct HTTP and opaque connector traffic are not comprehensively intercepted.
@@ -39,8 +41,8 @@ MCP argument data is not reinterpreted as authenticated business metadata.
 Absent bindings preserve the existing serialized snapshot and semantic digest.
 An explicit null binding is rejected. Older strict readers reject snapshots with
 the new field; publishers must wait for compatible consumers before emitting it.
-The frozen-reader tests prove wire compatibility for absence, not installed-client
-qualification. Existing external activation and trust requirements still apply.
+Wire-shape tests check absence and unchanged fingerprints; they do not qualify
+installed clients. Existing external activation and trust requirements still apply.
 
 Rollback requires issuing a newly authenticated compatible snapshot through the
 existing authorized publisher. Removing the binding removes this refusal guard;

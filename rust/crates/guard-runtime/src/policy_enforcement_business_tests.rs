@@ -191,6 +191,65 @@ fn ordinary_hook_business_claims_and_google_cli_calls_require_native_context_eve
 }
 
 #[test]
+fn native_command_aliases_encoded_inputs_and_invalid_shapes_fail_closed() {
+    for mode in ["enforce", "observe"] {
+        let installed = snapshot(Some(binding("allow", "allow")), mode);
+        let mut payloads = Vec::new();
+        for key in [
+            "command",
+            "cmd",
+            "shell_command",
+            "shellCommand",
+            "commands",
+        ] {
+            for command in [
+                json!("gws gmail users messages send"),
+                json!(["gog gmail send"]),
+                json!(""),
+                json!("  "),
+                json!(["echo fixture", "gws gmail send"]),
+            ] {
+                payloads.push(json!({"tool_name":"bash","tool_input":{key:command}}));
+            }
+        }
+        for key in [
+            "toolArgs",
+            "tool_args",
+            "toolArgsJson",
+            "tool_input",
+            "toolInput",
+            "toolArguments",
+            "tool_arguments",
+            "arguments",
+            "args",
+            "input",
+            "parameters",
+            "params",
+        ] {
+            payloads.push(json!({"tool_name":"bash",key:r#"{"shell_command":"gws gmail users messages send"}"#}));
+            payloads.push(json!({"tool_name":"bash",key:r#"{"command":"echo fixture","business_action":null}"#}));
+        }
+        payloads.push(json!({"tool_name":"bash","tool_input":{"command":"echo fixture","businessAction":null}}));
+        payloads.push(json!({"tool_name":"bash","tool_input":{"command":"x".repeat(guard_command::MAX_COMMAND_BYTES+1)}}));
+        for payload in payloads {
+            let output = super::super::apply_pre_tool_policy(
+                &installed,
+                &payload,
+                super::super::tests::generic_result("allow"),
+            )
+            .unwrap();
+            assert_eq!(
+                output.minimum_action, "block",
+                "mode={mode}, payload={payload}"
+            );
+            assert_eq!(output.decision, "deny");
+            assert_eq!(output.reason_code, "native_business_context_unavailable");
+            assert!(!output.explicitly_benign);
+        }
+    }
+}
+
+#[test]
 fn opt_in_unrelated_commands_and_mcp_data_do_not_activate_business_guards() {
     let google =
         json!({"tool_name":"bash","tool_input":{"command":"gws gmail users messages send"}});
@@ -226,6 +285,6 @@ fn intrinsic_blocks_keep_their_reason_and_oversized_commands_fail_without_echo()
     let huge = json!({"tool_name":"bash","tool_input":{"command":"x".repeat(guard_command::MAX_COMMAND_BYTES+1)}});
     assert_eq!(
         requires_business_context(&huge, PreToolActionTypeV1::Command),
-        Err("native_business_command_unavailable".into())
+        Ok(true)
     );
 }

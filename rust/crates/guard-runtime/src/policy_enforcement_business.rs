@@ -112,62 +112,40 @@ fn requires_business_context(
     ) {
         return Ok(false);
     }
-    let mut command_records = envelopes.clone();
-    for record in &envelopes {
-        for key in [
-            "tool_input",
-            "toolInput",
-            "input",
-            "arguments",
-            "parameters",
-        ] {
-            if let Some(input) = record.get(key).and_then(Value::as_object) {
-                command_records.push(input);
-            }
-        }
+    let context = match guard_command::pretool::generic::extract_untrusted_command_context(payload)
+    {
+        Ok(context) => context,
+        Err(_) => return Ok(true),
+    };
+    if context.business_action_present {
+        return Ok(true);
     }
-    for record in command_records {
-        // Recognize only native parsed CLI programs, including parser-expanded
-        // wrappers/segments. This is not a promise to cover renamed binaries,
-        // arbitrary HTTP clients, opaque MCP traffic or remote connectors.
-        for key in ["command", "command_line", "commandLine", "cmd"] {
-            let Some(command) = record.get(key).and_then(Value::as_str) else {
-                continue;
-            };
-            if command.len() > guard_command::MAX_COMMAND_BYTES {
-                return Err("native_business_command_unavailable".to_owned());
-            }
-            let request = guard_command::CommandModelRequestV1 {
-                command: command.to_owned(),
-                dialect: "posix".into(),
-                transport: "shell_string".into(),
-                extraction_provenance: "native-business-context-v1".into(),
-            };
-            let parsed = guard_command::parse_command(&request)
-                .map_err(|_| "native_business_command_unavailable".to_owned())?;
-            // An unresolved wrapper or expansion cannot prove that execution
-            // stays outside business operations. Fail closed in this opt-in
-            // lane, including uncertain commands that appear unrelated.
-            if parsed.confidence != "exact" {
-                return Ok(true);
-            }
-            if parsed
-                .segments
-                .iter()
-                .filter_map(|segment| segment.executable.as_deref())
-                .any(|program| {
-                    let basename = program.rsplit(['/', '\\']).next().unwrap_or(program);
-                    matches!(
-                        basename.to_ascii_lowercase().as_str(),
-                        "gws" | "gws.exe" | "gog" | "gog.exe"
-                    )
-                })
-            {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
+    let Some(command) = context.command else {
+        return Ok(false);
+    };
+    let request = guard_command::CommandModelRequestV1 {
+        command,
+        dialect: "posix".into(),
+        transport: "shell_string".into(),
+        extraction_provenance: "native-business-context-v1".into(),
+    };
+    let parsed = match guard_command::parse_command(&request) {
+        Ok(parsed) if parsed.confidence == "exact" => parsed,
+        _ => return Ok(true),
+    };
+    // Unresolved extraction/parsing cannot prove execution stays outside
+    // business operations. No inference covers renamed binaries or HTTP.
+    Ok(parsed
+        .segments
+        .iter()
+        .filter_map(|segment| segment.executable.as_deref())
+        .any(|program| {
+            let basename = program.rsplit(['/', '\\']).next().unwrap_or(program);
+            matches!(
+                basename.to_ascii_lowercase().as_str(),
+                "gws" | "gws.exe" | "gog" | "gog.exe"
+            )
+        }))
 }
 
 pub(super) fn guard_untrusted_business_context(

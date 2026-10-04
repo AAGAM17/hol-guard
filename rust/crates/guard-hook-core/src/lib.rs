@@ -176,11 +176,17 @@ fn envelope_target(payload: &Value) -> Option<String> {
 }
 
 fn sensitive_envelope_target(payload: &Value) -> bool {
-    let Some(target) = envelope_target(payload) else {
-        return false;
-    };
-    let path = Path::new(target.trim());
-    sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
+    let target = envelope_target(payload);
+    let resolved_directory_target = payload
+        .get("resolved_directory_target")
+        .and_then(Value::as_str);
+    [target.as_deref(), resolved_directory_target]
+        .into_iter()
+        .flatten()
+        .any(|target| {
+            let path = Path::new(target.trim());
+            sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
+        })
 }
 
 fn inline_local_content(payload: &Value) -> bool {

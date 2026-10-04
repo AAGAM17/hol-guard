@@ -207,6 +207,7 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
     assert directory_handler["preserved"] is True
     assert "guard_source_ref" not in directory_handler["payload"]
     assert directory_handler["payload"]["tool_input"] == {"path": str(tmp_path / "workspace")}
+    assert directory_handler["payload"]["resolved_directory_target"] == str(tmp_path / "workspace")
 
     selector_directory_handler = _run_generated_callback_payload(
         source,
@@ -226,8 +227,10 @@ def test_generated_omp_directory_result_stays_inline_not_source_ref(tmp_path: Pa
     )
     assert selector_directory_handler["preserved"] is True
     assert selector_directory_handler["payload"]["tool_input"] == {"path": f"{tmp_path / 'workspace'}:1-5"}
+    assert selector_directory_handler["payload"]["resolved_directory_target"] == str(tmp_path / "workspace")
 
     assert regular_handler["preserved"] is True
+    assert "resolved_directory_target" not in regular_handler["payload"]
     assert regular_handler["payload"]["guard_source_ref"]["kind"] == "source_file"
 
     # A resolved path without the explicit directory flag can also describe a

@@ -80,7 +80,14 @@ def build_extension_source_tail(
         "    // Rust revalidates directory targets, including bounded OMP selectors;\n"
         "    // host-resolved details are metadata, not an authority to rewrite it.\n"
         "    const guardToolInput = reviewToolInput;\n"
-        "    const guardPayload: Record<string, unknown> = {\n"
+        "    const resolvedDirectoryTarget = (() => {\n"
+        "      const d = event.details;\n"
+        "      if (!d || typeof d !== 'object' || Array.isArray(d)) return undefined;\n"
+        "      const r = d as Record<string, unknown>;\n"
+        "      return r.isDirectory === true && typeof r.resolvedPath === 'string' && r.resolvedPath.trim()\n"
+        "        ? r.resolvedPath.trim() : undefined;\n"
+        "    })();\n"
+        "    const guardPayload: Record<string, unknown> = {\n"}
         '        hook_event_name: "PostToolUse",\n'
         "        config_path: GUARD_CONFIG_PATH,\n"
         "        tool_call_id: event.toolCallId,\n"
@@ -89,7 +96,10 @@ def build_extension_source_tail(
         "        tool_response: toolOutput,\n"
         "        is_error: event.isError === true,\n"
         "    };\n"
-        "    // OMP's current ExtensionContext has no lifecycle signal. A managed\n"
+        "    if (resolvedDirectoryTarget !== undefined) {\n"
+        "      guardPayload.resolved_directory_target = resolvedDirectoryTarget;\n"
+        "    }\n"
+        "    // OMP's current ExtensionContext has no lifecycle signal. A managed\n"}
         "    // structured destination therefore stays fail-closed there unless the\n"
         "    // host supplies the feature-detected signal used by the tool-call path.\n"
         "    const structuredOutputJson = signal === undefined\n"

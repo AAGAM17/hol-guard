@@ -2,6 +2,7 @@ use base64::{engine::general_purpose, Engine};
 use guard_command::business_gmail_wire::*;
 use guard_contracts::MAX_BUSINESS_INLINE_BYTES;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 const MIME: &[u8] = b"From: sender@example.test\r\nTo: recipient@example.test\r\nBcc: hidden@example.test\r\nSubject: Fixture\r\n\r\nPrivate fixture body";
 
@@ -11,6 +12,44 @@ fn body(raw: &str) -> Vec<u8> {
 
 fn params() -> Vec<u8> {
     br#"{"userId":"me"}"#.to_vec()
+}
+
+#[test]
+fn committed_provider_export_matches_the_pin_and_decoder_profile() {
+    let bytes = include_bytes!(
+        "../../../../contracts/business-policy/providers/gws-v0.22.5-gmail-send.schema.json"
+    );
+    assert_eq!(
+        hex::encode(Sha256::digest(bytes)),
+        GWS_GMAIL_SEND_SCHEMA_DIGEST
+    );
+    let export: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    assert_eq!(export["httpMethod"], "POST");
+    assert_eq!(export["path"], "gmail/v1/users/{userId}/messages/send");
+    assert_eq!(export["parameters"].as_object().unwrap().len(), 1);
+    assert_eq!(export["parameters"]["userId"]["type"], "string");
+    assert_eq!(export["parameters"]["userId"]["default"], "me");
+    assert_eq!(export["parameters"]["userId"]["required"], true);
+    let properties = export["requestBody"]["schema"]["properties"]
+        .as_object()
+        .unwrap();
+    assert_eq!(properties["raw"]["type"], "string");
+    assert_eq!(properties["raw"]["format"], "byte");
+    assert_eq!(properties["threadId"]["type"], "string");
+    for field in properties
+        .keys()
+        .filter(|field| *field != "raw" && *field != "threadId")
+    {
+        let mut value = json!({"raw":"Zg"});
+        value[field] = json!(null);
+        assert!(
+            matches!(
+                decode_body(serde_json::to_vec(&value).unwrap()),
+                Err(GmailSendWireErrorV1::Invalid)
+            ),
+            "{field}"
+        );
+    }
 }
 
 fn decode_body(bytes: Vec<u8>) -> Result<GmailSendWireInputV1, GmailSendWireErrorV1> {

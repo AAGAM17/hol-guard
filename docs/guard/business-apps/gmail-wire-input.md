@@ -6,6 +6,13 @@ semantic extraction. It follows the exported gws v0.22.5
 `gmail.users.messages.send` route: POST `gmail/v1/users/{userId}/messages/send`.
 The recorded route/schema export SHA-256 is
 `4c3fb4da34519808a4fff1428b742edb66b220543aa7eabccadd3708cbdd581d`.
+The exact export is committed at
+`contracts/business-policy/providers/gws-v0.22.5-gmail-send.schema.json`.
+Tests hash those bytes, verify the route/parameter/raw/thread field shapes and
+confirm other exported Message fields remain rejected. The export came from
+`gws schema gmail.users.messages.send` with no provider credential, using
+source `705fb0ecac6f4249679958f6325b809b63fdde17`. Discovery can change independently
+of the CLI version; re-exporting does not silently replace this pinned artifact.
 The version/digest constants identify the intended interpretation; they do not
 verify the caller's executable, endpoint, schema or credential principal.
 

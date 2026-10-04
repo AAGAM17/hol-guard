@@ -12,13 +12,9 @@ import importlib.util
 import json
 import os
 import secrets
-import sys
 import tempfile
 import time
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from installed_native_extension_case import run_case
 
 import codex_plugin_scanner
 from codex_plugin_scanner.guard.approval_gate import ApprovalGateInput, update_settings
@@ -57,6 +53,20 @@ from codex_plugin_scanner.guard.store_base import EncryptedFileSecretStore
 def require(condition: bool, code: str) -> None:
     if not condition:
         raise RuntimeError(f"installed_native_extensions_failed:{code}")
+
+
+def installed_native_case_runner():
+    spec = importlib.util.spec_from_file_location(
+        "installed_native_extension_case", Path(__file__).with_name("installed_native_extension_case.py")
+    )
+    require(spec is not None and spec.loader is not None, "case_runner_missing")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.run_case
+
+
+run_case = installed_native_case_runner()
 
 
 def installed_probe_support():

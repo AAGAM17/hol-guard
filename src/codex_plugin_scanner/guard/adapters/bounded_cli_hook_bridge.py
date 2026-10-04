@@ -491,7 +491,8 @@ def run_bounded_cli_hook(
             print(daemon_stderr, file=sys.stderr)
         return daemon_exit
     if harness == "grok" and _event_name(input_text).lower().replace("_", "").replace("-", "") in {
-        "userpromptsubmit", "userpromptsubmitted"
+        "userpromptsubmit",
+        "userpromptsubmitted",
     }:
         # A cold evaluator fallback can outlive Grok's prompt deadline and fail open.
         # Return a native block while the trusted daemon is unavailable instead.

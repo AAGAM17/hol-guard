@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 pub mod action_lattice;
 pub mod approval_reuse;
+pub mod business_gmail_plain;
 pub mod business_gmail_wire;
 pub mod business_gws_command;
 pub mod business_input;

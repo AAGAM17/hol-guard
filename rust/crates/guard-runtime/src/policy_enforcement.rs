@@ -44,6 +44,9 @@ use policy_enforcement_policy::CompiledEffectivePolicy;
 mod policy_enforcement_admission;
 pub(crate) use policy_enforcement_admission::AdmittedPolicySnapshot;
 
+#[path = "policy_enforcement_business.rs"]
+mod policy_enforcement_business;
+
 #[cfg(test)]
 #[path = "policy_enforcement_tests.rs"]
 mod tests;
@@ -115,6 +118,7 @@ pub(crate) fn apply_pre_tool_policy(
         return Err("native_policy_mode_invalid".to_owned());
     }
     validate_pre_tool_result_matrix(&result)?;
+    policy_enforcement_business::guard_untrusted_business_context(snapshot, payload, &mut result)?;
     let harness = normalized_harness(&result.action.harness);
     let mut facts = payload_facts(
         payload,

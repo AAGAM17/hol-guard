@@ -20,8 +20,8 @@
 //!   module's scope.
 //! - `python_strip` / `py_str_repr` / `py_float_repr` are local copies of the
 //!   private helpers in `mcp_decision.rs` (:82-101) and
-//!   `package_manifest_diff.rs` (:285-303); they are `fn`, not `pub`, so they
-//!   cannot be shared. `py_float_repr` here is stricter than the
+//!   `package_manifest_diff.rs` (:285-303). Receipt projection shares this
+//!   module's `py_str` and `py_truthy`; `py_float_repr` here is stricter than the
 //!   `package_manifest_diff.rs` version — it reproduces CPython's `e+16`/
 //!   `e-05` exponent style for shortest-repr floats.
 
@@ -60,7 +60,7 @@ fn python_strip(text: &str) -> &str {
 
 /// Python truthiness for JSON values (`or`/`if` semantics): `None`, `False`,
 /// `0`, `0.0`, `""`, `[]`, `{}` are falsy.
-fn py_truthy(value: &Value) -> bool {
+pub(crate) fn py_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(flag) => *flag,
@@ -203,7 +203,7 @@ fn py_repr(value: &Value) -> String {
 }
 
 /// Python `str(value)`: strings render bare; everything else uses `repr`.
-fn py_str(value: &Value) -> String {
+pub(crate) fn py_str(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
         other => py_repr(other),

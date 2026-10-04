@@ -29,6 +29,7 @@ from ..adapters.base import HarnessContext
 from ..approval_gate import ApprovalGateError
 from ..approval_scope_support import package_request_runtime_workspace_scope
 from ..approvals import approval_prompt_flow, build_approval_browser_url, first_approval_url, queue_blocked_approvals
+from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
 from ..browser_opener import open_browser_url
 from ..config import GuardConfig
 from ..daemon import ensure_guard_daemon
@@ -42,6 +43,7 @@ from ..local_supply_chain import (
     compose_current_package_policy_action,
     package_request_policy_hash,
 )
+from ..mcp_fresh_approval import fresh_claim_allows_reapproval
 from ..mcp_tool_calls import (
     ApprovalReuseClaimDisposition,
     ToolCallDecision,
@@ -66,6 +68,8 @@ from ..runtime.approval_context import (
 )
 from ..runtime.approval_reuse import APPROVAL_REUSE_CLAIM_FAILED
 from ..runtime.browser_mcp_intent import normalize_browser_mcp_intent
+from ..runtime.composio_contract import composio_requires_action_review
+from ..runtime.harness_attribution import origin_harness_env
 from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity
 from ..runtime.package_execution_policy import is_execution_permitted
 from ..runtime.package_intent import build_package_request_artifact, extract_package_intent_request
@@ -571,6 +575,9 @@ class RuntimeMcpGuardProxy:
         self.command = command
         self.context = context
         self.store = store
+        from ..native_context import bind_context_digest_home
+
+        bind_context_digest_home(context.guard_home)
         self.config = config
         self.source_scope = source_scope
         self.config_path = config_path
@@ -782,35 +789,40 @@ class RuntimeMcpGuardProxy:
         # before any saved allow can be reused against it.
         self._reset_child_process_state()
         launch_env = _configured_server_launch_environment(self.server_env_keys)
+        child_env = dict(launch_env)
+        child_env.update(origin_harness_env(self.harness))
         configured_env = _configured_server_environment(launch_env, self.server_env_keys)
-        self._active_runtime_launch_identity = build_runtime_launch_identity(
-            self.command[0] if self.command else "",
-            args=self.command[1:],
-            structured_command=True,
-            search_path=launch_env.get("PATH"),
-            cwd=self.context.workspace_dir or Path.cwd(),
-            launch_env=launch_env,
-        )
-        self._active_executable_identity = _resolved_executable_identity(
-            self.command[0] if self.command else "",
-            launch_cwd=self.context.workspace_dir,
-            launch_env=launch_env,
-            launch_args=self.command[1:],
-        )
-        self._active_server_env_values_hash = build_configured_environment_hash(
-            launch_env,
-            configured_keys=self.server_env_keys,
-        )
-        self._active_server_identity = build_mcp_server_identity(
-            config_path=self.config_path,
-            command=self.command[0] if self.command else "",
-            args=tuple(self.command[1:]),
-            transport=self.transport,
-            env=configured_env,
-            env_keys=self.server_env_keys,
-        )
         process: subprocess.Popen[str] | None = None
         try:
+            # Identity and digest calls raise when the native resident is
+            # unreachable; keep them inside the failure boundary so partial
+            # state is unwound.
+            self._active_runtime_launch_identity = build_runtime_launch_identity(
+                self.command[0] if self.command else "",
+                args=self.command[1:],
+                structured_command=True,
+                search_path=launch_env.get("PATH"),
+                cwd=self.context.workspace_dir or Path.cwd(),
+                launch_env=launch_env,
+            )
+            self._active_executable_identity = _resolved_executable_identity(
+                self.command[0] if self.command else "",
+                launch_cwd=self.context.workspace_dir,
+                launch_env=launch_env,
+                launch_args=self.command[1:],
+            )
+            self._active_server_env_values_hash = build_configured_environment_hash(
+                launch_env,
+                configured_keys=self.server_env_keys,
+            )
+            self._active_server_identity = build_mcp_server_identity(
+                config_path=self.config_path,
+                command=self.command[0] if self.command else "",
+                args=tuple(self.command[1:]),
+                transport=self.transport,
+                env=configured_env,
+                env_keys=self.server_env_keys,
+            )
             process = subprocess.Popen(
                 self.command,
                 stdin=subprocess.PIPE,
@@ -818,7 +830,7 @@ class RuntimeMcpGuardProxy:
                 stderr=None,
                 text=True,
                 cwd=self.context.workspace_dir,
-                env=launch_env,
+                env=child_env,
                 executable=resolved_runtime_launch_executable(self._active_runtime_launch_identity),
             )
             if not self._verify_post_spawn_launch_identity(launch_env=launch_env):
@@ -1029,7 +1041,24 @@ class RuntimeMcpGuardProxy:
             server_identity=self._session_server_identity(),
             tool_schema=tool_schema,
             tool_description=tool_description_value if isinstance(tool_description_value, str) else None,
+            tool_definition=tool_definition,
+            provider_catalog_hash=(
+                self.store.read_mcp_provider_authority_hash() if composio_requires_action_review(tool_name) else None
+            ),
         )
+        if tool_name in self._tool_catalog:
+            from ..store_mcp_catalog import tool_definition_authority_hash
+
+            # Catalog entries omit their name because it is the map key. Bind
+            # the full definition for local grants without changing the
+            # artifact hash used by existing exact saved blocks.
+            artifact = replace(
+                artifact,
+                runtime_private_metadata={
+                    **artifact.runtime_private_metadata,
+                    "mcp_tool_authority_hash": tool_definition_authority_hash({"name": tool_name, **tool_definition}),
+                },
+            )
         artifact_hash = build_tool_call_hash(
             artifact,
             arguments,
@@ -1327,7 +1356,7 @@ class RuntimeMcpGuardProxy:
                     expected_catalog_fingerprint=authority.catalog_fingerprint,
                 )
                 return response, package_event
-            if self._allow_after_native_prompt(decision):
+            if asks_for_approval(self.config) and self._allow_after_native_prompt(decision):
                 response, package_event = self._handle_package_request(
                     message=message,
                     child_stdin=child_stdin,
@@ -1347,7 +1376,7 @@ class RuntimeMcpGuardProxy:
                     expected_catalog_fingerprint=authority.catalog_fingerprint,
                 )
                 return response, package_event
-            if self._inline_prompt_available and approval_callback is not None:
+            if asks_for_approval(self.config) and self._inline_prompt_available and approval_callback is not None:
                 approval_result = approval_callback(self._inline_approval_request(tool_name, decision.summary))
                 if _approval_allows(approval_result):
                     try:
@@ -1359,7 +1388,7 @@ class RuntimeMcpGuardProxy:
                             now=_now(),
                             signals=decision.signals,
                             risk_categories=decision.risk_categories,
-                            remember=True,
+                            remember=not composio_requires_action_review(tool_name),
                             arguments=_safe_mcp_arguments(arguments),
                             additional_scanner_evidence=decision_scanner_evidence,
                             emit_runtime_evidence=False,
@@ -1392,7 +1421,7 @@ class RuntimeMcpGuardProxy:
                         expected_catalog_generation=authority.catalog_generation,
                         expected_catalog_state=authority.catalog_state,
                         expected_catalog_fingerprint=authority.catalog_fingerprint,
-                        remember_allow=True,
+                        remember_allow=not composio_requires_action_review(tool_name),
                         remember_decision_source="inline-approved",
                         remember_signals=decision.signals,
                         remember_risk_categories=decision.risk_categories,
@@ -1459,7 +1488,7 @@ class RuntimeMcpGuardProxy:
                 expected_catalog_state=authority.catalog_state,
                 expected_catalog_fingerprint=authority.catalog_fingerprint,
             )
-        if self._allow_after_native_prompt(decision):
+        if asks_for_approval(self.config) and self._allow_after_native_prompt(decision):
             return self._allow_and_forward(
                 message=message,
                 child_stdin=child_stdin,
@@ -1478,7 +1507,7 @@ class RuntimeMcpGuardProxy:
                 expected_catalog_state=authority.catalog_state,
                 expected_catalog_fingerprint=authority.catalog_fingerprint,
             )
-        if self._inline_prompt_available and approval_callback is not None:
+        if asks_for_approval(self.config) and self._inline_prompt_available and approval_callback is not None:
             approval_result = approval_callback(self._inline_approval_request(tool_name, decision.summary))
             if _approval_allows(approval_result):
                 return self._allow_and_forward(
@@ -1493,7 +1522,7 @@ class RuntimeMcpGuardProxy:
                     signals=decision.signals,
                     risk_categories=decision.risk_categories,
                     params=params,
-                    remember=True,
+                    remember=not composio_requires_action_review(tool_name),
                     scanner_evidence=decision_scanner_evidence,
                     policy_action="allow",
                     expected_catalog_generation=authority.catalog_generation,
@@ -2405,9 +2434,33 @@ class RuntimeMcpGuardProxy:
         policy_action: GuardAction,
         scanner_evidence: tuple[dict[str, object], ...],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        approval_center_url = ensure_guard_daemon(self.context.guard_home)
         decision_v2_payload = self._package_decision_v2(package_evaluation, policy_action)
         risk_signals = tuple(str(item.get("message") or item.get("code") or "") for item in package_evaluation.reasons)
+        if not asks_for_approval(self.config):
+            response, event = self._queue_approval_center_response(
+                message_id=message_id,
+                artifact=artifact,
+                artifact_hash=artifact_hash,
+                tool_name=tool_name,
+                params=params,
+                signals=(package_evaluation.risk_summary, *risk_signals),
+                scanner_evidence=scanner_evidence,
+                policy_action=policy_action,
+            )
+            evaluation_payload = deepcopy(package_evaluation.to_dict())
+            evaluation_payload["decision"] = "block"
+            evaluation_payload["policy_action"] = "block"
+            user_copy = evaluation_payload.setdefault("user_copy", {})
+            user_copy.update(
+                title="Package request blocked",
+                summary=package_evaluation.risk_summary,
+                dashboard_url=None,
+                next_step=response["error"]["message"],
+                harness_message=response["error"]["message"],
+            )
+            response["error"]["data"]["supplyChainEvaluation"] = evaluation_payload
+            return response, event
+        approval_center_url = ensure_guard_daemon(self.context.guard_home)
         queued = queue_blocked_approvals(
             redaction_level=self.config.receipt_redaction_level,
             detection=HarnessDetection(
@@ -2868,7 +2921,16 @@ class RuntimeMcpGuardProxy:
                 )
             if (
                 not context_matches
-                or fresh_action == "require-reapproval"
+                or (
+                    fresh_action == "require-reapproval"
+                    and not fresh_claim_allows_reapproval(
+                        claim_disposition=claim_disposition,
+                        reason_code=fresh_decision.approval_reuse_reason_code,
+                        decision=pending,
+                        artifact=fresh_authority.artifact,
+                        artifact_hash=fresh_authority.artifact_hash,
+                    )
+                )
                 or (fresh_action == "review" and not claim_authorizes_review)
             ):
                 return self._queue_approval_center_response(
@@ -3404,6 +3466,35 @@ class RuntimeMcpGuardProxy:
         scanner_evidence: tuple[dict[str, object], ...] = (),
         policy_action: GuardAction = "require-reapproval",
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if not asks_for_approval(self.config):
+            block_tool_call(
+                store=self.store,
+                artifact=artifact,
+                artifact_hash=artifact_hash,
+                decision_source="policy-safe-alternative",
+                now=_now(),
+                signals=signals,
+                risk_categories=tool_call_risk_categories(artifact, params.get("arguments")),
+                arguments=_safe_mcp_arguments(params.get("arguments")),
+                additional_scanner_evidence=scanner_evidence,
+                policy_action=policy_action,
+            )
+            return _blocked_tool_response(
+                message_id,
+                tool_name,
+                safe_alternative_reason(
+                    f"HOL Guard blocked tool call {tool_name} from {self.server_name}. " + " ".join(signals)
+                ),
+                {"approvalRequests": [], "guardPolicyAction": "block", "transportOutcome": "not-forwarded"},
+            ), {
+                "method": "tools/call",
+                "tool_name": tool_name,
+                "decision": "safe-alternative",
+                "policy_action": policy_action,
+                "approval_requests": [],
+                "prompted": False,
+                "redacted_params": _safe_mcp_params(params),
+            }
         approval_center_url = ensure_guard_daemon(self.context.guard_home)
         queued = queue_blocked_approvals(
             redaction_level=self.config.receipt_redaction_level,

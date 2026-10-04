@@ -5,7 +5,11 @@ import { ActionButton, IconActionButton, Surface } from "./approval-center-primi
 import {
   QUEUE_CONNECTION_ERROR_HEADLINE,
   QUEUE_CONNECTION_ERROR_INSTRUCTION,
-} from "./approval-center-utils";
+  QUEUE_SESSION_ERROR_DETAIL,
+  QUEUE_SESSION_ERROR_HEADLINE,
+  QUEUE_SESSION_ERROR_INSTRUCTION,
+  queueErrorIsUnauthorizedSession,
+} from "./queue-connection-copy";
 
 export function QueueConnectionError(props: {
   message: string;
@@ -16,18 +20,16 @@ export function QueueConnectionError(props: {
   const [repairing, setRepairing] = useState(false);
   const [repairError, setRepairError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const authenticationRequired = isGuardAuthenticationError(props.message);
+  const sessionMissing = queueErrorIsUnauthorizedSession(props.message) || isGuardAuthenticationError(props.message);
 
   const handleRepair = useCallback(async () => {
-    if (props.onRepair === undefined) {
-      return;
-    }
+    if (props.onRepair === undefined) return;
     setRepairing(true);
-    setRepairError(null);
     try {
       await props.onRepair();
+      setRepairError(null);
     } catch {
-      setRepairError("Guard could not complete the repair. Open the local Guard app to check its status.");
+      setRepairError("Guard could not reconnect yet. Start Guard on this device and retry.");
     } finally {
       setRepairing(false);
     }
@@ -41,17 +43,13 @@ export function QueueConnectionError(props: {
     }
   }, [handleRepair, props.approvalUrl]);
 
-  if (authenticationRequired) {
+  if (sessionMissing) {
     const recoveryCommand = guardSessionRecoveryCommand(typeof window === "undefined" ? "" : window.location.pathname);
     return (
       <Surface>
-        <h2 className="text-sm font-semibold text-brand-dark">Reconnect this browser to Guard</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Guard responded, but this browser's local session is missing or has expired. Your request has not been changed.
-        </p>
-        <p className="mt-2 text-sm text-slate-600">
-          Open the dashboard from the Guard app, or run this command in your terminal. Guard Cloud sign-in is not required.
-        </p>
+        <h2 className="text-sm font-semibold text-brand-dark" role="alert">{QUEUE_SESSION_ERROR_HEADLINE}</h2>
+        <p className="mt-2 text-sm text-slate-600">{QUEUE_SESSION_ERROR_DETAIL}</p>
+        <p className="mt-2 text-sm text-slate-600">{QUEUE_SESSION_ERROR_INSTRUCTION}</p>
         <div className="mt-3 flex items-start gap-2">
           <code className="min-w-0 flex-1 break-words font-mono text-sm text-brand-dark select-all">{recoveryCommand}</code>
           <IconActionButton
@@ -81,7 +79,7 @@ export function QueueConnectionError(props: {
   return (
     <div className="space-y-4">
       <Surface tone="danger">
-        <p className="text-sm font-semibold text-brand-purple">{QUEUE_CONNECTION_ERROR_HEADLINE}</p>
+        <p className="text-sm font-semibold text-brand-purple" role="alert">{QUEUE_CONNECTION_ERROR_HEADLINE}</p>
         <p className="mt-1 text-sm text-brand-purple/80">{props.message}</p>
         {repairError !== null && <p role="alert" className="mt-2 text-sm">{repairError}</p>}
         <p className="mt-2 text-sm text-brand-purple/70">{QUEUE_CONNECTION_ERROR_INSTRUCTION}</p>
@@ -95,16 +93,8 @@ export function QueueConnectionError(props: {
           <code className="inline-flex min-h-10 items-center rounded-lg border border-brand-purple/30 bg-slate-50 px-3 py-2 font-mono text-sm text-brand-purple select-all">
             hol-guard start
           </code>
-          {props.onRetry !== undefined && (
-            <ActionButton variant="outline" onClick={props.onRetry}>
-              Retry
-            </ActionButton>
-          )}
-          {props.approvalUrl !== null && (
-            <ActionButton href={props.approvalUrl} variant="outline">
-              Open dashboard
-            </ActionButton>
-          )}
+          {props.onRetry !== undefined && <ActionButton variant="outline" onClick={props.onRetry}>Retry</ActionButton>}
+          {props.approvalUrl !== null && <ActionButton href={props.approvalUrl} variant="outline">Open dashboard</ActionButton>}
         </div>
       </Surface>
     </div>

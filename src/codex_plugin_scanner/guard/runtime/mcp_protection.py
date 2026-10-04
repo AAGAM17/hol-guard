@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
+import os
+import shutil
 from dataclasses import dataclass
-from hashlib import sha256
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
+from ..native_context import context_sha256_digest
 from .approval_context import build_configured_environment_hash
 
 
@@ -19,6 +20,7 @@ class McpServerIdentity:
     args_hash: str
     package_name: str | None
     package_version: str | None
+    package_source: str
     transport: str
     env_keys: tuple[str, ...]
     env_values_hash: str
@@ -48,6 +50,7 @@ def build_mcp_server_identity(
     """Build a stable server identity with secret-safe configured env binding."""
 
     package_name, package_version = _package_identity(command, args)
+    package_source = package_source_token(command, args)
     env_key_set = {key.strip() for key in env_keys if key.strip()}
     if env is not None:
         env_key_set.update(key.strip() for key in env if key.strip())
@@ -74,6 +77,7 @@ def build_mcp_server_identity(
         args_hash=args_hash,
         package_name=package_name,
         package_version=package_version,
+        package_source=package_source,
         transport=transport,
         env_keys=env_keys,
         env_values_hash=env_values_hash,
@@ -107,15 +111,24 @@ def build_mcp_tool_identity(
     )
 
 
+def _non_secret_mcp_server_command(command: str) -> str:
+    """Return a serialization-safe MCP command without URL credentials."""
+
+    if "://" not in command:
+        return command
+    return _sanitize_package_url(command)
+
+
 def mcp_server_identity_metadata(identity: McpServerIdentity) -> dict[str, object]:
     """Serialize an MCP server identity into non-secret Guard metadata."""
 
     return {
         "config_path": identity.config_path,
-        "command": identity.command,
+        "command": _non_secret_mcp_server_command(identity.command),
         "args_hash": identity.args_hash,
         "package_name": identity.package_name,
         "package_version": identity.package_version,
+        "package_source": identity.package_source,
         "transport": identity.transport,
         "env_keys": list(identity.env_keys),
         "env_values_hash": identity.env_values_hash,
@@ -135,9 +148,92 @@ def mcp_tool_identity_metadata(identity: McpToolIdentity) -> dict[str, object]:
     }
 
 
-def _package_identity(command: str, args: tuple[str, ...]) -> tuple[str | None, str | None]:
+_PACKAGE_LAUNCHERS = frozenset({"bunx", "npm", "npx", "pnpm", "uvx", "yarn", "pipx"})
+
+
+def package_launcher_name(command: str) -> str | None:
+    """Return the canonical package-launcher basename, if this command is one."""
+
     command_name = _command_name(command)
-    if command_name not in {"bunx", "npm", "npx", "pnpm", "uvx", "yarn", "pipx"}:
+    return command_name if command_name in _PACKAGE_LAUNCHERS else None
+
+
+def resolved_package_launcher_executable(command: str) -> Path | None:
+    """Resolve a package launcher to a real executable, or None if unknown."""
+
+    launcher = package_launcher_name(command)
+    if launcher is None:
+        return None
+    candidate = Path(command).expanduser()
+    if candidate.is_absolute():
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            return None
+    else:
+        found = _which_package_launcher(command) or _which_package_launcher(launcher)
+        if found is None:
+            return None
+        try:
+            resolved = Path(found).resolve(strict=True)
+        except OSError:
+            return None
+    if not resolved.is_file():
+        return None
+    return resolved
+
+
+def _which_package_launcher(launcher: str) -> str | None:
+    """Resolve a launcher on PATH, skipping Guard package shims."""
+
+    path_value = os.environ.get("PATH", "")
+    parts = [part for part in path_value.split(os.pathsep) if part and not _is_guard_package_shim_dir(part)]
+    if not parts:
+        return None
+    return shutil.which(launcher, path=os.pathsep.join(parts))
+
+
+def _is_guard_package_shim_dir(part: str) -> bool:
+    posix = Path(part).expanduser().as_posix().rstrip("/")
+    return posix.endswith("/package-shims/bin") or "/.hol-guard/package-shims/" in posix
+
+
+_PACKAGE_SOURCE_FLAGS = (
+    "--registry",
+    "--index-url",
+    "--extra-index-url",
+    "--index",
+)
+
+
+def package_source_token(command: str, args: tuple[str, ...]) -> str:
+    """Return a canonical package-source token, or 'default' when none is set."""
+
+    sources: list[str] = []
+    index = 0
+    while index < len(args):
+        value = args[index].strip()
+        matched = False
+        for flag in _PACKAGE_SOURCE_FLAGS:
+            equals = f"{flag}="
+            if value == flag and index + 1 < len(args):
+                sources.append(f"{flag}={args[index + 1].strip()}")
+                index += 2
+                matched = True
+                break
+            if value.startswith(equals):
+                sources.append(f"{flag}={value.partition('=')[2].strip()}")
+                index += 1
+                matched = True
+                break
+        if not matched:
+            index += 1
+    return "|".join(sources) if sources else "default"
+
+
+def _package_identity(command: str, args: tuple[str, ...]) -> tuple[str | None, str | None]:
+    command_name = package_launcher_name(command)
+    if command_name is None:
         return None, None
     package_token = _package_token(command_name=command_name, args=args)
     if package_token is None:
@@ -404,12 +500,14 @@ def _looks_like_runtime_path(value: str) -> bool:
 
 
 def _stable_digest(value: object) -> str:
-    payload = json.dumps(
-        _normalize_json_value(value),
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return sha256(payload.encode()).hexdigest()
+    # Canonical-JSON SHA-256 (sort_keys + compact separators) — byte-identical
+    # to the prior local digest, now owned by the native canonical_sha256 op.
+    # Identity digest reused for exact-match against stored artifact metadata.
+    # Stored rows were produced by the same _stable_digest (baseline local
+    # hashlib), so strict=False degrades to the byte-identical local canonical
+    # hash when the resident is down — preserving reuse/identity, never touching
+    # the approval-equality path (those digests stay strict).
+    return context_sha256_digest(_normalize_json_value(value), unbound_label="mcp-stable-digest", strict=False)
 
 
 def _normalize_json_value(value: object) -> object:

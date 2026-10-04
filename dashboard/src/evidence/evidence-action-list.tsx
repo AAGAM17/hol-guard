@@ -11,7 +11,7 @@ import type { GuardReceipt } from "../guard-types";
 import type { EvidenceSortKey } from "./evidence-types";
 import { harnessDisplayName, formatRelativeTime } from "../approval-center-utils";
 import { detectCategory, getCategoryInfo } from "./categories";
-import { resolveActionCommand, resolveActionTitle, resolveActionType, resolveActionSubtitle } from "./plain-english";
+import { resolveActionCommand, resolveActionTitle, resolveActionTitleTooltip, resolveActionType, resolveActionSubtitle } from "./plain-english";
 import { hasMore } from "./evidence-pagination";
 import { SectionLabel } from "../approval-center-primitives";
 import { DecisionBadge } from "./decision-badge";
@@ -220,6 +220,9 @@ function ActionRow({
   const catInfo = getCategoryInfo(category);
   const actionTitle = resolveActionTitle(receipt);
   const command = resolveActionCommand(receipt);
+  const actionTitleTooltip = resolveActionTitleTooltip(receipt);
+  const primaryLabel = command ?? actionTitle;
+  const primaryTooltip = command ?? actionTitleTooltip;
   const actionType = resolveActionType(receipt);
   const actionSubtitle = resolveActionSubtitle(receipt);
 
@@ -271,11 +274,19 @@ function ActionRow({
       </td>
       <td className="px-3 py-2.5">
         <div className="flex flex-col min-w-0">
-          <span className={`text-sm text-brand-dark block max-w-[36rem] break-words line-clamp-3 ${command ? "font-mono whitespace-pre-wrap" : "font-medium"}`}>
-            {command ?? actionTitle}
+          <span
+            className={`text-sm text-brand-dark line-clamp-3 break-words block max-w-[70vw] sm:max-w-[420px] lg:max-w-[520px] ${command ? "font-mono whitespace-pre-wrap" : "font-medium"}`}
+            title={primaryTooltip}
+          >
+            <span aria-hidden="true">{primaryLabel}</span>
+            <span className="sr-only">{primaryTooltip}</span>
           </span>
-          <span className="text-[11px] text-slate-400 truncate block max-w-[260px]">
-            {actionSubtitle ?? actionType}
+          <span
+            className="text-[11px] text-slate-400 truncate block max-w-[70vw] sm:max-w-[420px] lg:max-w-[520px]"
+            title={actionSubtitle ?? actionType}
+          >
+            <span aria-hidden="true">{actionSubtitle ?? actionType}</span>
+            <span className="sr-only">{actionSubtitle ?? actionType}</span>
           </span>
         </div>
       </td>

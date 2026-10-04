@@ -7,11 +7,12 @@ import os
 import sqlite3
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import pytest
 
 from codex_plugin_scanner.cli import main
+from codex_plugin_scanner.guard import protect
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution, queue_blocked_approvals
 from codex_plugin_scanner.guard.cli.protect_approvals import _protect_approval_item, _protect_request_artifact
 from codex_plugin_scanner.guard.local_supply_chain import _is_fresh_artifact_approval, build_package_protect_payload
@@ -120,15 +121,27 @@ def _install_fake_package_manager(
     monkeypatch.setenv("PATH", os.pathsep.join(filter(None, (str(package_bin), inherited_path))))
 
 
-@pytest.mark.parametrize("origin", ["environment", "parent_process"])
+@pytest.mark.parametrize(
+    "origin,harness",
+    [
+        ("environment", "zcode"),
+        ("zcode-cli", "zcode"),
+        ("grok", "grok"),
+        ("/Applications/Codex.app/Contents/MacOS/Codex", "codex"),
+    ],
+)
 @pytest.mark.parametrize("package_manager", ["npm", "bun"])
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_attributes_package_requests_to_invoking_harness(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     origin: str,
+    harness: str,
     package_manager: str,
 ) -> None:
+    if origin != "environment" and os.name == "nt":
+        pytest.skip("Process-table attribution is Unix-only")
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir(parents=True)
@@ -138,10 +151,22 @@ def test_guard_protect_attributes_package_requests_to_invoking_harness(
     if origin == "environment":
         monkeypatch.setenv("ZCODE_ENV", "production")
     else:
+        from codex_plugin_scanner.guard.runtime import harness_attribution
+
         monkeypatch.setattr(
             "codex_plugin_scanner.guard.runtime.package_protect_projection.resolve_parent_process_harness",
-            lambda: "zcode",
+            harness_attribution.resolve_parent_process_harness,
         )
+        original_run = subprocess.run
+
+        def process_snapshot(command, **kwargs):
+            if command == ["/bin/ps", "-axo", "pid=,ppid=,comm="]:
+                executable = PurePath(origin).name if "/" in origin or "\\" in origin else origin
+                return subprocess.CompletedProcess(command, 0, f"42 41 /bin/sh\n41 1 {executable}\n", "")
+            return original_run(command, **kwargs)
+
+        monkeypatch.setattr(harness_attribution.os, "getppid", lambda: 42)
+        monkeypatch.setattr(harness_attribution.subprocess, "run", process_snapshot)
     _stub_approval_daemon(monkeypatch)
 
     rc = main(
@@ -162,26 +187,107 @@ def test_guard_protect_attributes_package_requests_to_invoking_harness(
 
     output = json.loads(capsys.readouterr().out)
 
-    assert output["request"]["harness"] == "zcode"
-    assert output["receipt"]["harness"] == "zcode"
+    assert output["request"]["harness"] == harness
+    assert output["receipt"]["harness"] == harness
     assert output["targets"]
-    assert all(target.get("harness") == "zcode" for target in output["targets"])
+    assert all(target.get("harness") == harness for target in output["targets"])
     assert str(output["receipt"]["artifact_id"]).startswith("guard-cli:")
 
     queued = store.list_approval_requests(status="pending", limit=10)
     assert queued
-    assert all(item["harness"] == "zcode" for item in queued)
+    assert all(item["harness"] == harness for item in queued)
     assert all(str(item["artifact_id"]).startswith("guard-cli:") for item in queued)
-    assert any("ZCode" in str(item.get("trigger_summary") or "") for item in queued)
+    assert any(harness in str(item.get("trigger_summary") or "").lower() for item in queued)
     assert rc == 2
 
     install_events = [
         event for event in store.list_events(limit=20) if str(event["event_name"]).startswith("install_time_")
     ]
     assert install_events
-    assert all(event["payload"].get("harness") == "zcode" for event in install_events)
+    assert all(event["payload"].get("harness") == harness for event in install_events)
 
 
+@pytest.mark.usefixtures("approval_questionnaire_mode")
+def test_guard_protect_attributes_package_requests_from_grok_env(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home_dir = tmp_path / "home"
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True)
+    store = GuardStore(home_dir)
+    _seed_review_advisory(store)
+    strip_harness_env_markers(monkeypatch)
+    monkeypatch.setenv("GROK_AGENT", "1")
+    _stub_approval_daemon(monkeypatch)
+
+    rc = main(
+        [
+            "guard",
+            "protect",
+            "--home",
+            str(home_dir),
+            "--workspace",
+            str(workspace_dir),
+            "--json",
+            "--dry-run",
+            "npm",
+            "install",
+            "reviewpkg",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["request"]["harness"] == "grok"
+    assert output["receipt"]["harness"] == "grok"
+    queued = store.list_approval_requests(status="pending", limit=10)
+    assert queued
+    assert all(item["harness"] == "grok" for item in queued)
+    assert rc == 2
+
+
+@pytest.mark.usefixtures("approval_questionnaire_mode")
+def test_guard_protect_attributes_package_requests_from_origin_stamp(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home_dir = tmp_path / "home"
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True)
+    store = GuardStore(home_dir)
+    _seed_review_advisory(store)
+    strip_harness_env_markers(monkeypatch)
+    monkeypatch.setenv("HOL_GUARD_ORIGIN_HARNESS", "codex")
+    _stub_approval_daemon(monkeypatch)
+
+    rc = main(
+        [
+            "guard",
+            "protect",
+            "--home",
+            str(home_dir),
+            "--workspace",
+            str(workspace_dir),
+            "--json",
+            "--dry-run",
+            "npm",
+            "install",
+            "reviewpkg",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["request"]["harness"] == "codex"
+    assert output["receipt"]["harness"] == "codex"
+    queued = store.list_approval_requests(status="pending", limit=10)
+    assert queued
+    assert all(item["harness"] == "codex" for item in queued)
+    assert rc == 2
+
+
+@pytest.mark.usefixtures("approval_questionnaire_mode")
 def test_guard_protect_keeps_guard_cli_attribution_outside_harness_env(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -217,6 +323,79 @@ def test_guard_protect_keeps_guard_cli_attribution_outside_harness_env(
     queued = store.list_approval_requests(status="pending", limit=10)
     assert queued
     assert all(item["harness"] == "guard-cli" for item in queued)
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_harness"),
+    [
+        (("bun", "run", "build"), "guard-cli"),
+        (("npm", "run", "build"), "guard-cli"),
+        (("custom-tool", "run", "build"), "custom-tool"),
+    ],
+)
+def test_guard_protect_receipt_classifies_package_tool_fallback_without_inventing_custom_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
+    expected_harness: str,
+) -> None:
+    strip_harness_env_markers(monkeypatch)
+    home_dir = tmp_path / "guard-home"
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True)
+    store = GuardStore(home_dir)
+
+    payload, exit_code = build_protect_payload(
+        command=list(command),
+        store=store,
+        workspace_dir=workspace_dir,
+        dry_run=True,
+        now="2026-09-10T00:00:00+00:00",
+    )
+
+    assert exit_code == 0
+    assert payload["request"]["harness"] is None
+    assert payload["receipt"]["harness"] == expected_harness
+    assert store.list_receipts(limit=1)[0]["harness"] == expected_harness
+
+
+def test_guard_protect_package_tool_fallback_preserves_shared_runtime_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    strip_harness_env_markers(monkeypatch)
+    monkeypatch.setenv("CODEX_SANDBOX", "1")
+    home_dir = tmp_path / "guard-home"
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True)
+    store = GuardStore(home_dir)
+
+    payload, exit_code = build_protect_payload(
+        command=["bun", "run", "build"],
+        store=store,
+        workspace_dir=workspace_dir,
+        dry_run=True,
+        now="2026-09-10T00:00:00+00:00",
+    )
+
+    assert exit_code == 0
+    assert payload["request"]["harness"] is None
+    assert payload["receipt"]["harness"] == "codex"
+    assert store.list_receipts(limit=1)[0]["harness"] == "codex"
+
+
+def test_guard_protect_receipt_preserves_explicit_request_harness() -> None:
+    request = protect.parse_protect_command(["codex", "mcp", "add", "server"])
+    verdict = protect.ProtectVerdict(
+        action="allow",
+        reason="test",
+        risk_signals=(),
+        matched_advisories=(),
+    )
+
+    receipt = protect._build_install_receipt(request, verdict)
+
+    assert receipt.harness == "codex"
 
 
 @pytest.mark.usefixtures("bundle_first_cloud")

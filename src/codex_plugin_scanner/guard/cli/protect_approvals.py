@@ -36,6 +36,28 @@ def _queue_local_protect_approvals(
 ) -> None:
     if not _should_queue_local_protect_approval(response_payload):
         return
+    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+
+    try:
+        config = load_guard_config(guard_home)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        config = None
+    if config is None or not asks_for_approval(config):
+        verdict = response_payload.get("verdict")
+        reason = verdict.get("reason") if isinstance(verdict, dict) else None
+        guidance = safe_alternative_reason(str(reason or "HOL Guard blocked this package request."))
+        response_payload.update(policy_action="block", approval_requests=[], prompted=False, review_hint=guidance)
+        evaluation = response_payload.get("supply_chain_evaluation")
+        if isinstance(evaluation, dict):
+            evaluation["decision"] = "block"
+            user_copy = evaluation.get("user_copy")
+            evaluation["user_copy"] = {
+                **(user_copy if isinstance(user_copy, dict) else {}),
+                "harness_message": guidance,
+                "next_step": guidance,
+                "dashboard_url": None,
+            }
+        return
     artifact = _protect_request_artifact(response_payload, workspace=workspace)
     if artifact is None:
         return
@@ -46,6 +68,16 @@ def _queue_local_protect_approvals(
     try:
         approval_center_url = ensure_approval_daemon(guard_home)
     except RuntimeError:
+        response_payload.pop("primary_approval_url", None)
+        evaluation = response_payload.get("supply_chain_evaluation")
+        if isinstance(evaluation, dict):
+            user_copy = evaluation.get("user_copy")
+            if not isinstance(user_copy, dict):
+                user_copy = {}
+                evaluation["user_copy"] = user_copy
+            user_copy["dashboard_url"] = None
+            user_copy["harness_message"] = "Guard could not create a local approval request. This command has not run."
+            user_copy["next_step"] = "Run hol-guard daemon repair\nThen retry this command."
         return
     detection = HarnessDetection(
         harness=artifact.harness,
@@ -54,13 +86,12 @@ def _queue_local_protect_approvals(
         config_paths=(artifact.config_path,),
         artifacts=(artifact,),
     )
-    _protect_config = load_guard_config(guard_home)
     queued = queue_blocked_approvals(
         detection=detection,
         evaluation={"artifacts": [approval_item]},
         store=store,
         approval_center_url=approval_center_url,
-        redaction_level=_protect_config.receipt_redaction_level,
+        redaction_level=config.receipt_redaction_level,
     )
     if not queued:
         return

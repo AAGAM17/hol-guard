@@ -7,8 +7,22 @@ mod approval_contracts;
 pub use approval_contracts::*;
 mod native_hook_receipt;
 pub use native_hook_receipt::*;
+mod native_command_observations;
+pub use native_command_observations::*;
+mod native_command_controls;
+pub use native_command_controls::*;
 mod approval_v4_contracts;
 pub use approval_v4_contracts::*;
+mod workspace_review_contracts;
+pub use workspace_review_contracts::*;
+mod archive_inspection;
+pub use archive_inspection::*;
+mod execution_environment;
+pub use execution_environment::*;
+mod context_digest;
+pub use context_digest::*;
+mod business_action;
+pub use business_action::*;
 
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";
@@ -32,6 +46,8 @@ pub struct GuardHookSourceMetadataV2 {
     pub guard_home: String,
     #[serde(default)]
     pub source_ref_external_allowed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_environment: Option<GuardExecutionEnvironmentV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -114,6 +130,18 @@ pub enum PreToolOperationV1 {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum NativePromptRiskClassV1 {
+    LocalEnvRead,
+    SensitiveMaterial,
+    ExfilIntent,
+    DestructiveIntent,
+    SubprocessIntent,
+    GuardBypassIntent,
+    PromptInjectionIntent,
+}
+
 /// Versioned generic PreToolUse result. Keep this contract independent of
 /// harness JSON so adapters can only render the native minimum floor.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -129,6 +157,10 @@ pub struct PreToolResultV1 {
     pub reason_code: String,
     pub reason: String,
     pub explicitly_benign: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_extensions: Option<NativeCommandObservationsV1>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prompt_risk_classes: Vec<NativePromptRiskClassV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

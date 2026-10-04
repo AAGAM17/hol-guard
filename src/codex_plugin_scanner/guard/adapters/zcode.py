@@ -21,19 +21,24 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..aibom_detection import extend_detection_with_workspace_aibom
 from ..models import GuardArtifact, HarnessDetection
-from ..shims import install_guard_shim, remove_guard_shim
+from ..shims import prepare_guard_shim, remove_guard_shim
 from .base import (
     HarnessAdapter,
     HarnessContext,
+    PreparedHarnessInstall,
     _command_available,
     _ensure_path_within_root,
     _json_payload,
     _shell_command,
 )
 from .bounded_cli_hook_bridge import bounded_cli_hook_command
+from .hook_group_merge import is_managed_handler as _shared_is_managed_handler
+from .hook_group_merge import merge_hook_entry as _shared_merge_hook_entry
+from .hook_group_merge import prune_managed_hook_entries as _shared_prune_managed_hook_entries
 from .zcode_config import (
     GUARD_MANAGED_MARKER,
     ZCODE_BUNDLE_IDENTIFIER,
@@ -60,6 +65,9 @@ from .zcode_config import (
 )
 
 _ZCODE_HOME_ENV_VAR = "ZCODE_HOME"
+# Current ZCode renders this label beside the hook in its Hooks settings UI
+# instead of the full managed command string.
+_GUARD_HOOK_STATUS_MESSAGE = "HOL Guard runtime policy enforcement"
 _ZCODE_PRETOOL_TIMEOUT_SECONDS = 30
 _ZCODE_PROMPT_TIMEOUT_SECONDS = 30
 _GUARD_HOOK_INTERNAL_TIMEOUT_SECONDS = 25
@@ -101,6 +109,10 @@ def _restore_hooks_enabled(hooks: dict[str, object], snapshot: dict[str, object]
         hooks["enabled"] = snapshot.get("value")
     else:
         hooks.pop("enabled", None)
+
+
+if TYPE_CHECKING:
+    from ..runtime_transition import TransitionFile
 
 
 class ZCodeHarnessAdapter(HarnessAdapter):
@@ -290,7 +302,9 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         return state_dir, backup_path, state_path
 
     @staticmethod
-    def _hook_command_parts(context: HarnessContext) -> tuple[str, ...]:
+    def _hook_command_parts(
+        context: HarnessContext, *, prepared_files: list[TransitionFile] | None = None
+    ) -> tuple[str, ...]:
         guard_args = [
             "guard",
             "hook",
@@ -310,6 +324,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             cli_args=guard_args,
             harness="zcode",
             timeout_seconds=_GUARD_HOOK_INTERNAL_TIMEOUT_SECONDS,
+            prepared_files=prepared_files,
         )
 
     @staticmethod
@@ -323,31 +338,34 @@ class ZCodeHarnessAdapter(HarnessAdapter):
 
         return f"{hook_command} # {GUARD_MANAGED_MARKER}"
 
-    def install(self, context: HarnessContext) -> dict[str, object]:
-        shim_manifest = install_guard_shim(
+    def prepare_install(self, context: HarnessContext) -> PreparedHarnessInstall:
+        from ..codex_hook_recovery import _snapshot
+        from ..runtime_transition import TransitionFile
+
+        prepared_shim = prepare_guard_shim(
             self.harness,
             context,
             launcher_name=self.launcher_name,
             display_name="zcode",
         )
+        shim_manifest = prepared_shim.manifest
         config_path = self._config_path(context)
         _ensure_path_within_root(self._zcode_home_dir(context), config_path, label="ZCode")
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        payload = _json_payload(config_path)
+        config_before = _snapshot(config_path)
+        payload = json.loads(config_before.decode("utf-8")) if config_before is not None else {}
+        if not isinstance(payload, dict):
+            raise ValueError("ZCode config must be a JSON object.")
         if not isinstance(payload.get("mcp"), dict):
             payload["mcp"] = {}
         if not isinstance(payload.get("plugins"), dict):
             payload["plugins"] = {}
 
-        state_dir, backup_path, state_path = self._managed_state_paths(context)
-        state_dir.mkdir(parents=True, exist_ok=True)
-        if config_path.is_file() and not backup_path.exists():
-            import shutil
+        _state_dir, backup_path, state_path = self._managed_state_paths(context)
+        backup_before = _snapshot(backup_path)
+        state_before = _snapshot(state_path)
 
-            shutil.copy2(config_path, backup_path)
-
-        hook_command = _shell_command(self._hook_command_parts(context))
+        hook_files: list[TransitionFile] = []
+        hook_command = _shell_command(self._hook_command_parts(context, prepared_files=hook_files))
         managed_hook_command = self._managed_command_wrapper(hook_command)
         hooks = payload.get("hooks")
         if not isinstance(hooks, dict):
@@ -364,20 +382,45 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         # false. Guard owns the value for the duration of the managed install.
         hooks["enabled"] = True
         self._sync_managed_hook_groups(hooks, managed_hook_command)
-        config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
         state_payload["managed_config_path"] = str(config_path)
         state_payload[_ZCODE_HOOKS_ENABLED_STATE_KEY] = hooks_enabled_before
-        state_path.write_text(
-            json.dumps(state_payload, indent=2) + "\n",
-            encoding="utf-8",
+        config_mode = config_path.stat().st_mode & 0o777 if config_before is not None else 0o644
+        backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else config_mode
+        state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o644
+        state_after = (json.dumps(state_payload, indent=2) + "\n").encode("utf-8")
+        files = (
+            *prepared_shim.files,
+            *hook_files,
+            TransitionFile(
+                backup_path.resolve(strict=False),
+                backup_before,
+                backup_before if backup_before is not None else config_before,
+                before_mode=backup_mode,
+                after_mode=backup_mode,
+            ),
+            TransitionFile(
+                config_path.resolve(strict=False),
+                config_before,
+                (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
+                before_mode=config_mode,
+                after_mode=config_mode,
+            ),
+            TransitionFile(
+                state_path.resolve(strict=False),
+                state_before,
+                state_after,
+                before_mode=state_mode,
+                after_mode=state_mode,
+            ),
         )
+        for change in files:
+            change.payload()
 
         raw_notes = shim_manifest.get("notes")
         shim_notes = (
             [str(note) for note in raw_notes if isinstance(note, str)] if isinstance(raw_notes, (list, tuple)) else []
         )
-        return {
+        manifest: dict[str, object] = {
             "harness": self.harness,
             "active": True,
             "config_path": str(config_path),
@@ -388,9 +431,14 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                 "on uninstall",
                 "User mcp, plugins, and any pre-existing hooks were preserved",
                 "Legacy flat hook groups were migrated into hooks.events for current ZCode",
+                "Hook entries carry a statusMessage label rendered by ZCode's Hooks settings UI",
                 *shim_notes,
             ],
         }
+        return PreparedHarnessInstall(files, manifest)
+
+    def install(self, context: HarnessContext) -> dict[str, object]:
+        return self.prepare_install(context).publish(context.guard_home)
 
     def uninstall(self, context: HarnessContext) -> dict[str, object]:
         shim_manifest = remove_guard_shim(
@@ -455,11 +503,13 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             "type": "command",
             "command": managed_command,
             "timeout": _ZCODE_PRETOOL_TIMEOUT_SECONDS,
+            "statusMessage": _GUARD_HOOK_STATUS_MESSAGE,
         }
         prompt_handler: dict[str, object] = {
             "type": "command",
             "command": managed_command,
             "timeout": _ZCODE_PROMPT_TIMEOUT_SECONDS,
+            "statusMessage": _GUARD_HOOK_STATUS_MESSAGE,
         }
         for matcher in ZCODE_PRETOOL_MATCHERS:
             pretool_entries = _merge_hook_entry(pretool_entries, matcher, pretool_handler)
@@ -524,65 +574,17 @@ class ZCodeHarnessAdapter(HarnessAdapter):
 
     @staticmethod
     def _prune_managed_entries(entries: list[object]) -> list[object]:
-        remaining: list[object] = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                remaining.append(entry)
-                continue
-            if is_guard_managed_hook_command(entry.get("command")):
-                continue
-            nested_hooks = entry.get("hooks")
-            if isinstance(nested_hooks, list):
-                filtered = [item for item in nested_hooks if not _is_managed_handler(item)]
-                if filtered:
-                    updated = dict(entry)
-                    updated["hooks"] = filtered
-                    remaining.append(updated)
-                continue
-            remaining.append(entry)
-        return remaining
+        return _shared_prune_managed_hook_entries(entries, is_managed=is_guard_managed_hook_command)
 
 
 def _is_managed_handler(handler: object) -> bool:
-    return isinstance(handler, dict) and is_guard_managed_hook_command(handler.get("command"))
+    return _shared_is_managed_handler(handler, is_guard_managed_hook_command)
 
 
 def _merge_hook_entry(entries: list[object], matcher: str | None, handler: dict[str, object]) -> list[object]:
-    """Add or refresh the Guard handler for a given matcher, preserving user hooks.
+    """Add or refresh the Guard handler for a given matcher, preserving user hooks."""
 
-    Non-dict entries (kept defensively by ``_prune_managed_entries``) are
-    passed through unchanged so the merge never drops user data.
-    """
-
-    normalized: list[object] = list(entries)
-    matcher_key = matcher.strip() if isinstance(matcher, str) and matcher.strip() else None
-    for index, entry in enumerate(normalized):
-        if not isinstance(entry, dict):
-            continue
-        entry_matcher = entry.get("matcher")
-        entry_matcher_key = entry_matcher.strip() if isinstance(entry_matcher, str) and entry_matcher.strip() else None
-        if entry_matcher_key != matcher_key:
-            continue
-        nested_hooks = entry.get("hooks")
-        if not isinstance(nested_hooks, list):
-            nested_hooks = []
-        if any(_is_managed_handler(item) for item in nested_hooks):
-            updated = dict(entry)
-            updated["hooks"] = [
-                handler if isinstance(item, dict) and _is_managed_handler(item) else item for item in nested_hooks
-            ]
-            normalized[index] = updated
-            return normalized
-        merged_hooks = [*nested_hooks, handler]
-        updated = dict(entry)
-        updated["hooks"] = merged_hooks
-        normalized[index] = updated
-        return normalized
-    group: dict[str, object] = {"hooks": [handler]}
-    if matcher_key is not None:
-        group["matcher"] = matcher_key
-    normalized.append(group)
-    return normalized
+    return _shared_merge_hook_entry(entries, matcher, handler, is_managed=is_guard_managed_hook_command)
 
 
 __all__ = ["ZCodeHarnessAdapter"]

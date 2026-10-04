@@ -1,6 +1,10 @@
 #![forbid(unsafe_code)]
 
 mod approval;
+mod archive_inspect;
+mod archive_inspect_containment;
+mod context_digest;
+mod context_digest_json;
 mod edge;
 mod hardening;
 mod managed_resident;
@@ -9,12 +13,16 @@ mod oneshot;
 mod policy_enforcement;
 mod policy_store;
 mod resident_client;
+mod resident_endpoint;
 mod resident_process_identity;
 mod resident_protocol;
 mod resident_state;
 mod resident_state_encoding;
 mod resident_transport;
 mod resident_transport_service;
+mod resident_update_lock;
+#[cfg(unix)]
+mod state_directory_lock;
 mod strict_json;
 
 pub(crate) use resident_protocol::{capabilities, encode_response, strict_json_value};
@@ -48,7 +56,8 @@ const AUTH_TOKEN_BYTES: usize = 32;
 const AUTH_NONCE_BYTES: usize = 32;
 const AUTH_PROOF_BYTES: usize = 32;
 const AUTH_WORKERS: usize = 4;
-const AUTH_QUEUE_CAPACITY: usize = 16;
+const AUTH_QUEUE_CAPACITY: usize = 32;
+const AUTH_QUEUE_CAPACITY_MAX: usize = 64;
 const EVALUATION_WORKERS: usize = 16;
 const EVALUATION_QUEUE_CAPACITY: usize = 32;
 const AUTHENTICATED_PREFETCH_BYTES: usize = 64 * 1024;
@@ -60,6 +69,30 @@ const SERVER_PROOF_LABEL: &[u8] = b"hol-guard-resident-server-v1\0";
 const CLIENT_PROOF_LABEL: &[u8] = b"hol-guard-resident-client-v1\0";
 #[cfg(unix)]
 const PARENT_LIVENESS_FD_ENV: &str = "HOL_GUARD_PARENT_LIVENESS_FD";
+
+pub(crate) fn evaluation_workers() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get().clamp(EVALUATION_WORKERS, 32))
+        .unwrap_or(EVALUATION_WORKERS)
+}
+
+pub(crate) fn auth_workers() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| (n.get() / 4).clamp(AUTH_WORKERS, 8))
+        .unwrap_or(AUTH_WORKERS)
+}
+
+pub(crate) fn evaluation_queue_capacity() -> usize {
+    evaluation_workers()
+        .saturating_mul(2)
+        .clamp(EVALUATION_QUEUE_CAPACITY, 64)
+}
+
+pub(crate) fn auth_queue_capacity() -> usize {
+    auth_workers()
+        .saturating_mul(8)
+        .clamp(AUTH_QUEUE_CAPACITY, AUTH_QUEUE_CAPACITY_MAX)
+}
 
 fn read_stdin_bounded() -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
@@ -142,6 +175,16 @@ fn run() -> Result<(), String> {
                 std::path::Path::new(record_path),
             )
         }
+        [command, state_flag, state_dir, record_flag, record_path]
+            if command == "enroll-workspace-review-authority"
+                && state_flag == "--state-dir"
+                && record_flag == "--record" =>
+        {
+            policy_store::workspace_review_authority::install_record(
+                std::path::Path::new(state_dir),
+                std::path::Path::new(record_path),
+            )
+        }
         [command, state_flag, state_dir, rp_flag, rp_id, origin_flag, origin]
             if command == "prepare-approval-v4-enrollment"
                 && state_flag == "--state-dir"
@@ -168,6 +211,9 @@ fn run() -> Result<(), String> {
                 && flag == "--stdin" =>
         {
             let bytes = read_stdin_bounded()?;
+            if let Err(error) = strict_json_value(&bytes) {
+                return write_bytes_response(&resident_protocol::safe_error_response(&error, false));
+            }
             let timeout = managed_resident::client_timeout(&bytes);
             let response = managed_resident::client_request(
                 std::path::Path::new(state_dir),
@@ -181,8 +227,15 @@ fn run() -> Result<(), String> {
         {
             managed_resident::client_stream(std::path::Path::new(state_dir))
         }
+        [command, flag, state_dir, retire_flag]
+            if command == "resident-stop"
+                && flag == "--state-dir"
+                && retire_flag == "--retire-clients" =>
+        {
+            managed_resident::stop_managed(std::path::Path::new(state_dir), true)
+        }
         [command, flag, state_dir] if command == "resident-stop" && flag == "--state-dir" => {
-            managed_resident::stop_managed(std::path::Path::new(state_dir))
+            managed_resident::stop_managed(std::path::Path::new(state_dir), false)
         }
         [command, flag] if command == "command-model" && flag == "--stdin" => {
             let bytes = read_stdin_bounded()?;
@@ -192,6 +245,57 @@ fn run() -> Result<(), String> {
         [command, flag] if command == "pre-tool" && flag == "--stdin" => {
             let bytes = read_stdin_bounded()?;
             let response = oneshot::evaluate_pre_tool_bytes(&bytes)?;
+            write_bytes_response(&response)
+        }
+        [command, flag, state_dir, request_flag, request_id]
+            if command == "workspace-review-decision"
+                && flag == "--stdin"
+                && request_flag == "--request-id" =>
+        {
+            let bytes = read_stdin_bounded()?;
+            let decision = strict_json_value(&bytes)?;
+            let canonical = guard_policy_snapshot::canonical_json_bytes(&decision)
+                .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+            if canonical != bytes {
+                return Err("native_workspace_review_decision_noncanonical".to_owned());
+            }
+            let state_base = std::path::Path::new(state_dir);
+            let runtime_identity = resident_state::runtime_digest()?;
+            let policy_store = policy_store::PolicySnapshotStore::new_with_resident_generation(
+                state_base,
+                &runtime_identity,
+                0,
+            )?;
+            let verified = policy_store::workspace_review_decision::verify_and_claim_request(
+                &policy_store,
+                request_id,
+                &decision,
+            )?;
+            write_json(&serde_json::json!({
+                "status": if verified.replayed { "replayed" } else { "verified" },
+                "replayed": verified.replayed,
+                "request_id": request_id,
+                "decision": verified.decision,
+                "claim_id": verified.claim_id,
+                "authority_record_digest": verified.authority_record_digest,
+                "request_binding": verified.request_binding,
+                "action_binding": verified.action_binding,
+                "intent_binding": verified.intent_binding,
+                "revision_binding": verified.revision_binding,
+                "policy_binding": verified.policy_binding,
+                "retry_scope_binding": verified.retry_scope_binding,
+                "request_snapshot_digest": verified.request_snapshot_digest,
+                "envelope_digest": verified.envelope_digest,
+            }))
+        }
+        [command, flag] if command == "archive-inspect" && flag == "--stdin" => {
+            let bytes = read_stdin_bounded()?;
+            let response = archive_inspect::evaluate_archive_inspection_bytes(&bytes)?;
+            write_bytes_response(&response)
+        }
+        [command, flag] if command == "context-digest" && flag == "--stdin" => {
+            let bytes = read_stdin_bounded()?;
+            let response = context_digest::evaluate_context_digest_bytes(&bytes)?;
             write_bytes_response(&response)
         }
         [command, flag, path] if command == "serve" && flag == "--socket" => serve(path),
@@ -259,7 +363,7 @@ fn run() -> Result<(), String> {
             )
         }
         _ => Err(
-            "usage: hol-guard-runtime capabilities --json | rule-contract --json | self-test --json | hook --stdin | migrate-policy --state-dir STATE_DIR | prepare-approval-enrollment --state-dir STATE_DIR | enroll-approval-authority --state-dir STATE_DIR --record RECORD | prepare-approval-v4-enrollment --state-dir STATE_DIR --rp-id RP_ID --origin ORIGIN | enroll-approval-v4-authority --state-dir STATE_DIR --record RECORD | hook-client --stdin STATE_DIR | resident-client --stdin STATE_DIR | resident-client-stream --stdin STATE_DIR | command-model --stdin | pre-tool --stdin | serve --socket PATH | serve --tcp-loopback 127.0.0.1:PORT | resident-stop --state-dir STATE_DIR | serve-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA | supervise-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA"
+            "usage: hol-guard-runtime capabilities --json | rule-contract --json | self-test --json | hook --stdin | migrate-policy --state-dir STATE_DIR | prepare-approval-enrollment --state-dir STATE_DIR | enroll-approval-authority --state-dir STATE_DIR --record RECORD | prepare-approval-v4-enrollment --state-dir STATE_DIR --rp-id RP_ID --origin ORIGIN | enroll-approval-v4-authority --state-dir STATE_DIR --record RECORD | enroll-workspace-review-authority --state-dir STATE_DIR --record RECORD | workspace-review-decision --stdin STATE_DIR --request-id REQUEST_ID | hook-client --stdin STATE_DIR | resident-client --stdin STATE_DIR | resident-client-stream --stdin STATE_DIR | command-model --stdin | pre-tool --stdin | archive-inspect --stdin | context-digest --stdin | serve --socket PATH | serve --tcp-loopback 127.0.0.1:PORT | resident-stop --state-dir STATE_DIR [--retire-clients] | serve-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA | supervise-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA"
                 .into(),
         ),
     }
@@ -345,5 +449,17 @@ mod tests {
         assert_ne!(first, second);
         first_nonce[0] ^= 1;
         assert_ne!(first, hmac_sha256(&token, SERVER_PROOF_LABEL, &first_nonce));
+    }
+
+    #[test]
+    fn resident_worker_pools_scale_within_bounds() {
+        let evaluation = super::evaluation_workers();
+        let auth = super::auth_workers();
+        assert!((EVALUATION_WORKERS..=32).contains(&evaluation));
+        assert!((AUTH_WORKERS..=8).contains(&auth));
+        assert!((EVALUATION_QUEUE_CAPACITY..=64).contains(&super::evaluation_queue_capacity()));
+        assert!(
+            (AUTH_QUEUE_CAPACITY..=AUTH_QUEUE_CAPACITY_MAX).contains(&super::auth_queue_capacity())
+        );
     }
 }

@@ -1,9 +1,12 @@
 [workspace]
+exclude = ["crates/guard-command-build"]
 members = [
+    "crates/guard-archive",
     "crates/guard-command",
     "crates/guard-contracts",
     "crates/guard-rules",
     "crates/guard-scanner",
+    "crates/guard-seatbelt",
     "crates/guard-secure-fs",
     "crates/guard-hook-core",
     "crates/guard-policy-snapshot",
@@ -13,6 +16,10 @@ members = [
 ]
 resolver = "2"
 
+[profile.release]
+# Executable behavior is unchanged; omit symbol tables from distributed binaries.
+strip = "symbols"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
@@ -20,6 +27,7 @@ license = "Apache-2.0"
 rust-version = "1.88"
 
 [workspace.dependencies]
+base64 = "=0.22.1"
 hex = "0.4.3"
 fs2 = "0.4.3"
 ring = "0.17.14"

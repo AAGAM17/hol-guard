@@ -79,7 +79,10 @@ def review_native_edge(
                 publisher = getattr(worker, "policy_snapshot_publisher", None)
                 request_publish = getattr(publisher, "request_publish", None)
                 if callable(request_publish):
-                    request_publish()
+                    current = getattr(publisher, "current_snapshot_binding", lambda: None)()
+                    rejected_gen = snapshot.get("generation") if snapshot else None
+                    if not (isinstance(current, dict) and current.get("generation") != rejected_gen):
+                        request_publish()
                     snapshot = worker._native_policy_snapshot(workspace, deadline=deadline)
                     if snapshot is not None and snapshot.get("mode") == "enforce" and time.monotonic() < deadline:
                         continue

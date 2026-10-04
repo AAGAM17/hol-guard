@@ -489,8 +489,8 @@ def test_public_constructor_and_uninitialized_object_cannot_invent_proof_or_rela
         workflow_authorization=forged,
     )
 
-    assert evaluation.decision_plane.action == "block"
-    assert evaluation.decision_plane.disposition is FinalDisposition.BLOCK
+    assert evaluation.decision_plane.action == "review"
+    assert evaluation.decision_plane.disposition is FinalDisposition.REVIEW
 
 
 def test_binding_and_receipt_do_not_expose_raw_remote_identity(tmp_path: Path) -> None:

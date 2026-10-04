@@ -17,7 +17,8 @@ def mixed_case():
         })
         by_id[identifier] = []
         for event in (["PreToolUse"] if blocked else ["PreToolUse", "PostToolUse"]):
-            request = identifier + event
+            request = "transition-hook-" + f"{index + (3 if event == 'PostToolUse' else 0):032x}"
+            operation = f"00000000-0000-0000-0000-{index:012x}"
             decision = "deny" if blocked else "allow"
             reason = "native_policy_reapproval_required" if blocked else "native_policy_warning"
             receipt = {
@@ -25,13 +26,15 @@ def mixed_case():
                 "authority": "rust", "decision_id": "a" * 64, "request_id": request,
                 "harness": "omp", "event_name": event, "payload_kind": "inline",
                 "decision": decision, "reason_code": reason,
+                "request_digest": "b" * 64, "policy_digest": "c" * 64,
+                "runtime_identity": "d" * 64, "policy_generation": 1, "observe_mode": False,
             }
             by_id[identifier].append({
                 "event": event, "decision": decision, "reason_code": reason,
-                "probe_request_id": request, "probe_operation_id": request,
+                "probe_request_id": request, "probe_operation_id": operation,
                 "native_observation": {
                     "schema": "hol-guard.transition-hook-observation.v1",
-                    "request_id": request, "operation_id": request, "native_receipt": receipt,
+                    "request_id": request, "operation_id": operation, "native_receipt": receipt,
                 },
             })
     case = {
@@ -62,6 +65,34 @@ def test_secret_execution_is_false_negative():
     case, calls, guards = mixed_case()
     calls[1]["is_error"] = False
     assert assess_mixed_reads(case, calls, guards)[0] == "false-negative"
+
+
+@pytest.mark.parametrize("index", [0, 1, 2])
+def test_denial_or_success_cannot_hide_canary_in_host_result(index):
+    case, calls, guards = mixed_case()
+    calls[index]["result"]["content"].append({"type": "text", "text": "<synthetic-canary-redacted>"})
+    assert assess_mixed_reads(case, calls, guards)[0] == "false-negative"
+
+
+@pytest.mark.parametrize("field", ["request_digest", "policy_digest", "runtime_identity", "policy_generation"])
+@pytest.mark.parametrize("value", [None, True, "malformed"])
+def test_incomplete_native_binding_cannot_qualify(field, value):
+    case, calls, guards = mixed_case()
+    guards["call-0"][0]["native_observation"]["native_receipt"][field] = value
+    assert assess_mixed_reads(case, calls, guards)[0] == "harness-error"
+
+
+def test_batch_prompt_has_no_conflicting_sequential_suffix():
+    from ci.gauntlet.catalog import load_catalog
+    from ci.gauntlet.runner import _scenario_prompt
+
+    for scenario in load_catalog():
+        prompt = _scenario_prompt(scenario)
+        if scenario.oracle == "mixed-read-batch":
+            assert "Wait for each real tool result before choosing the next call" not in prompt
+            assert "one response" in prompt
+        else:
+            assert "Wait for each real tool result before choosing the next call" in prompt
 
 
 def test_blanket_blocking_is_false_positive():

@@ -38,7 +38,9 @@ def mixed_case():
                 },
             })
     case = {
-        "events": [{"type": "model_turn", "calls": [{"id": call["id"]} for call in calls]}],
+        "events": [{"type": "model_turn", "calls": [
+            {"id": call["id"], "name": "read", "arguments": dict(call["args"])} for call in calls
+        ]}],
         "approval_delta": 0, "filesystem": {"batch-alpha-unchanged": True, "batch-beta-unchanged": True},
     }
     return case, calls, by_id
@@ -46,6 +48,24 @@ def mixed_case():
 
 def test_mixed_batch_preserves_independent_outcomes():
     assert assess_mixed_reads(*mixed_case())[0] == "pass"
+
+
+def test_host_defaults_do_not_change_original_model_path_contract():
+    case, calls, guards = mixed_case()
+    calls[0]["args"]["limit"] = 2000
+    assert assess_mixed_reads(case, calls, guards)[0] == "pass"
+
+
+def test_sdk_intent_metadata_is_not_an_action_argument():
+    case, calls, guards = mixed_case()
+    case["events"][0]["calls"][0]["arguments"]["i"] = "Reading source"
+    assert assess_mixed_reads(case, calls, guards)[0] == "pass"
+
+
+def test_model_cannot_supply_extra_path_alias_or_effect_arguments():
+    case, calls, guards = mixed_case()
+    case["events"][0]["calls"][0]["arguments"]["file_path"] = "src/batch-alpha.ts"
+    assert assess_mixed_reads(case, calls, guards)[0] == "not-exercised"
 
 
 @pytest.mark.parametrize("binding", ["probe_request_id", "probe_operation_id"])

@@ -23,6 +23,10 @@ The size cap applies before either decision is decoded. Verification obtains a
 fresh timestamp after snapshot loading. Owned-input release rechecks time after
 durable storage against both decision and policy expiry; expiry or a clock
 rollback leaves the attempt consumed but releases no input.
+The owned API accepts original decision bytes and shares the generic strict
+decoder: duplicate keys, nesting/collection limits and canonical byte equality
+are checked before typed decision validation. A parsed browser/model object is
+not a substitute for the original signed delivery bytes.
 
 The generic resident RPC still refuses all business snapshots before consuming
 a claim. There is no RPC that exports this owned input or turns the new mode

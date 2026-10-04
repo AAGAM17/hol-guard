@@ -19,7 +19,7 @@ fn owned_dispatch_mode_cannot_enter_retry_or_resume_after_lost_outcome() {
         NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN,
     );
     envelope.delivery_mode = NATIVE_WORKSPACE_REVIEW_DECISION_DELIVERY_OWNED_DISPATCH.into();
-    // Changing the purpose on an existing retry signature is not authority.
+    // Changing the delivery mode on an existing retry signature is not authority.
     assert!(verify_and_claim_at_mode(
         &root,
         &envelope,

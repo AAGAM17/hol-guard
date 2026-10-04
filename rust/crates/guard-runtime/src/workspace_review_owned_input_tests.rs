@@ -27,7 +27,7 @@ fn owned_decision(fixture: &Fixture) -> Value {
         &crate::policy_store::workspace_review_authority::signing_bytes(&record).unwrap(),
     );
     record.enrollment_signature = hex::encode(
-        Ed25519KeyPair::from_seed_unchecked(&[42; 32])
+        Ed25519KeyPair::from_seed_unchecked(&decision::tests::ROOT_SEED)
             .unwrap()
             .sign(&signed)
             .as_ref(),
@@ -74,7 +74,7 @@ fn owned_decision(fixture: &Fixture) -> Value {
     let mut signed = guard_contracts::NATIVE_WORKSPACE_REVIEW_DECISION_DOMAIN.to_vec();
     signed.extend_from_slice(&decision::signing_bytes(&envelope).unwrap());
     envelope.decision_signature = hex::encode(
-        Ed25519KeyPair::from_seed_unchecked(&[9; 32])
+        Ed25519KeyPair::from_seed_unchecked(&decision::tests::REVIEW_SEED)
             .unwrap()
             .sign(&signed)
             .as_ref(),
@@ -88,6 +88,7 @@ fn owned_business_claim_keeps_frozen_bytes_and_never_returns_a_retry_grant() {
     let value = input(b"synthetic frozen mail", &[]);
     fixture.stage(&value);
     let decision = owned_decision(&fixture);
+    let bytes = canonical_json_bytes(&decision).unwrap();
     assert_eq!(
         crate::policy_store::workspace_review_decision::verify_and_claim_request(
             &fixture.store,
@@ -101,7 +102,7 @@ fn owned_business_claim_keeps_frozen_bytes_and_never_returns_a_retry_grant() {
         crate::policy_store::workspace_review_decision::claim_owned_business_request(
             &fixture.store,
             "business-test",
-            &decision,
+            &bytes,
         )
         .unwrap();
     assert!(!claim.replayed);
@@ -110,7 +111,7 @@ fn owned_business_claim_keeps_frozen_bytes_and_never_returns_a_retry_grant() {
         crate::policy_store::workspace_review_decision::claim_owned_business_request(
             &fixture.store,
             "business-test",
-            &decision
+            &bytes
         )
         .is_err()
     );
@@ -121,7 +122,7 @@ fn owned_business_claim_keeps_frozen_bytes_and_never_returns_a_retry_grant() {
         crate::policy_store::workspace_review_decision::claim_owned_business_request(
             &fixture.store,
             "business-test",
-            &decision
+            &bytes
         )
         .is_err()
     );
@@ -132,6 +133,7 @@ fn oversized_or_expired_owned_decision_cannot_consume_a_frozen_request() {
     let fixture = Fixture::new("owned-claim-input-bounds");
     fixture.stage(&input(b"bounded synthetic mail", &[]));
     let decision = owned_decision(&fixture);
+    let bytes = canonical_json_bytes(&decision).unwrap();
     let mut oversized = decision.clone();
     oversized["padding"] =
         Value::String("x".repeat(guard_contracts::NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES));
@@ -139,7 +141,7 @@ fn oversized_or_expired_owned_decision_cannot_consume_a_frozen_request() {
         crate::policy_store::workspace_review_decision::claim_owned_business_request(
             &fixture.store,
             "business-test",
-            &oversized
+            &canonical_json_bytes(&oversized).unwrap()
         )
         .is_err()
     );
@@ -148,7 +150,7 @@ fn oversized_or_expired_owned_decision_cannot_consume_a_frozen_request() {
         crate::policy_store::workspace_review_decision::claim_owned_business_request_at_for_test(
             &fixture.store,
             "business-test",
-            &decision,
+            &bytes,
             [expired_at, expired_at]
         )
         .unwrap_err(),
@@ -168,13 +170,14 @@ fn expiry_during_durable_claim_keeps_the_attempt_consumed_without_releasing_inpu
     let fixture = Fixture::new("owned-claim-expiry-during-storage");
     fixture.stage(&input(b"synthetic expiry boundary", &[]));
     let decision = owned_decision(&fixture);
+    let bytes = canonical_json_bytes(&decision).unwrap();
     let before = decision["issued_at_ms"].as_u64().unwrap() + 1;
     let expired = decision["expires_at_ms"].as_u64().unwrap();
     assert_eq!(
         crate::policy_store::workspace_review_decision::claim_owned_business_request_at_for_test(
             &fixture.store,
             "business-test",
-            &decision,
+            &bytes,
             [before, expired]
         )
         .unwrap_err(),
@@ -191,7 +194,7 @@ fn expiry_during_durable_claim_keeps_the_attempt_consumed_without_releasing_inpu
         crate::policy_store::workspace_review_decision::claim_owned_business_request(
             &fixture.store,
             "business-test",
-            &decision
+            &bytes
         )
         .is_err()
     );
@@ -202,12 +205,13 @@ fn clock_rollback_during_storage_cannot_release_owned_input() {
     let fixture = Fixture::new("owned-claim-clock-rollback");
     fixture.stage(&input(b"synthetic rollback boundary", &[]));
     let decision = owned_decision(&fixture);
+    let bytes = canonical_json_bytes(&decision).unwrap();
     let time = decision["issued_at_ms"].as_u64().unwrap();
     assert_eq!(
         crate::policy_store::workspace_review_decision::claim_owned_business_request_at_for_test(
             &fixture.store,
             "business-test",
-            &decision,
+            &bytes,
             [time + 1, time]
         )
         .unwrap_err(),
@@ -219,5 +223,50 @@ fn clock_rollback_during_storage_cannot_release_owned_input() {
             .unwrap()
             .claim_index
             .is_some()
+    );
+}
+
+#[test]
+fn malformed_raw_owned_decisions_leave_the_valid_claim_available() {
+    let fixture = Fixture::new("owned-claim-strict-raw-decoder");
+    fixture.stage(&input(b"synthetic strict decoder boundary", &[]));
+    let decision = owned_decision(&fixture);
+    let bytes = canonical_json_bytes(&decision).unwrap();
+    let duplicate = format!(
+        "{{\"decision\":\"allow\",{}",
+        std::str::from_utf8(&bytes)
+            .unwrap()
+            .strip_prefix('{')
+            .unwrap()
+    )
+    .into_bytes();
+    let mut deep = decision.clone();
+    let mut nested = Value::Null;
+    for _ in 0..crate::strict_json::TEST_MAX_JSON_DEPTH + 2 {
+        nested = Value::Array(vec![nested]);
+    }
+    deep["extra"] = nested;
+    for invalid in [
+        Vec::new(),
+        duplicate,
+        serde_json::to_vec_pretty(&decision).unwrap(),
+        canonical_json_bytes(&deep).unwrap(),
+    ] {
+        assert!(
+            crate::policy_store::workspace_review_decision::claim_owned_business_request(
+                &fixture.store,
+                "business-test",
+                &invalid
+            )
+            .is_err()
+        );
+    }
+    assert!(
+        crate::policy_store::workspace_review_decision::claim_owned_business_request(
+            &fixture.store,
+            "business-test",
+            &bytes
+        )
+        .is_ok()
     );
 }

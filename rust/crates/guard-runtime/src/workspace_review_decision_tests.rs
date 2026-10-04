@@ -36,8 +36,8 @@ use fixtures::install_authority;
 pub(crate) use fixtures::{authority_record, write_authority_candidate};
 
 const NOW_MS: u64 = 2_000;
-const ROOT_SEED: [u8; 32] = [42u8; 32];
-const REVIEW_SEED: [u8; 32] = [9u8; 32];
+pub(crate) const ROOT_SEED: [u8; 32] = [42u8; 32];
+pub(crate) const REVIEW_SEED: [u8; 32] = [9u8; 32];
 static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 fn test_root() -> PathBuf {

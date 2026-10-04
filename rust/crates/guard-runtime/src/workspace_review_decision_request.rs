@@ -9,7 +9,9 @@ pub(crate) fn verify_and_claim_request(
     request_id: &str,
     decision: &Value,
 ) -> Result<VerifiedWorkspaceReviewDecision, String> {
-    claim_request(policy_store, request_id, decision, false).map(|(verified, _)| verified)
+    let bytes = canonical_json_bytes(decision)
+        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+    claim_request(policy_store, request_id, &bytes, false).map(|(verified, _)| verified)
 }
 
 /// Private native-worker boundary. No serializable grant or mutable retry:
@@ -19,7 +21,7 @@ pub(crate) fn verify_and_claim_request(
 pub(crate) fn claim_owned_business_request(
     policy_store: &policy_store::PolicySnapshotStore,
     request_id: &str,
-    decision: &Value,
+    decision: &[u8],
 ) -> Result<
     (
         VerifiedWorkspaceReviewDecision,
@@ -37,7 +39,7 @@ pub(crate) fn claim_owned_business_request(
 fn claim_request(
     policy_store: &policy_store::PolicySnapshotStore,
     request_id: &str,
-    decision: &Value,
+    decision: &[u8],
     owned_dispatch: bool,
 ) -> Result<
     (
@@ -52,7 +54,7 @@ fn claim_request(
 fn claim_request_with_clock(
     policy_store: &policy_store::PolicySnapshotStore,
     request_id: &str,
-    decision: &Value,
+    decision: &[u8],
     owned_dispatch: bool,
     mut clock: impl FnMut() -> Result<u64, String>,
 ) -> Result<
@@ -78,10 +80,8 @@ fn claim_request_with_clock(
         if !owned_dispatch && request.business_input.is_some() {
             return Err("native_workspace_review_business_dispatch_unavailable".to_owned());
         }
-        if owned_dispatch
-            && (request.business_input.is_none()
-                || decision.get("decision").and_then(Value::as_str) != Some("allow"))
-        {
+        let envelope = decode_canonical_decision(decision)?;
+        if owned_dispatch && (request.business_input.is_none() || envelope.decision != "allow") {
             return Err("native_workspace_review_business_dispatch_invalid".to_owned());
         }
         let authority =
@@ -106,15 +106,8 @@ fn claim_request_with_clock(
             policy_binding: &request.policy_binding,
             retry_scope_binding: &request.retry_scope_binding,
         };
-        let bytes = canonical_json_bytes(decision)
-            .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-        if bytes.is_empty() || bytes.len() > NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES {
-            return Err("native_workspace_review_decision_invalid".to_owned());
-        }
         // Snapshot loading and lock acquisition must not extend an approval.
         let mut verified = if owned_dispatch {
-            let envelope: WorkspaceReviewDecisionEnvelopeV1 = serde_json::from_slice(&bytes)
-                .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
             let observed_time_ms = clock()?;
             let verified = verify_and_claim_at_mode(
                 state_base,
@@ -134,7 +127,7 @@ fn claim_request_with_clock(
             }
             verified
         } else {
-            verify_and_claim_bytes_at(state_base, &bytes, &context, clock()?)?
+            verify_and_claim_bytes_at(state_base, decision, &context, clock()?)?
         };
         verified.request_snapshot_digest = Some(request.request_snapshot_digest);
         Ok((verified, request.business_input))
@@ -145,7 +138,7 @@ fn claim_request_with_clock(
 pub(crate) fn claim_owned_business_request_at_for_test(
     policy_store: &policy_store::PolicySnapshotStore,
     request_id: &str,
-    decision: &Value,
+    decision: &[u8],
     times: [u64; 2],
 ) -> Result<VerifiedWorkspaceReviewDecision, String> {
     let mut times = times.into_iter();
@@ -155,4 +148,22 @@ pub(crate) fn claim_owned_business_request_at_for_test(
             .ok_or_else(|| "native_resident_clock_invalid".to_owned())
     })
     .map(|(verified, _)| verified)
+}
+
+pub(super) fn decode_canonical_decision(
+    bytes: &[u8],
+) -> Result<WorkspaceReviewDecisionEnvelopeV1, String> {
+    if bytes.is_empty() || bytes.len() > NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES {
+        return Err("native_workspace_review_decision_invalid".to_owned());
+    }
+    let value: Value = crate::strict_json_value(bytes)
+        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+    let canonical = canonical_json_bytes(&value)
+        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+    if canonical != bytes {
+        return Err("native_workspace_review_decision_noncanonical".to_owned());
+    }
+    let envelope: WorkspaceReviewDecisionEnvelopeV1 = serde_json::from_value(value)
+        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+    Ok(envelope)
 }

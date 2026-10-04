@@ -466,18 +466,7 @@ pub(crate) fn verify_and_claim_bytes_at(
     context: &WorkspaceReviewDecisionContext<'_>,
     now_ms: u64,
 ) -> Result<VerifiedWorkspaceReviewDecision, String> {
-    if bytes.is_empty() || bytes.len() > NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES {
-        return Err("native_workspace_review_decision_invalid".to_owned());
-    }
-    let value: Value = crate::strict_json_value(bytes)
-        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-    let canonical = canonical_json_bytes(&value)
-        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-    if canonical != bytes {
-        return Err("native_workspace_review_decision_noncanonical".to_owned());
-    }
-    let envelope: WorkspaceReviewDecisionEnvelopeV1 = serde_json::from_value(value)
-        .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
+    let envelope = request_claim::decode_canonical_decision(bytes)?;
     verify_and_claim_at(state_base, &envelope, context, now_ms)
 }
 

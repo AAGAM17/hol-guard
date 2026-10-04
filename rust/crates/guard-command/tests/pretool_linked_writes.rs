@@ -1,10 +1,10 @@
 #![cfg(any(unix, windows))]
 
-use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
 #[path = "support/git_helper_fixture.rs"]
 pub mod fixture;
+use fixture::evaluate_pre_tool_envelope_with_context;
 
 #[test]
 fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
@@ -62,7 +62,7 @@ fn workspace_writes_do_not_follow_hard_links_to_protected_files() {
                 ),
                 (
                     json!({"tool_name":"Bash", "tool_input":{"command":format!("cp source.txt {destination}")}}),
-                    false,
+                    allowed,
                 ),
                 (
                     json!({"tool_name":"Bash", "tool_input":{"command":format!("touch {destination}")}}),

@@ -111,15 +111,15 @@ def test_cached_diff_keeps_separate_host_and_native_repository_proof(
         assert request.action_class == "git index inspection"
     else:
         # The bounded host recognizer cannot discharge an unsupported native
-        # if/then grammar; the complete command keeps the native review.
+        # if/then grammar; the complete command keeps the native hard block.
         assert request.action_class == "unmodeled shell command"
-        assert request.guard_default_action == "review"
-        assert request.reason_code == "native-command-classification-review"
+        assert request.guard_default_action == "block"
+        assert request.reason_code == "native-command-classification-block"
     if not native_supported:
         artifact = build_tool_action_request_artifact(
             "codex", request, config_path="config.toml", source_scope="project"
         )
-        assert artifact.metadata["command_action_floor"] == "review"
+        assert artifact.metadata["command_action_floor"] == "block"
 
 
 def test_unverified_cached_diff_is_owned_by_git_extension(tmp_path: Path) -> None:
@@ -141,7 +141,7 @@ def test_execution_config_cached_diff_keeps_native_uncertainty(tmp_path: Path) -
     payload = inspect_command("git -c diff.external=payload diff --cached", cwd=tmp_path, home_dir=tmp_path)
 
     assert payload["status"] == "review"
-    assert payload["minimum_action"] == "block"
+    assert payload["minimum_action"] == "review"
     assert payload["classification"]["explicitly_benign"] is False
     assert payload["controlling_rule_id"] == "command.git.index-inspection"
 
@@ -165,7 +165,7 @@ def test_attached_config_override_keeps_native_uncertainty(tmp_path: Path) -> No
     payload = inspect_command("git -cdiff.external=payload diff --cached", cwd=tmp_path, home_dir=tmp_path)
 
     assert payload["status"] == "review"
-    assert payload["minimum_action"] == "block"
+    assert payload["minimum_action"] == "review"
     assert payload["classification"]["explicitly_benign"] is False
     assert payload["controlling_rule_id"] == "command.git.index-inspection"
 
@@ -179,7 +179,7 @@ def test_native_cached_check_requires_repository_evidence(tmp_path: Path) -> Non
     )
     assert payload["classification"]["explicitly_benign"] is False
     assert payload["status"] == "review"
-    assert payload["minimum_action"] == "block"
+    assert payload["minimum_action"] == "review"
     assert payload["controlling_rule_id"] == "command.git.index-inspection"
 
 

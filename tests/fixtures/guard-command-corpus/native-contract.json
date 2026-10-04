@@ -94,11 +94,11 @@
     {
       "basis": "heredoc input redirection remains outside inherited native parser grammar",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "command_redirect_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -138,11 +138,11 @@
     {
       "basis": "exact shell model retains PATH override; inherited compatibility admission fails closed on overridden launch context",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "exact",
         "model_uncertainty": null,
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": true,
         "uncertain_rule_ids": []
@@ -206,11 +206,11 @@
     {
       "basis": "sed sink contains arbitrary output redirection unsupported by inherited parser; selected solely by immutable generator variant modulo four",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "command_redirect_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -228,11 +228,11 @@
     {
       "basis": "base64 sink contains arbitrary output redirection unsupported by inherited parser; selected solely by immutable generator variant modulo four",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "command_redirect_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -250,11 +250,11 @@
     {
       "basis": "arbitrary output redirection remains outside inherited native parser grammar",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "command_redirect_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -272,11 +272,11 @@
     {
       "basis": "command substitution remains outside inherited native parser grammar",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "command_substitution_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -294,11 +294,11 @@
     {
       "basis": "output redirection remains outside inherited native parser grammar and cannot prove symlink targets safe",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "command_redirect_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -316,11 +316,11 @@
     {
       "basis": "inherited parser rejects transparent env launch wrapper; selected solely by immutable generator variant modulo four",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "transparent_wrapper_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -338,11 +338,11 @@
     {
       "basis": "inherited parser rejects transparent command launch wrapper; selected solely by immutable generator variant modulo four",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "transparent_wrapper_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -360,11 +360,11 @@
     {
       "basis": "inherited parser rejects transparent nice launch wrapper; selected solely by immutable generator variant modulo four",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "transparent_wrapper_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []
@@ -382,11 +382,11 @@
     {
       "basis": "inherited parser rejects transparent timeout launch wrapper; selected solely by immutable generator variant modulo four",
       "expected": {
-        "decision_plane_floor": "review",
+        "decision_plane_floor": "block",
         "evaluation_error": "native_command_evaluation_failed",
         "model_confidence": "uncertain",
         "model_uncertainty": "transparent_wrapper_not_yet_supported",
-        "native_floor": "review",
+        "native_floor": "block",
         "native_reason": "native_command_extension_evaluation_failed",
         "path_overridden": false,
         "uncertain_rule_ids": []

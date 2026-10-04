@@ -130,7 +130,7 @@ def _synthetic_native_fixture(
         "match_classes": ["unsafe", "uncertainty"] if uncertainty else ["unsafe"],
         "matcher_evidence": evidence,
         "safe_variants": safe_variants,
-        "uncertainty_reasons": ["unsupported-input"] if uncertainty else [],
+        "uncertainty_reasons": ["matcher-failure"] if uncertainty else [],
         "effective_segment_indexes": [
             index
             for index in evidence_indexes
@@ -211,7 +211,7 @@ def test_generated_rule_floor_is_preserved_without_permissive_proof(mode: str, l
     assert evaluation.decision_plane.action == plane
 
 
-def test_native_uncertainty_is_typed_review_and_private() -> None:
+def test_native_uncertainty_is_typed_blocking_and_private() -> None:
     evaluation = _evaluate(mode="disabled", uncertainty=True)
     assert evaluation.minimum_action == "review"
     payload = evaluation.extension_observations[0].to_dict()

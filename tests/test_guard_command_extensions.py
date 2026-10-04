@@ -493,15 +493,20 @@ def test_command_cli_lists_one_extension_and_rejects_unknown_ids(capsys: pytest.
     assert "Unknown command safety extension" in captured.err
 
 
-def test_unsupported_heredocs_preserve_native_review_without_inventing_data_matches(tmp_path: Path) -> None:
+def test_unsupported_heredocs_preserve_native_block_without_inventing_data_matches(tmp_path: Path) -> None:
     body = "r" + "m -rf ./build"
     data = inspect_command(f"cat <<'EOF'\n{body}\nEOF", cwd=tmp_path, home_dir=tmp_path)
     expanded = inspect_command(f"cat <<EOF\n$({body})\nEOF", cwd=tmp_path, home_dir=tmp_path)
     script = inspect_command(f"bash <<'EOF'\n{body}\nEOF", cwd=tmp_path, home_dir=tmp_path)
 
-    for payload in (data, expanded, script):
+    assert data["status"] == "no_match"
+    assert data["minimum_action"] == "review"
+    assert data["classification"]["explicitly_benign"] is False
+    assert data["rules"] == []
+    assert data["command_model"]["uncertainty_reason"] == "command_redirect_not_yet_supported"
+    for payload in (expanded, script):
         assert payload["status"] == "native_unavailable"
-        assert payload["minimum_action"] == "review"
+        assert payload["minimum_action"] == "block"
         assert payload["classification"]["explicitly_benign"] is False
         assert payload["rules"] == []
         assert payload["command_model"]["uncertainty_reason"] == "command_redirect_not_yet_supported"

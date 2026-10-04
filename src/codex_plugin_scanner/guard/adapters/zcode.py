@@ -61,6 +61,7 @@ from .zcode_config import (
     append_marketplace_artifacts,
     append_plugin_manifest_artifacts,
     dedupe_hook_entries,
+    hook_event_groups,
     is_guard_managed_hook_command,
 )
 
@@ -340,6 +341,11 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         previous_state = json.loads(state_before) if state_before is not None else {}
         if previous_state.get("managed_config_path") == str(config_path):
             enabled_before = previous_state.get("hooks_enabled_before", enabled_before)
+
+        if config_path.name == "setting.json" and hooks.get("enabled") is False:
+            groups = hook_event_groups(hooks)
+            if any(self._prune_managed_entries(entries) for entries in groups.values()):
+                raise ValueError("ZCode user hooks are disabled; explicitly enable them before installing Guard.")
 
         self._sync_managed_hook_groups(hooks, managed_hook_command)
         if config_path.name == "setting.json":

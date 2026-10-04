@@ -18,7 +18,7 @@ def test_install_and_uninstall_preserve_current_settings(tmp_path):
     payload = {
         "ui": {"theme": "dark"},
         "hooks": {
-            "enabled": False,
+            "enabled": True,
             "events": {
                 "PreToolUse": [{"matcher": "Read", "hooks": [user_handler]}],
             },
@@ -44,7 +44,7 @@ def test_install_and_uninstall_preserve_current_settings(tmp_path):
     assert remaining["ui"] == payload["ui"]
     handlers = [handler for group in remaining["hooks"]["events"]["PreToolUse"] for handler in group["hooks"]]
     assert handlers == [user_handler]
-    assert remaining["hooks"]["enabled"] is False
+    assert remaining["hooks"]["enabled"] is True
     assert legacy.read_bytes() == legacy_before
 
 
@@ -83,3 +83,37 @@ def test_uninstall_handles_removed_current_settings(tmp_path):
     adapter.uninstall(context)
     assert not settings.exists()
     assert json.loads(legacy.read_text()) == {"legacy": True}
+
+
+def test_install_does_not_enable_disabled_user_handlers(tmp_path):
+    context = _ctx(tmp_path)
+    legacy = _write_cli_config(context.home_dir, {})
+    settings = legacy.with_name("setting.json")
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "enabled": False,
+                    "events": {
+                        "PreToolUse": [{"matcher": "Read", "hooks": [{"type": "command", "command": "echo user"}]}],
+                    },
+                }
+            }
+        )
+    )
+    before = settings.read_bytes()
+    with pytest.raises(ValueError, match="user hooks are disabled"):
+        ZCodeHarnessAdapter().prepare_install(context)
+    assert settings.read_bytes() == before
+
+
+def test_uninstall_restores_disabled_empty_hooks_after_reinstall(tmp_path):
+    context = _ctx(tmp_path)
+    legacy = _write_cli_config(context.home_dir, {})
+    settings = legacy.with_name("setting.json")
+    settings.write_text('{"hooks":{"enabled":false}}')
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    adapter.install(context)
+    adapter.uninstall(context)
+    assert json.loads(settings.read_text())["hooks"]["enabled"] is False

@@ -85,7 +85,7 @@ def _pause_payload(harness: str, event_name: str, reason: str) -> tuple[dict[str
         return {
             "permissionDecision": "deny",
             "permissionDecisionReason": reason,
-        }, 1
+        }, 0
     if harness in _DECISION_HOOK_HARNESSES:
         decision = "block" if harness == "hermes" else "deny"
         return {"decision": decision, "reason": reason}, (2 if harness == "hermes" else 0)

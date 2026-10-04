@@ -206,7 +206,7 @@ class HookWorker(HookWorkerNativeMixin):
     def prepare_workspace_policy(
         self, workspace: Path | None = None, *, deadline: float | None = None
     ) -> dict[str, object] | None:
-        return prepare_workspace_policy(self, workspace, deadline=deadline)
+        return prepare_workspace_policy(self, workspace, deadline=deadline, now=time.monotonic())
 
     def _native_policy_snapshot(
         self,

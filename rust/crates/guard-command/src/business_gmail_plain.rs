@@ -172,8 +172,15 @@ impl GmailPlainInputV1 {
             return Err(Error::Invalid);
         }
         let body = &mime[body_offset..];
-        if body.contains(&0) || std::str::from_utf8(body).is_err() {
+        if body.contains(&0) {
             return Err(Error::Invalid);
+        }
+        let body_text = std::str::from_utf8(body).map_err(|_| Error::Invalid)?;
+        if body_text
+            .chars()
+            .any(|ch| ch.is_control() && !matches!(ch, '\r' | '\n' | '\t'))
+        {
+            return Err(Error::Unsupported);
         }
         for (index, byte) in body.iter().enumerate() {
             if (*byte == b'\r' && body.get(index + 1) != Some(&b'\n'))

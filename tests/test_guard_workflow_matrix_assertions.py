@@ -128,6 +128,12 @@ def test_contained_fixture_requires_project_local_dependencies(tmp_path):
     entry.unlink()
     with pytest.raises(AssertionError, match="lacks local"):
         validate_contained_dependencies(project)
+    project_entry = project / "fixture-vitest.mjs"
+    project_entry.write_text("// project-local but not dependency-local\n")
+    entry.symlink_to(project_entry)
+    with pytest.raises(AssertionError, match="escapes node_modules"):
+        validate_contained_dependencies(project)
+    entry.unlink()
     outside = tmp_path / "outside.mjs"
     outside.write_text("// outside dependency\n")
     entry.symlink_to(outside)

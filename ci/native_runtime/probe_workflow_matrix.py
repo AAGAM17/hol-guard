@@ -87,14 +87,24 @@ def _event_object(value: object, label: str) -> dict:
 
 def validate_contained_dependencies(project: Path) -> None:
     """Reject fixture dependencies that the project-scoped sandbox cannot read."""
-    project = project.resolve(strict=True)
-    for relative in ("node_modules/.bin/vitest", "node_modules/vitest/vitest.mjs"):
+    resolved_project = project.resolve(strict=True)
+    try:
+        dependency_root = (resolved_project / "node_modules").resolve(strict=True)
+    except OSError as error:
+        raise AssertionError("contained-test fixture lacks local node_modules") from error
+    if not dependency_root.is_dir() or not dependency_root.is_relative_to(resolved_project):
+        raise AssertionError("contained-test fixture dependency root escapes project")
+    # The matrix fixture is intentionally pinned to the Vitest entry points used by its runner.
+    for relative, root, label in (
+        ("node_modules/.bin/vitest", resolved_project, "project"),
+        ("node_modules/vitest/vitest.mjs", dependency_root, "node_modules"),
+    ):
         try:
-            target = (project / relative).resolve(strict=True)
+            target = (resolved_project / relative).resolve(strict=True)
         except OSError as error:
             raise AssertionError(f"contained-test fixture lacks local {relative}") from error
-        if not target.is_file() or not target.is_relative_to(project):
-            raise AssertionError(f"contained-test fixture dependency escapes project: {relative}")
+        if not target.is_file() or not target.is_relative_to(root):
+            raise AssertionError(f"contained-test fixture dependency escapes {label}: {relative}")
 
 
 def decode_events(output: str) -> list[dict[str, object]]:
@@ -120,6 +130,7 @@ def assert_execution(cases: list[WorkflowCase], events: list[dict[str, object]])
             original = _event_object(proof.get("input"), f"{case.name}.input")
             # Pinned OMP omits exitCode on success; contained wrappers can retain
             # isError=False even when OMP reports a nonzero process exit.
+            # bool is an int subclass; only a JSON integer zero proves success here.
             if "exitCode" in details and (type(details["exitCode"]) is not int or details["exitCode"] != 0):
                 raise AssertionError(f"protected tests did not exit successfully: {case.name}")
             if not isinstance(args.get("command"), str) or "execute-contained-test" not in args["command"]:

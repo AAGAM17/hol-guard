@@ -345,6 +345,42 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         "{existing_destination_command}"
     );
 
+    for parent in [".ssh", ".aws", ".hol-support", ".agents"] {
+        std::fs::create_dir_all(root.join(parent)).unwrap();
+    }
+    let sensitive_destinations = [
+        root.join(".ssh/native-worktree"),
+        root.join(".aws/native-worktree"),
+        root.join(".hol-support/native-worktree"),
+        root.join(".agents/native-worktree"),
+        root.join(".env"),
+    ];
+    for (index, destination) in sensitive_destinations.iter().enumerate() {
+        let command = format!(
+            "git worktree add --quiet {} -b sensitive-worktree-{index} HEAD",
+            destination.display()
+        );
+        let result = evaluate(&repository, &enabled, &command);
+        assert_ne!(result.minimum_action, "allow", "{command}");
+        assert!(!destination.exists(), "{destination:?}");
+    }
+
+    let symlink_parent_target = root.join("symlink-parent-target");
+    let symlink_parent = root.join("symlink-parent");
+    std::fs::create_dir_all(&symlink_parent_target).unwrap();
+    std::os::unix::fs::symlink(&symlink_parent_target, &symlink_parent).unwrap();
+    let symlink_parent_destination = symlink_parent.join("native-worktree");
+    let symlink_parent_command = format!(
+        "git worktree add --quiet {} -b symlink-parent-worktree HEAD",
+        symlink_parent_destination.display()
+    );
+    let symlink_parent_result = evaluate(&repository, &enabled, &symlink_parent_command);
+    assert_ne!(
+        symlink_parent_result.minimum_action, "allow",
+        "{symlink_parent_command}"
+    );
+    assert!(!symlink_parent_destination.exists());
+
     for command in [
         "git worktree add --quiet --force -b blocked-force force-child HEAD",
         "git worktree add --quiet -b fixture-worktree second-child HEAD",

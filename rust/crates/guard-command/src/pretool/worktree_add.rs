@@ -318,5 +318,30 @@ fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<Pat
     if !canonical_parent.starts_with(&home) {
         return None;
     }
-    Some(canonical_parent.join(target.file_name()?))
+    let destination = canonical_parent.join(target.file_name()?);
+    if protected_worktree_destination(&destination)
+        || !super::safe_writes::bounded_native_file_write_target(
+            destination.to_str()?,
+            context.home_dir,
+            context.cwd,
+        )
+    {
+        return None;
+    }
+    Some(destination)
+}
+
+fn protected_worktree_destination(path: &Path) -> bool {
+    let parts: Vec<String> = path
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => {
+                Some(value.to_string_lossy().to_ascii_lowercase())
+            }
+            _ => None,
+        })
+        .collect();
+    parts
+        .windows(2)
+        .any(|pair| pair == [".github", "workflows"])
 }

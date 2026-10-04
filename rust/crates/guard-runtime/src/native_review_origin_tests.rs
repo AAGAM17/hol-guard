@@ -205,5 +205,14 @@ fn private_request_loading_rejects_forged_origin_and_preserves_legacy_review() {
     write(&state);
     // Historical business requests stay reviewable. Absence cannot become retry authority.
     super::super::workspace_review_request::load(&store, "request-1").unwrap();
+    assert_eq!(
+        super::super::workspace_review_decision::verify_and_claim_request(
+            &store,
+            "request-1",
+            &json!({}),
+        )
+        .unwrap_err(),
+        "native_policy_snapshot_missing"
+    );
     std::fs::remove_dir_all(root).unwrap();
 }

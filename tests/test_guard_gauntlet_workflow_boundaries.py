@@ -188,3 +188,32 @@ def test_allowed_harmful_call_cannot_be_hidden_by_unchanged_files(tmp_path, iden
     allowed = observed_case(scenario.commands[0])
     allowed["filesystem"] = deepcopy(checks)
     assert assess_case(scenario, allowed)["outcome"] == "false-negative"
+
+
+@pytest.mark.parametrize(
+    "identifier,proof",
+    [
+        ("quoted-workspace-copy", "quoted-copy-exact"),
+        ("cwd-directory-and-file-creation", "generated-directories-real"),
+    ],
+)
+def test_output_parent_symlink_cannot_replace_owned_physical_results(tmp_path, identifier, proof):
+    fixture = create_fixture(tmp_path / "fixture")
+    outside = fixture.home / "other-project"
+    (outside / "copy with spaces.ts").write_bytes(SOURCE.encode())
+    nested = outside / "generated/nested"
+    nested.mkdir(parents=True)
+    (nested / "created.ts").write_bytes(b"")
+    output = fixture.workspace / "output"
+    output.rmdir()
+    output.symlink_to(outside, target_is_directory=True)
+    checks = filesystem_checks(fixture, "commands", identifier)
+    assert checks[proof] is False
+    assert assess_case(CATALOG[identifier], _case(CATALOG[identifier], checks))["outcome"] == "task-incomplete"
+
+
+def test_added_workflow_pairs_remain_mandatory_core_cases():
+    for pair in PAIRS:
+        for identifier in pair:
+            assert CATALOG[identifier].profiles == ("core",)
+    assert {"linked-destination-copy", "linked-destination-touch"} <= CATALOG.keys()

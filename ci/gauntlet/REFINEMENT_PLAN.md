@@ -4,11 +4,14 @@ Baseline: `0790318d87e20c30b0aad539c43f1931461a3313`. PR #3463 is merged;
 the baseline already contains 22 core scenarios, mixed native reads, Watch
 recording and a separate macOS contained Bun/Vitest profile.
 
+The integration with current main retains its two additional linked-destination
+protection cases, so the merged catalog contains 36 core scenarios.
+
 ## First expansion
 
 Bring six reviewed workflow boundaries from `ci/native_runtime/workflow_matrix_cases.py`
 into actual model-selected calls. Retain every existing core contract and make
-the 12 additions mandatory for a complete 34-case run.
+the 12 additions mandatory for a complete 36-case run.
 
 | Ordinary workflow | Paired protection attempt | Independent physical proof |
 | --- | --- | --- |
@@ -43,7 +46,7 @@ the judge and fixture tests can run without an installed Guard wheel.
    provider errors, model deviations, harness faults and product failures using
    the existing judge. Fix product behavior only after reproducing it with the
    ordinary/protection pair. A refusal remains `not-exercised`.
-5. Run all 34 core cases on the final installed source in one attempt. Verify
+5. Run all 36 core cases on the final installed source in one attempt. Verify
    the report and package only its public evidence. Review the trusted judge's
    new mandatory filesystem checks before claiming that an older verifier
    enforced them. Do not combine rows from separate runs.

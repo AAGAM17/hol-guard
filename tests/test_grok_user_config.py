@@ -172,3 +172,24 @@ def test_malformed_config_leaves_uninstall_artifacts_intact(tmp_path: Path, monk
     remove_shim.assert_not_called()
     assert shim.is_file() and hooks.read_bytes() == before
     assert config.read_text() == "[permission\n"
+
+
+def test_missing_ownership_warns_without_deleting_user_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context = HarnessContext(tmp_path / "home", None, tmp_path / "guard")
+    monkeypatch.delenv("GROK_HOME", raising=False)
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.adapters.grok.prepare_guard_shim",
+        lambda *args, **kwargs: PreparedGuardShim((), {"notes": []}),
+    )
+    monkeypatch.setattr("codex_plugin_scanner.guard.adapters.grok.remove_guard_shim", lambda *args, **kwargs: {})
+    adapter = GrokHarnessAdapter()
+    adapter.install(context)
+    config = adapter._protection_config_path(context)
+    before = config.read_bytes()
+    adapter._state_path(context).unlink()
+    result = adapter.uninstall(context)
+    assert config.read_bytes() == before
+    assert not (adapter._hooks_dir(context) / "hol-guard-pretooluse.json").exists()
+    assert any("ownership records are missing" in note for note in result["notes"])

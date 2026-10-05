@@ -446,7 +446,7 @@ class GrokHarnessAdapter(HarnessAdapter):
         return self.prepare_install(context).publish(context.guard_home)
 
     def uninstall(self, context: HarnessContext) -> dict[str, object]:
-        uninstall_settings(self, context)
+        settings_notes = uninstall_settings(self, context)
         shim_manifest = remove_guard_shim(
             self.harness,
             context,
@@ -479,8 +479,9 @@ class GrokHarnessAdapter(HarnessAdapter):
             "config_path": str(managed_config_path),
             **shim_manifest,
             "notes": [
-                "Guard-managed Grok hooks and permission rules removed.",
+                "Guard hook files and launcher removed.",
                 "User .grok/config.toml, auth, skills, plugins, and sessions were preserved.",
+                *settings_notes,
                 *shim_notes,
             ],
         }

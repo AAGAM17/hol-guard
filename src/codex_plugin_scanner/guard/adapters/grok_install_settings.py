@@ -33,11 +33,16 @@ def remove_legacy_settings(raw: bytes | None, state_path: Path, state: dict[str,
     return restore_compat_hooks(remove_managed_block(text), prior).encode("utf-8")
 
 
-def uninstall_settings(adapter: GrokHarnessAdapter, context: HarnessContext) -> None:
+def uninstall_settings(adapter: GrokHarnessAdapter, context: HarnessContext) -> list[str]:
     state_path = adapter._state_path(context)
     state = parse_install_state(state_path.read_bytes() if state_path.is_file() else None)
     durable = adapter._protection_config_path(context)
     owned = state.get("user_config_settings")
+    notes = (
+        ["Guard settings may remain in .grok/config.toml because ownership records are missing; review them manually."]
+        if durable.is_file() and not isinstance(owned, Mapping)
+        else []
+    )
     changes: list[tuple[Path, bytes]] = []
     if durable.is_file() and isinstance(owned, Mapping):
         _ensure_path_within_root(adapter._grok_home_dir(context), durable, label="Grok")
@@ -52,3 +57,4 @@ def uninstall_settings(adapter: GrokHarnessAdapter, context: HarnessContext) -> 
             changes.append((legacy, after))
     for path, content in changes:
         path.write_bytes(content)
+    return notes

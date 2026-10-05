@@ -121,6 +121,7 @@ def transaction(store: GuardStore, connection: sqlite3.Connection) -> Iterator[s
     started = time.monotonic()
     initial_changes = connection.total_changes
     notification: dict[str, object] | None = None
+
     def rollback_failed_transaction(error: BaseException) -> None:
         if isinstance(error, sqlite3.OperationalError) and sqlite_error_is_busy_locked(error):
             profiler.record_busy_locked()

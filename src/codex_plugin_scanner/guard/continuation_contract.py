@@ -220,8 +220,10 @@ class ContinuationCoordinator(Generic[ExecutionPlan]):
                 return self._unconfirmed_live_hook(offer, "continuation_adapter_failed")
             return result
         finally:
+            # A killed child can leave the queue feeder blocked. The result was
+            # already read, or the child will never deliver one.
+            result_box.cancel_join_thread()
             result_box.close()
-            result_box.join_thread()
 
     def _terminal_result(
         self, offer: ContinuationOffer, *, action: ContinuationAction, cancelled: Callable[[], bool]

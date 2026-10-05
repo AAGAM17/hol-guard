@@ -21,7 +21,7 @@ def test_barrier_tracks_every_coverage_prerequisite() -> None:
 
 
 @pytest.mark.parametrize("conclusion", ["failure", "cancelled", "skipped", "timed_out"])
-@pytest.mark.parametrize("prerequisite", ["coverage-plan", "native-command-evaluators"])
+@pytest.mark.parametrize("prerequisite", ["coverage-plan", "native-command-evaluators", "native-coverage-evaluators"])
 @pytest.mark.parametrize("placeholder_position", ["none", "before", "after", "previous-page"])
 def test_failed_prerequisite_stops_without_waiting_for_an_unexpanded_matrix(
     conclusion: str, prerequisite: str, placeholder_position: str
@@ -44,7 +44,12 @@ def test_failed_prerequisite_stops_without_waiting_for_an_unexpanded_matrix(
         page = int(path.rsplit("=", 1)[1])
         return {"total_count": len(jobs), "jobs": jobs[(page - 1) * 100 : page * 100]}
 
-    label = "Python coverage-plan" if prerequisite == "coverage-plan" else "Native command evaluators"
+    labels = {
+        "coverage-plan": "Python coverage-plan",
+        "native-command-evaluators": "Native command evaluators",
+        "native-coverage-evaluators": "Native coverage evaluators",
+    }
+    label = labels[prerequisite]
     with pytest.raises(barrier.ShardWaitError, match=f"^{label} completed with {conclusion}$"):
         barrier.wait_for_shards(
             "owner/repo",

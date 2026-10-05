@@ -936,6 +936,38 @@ fn policy_row_payload(
     Value::Object(map)
 }
 
+fn policy_row_specificity(row: &Value, harness: &str) -> (u8, u8, u8, u8, u8, u8) {
+    let scope = match row_value(row, "scope").as_str().unwrap_or("") {
+        "artifact" => 5,
+        "workspace" => 4,
+        "publisher" => 3,
+        "harness" => 2,
+        "global" => 1,
+        _ => 0,
+    };
+    let exact_harness = u8::from(row_value(row, "harness").as_str() == Some(harness));
+    let exact_hash = u8::from(!row_value(row, "artifact_hash").is_null());
+    let exact_artifact = u8::from(!row_value(row, "artifact_id").is_null());
+    let exact_workspace = u8::from(!row_value(row, "workspace").is_null());
+    let exact_publisher = u8::from(!row_value(row, "publisher").is_null());
+    (
+        scope,
+        exact_harness,
+        exact_hash,
+        exact_artifact,
+        exact_workspace,
+        exact_publisher,
+    )
+}
+
+fn policy_row_outranks(candidate: &Value, selected: &Value, harness: &str) -> bool {
+    let candidate_severity = guard_action_severity(&row_value(candidate, "action"), GuardAction::Block);
+    let selected_severity = guard_action_severity(&row_value(selected, "action"), GuardAction::Block);
+    candidate_severity > selected_severity
+        || (candidate_severity == selected_severity
+            && policy_row_specificity(candidate, harness) > policy_row_specificity(selected, harness))
+}
+
 /// `_distinct_non_null`.
 fn distinct_non_null<'a>(values: &[Option<&'a str>]) -> Vec<&'a str> {
     let mut seen = Vec::new();
@@ -1553,10 +1585,9 @@ fn evaluate_in_connection(
             }
             let candidate_payload =
                 policy_row_payload(candidate, Some(&integrity_result), Some(&cached_state));
-            let outranks = selected_payload.as_ref().is_none_or(|sp| {
-                guard_action_severity(&candidate_payload["action"], GuardAction::Block)
-                    > guard_action_severity(&sp["action"], GuardAction::Block)
-            });
+            let outranks = selected_payload
+                .as_ref()
+                .is_none_or(|sp| policy_row_outranks(candidate, sp, harness));
             if outranks {
                 if consume_one_shot && is_approval_gate_one_shot_policy(candidate) {
                     let deleted = conn
@@ -1642,10 +1673,9 @@ fn evaluate_in_connection(
         {
             let candidate_payload =
                 policy_row_payload(candidate, Some(&integrity_result), Some(&integrity_state));
-            let outranks = selected_payload.as_ref().is_none_or(|sp| {
-                guard_action_severity(&candidate_payload["action"], GuardAction::Block)
-                    > guard_action_severity(&sp["action"], GuardAction::Block)
-            });
+            let outranks = selected_payload
+                .as_ref()
+                .is_none_or(|sp| policy_row_outranks(candidate, sp, harness));
             if outranks {
                 if consume_one_shot && is_approval_gate_one_shot_policy(candidate) {
                     let deleted = conn

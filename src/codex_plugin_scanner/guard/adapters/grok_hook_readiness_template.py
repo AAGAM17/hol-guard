@@ -1,6 +1,6 @@
 """Authenticated workspace preparation for the generated Grok prompt client."""
 
-GROK_HOOK_READINESS_TEMPLATE = '''
+GROK_HOOK_READINESS_TEMPLATE = """
 def _prepare_grok_prompt(input_text, host, port, token, deadline):
     payload = _json_object(input_text)
     if payload is None:
@@ -31,4 +31,4 @@ def _prepare_grok_prompt(input_text, host, port, token, deadline):
     payload.pop("guard_remaining_seconds", None)
     payload["guard_remaining_ms"] = max(1, int(remaining * 1000))
     return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
-'''
+"""

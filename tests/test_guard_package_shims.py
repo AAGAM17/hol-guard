@@ -285,6 +285,24 @@ def _seed_bundle(
     )
 
 
+def _provision_native_integrity_and_verifier(home_dir: Path, master: bytes) -> None:
+    """Seed the on-disk policy-integrity secret so the shim subprocess can
+    publish a native policy snapshot, then write the matching verifier key.
+
+    The subprocess constructs its own ``GuardStore`` and reads the integrity
+    secret from the keystore; ``provision_native_policy_verifier_key`` alone
+    only writes the derived verifier file and trips the "armed native
+    controls" guard that refuses to mint a second signing key.
+    """
+    from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
+
+    store = GuardStore(home_dir, prime_policy_integrity=False)
+    secret_store = store._policy_integrity_secret_store
+    if secret_store is not None:
+        secret_store.set_secret(store._policy_integrity_key_ref, base64.urlsafe_b64encode(master).decode("ascii"))
+    provision_native_policy_verifier_key(home_dir, master)
+
+
 def _seed_workspace_sync_credentials(home_dir: Path, sync_url: str, *, now: str = "2026-05-19T00:00:00Z") -> None:
     _seed_guard_cloud(GuardStore(home_dir), workspace_id=WORKSPACE_ID, sync_url=sync_url, now=now)
 
@@ -691,10 +709,8 @@ def test_package_manager_shim_runs_allowed_command_once_when_shim_dir_is_on_path
     capsys,
     native_hook_force: Path,
 ) -> None:
-    from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
-
     home_dir = tmp_path / "guard-home"
-    provision_native_policy_verifier_key(home_dir, b"\x07" * 32)
+    _provision_native_integrity_and_verifier(home_dir, b"\x07" * 32)
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
     fake_bin = tmp_path / "fake-bin"
@@ -1653,10 +1669,8 @@ def test_guard_package_shim_preserves_argv_cwd_env_exitcode_and_stdio(
     capsys,
     native_hook_force: Path,
 ) -> None:
-    from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
-
     home_dir = tmp_path / "guard-home"
-    provision_native_policy_verifier_key(home_dir, b"\x07" * 32)
+    _provision_native_integrity_and_verifier(home_dir, b"\x07" * 32)
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
     fake_bin = tmp_path / "fake-bin"

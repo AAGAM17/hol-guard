@@ -23,6 +23,7 @@ const REQUEST_STATE_VERSION: u16 = 1;
 const REQUEST_STATE_DIRECTORY: &str = "workspace-review-requests";
 const MAX_REQUEST_ID_BYTES: usize = 128;
 const MAX_REQUEST_STATE_BYTES: u64 = 4 * NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES as u64;
+const MAX_QUEUE_DIRECTORY_ENTRIES: usize = 4096;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +66,65 @@ pub(super) fn valid_request_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+}
+
+/// Discover selectors only. Every selected record must subsequently pass `load`;
+/// filenames and unsigned fields never establish business input or authority.
+pub(crate) fn pending_selectors(
+    policy_store: &super::PolicySnapshotStore,
+) -> Result<Vec<String>, String> {
+    let unavailable = || "native_local_business_queue_unavailable".to_owned();
+    let root = crate::resident_state::private_root_for_state_base(policy_store.state_base())?;
+    let directory = policy_store.state_base().join(REQUEST_STATE_DIRECTORY);
+    match std::fs::symlink_metadata(&directory) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(_) => return Err(unavailable()),
+        Ok(_) => super::validate_private_directory(&directory)?,
+    }
+    let mut ids = Vec::new();
+    for (index, entry) in std::fs::read_dir(&directory)
+        .map_err(|_| unavailable())?
+        .enumerate()
+    {
+        if index >= MAX_QUEUE_DIRECTORY_ENTRIES {
+            return Err(unavailable());
+        }
+        let entry = entry.map_err(|_| unavailable())?;
+        let name = entry.file_name();
+        let name = name.to_str().ok_or_else(unavailable)?;
+        let Some(id) = name.strip_suffix(".json") else {
+            continue;
+        };
+        if !valid_request_id(id) {
+            return Err(unavailable());
+        }
+        let (value, bytes) = super::policy_store_persistence::read_private_json(
+            &entry.path(),
+            MAX_REQUEST_STATE_BYTES,
+            "workspace_review_request",
+            &root,
+        )
+        .map_err(|_| unavailable())?
+        .ok_or_else(unavailable)?;
+        if canonical_json_bytes(&value).map_err(|_| unavailable())? != bytes {
+            return Err(unavailable());
+        }
+        let state: WorkspaceReviewRequestStateV1 =
+            serde_json::from_value(value).map_err(|_| unavailable())?;
+        if state.schema != REQUEST_STATE_SCHEMA
+            || state.version != REQUEST_STATE_VERSION
+            || state.request_id != id
+            || !matches!(state.status.as_str(), "pending" | "resolved")
+        {
+            return Err(unavailable());
+        }
+        if state.status == "pending" {
+            ids.push(id.to_owned());
+        }
+    }
+    super::validate_private_directory(&directory)?;
+    ids.sort();
+    Ok(ids)
 }
 
 fn binding(domain: &[u8], value: &Value) -> Result<String, String> {

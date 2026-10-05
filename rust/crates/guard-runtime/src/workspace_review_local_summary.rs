@@ -7,6 +7,49 @@
 use super::PolicySnapshotStore;
 use serde_json::{json, Value};
 
+const MAX_QUEUE_ITEMS: usize = 128;
+
+/// Local presentation of saved pending snapshots; not a decision or a statement
+/// that a snapshot remains dispatchable. No private request material leaves Rust.
+pub(crate) fn queue(store: &PolicySnapshotStore) -> Result<Value, String> {
+    let before = store.current_snapshot()?;
+    let selectors = super::workspace_review_request::pending_selectors(store)?;
+    let mut items = Vec::new();
+    for id in &selectors {
+        match build(store, id) {
+            Ok(summary) => {
+                if items.len() >= MAX_QUEUE_ITEMS {
+                    return Err("native_local_business_queue_unavailable".into());
+                }
+                items.push(summary);
+            }
+            Err(error) if error == "native_local_business_summary_unavailable" => {
+                // Absence of business input is the only skippable case. A policy
+                // race or failed origin/frozen-input check must fail the queue.
+                let request = super::workspace_review_request::load(store, id)?;
+                if request.business_input.is_some() {
+                    return Err("native_local_business_queue_unavailable".into());
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    let after = store.current_snapshot()?;
+    if before.generation != after.generation
+        || before.policy_digest != after.policy_digest
+        || before.rule_digest != after.rule_digest
+        || before.runtime_identity != after.runtime_identity
+        || before.scope_contract.scope_digest != after.scope_contract.scope_digest
+        || selectors != super::workspace_review_request::pending_selectors(store)?
+    {
+        return Err("native_local_business_queue_unavailable".into());
+    }
+    Ok(
+        json!({"schema":"guard-native-local-business-review-queue.v1", "version":1,
+        "items":items}),
+    )
+}
+
 pub(crate) fn build(store: &PolicySnapshotStore, request_id: &str) -> Result<Value, String> {
     build_with_recheck(store, request_id, || {})
 }

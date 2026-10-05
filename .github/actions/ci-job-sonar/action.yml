@@ -56,10 +56,6 @@ runs:
     shell: bash
     run: cargo clippy --manifest-path rust/Cargo.toml --locked --workspace
     if: inputs.has-token == 'true'
-  - name: Generate current-checkout Rust coverage
-    shell: bash
-    run: bash scripts/ci/prepare_sonar_rust_coverage.sh
-    if: inputs.has-token == 'true'
   - name: Install pinned Sonar scanner CLI
     uses: sonarsource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f
     with:
@@ -83,6 +79,10 @@ runs:
   - name: Prepare Python coverage
     shell: bash
     run: bash scripts/ci/prepare_sonar_analysis.sh
+    if: inputs.has-token == 'true'
+  - name: Generate current-checkout Rust coverage
+    shell: bash
+    run: bash scripts/ci/prepare_sonar_rust_coverage.sh coverage-data
     if: inputs.has-token == 'true'
   - name: Analyze with SonarQube Cloud
     uses: sonarsource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f

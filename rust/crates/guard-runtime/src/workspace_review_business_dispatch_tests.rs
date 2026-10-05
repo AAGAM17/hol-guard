@@ -1,0 +1,267 @@
+use super::super::super::tests::{input, Fixture};
+use super::super::{claim_refreshed_review, persist_prepared_review};
+use super::*;
+use guard_policy_snapshot::{integrity_mac, policy_digest};
+use serde_json::json;
+use std::cell::Cell;
+
+fn claimed(f: &Fixture) -> ClaimedBusinessReview<PreparedBusinessInputV1> {
+    let prepared = super::super::super::prepare(input(b"private-owned-send", &[])).unwrap();
+    let binding = prepared.binding().to_owned();
+    persist_prepared_review(&f.store, "business-test", &prepared, || true).unwrap();
+    let decision = super::super::super::tests::owned_input_tests::owned_decision(f);
+    claim_refreshed_review(
+        &f.store,
+        "business-test",
+        &canonical_json_bytes(&decision).unwrap(),
+        &binding,
+        prepared,
+        |_| true,
+        PreparedBusinessInputV1::binding,
+    )
+    .unwrap()
+}
+
+fn status(f: &Fixture) -> serde_json::Value {
+    serde_json::from_slice(
+        &std::fs::read(
+            f.root
+                .join("workspace-review-business-attempts/business-test.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn owned_send_starts_durable_attempt_before_exactly_one_call_and_retains_ack() {
+    let f = Fixture::new("business-dispatch-owned");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    let count = Cell::new(0);
+    let result = c
+        .dispatch_with(
+            &f.store,
+            |_| true,
+            |input, owned| {
+                assert_eq!(input.binding(), owned.binding());
+                assert_eq!(owned.primary_bytes(), b"private-owned-send");
+                assert_eq!(status(&f)["status"], "attempt_started");
+                count.set(count.get() + 1);
+                Ok(GoogleSendAttempt::ApiAccepted {
+                    message_binding: "e".repeat(64),
+                })
+            },
+            || Ok(time),
+        )
+        .unwrap();
+    assert_eq!(count.get(), 1);
+    assert!(result.journal_recorded);
+    assert!(matches!(
+        result.attempt,
+        GoogleSendAttempt::ApiAccepted { .. }
+    ));
+    assert_eq!(status(&f)["status"], "api_accepted");
+    assert_eq!(status(&f)["acknowledgement_binding"], "e".repeat(64));
+}
+
+#[test]
+fn expiry_and_clock_rollback_after_journal_start_never_call_transport() {
+    for rollback in [false, true] {
+        let f = Fixture::new(if rollback {
+            "business-dispatch-rollback"
+        } else {
+            "business-dispatch-expiry"
+        });
+        let c = claimed(&f);
+        let first = c.lease.claimed_at_ms;
+        let last = if rollback {
+            first - 1
+        } else {
+            c.lease.expires_at_ms
+        };
+        let mut times = [first, last].into_iter();
+        let count = Cell::new(0);
+        assert!(c
+            .dispatch_with(
+                &f.store,
+                |_| true,
+                |_, _| {
+                    count.set(count.get() + 1);
+                    Ok(GoogleSendAttempt::Unconfirmed)
+                },
+                || Ok(times.next().unwrap())
+            )
+            .is_err());
+        assert_eq!(count.get(), 0);
+        assert_eq!(status(&f)["status"], "attempt_started");
+    }
+}
+
+#[test]
+fn changed_policy_after_claim_refuses_before_attempt_or_transport() {
+    let f = Fixture::new("business-dispatch-policy-change");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    let mut snapshot = f.store.current_snapshot().unwrap();
+    snapshot.generation += 1;
+    snapshot.business_policy.as_mut().unwrap().rules[0].action = "block".into();
+    snapshot.policy_digest = policy_digest(&snapshot).unwrap();
+    snapshot.integrity.mac = integrity_mac(&snapshot, &f.key).unwrap();
+    f.store
+        .push(&json!({"schema":"guard-policy-snapshot-push.v1","snapshot":snapshot}))
+        .unwrap();
+    let count = Cell::new(0);
+    assert!(c
+        .dispatch_with(
+            &f.store,
+            |_| true,
+            |_, _| {
+                count.set(count.get() + 1);
+                Ok(GoogleSendAttempt::Unconfirmed)
+            },
+            || Ok(time)
+        )
+        .is_err());
+    assert_eq!(count.get(), 0);
+    assert_eq!(status(&f)["status"], "claimed");
+}
+
+#[test]
+fn expired_resolution_and_changed_journal_do_not_call_transport() {
+    for changed in [false, true] {
+        let f = Fixture::new(if changed {
+            "business-dispatch-journal-change"
+        } else {
+            "business-dispatch-resolution-expiry"
+        });
+        let c = claimed(&f);
+        let time = c.lease.claimed_at_ms;
+        if changed {
+            std::fs::remove_file(
+                f.root
+                    .join("workspace-review-business-attempts/business-test.json"),
+            )
+            .unwrap();
+        }
+        let count = Cell::new(0);
+        assert!(c
+            .dispatch_with(
+                &f.store,
+                |_| changed,
+                |_, _| {
+                    count.set(count.get() + 1);
+                    Ok(GoogleSendAttempt::Unconfirmed)
+                },
+                || Ok(time)
+            )
+            .is_err());
+        assert_eq!(count.get(), 0);
+    }
+}
+
+#[test]
+fn unknown_outcome_and_sdk_error_never_retry() {
+    for rejected in [false, true] {
+        let f = Fixture::new(if rejected {
+            "business-dispatch-sdk-error"
+        } else {
+            "business-dispatch-unknown"
+        });
+        let c = claimed(&f);
+        let time = c.lease.claimed_at_ms;
+        let count = Cell::new(0);
+        let result = c.dispatch_with(
+            &f.store,
+            |_| true,
+            |_, _| {
+                count.set(count.get() + 1);
+                if rejected {
+                    Err(GoogleDispatchError::InputChanged)
+                } else {
+                    Ok(GoogleSendAttempt::Unconfirmed)
+                }
+            },
+            || Ok(time),
+        );
+        assert_eq!(count.get(), 1);
+        assert_eq!(result.is_err(), rejected);
+        assert_eq!(status(&f)["status"], "unconfirmed");
+    }
+}
+
+#[test]
+fn outcome_persistence_failure_is_reported_without_a_second_send() {
+    let f = Fixture::new("business-dispatch-outcome-write-failure");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    let count = Cell::new(0);
+    let result = c
+        .dispatch_with(
+            &f.store,
+            |_| true,
+            |_, _| {
+                count.set(count.get() + 1);
+                std::fs::remove_file(
+                    f.root
+                        .join("workspace-review-business-attempts/business-test.json"),
+                )
+                .unwrap();
+                Ok(GoogleSendAttempt::Unconfirmed)
+            },
+            || Ok(time),
+        )
+        .unwrap();
+    assert_eq!(count.get(), 1);
+    assert!(!result.journal_recorded);
+    assert_eq!(result.attempt, GoogleSendAttempt::Unconfirmed);
+}
+
+#[test]
+fn mismatched_native_verifier_result_does_not_call_transport() {
+    for changed in 0..3 {
+        let f = Fixture::new("business-dispatch-verifier-mismatch");
+        let mut c = claimed(&f);
+        let time = c.lease.claimed_at_ms;
+        match changed {
+            0 => c.lease.envelope_digest = "f".repeat(64),
+            1 => c.verified.decision = "review".into(),
+            _ => c.verified.replayed = true,
+        }
+        let count = Cell::new(0);
+        assert!(c
+            .dispatch_with(
+                &f.store,
+                |_| true,
+                |_, _| {
+                    count.set(count.get() + 1);
+                    Ok(GoogleSendAttempt::Unconfirmed)
+                },
+                || Ok(time)
+            )
+            .is_err());
+        assert_eq!(count.get(), 0);
+        assert_eq!(status(&f)["status"], "claimed");
+    }
+}
+
+#[test]
+fn missing_installed_authority_after_claim_does_not_call_transport() {
+    let f = Fixture::new("business-dispatch-authority-missing");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    std::fs::remove_file(f.root.join(workspace_review_authority::AUTHORITY_FILE_NAME)).unwrap();
+    let count = Cell::new(0);
+    assert!(c
+        .dispatch_with(
+            &f.store,
+            |_| true,
+            |_, _| {
+                count.set(count.get() + 1);
+                Ok(GoogleSendAttempt::Unconfirmed)
+            },
+            || Ok(time)
+        )
+        .is_err());
+    assert_eq!(count.get(), 0);
+}

@@ -229,6 +229,7 @@ impl LiveMcpSession {
     /// Non-RPC noise is skipped by the drain pump; here we distinguish
     /// response / reverse-request / notification so the control plane applies
     /// the right routing. `Ok(None)` = timeout; `Err(())` = pump EOF.
+    #[allow(clippy::result_unit_err)]
     pub fn next_event(&mut self, timeout: Duration) -> Result<Option<SessionEvent>, ()> {
         let deadline = Instant::now() + timeout;
         loop {

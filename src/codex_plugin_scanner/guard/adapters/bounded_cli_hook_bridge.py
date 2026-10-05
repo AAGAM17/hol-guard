@@ -42,6 +42,7 @@ from .desktop_hook_proxy import (
 from .desktop_hook_proxy import (
     _trusted_desktop_hook_proxy_command,
 )
+from .grok_hook_invocation_template import configured_grok_payload
 from .hook_input_reader import read_hook_input
 
 if TYPE_CHECKING:
@@ -366,6 +367,7 @@ def run_bounded_cli_hook(
     cli_args = [item for item in raw_cli_args if isinstance(item, str)]
     if len(cli_args) != len(raw_cli_args):
         return _emit_failure(harness=harness, input_text=input_text)
+    input_text = configured_grok_payload(input_text, cli_args) if harness == "grok" else input_text
     deadline = started_monotonic + float(timeout_seconds) if deadline_monotonic is None else deadline_monotonic
     if time.monotonic() >= deadline:
         return _emit_failure(harness=harness, input_text=input_text)

@@ -352,7 +352,11 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                 hooks = {}
             payload["hooks"] = hooks
             enabled_history[str(path)] = self._recorded_enabled_for(previous_state, path, hooks)
-            if hooks.get("enabled") is False and self._hooks_have_managed_entries(hooks):
+            if hooks.get("enabled") is False and any(
+                self._prune_managed_entries(entries)
+                for entries in hook_event_groups(hooks).values()
+                if isinstance(entries, list)
+            ):
                 raise ValueError("ZCode user hooks are disabled; explicitly enable them before installing Guard.")
             self._sync_managed_hook_groups(hooks, managed_hook_command)
             # Each ZCode surface only registers hooks when its own config
@@ -445,6 +449,8 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         surfaces: list[tuple[Path, dict[str, object]]] = []
         for path in (self._config_path(context), self._file_config_path(context)):
             _ensure_path_within_root(self._zcode_home_dir(context), path, label="ZCode")
+            if path == self._file_config_path(context) and not path.is_file():
+                continue
             if path.is_file():
                 try:
                     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -546,6 +552,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                     candidate == self._file_config_path(context)
                     and not original["present"]
                     and not self._hooks_have_handlers(hooks)
+                    and not (set(hooks) - {ZCODE_HOOKS_EVENTS_KEY})
                 ):
                     hooks = {}
                 if json.dumps(hooks, sort_keys=True) == hooks_before:

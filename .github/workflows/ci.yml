@@ -559,6 +559,7 @@ jobs:
       - name: Evaluate planned required results
         env:
           PLAN_LANES: ${{ needs.plan.outputs.lanes }}
+          PLAN_SHARD_COUNT: ${{ needs.coverage-plan.outputs.shard-count }}
           PLAN_DATA_ONLY: ${{ needs.plan.outputs.data_only }}
           RESULTS: ${{ toJson(needs) }}
           EVENT_NAME: ${{ github.event_name }}
@@ -571,11 +572,16 @@ jobs:
               print(f"::error::plan job result: {plan_result}")
               sys.exit(1)
           data_only = os.environ.get("PLAN_DATA_ONLY") == "true"
-          # Required set the aggregate must always evaluate. In shadow mode all
-          # ran; a job is a hard failure only if it ran and failed/cancelled.
+          # Required set the aggregate must always evaluate. A job is a hard
+          # failure only if it ran and failed/cancelled; a missing entry means a
+          # job was dropped from the graph or never scheduled -> fail closed.
           required = ["quality","coverage-plan","coverage","compatibility",
                       "scheduling-sensitive","dashboard","cisco-full","ci-python-312",
                       "pi-exact-continuation","cross-platform"]
+          missing = [j for j in required if j not in needs]
+          if missing:
+              print("::error::required jobs absent from needs graph: "+", ".join(missing))
+              sys.exit(1)
           failed = [j for j in required
                     if needs.get(j, {}).get("result") in ("failure","cancelled")]
           print(f"plan lanes={os.environ.get('PLAN_LANES')} data_only={data_only}")
@@ -584,9 +590,20 @@ jobs:
           if failed:
               print("::error::required jobs failed: " + ", ".join(failed))
               sys.exit(1)
+          # Matrix cardinality: coverage must expand to exactly the planned shard
+          # count. A truncated/empty matrix that still "passes" is a protection gap.
+          shard_count = os.environ.get("PLAN_SHARD_COUNT", "")
+          if shard_count.isdigit() and int(shard_count) < 1:
+              print(f"::error::coverage-plan emitted empty shard matrix ({shard_count})")
+              sys.exit(1)
           skipped = [j for j in required if needs.get(j,{}).get("result")=="skipped"]
           if skipped and not data_only:
               print("::error::required jobs skipped on a full-lane plan: "+", ".join(skipped))
+              sys.exit(1)
+          # A data-only plan must leave a real residue; if EVERY required job
+          # skipped, the plan produced no evidence -> fail closed.
+          if data_only and len(skipped) == len(required):
+              print("::error::data-only plan skipped every required job")
               sys.exit(1)
           print("required aggregate: all planned required results green")
           PY

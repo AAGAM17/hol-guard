@@ -96,7 +96,7 @@ class GrokHarnessAdapter(HarnessAdapter):
 
     @classmethod
     def _protection_config_path(cls, context: HarnessContext) -> Path:
-        return cls._config_path(context)
+        return cls._managed_config_path(context)
 
     @classmethod
     def _managed_config_path(cls, context: HarnessContext) -> Path:

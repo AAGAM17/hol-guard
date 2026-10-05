@@ -19,8 +19,10 @@ cannot be undone. Network/provider uncertainty still forbids automatic resend.
 Replacing authorization requires a fresh worker-verified credential for the
 same opaque account, tenant and exact verified primary mailbox. Wrong purpose,
 expired authorization and changed identity leave the current account intact.
-Successful replacement invalidates all old pending inputs; the caller must
-prepare and review fresh inputs. A revoked owner cannot be revived by replacement.
+Successful replacement invalidates all old pending inputs. Fresh inputs bind a
+new random account generation into their digest and outbound inspection binding,
+so identical bytes cannot reuse an approval from the prior generation. They
+require fresh native review. A revoked owner cannot be revived by replacement.
 
 Replacement currently consumes the existing verified OAuth completion result.
 It does not implement a refresh-token exchange, persistent enrollment, an

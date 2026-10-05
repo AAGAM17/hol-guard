@@ -46,6 +46,11 @@ impl GoogleSendCredential {
         }
         let mut digest = Sha256::new();
         digest.update(b"hol-guard.google-worker-input.v1\0");
+        if let Some(epoch) = self.account_epoch() {
+            digest.update(b"hol-guard.google-account-epoch.v1\0");
+            digest.update((epoch.len() as u64).to_be_bytes());
+            digest.update(epoch.as_bytes());
+        }
         for field in [
             self.identity().account_binding(),
             self.identity().tenant_binding(),

@@ -19,6 +19,7 @@ pub enum GoogleSendAccountError {
 pub struct GoogleSendAccount {
     credential: GoogleSendCredential,
     active: Arc<RwLock<bool>>,
+    epoch: String,
 }
 
 impl GoogleSendAccount {
@@ -30,6 +31,7 @@ impl GoogleSendAccount {
             return Err(GoogleSendAccountError::Unavailable);
         }
         Ok(Self {
+            epoch: new_epoch()?,
             credential,
             active: Arc::new(RwLock::new(true)),
         })
@@ -54,6 +56,7 @@ impl GoogleSendAccount {
         let identity = &self.credential.identity;
         GoogleSendCredential {
             account_lease: Some(Arc::clone(&self.active)),
+            account_epoch: Some(self.epoch.clone()),
             purpose: GrantPurpose::Send,
             access_token: Zeroizing::new(self.credential.access_token.as_str().to_owned()),
             refresh_token: None,
@@ -100,9 +103,11 @@ impl GoogleSendAccount {
         {
             return Err(GoogleSendAccountError::IdentityChanged);
         }
+        let epoch = new_epoch()?;
         self.revoke();
         self.credential = replacement;
         self.active = Arc::new(RwLock::new(true));
+        self.epoch = epoch;
         Ok(())
     }
 
@@ -114,6 +119,12 @@ impl GoogleSendAccount {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = false;
     }
+}
+
+fn new_epoch() -> Result<String, GoogleSendAccountError> {
+    let mut random = [0u8; 32];
+    getrandom::fill(&mut random).map_err(|_| GoogleSendAccountError::Unavailable)?;
+    Ok(hex::encode(random))
 }
 
 impl Drop for GoogleSendAccount {

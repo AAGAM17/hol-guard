@@ -42,8 +42,22 @@ fn revoke_and_drop_invalidate_prepared_inputs_and_prevent_new_inputs() {
 fn same_account_replacement_invalidates_old_inputs_and_permits_new_inputs() {
     let mut account = GoogleSendAccount::new(credential("subject-one")).unwrap();
     let old = input(&account, "old");
+    let old_binding = old.input_binding().to_owned();
+    let old_inspection = input(&account, "old")
+        .inspect_outbound()
+        .unwrap()
+        .inspection_binding()
+        .to_owned();
     account.replace(credential("subject-one")).unwrap();
     assert!(!old.is_current());
+    assert_ne!(input(&account, "old").input_binding(), old_binding);
+    assert_ne!(
+        input(&account, "old")
+            .inspect_outbound()
+            .unwrap()
+            .inspection_binding(),
+        old_inspection
+    );
     assert!(input(&account, "fresh").is_current());
     account.revoke();
     assert_eq!(

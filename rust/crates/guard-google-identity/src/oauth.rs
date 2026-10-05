@@ -60,6 +60,7 @@ pub struct GoogleSendAuthorization {
 /// serialization or token getter. A successful callback is not enrollment.
 pub struct GoogleSendCredential {
     account_lease: Option<std::sync::Arc<std::sync::RwLock<bool>>>,
+    account_epoch: Option<String>,
     purpose: GrantPurpose,
     access_token: Zeroizing<String>,
     refresh_token: Option<Zeroizing<String>>,
@@ -68,6 +69,9 @@ pub struct GoogleSendCredential {
     expires_monotonic: Instant,
 }
 impl GoogleSendCredential {
+    pub(crate) fn account_epoch(&self) -> Option<&str> {
+        self.account_epoch.as_deref()
+    }
     pub fn identity(&self) -> &GoogleIdentityEvidence {
         &self.identity
     }
@@ -237,6 +241,7 @@ impl GoogleSendAuthorization {
         )?;
         Ok(GoogleSendCredential {
             account_lease: None,
+            account_epoch: None,
             purpose: self.purpose,
             access_token: response.access_token,
             refresh_token: response.refresh_token,

@@ -8,6 +8,10 @@ use serde_json::json;
 #[path = "workspace_review_business_journal.rs"]
 mod journal;
 
+#[allow(dead_code)] // Reservation/actor integration does not enable a worker route.
+#[path = "workspace_review_business_budget.rs"]
+mod budget;
+
 // This owned value is never serialized, cloned, or published through an RPC.
 // A consumed approval is not dispatch permission until budgets and current
 // worker policy have also been enforced by the future registered worker.

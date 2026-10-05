@@ -1233,16 +1233,16 @@ fn runner_prompt_has_secret_read_intent(
             if has_positive_read_intent(&sentence)? {
                 return Ok(true);
             }
-            return Ok(runner_following_sentence_has_secret_read_intent(
+            return runner_following_sentence_has_secret_read_intent(
                 prompt_text,
                 sentence_end,
-            )?);
+            );
         }
         if f_search(runner_negated_secret_read_pattern(), &sentence)?.is_some() {
-            return Ok(runner_following_sentence_has_secret_read_intent(
+            return runner_following_sentence_has_secret_read_intent(
                 prompt_text,
                 sentence_end,
-            )?);
+            );
         }
         let region = runner_prompt_secret_intent_region(prompt_text, start, end)?;
         for m in f_matches(runner_secret_read_intent_pattern(), &region)? {

@@ -11,8 +11,11 @@
 //! `BTreeMap`, which matches `json.dumps(..., sort_keys=True)`. `default=str`
 //! maps to a `to_string()` fallback for non-serializable leaves.
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+
+#[cfg(unix)]
+use serde_json::Map;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

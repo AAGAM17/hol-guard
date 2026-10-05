@@ -16,10 +16,10 @@ def _prepare_grok_prompt(input_text, host, port, token, deadline):
         data=json.dumps(request, separators=(",", ":")).encode("utf-8"),
         timeout=remaining,
     )
-    if (
-        ready is None
-        or ready.get("ready") is not True
-        or ready.get("workspace_acknowledged") is not True
+    if ready is None or ready.get("ready") is not True:
+        return None
+    if ready.get("native_required") is not False and (
+        ready.get("workspace_acknowledged") is not True
         or ready.get("worker_ready") is not True
     ):
         return None

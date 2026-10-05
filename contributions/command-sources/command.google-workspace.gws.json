@@ -8,7 +8,7 @@
     "conflicts": [],
     "delegated_protection": null,
     "dependencies": [],
-    "description": "Reviews consequential Gmail, Drive and Calendar CLI operations. This opt-in compatibility extension does not authenticate accounts, isolate credentials or provide immutable managed dispatch.",
+    "description": "Reviews consequential Gmail, Drive, Calendar and authentication/credential-export CLI operations. This opt-in compatibility extension does not authenticate accounts, isolate credentials or provide immutable managed dispatch.",
     "ecosystem_ids": [],
     "executables": [
       "gws",
@@ -126,6 +126,32 @@
           "Review the effective account, full payload and affected resources before proceeding."
         ],
         "typed_capabilities": []
+      },
+      {
+        "action_classes": [
+          "Google Workspace consequential command"
+        ],
+        "baseline_floor": "review",
+        "configurable": true,
+        "conflicts": [],
+        "default_enabled": true,
+        "dependencies": [],
+        "deprecated": false,
+        "description": "Reviews authentication and credential export through the pinned gws CLI route families.",
+        "example_command": "gws auth login",
+        "family": null,
+        "fixed_reason": null,
+        "implementation_version": "1.0.0",
+        "implied_permissions": [],
+        "introduced_version": "1.0.0",
+        "label": "Authentication and credential export",
+        "permission_id": "command.google-workspace.gws.permission.auth",
+        "replacement_permission_id": null,
+        "risk_tier": "high",
+        "safer_guidance": [
+          "Review the effective account, full payload and affected resources before proceeding."
+        ],
+        "typed_capabilities": []
       }
     ],
     "project_markers": [],
@@ -185,7 +211,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -206,7 +237,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -216,7 +252,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -260,7 +300,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -281,7 +326,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -291,7 +341,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -333,7 +387,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -354,7 +413,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -364,7 +428,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -406,7 +474,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -427,7 +500,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -437,7 +515,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -479,7 +561,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -500,7 +587,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -510,7 +602,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -552,7 +648,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -573,7 +674,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -583,7 +689,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -649,7 +759,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -670,7 +785,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -680,7 +800,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -726,7 +850,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -747,7 +876,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -757,7 +891,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -801,7 +939,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -822,7 +965,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -832,7 +980,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -876,7 +1028,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -897,7 +1054,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -907,7 +1069,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -951,7 +1117,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -972,7 +1143,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -982,7 +1158,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1026,7 +1206,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1047,7 +1232,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1057,7 +1247,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1109,7 +1303,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1130,7 +1329,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1140,7 +1344,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1186,7 +1394,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1207,7 +1420,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1217,7 +1435,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1261,7 +1483,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1282,7 +1509,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1292,7 +1524,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1336,7 +1572,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1357,7 +1598,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1367,7 +1613,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1411,7 +1661,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1432,7 +1687,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1442,7 +1702,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1486,7 +1750,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -1507,7 +1776,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -1517,7 +1791,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -1586,7 +1864,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -1607,7 +1890,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -1617,7 +1905,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -1661,7 +1953,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -1682,7 +1979,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -1692,7 +1994,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -1736,7 +2042,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -1757,7 +2068,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -1767,7 +2083,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -1811,7 +2131,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -1832,7 +2157,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -1842,7 +2172,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -1886,7 +2220,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -1907,7 +2246,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -1917,7 +2261,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -1960,7 +2308,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -1981,7 +2334,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -1991,7 +2349,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -2034,7 +2396,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -2055,7 +2422,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -2065,7 +2437,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -2108,7 +2484,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -2129,7 +2510,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -2139,7 +2525,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -2205,7 +2595,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2226,7 +2621,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2236,7 +2636,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2282,7 +2686,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2303,7 +2712,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2313,7 +2727,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2359,7 +2777,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2380,7 +2803,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2390,7 +2818,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2436,7 +2868,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2457,7 +2894,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2467,7 +2909,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2513,7 +2959,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2534,7 +2985,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2544,7 +3000,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2589,7 +3049,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2610,7 +3075,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2620,7 +3090,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2665,7 +3139,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2686,7 +3165,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2696,7 +3180,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2741,7 +3229,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2762,7 +3255,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2772,7 +3270,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2824,7 +3326,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2845,7 +3352,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2855,7 +3367,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2901,7 +3417,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2922,7 +3443,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -2932,7 +3458,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -2978,7 +3508,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -2999,7 +3534,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3009,7 +3549,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3055,7 +3599,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3076,7 +3625,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3086,7 +3640,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3132,7 +3690,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3153,7 +3716,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3163,7 +3731,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3208,7 +3780,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3229,7 +3806,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3239,7 +3821,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3284,7 +3870,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3305,7 +3896,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3315,7 +3911,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3360,7 +3960,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3381,7 +3986,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3391,7 +4001,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3459,7 +4073,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -3480,7 +4099,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -3490,7 +4114,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -3533,7 +4161,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -3554,7 +4187,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -3564,7 +4202,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -3607,7 +4249,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -3628,7 +4275,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -3638,7 +4290,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -3703,7 +4359,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3724,7 +4385,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3734,7 +4400,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3779,7 +4449,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3800,7 +4475,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3810,7 +4490,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3855,7 +4539,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3876,7 +4565,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3886,7 +4580,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -3937,7 +4635,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -3958,7 +4661,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -3968,7 +4676,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4013,7 +4725,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4034,7 +4751,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4044,7 +4766,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4089,7 +4815,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4110,7 +4841,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4120,7 +4856,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4188,7 +4928,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -4209,7 +4954,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -4219,7 +4969,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -4262,7 +5016,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -4283,7 +5042,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -4293,7 +5057,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -4336,7 +5104,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -4357,7 +5130,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -4367,7 +5145,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -4410,7 +5192,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -4431,7 +5218,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -4441,7 +5233,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -4484,7 +5280,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -4505,7 +5306,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -4515,7 +5321,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -4558,7 +5368,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "interspersed_options_with_values": [
                   "--params",
@@ -4579,7 +5394,12 @@
                   "--message-id",
                   "--attachment",
                   "-a",
-                  "--remove"
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
                 ],
                 "options_with_values": [],
                 "interspersed_flags": [
@@ -4589,7 +5409,11 @@
                   "--page-all",
                   "--html",
                   "--draft",
-                  "--no-original-attachments"
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
                 ],
                 "forbidden_flags": [],
                 "required_flags": [],
@@ -4654,7 +5478,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4675,7 +5504,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4685,7 +5519,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4730,7 +5568,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4751,7 +5594,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4761,7 +5609,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4806,7 +5658,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4827,7 +5684,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4837,7 +5699,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4882,7 +5748,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4903,7 +5774,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4913,7 +5789,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -4958,7 +5838,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -4979,7 +5864,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -4989,7 +5879,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5034,7 +5928,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5055,7 +5954,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5065,7 +5969,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5116,7 +6024,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5137,7 +6050,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5147,7 +6065,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5192,7 +6114,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5213,7 +6140,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5223,7 +6155,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5268,7 +6204,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5289,7 +6230,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5299,7 +6245,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5344,7 +6294,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5365,7 +6320,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5375,7 +6335,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5420,7 +6384,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5441,7 +6410,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5451,7 +6425,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5496,7 +6474,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "interspersed_options_with_values": [
                           "--params",
@@ -5517,7 +6500,12 @@
                           "--message-id",
                           "--attachment",
                           "-a",
-                          "--remove"
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
                         ],
                         "options_with_values": [],
                         "interspersed_flags": [
@@ -5527,7 +6515,11 @@
                           "--page-all",
                           "--html",
                           "--draft",
-                          "--no-original-attachments"
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
                         ],
                         "forbidden_flags": [],
                         "required_flags": [
@@ -5549,6 +6541,1117 @@
         ],
         "severity": "high",
         "title": "Calendar event change"
+      },
+      {
+        "action_classes": [
+          "Google Workspace consequential command"
+        ],
+        "default_mode": "review",
+        "description": "Reviews authentication and credential export through the pinned gws CLI route families.",
+        "family": null,
+        "matcher": {
+          "op": "any.v1",
+          "config": {},
+          "matchers": [
+            {
+              "op": "executable.v1",
+              "config": {
+                "executables": [
+                  "gws",
+                  "gws.exe",
+                  "gws.cmd"
+                ],
+                "subcommands": [
+                  "auth",
+                  "login"
+                ],
+                "allow_leading_options": true,
+                "fail_secure_unknown_options": true,
+                "leading_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "interspersed_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "options_with_values": [],
+                "interspersed_flags": [
+                  "--help",
+                  "-h",
+                  "--dry-run",
+                  "--page-all",
+                  "--html",
+                  "--draft",
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
+                ],
+                "forbidden_flags": [],
+                "required_flags": [],
+                "required_flags_in_all_arguments": false,
+                "required_option_values": [],
+                "inverse_flag_pairs": []
+              }
+            },
+            {
+              "op": "executable.v1",
+              "config": {
+                "executables": [
+                  "gws",
+                  "gws.exe",
+                  "gws.cmd"
+                ],
+                "subcommands": [
+                  "auth",
+                  "setup"
+                ],
+                "allow_leading_options": true,
+                "fail_secure_unknown_options": true,
+                "leading_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "interspersed_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "options_with_values": [],
+                "interspersed_flags": [
+                  "--help",
+                  "-h",
+                  "--dry-run",
+                  "--page-all",
+                  "--html",
+                  "--draft",
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
+                ],
+                "forbidden_flags": [],
+                "required_flags": [],
+                "required_flags_in_all_arguments": false,
+                "required_option_values": [],
+                "inverse_flag_pairs": []
+              }
+            },
+            {
+              "op": "executable.v1",
+              "config": {
+                "executables": [
+                  "gws",
+                  "gws.exe",
+                  "gws.cmd"
+                ],
+                "subcommands": [
+                  "auth",
+                  "export"
+                ],
+                "allow_leading_options": true,
+                "fail_secure_unknown_options": true,
+                "leading_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "interspersed_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "options_with_values": [],
+                "interspersed_flags": [
+                  "--help",
+                  "-h",
+                  "--dry-run",
+                  "--page-all",
+                  "--html",
+                  "--draft",
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
+                ],
+                "forbidden_flags": [],
+                "required_flags": [],
+                "required_flags_in_all_arguments": false,
+                "required_option_values": [],
+                "inverse_flag_pairs": []
+              }
+            },
+            {
+              "op": "executable.v1",
+              "config": {
+                "executables": [
+                  "gws",
+                  "gws.exe",
+                  "gws.cmd"
+                ],
+                "subcommands": [
+                  "auth",
+                  "logout"
+                ],
+                "allow_leading_options": true,
+                "fail_secure_unknown_options": true,
+                "leading_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "interspersed_options_with_values": [
+                  "--params",
+                  "--json",
+                  "--output",
+                  "-o",
+                  "--upload",
+                  "--upload-content-type",
+                  "--format",
+                  "--sanitize",
+                  "--page-limit",
+                  "--page-delay",
+                  "--to",
+                  "--cc",
+                  "--bcc",
+                  "--subject",
+                  "--body",
+                  "--message-id",
+                  "--attachment",
+                  "-a",
+                  "--remove",
+                  "--api-version",
+                  "--scopes",
+                  "--services",
+                  "-s",
+                  "--project"
+                ],
+                "options_with_values": [],
+                "interspersed_flags": [
+                  "--help",
+                  "-h",
+                  "--dry-run",
+                  "--page-all",
+                  "--html",
+                  "--draft",
+                  "--no-original-attachments",
+                  "--readonly",
+                  "--full",
+                  "--unmasked",
+                  "--login"
+                ],
+                "forbidden_flags": [],
+                "required_flags": [],
+                "required_flags_in_all_arguments": false,
+                "required_option_values": [],
+                "inverse_flag_pairs": []
+              }
+            }
+          ]
+        },
+        "native_capability": null,
+        "permission_id": "command.google-workspace.gws.permission.auth",
+        "risk_classes": [
+          "network_egress",
+          "destructive_shell"
+        ],
+        "rule_id": "command.google-workspace.gws.auth",
+        "rule_version": "1.0.0",
+        "safe_variants": [
+          {
+            "variant_id": "help",
+            "title": "gws help",
+            "matcher": {
+              "op": "any.v1",
+              "config": {},
+              "matchers": [
+                {
+                  "op": "any.v1",
+                  "config": {},
+                  "matchers": [
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "login"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "--help"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    },
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "setup"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "--help"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    },
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "export"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "--help"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    },
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "logout"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "--help"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "any.v1",
+                  "config": {},
+                  "matchers": [
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "login"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "-h"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    },
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "setup"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "-h"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    },
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "export"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "-h"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    },
+                    {
+                      "op": "executable.v1",
+                      "config": {
+                        "executables": [
+                          "gws",
+                          "gws.exe",
+                          "gws.cmd"
+                        ],
+                        "subcommands": [
+                          "auth",
+                          "logout"
+                        ],
+                        "allow_leading_options": true,
+                        "fail_secure_unknown_options": true,
+                        "leading_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "interspersed_options_with_values": [
+                          "--params",
+                          "--json",
+                          "--output",
+                          "-o",
+                          "--upload",
+                          "--upload-content-type",
+                          "--format",
+                          "--sanitize",
+                          "--page-limit",
+                          "--page-delay",
+                          "--to",
+                          "--cc",
+                          "--bcc",
+                          "--subject",
+                          "--body",
+                          "--message-id",
+                          "--attachment",
+                          "-a",
+                          "--remove",
+                          "--api-version",
+                          "--scopes",
+                          "--services",
+                          "-s",
+                          "--project"
+                        ],
+                        "options_with_values": [],
+                        "interspersed_flags": [
+                          "--help",
+                          "-h",
+                          "--dry-run",
+                          "--page-all",
+                          "--html",
+                          "--draft",
+                          "--no-original-attachments",
+                          "--readonly",
+                          "--full",
+                          "--unmasked",
+                          "--login"
+                        ],
+                        "forbidden_flags": [],
+                        "required_flags": [
+                          "-h"
+                        ],
+                        "required_flags_in_all_arguments": true,
+                        "required_option_values": [],
+                        "inverse_flag_pairs": []
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "safer_alternatives": [
+          "Review the effective account, full payload and affected resources before proceeding."
+        ],
+        "severity": "high",
+        "title": "Authentication and credential export"
       }
     ],
     "safer_alternatives": [

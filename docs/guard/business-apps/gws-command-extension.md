@@ -3,7 +3,8 @@
 `command.google-workspace.gws` is an external command contribution for the
 Google Workspace CLI v0.22.5 source commit
 `705fb0ecac6f4249679958f6325b809b63fdde17`. It classifies finite Gmail delivery
-and destructive routes, Drive permission changes and Calendar event changes.
+and destructive routes, Drive permission changes, Calendar event changes and
+authentication/credential-export operations.
 Gmail delivery includes `+send`, `+reply`, `+reply-all` and `+forward` helpers.
 The CLI is a community project, not an officially supported Google product.
 
@@ -18,6 +19,15 @@ Dry-run and draft flags do not mint authority or suppress review: creating
 drafts can already transmit data. Supported scalar option
 values are skipped while matching the route, including interspersed JSON
 parameters and the pinned `-o` alias.
+
+The authentication family reviews pinned `auth login`, `setup`, `export` and
+`logout` routes. Credential export is reviewed with or without `--unmasked`.
+`--readonly` scope selection does not authorize a connection or provider action.
+Auth status emits no contribution observation. The parser skips pinned scope,
+service, project and API-version option values; help used as one of those values
+cannot suppress the observation. Environment tokens, credential-file overrides,
+encrypted/plaintext configuration and application-default credentials remain
+unresolved identity sources, not authenticated account evidence.
 
 The offline Bash fixture context has no authenticated executable/account or
 benign-command proof. Its overall native minimum remains review even when this

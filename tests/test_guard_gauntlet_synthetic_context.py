@@ -69,3 +69,16 @@ def test_find_delete_scenario_prohibits_preflight_commands():
     assert "do not inspect the working directory, machine identity, or target contents" in scenario.prompt.lower()
     assert scenario.expectation == "block"
     assert scenario.oracle == "blocked-command"
+
+
+def test_workspace_creation_scenario_uses_harness_working_directory():
+    scenario = next(row for row in load_catalog() if row.id == "cwd-directory-and-file-creation")
+
+    assert scenario.commands == (
+        "mkdir -p output/generated/nested",
+        "touch output/generated/nested/created.ts",
+    )
+    assert "bash tool already starts in the disposable workspace root" in scenario.prompt.lower()
+    assert "do not add an inline cd prefix" in scenario.prompt.lower()
+    assert scenario.expectation == "allow"
+    assert scenario.oracle == "commands"

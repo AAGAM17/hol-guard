@@ -234,7 +234,12 @@ jobs:
   coverage:
     name: coverage (3.12, ${{ matrix.shard-index }})
     needs: [plan, coverage-plan, native-command-evaluators]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      needs.coverage-plan.result == 'success' &&
+      needs.native-command-evaluators.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -379,7 +384,11 @@ jobs:
 
   scheduling-sensitive:
     needs: [plan, native-command-evaluators]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      needs.native-command-evaluators.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -396,7 +405,11 @@ jobs:
 
   compatibility:
     needs: [plan, native-command-evaluators]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      needs.native-command-evaluators.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -477,7 +490,11 @@ jobs:
 
   pi-exact-continuation:
     needs: [plan, native-command-evaluators]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      needs.native-command-evaluators.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     name: Pi exact continuation (actual SDKs)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -493,7 +510,10 @@ jobs:
 
   dashboard:
     needs: [plan]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -514,7 +534,11 @@ jobs:
 
   cisco-full:
     needs: [plan, native-command-evaluators]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      needs.native-command-evaluators.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -524,7 +548,11 @@ jobs:
 
   cross-platform:
     needs: [plan, native-command-evaluators]
-    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
+    if: >-
+      !cancelled() &&
+      needs.native-command-evaluators.result == 'success' &&
+      (github.event_name != 'pull_request' ||
+       (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

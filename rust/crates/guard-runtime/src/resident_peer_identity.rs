@@ -9,7 +9,6 @@ pub(crate) fn read_linux_credentials(
         .map_err(|_| "native_peer_identity_unavailable".to_owned())
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) struct UnixPeerIdentity {
     uid: u32,
     gid: u32,

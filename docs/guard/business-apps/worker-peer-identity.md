@@ -18,3 +18,10 @@ adds a worker RPC nor constructs registered-worker admission. The production
 business dispatch admission type remains uninhabited. Real cross-identity access,
 token isolation, debug access and direct-call bypass tests are still required
 before a managed protection claim.
+
+After the resident authenticates a connection, its pending request retains the
+kernel UID/group snapshot as private transport metadata. Request JSON cannot
+populate or replace it, and response/Cloud projections do not include it. TCP
+and unsupported transports retain no Unix identity. Failure to obtain identity
+on a supported Unix connection refuses that request. Retaining this input does
+not authorize an actor or turn the shared resident token into workflow identity.

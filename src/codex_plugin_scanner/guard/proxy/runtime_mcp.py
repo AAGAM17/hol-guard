@@ -677,6 +677,35 @@ def _configured_server_launch_environment(configured_keys: Sequence[str]) -> dic
     return _build_scrubbed_env(configured_values)
 
 
+def _ensure_native_launch_resident_verifier(store: GuardStore, guard_home: Path) -> None:
+    """Provision the resident verifier key before any native launch RPC.
+
+    Production hook entry provisions this through the policy snapshot
+    publisher at worker start.  A proxy constructed standalone (the CLI MCP
+    proxy entrypoints) never starts that publisher, so it must establish the
+    same one-time prerequisite itself before touching a native launch RPC —
+    otherwise the resident either refuses to serve, or if some other process
+    already provisioned a *different* key for this guard home, authentic
+    approvals signed with this store's key would never verify.  Unlike the
+    best-effort pre-tool floor helper, launch-environment resolution has no
+    Python fallback, so a failure here must raise rather than proceed.
+    """
+
+    from ..native_policy_snapshot_constants import (
+        NATIVE_POLICY_VERIFIER_KEY_NAME,
+        NATIVE_RUNTIME_STATE_DIRECTORY,
+    )
+    from ..native_policy_snapshot_publisher import provision_native_verifier_key_for_store
+
+    key_path = Path(guard_home) / NATIVE_RUNTIME_STATE_DIRECTORY / NATIVE_POLICY_VERIFIER_KEY_NAME
+    try:
+        if key_path.is_file():
+            return
+    except OSError:
+        pass
+    provision_native_verifier_key_for_store(store)
+
+
 @dataclass(frozen=True, slots=True)
 class _PackagePolicyResolution:
     base_evaluation: Any
@@ -736,6 +765,7 @@ class RuntimeMcpGuardProxy:
         self.server_id = server_id
         self._current_config_provider = current_config_provider
         self.server_env_keys = tuple(dict.fromkeys(key.strip() for key in server_env_keys if key.strip()))
+        _ensure_native_launch_resident_verifier(self.store, context.guard_home)
         initial_launch_env = _configured_server_launch_environment(self.server_env_keys)
         self.server_identity = server_identity or build_mcp_server_identity(
             config_path=self.config_path,

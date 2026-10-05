@@ -203,8 +203,11 @@ def native_mcp_probe(
     from codex_plugin_scanner.guard import config
 
     monkeypatch.setattr(config, "resolve_guard_home", lambda: _native_context_home)
-    from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
+    from codex_plugin_scanner.guard.native_policy_snapshot_publisher import (
+        provision_native_verifier_key_for_store,
+    )
     from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+    from codex_plugin_scanner.guard.store import GuardStore
 
     homes: list[Path] = []
 
@@ -212,10 +215,11 @@ def native_mcp_probe(
         key_dir = home / "native-runtime"
         key_dir.mkdir(mode=0o700, exist_ok=True)
         key_dir.chmod(0o700)
-        key = key_dir / "key"
-        key.write_bytes(os.urandom(32))
-        key.chmod(0o600)
-        provision_native_policy_verifier_key(home, b"\x07" * 32)
+        # Provision the resident with this home's own GuardStore verifier
+        # key, not an unrelated constant.  Approvals and policy decisions in
+        # these tests are signed with the store's real key; keying the
+        # resident with anything else makes authentic approvals unverifiable.
+        provision_native_verifier_key_for_store(GuardStore(home))
         homes.append(home)
 
     yield provision_home

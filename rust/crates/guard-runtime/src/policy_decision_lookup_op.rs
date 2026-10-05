@@ -1117,7 +1117,7 @@ fn bounded_non_consuming_policy_rows(
                 &[artifact_hash],
                 "idx_policy_decisions_lookup_harness",
                 Some("idx_policy_decisions_lookup_harness_legacy"),
-                false,
+                true,
             ));
         }
         probes.push(SqlProbe {
@@ -1136,7 +1136,7 @@ fn bounded_non_consuming_policy_rows(
                 &[artifact_hash, global_runtime_exact_match_key],
                 "idx_policy_decisions_lookup_global",
                 Some("idx_policy_decisions_lookup_global_legacy"),
-                false,
+                true,
             ));
         }
         probes.push(SqlProbe {

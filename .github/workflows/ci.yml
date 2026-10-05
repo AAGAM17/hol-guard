@@ -26,6 +26,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Trusted change planner (shadow mode): computes which lanes the diff requires.
+  # Runs on PRs only; the diff is taken from the strict PR merge parent so a
+  # contributor cannot influence the base. Output feeds the `hol-guard /
+  # required` aggregate; nothing is skipped in shadow mode.
+  plan:
+    name: plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      lanes: ${{ steps.plan.outputs.lanes }}
+      data_only: ${{ steps.plan.outputs.data_only }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: ${{ env.CI_PYTHON_VERSION }}
+      - name: Compute change plan
+        id: plan
+        env:
+          PLAN_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          uv run --no-sync python scripts/ci/plan_changes.py --output ci-plan.json
+          LANES=$(python -c "import json;print(' '.join(json.load(open('ci-plan.json'))['lanes']))")
+          DATA_ONLY=$(python -c "import json;print(str(json.load(open('ci-plan.json'))['data_only']).lower())")
+          echo "lanes=$LANES" >> "$GITHUB_OUTPUT"
+          echo "data_only=$DATA_ONLY" >> "$GITHUB_OUTPUT"
+      - name: Upload ci-plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-plan
+          path: ci-plan.json
+          if-no-files-found: error
+          retention-days: 7
+
   quality:
     needs: native-command-evaluators
     runs-on: ubuntu-latest
@@ -492,3 +532,47 @@ jobs:
       - uses: ./.github/actions/ci-job-windows-updater
         with:
           python-version: ${{ matrix.python-version }}
+
+  # Shadow aggregate: reports the merged required-result contract. In shadow mode
+  # it needs the full required set and evaluates the planner's lane choice so the
+  # status name is stable before the fast lane is switched on. always() so the
+  # aggregate runs even when an upstream required job fails — the point is to
+  # evaluate results, not to be skipped by them.
+  required:
+    name: hol-guard / required
+    if: always()
+    needs: [plan, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      - name: Evaluate planned required results
+        env:
+          PLAN_LANES: ${{ needs.plan.outputs.lanes }}
+          PLAN_DATA_ONLY: ${{ needs.plan.outputs.data_only }}
+          RESULTS: ${{ toJson(needs) }}
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          data_only = os.environ.get("PLAN_DATA_ONLY") == "true"
+          # Required set the aggregate must always evaluate. In shadow mode all
+          # ran; a job is a hard failure only if it ran and failed/cancelled.
+          required = ["quality","coverage-plan","coverage","compatibility",
+                      "scheduling-sensitive","dashboard","cisco-full","ci-python-312"]
+          failed = [j for j in required
+                    if needs.get(j, {}).get("result") in ("failure","cancelled")]
+          print(f"plan lanes={os.environ.get('PLAN_LANES')} data_only={data_only}")
+          for j in required:
+              print(f"  {j}: {needs.get(j,{}).get('result')}")
+          if failed:
+              print("::error::required jobs failed: " + ", ".join(failed))
+              sys.exit(1)
+          skipped = [j for j in required if needs.get(j,{}).get("result")=="skipped"]
+          if skipped and not data_only:
+              print("::error::required jobs skipped on a full-lane plan: "+", ".join(skipped))
+              sys.exit(1)
+          print("required aggregate: all planned required results green")
+          PY

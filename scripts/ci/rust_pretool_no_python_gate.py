@@ -336,7 +336,17 @@ def _worker_failures(root: Path) -> list[str]:
     )
     failures.extend(required_tokens(native_hook, ("native_pre_tool_unavailable",)))
     native_edge_review = function_node(native_hook, "_review_native_edge", class_name="HookWorkerNativeMixin")
-    if "_review_native_edge_with_snapshot" not in function_calls(native_edge_review):
+    native_edge_calls = function_calls(native_edge_review)
+    extracted_review = root / "src/codex_plugin_scanner/guard/daemon/hook_worker_native_review.py"
+    extracted_calls: set[str] = set()
+    if extracted_review.is_file():
+        extracted_calls = function_calls(function_node(extracted_review, "review_native_edge"))
+        if "_review_native_edge_once" in extracted_calls:
+            extracted_calls.update(function_calls(function_node(extracted_review, "_review_native_edge_once")))
+    enters_snapshot = "_review_native_edge_with_snapshot" in native_edge_calls or (
+        "review_native_edge" in native_edge_calls and "_review_native_edge_with_snapshot" in extracted_calls
+    )
+    if not enters_snapshot:
         failures.append("HookWorkerNativeMixin._review_native_edge does not enter the snapshot-bound native edge")
     native_edge_snapshot = function_node(
         native_hook, "_review_native_edge_with_snapshot", class_name="HookWorkerNativeMixin"

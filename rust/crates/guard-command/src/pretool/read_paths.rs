@@ -39,7 +39,7 @@ fn inside_verified_project_scope(canonical: &std::path::Path, root: Option<&str>
     let Some(prefix) = sensitive_system_root_prefix(&lowered) else {
         return true;
     };
-    if lowered == prefix {
+    if !matches!(prefix, "/var" | "/private/var") || lowered == prefix {
         return false;
     }
     let rest = lowered[prefix.len()..].trim_start_matches('/');

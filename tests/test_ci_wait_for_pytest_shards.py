@@ -426,12 +426,16 @@ def test_sonar_accepts_only_complete_coverage_from_verified_same_run_executions(
     sonar_steps = jobs["sonar"]["steps"]
     consumer = next(step for step in sonar_steps if step.get("name") == "Download pytest coverage data")
     waiter = next(step for step in sonar_steps if "select_pytest_coverage.py" in step.get("run", ""))
+    rust_coverage = next(
+        step for step in sonar_steps if step.get("name") == "Generate current-checkout Rust coverage"
+    )
 
     assert producer["with"]["name"] == "pytest-coverage-${{ github.run_attempt }}-${{ matrix.shard-index }}"
     assert producer["with"]["if-no-files-found"] == "error"
+    assert "rust-profraw/*.profraw" in producer["with"]["path"]
     assert consumer["with"]["artifact-ids"] == "${{ steps.coverage-selection.outputs.artifact-ids }}"
     assert "run-id" not in consumer["with"]  # Download remains scoped to the current workflow run.
-    assert sonar_steps.index(waiter) < sonar_steps.index(consumer)
+    assert sonar_steps.index(waiter) < sonar_steps.index(consumer) < sonar_steps.index(rust_coverage)
     assert waiter["env"] == {"GITHUB_TOKEN": "${{ github.token }}"}
     assert waiter["run"].endswith("--output coverage-selection.json")
     assert waiter["id"] == "coverage-selection"

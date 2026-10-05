@@ -7,6 +7,7 @@ import json
 import os
 import queue
 import shlex
+import subprocess
 import sys
 import threading
 from collections import deque

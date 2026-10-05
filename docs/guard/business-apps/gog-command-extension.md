@@ -13,6 +13,11 @@ or mint an allow grant. Literal help can clear a contribution observation;
 help used as payload, or after `--`, is not a safety flag. Required short value
 options are recognized without treating consumed data as an option.
 
+This contribution targets native enforcement. The retained historical Python
+option vectors remain regression inputs, not a production fallback or a promise
+of current Python matcher parity. Standalone legacy Python matcher behavior is
+not qualified for this contribution; it supplies no provider execution authority.
+
 Ordinary selected read and draft routes have no delivery observation. The
 unverified offline Bash context retains the native review floor, including when
 the contribution is disabled. Compound destructive commands retain their

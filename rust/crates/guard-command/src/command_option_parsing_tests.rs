@@ -45,9 +45,11 @@ struct OracleCase {
     all_flags: bool,
 }
 
-// Generated directly from the Python reference at c4bd916; includes long
+// Frozen historical vectors from the Python reference at c4bd916; includes long
 // assignment ordering, inverse pairs, consumed help/dry-run operands, short
 // clusters, Unicode classifications, unknown arity, and the `--` boundary.
+// These preserve the pre-migration corpus, not parity with a live Python engine.
+// Native short-value-option behavior is covered by the independent test above.
 #[test]
 fn matches_python_option_oracles() {
     let groups: Vec<OracleGroup> = serde_json::from_str(PYTHON_ORACLES).expect("valid oracle JSON");

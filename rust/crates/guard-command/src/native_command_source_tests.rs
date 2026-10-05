@@ -471,6 +471,8 @@ fn direct_mcp_rejects_noncanonical_commands_and_launch_arguments() {
         "../fixture-mcp",
         "/bin/fixture-mcp",
         "fixture-mcp.exe",
+        "fixture-mcp.cmd",
+        "fixture-mcp.bat",
         "fixture-mcp --serve",
         "Fixture",
         "sh",

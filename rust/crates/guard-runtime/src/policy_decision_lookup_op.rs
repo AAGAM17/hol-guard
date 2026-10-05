@@ -73,7 +73,7 @@ fn canonical_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
-fn row_value<'a>(row: &'a Value, key: &str) -> Value {
+fn row_value(row: &Value, key: &str) -> Value {
     row.get(key).cloned().unwrap_or(Value::Null)
 }
 
@@ -918,11 +918,9 @@ fn policy_row_payload(
 /// `_distinct_non_null`.
 fn distinct_non_null<'a>(values: &[Option<&'a str>]) -> Vec<&'a str> {
     let mut seen = Vec::new();
-    for v in values {
-        if let Some(s) = v {
-            if !seen.contains(s) {
-                seen.push(*s);
-            }
+    for &s in values.iter().flatten() {
+        if !seen.contains(&s) {
+            seen.push(s);
         }
     }
     seen
@@ -1491,7 +1489,7 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
             }
             let candidate_payload =
                 policy_row_payload(candidate, Some(&integrity_result), Some(&cached_state));
-            let outranks = selected_payload.as_ref().map_or(true, |sp| {
+            let outranks = selected_payload.as_ref().is_none_or(|sp| {
                 guard_action_severity(&candidate_payload["action"], GuardAction::Block)
                     > guard_action_severity(&sp["action"], GuardAction::Block)
             });
@@ -1574,7 +1572,7 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
         {
             let candidate_payload =
                 policy_row_payload(candidate, Some(&integrity_result), Some(&integrity_state));
-            let outranks = selected_payload.as_ref().map_or(true, |sp| {
+            let outranks = selected_payload.as_ref().is_none_or(|sp| {
                 guard_action_severity(&candidate_payload["action"], GuardAction::Block)
                     > guard_action_severity(&sp["action"], GuardAction::Block)
             });
@@ -1747,20 +1745,20 @@ fn consuming_policy_rows(
         artifact_hash.unwrap_or(""),
         runtime_exact_match_key.unwrap_or(""),
         runtime_exact_match_key.unwrap_or(""),
-        workspace_key.as_deref().unwrap_or(""),
+        workspace_key.unwrap_or(""),
         workspace.unwrap_or(""),
         artifact_id.unwrap_or(""),
-        action_family_key.as_deref().unwrap_or(""),
+        action_family_key.unwrap_or(""),
         artifact_hash.unwrap_or(""),
         artifact_hash.unwrap_or(""),
         publisher.unwrap_or(""),
         artifact_hash.unwrap_or(""),
-        action_family_key.as_deref().unwrap_or(""),
+        action_family_key.unwrap_or(""),
         artifact_hash.unwrap_or(""),
         runtime_exact_match_key.unwrap_or(""),
         runtime_exact_match_key.unwrap_or(""),
         artifact_id.unwrap_or(""),
-        action_family_key.as_deref().unwrap_or(""),
+        action_family_key.unwrap_or(""),
         artifact_hash.unwrap_or(""),
         global_runtime_exact_match_key.unwrap_or(""),
         global_runtime_exact_match_key.unwrap_or(""),

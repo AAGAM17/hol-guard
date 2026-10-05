@@ -307,13 +307,13 @@ pub fn evaluate_tool_risk(
         .map(normalized);
     let mut description_bits = 0;
     if let Some(description) = description.as_deref() {
-        if matches(&p.read, &description)? {
+        if matches(&p.read, description)? {
             description_bits |= FILESYSTEM;
         }
-        if matches(&p.write, &description)? {
+        if matches(&p.write, description)? {
             description_bits |= DESTRUCTIVE;
         }
-        if matches(&p.run, &description)? {
+        if matches(&p.run, description)? {
             description_bits |= COMMAND;
         }
     }

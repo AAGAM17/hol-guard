@@ -532,12 +532,7 @@ pub(crate) fn drain_stream(mut stdout: std::process::ChildStdout, tx: mpsc::Send
             return;
         }
         buffer.extend_from_slice(&chunk[..n]);
-        loop {
-            let parsed = match pop_json_message(&buffer) {
-                Some(p) => p,
-                None => break,
-            };
-            let (message, consumed) = parsed;
+        while let Some((message, consumed)) = pop_json_message(&buffer) {
             buffer.drain(..consumed);
             if let Some(msg) = message {
                 if is_rpc_message(&msg) {
@@ -976,7 +971,7 @@ fn exchange_tools_list(
             .unwrap_or("private");
         if result
             .get("ttlMs")
-            .map_or(false, |v| !v.is_i64() && !v.is_u64())
+            .is_some_and(|v| !v.is_i64() && !v.is_u64())
             || (scope != "private" && scope != "public")
         {
             partial!("invalid_cache_hints");
@@ -1070,10 +1065,7 @@ fn iso_now() -> String {
     // for cache bookkeeping (the field is consumed as a timestamp, not parsed
     // for byte-identity).
     let (y, mo, d, h, mi, s) = epoch_to_utc(secs);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
-        y, mo, d, h, mi, s
-    )
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}+00:00")
 }
 
 fn epoch_to_utc(secs: u64) -> (i64, u32, u32, u32, u32, u32) {
@@ -1542,7 +1534,7 @@ pub fn run_mcp_stdio_probe(
 fn stop_child(child: &mut Child) {
     let pid = child.id() as i32;
     if pid > 0 {
-        let _ = kill_process_group(pid);
+        kill_process_group(pid);
     }
     let _ = child.kill();
     let _ = child.wait();

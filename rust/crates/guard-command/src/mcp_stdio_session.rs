@@ -297,7 +297,7 @@ impl LiveMcpSession {
         self.cancel();
         let pid = child.id() as i32;
         if pid > 0 {
-            let _ = kill_process_group(pid);
+            kill_process_group(pid);
         }
         let _ = child.kill();
         let _ = child.wait();

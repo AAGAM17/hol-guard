@@ -44,11 +44,14 @@ struct SessionEntry {
 }
 
 #[cfg(unix)]
+type SessionRegistryGuard<'a> =
+    std::sync::MutexGuard<'a, HashMap<String, Arc<Mutex<SessionEntry>>>>;
+
+#[cfg(unix)]
 static SESSIONS: OnceLock<Mutex<HashMap<String, Arc<Mutex<SessionEntry>>>>> = OnceLock::new();
 
 #[cfg(unix)]
-fn sessions(
-) -> Result<std::sync::MutexGuard<'static, HashMap<String, Arc<Mutex<SessionEntry>>>>, String> {
+fn sessions() -> Result<SessionRegistryGuard<'static>, String> {
     SESSIONS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()

@@ -295,10 +295,7 @@ def native_review_claimed_allow(
     if (
         not isinstance(decision, Mapping)
         or decision.get("action") != "allow"
-        or (
-            claimed_approval_request_id is not None
-            and decision.get("request_id") != claimed_approval_request_id
-        )
+        or (claimed_approval_request_id is not None and decision.get("request_id") != claimed_approval_request_id)
     ):
         return _accept_unconsumed_exact_cloud_allow(
             store,

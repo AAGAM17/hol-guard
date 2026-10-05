@@ -112,9 +112,7 @@ def native_activity_coverage(store: NativeActivityStore) -> dict[str, object]:
         _ensure_ledger(connection)
         counts = {
             str(row["state"]): int(row["count"])
-            for row in connection.execute(
-                f"select state, count(*) as count from {_LEDGER} group by state"
-            )
+            for row in connection.execute(f"select state, count(*) as count from {_LEDGER} group by state")
         }
         uploaded = connection.execute(
             f"""
@@ -131,13 +129,7 @@ def native_activity_coverage(store: NativeActivityStore) -> dict[str, object]:
     withheld = counts.get("withheld", 0)
     quarantined = counts.get("quarantined", 0)
     accepted = int(uploaded["count"]) if uploaded is not None else 0
-    complete = (
-        dropped == 0
-        and withheld == 0
-        and quarantined == 0
-        and unprojected == 0
-        and accepted == projected
-    )
+    complete = dropped == 0 and withheld == 0 and quarantined == 0 and unprojected == 0 and accepted == projected
     return {
         "accepted": accepted,
         "complete": complete,
@@ -297,10 +289,7 @@ def _activity_event(
         value = row[column]
         if isinstance(value, str) and value.strip():
             activity[field] = value.strip()
-    key = (
-        f"native-activity:{eligibility.workspace_id}:{eligibility.installation_id}:"
-        f"{source_kind}:{decision_id}"
-    )
+    key = f"native-activity:{eligibility.workspace_id}:{eligibility.installation_id}:{source_kind}:{decision_id}"
     return GuardEventV1(
         event_id=f"guard-event-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:32]}",
         idempotency_key=key,
@@ -331,10 +320,7 @@ def _commit(
     key = (
         event.idempotency_key
         if event is not None
-        else (
-            f"native-activity:{eligibility.workspace_id}:{eligibility.installation_id}:"
-            f"{source_kind}:{decision_id}"
-        )
+        else (f"native-activity:{eligibility.workspace_id}:{eligibility.installation_id}:{source_kind}:{decision_id}")
     )
     with store._connect() as connection:
         _ensure_ledger(connection)

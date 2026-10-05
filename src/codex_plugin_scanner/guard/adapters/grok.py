@@ -433,6 +433,11 @@ class GrokHarnessAdapter(HarnessAdapter):
             "managed_hooks_path": str(pretool_path),
             "pretool_hook_path": str(pretool_path),
             "prompt_hook_path": str(prompt_path),
+            "protection_artifact_paths": [
+                str(managed_config_path),
+                str(pretool_path),
+                str(prompt_path),
+            ],
             "notes": [
                 "Guard catch-all PreToolUse hook installed in .grok/hooks/hol-guard-pretooluse.json",
                 "Guard prompt screening and lifecycle observation hooks installed",

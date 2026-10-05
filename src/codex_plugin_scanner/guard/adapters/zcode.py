@@ -524,16 +524,13 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         if isinstance(history, dict) and self._valid_enabled_record(history.get(str(path))):
             recorded = history[str(path)]
             return {"present": recorded["present"], "value": recorded["value"]}
-        config_key = state.get("managed_config_path")
-        if (
-            isinstance(history, dict)
-            and path.name == _ZCODE_CLI_FILE_CONFIG
-            and str(path) not in history
-            and isinstance(config_key, str)
-            and self._valid_enabled_record(history.get(config_key))
-        ):
-            recorded = history[config_key]
-            return {"present": recorded["present"], "value": recorded["value"]}
+        # Deliberately no cross-file mapping of managed_config_path's record
+        # onto the CLI file-config: an install made before setting.json
+        # existed leaves no record for it, and applying config.json's record
+        # there later strips an enabled flag the user set after the CLI's own
+        # migration created the file. Only values recorded for this exact
+        # path (branch above) or the legacy single-file state (branch below)
+        # are restored.
         legacy = state.get("hooks_enabled_before")
         if state.get("managed_config_path") == str(path) and self._valid_enabled_record(legacy):
             return {"present": legacy["present"], "value": legacy["value"]}

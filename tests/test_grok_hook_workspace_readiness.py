@@ -58,7 +58,11 @@ def test_prompt_prepares_workspace_and_preserves_native_block(
     assert [call[1] for call in calls] == [5.0, 3.0]
 
 
-@pytest.mark.parametrize("ready", [None, {}, {"ready": True}, {**READY, "ready": 1}, {**READY, "worker_ready": False}])
+@pytest.mark.parametrize(
+    "ready",
+    [None, {}, {"ready": True}, {**READY, "ready": 1}, {**READY, "worker_ready": False},
+     {"ready": True, "native_required": 0}],
+)
 def test_failed_readiness_cannot_admit_prompt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], ready: object
 ) -> None:
@@ -75,6 +79,26 @@ def test_failed_readiness_cannot_admit_prompt(
     assert len(calls) == 1 and calls[0].endswith("/readiness")
     module._fail('{"hook_event_name":"UserPromptSubmit"}')
     assert json.loads(capsys.readouterr().out)["decision"] == "block"
+
+
+def test_explicit_non_enforcing_readiness_still_requires_hook_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script(tmp_path, harness="grok")
+    monkeypatch.setattr(module, "_daemon_auth", lambda: ("127.0.0.1", 9, "fixture"))
+    calls = []
+
+    def transport(url, *_args, **_kwargs):
+        calls.append(url)
+        if url.endswith("/readiness"):
+            return {"ready": True, "native_required": False, "workspace_acknowledged": False, "worker_ready": True}
+        return {"decision": "block", "policy_action": "block", "reason": "hook block"}
+
+    monkeypatch.setattr(module, "_http_json", transport)
+    result = module._post_hook('{"hook_event_name":"UserPromptSubmit"}')
+    assert result is not None
+    assert json.loads(result[0])["policy_action"] == "block"
+    assert len(calls) == 2
 
 
 def test_spent_readiness_budget_does_not_start_semantic_review(

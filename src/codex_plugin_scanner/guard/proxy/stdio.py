@@ -31,6 +31,7 @@ from ..consumer import artifact_hash
 from ..daemon.manager import load_guard_daemon_auth_token
 from ..models import GuardAction, GuardArtifact, HarnessDetection
 from ..native_execution import (
+    _native_session_feature_available,
     mcp_stdio_session_close_native,
     mcp_stdio_session_open_native,
 )
@@ -523,18 +524,25 @@ class StdioGuardProxy:
                 else None
             )
             guard_home = getattr(self.guard_store, "guard_home", None)
+            native_session_id = (
+                f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}"
+                if argv is not None and guard_home is not None
+                else None
+            )
             opened = (
                 mcp_stdio_session_open_native(
                     argv,
-                    session_id=f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}",
+                    session_id=native_session_id,
                     home_dir=guard_home,
                     cwd=self.cwd,
                     extra_env=launch_env,
                     guard_home=guard_home,
                 )
-                if argv is not None and guard_home is not None
+                if native_session_id is not None
                 else None
             )
+            if native_session_id is not None and opened is None and _native_session_feature_available():
+                raise RuntimeError("Native stdio session authority is unavailable.")
             if opened is not None:
                 # Resident owns the child (RTM-024 data plane). A non-"opened"
                 # status is terminal — never fall back to the Python transport
@@ -553,8 +561,8 @@ class StdioGuardProxy:
                 from .runtime_mcp import _NativeChildProcess
 
                 return _NativeChildProcess(native_session_id, guard_home)
-            # opened is None => the native session feature is unsupported or
-            # the resident is unreachable; keep the Python pipe transport.
+            # The native open was not attempted or the session feature is
+            # unsupported; only those cases may use the Python pipe transport.
             process = subprocess.Popen(
                 self.command,
                 stdin=subprocess.PIPE,

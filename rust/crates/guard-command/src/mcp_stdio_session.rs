@@ -38,6 +38,13 @@ use crate::local_mcp_stdio::{drain_stream, is_rpc_message, kill_process_group, p
 /// Maximum cross-correlated buffered responses held per response key.
 const MAX_BUFFERED_PER_KEY: usize = 8;
 
+/// Why a `next_event` drain ended without a usable frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionReadError {
+    /// The drain pump hung up: child stdout closed or the pump thread died.
+    Eof,
+}
+
 // ---------------------------------------------------------------------------
 // JSON-RPC frame classification (`runtime_mcp.py` helpers).
 // ---------------------------------------------------------------------------
@@ -228,8 +235,11 @@ impl LiveMcpSession {
     /// Drain the next inbound child frame within `timeout`, classifying it.
     /// Non-RPC noise is skipped by the drain pump; here we distinguish
     /// response / reverse-request / notification so the control plane applies
-    /// the right routing. `Ok(None)` = timeout; `Err(())` = pump EOF.
-    pub fn next_event(&mut self, timeout: Duration) -> Result<Option<SessionEvent>, ()> {
+    /// the right routing. `Ok(None)` = timeout; `Err(Eof)` = pump EOF.
+    pub fn next_event(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<Option<SessionEvent>, SessionReadError> {
         let deadline = Instant::now() + timeout;
         loop {
             let now = Instant::now();
@@ -237,13 +247,13 @@ impl LiveMcpSession {
                 match self.inbox.try_recv() {
                     Ok(msg) => msg,
                     Err(mpsc::TryRecvError::Empty) => return Ok(None),
-                    Err(mpsc::TryRecvError::Disconnected) => return Err(()),
+                    Err(mpsc::TryRecvError::Disconnected) => return Err(SessionReadError::Eof),
                 }
             } else {
                 match self.inbox.recv_timeout(deadline - now) {
                     Ok(msg) => msg,
                     Err(mpsc::RecvTimeoutError::Timeout) => return Ok(None),
-                    Err(mpsc::RecvTimeoutError::Disconnected) => return Err(()),
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return Err(SessionReadError::Eof),
                 }
             };
             if !is_rpc_message(&msg) {

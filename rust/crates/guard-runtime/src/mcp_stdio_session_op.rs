@@ -232,11 +232,13 @@ pub(crate) fn session_recv(request: &McpStdioSessionRecvRequestV1) -> Result<Vec
                 }
                 Err(code) => return err_result(&code),
             },
-            Err(()) => match child_exit_code(&mut entry.child) {
-                Ok(Some(exit_code)) => return exited_result(exit_code),
-                Ok(None) => return encode(McpStdioSessionResultV1::status("eof")),
-                Err(code) => return err_result(&code),
-            },
+            Err(guard_command::mcp_stdio_session::SessionReadError::Eof) => {
+                match child_exit_code(&mut entry.child) {
+                    Ok(Some(exit_code)) => return exited_result(exit_code),
+                    Ok(None) => return encode(McpStdioSessionResultV1::status("eof")),
+                    Err(code) => return err_result(&code),
+                }
+            }
             Ok(Some(SessionEvent::ChildResponse(payload))) => {
                 // If awaiting a specific id and this is not it, buffer + keep
                 // draining (out-of-order responses are valid).

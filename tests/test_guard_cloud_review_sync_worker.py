@@ -586,3 +586,16 @@ class TestWorkerLiveness:
         recovered = _build_cloud_context(store)
         assert recovered["cloud_review_worker"] == "dead"
         assert recovered["cloud_state_detail"] == PARTIAL_CLOUD_RECOVERY_DETAIL
+
+
+def test_unusable_poll_intervals_stay_at_the_safety_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.runtime.cloud_review_sync_worker import (
+        DEFAULT_SAFETY_POLL_SECONDS,
+        configured_cloud_review_poll_seconds,
+    )
+
+    for raw in ("", "nan", "inf", "+inf", "-inf", "0", "-1", "nope"):
+        monkeypatch.setenv("GUARD_CLOUD_REVIEW_POLL_INTERVAL", raw)
+        assert configured_cloud_review_poll_seconds() == DEFAULT_SAFETY_POLL_SECONDS
+    monkeypatch.setenv("GUARD_CLOUD_REVIEW_POLL_INTERVAL", "15")
+    assert configured_cloud_review_poll_seconds() == 15.0

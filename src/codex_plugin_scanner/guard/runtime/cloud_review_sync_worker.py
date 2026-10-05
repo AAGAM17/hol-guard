@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import random
 import threading
@@ -34,7 +35,7 @@ def configured_cloud_review_poll_seconds() -> float:
         value = float(raw)
     except ValueError:
         return DEFAULT_SAFETY_POLL_SECONDS
-    if value <= 0 or value != value or value == float("inf"):
+    if value <= 0 or math.isnan(value) or math.isinf(value):
         return DEFAULT_SAFETY_POLL_SECONDS
     return value
 

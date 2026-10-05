@@ -444,11 +444,15 @@ def _bind_live_codex_hook_wait(
 
 def _proven_codex_wait_process(payload: Mapping[str, object]) -> dict[str, object] | None:
     raw = payload.get(CODEX_BROWSER_WAIT_PROCESS_KEY)
-    if not isinstance(raw, dict) or not process_identity_matches(raw):
+    if not isinstance(raw, dict) or set(raw) != {"pid", "startToken"}:
         return None
     pid = raw.get("pid")
     start_token = raw.get("startToken")
-    if not isinstance(pid, int) or isinstance(pid, bool) or not isinstance(start_token, str) or not start_token:
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return None
+    if not isinstance(start_token, str) or not start_token:
+        return None
+    if not process_identity_matches(raw):
         return None
     return {"pid": pid, "startToken": start_token}
 

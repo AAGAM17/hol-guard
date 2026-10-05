@@ -9,6 +9,10 @@ def _prepare_grok_prompt(input_text, host, port, token, deadline):
     if remaining <= 0:
         return None
     workspace = payload.get("cwd")
+    if not isinstance(workspace, str) or not workspace.strip():
+        payload.pop("guard_remaining_seconds", None)
+        payload["guard_remaining_ms"] = max(1, int(remaining * 1000))
+        return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     request = {"cwd": workspace} if isinstance(workspace, str) else {}
     ready = _http_json(
         _loopback_url(host, port, "/v1/hooks/grok/readiness"),

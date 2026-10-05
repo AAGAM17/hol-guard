@@ -157,11 +157,12 @@ def bounded_cli_hook_command(
         "from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import main_from_argv;"
         "raise SystemExit(main_from_argv(sys.argv[1:]))"
     )
+    config_json = json.dumps(config, ensure_ascii=True, separators=(",", ":"))
     if frozen_launcher:
-        config_json = json.dumps(config, ensure_ascii=True, separators=(",", ":"))
         desktop_proxy = _trusted_desktop_hook_proxy_command(python_executable, config_json)
         if desktop_proxy is not None:
             return desktop_proxy
+    if frozen_launcher or harness.strip().lower() == "grok":
         isolated_command = _isolated_bounded_hook_command(
             guard_home=guard_home,
             harness=harness,
@@ -170,11 +171,12 @@ def bounded_cli_hook_command(
         )
         if isolated_command is not None:
             return isolated_command
-        return (
-            python_executable,
-            _FROZEN_BRIDGE_COMMAND,
-            config_json,
-        )
+        if frozen_launcher:
+            return (
+                python_executable,
+                _FROZEN_BRIDGE_COMMAND,
+                config_json,
+            )
     return (
         python_executable,
         "-I",

@@ -136,12 +136,12 @@ def is_grok_hook_command(command: str, context: HarnessContext | None = None) ->
 
 
 def _isolated_stdlib_client(args: tuple[str, ...], context: HarnessContext | None) -> bool:
-    """Accept the frozen stdlib client that posts to the running daemon."""
+    """Accept the managed stdlib client that posts to the running daemon."""
     from ..adapters.bounded_cli_hook_bridge import bounded_hook_script_path
     from ..adapters.cursor_hook_config import isolated_cursor_hook_python
 
     interpreter = isolated_cursor_hook_python()
-    if interpreter is None or not bool(getattr(sys, "frozen", False)):
+    if interpreter is None:
         return False
     try:
         script = Path(args[2]).resolve()

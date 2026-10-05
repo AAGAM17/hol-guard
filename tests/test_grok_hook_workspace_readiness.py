@@ -47,10 +47,17 @@ def test_prompt_prepares_workspace_and_preserves_native_block(
         return {"decision": "block", "policy_action": "block", "reason": "native block"}
 
     monkeypatch.setattr(module, "_http_json", transport)
-    result = module._post_hook(json.dumps({
-        "hook_event_name": event, "cwd": str(tmp_path), "prompt": "synthetic prompt",
-        "guard_remaining_seconds": 999, "guard_remaining_ms": 999000,
-    }))
+    result = module._post_hook(
+        json.dumps(
+            {
+                "hook_event_name": event,
+                "cwd": str(tmp_path),
+                "prompt": "synthetic prompt",
+                "guard_remaining_seconds": 999,
+                "guard_remaining_ms": 999000,
+            }
+        )
+    )
     assert result is not None
     stdout, _, status = result
     assert status != 0
@@ -60,8 +67,14 @@ def test_prompt_prepares_workspace_and_preserves_native_block(
 
 @pytest.mark.parametrize(
     "ready",
-    [None, {}, {"ready": True}, {**READY, "ready": 1}, {**READY, "worker_ready": False},
-     {"ready": True, "native_required": 0}],
+    [
+        None,
+        {},
+        {"ready": True},
+        {**READY, "ready": 1},
+        {**READY, "worker_ready": False},
+        {"ready": True, "native_required": 0},
+    ],
 )
 def test_failed_readiness_cannot_admit_prompt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], ready: object
@@ -75,7 +88,7 @@ def test_failed_readiness_cannot_admit_prompt(
         return ready
 
     monkeypatch.setattr(module, "_http_json", transport)
-    assert module._post_hook('{"hook_event_name":"UserPromptSubmit"}') is None
+    assert module._post_hook(json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path)})) is None
     assert len(calls) == 1 and calls[0].endswith("/readiness")
     module._fail('{"hook_event_name":"UserPromptSubmit"}')
     assert json.loads(capsys.readouterr().out)["decision"] == "block"
@@ -95,15 +108,13 @@ def test_explicit_non_enforcing_readiness_still_requires_hook_decision(
         return {"decision": "block", "policy_action": "block", "reason": "hook block"}
 
     monkeypatch.setattr(module, "_http_json", transport)
-    result = module._post_hook('{"hook_event_name":"UserPromptSubmit"}')
+    result = module._post_hook(json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path)}))
     assert result is not None
     assert json.loads(result[0])["policy_action"] == "block"
     assert len(calls) == 2
 
 
-def test_spent_readiness_budget_does_not_start_semantic_review(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_spent_readiness_budget_does_not_start_semantic_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_script(tmp_path, harness="grok", timeout_seconds=85)
     clock = [10.0]
     monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
@@ -117,7 +128,7 @@ def test_spent_readiness_budget_does_not_start_semantic_review(
         return READY
 
     monkeypatch.setattr(module, "_http_json", transport)
-    assert module._post_hook('{"hook_event_name":"UserPromptSubmit"}') is None
+    assert module._post_hook(json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path)})) is None
     assert len(calls) == 1
 
 
@@ -162,9 +173,12 @@ def test_python_bridge_prepares_workspace_with_one_budget_and_preserves_block(
     monkeypatch.setattr(http, "post_hook_json", transport)
     monkeypatch.setattr(daemon, "post_hook_json", transport)
     result = daemon.try_daemon_hook(
-        guard_home=tmp_path, harness="grok", timeout_seconds=85,
-        input_text=json.dumps({"hook_event_name": "user_prompt_submit", "cwd": str(tmp_path),
-                               "guard_remaining_seconds": 999}),
+        guard_home=tmp_path,
+        harness="grok",
+        timeout_seconds=85,
+        input_text=json.dumps(
+            {"hook_event_name": "user_prompt_submit", "cwd": str(tmp_path), "guard_remaining_seconds": 999}
+        ),
         _endpoint_loader=lambda *_args: "http://127.0.0.1:9/v1/hooks/grok",
         _token_loader=lambda *_args: "fixture",
         _opener_builder=lambda: object(),
@@ -172,3 +186,22 @@ def test_python_bridge_prepares_workspace_with_one_budget_and_preserves_block(
     assert result is not None
     assert json.loads(result[0])["policy_action"] == "block"
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize("cwd", [None, "", " "])
+def test_prompt_without_workspace_still_requires_native_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cwd: object
+) -> None:
+    module = _load_script(tmp_path, harness="grok")
+    monkeypatch.setattr(module, "_daemon_auth", lambda: ("127.0.0.1", 9, "fixture"))
+    calls = []
+
+    def transport(url, *_args, **_kwargs):
+        calls.append(url)
+        return {"decision": "block", "policy_action": "block", "reason": "native block"}
+
+    monkeypatch.setattr(module, "_http_json", transport)
+    result = module._post_hook(json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": cwd}))
+    assert result is not None
+    assert json.loads(result[0])["policy_action"] == "block"
+    assert calls == ["http://127.0.0.1:9/v1/hooks/grok"]

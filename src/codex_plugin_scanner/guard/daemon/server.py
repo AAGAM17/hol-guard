@@ -284,7 +284,7 @@ from .first_cloud_sync import maybe_queue_first_cloud_sync, queue_sync_with_opti
 from .hook_process_runner import HookProcessRunner
 from .hook_request_auth import CHALLENGE_HOOK_PATHS, challenge_auth, request_auth
 from .hook_worker import WORKSPACE_POLICY_READINESS_TIMEOUT_SECONDS
-from .hook_worker_responses import prepare_native_hook_policy
+from .hook_worker_responses import _hook_harness_is_unmanaged, prepare_native_hook_policy
 from .lifecycle_journal import record_daemon_lifecycle_event
 from .local_approval_continuation import apply_local_approval_continuation
 from .local_cli_api import LocalCliApiService
@@ -6333,13 +6333,18 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         first tool call does not spend its short host deadline on cold startup.
         """
 
-        del default_harness
         params = parse_qs(query)
         workspace_candidate = self._normalized_hook_workspace_string(
             params.get("workspace", [None])[-1] or payload.get("workspace") or payload.get("cwd")
         )
         try:
             _ = self._validated_hook_guard_home(self._optional_string(params.get("guard-home", [None])[-1]))
+            if _hook_harness_is_unmanaged(self._daemon_server(), default_harness):
+                self._write_json(
+                    {"ready": True, "native_required": False, "workspace_acknowledged": False, "worker_ready": True},
+                    extra_headers={"Cache-Control": "no-store"},
+                )
+                return
             workspace = self._validated_hook_directory_string(
                 "workspace",
                 workspace_candidate,

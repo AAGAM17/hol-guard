@@ -64,6 +64,13 @@ def prepare_grok_prompt(
     if payload is None:
         return None
     workspace = payload.get("cwd")
+    if not isinstance(workspace, str) or not workspace.strip():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        payload.pop("guard_remaining_seconds", None)
+        payload["guard_remaining_ms"] = max(1, int(remaining * 1000))
+        return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     request = {"cwd": workspace} if isinstance(workspace, str) else {}
     url = urlparse(endpoint)
     ready = post_hook_json(

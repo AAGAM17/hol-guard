@@ -47,46 +47,54 @@ impl Journal {
         request_id: &str,
         input_binding: &str,
     ) -> Result<Self, String> {
+        super::super::super::approval_enrollment::with_transition_lock(store.state_base(), || {
+            Self::claimed_unlocked(store, request_id, input_binding)
+        })
+    }
+
+    pub(super) fn claimed_unlocked(
+        store: &PolicySnapshotStore,
+        request_id: &str,
+        input_binding: &str,
+    ) -> Result<Self, String> {
         if !super::super::super::workspace_review_request::valid_request_id(request_id)
             || !super::super::super::workspace_review_claim_index::valid_digest(input_binding)
         {
             return Err(INVALID.into());
         }
-        super::super::super::approval_enrollment::with_transition_lock(store.state_base(), || {
-            let root = crate::resident_state::private_root_for_state_base(store.state_base())?;
-            let directory = store.state_base().join(DIRECTORY);
-            crate::resident_state::ensure_private_directory_under(&directory, &root, true)?;
-            // No automatic pruning: retained attempts must not disappear and
-            // masquerade as permission to resend. Capacity refuses new work.
-            let count = std::fs::read_dir(&directory)
-                .map_err(|_| INVALID.to_owned())?
-                .take(CAPACITY + 1)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|_| INVALID.to_owned())?
-                .len();
-            if count >= CAPACITY {
-                return Err("native_business_attempt_capacity".into());
-            }
-            let path = directory.join(format!("{request_id}.json"));
-            if read(&path, &root)?.is_some() {
-                return Err("native_business_attempt_exists".into());
-            }
-            let record = Record {
-                schema: "guard.private-business-attempt.v1".into(),
-                version: 1,
-                request_id: request_id.into(),
-                input_binding: input_binding.into(),
-                status: Status::Claimed,
-                acknowledgement_binding: None,
-            };
-            let expected = encode(&record)?;
-            persist(&path, &root, &expected)?;
-            Ok(Self {
-                path,
-                root,
-                record,
-                expected,
-            })
+        let root = crate::resident_state::private_root_for_state_base(store.state_base())?;
+        let directory = store.state_base().join(DIRECTORY);
+        crate::resident_state::ensure_private_directory_under(&directory, &root, true)?;
+        // No automatic pruning: retained attempts must not disappear and
+        // masquerade as permission to resend. Capacity refuses new work.
+        let count = std::fs::read_dir(&directory)
+            .map_err(|_| INVALID.to_owned())?
+            .take(CAPACITY + 1)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| INVALID.to_owned())?
+            .len();
+        if count >= CAPACITY {
+            return Err("native_business_attempt_capacity".into());
+        }
+        let path = directory.join(format!("{request_id}.json"));
+        if read(&path, &root)?.is_some() {
+            return Err("native_business_attempt_exists".into());
+        }
+        let record = Record {
+            schema: "guard.private-business-attempt.v1".into(),
+            version: 1,
+            request_id: request_id.into(),
+            input_binding: input_binding.into(),
+            status: Status::Claimed,
+            acknowledgement_binding: None,
+        };
+        let expected = encode(&record)?;
+        persist(&path, &root, &expected)?;
+        Ok(Self {
+            path,
+            root,
+            record,
+            expected,
         })
     }
 

@@ -47,20 +47,21 @@ impl OwnedGoogleBusinessReview {
         if !refreshed.is_current() || refreshed.prepared_input().binding() != binding {
             return Err("native_business_resolution_changed".into());
         }
-        let (_, owned) = super::super::workspace_review_decision::claim_owned_business_request(
-            store,
-            &self.request_id,
-            decision,
-        )?;
+        let (_, owned, journal) =
+            super::super::workspace_review_decision::claim_owned_business_request_with(
+                store,
+                &self.request_id,
+                decision,
+                |owned| {
+                    journal::Journal::claimed_unlocked(store, &self.request_id, owned.binding())
+                },
+            )?;
         if owned.binding() != binding {
             return Err("native_business_claim_input_changed".into());
         }
         if !refreshed.is_current() {
             return Err("native_business_claim_expired_after_consume".into());
         }
-        // Failure here spends the approval without releasing a worker value.
-        // The journal never recreates a claim or permits restart dispatch.
-        let journal = journal::Journal::claimed(store, &self.request_id, owned.binding())?;
         Ok(ClaimedGoogleBusinessRequest {
             input: refreshed,
             owned,

@@ -425,8 +425,8 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             "config_path": str(config_path),
             **shim_manifest,
             "notes": [
-                "Guard hook entries added to ~/.zcode/cli/config.json (Desktop) and ~/.zcode/cli/setting.json (CLI)",
-                "hooks.enabled was set to true on both surfaces; ZCode only runs hooks after that opt-in",
+                *self._surface_notes(context, surfaces),
+                "hooks.enabled was set to true on every written surface; ZCode only runs hooks after that opt-in",
                 "User mcp, plugins, and any pre-existing hooks were preserved",
                 "Legacy flat hook groups were migrated into hooks.events for current ZCode",
                 "Hook entries carry a statusMessage label rendered by ZCode's Hooks settings UI",
@@ -434,6 +434,21 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             ],
         }
         return PreparedHarnessInstall(files, manifest)
+
+    def _surface_notes(
+        self, context: HarnessContext, surfaces: list[tuple[Path, dict[str, object], bytes | None, int]]
+    ) -> list[str]:
+        """Report only the hook surfaces install actually wrote."""
+
+        wrote_cli = any(path == self._file_config_path(context) for path, _payload, _before, _mode in surfaces)
+        if wrote_cli:
+            return [
+                "Guard hook entries added to ~/.zcode/cli/config.json (Desktop) and ~/.zcode/cli/setting.json (CLI)"
+            ]
+        return [
+            "Guard hook entries added to ~/.zcode/cli/config.json (Desktop)",
+            "The CLI's ~/.zcode/cli/setting.json does not exist yet; its own settings migration carries these hooks over",
+        ]
 
     def _hook_surface_payloads(self, context: HarnessContext) -> list[tuple[Path, dict[str, object]]]:
         """Load both ZCode hook surfaces.
@@ -508,15 +523,6 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         history = state.get("hooks_enabled_before")
         if isinstance(history, dict) and self._valid_enabled_record(history.get(str(path))):
             recorded = history[str(path)]
-            return {"present": recorded["present"], "value": recorded["value"]}
-        config_key = state.get("managed_config_path")
-        if (
-            isinstance(history, dict)
-            and path.name == _ZCODE_CLI_FILE_CONFIG
-            and isinstance(config_key, str)
-            and self._valid_enabled_record(history.get(config_key))
-        ):
-            recorded = history[config_key]
             return {"present": recorded["present"], "value": recorded["value"]}
         legacy = state.get("hooks_enabled_before")
         if state.get("managed_config_path") == str(path) and self._valid_enabled_record(legacy):

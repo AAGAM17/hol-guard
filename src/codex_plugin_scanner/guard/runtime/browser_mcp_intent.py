@@ -90,11 +90,22 @@ def normalize_browser_mcp_intent(
     if model is None:
         return None
     return GuardBrowserAutomationIntentV1(
-        **{
-            **model,
-            "sensitive_surface_flags": tuple(model["sensitive_surface_flags"]),
-            "volatile_fields_dropped": tuple(model["volatile_fields_dropped"]),
-        }
+        version=model["version"],
+        intent=model["intent"],
+        operation=model["operation"],
+        target_url=model["target_url"],
+        target_origin=model["target_origin"],
+        target_domain=model["target_domain"],
+        target_path_prefix=model["target_path_prefix"],
+        method=model["method"],
+        profile_mode=model["profile_mode"],
+        mcp_server_name=model["mcp_server_name"],
+        mcp_server_identity_hash=model["mcp_server_identity_hash"],
+        mcp_tool_name=model["mcp_tool_name"],
+        mcp_tool_identity_hash=model["mcp_tool_identity_hash"],
+        mcp_schema_hash=model["mcp_schema_hash"],
+        sensitive_surface_flags=tuple(model["sensitive_surface_flags"]),
+        volatile_fields_dropped=tuple(model["volatile_fields_dropped"]),
     )
 
 

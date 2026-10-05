@@ -7,7 +7,6 @@ import json
 import os
 import queue
 import shlex
-import subprocess
 import sys
 import threading
 from collections import deque
@@ -581,7 +580,10 @@ class _NativeChildProcess:
 
     def wait(self, timeout: float | None = None) -> int:
         self.close()
-        return self.returncode
+        returncode = self.returncode
+        if returncode is None:
+            raise RuntimeError("Native MCP session closed without an exit status.")
+        return returncode
 
     @property
     def returncode(self) -> int | None:
@@ -748,7 +750,7 @@ class RuntimeMcpGuardProxy:
         self._buffered_child_responses: dict[str, list[dict[str, Any]]] = {}
         self._buffered_client_responses: dict[str, list[dict[str, Any]]] = {}
         self._child_output_queue: queue.Queue[_ChildOutputFrame] | None = None
-        self._active_child_stdout: IO[str] | None = None
+        self._active_child_stdout: IO[str] | _NativeMcpChildIo | None = None
         self._tools_call_boundary_lock = threading.RLock()
         self._tool_catalog_state: _ToolCatalogState = "unobserved"
         self._tool_catalog: dict[str, dict[str, object]] = {}
@@ -757,7 +759,7 @@ class RuntimeMcpGuardProxy:
         self._tool_catalog_inflight = False
         self._tool_catalog_inflight_cursor: str | None = None
         self._tool_catalog_generation = 0
-        self._active_process: subprocess.Popen[str] | None = None
+        self._active_process: _NativeChildProcess | None = None
         self._active_runtime_launch_identity: dict[str, object] | None = None
         self._active_executable_identity: dict[str, object] | None = None
         self._active_server_env_values_hash: str | None = None
@@ -910,7 +912,7 @@ class RuntimeMcpGuardProxy:
         self._child_output_queue = None
         self._active_child_stdout = None
 
-    def _activate_child_output_pump(self, child_stdout: IO[str]) -> None:
+    def _activate_child_output_pump(self, child_stdout: IO[str] | _NativeMcpChildIo) -> None:
         output_queue: queue.Queue[_ChildOutputFrame] = queue.Queue()
         self._child_output_queue = output_queue
         self._active_child_stdout = child_stdout
@@ -977,83 +979,55 @@ class RuntimeMcpGuardProxy:
         self._active_server_env_values_hash = None
         self._active_server_identity = None
 
-    def _start_process(self) -> subprocess.Popen[str] | _NativeChildProcess:
-        # A catalog belongs to one concrete server process. A replacement
-        # process must explicitly advertise a complete root-to-terminal list
-        # before any saved allow can be reused against it.
-        launch_env: dict[str, str] = {}
-        child_env: dict[str, str] = {}
-        process: subprocess.Popen[str] | None = None
+    def _start_process(self) -> _NativeChildProcess:
+        """Launch only through the resident that owns the migrated data plane."""
         native_session_id: str | None = None
         try:
             launch_env, child_env, _configured_env = self._prepare_launch()
-            executable = resolved_runtime_launch_executable(self._active_runtime_launch_identity)
-            # `executable` is None for an unverified launch identity; argv must
-            # stay a strict list[str] to serialize into `Vec<String>`. A None
-            # means the resident cannot take the child — treat it as
-            # unavailable (`opened=None`) and keep the Python pipe transport.
-            argv = [executable] + [str(a) for a in self.command[1:]] if isinstance(executable, str) else None
+            identity = self._active_runtime_launch_identity
+            if identity is None:
+                raise RuntimeError("Guard runtime MCP server executable could not be verified.")
+            executable = resolved_runtime_launch_executable(identity)
+            if not isinstance(executable, str) or not executable:
+                raise RuntimeError("Guard runtime MCP server executable could not be verified.")
+            argv = [executable, *self.command[1:]]
             native_session_id = f"mcp-{self.harness}-{self.server_name}-{os.getpid()}-{uuid4().hex[:8]}"
-            opened = (
-                mcp_stdio_session_open_native(
-                    argv,
-                    session_id=native_session_id,
-                    home_dir=self.context.guard_home,
-                    cwd=self.context.workspace_dir,
-                    extra_env=child_env,
-                    guard_home=self.context.guard_home,
-                )
-                if argv is not None
-                else None
+            opened = mcp_stdio_session_open_native(
+                argv,
+                session_id=native_session_id,
+                home_dir=Path(child_env["HOME"]) if child_env.get("HOME") else None,
+                cwd=self.context.workspace_dir or Path.cwd(),
+                extra_env=child_env,
+                guard_home=self.context.guard_home,
             )
-            if opened is not None:
-                # Resident owns the child (RTM-022 data plane). A non-"opened"
-                # status is terminal — never fall back to the Python transport
-                # on a real open failure (ADR 0006: native failure is terminal).
-                if opened.get("status") != "opened":
-                    raise RuntimeError(f"native MCP session open failed: {opened.get('payload')}")
-                if not self._verify_post_spawn_launch_identity(launch_env=launch_env):
-                    raise RuntimeError(
-                        "Guard runtime MCP server launch identity changed while the child process was starting."
-                    )
-                # RTM-022: no reader-pump thread exists for resident-owned
-                # sessions. Install a plain injection buffer so callers/tests
-                # that write ``_child_output_queue`` (e.g. synthesizing a
-                # post-claim ``list_changed`` notification) reach the drain
-                # loop on both transports. ``_next_child_output_frame`` drains
-                # this buffer before polling the native session.
-                self._child_output_queue = queue.Queue()
-                return _NativeChildProcess(native_session_id, self.context.guard_home)
-            # opened is None => the native session feature is unsupported or
-            # the resident is unreachable; keep the Python pipe transport.
-            native_session_id = None
-            process = subprocess.Popen(
-                self.command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=None,
-                text=True,
-                cwd=self.context.workspace_dir,
-                env=child_env,
-                executable=executable,
-            )
+            if opened is None:
+                # An ambiguous transport result can follow a successful spawn.
+                # Keep the id for cleanup; never create a second Python child.
+                raise RuntimeError("Native MCP session authority is unavailable.")
+            if opened.get("status") != "opened":
+                raise RuntimeError(f"native MCP session open failed: {opened.get('payload')}")
             if not self._verify_post_spawn_launch_identity(launch_env=launch_env):
                 raise RuntimeError(
                     "Guard runtime MCP server launch identity changed while the child process was starting."
                 )
-            if process.stdout is not None:
-                self._activate_child_output_pump(process.stdout)
-            return process
+            # This queue injects already-decoded notifications into the relay;
+            # it is not a Python child-process transport or output reader.
+            self._child_output_queue = queue.Queue()
+            return _NativeChildProcess(native_session_id, self.context.guard_home)
         except BaseException:
-            if process is not None:
-                _quarantine_process(process)
-            elif native_session_id is not None:
-                mcp_stdio_session_close_native(native_session_id, guard_home=self.context.guard_home)
-            self._clear_launch_identity()
+            try:
+                if native_session_id is not None:
+                    mcp_stdio_session_close_native(native_session_id, guard_home=self.context.guard_home)
+            except Exception:
+                # Preserve the original launch failure even if cleanup's
+                # transport is unavailable. Never retry through Python.
+                pass
+            finally:
+                self._clear_launch_identity()
             raise
 
     def _verify_post_spawn_launch_identity(self, *, launch_env: Mapping[str, str]) -> bool:
-        """Re-hash launch inputs after ``Popen`` and reject a spawn-time swap."""
+        """Re-hash launch inputs after native spawn and reject a spawn-time swap."""
 
         expected = self._active_runtime_launch_identity
         if expected is None:
@@ -1291,8 +1265,8 @@ class RuntimeMcpGuardProxy:
         self,
         *,
         message: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         approval_callback: Any | None,
@@ -1382,8 +1356,8 @@ class RuntimeMcpGuardProxy:
         self,
         *,
         message: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         approval_callback: Any | None,
@@ -1909,8 +1883,8 @@ class RuntimeMcpGuardProxy:
         self,
         *,
         message: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         tool_name: str,
@@ -2501,8 +2475,8 @@ class RuntimeMcpGuardProxy:
         self,
         *,
         message: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         artifact: Any,
@@ -2972,8 +2946,8 @@ class RuntimeMcpGuardProxy:
         self,
         *,
         message: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         artifact: Any,
@@ -3226,13 +3200,13 @@ class RuntimeMcpGuardProxy:
         return response, event
 
     @staticmethod
-    def _forward_notification(message: dict[str, Any], child_stdin: IO[str]) -> None:
+    def _forward_notification(message: dict[str, Any], child_stdin: IO[str] | _NativeMcpChildIo) -> None:
         child_stdin.write(json.dumps(message) + "\n")
         child_stdin.flush()
 
     def _next_child_output_frame(
         self,
-        child_stdout: IO[str],
+        child_stdout: IO[str] | _NativeMcpChildIo,
         *,
         timeout_seconds: float,
         required: bool,
@@ -3293,8 +3267,8 @@ class RuntimeMcpGuardProxy:
         self,
         payload: dict[str, Any],
         *,
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
     ) -> None:
@@ -3320,8 +3294,8 @@ class RuntimeMcpGuardProxy:
     def _drain_child_messages(
         self,
         *,
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         quiet_seconds: float = 0.0,
@@ -3373,8 +3347,8 @@ class RuntimeMcpGuardProxy:
     def _drain_and_validate_catalog_authority(
         self,
         *,
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
         generation: int,
@@ -3398,8 +3372,8 @@ class RuntimeMcpGuardProxy:
     def _forward_message(
         self,
         message: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         *,
         client_input: TextIO | None,
         server_output: TextIO | None,
@@ -3503,8 +3477,8 @@ class RuntimeMcpGuardProxy:
         self,
         *,
         payload: dict[str, Any],
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
         client_input: TextIO | None,
         server_output: TextIO | None,
     ) -> None:
@@ -3573,8 +3547,8 @@ class RuntimeMcpGuardProxy:
         *,
         input_stream: TextIO,
         output_stream: TextIO,
-        child_stdin: IO[str],
-        child_stdout: IO[str],
+        child_stdin: IO[str] | _NativeMcpChildIo,
+        child_stdout: IO[str] | _NativeMcpChildIo,
     ) -> dict[str, Any]:
         request_id = request.get("id")
         output_stream.write(json.dumps(request) + "\n")

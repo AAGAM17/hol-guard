@@ -207,8 +207,38 @@ fn seed_one_shot(tag: &str) -> (PathBuf, PolicyDecisionLookupRequestV1) {
                  '2029-01-01T00:00:00+00:00','2029-01-01T00:00:00+00:00','2031-01-01T00:00:00+00:00')",
         [],
     ).unwrap();
+    let row = conn
+        .query_row(
+            &format!("select {POLICY_LOOKUP_COLUMNS} from policy_decisions where decision_id = 1"),
+            [],
+            policy_row_to_json,
+        )
+        .unwrap();
+    let key = [7u8; 32];
+    let signed = guard_policy_snapshot::policy_integrity::sign_local_policy_row(
+        &row,
+        &key,
+        "test-policy-key",
+        "2029-01-01T00:00:00+00:00",
+        1,
+    )
+    .unwrap();
+    conn.execute(
+        "update policy_decisions set integrity_version=?1, integrity_generation=?2,
+         payload_hash=?3, payload_mac=?4, integrity_key_id=?5, signed_at=?6 where decision_id=1",
+        params![
+            signed["integrity_version"].as_i64(),
+            signed["integrity_generation"].as_i64(),
+            signed["payload_hash"].as_str(),
+            signed["payload_mac"].as_str(),
+            signed["integrity_key_id"].as_str(),
+            signed["signed_at"].as_str()
+        ],
+    )
+    .unwrap();
     let mut request = base_request(&store);
-    request.integrity_state = Some(json!({"mode":"warn","enforcement":"warn"}));
+    request.integrity_key_b64 = Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc".to_owned());
+    request.integrity_key_id = Some("test-policy-key".to_owned());
     (store, request)
 }
 
@@ -263,7 +293,7 @@ fn audit_failure_rolls_back_one_shot_consumption() {
     let (store, request) = seed_one_shot("audit-rollback");
     let conn = Connection::open(&store).unwrap();
     // A malformed local-once candidate requires an integrity audit event
-    // while the separate approval-gate row remains eligible in warn mode.
+    // while the separate approval-gate row has a valid native signature.
     conn.execute_batch(
         "insert into guard_local_once_approvals
          (approval_id,request_id,harness,artifact_id,artifact_hash,action,created_at,expires_at,authority_kind)

@@ -38,18 +38,20 @@ os.environ.pop("HOL_GUARD_TEST_ALLOW_BROWSER_OPEN", None)
 
 
 @pytest.fixture(autouse=True)
-def _default_unit_tests_to_python_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep legacy unit fixtures off the production native default.
+def _default_unit_test_native_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use the compiled authority in native regression jobs.
 
-    Production default remains ``auto``. Native-authority tests monkeypatch
-    ``native_mode`` or delete this variable themselves. There is no Python
-    semantic evaluator; ``off`` exercises the fail-safe surface.
+    A caller's explicit mode is preserved, including deliberate unavailable
+    runtime tests. Regression CI supplies an exact native binary; defaulting
+    those jobs to ``off`` would disable the implementation they must test.
+    Ordinary isolated unit runs retain the explicit fail-safe surface.
     """
 
     monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
     monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
     if "HOL_GUARD_NATIVE" not in os.environ:
-        monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
+        mode = "force" if os.environ.get("HOL_GUARD_NATIVE_REGRESSION") == "1" else "off"
+        monkeypatch.setenv("HOL_GUARD_NATIVE", mode)
 
 
 class _GuardCommandsProxy:

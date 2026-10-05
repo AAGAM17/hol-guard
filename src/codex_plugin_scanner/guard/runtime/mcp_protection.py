@@ -60,7 +60,18 @@ def build_mcp_server_identity(
     )
     if identity is None:
         raise ValueError("native_mcp_server_identity_unavailable")
-    return McpServerIdentity(**{**identity, "env_keys": tuple(identity["env_keys"])})
+    return McpServerIdentity(
+        config_path=identity["config_path"],
+        command=identity["command"],
+        args_hash=identity["args_hash"],
+        package_name=identity["package_name"],
+        package_version=identity["package_version"],
+        package_source=identity["package_source"],
+        transport=identity["transport"],
+        env_values_hash=identity["env_values_hash"],
+        identity_hash=identity["identity_hash"],
+        env_keys=tuple(identity["env_keys"]),
+    )
 
 
 def build_mcp_tool_identity(

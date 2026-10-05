@@ -835,7 +835,7 @@ def context_mcp_tool_policy(request: dict[str, Any]) -> dict[str, Any]:
     fields = json.loads(json.dumps({"request": request}, default=str))
     result = native_context_digest("mcp_tool_policy", fields, guard_home=_resolve_digest_home(None))
     policy = result.get("mcp_tool_policy") if isinstance(result, dict) and result.get("status") == "ok" else None
-    if not _valid_mcp_tool_policy(policy):
+    if not isinstance(policy, dict) or not _valid_mcp_tool_policy(policy):
         raise ValueError("native_mcp_tool_policy_unavailable")
     return policy
 
@@ -848,7 +848,11 @@ def context_browser_mcp(request: dict[str, Any]) -> dict[str, Any]:
         guard_home=_resolve_digest_home(None),
     )
     browser = result.get("browser_mcp") if isinstance(result, dict) and result.get("status") == "ok" else None
-    if not _valid_browser_projection(browser) or browser["operation"] != request.get("operation"):
+    if (
+        not isinstance(browser, dict)
+        or not _valid_browser_projection(browser)
+        or browser["operation"] != request.get("operation")
+    ):
         raise ValueError("native_browser_mcp_intent_unavailable")
     return browser
 
@@ -883,8 +887,9 @@ def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: boo
         fields,
         guard_home=_resolve_digest_home(None),
     )
-    ok = isinstance(result, dict) and result.get("status") == "ok"
-    categories = result.get("mcp_tool_risk") if ok else None
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        raise ValueError("native_mcp_tool_approval_hash_unavailable")
+    categories = result.get("mcp_tool_risk")
     if (
         not isinstance(categories, list)
         or any(not isinstance(category, str) or category not in _MCP_RISK_CATEGORIES for category in categories)
@@ -897,7 +902,7 @@ def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: boo
             raise ValueError("native_mcp_tool_approval_hash_unavailable")
         return token, tuple(categories)
     digest = result.get("digest")
-    if not _is_sha256_digest(digest):
+    if not isinstance(digest, str) or not _is_sha256_digest(digest):
         raise ValueError("native_mcp_tool_approval_hash_unavailable")
     return digest, tuple(categories)
 

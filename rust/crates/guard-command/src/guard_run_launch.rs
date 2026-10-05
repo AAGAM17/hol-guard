@@ -505,15 +505,27 @@ fn byte_to_char(text: &str, byte: usize) -> usize {
 }
 
 /// `pattern.finditer(text)` → all matches in char offsets, Python order.
+///
+/// Byte→char offsets advance with the matches: `find_iter` yields them
+/// left-to-right, so each match counts only the chars since the previous one
+/// (`O(n)` over the input, not `O(n·m)` rescans per match).
 fn f_matches(re: &FancyRegex, text: &str) -> Vec<CMatch> {
-    re.find_iter(text)
-        .filter_map(|m| m.ok())
-        .map(|m| CMatch {
-            start: byte_to_char(text, m.start()),
-            end: byte_to_char(text, m.end()),
+    let mut out = Vec::new();
+    let mut byte_pos = 0usize; // bytes consumed so far
+    let mut char_pos = 0usize; // char index corresponding to byte_pos
+    for m in re.find_iter(text).filter_map(|m| m.ok()) {
+        // Matches are non-overlapping and in order, so m.start() >= byte_pos.
+        char_pos += text[byte_pos..m.start()].chars().count();
+        let start = char_pos;
+        char_pos += m.as_str().chars().count();
+        byte_pos = m.end();
+        out.push(CMatch {
+            start,
+            end: char_pos,
             text: m.as_str().to_owned(),
-        })
-        .collect()
+        });
+    }
+    out
 }
 
 /// `pattern.search(text)` → first match, char offsets.

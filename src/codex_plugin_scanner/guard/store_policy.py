@@ -1560,7 +1560,16 @@ class StorePolicyMixin:
         if response is None:
             raise ValueError("native_policy_decision_lookup_unavailable")
         if response.get("status") != "ok" or not isinstance(response.get("payload"), dict):
-            raise ValueError(f"native_policy_decision_lookup_{response.get('code', 'failed')}")
+            # The native op encodes failures as status="error" + payload=<code>;
+            # surface that code so callers can distinguish transport vs. store
+            # errors, and never re-prefix an already-namespaced code.
+            raw = response.get("code", response.get("payload"))
+            code = raw if isinstance(raw, str) and raw else "failed"
+            raise ValueError(
+                code
+                if code.startswith("native_policy_decision_lookup_")
+                else f"native_policy_decision_lookup_{code}"
+            )
         return cast("PolicyDecisionLookupResult", response["payload"])
 
     def resolve_policy_decision(

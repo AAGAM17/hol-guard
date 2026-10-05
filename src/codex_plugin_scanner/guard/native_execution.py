@@ -40,6 +40,19 @@ _MCP_STDIO_SESSION_FEATURE = "mcp-stdio-session-v1"
 _MCP_STDIO_SESSION_OPEN_SCHEMA = "guard-mcp-stdio-session-open-request.v1"
 _MCP_STDIO_SESSION_IO_SCHEMA = "guard-mcp-stdio-session-io-request.v1"
 _MCP_STDIO_SESSION_RESULT_SCHEMA = "guard-mcp-stdio-session-result.v1"
+
+# Terminal/vocab statuses each session op may legitimately return. A reported
+# "error"/"exited"/"eof" is a terminal native answer — the caller must see it
+# rather than get None and silently fall back to a Python subprocess.
+_MCP_SESSION_ACCEPTED_STATUS = {
+    "mcp_stdio_session_open": frozenset({"opened", "exited", "error"}),
+    "mcp_stdio_session_send": frozenset({"sent", "error"}),
+    "mcp_stdio_session_recv": frozenset(
+        {"event", "running", "timeout", "eof", "exited", "error"}
+    ),
+    "mcp_stdio_session_close": frozenset({"closed", "error"}),
+    "mcp_stdio_session_cancel": frozenset({"cancelled", "error"}),
+}
 _PROMPT_ANALYZE_FEATURE = "prompt-analyze-v1"
 
 
@@ -98,8 +111,17 @@ def _resident_request(
         # discarded every successful native reply and hid the failed cutover.
         if decoded.get("schema") != "guard-prompt-analyze-result.v1" or set(decoded) != {"schema", "result"}:
             return None
-    elif decoded.get("status") != "ok":
-        return None
+    else:
+        # Session/terminal ops report success under their own status, not
+        # "ok". Requiring "ok" dropped every successful mcp_stdio_session_open
+        # ("opened") / recv ("event") / close ("closed") and forced a silent
+        # Python fallback the resident should own.
+        accepted = _MCP_SESSION_ACCEPTED_STATUS.get(operation)
+        if accepted is not None:
+            if decoded.get("status") not in accepted:
+                return None
+        elif decoded.get("status") != "ok":
+            return None
     native_record_resident_success(status.identity.sha256, guard_home)
     return decoded
 

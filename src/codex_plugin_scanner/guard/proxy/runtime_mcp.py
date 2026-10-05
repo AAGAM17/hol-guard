@@ -993,17 +993,29 @@ class RuntimeMcpGuardProxy:
             executable = resolved_runtime_launch_executable(
                 self._active_runtime_launch_identity
             )
-            argv = [executable] + [str(a) for a in self.command[1:]]
+            # `executable` is None for an unverified launch identity; argv must
+            # stay a strict list[str] to serialize into `Vec<String>`. A None
+            # means the resident cannot take the child — treat it as
+            # unavailable (`opened=None`) and keep the Python pipe transport.
+            argv = (
+                [executable] + [str(a) for a in self.command[1:]]
+                if isinstance(executable, str)
+                else None
+            )
             native_session_id = (
                 f"mcp-{self.harness}-{self.server_name}-{os.getpid()}-{uuid4().hex[:8]}"
             )
-            opened = mcp_stdio_session_open_native(
-                argv,
-                session_id=native_session_id,
-                home_dir=self.context.guard_home,
-                cwd=self.context.workspace_dir,
-                extra_env=child_env,
-                guard_home=self.context.guard_home,
+            opened = (
+                mcp_stdio_session_open_native(
+                    argv,
+                    session_id=native_session_id,
+                    home_dir=self.context.guard_home,
+                    cwd=self.context.workspace_dir,
+                    extra_env=child_env,
+                    guard_home=self.context.guard_home,
+                )
+                if argv is not None
+                else None
             )
             if opened is not None:
                 # Resident owns the child (RTM-022 data plane). A non-"opened"

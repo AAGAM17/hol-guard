@@ -66,7 +66,12 @@ def _browser_launch_target_for_display(value: object) -> tuple[object, str | Non
     if len(parts) != 3 or parts[2] != "unknown":
         return value, None
     server_name, operation, _unknown = parts
-    intent = classify_browser_operation(operation, server_name)
+    try:
+        intent = classify_browser_operation(operation, server_name)
+    except ValueError:
+        # Display-only label repair; a native outage must not break rendering
+        # stored approvals. The decision path stays fail-closed.
+        return value, None
     if intent is None:
         return value, None
 

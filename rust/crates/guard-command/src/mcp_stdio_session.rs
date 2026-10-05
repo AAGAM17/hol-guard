@@ -19,9 +19,9 @@
 
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -29,12 +29,21 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::local_mcp_stdio::{drain_stream, is_rpc_message, kill_process_group, probe_env};
+use crate::local_mcp_stdio::{
+    is_rpc_message, kill_process_group, pop_json_message, probe_search_path,
+};
 
-/// Output/queue caps live in `local_mcp_stdio` (`MCP_PROBE_OUTPUT_LIMIT`,
-/// `_MAX_QUEUE`) via `drain_stream`/`pop_json_message` — the shared pump owns
-/// byte and queue bounds.
-///
+/// Per-frame JSON cap for the persistent pump: a single frame may not exceed
+/// this; oversized/undecodable bytes are discarded without killing the pump.
+/// Mirrors the probe `MCP_PROBE_OUTPUT_LIMIT` byte ceiling but applies
+/// per-frame rather than lifetime (a live session legitimately exceeds 1 MB
+/// of cumulative output).
+const SESSION_FRAME_LIMIT: usize = 1_000_000;
+
+/// Bound on queued child→guard frames; `sync_channel` applies backpressure so
+/// a fast child blocks the reader instead of the pump dying at a fixed count.
+const SESSION_QUEUE: usize = 256;
+
 /// Maximum cross-correlated buffered responses held per response key.
 const MAX_BUFFERED_PER_KEY: usize = 8;
 
@@ -43,6 +52,60 @@ const MAX_BUFFERED_PER_KEY: usize = 8;
 pub enum SessionReadError {
     /// The drain pump hung up: child stdout closed or the pump thread died.
     Eof,
+}
+
+/// Persistent stdout pump for the session data plane. Unlike the probe
+/// `drain_stream`, a live session may stream arbitrarily many frames over its
+/// lifetime — the bound is per-frame size plus a bounded `sync_channel` for
+/// backpressure, not a cumulative byte/frame quota. Runs on a dedicated
+/// thread and exits on EOF, cancel, or a dead receiver.
+fn session_pump(
+    mut stdout: std::process::ChildStdout,
+    tx: mpsc::SyncSender<Value>,
+    cancel: Arc<AtomicBool>,
+) {
+    let mut buffer: Vec<u8> = Vec::new();
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return;
+        }
+        let mut chunk = [0u8; 8192];
+        let n = match stdout.read(&mut chunk) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => n,
+        };
+        buffer.extend_from_slice(&chunk[..n]);
+        // A single in-flight frame may not exceed the cap; drop undecodable
+        // head bytes so one malformed frame cannot wedge the session.
+        while let Some((message, consumed)) = pop_json_message(&buffer) {
+            if consumed == 0 {
+                break;
+            }
+            buffer.drain(..consumed);
+            if let Some(msg) = message {
+                if is_rpc_message(&msg) && tx.send(msg).is_err() {
+                    return;
+                }
+            }
+        }
+        if buffer.len() > SESSION_FRAME_LIMIT {
+            buffer.clear();
+        }
+    }
+}
+
+/// npm/package-cache dir the Python probe env guarantees so a child resolving
+/// itself retains shim resolution: honor a caller-provided `NPM_CONFIG_CACHE`
+/// (either casing), else derive `<home>/.npm` when a home dir is given.
+fn npm_cache_dir(env: &BTreeMap<String, String>, home_dir: Option<&Path>) -> Option<String> {
+    for key in ["NPM_CONFIG_CACHE", "npm_config_cache"] {
+        if let Some(value) = env.get(key) {
+            if !value.is_empty() {
+                return Some(value.clone());
+            }
+        }
+    }
+    home_dir.map(|home| home.join(".npm").to_string_lossy().into_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -163,12 +226,17 @@ impl ResponseBuffers {
 }
 
 impl LiveMcpSession {
-    /// Spawn the child with the probe's scrubbed environment and a live
-    /// drain pump. `argv` must be a resolved launch vector (the caller resolves
-    /// via `resolve_launch_argv`/shim logic); empty/NUL-bearing argv fails.
+    /// Spawn the child with the caller's launch environment and a live drain
+    /// pump. `argv` is a resolved launch vector; `child_env` is the complete
+    /// environment already selected by the native `mcp_launch_environment`
+    /// authority (the same mapping the Python `Popen(env=...)` path installs
+    /// verbatim), so it is applied as-is rather than re-filtered through the
+    /// probe env. `cwd` is the workspace the launch identity bound; `stderr`
+    /// is inherited like the Python path so a chatty server cannot block on a
+    /// discarded pipe. Empty/NUL-bearing argv fails closed.
     pub fn spawn(
         argv: &[String],
-        extra_env: Option<&BTreeMap<String, String>>,
+        child_env: Option<&BTreeMap<String, String>>,
         home_dir: Option<&Path>,
         cwd: Option<&Path>,
         cancellation: Arc<AtomicBool>,
@@ -179,11 +247,26 @@ impl LiveMcpSession {
         if cancellation.load(Ordering::Acquire) {
             return Err("cancelled".to_owned());
         }
-        let tmp = std::env::temp_dir()
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from("/tmp"));
-        let working_dir = cwd.unwrap_or(&tmp);
-        let env = probe_env(tmp.to_str().unwrap_or("/tmp"), extra_env, home_dir);
+        let mut env = child_env.cloned().unwrap_or_default();
+        // Fallbacks the probe env guarantees even when the caller's mapping
+        // omitted them: a sane PATH plus npm/package-cache dirs so a child
+        // resolving itself does not lose shim resolution.
+        if env.get("PATH").is_none_or(|p| p.is_empty()) {
+            env.insert("PATH".to_owned(), probe_search_path());
+        }
+        if env.get("PYTHONUNBUFFERED").is_none_or(|v| v.is_empty()) {
+            env.insert("PYTHONUNBUFFERED".to_owned(), "1".to_owned());
+        }
+        if let Some(dir) = npm_cache_dir(&env, home_dir) {
+            env.entry("npm_config_cache".to_owned())
+                .or_insert_with(|| dir.clone());
+            env.entry("NPM_CONFIG_CACHE".to_owned()).or_insert(dir);
+        }
+        let working_dir = cwd.map(Path::to_path_buf).unwrap_or_else(|| {
+            std::env::temp_dir()
+                .canonicalize()
+                .unwrap_or_else(|_| std::env::temp_dir())
+        });
         let mut cmd = Command::new(&argv[0]);
         cmd.args(&argv[1..])
             .current_dir(working_dir)
@@ -191,19 +274,16 @@ impl LiveMcpSession {
             .envs(&env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            .stderr(Stdio::inherit());
         let mut child = cmd
             .process_group(0)
             .spawn()
             .map_err(|_| "transport_failed".to_owned())?;
         let stdin = child.stdin.take().ok_or("transport_failed")?;
         let stdout = child.stdout.take().ok_or("transport_failed")?;
-        let (tx, rx) = mpsc::channel::<Value>();
+        let (tx, rx) = mpsc::sync_channel::<Value>(SESSION_QUEUE);
         let cancel_tx = Arc::clone(&cancellation);
-        let drain = thread::spawn(move || {
-            let _ = &cancel_tx;
-            drain_stream(stdout, tx);
-        });
+        let drain = thread::spawn(move || session_pump(stdout, tx, cancel_tx));
         Ok((
             LiveMcpSession {
                 stdin,

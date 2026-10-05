@@ -82,13 +82,34 @@ fn b64url_decode(s: &str) -> Option<Vec<u8>> {
     Base64UrlUnpadded::decode_vec(s).ok()
 }
 
-/// `_workspace_policy_key` — `sha256(normalized)[:16]`.
+/// `_normalized_workspace_path` (`store_base.py`): strip, `\`→`/`, trim
+/// trailing `/`, lowercase a `X:` drive prefix.
+fn normalized_workspace_path(value: &str) -> String {
+    let mut normalized = value.trim().replace('\\', "/");
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
+        normalized = normalized.to_lowercase();
+    }
+    normalized
+}
+
+/// `_workspace_policy_key` (`store_base.py`) — `"workspace:" +
+/// sha256(normalized).hexdigest()`, full 64-hex digest. An already-keyed
+/// input (`workspace:<hex>`) is returned unchanged so stored rows match.
 fn workspace_policy_key(workspace: Option<&str>) -> Option<String> {
     let ws = workspace?;
-    if ws.is_empty() {
+    if ws.trim().is_empty() {
         return None;
     }
-    Some(sha256_hex(ws.as_bytes())[..16].to_string())
+    if ws.starts_with("workspace:") {
+        return Some(ws.to_string());
+    }
+    Some(format!(
+        "workspace:{}",
+        sha256_hex(normalized_workspace_path(ws).as_bytes())
+    ))
 }
 
 fn family_key_value(family_key: &str) -> &str {
@@ -954,11 +975,27 @@ fn hash_partition_probes(
             });
         }
     };
+    let nullable_probe = |probes: &mut Vec<SqlProbe>| {
+        probes.push(SqlProbe {
+            predicate: format!("{base_predicate} and artifact_hash is null"),
+            parameters: base_parameters.clone(),
+            index_name: exact_index,
+        });
+    };
+    // `_hash_partition_probes` ordering: exact_first ⇒ exact, nullable,
+    // legacy; otherwise nullable, exact, legacy.
     if exact_first {
+        emit_exact(&mut probes);
+        nullable_probe(&mut probes);
+    } else {
+        nullable_probe(&mut probes);
         emit_exact(&mut probes);
     }
     if let Some(legacy_idx) = legacy_index {
-        let mut legacy_predicate = format!("{base_predicate} and artifact_hash not like ?");
+        // `artifact_hash is not null` keeps the legacy probe disjoint from the
+        // nullable probe (Python embeds the guard; the Rust port dropped it).
+        let mut legacy_predicate =
+            format!("{base_predicate} and artifact_hash is not null and artifact_hash not like ?");
         let mut legacy_parameters = base_parameters.clone();
         legacy_parameters.push(Value::from(APPROVAL_CONTEXT_SQL_PATTERN));
         for h in &distinct {
@@ -970,9 +1007,6 @@ fn hash_partition_probes(
             parameters: legacy_parameters,
             index_name: legacy_idx,
         });
-    }
-    if !exact_first {
-        emit_exact(&mut probes);
     }
     probes
 }
@@ -1385,7 +1419,8 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
 
     // No rows and no local-once selection → empty result.
     if rows.is_empty() && selected_payload.is_none() {
-        flush_events(&conn, &events, &current_time);
+        flush_events(&conn, &events, &current_time)
+            .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
         if let Some(ref mut ili) = ignored_local_integrity {
             ili["trust_status"] = cached_trust_status.clone();
         }
@@ -1511,10 +1546,11 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
                     ));
                 }
                 if consume_one_shot && is_approval_gate_one_shot_policy(candidate) {
-                    let _ = conn.execute(
+                    conn.execute(
                         "delete from policy_decisions where decision_id = ?",
                         params![row_value(candidate, "decision_id").as_i64().unwrap_or(0)],
-                    );
+                    )
+                    .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
                 }
             }
             if consume_one_shot {
@@ -1522,8 +1558,9 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
             }
         }
         selected_payload = claim_local_once(&selected_payload, &local_once_decision, &mut events)
-            .unwrap_or_else(|_| selected_payload.clone());
-        flush_events(&conn, &events, &current_time);
+            .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
+        flush_events(&conn, &events, &current_time)
+            .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
         if let Some(ref mut ili) = ignored_local_integrity {
             ili["trust_status"] = cached_trust_status.clone();
         }
@@ -1593,10 +1630,11 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
                 ));
             }
             if outranks && consume_one_shot && is_approval_gate_one_shot_policy(candidate) {
-                let _ = conn.execute(
+                conn.execute(
                     "delete from policy_decisions where decision_id = ?",
                     params![row_value(candidate, "decision_id").as_i64().unwrap_or(0)],
-                );
+                )
+                .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
             }
             if consume_one_shot {
                 break;
@@ -1641,8 +1679,9 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
         }
     }
     selected_payload = claim_local_once(&selected_payload, &local_once_decision, &mut events)
-        .unwrap_or_else(|_| selected_payload.clone());
-    flush_events(&conn, &events, &current_time);
+        .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
+    flush_events(&conn, &events, &current_time)
+        .map_err(|_| "native_policy_decision_lookup_write_failed".to_owned())?;
     if let Some(ref mut ili) = ignored_local_integrity {
         ili["trust_status"] = trust_status.clone();
     }
@@ -1656,15 +1695,6 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
     ))
 }
 
-fn flush_events(conn: &Connection, events: &[(String, Value)], current_time: &str) {
-    for (name, payload) in events {
-        let _ = conn.execute(
-            "insert into guard_events (event_name, payload_json, occurred_at) values (?, ?, ?)",
-            params![name, canonical_json(payload), current_time],
-        );
-    }
-}
-
 /// `lookup_result` — `{decision, ignored_local_integrity, trust_status, authority_revision}`.
 fn lookup_result(
     conn: &Connection,
@@ -1674,11 +1704,9 @@ fn lookup_result(
     consume_one_shot: bool,
     starting_revision: i64,
 ) -> Value {
-    let ending_revision = approval_authority_revision(conn).unwrap_or(-1);
-    let stable_revision = if ending_revision == starting_revision {
-        starting_revision
-    } else {
-        -1
+    let stable_revision = match approval_authority_revision(conn) {
+        Ok(revision) if revision >= starting_revision => revision,
+        _ => starting_revision.saturating_sub(1),
     };
     let mut decision = decision;
     if let (Some(Value::Object(ref mut m)), false) = (&mut decision, consume_one_shot) {
@@ -1693,6 +1721,22 @@ fn lookup_result(
         "trust_status": trust_status,
         "authority_revision": stable_revision,
     })
+}
+
+/// `_flush_events` — append each audit event row; a failed insert propagates
+/// and aborts the lookup rather than silently dropping the event.
+fn flush_events(
+    conn: &Connection,
+    events: &[(String, Value)],
+    current_time: &str,
+) -> rusqlite::Result<()> {
+    for (name, payload) in events {
+        conn.execute(
+            "insert into guard_events (event_name, payload_json, occurred_at) values (?, ?, ?)",
+            params![name, canonical_json(payload), current_time],
+        )?;
+    }
+    Ok(())
 }
 
 /// Consuming multi-scope `policy_decisions` select — preserves scope

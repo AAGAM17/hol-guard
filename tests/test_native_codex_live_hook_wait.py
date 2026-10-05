@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from codex_plugin_scanner.guard.continuation_runtime import (
     record_live_hook_completion,
 )
 from codex_plugin_scanner.guard.daemon.hook_native_review_approval import pause_native_pre_tool_for_approval
+from codex_plugin_scanner.guard.review_correlation import cloud_review_correlation_id
 from codex_plugin_scanner.guard.live_process_identity import (
     CODEX_BROWSER_WAIT_PROCESS_KEY,
     CODEX_BROWSER_WAIT_TIMEOUT_SECONDS_KEY,
@@ -125,6 +127,55 @@ def test_live_codex_pause_waits_for_the_original_hook_then_resumes_once(tmp_path
     assert resume["resolution_action"] == "allow"
 
 
+def test_live_codex_pause_freezes_the_attached_hook_before_upload(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    response = _pause(store, tmp_path, harness="codex", payload=_live_payload())
+    request_id = response["approval_request_id"]
+    assert isinstance(request_id, str)
+    request = store.get_approval_request(request_id)
+    assert request is not None
+    snapshot = request["continuation_snapshot"]
+    assert isinstance(snapshot, dict)
+    assert snapshot["capability"] == "suspended-response"
+    assert snapshot["hookAttached"] is True
+    assert snapshot["opaqueTargetId"] is None
+    assert snapshot["correlationId"] == cloud_review_correlation_id(request_id)
+    assert isinstance(snapshot["waitDeadline"], str) and snapshot["waitDeadline"]
+
+    with store._connect() as connection:
+        created = connection.execute(
+            """select payload_json from guard_review_outbox_events
+               where local_request_id = ? and event_type = 'review.request.created'""",
+            (request_id,),
+        ).fetchone()
+    assert created is not None
+    created_snapshot = json.loads(json.loads(created["payload_json"])["requestSnapshot"]["continuation_snapshot_json"])
+    assert created_snapshot["capability"] == "suspended-response"
+    assert created_snapshot["correlationId"] == snapshot["correlationId"]
+
+    now = datetime.now(timezone.utc)
+    completed = record_live_hook_completion(
+        store,
+        request_id=request_id,
+        action="allow",
+        now=(now + timedelta(seconds=1)).isoformat(),
+    )
+    assert completed is not None
+    assert completed["continuationCapability"] == "suspended-response"
+    assert completed["correlationId"] == snapshot["correlationId"]
+    with store._connect() as connection:
+        terminal = connection.execute(
+            """select payload_json from guard_review_outbox_events
+               where local_request_id = ? and event_type = 'review.continuation.resumed'""",
+            (request_id,),
+        ).fetchone()
+    assert terminal is not None
+    result = json.loads(terminal["payload_json"])["continuationResult"]
+    assert result["capability"] == created_snapshot["capability"]
+    assert result["correlationId"] == created_snapshot["correlationId"]
+    assert result["status"] == "resumed"
+
+
 def test_codex_pause_without_a_live_hook_stays_retry_only(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "guard-home")
     response = _pause(
@@ -142,6 +193,10 @@ def test_codex_pause_without_a_live_hook_stays_retry_only(tmp_path: Path) -> Non
     assert store.get_guard_operation_for_approval_request(request_id) is None
     request = store.get_approval_request(request_id)
     assert request is not None
+    snapshot = request["continuation_snapshot"]
+    assert isinstance(snapshot, dict)
+    assert snapshot["capability"] == "retry-only"
+    assert snapshot["hookAttached"] is False
     now = datetime.now(timezone.utc).isoformat()
     manual = continue_request_after_application(store, request_row=request, action="allow", now=now)
     assert manual["continuationStatus"] == "manual_retry_required"

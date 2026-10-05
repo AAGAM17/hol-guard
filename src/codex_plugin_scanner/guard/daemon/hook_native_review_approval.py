@@ -16,12 +16,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import MAX_APPROVAL_WAIT_TIMEOUT_SECONDS
+from ..continuation_snapshot import validated_continuation_snapshot
 from ..live_process_identity import (
     CODEX_BROWSER_WAIT_PROCESS_KEY,
     bound_wait_timeout_seconds,
     process_identity_matches,
 )
 from ..models import GuardApprovalRequest, format_local_http_origin
+from ..review_correlation import cloud_review_correlation_id
 from ..native_decision_receipt import validate_native_decision_receipt
 from ..runtime.actions import normalize_harness_payload
 from .hook_native_review_binding import (
@@ -237,6 +239,8 @@ def queue_native_pre_tool_review(
     approval_center_url = _native_review_approval_center_url(store)
     approval_url = f"{approval_center_url}/requests/{request_id}"
     reason = str(native_result.get("reason") or "HOL Guard requires review before this action can execute.")
+    queued_at = datetime.now(tz=timezone.utc)
+    live_wait = _live_codex_wait(harness=harness, payload=payload, request_id=request_id, now=queued_at)
     binding = _native_review_binding(harness, payload, native_result, native_receipt, workspace)
     try:
         action_envelope = _native_review_action_envelope(
@@ -272,6 +276,7 @@ def queue_native_pre_tool_review(
         launch_target=launch_target,
         risk_summary=reason,
         action_envelope_json=action_envelope,
+        continuation_snapshot=None if live_wait is None else live_wait[0],
     )
     try:
         persisted_id = persist(request, datetime.now(tz=timezone.utc).isoformat())
@@ -282,44 +287,71 @@ def queue_native_pre_tool_review(
         return None
     _bind_live_codex_hook_wait(
         store,
-        harness=harness,
-        payload=payload,
         request_id=str(stored.get("request_id") or persisted_id),
         workspace=workspace,
+        now=queued_at,
+        live_wait=live_wait,
     )
     return stored
+
+
+def _live_codex_wait(
+    *,
+    harness: str,
+    payload: Mapping[str, object],
+    request_id: str,
+    now: datetime,
+) -> tuple[dict[str, object], datetime, int, dict[str, object]] | None:
+    """Freeze the attached hook before the approval insert copies its snapshot."""
+
+    if harness.strip().lower() != "codex":
+        return None
+    from .hook_request_parsing import runtime_hook_event_name
+
+    if runtime_hook_event_name(payload) != "PreToolUse":
+        return None
+    identity = _proven_codex_wait_process(payload)
+    timeout_seconds = bound_wait_timeout_seconds(payload, maximum=MAX_APPROVAL_WAIT_TIMEOUT_SECONDS)
+    if identity is None or timeout_seconds is None:
+        return None
+    deadline = now + timedelta(seconds=timeout_seconds)
+    snapshot = validated_continuation_snapshot(
+        {
+            "capability": "suspended-response",
+            "correlationId": cloud_review_correlation_id(request_id),
+            "hookAttached": True,
+            "opaqueTargetId": None,
+            "waitDeadline": deadline.isoformat(),
+        }
+    )
+    if snapshot is None:
+        return None
+    return snapshot, deadline, timeout_seconds, identity
 
 
 def _bind_live_codex_hook_wait(
     store: object,
     *,
-    harness: str,
-    payload: Mapping[str, object],
     request_id: str,
     workspace: Path | None,
+    now: datetime,
+    live_wait: tuple[dict[str, object], datetime, int, dict[str, object]] | None,
 ) -> None:
     """Record a proven waiting Codex hook so exact Cloud apply can resume it.
 
     A native pause previously stored only the approval row. Continuation then
     treated the still-running hook as retry-only and the original action stayed
     denied. A process that is not this live bridge does not become authority.
+    The deadline is the same instant frozen on the approval snapshot.
     """
 
-    if harness.strip().lower() != "codex":
+    if live_wait is None:
         return
-    from .hook_request_parsing import runtime_hook_event_name
-
-    if runtime_hook_event_name(payload) != "PreToolUse":
-        return
-    identity = _proven_codex_wait_process(payload)
-    timeout_seconds = bound_wait_timeout_seconds(payload, maximum=MAX_APPROVAL_WAIT_TIMEOUT_SECONDS)
-    if identity is None or timeout_seconds is None:
-        return
+    _snapshot, deadline, timeout_seconds, identity = live_wait
     upsert_session = getattr(store, "upsert_guard_session", None)
     upsert_operation = getattr(store, "upsert_guard_operation", None)
     if not callable(upsert_session) or not callable(upsert_operation):
         return
-    now = datetime.now(tz=timezone.utc)
     now_text = now.isoformat()
     try:
         session = upsert_session(
@@ -347,7 +379,7 @@ def _bind_live_codex_hook_wait(
             resume_token=None,
             metadata={
                 "codex_hook_waits_for_browser_approval": True,
-                "codex_browser_wait_deadline_at": (now + timedelta(seconds=timeout_seconds)).isoformat(),
+                "codex_browser_wait_deadline_at": deadline.isoformat(),
                 "codex_browser_wait_process": identity,
                 "codex_browser_wait_timeout_seconds": timeout_seconds,
                 "hook_event_name": "PreToolUse",

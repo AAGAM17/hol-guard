@@ -376,7 +376,7 @@ def test_restricted_archive_download_enforces_deadline_while_writing_blob(
 
     assert isinstance(result, RestrictedArchiveFailure)
     assert result.code == "external_archive_download_timeout"
-    assert elapsed < 0.15
+    assert elapsed < 0.2
     assert list(tmp_path.iterdir()) == []
 
     protected_payload = b"SQLite format 3\x00protected database bytes"

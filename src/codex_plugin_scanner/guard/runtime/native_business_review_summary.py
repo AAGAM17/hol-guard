@@ -124,6 +124,7 @@ def read_native_business_review_summary(guard_home: Path, request_id: str) -> di
             in (
                 "native_local_business_summary_unavailable",
                 "native_workspace_review_request_missing",
+                "native_policy_snapshot_missing",
             )
         ):
             return None

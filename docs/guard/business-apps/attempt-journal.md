@@ -16,7 +16,10 @@ terminal-write failure after starting leaves the outcome unknown. A stored
 `attempt_started` record must never be interpreted as permission to resend.
 No deserializer reconstructs an owned journal handle from stored progress.
 
-The directory has a fixed capacity of 128 retained entries; capacity refuses
+The directory has a fixed capacity of 128 validated retained entries; recognized
+crash temporary files do not consume record slots. Scanning has a separate
+512-entry bound; unexpected or corrupt retained evidence refuses new claims.
+Capacity refuses
 new claims without deleting evidence. Administrative retention, presentation,
 reconciliation, budget reservation and the worker dispatch integration remain
 unfinished. Private local storage does not establish isolation from a same-user

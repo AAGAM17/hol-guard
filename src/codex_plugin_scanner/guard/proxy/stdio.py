@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import queue
 import select
 import subprocess
@@ -12,7 +13,8 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 from ..action_lattice import most_restrictive_guard_action
 from ..approvals import (
@@ -28,6 +30,10 @@ from ..config import GuardConfig, resolve_risk_action
 from ..consumer import artifact_hash
 from ..daemon.manager import load_guard_daemon_auth_token
 from ..models import GuardAction, GuardArtifact, HarnessDetection
+from ..native_execution import (
+    mcp_stdio_session_close_native,
+    mcp_stdio_session_open_native,
+)
 from ..receipts import build_receipt
 from ..runtime.approval_context import (
     approval_context_tokens_validation_reason,
@@ -51,6 +57,9 @@ from ..runtime.secret_file_requests import build_file_read_request_artifact, ext
 from ..runtime.surface_server import GuardSurfaceRuntime
 from ..store import GuardStore
 from ._env import _build_scrubbed_env
+
+if TYPE_CHECKING:
+    from .runtime_mcp import _NativeChildProcess
 
 _DEFAULT_PROXY_RESPONSE_TIMEOUT_SECONDS = 30.0
 _PROXY_TERMINATION_TIMEOUT_SECONDS = 1.0
@@ -482,9 +491,10 @@ class StdioGuardProxy:
             self._active_env_values_hash = None
         return responses, events, process.returncode
 
-    def _start_process(self) -> subprocess.Popen[str]:
+    def _start_process(self) -> subprocess.Popen[str] | _NativeChildProcess:
         launch_env = _build_scrubbed_env(self.env)
         process: subprocess.Popen[str] | None = None
+        native_session_id: str | None = None
         try:
             # Digest calls raise when the native resident is unreachable; keep
             # them inside the failure boundary so partial state is unwound.
@@ -493,6 +503,49 @@ class StdioGuardProxy:
                 launch_env,
                 configured_keys=tuple(self.env),
             )
+            executable = resolved_runtime_launch_executable(self._active_launch_identity)
+            # RTM-024: the resident owns the stdio child (spawn, framing,
+            # teardown). argv is None when the launch identity did not yield a
+            # verified executable, so the resident cannot take the child —
+            # keep the Python pipe transport for that case only.
+            argv = (
+                [executable] + [str(a) for a in self.command[1:]]
+                if isinstance(executable, str)
+                else None
+            )
+            guard_home = getattr(self.guard_store, "guard_home", None)
+            opened = (
+                mcp_stdio_session_open_native(
+                    argv,
+                    session_id=f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}",
+                    home_dir=guard_home,
+                    cwd=self.cwd,
+                    extra_env=launch_env,
+                    guard_home=guard_home,
+                )
+                if argv is not None and guard_home is not None
+                else None
+            )
+            if opened is not None:
+                # Resident owns the child (RTM-024 data plane). A non-"opened"
+                # status is terminal — never fall back to the Python transport
+                # on a real open failure.
+                if opened.get("status") != "opened":
+                    raise RuntimeError(
+                        f"native stdio session open failed: {opened.get('payload')}"
+                    )
+                native_session_id = str(opened.get("session_id", "")) or None
+                if native_session_id is None:
+                    raise RuntimeError("native stdio session open returned no session_id")
+                if not self._active_launch_identity_matches(launch_env):
+                    raise ProxyLaunchIdentityChangedError(
+                        "Guard stdio proxy launch identity changed while starting the MCP server."
+                    )
+                from .runtime_mcp import _NativeChildProcess
+
+                return _NativeChildProcess(native_session_id, guard_home)
+            # opened is None => the native session feature is unsupported or
+            # the resident is unreachable; keep the Python pipe transport.
             process = subprocess.Popen(
                 self.command,
                 stdin=subprocess.PIPE,
@@ -501,7 +554,7 @@ class StdioGuardProxy:
                 text=True,
                 cwd=self.cwd,
                 env=launch_env,
-                executable=resolved_runtime_launch_executable(self._active_launch_identity),
+                executable=executable,
             )
             if not self._active_launch_identity_matches(launch_env):
                 raise ProxyLaunchIdentityChangedError(
@@ -511,6 +564,8 @@ class StdioGuardProxy:
         except BaseException:
             if process is not None:
                 _quarantine_process(process)
+            elif native_session_id is not None:
+                mcp_stdio_session_close_native(native_session_id, guard_home=guard_home)
             self._active_launch_identity = None
             self._active_env_values_hash = None
             raise
@@ -978,7 +1033,19 @@ class StdioGuardProxy:
         while True:
             timeout_seconds = self._response_timeout_seconds()
             try:
-                line = _readline_with_timeout(process.stdout, timeout_seconds, source="child_response")
+                from .runtime_mcp import _NativeMcpChildIo
+
+                if isinstance(process.stdout, _NativeMcpChildIo):
+                    # Native session (RTM-024): the resident already frames
+                    # lines; ask it for the next one with the same timeout.
+                    frame = process.stdout.next_frame(timeout_seconds)
+                    if frame.error is not None:
+                        raise frame.error
+                    line = frame.line
+                else:
+                    line = _readline_with_timeout(
+                        process.stdout, timeout_seconds, source="child_response"
+                    )
             except ProxyIoTimeoutError:
                 _quarantine_process(process)
                 return _timeout_response(

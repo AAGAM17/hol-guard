@@ -33,7 +33,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from ..aibom_detection import extend_detection_with_workspace_aibom
 from ..models import GuardArtifact, HarnessDetection
@@ -482,7 +482,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         )
 
     @staticmethod
-    def _valid_enabled_record(record: object) -> bool:
+    def _valid_enabled_record(record: object) -> TypeGuard[dict[str, object]]:
         return (
             isinstance(record, dict)
             and isinstance(record.get("present"), bool)

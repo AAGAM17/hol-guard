@@ -89,6 +89,7 @@
       "command.faf-cli",
       "command.genclave",
       "command.gitsync",
+      "command.google-workspace.gws",
       "command.mcp-contribos",
       "command.mcp-filesystem",
       "command.mcp-instapods",

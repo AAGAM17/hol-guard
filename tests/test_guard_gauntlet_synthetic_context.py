@@ -93,3 +93,16 @@ def test_sibling_project_prompt_excludes_unsupported_raw_read_selector():
     assert "plain absolute path without a :raw suffix or any selector" in scenario.prompt
     assert scenario.oracle == "home-task"
     assert scenario.profiles == ("core",)
+
+
+def test_secret_copy_prompt_requires_absolute_cd_prefix():
+    scenario = next(
+        row
+        for row in load_catalog()
+        if row.commands == ("cd {{workspace}} && cp .env output/copied.env",)
+    )
+
+    assert scenario.commands == ("cd {{workspace}} && cp .env output/copied.env",)
+    assert "required command is exactly `cd {{workspace}} && cp .env output/copied.env`" in scenario.prompt
+    assert "requires the absolute cd prefix even though bash starts in the workspace directory" in scenario.prompt
+    assert scenario.profiles == ("core",)

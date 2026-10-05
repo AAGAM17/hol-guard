@@ -320,6 +320,11 @@ impl PolicySnapshotStore {
         if request.schema != POLICY_SNAPSHOT_PUSH_SCHEMA {
             return Err("native_policy_snapshot_push_schema_mismatch".to_owned());
         }
+        let state_base = self.state_base().to_owned();
+        approval_enrollment::with_transition_lock(&state_base, || self.push_locked(request))
+    }
+
+    fn push_locked(&self, request: PolicySnapshotPushV1) -> Result<Vec<u8>, String> {
         let _command_lease = self.command_authority_lease(&request.snapshot)?;
         let snapshot_bytes = snapshot_bytes(&request.snapshot).map_err(snapshot_error)?;
         let now = now_ms()?;

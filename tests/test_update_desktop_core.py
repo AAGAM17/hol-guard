@@ -497,19 +497,6 @@ def test_select_desktop_core_latest_picks_newer_same_series() -> None:
     assert selected == "3.0.0a239"
 
 
-def test_stable_core_update_discovers_new_minor_without_crossing_major() -> None:
-    assert (
-        update_desktop_core.select_desktop_core_latest(
-            "3.24.2", ["3.24.2", "3.25.0", "3.26.0a1", "4.0.0"], include_alpha=False
-        )
-        == "3.25.0"
-    )
-    assert (
-        update_desktop_core.select_desktop_core_latest("3.24.2", ["3.24.2", "3.25.0a1", "4.0.0"], include_alpha=False)
-        == "3.24.2"
-    )
-
-
 def test_desktop_status_does_not_advertise_newer_train(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

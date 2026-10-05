@@ -236,7 +236,7 @@ jobs:
       - name: Run coverage shard ${{ matrix.shard-index }}
         shell: bash
         env:
-          LLVM_PROFILE_FILE: ${{ github.workspace }}/rust-profraw/shard-${{ matrix.shard-index }}-%p-%m.profraw
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/rust-profraw/shard-${{ matrix.shard-index }}-%8m.profraw
         run: |
           shard_file=$(printf 'pytest-shards/shard-%03d.txt' "${{ matrix.shard-index }}")
           test -s "$shard_file"

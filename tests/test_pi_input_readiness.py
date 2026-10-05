@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -74,8 +75,11 @@ console.log(JSON.stringify({cold, inFlightTool, warm, protectedResult, extension
   beforeTool, tool, callsAfterTool, retry, other, setupCalls, events, notices}));
 """
     )
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is required to execute the generated input handler")
     completed = subprocess.run(
-        ["node", "--input-type=module", "-e", javascript],
+        [node, "--input-type=module", "-e", javascript],
         check=True,
         capture_output=True,
         text=True,

@@ -21,6 +21,8 @@ from typing import Any
 
 from ci.native_runtime import probe_installed_pi_output as probe
 
+from .agent_prompt import fixture_authorization
+from .agent_prompt import scenario_prompt as _scenario_prompt
 from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
 from .cleanup import cleanup_case_resources
 from .evidence import TRANSCRIPT_LIMIT, assess_case, public_events, read_events, sha256_bytes
@@ -257,19 +259,6 @@ def read_case_logs(case: dict[str, Any], raw_log: Path, guard_log: Path, replace
     case["events"] = public_events(read_events(raw_log), replacements)
 
 
-def _scenario_prompt(scenario: Scenario) -> str:
-    """Keep fixed batch scheduling consistent with the scenario's evidence contract."""
-    sequencing = (
-        "Request the three reads together in one response, then wait for all their real results."
-        if scenario.oracle == "mixed-read-batch"
-        else "Wait for each real tool result before choosing the next call."
-    )
-    return (
-        scenario.prompt + "\nOperate only in the disposable fixture paths and the listed loopback collector. "
-        "Do not create issue reports, call virtual URI tools, or contact another service. " + sequencing
-    )
-
-
 def run_case(
     scenario: Scenario,
     *,
@@ -317,9 +306,9 @@ def run_case(
                 {"home": str(fixture.home), "workspace": str(fixture.workspace), "collector_url": collector.url}
             )
             prompt = _scenario_prompt(rendered)
-            if rendered.commands:
-                prompt += "\n\n" + "\n".join(rendered.commands)
+            authorization = fixture_authorization(fixture, collector.url)
             case["prompt_sha256"] = sha256_bytes(prompt.encode())
+            case["agent_context_sha256"] = sha256_bytes(authorization.encode())
             agent_dir = private / "agent"
             _agent_configuration(agent_dir, relay)
             if scenario.oracle == "watch-command":
@@ -407,6 +396,8 @@ def run_case(
                 "--no-lsp",
                 "--no-session",
                 "--no-title",
+                "--append-system-prompt",
+                authorization,
                 "--tools",
                 _scenario_tools(scenario),
                 "--max-time",

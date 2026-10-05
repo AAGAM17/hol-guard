@@ -91,3 +91,18 @@ fake or duplicate notices, and empty or incorrect stdout. Preserve the prior
 live attempt and rerun on the final matching native build before qualification.
 Install that wheel with a private umask and without an extraction cache that
 could retain group-writable permissions.
+
+The subsequent complete Qwen attempt passed 30 cases and left six unexercised:
+linked-destination copy, credential egress, environment-secret output, disabled
+Ollama permission, quoted workspace copy and secret copy with `--`. The gaps
+were model refusals, diagnostic wrappers or repeated calls, not missing catalog
+entries. Append factual fixture authorization at the system level while keeping
+OMP's default prompt, and present exact command arguments as JSON strings.
+Explicitly stop single-attempt protection cases at their first returned result.
+Keep all command/physical-proof contracts unchanged and validate all six with
+actual inference before the new complete 36-case attempt.
+
+The earlier CI failure followed cancelled/abandoned coverage producers. Native
+wheel CI was manually disabled; general CI remains active. Restore the native
+test workflow and run checks for the updated head. Do not skip missing coverage
+or weaken aggregate gates to turn incomplete CI green.

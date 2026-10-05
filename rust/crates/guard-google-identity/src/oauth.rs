@@ -33,6 +33,8 @@ impl GrantPurpose {
 }
 #[path = "directory_http.rs"]
 mod directory_http;
+#[path = "send_http.rs"]
+mod send_http;
 #[path = "oauth_start.rs"]
 mod start;
 

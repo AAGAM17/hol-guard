@@ -64,6 +64,15 @@ impl GoogleSendCredential {
 }
 
 impl GoogleWorkerInput {
+    pub(crate) fn send_once(
+        self,
+        bytes: &[u8],
+    ) -> Result<crate::dispatch::RawSendAttempt, crate::dispatch::GoogleDispatchError> {
+        if bytes != self.input.wire_input().body_bytes() {
+            return Err(crate::dispatch::GoogleDispatchError::InputChanged);
+        }
+        self.credential.send_json_once(bytes)
+    }
     pub fn identity(&self) -> &GoogleIdentityEvidence {
         self.credential.identity()
     }

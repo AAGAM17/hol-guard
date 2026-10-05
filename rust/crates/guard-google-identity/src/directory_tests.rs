@@ -1,18 +1,18 @@
 use super::*;
 use serde_json::{json, Value};
 
-fn row(address: &str) -> Value {
+pub(super) fn row(address: &str) -> Value {
     json!({"kind":"admin#directory#user", "id":address, "primaryEmail":address,
         "customerId":"C012345", "suspended":false, "etag":"synthetic-etag"})
 }
-fn grant() -> GoogleDirectoryCredential {
+pub(super) fn grant() -> GoogleDirectoryCredential {
     GoogleDirectoryCredential {
         credential: crate::oauth::directory_test_credential(),
         customer_id: "C012345".into(),
         namespace_key: Zeroizing::new([7; 32]),
     }
 }
-fn input() -> InspectedGoogleWorkerInput {
+pub(super) fn input() -> InspectedGoogleWorkerInput {
     crate::oauth::worker_input_tests::credential("subject-one")
         .prepare_command(crate::oauth::worker_input_tests::command(
             "sender@work.example",
@@ -22,7 +22,7 @@ fn input() -> InspectedGoogleWorkerInput {
         .inspect_outbound()
         .unwrap()
 }
-fn bytes(row: &Value) -> Zeroizing<Vec<u8>> {
+pub(super) fn bytes(row: &Value) -> Zeroizing<Vec<u8>> {
     Zeroizing::new(serde_json::to_vec(row).unwrap())
 }
 

@@ -19,6 +19,7 @@ const LIFETIME: u64 = 300;
 const CLOCK_SKEW: u64 = 30;
 
 pub mod directory;
+pub mod dispatch;
 pub mod oauth;
 pub mod outbound;
 mod sender;

@@ -75,6 +75,9 @@ impl GoogleWorkerInput {
 }
 
 impl InspectedGoogleWorkerInput {
+    pub(crate) fn into_input(self) -> GoogleWorkerInput {
+        self.input
+    }
     pub fn input(&self) -> &GoogleWorkerInput {
         &self.input
     }

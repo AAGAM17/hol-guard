@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Mapping
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from tests.guard_exact_cloud_review_support import (
     review_request,
 )
 from tests.test_codex_live_decision import _seed_waiting_request
+from tests.test_native_decision_receipt import _receipt
 
 
 def _workspace_key(value: str) -> str:
@@ -340,6 +342,106 @@ def test_fresh_review_sees_exact_cloud_grant_without_consuming_it(tmp_path: Path
             claimed_saved_allow_hash=request.artifact_hash,
             claimed_approval_request_id=request.request_id,
             claim_saved_approval=True,
+        )
+        is False
+    )
+    assert store.peek_exact_cloud_local_once_approval(request_id=request.request_id, now=resolved_at) is not None
+
+
+def _refreshed_review_receipt(
+    *,
+    request_digest: str,
+    execution_intent_digest: str,
+    policy_action: str = "review",
+) -> dict[str, object]:
+    return _receipt(
+        harness="codex",
+        event_name="PreToolUse",
+        decision="deny",
+        model_output_action="block",
+        policy_action=policy_action,
+        reason_code="native_needs_review",
+        request_digest=request_digest,
+        request_id="request-refresh",
+        execution_intent_digest=execution_intent_digest,
+    )
+
+
+def test_policy_refresh_keeps_the_exact_grant_for_the_same_action(tmp_path: Path) -> None:
+    intent = "e" * 64
+    request_digest = "a" * 64
+    base = review_request("exact-policy-refresh")
+    envelope = dict(base.action_envelope_json or {})
+    envelope["execution_intent_digest"] = intent
+    request = replace(base, action_envelope_json=envelope)
+    store = connected_exact_review_store(tmp_path)
+    add_review_request(store, request)
+    _ = enable_exact_cloud_review(store)
+    resolution = apply_exact_cloud_review(
+        store,
+        remote_approval=remote_approval(store, request.request_id, receipt_id="exact-policy-refresh-receipt"),
+    )
+    resolved_at = str(resolution.resolved_request["resolved_at"])
+    workspace = Path(str(request.workspace))
+    fresh = _refreshed_review_receipt(request_digest=request_digest, execution_intent_digest=intent)
+    identity = f"native-review-v4:{request_digest}:deny:review:review:native_needs_review"
+
+    assert native_review_claimed_allow(
+        store,
+        harness=request.harness,
+        artifact_id=request.artifact_id,
+        workspace=workspace,
+        identity=identity,
+        claimed_saved_allow_hash=request.artifact_hash,
+        claimed_approval_request_id=request.request_id,
+        claim_saved_approval=False,
+        fresh_receipt=fresh,
+    )
+    changed = _refreshed_review_receipt(request_digest=request_digest, execution_intent_digest="9" * 64)
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity=identity,
+            claimed_saved_allow_hash=request.artifact_hash,
+            claimed_approval_request_id=request.request_id,
+            claim_saved_approval=False,
+            fresh_receipt=changed,
+        )
+        is False
+    )
+    blocked = _refreshed_review_receipt(
+        request_digest=request_digest,
+        execution_intent_digest=intent,
+        policy_action="block",
+    )
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity=f"native-review-v4:{request_digest}:deny:block:block:native_needs_review",
+            claimed_saved_allow_hash=request.artifact_hash,
+            claimed_approval_request_id=request.request_id,
+            claim_saved_approval=False,
+            fresh_receipt=blocked,
+        )
+        is False
+    )
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity=identity,
+            claimed_saved_allow_hash=request.artifact_hash,
+            claimed_approval_request_id=request.request_id,
+            claim_saved_approval=True,
+            fresh_receipt=fresh,
         )
         is False
     )

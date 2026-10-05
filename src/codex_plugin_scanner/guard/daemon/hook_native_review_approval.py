@@ -140,6 +140,7 @@ def pause_native_pre_tool_for_approval(
         claimed_saved_allow_hash=claimed_saved_allow_hash,
         claimed_approval_request_id=claimed_approval_request_id,
         claim_saved_approval=claim_saved_approval,
+        fresh_receipt=native_receipt,
     ):
         allowed = dict(native_result)
         allowed["decision"] = "allow"
@@ -593,6 +594,10 @@ def _native_review_action_envelope(
     except ValueError:
         return None
     validated = validate_native_decision_receipt(native_receipt)
+    if validated is not None:
+        intent = validated.get("execution_intent_digest")
+        if isinstance(intent, str) and _NATIVE_DIGEST.fullmatch(intent) is not None:
+            envelope["execution_intent_digest"] = intent
     if validated is None or "origin_authentication" not in validated:
         return envelope
     # Keep only the validated aggregate receipt. Never carry raw hook input

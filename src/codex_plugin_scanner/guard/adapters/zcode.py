@@ -495,8 +495,15 @@ class ZCodeHarnessAdapter(HarnessAdapter):
     ) -> dict[str, object]:
         """Guard's recorded pre-install value wins over the live file, which a
         previous install force-enabled. New state records per file; legacy
-        single-file state maps onto the one file it managed."""
+        single-file state maps onto the one file it managed.
 
+        A record only applies while Guard-managed entries are still present in
+        the file: once the user removes Guard's hooks, their own live value is
+        the freshest choice and wins. Uninstall therefore captures the record
+        before pruning managed entries."""
+
+        if not self._hooks_have_managed_entries(hooks):
+            return {"present": "enabled" in hooks, "value": hooks.get("enabled")}
         history = state.get("hooks_enabled_before")
         if isinstance(history, dict) and self._valid_enabled_record(history.get(str(path))):
             recorded = history[str(path)]
@@ -548,8 +555,8 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             hooks = payload.get("hooks")
             if isinstance(hooks, dict):
                 hooks_before = json.dumps(hooks, sort_keys=True)
-                self._prune_managed_hook_groups(hooks)
                 original = self._recorded_enabled_for(state, candidate, hooks)
+                self._prune_managed_hook_groups(hooks)
                 if original["present"] and hooks.get("enabled") is True:
                     hooks["enabled"] = original.get("value")
                 elif not original["present"] and hooks.get("enabled") is True:

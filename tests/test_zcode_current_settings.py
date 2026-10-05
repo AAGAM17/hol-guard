@@ -314,14 +314,16 @@ def test_invalid_saved_hook_preference_preserves_current_setting(tmp_path, recor
     assert json.loads(config.read_text())["hooks"]["enabled"] is True
 
 
-def test_uninstall_restores_preference_after_external_hook_cleanup(tmp_path):
+def test_uninstall_keeps_user_preference_after_external_hook_cleanup(tmp_path):
+    """Once Guard's entries are gone, the user's live value is the freshest."""
+
     context = _ctx(tmp_path)
     config = _write_cli_config(context.home_dir, {"hooks": {"enabled": False}})
     adapter = ZCodeHarnessAdapter()
     adapter.install(context)
     config.write_text(json.dumps({"hooks": {"enabled": True, "events": {}}}))
     adapter.uninstall(context)
-    assert json.loads(config.read_text())["hooks"]["enabled"] is False
+    assert json.loads(config.read_text())["hooks"]["enabled"] is True
 
 
 def test_legacy_setting_json_state_maps_onto_file_config(tmp_path):

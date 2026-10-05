@@ -750,7 +750,7 @@ def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, p
     runtime, plan, _, _ = transition
     ctx = HarnessContext(home_dir=runtime.home.parent, workspace_dir=None, guard_home=runtime.home)
     adapter = GrokHarnessAdapter()
-    config = ctx.home_dir / ".grok/managed_config.toml"
+    config = ctx.home_dir / ".grok/config.toml"
     config.parent.mkdir(parents=True)
     config.write_text("# user setting\n[ui]\nsimple_mode = true\n")
     config.chmod(0o600)

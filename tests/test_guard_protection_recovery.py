@@ -278,11 +278,11 @@ def test_grok_managed_config_rejects_inline_commented_rule(tmp_path: Path) -> No
     assert _grok_managed_config_is_active(managed_text, ctx) is True
 
     deny_start = managed_text.index("deny = [")
-    deny_end = managed_text.index("\n]", deny_start)
+    deny_end = managed_text.index("]", deny_start)
     inline_commented_rule = (
         managed_text[:deny_start]
-        + "deny = [] # Read(**/.grok/auth/**)\n"
-        + managed_text[deny_end + 2 :]
+        + "deny = [] # Read(**/.grok/auth/**)"
+        + managed_text[deny_end + 1 :]
     )
     assert _grok_managed_config_is_active(inline_commented_rule, ctx) is False
 

@@ -159,6 +159,23 @@ fn registered_refresh_uses_fixed_endpoints_form_and_fresh_bearer() {
 }
 
 #[test]
+fn valid_json_at_each_response_limit_is_accepted() {
+    let token = token();
+    let info = userinfo();
+    let token_at_limit = format!("{token}{}", " ".repeat(64 * 1024 - token.len()));
+    let info_at_limit = format!("{info}{}", " ".repeat(16 * 1024 - info.len()));
+    let (agent, wire) = agent(vec![
+        response(200, "application/json", &token_at_limit),
+        response(200, "application/json", &info_at_limit),
+    ]);
+    assert!(credential("subject-one")
+        .refresh_registered_with_agent(&agent)
+        .unwrap()
+        .is_current());
+    assert_eq!(wire.lock().unwrap().requests.len(), 2);
+}
+
+#[test]
 fn token_transport_errors_media_and_size_limits_stop_before_userinfo() {
     for reply in [
         response(401, "application/json", "{}"),

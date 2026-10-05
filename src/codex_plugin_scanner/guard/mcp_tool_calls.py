@@ -673,7 +673,9 @@ def _evaluate_current_tool_call(
     signals = _risk_signals_from_categories(artifact, arguments, categories)
     summary = {
         "no_risk": "Guard did not detect a high-risk signal in this tool call.",
-        "configuration_stricter": "Local Guard's current configuration is stricter than the tool-call-specific recommendation.",
+        "configuration_stricter": (
+            "Local Guard's current configuration is stricter than the tool-call-specific recommendation."
+        ),
         "risk": _risk_summary_from_signals(signals),
     }[policy["summary_code"]]
     return ToolCallDecision(

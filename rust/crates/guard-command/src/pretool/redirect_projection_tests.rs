@@ -3,8 +3,14 @@ use crate::native_command_controls::CompiledNativeCommandControls;
 use crate::native_command_program::packaged_command_program;
 use guard_contracts::NativeCommandControlBindingV1;
 
+#[cfg(not(windows))]
 const HOME: &str = "/home/tester";
+#[cfg(windows)]
+const HOME: &str = r"C:\home\tester";
+#[cfg(not(windows))]
 const CWD: &str = "/home/tester/project";
+#[cfg(windows)]
+const CWD: &str = r"C:\home\tester\project";
 
 fn context() -> crate::pretool::PathContext<'static> {
     crate::pretool::PathContext {

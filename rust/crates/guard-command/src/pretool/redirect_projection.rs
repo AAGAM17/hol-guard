@@ -380,6 +380,12 @@ fn safe_output_target(target: &str, context: super::super::PathContext<'_>) -> b
     if !path.is_absolute() && posix_temp_file(target) {
         return true;
     }
+    // A POSIX-rooted path other than the bounded temp-file exception cannot
+    // be resolved safely with Windows host path semantics.
+    #[cfg(windows)]
+    if target.starts_with('/') {
+        return false;
+    }
     // Hidden components cover dotfiles, `.git/hooks`, and `.env` targets.
     if path.components().any(|component| match component {
         std::path::Component::Normal(name) => {

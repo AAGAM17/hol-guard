@@ -275,4 +275,4 @@ mod tests;
 
 #[cfg(test)]
 #[path = "refresh_http_tests.rs"]
-mod http_tests;
+pub(crate) mod http_tests;

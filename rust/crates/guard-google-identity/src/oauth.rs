@@ -39,7 +39,7 @@ mod directory_http;
 mod send_http;
 #[path = "oauth_start.rs"]
 mod start;
-pub use account::{GoogleSendAccount, GoogleSendAccountError};
+pub use account::{GoogleProjectGrantRevocation, GoogleSendAccount, GoogleSendAccountError};
 #[path = "refresh.rs"]
 mod refresh;
 

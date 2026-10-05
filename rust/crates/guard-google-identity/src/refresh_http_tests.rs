@@ -9,10 +9,10 @@ use ureq::unversioned::transport::{
 
 // In-memory HTTP framing tests: no sockets, DNS, TLS handshake, or provider calls.
 #[derive(Debug, Default)]
-struct Wire {
+pub(crate) struct Wire {
     replies: VecDeque<Vec<u8>>,
-    requests: Vec<Vec<u8>>,
-    urls: Vec<String>,
+    pub(crate) requests: Vec<Vec<u8>>,
+    pub(crate) urls: Vec<String>,
 }
 #[derive(Debug)]
 struct MemoryConnector(Arc<Mutex<Wire>>);
@@ -86,7 +86,7 @@ impl Transport for MemoryTransport {
         true
     }
 }
-fn response(status: u16, media: &str, body: &str) -> Vec<u8> {
+pub(crate) fn response(status: u16, media: &str, body: &str) -> Vec<u8> {
     format!("HTTP/1.1 {status} Test\r\nContent-Type: {media}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).into_bytes()
 }
 fn token() -> String {
@@ -98,7 +98,7 @@ fn redirect() -> Vec<u8> {
 fn userinfo() -> String {
     serde_json::json!({"sub":"subject-one", "hd":"work.example", "email":"sender@work.example", "email_verified":true}).to_string()
 }
-fn agent(replies: Vec<Vec<u8>>) -> (ureq::Agent, Arc<Mutex<Wire>>) {
+pub(crate) fn agent(replies: Vec<Vec<u8>>) -> (ureq::Agent, Arc<Mutex<Wire>>) {
     let wire = Arc::new(Mutex::new(Wire {
         replies: replies.into(),
         ..Wire::default()

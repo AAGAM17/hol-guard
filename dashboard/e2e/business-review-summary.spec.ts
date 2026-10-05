@@ -64,14 +64,24 @@ for (const state of ["with-sql", "empty"] as const) {
   });
 }
 
-test("native projected detail is explicitly read-only and offers no decision", async ({ page }) => {
+for (const [name, width, height] of [["desktop", 1280, 900], ["phone", 390, 844]] as const) {
+test(`native projected detail is explicitly read-only on ${name}`, async ({ page }) => {
+  await page.setViewportSize({ width, height });
   await mount(page, () => summary, true);
   await expect(page.getByText("Review is not connected yet")).toBeVisible();
   await expect(page.getByText("This saved business request is read-only.", { exact: false })).toBeVisible();
   await expect(page.getByText("From Native business workflow", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Approve|Block once|Stop this/ })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+  await expect(page.getByText("Saved request", { exact: true })).toBeVisible();
+  await expect(page.getByText("What was stopped", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("What would happen without Guard?", { exact: true })).toHaveCount(0);
+  const panel = page.getByRole("region", { name: "Saved business action details" });
+  const bounds = await panel.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
 });
+}
 
 for (const [name, width, height] of [["desktop", 1280, 900], ["phone", 390, 844]] as const) {
   test(`saved summary stays honest and readable on ${name}`, async ({ page }) => {

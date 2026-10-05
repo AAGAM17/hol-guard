@@ -64,3 +64,8 @@ decision routes still refuse these IDs because discovery creates no SQL approval
 row. A saved pending snapshot is not evidence that its account or dispatch
 authority remains current. Real producer-to-installed-resident-to-Core selection
 still requires qualification, separately from mocked HTTP and browser checks.
+
+Display-only details use the saved operation as their title. They omit the
+generic stopped-command preview, risk carousel and counterfactual protection
+claims: a frozen request is not evidence that Guard stopped a command. The
+summary and read-only notice remain the presentation for this incomplete mode.

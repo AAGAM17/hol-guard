@@ -386,11 +386,12 @@ export function ReviewDecisionCard(props: {
     );
   }
 
-  const plainTitle = plainEnglishRequestTitle(item);
+  const nativeDisplayOnly = item.native_business_review_display_only === true;
+  const plainTitle = nativeDisplayOnly ? item.artifact_name : plainEnglishRequestTitle(item);
   const harnessName = harnessDisplayName(item.harness);
-  const whatWouldHappen = buildWhatWouldHappen(item);
-  const topAlertItems = buildTopAlertItems(item);
-  const evidenceItems = buildEvidenceItems(item);
+  const whatWouldHappen = nativeDisplayOnly ? null : buildWhatWouldHappen(item);
+  const topAlertItems = nativeDisplayOnly ? [] : buildTopAlertItems(item);
+  const evidenceItems = nativeDisplayOnly ? [] : buildEvidenceItems(item);
   const actionPresentation = guardActionPresentation(item.policy_action);
   const persistExactAllow = item !== null && willPersistExactAction(item, "allow", allowScope, rememberExactAction);
   const persistExactBlock = item !== null && willPersistExactAction(item, "block", blockScope, watchOnlyObservation);
@@ -405,7 +406,7 @@ export function ReviewDecisionCard(props: {
     resolvedBlockButtonLabel = "Stop this next time";
   }
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       {resolved && (
         <div
           className={`guard-fade-in flex items-center gap-3 rounded-xl border px-4 py-3 transition-all ${
@@ -429,7 +430,7 @@ export function ReviewDecisionCard(props: {
       <div className="rounded-xl border border-slate-100 p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <SectionLabel>{watchOnlyObservation ? "Watch-only finding" : "Paused action"}</SectionLabel>
+            <SectionLabel>{nativeDisplayOnly ? "Saved request" : watchOnlyObservation ? "Watch-only finding" : "Paused action"}</SectionLabel>
             <h2 className="mt-2 text-lg font-semibold text-brand-dark">{plainTitle}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               From {harnessName}
@@ -440,7 +441,7 @@ export function ReviewDecisionCard(props: {
           </Badge>
         </div>
 
-        <PrimaryActionCard item={item} />
+        {!nativeDisplayOnly && <PrimaryActionCard item={item} />}
         <BusinessReviewSummaryPanel key={item.request_id} requestId={item.request_id} />
         {item.scope_restrictions?.includes("provider_account_unverified_once_only") ? (
           <p className="mt-4 text-sm leading-6 text-brand-dark">

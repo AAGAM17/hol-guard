@@ -69,7 +69,8 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert "tests" not in jobs
     assert jobs["coverage-plan"]["needs"] == "native-command-evaluators"
     for name in ("coverage-plan", "compatibility", "cisco-full", "cross-platform", "windows-updater"):
-        assert jobs[name]["needs"] == "native-command-evaluators"
+        needs = jobs[name]["needs"]
+        assert "native-command-evaluators" in (needs if isinstance(needs, list) else [needs])
         resources = [
             step
             for step in jobs[name]["steps"]

@@ -674,7 +674,9 @@ def evaluation_has_terminal_policy_action(evaluation: Mapping[str, object]) -> b
     return False
 
 
-def _raise_temporary_mcp_resolution_error(result: Mapping[str, object], *, request_id: str, fallback: str | None) -> None:
+def _raise_temporary_mcp_resolution_error(
+    result: Mapping[str, object], *, request_id: str, fallback: str | None
+) -> None:
     error = result.get("error")
     if error == "already_resolved":
         raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")

@@ -22,30 +22,32 @@ fn same_policy(before: &PolicySnapshotV3, after: &PolicySnapshotV3) -> bool {
 /// that a snapshot remains dispatchable. No private request material leaves Rust.
 pub(crate) fn queue(store: &PolicySnapshotStore) -> Result<Value, String> {
     let before = store.current_snapshot()?;
-    let selectors = super::workspace_review_request::pending_selectors(store)?;
+    let selectors = super::workspace_review_business_queue::selectors(store)?;
+    let claims_before = if selectors.is_empty() {
+        None
+    } else {
+        super::workspace_review_secure_state::load(store.state_base())?
+    };
     let mut items = Vec::new();
-    for id in &selectors {
-        match build(store, id) {
-            Ok(summary) => {
-                if items.len() >= MAX_QUEUE_ITEMS {
-                    return Err("native_local_business_queue_unavailable".into());
-                }
-                items.push(summary);
-            }
-            Err(error) if error == "native_local_business_summary_unavailable" => {
-                // Absence of business input is the only skippable case. A policy
-                // race or failed origin/frozen-input check must fail the queue.
-                let request = super::workspace_review_request::load(store, id)?;
-                if request.business_input.is_some() {
-                    return Err("native_local_business_queue_unavailable".into());
-                }
-            }
-            Err(error) => return Err(error),
+    for selector in &selectors {
+        let request = super::workspace_review_business_queue::load(store, selector)?;
+        if super::workspace_review_business_queue::consumed_with_state(
+            store,
+            &request,
+            claims_before.as_ref(),
+        )? {
+            continue;
         }
+        if items.len() >= MAX_QUEUE_ITEMS {
+            return Err("native_local_business_queue_unavailable".into());
+        }
+        items.push(render(&request)?);
     }
     let after = store.current_snapshot()?;
     if !same_policy(&before, &after)
-        || selectors != super::workspace_review_request::pending_selectors(store)?
+        || selectors != super::workspace_review_business_queue::selectors(store)?
+        || (!selectors.is_empty()
+            && claims_before != super::workspace_review_secure_state::load(store.state_base())?)
     {
         return Err("native_local_business_queue_unavailable".into());
     }
@@ -69,6 +71,23 @@ fn build_with_recheck(
     // policy change across loading instead of labeling a stale snapshot current.
     let before = store.current_snapshot()?;
     let request = super::workspace_review_request::load(store, request_id)?;
+    if super::workspace_review_business_queue::consumed(store, &request)? {
+        return Err("native_local_business_summary_unavailable".into());
+    }
+    let summary = render(&request)?;
+    before_recheck();
+    let after = store.current_snapshot()?;
+    if !same_policy(&before, &after)
+        || super::workspace_review_business_queue::consumed(store, &request)?
+    {
+        return Err("native_local_business_summary_unavailable".into());
+    }
+    Ok(summary)
+}
+
+fn render(
+    request: &super::workspace_review_request::TrustedWorkspaceReviewRequest,
+) -> Result<Value, String> {
     let input = request
         .business_input
         .as_ref()
@@ -96,11 +115,6 @@ fn build_with_recheck(
         "account_currentness": "not_asserted",
         "execution_state": "not_checked"
     });
-    before_recheck();
-    let after = store.current_snapshot()?;
-    if !same_policy(&before, &after) {
-        return Err("native_local_business_summary_unavailable".into());
-    }
     Ok(summary)
 }
 

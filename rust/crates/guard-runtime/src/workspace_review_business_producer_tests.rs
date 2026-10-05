@@ -4,6 +4,8 @@ use guard_policy_snapshot::{integrity_mac, policy_digest};
 
 #[path = "workspace_review_business_core_transport_tests.rs"]
 mod core_transport_tests;
+#[path = "workspace_review_business_queue_tests.rs"]
+mod queue_tests;
 
 fn local_queue(fixture: &Fixture) -> Result<Value, String> {
     let request = json!({"operation":"workspace_review_local_queue","request":{}});
@@ -74,7 +76,9 @@ fn local_queue_is_read_only_and_rejects_corrupt_records_instead_of_hiding_them()
         })
         .unwrap();
     assert!(result.is_ok());
-    let path = fixture.root.join("workspace-review-requests/corrupt.json");
+    let path = fixture
+        .root
+        .join("workspace-review-business-queue/corrupt.json");
     super::super::tests::write(&fixture.root, &path, &json!({"request_id":"corrupt"}));
     assert_eq!(
         local_queue(&fixture).unwrap_err(),
@@ -109,7 +113,7 @@ fn local_queue_refuses_truncation_at_business_item_and_directory_limits() {
     );
 
     let fixture = Fixture::new("business-producer-local-queue-directory-bound");
-    let directory = fixture.root.join("workspace-review-requests");
+    let directory = fixture.root.join("workspace-review-business-queue");
     crate::resident_state::ensure_private_directory(&directory, true).unwrap();
     // Even unrelated entries consume the scan bound; none can trigger private
     // input loading or be accepted as an authenticated business request.
@@ -136,7 +140,13 @@ fn local_queue_rechecks_private_permissions_and_refuses_symlink_requests() {
     assert!(local_queue(&fixture).is_err());
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     assert!(local_queue(&fixture).is_ok());
-    symlink(&path, directory.join("symlink.json")).unwrap();
+    symlink(
+        &path,
+        fixture
+            .root
+            .join("workspace-review-business-queue/symlink.json"),
+    )
+    .unwrap();
     assert!(local_queue(&fixture).is_err());
 }
 

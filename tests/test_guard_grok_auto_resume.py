@@ -579,6 +579,23 @@ def test_grok_hook_response_is_one_json_line(capsys: pytest.CaptureFixture[str])
     assert json.loads(lines[0])["decision"] == "deny"
 
 
+def test_grok_hook_response_redacts_cleartext_secrets(capsys: pytest.CaptureFixture[str]) -> None:
+    from codex_plugin_scanner.guard.adapters.grok_hooks import emit_grok_hook_response
+
+    secret = "sk-testtoken12345678"
+    emit_grok_hook_response(
+        policy_action="block",
+        reason=f"blocked {secret}",
+        event_name="PreToolUse",
+        approval_payload={"primary_approval_url": f"https://example.test/approve?token={secret}"},
+    )
+    stdout = capsys.readouterr().out
+    assert secret not in stdout
+    payload = json.loads(stdout)
+    assert payload["decision"] == "deny"
+    assert payload["approval_url"].endswith("sk-*****")
+
+
 def test_non_grok_hook_json_stays_pretty(capsys: pytest.CaptureFixture[str]) -> None:
     from codex_plugin_scanner.guard.cli.commands_support_interaction import _emit_hook_response
 

@@ -9,6 +9,7 @@ import sys
 from collections.abc import Mapping
 from typing import TextIO
 
+from ..redaction import redact_text
 from .grok_approval_resume import grok_resume_metadata_from_guard_payload
 from .hook_payloads import normalize_session_and_workspace_aliases
 
@@ -251,6 +252,7 @@ def replay_grok_hook_stdout_line() -> None:
     line = _grok_hook_stdout_line.get()
     if not line:
         return
+    # codeql[py/clear-text-logging-sensitive-data] The stored line is already redacted.
     sys.stdout.write(line)
     sys.stdout.flush()
 
@@ -280,12 +282,13 @@ def emit_grok_hook_response(
         recording_only=recording_only,
     )
     _last_grok_policy_action = "allow" if payload.get("decision") not in {"deny", "block"} else live_action
-    line = json.dumps(payload, separators=(",", ":")) + "\n"
+    line = redact_text(json.dumps(payload, separators=(",", ":"))).text + "\n"
     if output_stream is None:
         _grok_hook_stdout_line.set(line)
     stream = output_stream if output_stream is not None else sys.stdout
-    # stdout is the harness delivery channel; approval payloads must reach the operator.
-    stream.write(line)  # codeql[py/clear-text-logging-sensitive-data]
+    # stdout is the harness delivery channel. The line is redacted before it is written.
+    # codeql[py/clear-text-logging-sensitive-data]
+    stream.write(line)
     stream.flush()
 
 

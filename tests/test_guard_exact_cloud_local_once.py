@@ -412,6 +412,27 @@ def test_policy_refresh_keeps_the_exact_grant_for_the_same_action(tmp_path: Path
         )
         is False
     )
+    reapproval = _refreshed_review_receipt(
+        request_digest=request_digest,
+        execution_intent_digest=intent,
+        policy_action="require-reapproval",
+    )
+    assert (
+        native_review_claimed_allow(
+            store,
+            harness=request.harness,
+            artifact_id=request.artifact_id,
+            workspace=workspace,
+            identity=(
+                f"native-review-v4:{request_digest}:deny:require-reapproval:require-reapproval:native_needs_review"
+            ),
+            claimed_saved_allow_hash=request.artifact_hash,
+            claimed_approval_request_id=request.request_id,
+            claim_saved_approval=False,
+            fresh_receipt=reapproval,
+        )
+        is False
+    )
     blocked = _refreshed_review_receipt(
         request_digest=request_digest,
         execution_intent_digest=intent,

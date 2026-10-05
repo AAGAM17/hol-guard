@@ -201,6 +201,8 @@ def _accept_same_action_after_policy_refresh(
     new snapshot. The waiting hook's action does not. Accept only the unconsumed
     grant for that request when the fresh receipt is still a review and its
     execution intent matches the intent stored with the original pause.
+    ``require-reapproval`` asks for a new decision, so an earlier grant does
+    not satisfy it.
     """
 
     validated = validate_native_decision_receipt(fresh_receipt)
@@ -218,6 +220,8 @@ def _accept_same_action_after_policy_refresh(
         or parts[4] not in {"review", "require-reapproval"}
         or validated.get("policy_action") != parts[4]
     ):
+        return False
+    if validated.get("policy_action") == "require-reapproval":
         return False
     peek = getattr(store, "peek_exact_cloud_local_once_approval", None)
     load = getattr(store, "get_approval_request", None)

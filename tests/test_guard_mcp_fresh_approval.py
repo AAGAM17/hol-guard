@@ -81,6 +81,7 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     monkeypatch: pytest.MonkeyPatch,
     install_fake_system_keyring,
     native_context_digest: Path,
+    native_mcp_probe,
     grant_kind: str,
     mutation: str,
     direct: bool = False,
@@ -97,6 +98,7 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
 
     monkeypatch.setattr(native_context, "native_resident_client_request", observe_resident_request)
     ctx = _context(tmp_path)
+    native_mcp_probe(ctx.guard_home)
     store = GuardStore(ctx.guard_home)
     _enable_gate(store)
     config = GuardConfig(
@@ -345,9 +347,11 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     assert len(marker.read_text().splitlines()) == 1
 
 
-def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest):
+def test_retained_rule_cannot_satisfy_fresh_approval(
+    tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, native_mcp_probe
+):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, "retained", "none"
+        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, native_mcp_probe, "retained", "none"
     )
 
 
@@ -355,17 +359,28 @@ def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, inst
     "mutation",
     ["expired", "unavailable-review", "malformed-review", "http-malformed", "http-missing-auth", "http-unavailable"],
 )
-def test_invalid_review_never_launches(tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, mutation):
+def test_invalid_review_never_launches(
+    tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, native_mcp_probe, mutation
+):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, "local-once", mutation
+        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, native_mcp_probe, "local-once", mutation
     )
 
 
 @pytest.mark.parametrize("grant_kind", ["single", "local-once", "bulk"])
 @pytest.mark.parametrize("mutation", ["none", "older-allow"])
-def test_direct_postclaim_revalidation(tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, grant_kind, mutation):
+def test_direct_postclaim_revalidation(
+    tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, native_mcp_probe, grant_kind, mutation
+):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, grant_kind, mutation, direct=True
+        tmp_path,
+        monkeypatch,
+        install_fake_system_keyring,
+        native_context_digest,
+        native_mcp_probe,
+        grant_kind,
+        mutation,
+        direct=True,
     )
 
 

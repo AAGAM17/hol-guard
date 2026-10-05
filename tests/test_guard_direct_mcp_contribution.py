@@ -55,6 +55,8 @@ def test_validates_and_projects_runnable_example():
         "../fixture-mcp",
         "/bin/fixture-mcp",
         "fixture-mcp.exe",
+        "fixture-mcp.cmd",
+        "fixture-mcp.bat",
         "fixture-mcp --serve",
         "Fixture",
         "sh",

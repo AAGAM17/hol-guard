@@ -266,21 +266,25 @@ def test_grok_hook_command_rejects_placeholder_invocations(tmp_path: Path) -> No
     assert _grok_hook_command_is_guard("true") is False
 
 
-def test_grok_managed_config_rejects_inline_commented_rule() -> None:
-    assert (
-        _grok_managed_config_is_active(
-            "# BEGIN HOL GUARD MANAGED GROK\n[permission]\n"
-            'deny = ["Read(**/.grok/auth/**)"]\n# END HOL GUARD MANAGED GROK\n'
-        )
-        is True
+def test_grok_managed_config_rejects_inline_commented_rule(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    prepared = GrokHarnessAdapter().prepare_install(ctx)
+    config = ctx.home_dir / ".grok" / "config.toml"
+    managed_text = next(
+        change.after.decode("utf-8")
+        for change in prepared.files
+        if change.path == config and change.after is not None
     )
-    assert (
-        _grok_managed_config_is_active(
-            "# BEGIN HOL GUARD MANAGED GROK\n[permission]\n"
-            "deny = [] # Read(**/.grok/auth/**)\n# END HOL GUARD MANAGED GROK\n"
-        )
-        is False
+    assert _grok_managed_config_is_active(managed_text, ctx) is True
+
+    deny_start = managed_text.index("deny = [")
+    deny_end = managed_text.index("\n]", deny_start)
+    inline_commented_rule = (
+        managed_text[:deny_start]
+        + "deny = [] # Read(**/.grok/auth/**)\n"
+        + managed_text[deny_end + 2 :]
     )
+    assert _grok_managed_config_is_active(inline_commented_rule, ctx) is False
 
 
 def test_live_grok_hooks_reject_placeholder_command_and_marker_only_config(
@@ -367,7 +371,7 @@ def test_grok_install_proof_covers_hooks_and_managed_config(
     artifacts = manifest["protection_artifact_proof"]["artifacts"]
     assert isinstance(artifacts, list)
     artifact_paths = {item["path"] for item in artifacts if isinstance(item, dict)}
-    assert any(path.endswith("managed_config.toml") for path in artifact_paths)
+    assert any(Path(path).name == "config.toml" for path in artifact_paths)
     assert any(path.endswith("hol-guard-pretooluse.json") for path in artifact_paths)
     assert any(path.endswith("hol-guard-prompt.json") for path in artifact_paths)
 
@@ -438,7 +442,7 @@ def test_daemon_ownership_change_repairs_stale_managed_grok_hooks(
     apply_managed_install("install", "grok", False, ctx, store, None, "2026-08-17T12:00:00+00:00")
     pretool = ctx.home_dir / ".grok" / "hooks" / "hol-guard-pretooluse.json"
     pretool.write_text(json.dumps(_stale_pretool_payload()), encoding="utf-8")
-    (ctx.home_dir / ".grok" / "managed_config.toml").unlink()
+    (ctx.home_dir / ".grok" / "config.toml").unlink()
     assert grok_hooks_protection_ready(ctx) is False
 
     daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)

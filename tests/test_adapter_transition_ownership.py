@@ -107,7 +107,7 @@ def test_install_preparation_is_complete_or_explicitly_unavailable(tmp_path: Pat
             "claude-code": 3,
             "kimi": 3,
             "openclaw": 5,
-            "grok": 9,
+            "grok": 10,
             "zcode": 5,
             "pi": 4,
             "omp": 4,

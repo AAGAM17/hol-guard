@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use guard_contracts::write_canonical_json;
+use guard_contracts::write_canonical_json_utf8;
 
 fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -126,7 +126,7 @@ pub fn tool_catalog_fingerprint(
     document.insert("version".to_string(), Value::String(version.to_string()));
 
     let mut material = Vec::with_capacity(512);
-    let digest = if write_canonical_json(&Value::Object(document), &mut material).is_ok() {
+    let digest = if write_canonical_json_utf8(&Value::Object(document), &mut material).is_ok() {
         Some(sha256_hex(&material))
     } else {
         None

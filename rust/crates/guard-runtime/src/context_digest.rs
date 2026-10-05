@@ -243,12 +243,6 @@ fn build_context_token_fields(
 /// First-difference validation over two opaque tokens; malformed input fails
 /// closed as changed content, matching the legacy contract exactly.
 fn validate_context_tokens(saved: &Value, current: &Value) -> Option<String> {
-    // Identical opaque tokens (including the `guard-context-unbound:*`
-    // sentinel, which `parse_context_token` rejects below but which Python
-    // compares byte-equal) are by definition unchanged — no context lost.
-    if saved == current {
-        return None;
-    }
     let saved = parse_context_token(saved);
     let current = parse_context_token(current);
     let (Some(saved), Some(current)) = (saved, current) else {

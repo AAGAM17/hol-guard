@@ -207,10 +207,36 @@ def test_native_process_open_not_opened_is_terminal(guard_home, monkeypatch):
         "mcp_stdio_session_open_native",
         lambda *a, **k: _open_result("rejected"),
     )
-    # _start_process returns _NativeChildProcess only for opened; drive the
-    # open path directly via the process wrapper where applicable.
-    opened = runtime_mcp.mcp_stdio_session_open_native(
-        ["/bin/echo"], session_id="s", home_dir=None, cwd=None,
-        extra_env=None, guard_home=guard_home,
+    monkeypatch.setattr(
+        runtime_mcp, "mcp_stdio_session_close_native", lambda *a, **k: None
     )
-    assert opened.get("status") == "rejected"
+    monkeypatch.setattr(
+        runtime_mcp,
+        "resolved_runtime_launch_executable",
+        lambda _identity: "/bin/echo",
+    )
+
+    proxy = runtime_mcp.CodexMcpGuardProxy(
+        server_name="test-server",
+        command=["/bin/echo", "hello"],
+        context=runtime_mcp.HarnessContext(
+            harness="codex",
+            workspace_dir=guard_home,
+            guard_home=guard_home,
+        ),
+        store=None,
+        config=runtime_mcp.GuardConfig(),
+        source_scope="test",
+        config_path="codex.json",
+    )
+    monkeypatch.setattr(proxy, "_prepare_launch", lambda: ({}, {}, {}))
+
+    def fail_on_subprocess_fallback(*args, **kwargs):
+        raise AssertionError("Python subprocess fallback")
+
+    monkeypatch.setattr(
+        runtime_mcp.subprocess, "Popen", fail_on_subprocess_fallback
+    )
+
+    with pytest.raises(RuntimeError, match="native MCP session open failed"):
+        proxy._start_process()

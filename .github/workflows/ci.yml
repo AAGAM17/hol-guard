@@ -553,10 +553,15 @@ jobs:
           PLAN_LANES: ${{ needs.plan.outputs.lanes }}
           PLAN_DATA_ONLY: ${{ needs.plan.outputs.data_only }}
           RESULTS: ${{ toJson(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           python - <<'PY'
           import json, os, sys
           needs = json.loads(os.environ["RESULTS"])
+          plan_result = needs.get("plan", {}).get("result")
+          if os.environ.get("EVENT_NAME") == "pull_request" and plan_result != "success":
+              print(f"::error::plan job result: {plan_result}")
+              sys.exit(1)
           data_only = os.environ.get("PLAN_DATA_ONLY") == "true"
           # Required set the aggregate must always evaluate. In shadow mode all
           # ran; a job is a hard failure only if it ran and failed/cancelled.

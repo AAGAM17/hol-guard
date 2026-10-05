@@ -33,8 +33,12 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 PLAN_VERSION = 1
 SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -104,7 +108,7 @@ def changed_files(base: str, head: str, *, root: Path) -> list[str]:
     if not SHA_RE.fullmatch(base) or not SHA_RE.fullmatch(head):
         raise ValueError("plan_changes requires full commit SHAs")
     result = subprocess.run(
-        ["git", "-C", str(root), "diff", "--name-only", "--diff-filter=ACDMRT", base, head],
+        ["git", "-C", str(root), "diff", "--name-only", "--no-renames", "--diff-filter=ACDMRT", base, head],
         capture_output=True,
         text=True,
         check=True,

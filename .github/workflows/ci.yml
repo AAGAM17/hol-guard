@@ -87,10 +87,12 @@ jobs:
           echo "PLAN_BASE_SHA=$BASE" >> "$GITHUB_ENV"
           echo "PLAN_HEAD_SHA=$HEAD" >> "$GITHUB_ENV"
           mkdir -p trusted/scripts/ci
+          introduced=0
           for f in scripts/ci/plan_changes.py scripts/ci/pr_merge_base.py scripts/ci/__init__.py scripts/__init__.py; do
             if git cat-file -e "$BASE:$f" 2>/dev/null; then
               git show "$BASE:$f" > "trusted/$f"
             elif [ "$f" = "scripts/ci/plan_changes.py" ]; then
+              introduced=1
               echo "planner absent at trusted base; forcing full plan"
               printf '{"base":"%s","head":"%s","lanes":["full"],"data_only":false,"escalate_reason":"planner-introduced","changed":[]}\n' "$BASE" "$HEAD" > ci-plan.json
               echo "PLAN_READY=1" >> "$GITHUB_ENV"
@@ -98,7 +100,7 @@ jobs:
               : > "trusted/$f"
             fi
           done
-          if [ ! -f ci-plan.json ]; then
+          if [ "$introduced" = 0 ]; then
             echo "PLANNER_DIR=$PWD/trusted" >> "$GITHUB_ENV"
           fi
       - name: Fallback plan for a planner-introducing PR
@@ -114,7 +116,7 @@ jobs:
         env:
           PLAN_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python "${PLANNER_DIR:-.}/scripts/ci/plan_changes.py" --root "$PWD" --base "${PLAN_BASE_SHA:-}" --head "${PLAN_HEAD_SHA:-}" --output ci-plan.json
+          python "${PLANNER_DIR:?trusted planner dir unset}/scripts/ci/plan_changes.py" --root "$PWD" --base "${PLAN_BASE_SHA:-}" --head "${PLAN_HEAD_SHA:-}" --output ci-plan.json
           LANES=$(python -c "import json;print(' '.join(json.load(open('ci-plan.json'))['lanes']))")
           DATA_ONLY=$(python -c "import json;print(str(json.load(open('ci-plan.json'))['data_only']).lower())")
           echo "lanes=$LANES" >> "$GITHUB_OUTPUT"

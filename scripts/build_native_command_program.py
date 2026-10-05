@@ -49,7 +49,7 @@ def build_request() -> dict:
     ]
     mcp_paths = sorted((ROOT / "contributions/mcp-servers").glob("*.json"))
     paths = source_paths + mcp_paths
-    if len(paths) > 512 or sum(path.stat().st_size for path in paths) > 4 * 1024 * 1024:
+    if len(paths) > 512 or sum(path.stat().st_size for path in paths) > 8 * 1024 * 1024:
         raise ValueError("canonical source catalog exceeds native input budget")
     for path in source_paths:
         source = read_object(path)
@@ -134,7 +134,7 @@ def main() -> int:
         ]
     )
     request = canonical_bytes(build_request())
-    if len(request) > 4 * 1024 * 1024:
+    if len(request) > 8 * 1024 * 1024:
         raise ValueError("source build envelope exceeds native input budget")
     completed = subprocess.run(command, input=request, stdout=subprocess.PIPE, cwd=ROOT, timeout=600, check=False)
     if completed.returncode:

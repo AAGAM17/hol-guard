@@ -51,8 +51,23 @@ const APPROVAL_CONTEXT_SQL_PATTERN: &str = "guard-approval-context:v1:%";
 const RUNTIME_SCOPED_EXACT_MATCH_PREFIX: &str = "runtime-exact:";
 const POLICY_BUNDLE_SOURCE: &str = "policy-bundle";
 
-/// `_SCOPED_RUNTIME_EXACT_FAMILIES` (`store_base.py:317`).
-const SCOPED_RUNTIME_EXACT_FAMILIES: [&str; 8] = [
+/// `_SCOPED_RUNTIME_EXACT_FAMILIES` (`store_base.py:317`) — the 5 families that
+/// get a runtime exact-match key. `mcp`/`prompt-env-read`/`prompt-file` are
+/// approval families but *not* runtime-exact: they intentionally produce no
+/// key so a `family:mcp` allow row still resolves a concrete `*:mcp:*` lookup.
+const SCOPED_RUNTIME_EXACT_FAMILIES: [&str; 5] = [
+    "file-read",
+    "mcp-tool",
+    "package-request",
+    "prompt",
+    "tool-action",
+];
+
+/// `_SCOPED_APPROVAL_FAMILIES` (`approval_scope_support.py:25`) — the broader
+/// set a scoped artifact may collapse to. `parts[2]` of `harness:scope:family:…`
+/// only becomes a family key when it's an approval family; otherwise unrelated
+/// namespaces would shadow family-scoped rows.
+const SCOPED_APPROVAL_FAMILIES: [&str; 8] = [
     "file-read",
     "mcp",
     "mcp-tool",
@@ -62,6 +77,31 @@ const SCOPED_RUNTIME_EXACT_FAMILIES: [&str; 8] = [
     "prompt-file",
     "tool-action",
 ];
+
+/// `_artifact_family_key` (`approval_scope_support.py`): `family:`-prefixed
+/// ids pass through verbatim (already canonical); otherwise the family is
+/// `parts[2]` of `harness:scope:family:…`, lower-cased, gated by the scoped
+/// approval families so unrelated namespaces never collapse to a family key.
+fn artifact_family_key(artifact_id: Option<&str>) -> Option<String> {
+    let id = artifact_id?.trim();
+    if id.is_empty() {
+        return None;
+    }
+    if let Some(rest) = id.strip_prefix("family:") {
+        let family = rest.trim().to_lowercase();
+        return SCOPED_APPROVAL_FAMILIES
+            .contains(&family.as_str())
+            .then(|| format!("family:{family}"));
+    }
+    let parts: Vec<&str> = id.split(':').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let family = parts[2].trim().to_lowercase();
+    SCOPED_APPROVAL_FAMILIES
+        .contains(&family.as_str())
+        .then(|| format!("family:{family}"))
+}
 
 fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -114,19 +154,6 @@ fn workspace_policy_key(workspace: Option<&str>) -> Option<String> {
 
 fn family_key_value(family_key: &str) -> &str {
     family_key.strip_prefix("family:").unwrap_or(family_key)
-}
-
-/// `_artifact_family_key` (`approval_scope_support.py`).
-fn artifact_family_key(artifact_id: Option<&str>) -> Option<String> {
-    let id = artifact_id?.trim();
-    if id.is_empty() {
-        return None;
-    }
-    if let Some(rest) = id.strip_prefix("family:") {
-        return Some(format!("family:{rest}"));
-    }
-    let (family, _rest) = id.split_once(':')?;
-    Some(format!("family:{family}"))
 }
 
 /// `_runtime_scoped_exact_match_key` — `runtime-exact:<digest>`; `None` unless

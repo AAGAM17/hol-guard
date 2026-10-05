@@ -26,6 +26,33 @@ fn seed_store(path: &std::path::Path) {
            payload_mac text, integrity_key_id text, signed_at text, authority_kind text);
          create table guard_events (event_id integer primary key autoincrement,
            event_name text not null, payload_json text not null, occurred_at text not null);
+         create index idx_policy_decisions_lookup_artifact
+           on policy_decisions (artifact_id, harness, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'artifact';
+         create index idx_policy_decisions_lookup_workspace
+           on policy_decisions (workspace, harness, artifact_id, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'workspace';
+         create index idx_policy_decisions_lookup_publisher
+           on policy_decisions (publisher, harness, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'publisher';
+         create index idx_policy_decisions_lookup_publisher_legacy
+           on policy_decisions (publisher, harness, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'publisher' and artifact_hash is not null
+             and artifact_hash not like 'guard-approval-context:v1:%';
+         create index idx_policy_decisions_lookup_harness
+           on policy_decisions (harness, artifact_id, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'harness';
+         create index idx_policy_decisions_lookup_harness_legacy
+           on policy_decisions (harness, artifact_id, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'harness' and artifact_hash is not null
+             and artifact_hash not like 'guard-approval-context:v1:%';
+         create index idx_policy_decisions_lookup_global
+           on policy_decisions (harness, artifact_id, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'global';
+         create index idx_policy_decisions_lookup_global_legacy
+           on policy_decisions (harness, artifact_id, artifact_hash, updated_at desc, decision_id desc)
+           where scope = 'global' and artifact_hash is not null
+             and artifact_hash not like 'guard-approval-context:v1:%';
          insert into guard_approval_authority_revision (singleton, revision) values (1, 5);",
     )
     .unwrap();
@@ -334,4 +361,51 @@ fn consuming_harness_lookup_includes_exact_artifact_blocks() {
     let result = evaluate(&base_request(&store)).unwrap();
     assert_eq!(result["decision"]["decision_id"], 1);
     assert_eq!(result["decision"]["action"], "block");
+}
+
+/// `artifact_family_key` uses the third segment of `harness:scope:family:…`.
+/// Regression: the native port read `parts[1]` (the scope) so `family:mcp`
+/// rows never resolved a concrete `codex:project:mcp:*` lookup.
+#[test]
+fn scoped_artifact_family_uses_third_segment() {
+    assert_eq!(
+        artifact_family_key(Some("codex:project:mcp:safe-read")).as_deref(),
+        Some("family:mcp")
+    );
+    assert_eq!(
+        artifact_family_key(Some("family:mcp")).as_deref(),
+        Some("family:mcp")
+    );
+    // Not an approval family → no family key (never shadows a `family:*` row).
+    assert_eq!(artifact_family_key(Some("codex:project:other:op")), None);
+    // `mcp` is approval-scoped but not runtime-exact → no exact-match key, so a
+    // `family:mcp` row stays eligible for a concrete `*:mcp:*` lookup.
+    assert_eq!(
+        runtime_scoped_exact_match_key(Some("codex:project:mcp:safe-read"), None),
+        None
+    );
+    assert_ne!(
+        runtime_scoped_exact_match_key(Some("codex:project:tool-action:run"), None),
+        None
+    );
+}
+
+/// A `family:mcp` row must remain eligible for `codex:project:mcp:safe-read`
+/// (no exact-match requirement when the family isn't runtime-exact).
+#[test]
+fn family_scoped_row_is_eligible_for_concrete_lookup() {
+    let row = json!({
+        "decision_id": 1, "harness": "codex", "scope": "harness",
+        "artifact_id": "family:mcp", "artifact_hash": Value::Null,
+        "action": "allow", "source": "policy-yaml-import",
+    });
+    assert!(runtime_policy_row_is_eligible(
+        &row,
+        &[],
+        Some("codex:project:mcp:safe-read"),
+        None,
+        None,
+        None,
+        None
+    ));
 }

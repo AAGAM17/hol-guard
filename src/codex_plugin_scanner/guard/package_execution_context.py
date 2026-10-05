@@ -206,8 +206,7 @@ def _project_native_package_context(context: dict[str, Any] | None) -> PackageEx
         digest=context["digest"],
         portable=context["portable"],
         components=tuple(
-            PackageExecutionContextComponent(name=item["name"], digest=item["digest"])
-            for item in context["components"]
+            PackageExecutionContextComponent(name=item["name"], digest=item["digest"]) for item in context["components"]
         ),
         non_portable_reason=context["non_portable_reason"],
     )
@@ -258,8 +257,6 @@ def _string_items(value: object) -> tuple[str, ...]:
     if not isinstance(value, list | tuple):
         return ()
     return tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
-
-
 
 
 def _is_global_request(metadata: Mapping[str, object]) -> bool:

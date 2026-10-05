@@ -340,9 +340,7 @@ def _npm_registry_resolved_version(*, package_name: str, requested_range: str) -
 
 
 def _pypi_registry_resolved_version(*, package_name: str, requested_range: str) -> str | None:
-    metadata_url = (
-        f"{_PYPI_REGISTRY_METADATA_BASE_URL.rstrip('/')}/{urllib.parse.quote(package_name, safe='')}/json"
-    )
+    metadata_url = f"{_PYPI_REGISTRY_METADATA_BASE_URL.rstrip('/')}/{urllib.parse.quote(package_name, safe='')}/json"
     request = urllib.request.Request(
         metadata_url,
         headers={

@@ -107,6 +107,11 @@ impl<'de> Visitor<'de> for Seed<'_> {
     fn visit_map<A: MapAccess<'de>>(self, mut mapping: A) -> Result<Value, A::Error> {
         let mut values = Map::new();
         while let Some(key) = mapping.next_key::<String>()? {
+            // arbitrary_precision routes unsupported numbers through a private
+            // marker map, even when nested. Never admit that as source data.
+            if key == "$serde_json::private::Number" {
+                return Err(A::Error::custom("source_integer_limit"));
+            }
             if key.len() > 4_096 || values.len() >= 4_096 || values.contains_key(&key) {
                 return Err(A::Error::custom("source_duplicate_key_or_items_limit"));
             }
@@ -131,6 +136,10 @@ mod tests {
             r#"{"config":{"flag":true,"flag":false}}"#,
             "1.0",
             "9223372036854775808",
+            r#"{"limit":18446744073709551616}"#,
+            r#"{"limit":-9223372036854775809}"#,
+            r#"{"values":[1,1.0]}"#,
+            r#"{"nested":{"$serde_json::private::Number":"1"}}"#,
             "{} {}",
         ] {
             assert!(decode(input.as_bytes()).is_err(), "{input}");

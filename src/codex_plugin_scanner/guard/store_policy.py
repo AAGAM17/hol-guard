@@ -1569,6 +1569,7 @@ class StorePolicyMixin:
             guard_home=self.guard_home,
             timeout_seconds=10.0,
             required_feature=POLICY_DECISION_LOOKUP_FEATURE,
+            response_schema="guard-policy-decision-lookup-result.v1",
         )
         if response is None:
             raise ValueError("native_policy_decision_lookup_unavailable")

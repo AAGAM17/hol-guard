@@ -158,5 +158,3 @@ def run_mcp_tools_list(
 
     catalog = run_mcp_catalog(argv, timeout=timeout, extra_env=extra_env)
     return list(catalog.tools) if catalog.complete else None
-
-

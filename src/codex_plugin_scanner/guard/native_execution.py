@@ -47,9 +47,7 @@ _MCP_STDIO_SESSION_RESULT_SCHEMA = "guard-mcp-stdio-session-result.v1"
 _MCP_SESSION_ACCEPTED_STATUS = {
     "mcp_stdio_session_open": frozenset({"opened", "exited", "error"}),
     "mcp_stdio_session_send": frozenset({"sent", "error"}),
-    "mcp_stdio_session_recv": frozenset(
-        {"event", "running", "timeout", "eof", "exited", "error"}
-    ),
+    "mcp_stdio_session_recv": frozenset({"event", "running", "timeout", "eof", "exited", "error"}),
     "mcp_stdio_session_close": frozenset({"closed", "error"}),
     "mcp_stdio_session_cancel": frozenset({"cancelled", "error"}),
 }
@@ -106,10 +104,17 @@ def _resident_request(
         return None
     if not isinstance(decoded, dict):
         return None
-    if operation == "prompt_analyze":
-        # This versioned Rust result has no status field. Requiring status=ok
-        # discarded every successful native reply and hid the failed cutover.
-        if decoded.get("schema") != "guard-prompt-analyze-result.v1" or set(decoded) != {"schema", "result"}:
+    if response_schema is not None and decoded.get("schema") != response_schema:
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=f"native_{operation}_schema")
+        return None
+    result_schema = {
+        "prompt_analyze": "guard-prompt-analyze-result.v1",
+        "mcp_stdio_probe": "guard-mcp-stdio-probe-result.v1",
+    }.get(operation)
+    if result_schema is not None:
+        # These versioned Rust replies have no status field. Do not discard
+        # valid native results or reinterpret them through a Python fallback.
+        if decoded.get("schema") != result_schema or set(decoded) != {"schema", "result"}:
             return None
     else:
         # Session/terminal ops report success under their own status, not
@@ -117,6 +122,8 @@ def _resident_request(
         # ("opened") / recv ("event") / close ("closed") and forced a silent
         # Python fallback the resident should own.
         accepted = _MCP_SESSION_ACCEPTED_STATUS.get(operation)
+        if operation == "policy_decision_lookup":
+            accepted = frozenset({"ok", "error"})
         if accepted is not None:
             if decoded.get("status") not in accepted:
                 return None
@@ -422,6 +429,7 @@ def mcp_stdio_probe_native(
     done = threading.Event()
     watcher: threading.Thread | None = None
     if cancel is not None:
+
         def deliver_cancellation() -> None:
             while not done.is_set():
                 if not cancel.wait(0.05):

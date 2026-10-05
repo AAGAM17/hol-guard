@@ -2884,7 +2884,9 @@ def _package_matched_cached_advisory_ids(store: Any, artifact: GuardArtifact) ->
 
     provision_native_verifier_key_for_store(store)
     return _native_package_authority_module().package_advisory_ids_native(
-        artifact=artifact.to_dict(), store_path=store.path, guard_home=store.guard_home,
+        artifact=artifact.to_dict(),
+        store_path=store.path,
+        guard_home=store.guard_home,
     )
 
 

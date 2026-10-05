@@ -47,14 +47,17 @@ def build_mcp_server_identity(
     env_keys: tuple[str, ...] = (),
 ) -> McpServerIdentity:
     """Project the native server identity; native failure cannot bind approval."""
-    identity = context_mcp_identity("mcp_server_identity", {
-        "config_path": config_path,
-        "command": command,
-        "args": list(args),
-        "transport": transport,
-        "environment": list(env.items()) if env is not None else None,
-        "env_keys": list(env_keys),
-    })
+    identity = context_mcp_identity(
+        "mcp_server_identity",
+        {
+            "config_path": config_path,
+            "command": command,
+            "args": list(args),
+            "transport": transport,
+            "environment": list(env.items()) if env is not None else None,
+            "env_keys": list(env_keys),
+        },
+    )
     if identity is None:
         raise ValueError("native_mcp_server_identity_unavailable")
     return McpServerIdentity(**{**identity, "env_keys": tuple(identity["env_keys"])})
@@ -69,12 +72,15 @@ def build_mcp_tool_identity(
 ) -> McpToolIdentity:
     """Build a stable identity for one MCP tool definition."""
 
-    identity = context_mcp_identity("mcp_tool_identity", {
-        "server_hash": server_hash,
-        "tool_name": tool_name,
-        "schema": schema,
-        "description": description,
-    })
+    identity = context_mcp_identity(
+        "mcp_tool_identity",
+        {
+            "server_hash": server_hash,
+            "tool_name": tool_name,
+            "schema": schema,
+            "description": description,
+        },
+    )
     if identity is None:
         raise ValueError("native_mcp_tool_identity_unavailable")
     return McpToolIdentity(**identity)
@@ -200,8 +206,6 @@ def package_source_token(command: str, args: tuple[str, ...]) -> str:
     return "|".join(sources) if sources else "default"
 
 
-
-
 def _split_package_token(value: str) -> tuple[str | None, str | None]:
     pip_style_name, pip_style_version = _split_pip_style_specifier(value)
     if pip_style_name is not None:
@@ -287,9 +291,6 @@ def _url_authority_bounds(value: str) -> tuple[int, int] | None:
         if delimiter_index >= 0:
             authority_end = min(authority_end, delimiter_index)
     return authority_start, authority_end
-
-
-
 
 
 __all__ = [

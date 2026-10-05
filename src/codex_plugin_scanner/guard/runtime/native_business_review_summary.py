@@ -96,7 +96,9 @@ def read_native_business_review_summary(guard_home: Path, request_id: str) -> di
         return None
     try:
         status = native_runtime_status()
-        if not status.available or not status.compatible or status.identity is None or status.capabilities is None:
+        if not status.available:
+            return None
+        if not status.compatible or status.identity is None or status.capabilities is None:
             raise NativeBusinessReviewSummaryReadError()
         if not {"resident-protocol-v2", _FEATURE}.issubset(status.capabilities.features):
             return None

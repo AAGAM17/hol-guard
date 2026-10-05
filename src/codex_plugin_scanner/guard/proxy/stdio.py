@@ -1038,9 +1038,11 @@ class StdioGuardProxy:
                 if isinstance(process.stdout, _NativeMcpChildIo):
                     # Native session (RTM-024): the resident already frames
                     # lines; ask it for the next one with the same timeout.
-                    frame = process.stdout.next_frame(timeout_seconds)
-                    if frame.error is not None:
-                        raise frame.error
+                    frame = process.stdout.next_frame(timeout_seconds, required=True)
+                    if frame is None or frame.error is not None:
+                        raise frame.error if frame is not None else ProxyIoTimeoutError(
+                            source="child_response", timeout_seconds=timeout_seconds
+                        )
                     line = frame.line
                 else:
                     line = _readline_with_timeout(

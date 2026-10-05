@@ -87,7 +87,13 @@ def test_default_wait_covers_existing_producer_limits(monkeypatch: pytest.Monkey
     """Verify default wait covers existing producer limits."""
     root = Path(__file__).resolve().parents[1]
     jobs = expand_ci_job_actions(yaml.safe_load((root / ".github/workflows/ci.yml").read_text()))["jobs"]
-    producer_limit = 60 * (jobs["coverage-plan"]["timeout-minutes"] + jobs["coverage"]["timeout-minutes"])
+    producer_limit = 60 * (
+        max(
+            jobs["coverage-plan"]["timeout-minutes"],
+            jobs["native-coverage-evaluators"]["timeout-minutes"],
+        )
+        + jobs["coverage"]["timeout-minutes"]
+    )
     default_timeout = inspect.signature(barrier.wait_for_shards).parameters["timeout_seconds"].default
     assert default_timeout == producer_limit + 60
     captured: dict[str, float] = {}
@@ -106,9 +112,9 @@ def test_default_wait_covers_existing_producer_limits(monkeypatch: pytest.Monkey
 
 def test_default_wait_accepts_healthy_shards_after_full_planning_and_execution_limits() -> None:
     running = [_job(index, status="in_progress", conclusion=None) for index in range(barrier.SHARD_COUNT)]
-    # Advance only the injected clock: five minutes planning, five minutes
-    # execution, and one polling interval for the complete success to appear.
-    _, logs = _run([[]] * 60 + [running] * 61 + [_jobs()])
+    # Advance only the injected clock: ten minutes for the parallel native
+    # coverage producer, five minutes shard execution, and one final poll.
+    _, logs = _run([[]] * 120 + [running] * 61 + [_jobs()])
     assert logs[-1] == f"All {barrier.SHARD_COUNT} Python coverage shards succeeded in run {_RUN_ID}, attempt 2"
 
 

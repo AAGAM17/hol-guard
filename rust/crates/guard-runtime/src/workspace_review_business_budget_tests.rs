@@ -111,6 +111,47 @@ fn concurrent_sessions_cannot_exceed_one_shared_allowance() {
 }
 
 #[test]
+fn independently_opened_stores_share_durable_usage_after_reopen() {
+    let fixture = Fixture::new("business-budget-independent-stores");
+    let mut budget = declaration("account");
+    budget["maximumActions"] = json!(1);
+    install(&fixture, json!([budget]));
+    let identity = fixture.store.current_snapshot().unwrap().runtime_identity;
+    let left_store = PolicySnapshotStore::new(&fixture.root, &identity).unwrap();
+    let right_store = PolicySnapshotStore::new(&fixture.root, &identity).unwrap();
+    let now = time(&fixture);
+    let barrier = std::sync::Barrier::new(2);
+    let wins = std::thread::scope(|scope| {
+        let run = |store: &PolicySnapshotStore, id: &str| {
+            barrier.wait();
+            reserve_at(store, id, &prepared(), &actor(), now).is_ok()
+        };
+        let left_ref = &left_store;
+        let right_ref = &right_store;
+        let left = scope.spawn(move || run(left_ref, "budget-independent-left"));
+        let right = scope.spawn(move || run(right_ref, "budget-independent-right"));
+        usize::from(left.join().unwrap()) + usize::from(right.join().unwrap())
+    });
+    assert_eq!(wins, 1);
+    drop(left_store);
+    drop(right_store);
+    let reopened = PolicySnapshotStore::new(&fixture.root, &identity).unwrap();
+    assert_eq!(
+        reserve_at(
+            &reopened,
+            "budget-independent-reopened",
+            &prepared(),
+            &actor(),
+            now + 1,
+        )
+        .err()
+        .unwrap(),
+        "native_business_budget_exceeded"
+    );
+    assert_eq!(load(&fixture.root).unwrap().0.events.len(), 1);
+}
+
+#[test]
 fn window_boundary_and_policy_changes_preserve_history() {
     let fixture = Fixture::new("business-budget-policy-change");
     let mut budget = declaration("account");

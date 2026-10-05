@@ -301,9 +301,7 @@ def test_emitted_transport_codes_keep_portal_commit_certainty() -> None:
     assert native_transport_reconcile_before_retry("native_resident_worker_pool_stopped") is False
 
 
-def test_structured_overload_does_not_apply_or_resend(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_structured_overload_does_not_apply_or_resend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
     from codex_plugin_scanner.guard.runtime.command_executors import execute_guard_command_job
 
@@ -338,9 +336,7 @@ def test_structured_overload_does_not_apply_or_resend(
     assert len(payloads) == 1
 
 
-def test_stream_loss_reconciles_the_consumed_decision_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stream_loss_reconciles_the_consumed_decision_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = _Store(_request())
     payloads: list[bytes] = []
     resolutions: list[bool] = []
@@ -426,9 +422,7 @@ def test_repeated_stream_loss_keeps_the_original_unknown_outcome(
     assert calls == 2
 
 
-def test_expired_native_proof_does_not_apply_or_resend(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_expired_native_proof_does_not_apply_or_resend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
     from codex_plugin_scanner.guard.runtime.command_executors import execute_guard_command_job
 
@@ -440,9 +434,7 @@ def test_expired_native_proof_does_not_apply_or_resend(
         payload = kwargs["payload"]
         assert isinstance(payload, bytes)
         payloads.append(payload)
-        return json.dumps(
-            {"error": "native_workspace_review_decision_expired", "retryable": False}
-        ).encode("utf-8")
+        return json.dumps({"error": "native_workspace_review_decision_expired", "retryable": False}).encode("utf-8")
 
     _bind_native_client(monkeypatch, responder)
     result = execute_guard_command_job(
@@ -464,9 +456,7 @@ def test_expired_native_proof_does_not_apply_or_resend(
     assert len(payloads) == 1
 
 
-def test_second_grant_replay_error_does_not_apply_or_resend(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_second_grant_replay_error_does_not_apply_or_resend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
     from codex_plugin_scanner.guard.runtime.command_executors import execute_guard_command_job
 

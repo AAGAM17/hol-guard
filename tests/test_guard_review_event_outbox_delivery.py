@@ -522,9 +522,7 @@ def test_invalid_claim_is_quarantined_without_starving_a_later_neighbor(
         rows = connection.execute(
             "select payload_json, binding_status, quarantine_reason, acknowledged_at from guard_review_outbox_events"
         ).fetchall()
-        cursor = connection.execute(
-            "select acknowledged_stream_sequence from guard_review_outbox_cursors"
-        ).fetchone()
+        cursor = connection.execute("select acknowledged_stream_sequence from guard_review_outbox_cursors").fetchone()
     assert len(rows) == 1
     assert "poison" in rows[0]["payload_json"]
     assert rows[0]["binding_status"] == "quarantined"

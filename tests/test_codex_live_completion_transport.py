@@ -153,9 +153,7 @@ def test_transient_live_decision_rejection_retries_the_same_post(
         assert calls[0][key] == calls[1][key]
 
 
-def test_terminal_live_decision_rejection_is_not_retried(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_terminal_live_decision_rejection_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from codex_plugin_scanner.guard.adapters.codex_daemon_hook_auth import _DaemonResponseError
 
     calls = 0
@@ -217,9 +215,7 @@ def test_final_live_decision_rejection_reports_only_the_error_code(
         is None
     )
     captured = capsys.readouterr()
-    assert captured.err.strip() == (
-        "guard" + "_live" + "_decision_rejection " + "fresh_policy_revalidation_failed"
-    )
+    assert captured.err.strip() == ("guard" + "_live" + "_decision_rejection " + "fresh_policy_revalidation_failed")
     assert "http" not in captured.err
     assert "abcd1234ef567890" not in captured.err
 

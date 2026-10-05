@@ -271,8 +271,14 @@ console.log(JSON.stringify({
     ],
 )
 def test_pi_readiness_recovers_missing_endpoint_once_within_setup_budget(
-    tmp_path: Path, statuses: list[int], recovery_delay: int, recovery_success: bool,
-    ready: bool, attempts: int, requests: int, cancel_calls: int
+    tmp_path: Path,
+    statuses: list[int],
+    recovery_delay: int,
+    recovery_success: bool,
+    ready: bool,
+    attempts: int,
+    requests: int,
+    cancel_calls: int,
 ) -> None:
     source = managed_extension_source(
         guard_home=tmp_path / "guard-home",
@@ -319,7 +325,10 @@ globalThis.fetch = async (url, options) => {
     )
     result = subprocess.run(
         ["node", "--input-type=module", "-e", javascript],
-        check=True, capture_output=True, text=True, timeout=30,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     output = json.loads(result.stdout)
     assert output["result"]["ready"] is ready
@@ -363,7 +372,10 @@ globalThis.fetch = async () => ({status: 404, ok: false, body: {cancel() { retur
     )
     result = subprocess.run(
         ["node", "--input-type=module", "-e", javascript],
-        check=True, capture_output=True, text=True, timeout=30,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     output = json.loads(result.stdout)
     assert output["result"]["ready"] is False

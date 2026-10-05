@@ -384,9 +384,7 @@ def _build_cloud_context(store: GuardStore) -> dict[str, object]:
     cloud_review_worker = classify_cloud_review_worker(
         _load_sync_state(store),
         sync_configured=bool(
-            cloud_profile is not None
-            and cloud_profile.get("workspace_id")
-            and cloud_profile.get("sync_url")
+            cloud_profile is not None and cloud_profile.get("workspace_id") and cloud_profile.get("sync_url")
         ),
     )
     recovery_applied = (

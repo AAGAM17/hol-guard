@@ -201,9 +201,7 @@ def _copy_complete_table(src: sqlite3.Connection, dst: sqlite3.Connection, table
 
 
 RECOVERY_HEALTH_STATE_KEY = "guard_cloud_review_recovery_health"
-PARTIAL_CLOUD_RECOVERY_DETAIL = (
-    "Local protection is working. Restore this device's Cloud connection to sync reviews."
-)
+PARTIAL_CLOUD_RECOVERY_DETAIL = "Local protection is working. Restore this device's Cloud connection to sync reviews."
 
 
 def cloud_review_recovery_health(*, cloud_review: bool, local_cli: bool) -> dict[str, object]:

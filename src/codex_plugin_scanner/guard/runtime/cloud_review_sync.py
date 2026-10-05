@@ -479,11 +479,7 @@ def classify_cloud_review_worker(
     from .cloud_review_sync_worker import configured_cloud_review_poll_seconds
 
     stored = state.get("worker_poll_seconds")
-    poll = (
-        float(stored)
-        if isinstance(stored, (int, float)) and stored > 0
-        else configured_cloud_review_poll_seconds()
-    )
+    poll = float(stored) if isinstance(stored, (int, float)) and stored > 0 else configured_cloud_review_poll_seconds()
     if age > poll * 3:
         return "dead"
     if state.get("state") == "error":

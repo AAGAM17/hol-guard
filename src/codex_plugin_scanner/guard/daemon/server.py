@@ -6270,17 +6270,15 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             home_dir=home_dir,
             claimed_saved_allow_hash=claimed_saved_allow_hash,
             claimed_approval_request_id=claimed_approval_request_id,
-            reviewer=lambda hook_payload, workspace, claimed_hash, claimed_request_id: (
-                review_live_codex_decision(
-                    daemon_server.hook_worker,
-                    hook_payload=hook_payload,
-                    workspace=workspace,
-                    home_dir=home_dir,
-                    guard_home=daemon_server.store.guard_home,
-                    claimed_saved_allow_hash=claimed_hash,
-                    claimed_approval_request_id=claimed_request_id,
-                    deadline=time.monotonic() + _RUNTIME_LIVE_DECISION_REVIEW_TIMEOUT_SECONDS,
-                )
+            reviewer=lambda hook_payload, workspace, claimed_hash, claimed_request_id: review_live_codex_decision(
+                daemon_server.hook_worker,
+                hook_payload=hook_payload,
+                workspace=workspace,
+                home_dir=home_dir,
+                guard_home=daemon_server.store.guard_home,
+                claimed_saved_allow_hash=claimed_hash,
+                claimed_approval_request_id=claimed_request_id,
+                deadline=time.monotonic() + _RUNTIME_LIVE_DECISION_REVIEW_TIMEOUT_SECONDS,
             ),
         )
 

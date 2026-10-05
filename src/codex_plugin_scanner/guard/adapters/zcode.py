@@ -447,7 +447,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
             ]
         return [
             "Guard hook entries added to ~/.zcode/cli/config.json (Desktop)",
-            "The CLI's ~/.zcode/cli/setting.json does not exist yet; its own settings migration carries these hooks over",
+            "The CLI's ~/.zcode/cli/setting.json does not exist yet; its own settings migration carries the hooks over",
         ]
 
     def _hook_surface_payloads(self, context: HarnessContext) -> list[tuple[Path, dict[str, object]]]:

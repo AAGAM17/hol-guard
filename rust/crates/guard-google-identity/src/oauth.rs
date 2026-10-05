@@ -452,3 +452,7 @@ mod tests;
 #[cfg(test)]
 #[path = "worker_input_tests.rs"]
 mod worker_input_tests;
+
+#[cfg(test)]
+#[path = "outbound_tests.rs"]
+mod outbound_tests;

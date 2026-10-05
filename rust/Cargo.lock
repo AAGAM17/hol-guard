@@ -591,6 +591,7 @@ dependencies = [
  "getrandom 0.3.4",
  "guard-command",
  "guard-contracts",
+ "guard-scanner",
  "hex",
  "hmac",
  "oauth2",

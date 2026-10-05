@@ -277,6 +277,8 @@ def _flag_parse_outcome(
         )
         for transition in shape.transitions:
             next_assignment = final_assignment
+            if shape.fully_known and argument_index + transition.advance > len(arguments):
+                return _ParseOutcome.NO_MATCH
             for flag, enabled in transition.flag_assignments:
                 if flag == required_flag:
                     next_assignment = enabled

@@ -11,7 +11,8 @@ Each route uses its exported value and boolean option kinds. Caller flags such
 as `--gmail-no-send`, `--readonly` and `--dry-run` do not suppress Guard review
 or mint an allow grant. Literal help can clear a contribution observation;
 help used as payload, or after `--`, is not a safety flag. Required short value
-options are recognized without treating consumed data as an option.
+options are recognized without treating consumed data as an option. A known
+value option without an operand cannot establish a required-option proof.
 
 This contribution targets native enforcement. The retained historical Python
 option vectors remain regression inputs, not a production fallback or a promise

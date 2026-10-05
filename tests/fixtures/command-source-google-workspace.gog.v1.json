@@ -5503,6 +5503,33 @@
       "expected_effective_segments": [0]
     },
     {
+      "id": "missing-short-account",
+      "command": "gog -a",
+      "rule_id": "command.google-workspace.gog.identity",
+      "enabled_extensions": ["command.google-workspace.gog"],
+      "disabled_permissions": [],
+      "expected_action": "review",
+      "expected_effective_segments": []
+    },
+    {
+      "id": "missing-cluster-account",
+      "command": "gog -ja",
+      "rule_id": "command.google-workspace.gog.identity",
+      "enabled_extensions": ["command.google-workspace.gog"],
+      "disabled_permissions": [],
+      "expected_action": "review",
+      "expected_effective_segments": []
+    },
+    {
+      "id": "missing-body-value",
+      "command": "gog -a synthetic gmail drafts create --body",
+      "rule_id": "command.google-workspace.gog.identity",
+      "enabled_extensions": ["command.google-workspace.gog"],
+      "disabled_permissions": [],
+      "expected_action": "review",
+      "expected_effective_segments": []
+    },
+    {
       "id": "identity-payload-0",
       "command": "gog gmail drafts create --body --account",
       "rule_id": "command.google-workspace.gog.identity",

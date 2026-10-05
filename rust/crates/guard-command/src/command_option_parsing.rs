@@ -240,6 +240,9 @@ fn flag_parse_outcome(
         }
         let shape = option_shape(argument, options_with_values, known_flags);
         for transition in shape.transitions {
+            if shape.fully_known && argument_index + transition.advance > arguments.len() {
+                return ParseOutcome::NoMatch;
+            }
             let assignment = transition
                 .flag_assignments
                 .iter()

@@ -511,11 +511,7 @@ def cloud_review_sync_status(store: GuardStore) -> dict[str, object]:
             now=_now(),
             workspace_id=workspace_id,
         )
-    sync_configured = (
-        isinstance(profile, dict)
-        and bool(profile.get("workspace_id"))
-        and bool(profile.get("sync_url"))
-    )
+    sync_configured = isinstance(profile, dict) and bool(profile.get("workspace_id")) and bool(profile.get("sync_url"))
     return {
         "state": state.get("state") or "not_configured",
         "worker": classify_cloud_review_worker(state, sync_configured=sync_configured),

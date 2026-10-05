@@ -237,7 +237,7 @@ fn end_to_end_probe_negotiates_and_paginates() {
         &std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     );
     let payload = catalog.to_payload();
-    assert_eq!(payload["status"], json!("ok"), "catalog: {:?}", payload);
+    assert_eq!(payload["status"], json!("ok"), "catalog: {payload:?}");
     let tools = payload["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["t0", "t1"]);
@@ -276,7 +276,7 @@ for line in sys.stdin:
         &std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     );
     let payload = catalog.to_payload();
-    assert_eq!(payload["status"], json!("ok"), "catalog: {:?}", payload);
+    assert_eq!(payload["status"], json!("ok"), "catalog: {payload:?}");
     assert_eq!(payload["server_info"]["name"], json!("legacy"));
     let _ = std::fs::remove_dir_all(&dir);
 }

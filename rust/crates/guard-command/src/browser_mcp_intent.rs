@@ -331,7 +331,7 @@ fn tool_operation(artifact: &BrowserMcpArtifactV1) -> &str {
 
 fn target_url<'a>(values: &'a ArgumentValues<'_>) -> Option<&'a str> {
     for key in URL_ARGUMENT_KEYS {
-        if let Some(url) = optional_str(values.get(*key)) {
+        if let Some(url) = optional_str(values.get(key)) {
             return Some(url);
         }
     }
@@ -551,10 +551,9 @@ fn visit_sensitive_surfaces(
             active(expressions)
         } else {
             all(expressions)
-        } {
-            if surface != AuthHeaders || !emulate_headers {
-                add(surface);
-            }
+        } && (surface != AuthHeaders || !emulate_headers)
+        {
+            add(surface);
         }
     }
     if schema_keys.iter().any(|key| {
@@ -724,7 +723,7 @@ fn display(
         "to_uid",
     ]
     .iter()
-    .any(|key| arguments.values.contains_key(*key))
+    .any(|key| arguments.values.contains_key(key))
         || arguments
             .values
             .get("elements")

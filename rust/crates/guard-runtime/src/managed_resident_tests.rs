@@ -201,9 +201,6 @@ fn client_stream_frames_are_bounded_and_big_endian() {
 
 #[test]
 fn client_leases_keep_shared_resident_alive_until_last_client_closes() {
-    use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     let root = std::env::temp_dir().join(format!(
         "hol-guard-managed-client-lease-{}-{}",
         std::process::id(),
@@ -316,9 +313,6 @@ fn retire_clients_for_update_terminates_exact_process() {
 
 #[test]
 fn stale_lease_cleanup_requires_a_dead_process_identity() {
-    use std::fs;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
     let root = std::env::temp_dir().join(format!(
         "hol-guard-managed-stale-lease-{}-{}",
         std::process::id(),

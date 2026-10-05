@@ -85,7 +85,8 @@ def test_isolated_grok_client_is_recognized(tmp_path: Path, monkeypatch: pytest.
     )
     context = HarnessContext(tmp_path / "home", tmp_path / "workspace", tmp_path / "guard")
     command = GrokHarnessAdapter._hook_command_parts(context)
-    assert command[:2] == ("/usr/bin/python3", "-I")
+    expected_interpreter = "/usr/bin/python3" if frozen else sys.executable
+    assert command[:2] == (expected_interpreter, "-I")
     assert is_grok_hook_command(_shell_command(command), context) is True
     other = HarnessContext(tmp_path / "other", None, tmp_path / "other-guard")
     assert is_grok_hook_command(_shell_command(command), other) is False

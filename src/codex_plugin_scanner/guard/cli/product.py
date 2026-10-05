@@ -379,10 +379,10 @@ def _build_cloud_context(store: GuardStore) -> dict[str, object]:
     )
     recovery_health, recovery_repair = _cloud_review_recovery_surface(store)
     recovery_summary = recovery_health.get("summary") if isinstance(recovery_health, dict) else ""
-    from ..runtime.cloud_review_sync import classify_cloud_review_worker
+    from ..runtime.cloud_review_sync import _load_sync_state, classify_cloud_review_worker
 
     cloud_review_worker = classify_cloud_review_worker(
-        cloud_review_sync_state,
+        _load_sync_state(store),
         sync_configured=bool(
             cloud_profile is not None
             and cloud_profile.get("workspace_id")

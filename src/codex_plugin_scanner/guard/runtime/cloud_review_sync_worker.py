@@ -143,7 +143,10 @@ def _cloud_sync_sync_loop(
     prepared_binding: dict[str, str] | None = None
     queue_refresh_pending = False
     while not stop_event.is_set():
-        sync.record_cloud_review_worker_heartbeat(store)
+        try:
+            sync.record_cloud_review_worker_heartbeat(store)
+        except Exception:
+            _LOGGER.warning("Cloud Review worker heartbeat could not be recorded", exc_info=True)
         observed_generation = wake_signal.generation()
         result: dict[str, object] = {}
         try:

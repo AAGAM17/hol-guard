@@ -251,7 +251,8 @@ fn retire_clients_for_update_terminates_exact_process() {
         let root = PathBuf::from(root);
         let _lease = lease::acquire(&root).expect("child lease should be acquired");
         fs::write(root.join("child-ready"), []).expect("child readiness marker should be written");
-        std::thread::sleep(Duration::from_secs(60));
+        // Outlive the parent's retirement budget; a normal fixture exit is not proof of retirement.
+        std::thread::sleep(Duration::from_secs(120));
         return;
     }
 

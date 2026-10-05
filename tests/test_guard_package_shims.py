@@ -658,7 +658,7 @@ def test_package_manager_shim_uses_trusted_guard_import_path(tmp_path: Path, cap
     ("command", "expected_action"),
     [
         (["npm", "install", "guard-github@git+https://example.com/guard.git"], "require-reapproval"),
-        (["npm", "install", "guard-tarball@https://example.com/guard.tgz"], "review"),
+        (["npm", "install", "guard-tarball@https://example.com/guard.tgz"], "require-reapproval"),
         (["npm", "install", "file:./vendor/guard"], "require-reapproval"),
     ],
 )

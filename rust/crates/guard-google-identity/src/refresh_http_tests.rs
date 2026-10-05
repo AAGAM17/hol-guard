@@ -165,7 +165,11 @@ fn token_transport_errors_media_and_size_limits_stop_before_userinfo() {
         response(503, "application/json", "{}"),
         redirect(),
         response(200, "text/plain", &token()),
-        response(200, "application/json", &format!("{}{}", token(), " ".repeat(64 * 1024))),
+        response(
+            200,
+            "application/json",
+            &format!("{}{}", token(), " ".repeat(64 * 1024)),
+        ),
         b"invalid HTTP framing\r\n\r\n".to_vec(),
     ] {
         let (agent, wire) = agent(vec![reply]);
@@ -183,7 +187,11 @@ fn userinfo_transport_errors_media_and_size_limits_never_authorize() {
         response(503, "application/json", "{}"),
         redirect(),
         response(200, "text/plain", &userinfo()),
-        response(200, "application/json", &format!("{}{}", userinfo(), " ".repeat(16 * 1024))),
+        response(
+            200,
+            "application/json",
+            &format!("{}{}", userinfo(), " ".repeat(16 * 1024)),
+        ),
         b"invalid HTTP framing\r\n\r\n".to_vec(),
     ] {
         let (agent, wire) = agent(vec![response(200, "application/json", &token()), reply]);

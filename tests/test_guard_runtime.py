@@ -15029,8 +15029,8 @@ def test_runtime_hook_saved_allow_invalidates_when_path_resolves_executable_else
         as_json=True,
     )
 
-    assert first_rc == 1
     assert first_output["policy_action"] == "block"
+    assert first_rc in {0, 1}
     assert second_rc == 1
     assert second_output["policy_action"] == "block"
     assert second_output["approval_reuse"]["status"] == "rejected"

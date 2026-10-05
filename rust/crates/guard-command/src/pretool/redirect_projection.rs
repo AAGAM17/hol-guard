@@ -245,6 +245,11 @@ fn remove_output_redirect(
     }
     let target: String = chars[target_start..index].iter().collect();
     if target == "/dev/null" {
+        // Stderr-to-null is part of the read-only proof. Dropping it makes a
+        // benign pipeline look like an unproven command.
+        if descriptor == "2" {
+            out.push_str("2>/dev/null");
+        }
         out.push(' ');
         return Some(index);
     }
@@ -342,6 +347,21 @@ fn boundary(value: Option<&char>) -> bool {
     value.is_none_or(|value| value.is_whitespace() || matches!(value, ';' | '|' | '&'))
 }
 
+fn posix_temp_file(target: &str) -> bool {
+    let Some(rest) = target
+        .strip_prefix("/tmp/")
+        .or_else(|| target.strip_prefix("/private/tmp/"))
+    else {
+        return false;
+    };
+    !rest.is_empty()
+        && !rest.contains('/')
+        && !rest.contains("..")
+        && rest
+            .chars()
+            .all(|value| value.is_ascii_alphanumeric() || "._-+@%,=".contains(value))
+}
+
 fn safe_output_target(target: &str, context: super::super::PathContext<'_>) -> bool {
     if target.is_empty()
         || target.len() > 4096
@@ -354,6 +374,12 @@ fn safe_output_target(target: &str, context: super::super::PathContext<'_>) -> b
         return false;
     }
     let path = std::path::Path::new(target);
+    // Windows does not treat `/tmp/file` as absolute, so the host path walk
+    // never sees the POSIX temp directory. A single literal temp segment is
+    // still a bounded file write and keeps the review floor.
+    if !path.is_absolute() && posix_temp_file(target) {
+        return true;
+    }
     // Hidden components cover dotfiles, `.git/hooks`, and `.env` targets.
     if path.components().any(|component| match component {
         std::path::Component::Normal(name) => {

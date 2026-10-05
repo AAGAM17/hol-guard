@@ -775,7 +775,7 @@ pub fn evaluate_browser_mcp(
             artifact,
             arguments,
         } => BrowserMcpResultV1::Normalize {
-            intent: normalize(artifact, arguments)?,
+            intent: normalize(artifact, arguments)?.map(Box::new),
         },
         BrowserMcpRequestV1::Display { intent, arguments } => BrowserMcpResultV1::Display {
             target: display(intent, arguments)?,

@@ -503,6 +503,8 @@ class _NativeMcpChildIo:
         if status == "event":
             payload = result.get("payload")
             return _ChildOutputFrame(line=json.dumps(payload) + "\n")
+        if status in {"exited", "eof"}:
+            return _ChildOutputFrame()
         if status == "timeout":
             if required:
                 return _ChildOutputFrame(
@@ -526,7 +528,8 @@ class _NativeChildProcess:
     ``serve``/``run_session`` only touch ``stdin``/``stdout``/teardown; the
     resident owns the real subprocess, so ``stdin``/``stdout`` share one
     ``_NativeMcpChildIo`` transport and lifecycle calls delegate to ``close``.
-    ``returncode`` is ``0`` on clean close and ``-9`` on quarantine/cancel.
+    ``returncode`` is available after the resident reports child exit; clean
+    close returns ``0`` and quarantine/cancel returns ``-9``.
     """
 
     def __init__(self, session_id: str, guard_home: Path) -> None:
@@ -538,6 +541,7 @@ class _NativeChildProcess:
         self.stderr = None
         self._closed = False
         self._cancelled = False
+        self._returncode: int | None = None
 
     def close(self) -> None:
         if self._closed:
@@ -553,15 +557,32 @@ class _NativeChildProcess:
         self.close()
 
     def poll(self) -> int | None:
-        return self.returncode if self._closed else None
+        if self._returncode is not None:
+            return self._returncode
+        if self._cancelled:
+            return -9
+        if self._closed:
+            return 0
+        result = mcp_stdio_session_recv_native(
+            self._session_id,
+            guard_home=self._guard_home,
+            timeout_seconds=1.0,
+            poll_only=True,
+        )
+        if result is not None and result.get("status") == "exited":
+            exit_code = result.get("exit_code")
+            self._returncode = (
+                exit_code if isinstance(exit_code, int) and not isinstance(exit_code, bool) else -1
+            )
+        return self._returncode
 
     def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
         self.close()
         return self.returncode
 
     @property
-    def returncode(self) -> int:
-        return -9 if self._cancelled else 0
+    def returncode(self) -> int | None:
+        return self.poll()
 
 def _canonical_tool_catalog_entry(name: str, definition: Mapping[str, object]) -> dict[str, object]:
     """Normalize internal aliases while retaining every advertised field."""
@@ -973,6 +994,7 @@ class RuntimeMcpGuardProxy:
                 argv,
                 session_id=native_session_id,
                 home_dir=self.context.guard_home,
+                cwd=self.context.workspace_dir,
                 extra_env=child_env,
                 guard_home=self.context.guard_home,
             )

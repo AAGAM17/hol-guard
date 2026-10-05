@@ -131,7 +131,7 @@ pub enum BrowserMcpResultV1 {
         intent: Option<BrowserIntentV1>,
     },
     Normalize {
-        intent: Option<BrowserAutomationIntentV1>,
+        intent: Option<Box<BrowserAutomationIntentV1>>,
     },
     Display {
         target: String,

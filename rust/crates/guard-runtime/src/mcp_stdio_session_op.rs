@@ -18,6 +18,8 @@ use serde_json::Value;
 #[cfg(unix)]
 use std::collections::HashMap;
 #[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
+#[cfg(unix)]
 use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::Child;
@@ -84,6 +86,28 @@ fn err_result(code: &str) -> Result<Vec<u8>, String> {
     encode(r)
 }
 
+#[cfg(unix)]
+fn child_exit_code(child: &mut Child) -> Result<Option<i32>, String> {
+    child
+        .try_wait()
+        .map(|status| {
+            status.map(|status| {
+                status
+                    .code()
+                    .or_else(|| status.signal().map(|signal| -signal))
+                    .unwrap_or(-1)
+            })
+        })
+        .map_err(|_| "mcp_child_status_unavailable".to_owned())
+}
+
+#[cfg(unix)]
+fn exited_result(exit_code: i32) -> Result<Vec<u8>, String> {
+    let mut r = McpStdioSessionResultV1::status("exited");
+    r.exit_code = Some(exit_code);
+    encode(r)
+}
+
 /// `mcp_stdio_session_open` — spawn + register a live session.
 #[cfg(unix)]
 pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec<u8>, String> {
@@ -96,10 +120,16 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
         .as_deref()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
+    let cwd = request
+        .cwd
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
     let spawned = LiveMcpSession::spawn(
         &request.argv,
         request.extra_env.as_ref(),
         home_dir.as_deref(),
+        cwd.as_deref(),
         cancellation,
     );
     let (session, child) = match spawned {
@@ -166,6 +196,13 @@ pub(crate) fn session_recv(request: &McpStdioSessionRecvRequestV1) -> Result<Vec
         Err(_) => return err_result("mcp_session_unavailable"),
     };
     let entry = &mut *guard;
+    if request.poll_only {
+        return match child_exit_code(&mut entry.child) {
+            Ok(Some(exit_code)) => exited_result(exit_code),
+            Ok(None) => encode(McpStdioSessionResultV1::status("running")),
+            Err(code) => err_result(&code),
+        };
+    }
     let timeout = Duration::from_millis(request.timeout_ms.unwrap_or(30_000).min(120_000));
 
     // Awaited correlation: return a buffered match first.
@@ -181,21 +218,23 @@ pub(crate) fn session_recv(request: &McpStdioSessionRecvRequestV1) -> Result<Vec
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let now = std::time::Instant::now();
-        if now >= deadline {
-            let mut r = McpStdioSessionResultV1::status("timeout");
-            r.timed_out = Some(true);
-            return encode(r);
-        }
-        let remaining = deadline - now;
+        let remaining = deadline.saturating_duration_since(now);
         match entry.session.next_event(remaining) {
-            None => {
-                // EOF or per-read timeout: report timeout (caller re-polls or
-                // treats EOF via close/quarantine).
-                let mut r = McpStdioSessionResultV1::status("timeout");
-                r.timed_out = Some(true);
-                return encode(r);
-            }
-            Some(SessionEvent::ChildResponse(payload)) => {
+            Ok(None) => match child_exit_code(&mut entry.child) {
+                Ok(Some(exit_code)) => return exited_result(exit_code),
+                Ok(None) => {
+                    let mut r = McpStdioSessionResultV1::status("timeout");
+                    r.timed_out = Some(true);
+                    return encode(r);
+                }
+                Err(code) => return err_result(&code),
+            },
+            Err(()) => match child_exit_code(&mut entry.child) {
+                Ok(Some(exit_code)) => return exited_result(exit_code),
+                Ok(None) => return encode(McpStdioSessionResultV1::status("eof")),
+                Err(code) => return err_result(&code),
+            },
+            Ok(Some(SessionEvent::ChildResponse(payload))) => {
                 // If awaiting a specific id and this is not it, buffer + keep
                 // draining (out-of-order responses are valid).
                 if let Some(await_id) = request.await_request_id.as_ref() {
@@ -210,13 +249,13 @@ pub(crate) fn session_recv(request: &McpStdioSessionRecvRequestV1) -> Result<Vec
                 r.payload = Some(payload);
                 return encode(r);
             }
-            Some(SessionEvent::ChildRequest(payload)) => {
+            Ok(Some(SessionEvent::ChildRequest(payload))) => {
                 let mut r = McpStdioSessionResultV1::status("event");
                 r.event_kind = Some("child_request".to_owned());
                 r.payload = Some(payload);
                 return encode(r);
             }
-            Some(SessionEvent::ChildNotification(payload)) => {
+            Ok(Some(SessionEvent::ChildNotification(payload))) => {
                 let mut r = McpStdioSessionResultV1::status("event");
                 r.event_kind = Some("child_notification".to_owned());
                 r.payload = Some(payload);
@@ -287,6 +326,7 @@ mod tests {
             argv: argv.iter().map(|s| s.to_string()).collect(),
             extra_env: None,
             home_dir: None,
+            cwd: None,
         }
     }
 
@@ -356,6 +396,7 @@ mod tests {
                 session_id: id.into(),
                 timeout_ms: Some(5000),
                 await_request_id: Some(json!(7)),
+                poll_only: false,
             })
             .unwrap(),
         );
@@ -386,6 +427,7 @@ mod tests {
                 session_id: id.into(),
                 timeout_ms: Some(150),
                 await_request_id: None,
+                poll_only: false,
             })
             .unwrap(),
         );

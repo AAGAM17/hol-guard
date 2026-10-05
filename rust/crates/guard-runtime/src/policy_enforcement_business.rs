@@ -55,6 +55,12 @@ impl CompiledBusinessPolicy {
             action: ActionFloor::Block,
             matched_rule_ids: Vec::new(),
         };
+        // Recognizing a signed declaration must not silently waive it. There
+        // is no durable reservation executor yet, so every business action
+        // under a budget-bearing policy refuses until that owner is integrated.
+        if self.binding.budgets.is_some() {
+            return blocked();
+        }
         let Some(facts) = facts else {
             return blocked();
         };

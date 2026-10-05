@@ -18,8 +18,20 @@ from codex_plugin_scanner.guard.daemon.runtime_hook_deadline import RuntimeHookD
         ("grok", "SessionStart", 3),
     ],
 )
+@pytest.mark.parametrize(
+    ("hints", "expected_remaining"),
+    [
+        ({"guard_remaining_ms": 999000}, None),
+        ({}, 9.75),
+        ({"guard_remaining_ms": 2000}, 1.75),
+        ({"guard_remaining_seconds": 1}, 0.75),
+        ({"guard_remaining_ms": None}, 2.75),
+        ({"guard_remaining_seconds": True}, 2.75),
+        ({"guard_remaining_ms": float("nan")}, 2.75),
+    ],
+)
 def test_server_deadline_includes_elapsed_admission_and_missing_policy_blocks(
-    monkeypatch, harness, event, expected_cap
+    monkeypatch, harness, event, expected_cap, hints, expected_remaining
 ):
     captured = []
     responses = []
@@ -56,12 +68,17 @@ def test_server_deadline_includes_elapsed_admission_and_missing_policy_blocks(
     )
     server._GuardDaemonHandler._handle_runtime_hook(
         handler,
-        {"hook_event_name": event, "prompt": "synthetic", "guard_remaining_ms": 999000},
+        {"hook_event_name": event, "prompt": "synthetic", **hints},
         "",
         default_harness=harness,
     )
     assert caps == [expected_cap]
-    assert captured == [100.0 + expected_cap]
+    expected_deadline = 100.0 + expected_cap
+    if expected_remaining is not None:
+        if not hints and expected_cap != 10:
+            expected_remaining = 2.75
+        expected_deadline = min(expected_deadline, 106.0 + expected_remaining)
+    assert captured == [expected_deadline]
     assert responses == [{"decision": "block", "reason_code": "native_policy_not_ready"}]
 
 

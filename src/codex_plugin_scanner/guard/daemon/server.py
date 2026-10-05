@@ -6433,7 +6433,10 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             admission_seconds,
         )
         params = parse_qs(query)
+        hint_missing = "guard_remaining_seconds" not in payload and "guard_remaining_ms" not in payload
         remaining_hint = _runtime_hook_remaining_hint(payload)
+        if grok_prompt and hint_missing:
+            remaining_hint = admission_seconds
         hinted_deadline = (
             RuntimeHookDeadline.from_remaining_hint(remaining_hint, maximum_budget_seconds=10.0)
             if grok_prompt

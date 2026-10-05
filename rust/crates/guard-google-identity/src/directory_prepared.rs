@@ -8,6 +8,9 @@ use guard_contracts::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+#[path = "directory_dispatch.rs"]
+mod dispatch;
+
 pub struct PreparedGoogleBusinessRequest {
     resolved: ResolvedGoogleWorkerInput,
     prepared: PreparedBusinessInputV1,
@@ -83,10 +86,7 @@ impl ResolvedGoogleWorkerInput {
                 identity_state: BusinessFactStateV1::Known,
                 tool_identity_digest: digest(
                     b"hol-guard.google-owned-api.v1\0",
-                    &[
-                        b"POST",
-                        b"https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-                    ],
+                    &[b"POST", crate::dispatch::GMAIL_SEND_URL.as_bytes()],
                 ),
                 tool_schema_digest: GWS_GMAIL_SEND_SCHEMA_DIGEST.into(),
             },

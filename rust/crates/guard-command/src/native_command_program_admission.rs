@@ -2,62 +2,9 @@
 
 use super::*;
 
-fn reserved_direct_mcp_command(value: &str) -> bool {
-    matches!(
-        value,
-        "bash"
-            | "bun"
-            | "bunx"
-            | "cargo"
-            | "cmd"
-            | "dash"
-            | "deno"
-            | "docker"
-            | "dotnet"
-            | "env"
-            | "fish"
-            | "go"
-            | "java"
-            | "node"
-            | "npm"
-            | "npx"
-            | "perl"
-            | "php"
-            | "pipx"
-            | "pnpm"
-            | "podman"
-            | "powershell"
-            | "pwsh"
-            | "python"
-            | "python3"
-            | "ruby"
-            | "sh"
-            | "uv"
-            | "uvx"
-            | "wsl"
-            | "yarn"
-            | "zsh"
-    )
-}
-
-/// Canonical, portable basename; catalog selection never authenticates a binary.
-pub(super) fn valid_direct_mcp_command(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && ![".exe", ".cmd", ".bat"]
-            .iter()
-            .any(|suffix| value.ends_with(suffix))
-        && (value.as_bytes()[0].is_ascii_lowercase() || value.as_bytes()[0].is_ascii_digit())
-        && !reserved_direct_mcp_command(value)
-        && value.split('.').all(|part| {
-            !part.is_empty()
-                && part.bytes().all(|byte| {
-                    byte.is_ascii_lowercase()
-                        || byte.is_ascii_digit()
-                        || matches!(byte, b'_' | b'-')
-                })
-        })
-}
+#[path = "native_command_program_admission_direct_mcp.rs"]
+mod direct_mcp;
+pub(super) use direct_mcp::valid_direct_mcp_command;
 
 fn valid_mcp_server_name(value: &str) -> bool {
     !value.is_empty()

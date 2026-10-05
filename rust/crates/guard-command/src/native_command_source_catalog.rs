@@ -452,3 +452,26 @@ pub fn compile_addition_with_mcp(
     output.base_program_digest = Some(base_digest);
     admit(output)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXAMPLE_SOURCE: &[u8] =
+        include_bytes!("../tests/fixtures/command-source-example.v1.json");
+    const TRUST_MAP: &[u8] =
+        include_bytes!("../../../../contracts/extensions/trust-class-map.v1.json");
+
+    #[test]
+    fn source_catalog_between_program_and_source_limits_compiles() {
+        let mut source = EXAMPLE_SOURCE.to_vec();
+        source.resize(MAX_PROGRAM_BYTES + 1, b' ');
+        assert!(source.len() > MAX_PROGRAM_BYTES);
+        assert!(source.len() <= MAX_SOURCE_CATALOG_BYTES);
+
+        let output = compile_catalog(&[source.as_slice()], TRUST_MAP)
+            .expect("a valid source catalog above 4 MiB must compile");
+        assert_eq!(output.catalog_projection_kind, "complete");
+    }
+}

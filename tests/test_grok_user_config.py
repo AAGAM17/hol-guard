@@ -36,7 +36,9 @@ hooks = [{type = "command", command = "custom-check"}]
     assert parsed["compat"]["claude"] == {"skills": True, "hooks": False}
     assert parsed["hooks"]["PreToolUse"][0]["matcher"] == "custom_tool"
     assert parsed["hooks"]["PreToolUse"][1]["hooks"][0]["command"] == "guard hook --json"
-    assert set(state["added_hook_events"]) == {"PreToolUse", "UserPromptSubmit", "SessionStart", "SubagentStart"}
+    added_events = state["added_hook_events"]
+    assert isinstance(added_events, list)
+    assert set(added_events) == {"PreToolUse", "UserPromptSubmit", "SessionStart", "SubagentStart"}
     restored = tomllib.loads(remove_user_config_settings(merged, state))
     assert restored["permission"]["deny"] == ["Read(custom-private-file)"]
     assert restored["hooks"]["PreToolUse"] == tomllib.loads(existing)["hooks"]["PreToolUse"]
@@ -192,4 +194,6 @@ def test_missing_ownership_warns_without_deleting_user_settings(
     result = adapter.uninstall(context)
     assert config.read_bytes() == before
     assert not (adapter._hooks_dir(context) / "hol-guard-pretooluse.json").exists()
-    assert any("ownership records are missing" in note for note in result["notes"])
+    notes = result["notes"]
+    assert isinstance(notes, list)
+    assert any(isinstance(note, str) and "ownership records are missing" in note for note in notes)

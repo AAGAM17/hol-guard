@@ -28,6 +28,9 @@ impl GoogleSendCredential {
         // Serialize account revocation/rotation against the bounded HTTP call.
         // Avoid recursively reading this lock through is_current().
         let account_lease = self.account_lease.as_ref().map(|lease| lease.read());
+        // Deliberately retain the guard through the entire bounded HTTP call.
+        // Poisoned leases refuse like revoked/expired leases; never recover an
+        // active value or emit credential-bearing panic diagnostics here.
         let _lease = match account_lease {
             Some(Ok(active)) if *active => Some(active),
             Some(_) => return Err(GoogleDispatchError::Expired),

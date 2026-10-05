@@ -8,6 +8,32 @@ fn input(account: &GoogleSendAccount, body: &str) -> GoogleWorkerInput {
 }
 
 #[test]
+fn poisoned_owner_refuses_inputs_and_replacement_even_after_local_revoke() {
+    let mut account = GoogleSendAccount::new(credential("subject-one")).unwrap();
+    let pending = input(&account, "pending");
+    let active = Arc::clone(&account.active);
+    assert!(std::thread::spawn(move || {
+        let _writer = active.write().unwrap();
+        panic!("synthetic lease poisoning");
+    })
+    .join()
+    .is_err());
+    assert!(!account.is_current() && !pending.is_current());
+    assert_eq!(
+        account
+            .prepare_command(command("sender@work.example", "new"))
+            .err(),
+        Some(GoogleWorkerInputError::Expired)
+    );
+    assert_eq!(
+        account.replace(credential("subject-one")),
+        Err(GoogleSendAccountError::Unavailable)
+    );
+    account.revoke();
+    assert!(!account.is_current());
+}
+
+#[test]
 fn reusable_owner_prepares_distinct_owned_inputs_without_exporting_credentials() {
     let account = GoogleSendAccount::new(credential("subject-one")).unwrap();
     let first = input(&account, "first");

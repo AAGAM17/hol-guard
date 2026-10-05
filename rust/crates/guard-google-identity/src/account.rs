@@ -42,6 +42,8 @@ impl GoogleSendAccount {
     }
 
     pub fn is_current(&self) -> bool {
+        // A poisoned lease is unavailable. Never recover its value into an
+        // admission; revoke() recovers only to force the value to false.
         self.active.read().is_ok_and(|active| *active) && self.credential.is_current()
     }
 
@@ -103,6 +105,8 @@ impl GoogleSendAccount {
         {
             return Err(GoogleSendAccountError::IdentityChanged);
         }
+        // The condition's temporary read guard is already dropped here;
+        // revoke takes a fresh write lock, rather than upgrading that guard.
         let epoch = new_epoch()?;
         self.revoke();
         self.credential = replacement;

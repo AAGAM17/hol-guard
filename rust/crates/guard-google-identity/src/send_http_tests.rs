@@ -11,6 +11,31 @@ fn reply(status: u16, body: &[u8]) -> Reply {
 }
 
 #[test]
+fn poisoned_account_lease_refuses_with_zero_transport_calls() {
+    let mut credential = credential("subject-one");
+    let active = std::sync::Arc::new(std::sync::RwLock::new(true));
+    credential.account_lease = Some(std::sync::Arc::clone(&active));
+    assert!(std::thread::spawn(move || {
+        let _writer = active.write().unwrap();
+        panic!("synthetic lease poisoning");
+    })
+    .join()
+    .is_err());
+    let calls = Cell::new(0);
+    assert!(!credential.is_current());
+    assert_eq!(
+        credential
+            .send_with(b"{}", |_, _, _| {
+                calls.set(calls.get() + 1);
+                None
+            })
+            .err(),
+        Some(GoogleDispatchError::Expired)
+    );
+    assert_eq!(calls.get(), 0);
+}
+
+#[test]
 fn concurrent_account_revocation_waits_for_admitted_transport_and_refuses_pending_input() {
     use crate::oauth::{worker_input_tests::command, GoogleSendAccount};
     use std::sync::{

@@ -15,6 +15,10 @@ local admission revocation, not Google OAuth grant revocation. The fixed send
 transport holds a read lease through its bounded HTTP call; revocation
 waits for an admitted call and then refuses later calls. An admitted HTTP request
 cannot be undone. Network/provider uncertainty still forbids automatic resend.
+Poisoned leases are unavailable for preparation, replacement and transport.
+Local revoke may recover the poisoned value only to force it to false; it never
+restores admission. Transport reports a bounded unavailable/expired error and
+does not log credential-bearing panic context.
 
 Replacing authorization requires a fresh worker-verified credential for the
 same opaque account, tenant and exact verified primary mailbox. Wrong purpose,

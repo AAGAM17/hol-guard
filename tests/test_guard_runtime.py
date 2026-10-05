@@ -4193,6 +4193,34 @@ clearer UX and an implementation plan with technical references.
         assert output["reason_code"] == "native_post_tool_unavailable"
         assert not output.get("approval_requests")
 
+    def test_codex_post_tool_symlink_loop_watch_only_does_not_queue_secret_output(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ) -> None:
+        monkeypatch.setattr(
+            "codex_plugin_scanner.guard.cli.commands_hook_native_pipeline.recording_only_from_acked_snapshot",
+            lambda _store: True,
+        )
+        rc, output = self._run_codex_hook_with_stubbed_edge(
+            monkeypatch,
+            tmp_path,
+            capsys,
+            event={
+                "event": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "rg TOKEN a/file.ts"},
+                "tool_response": {"stdout": "a/file.ts:1:auth_token=canary"},
+                "source_scope": "project",
+            },
+            edge=lambda: RuntimeError("Symlink loop from path"),
+        )
+
+        assert rc == 0
+        assert output["reason_code"] == "native_post_tool_unavailable"
+        assert not output.get("approval_requests")
+
     def test_codex_pre_tool_runtime_error_stays_a_worker_exception(
         self,
         monkeypatch,

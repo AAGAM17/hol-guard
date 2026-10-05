@@ -171,7 +171,7 @@ def run_native_hook_pipeline(
             "harness": args.harness,
             "result": None,
             "receipt": None,
-            "recording_only": False,
+            "recording_only": recording_only_from_acked_snapshot(store),
             "failure_reason_code": "native_post_tool_unavailable",
         }
     edge_result = edge.get("result") if isinstance(edge, Mapping) else None

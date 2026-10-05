@@ -81,7 +81,7 @@ pub fn normalized_tools_catalog_page(entries: &[(String, Value)]) -> Option<Map<
         // serialized — the canonical writer fails on non-finite numbers the
         // same way.
         let mut probe = Vec::with_capacity(128);
-        if write_canonical_json(
+        if write_canonical_json_utf8(
             &canonical_tool_catalog_entry(name, &entry_value),
             &mut probe,
         )

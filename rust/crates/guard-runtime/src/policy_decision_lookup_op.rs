@@ -51,8 +51,9 @@ const APPROVAL_CONTEXT_SQL_PATTERN: &str = "guard-approval-context:v1:%";
 const RUNTIME_SCOPED_EXACT_MATCH_PREFIX: &str = "runtime-exact:";
 const POLICY_BUNDLE_SOURCE: &str = "policy-bundle";
 
-/// `_SCOPED_RUNTIME_EXACT_FAMILIES` (`store_base.py:317`).
-const SCOPED_RUNTIME_EXACT_FAMILIES: [&str; 8] = [
+/// `_SCOPED_HARNESS_FAMILIES` (`store_base.py:305`) — the wider set that
+/// normalizes a scoped artifact identity to `family:<name>` on store/lookup.
+const SCOPED_HARNESS_FAMILIES: [&str; 8] = [
     "file-read",
     "mcp",
     "mcp-tool",
@@ -60,6 +61,15 @@ const SCOPED_RUNTIME_EXACT_FAMILIES: [&str; 8] = [
     "prompt",
     "prompt-env-read",
     "prompt-file",
+    "tool-action",
+];
+/// `_SCOPED_RUNTIME_EXACT_FAMILIES` (`store_base.py:317`) — the narrower set
+/// whose stored rows require an exact-match key.
+const SCOPED_RUNTIME_EXACT_FAMILIES: [&str; 5] = [
+    "file-read",
+    "mcp-tool",
+    "package-request",
+    "prompt",
     "tool-action",
 ];
 
@@ -123,9 +133,21 @@ fn artifact_family_key(artifact_id: Option<&str>) -> Option<String> {
         return None;
     }
     if let Some(rest) = id.strip_prefix("family:") {
-        return Some(format!("family:{rest}"));
+        let family = rest.trim().to_lowercase();
+        return SCOPED_HARNESS_FAMILIES
+            .contains(&family.as_str())
+            .then(|| format!("family:{family}"));
     }
-    let (family, _rest) = id.split_once(':')?;
+    // `_artifact_family_key`: family is the third `:`-separated segment
+    // (`codex:project:<family>:...`), must be a known scoped harness family.
+    let parts: Vec<&str> = id.split(':').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let family = parts[2].trim().to_lowercase();
+    if !SCOPED_HARNESS_FAMILIES.contains(&family.as_str()) {
+        return None;
+    }
     Some(format!("family:{family}"))
 }
 
@@ -1117,7 +1139,7 @@ fn bounded_non_consuming_policy_rows(
                 &[artifact_hash],
                 "idx_policy_decisions_lookup_harness",
                 Some("idx_policy_decisions_lookup_harness_legacy"),
-                false,
+                true,
             ));
         }
         probes.push(SqlProbe {
@@ -1136,7 +1158,7 @@ fn bounded_non_consuming_policy_rows(
                 &[artifact_hash, global_runtime_exact_match_key],
                 "idx_policy_decisions_lookup_global",
                 Some("idx_policy_decisions_lookup_global_legacy"),
-                false,
+                true,
             ));
         }
         probes.push(SqlProbe {

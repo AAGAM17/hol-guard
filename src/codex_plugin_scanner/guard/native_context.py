@@ -45,7 +45,7 @@ _RESULT_OPTIONAL_KEYS = {
     "mcp_launch_environment", "mcp_launch_target", "mcp_safe_arguments",
     "mcp_serialized_arguments", "mcp_redacted_value", "runtime_identity",
     "runtime_identity_match", "runtime_identity_reusable",
-    "runtime_resolved_executable", "runtime_resolved_argv",
+    "runtime_resolved_executable", "runtime_resolved_argv", "tool_catalog",
 }
 _RESULT_CODES = {
     "ok",

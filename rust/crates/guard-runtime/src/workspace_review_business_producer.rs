@@ -190,25 +190,29 @@ fn persist_prepared_review(
             }
             Ok(())
         })();
-        if result.is_err() {
-            remove_created_file(
+        if let Err(original) = result {
+            let request_cleanup = remove_created_file(
                 &request_path,
                 &state_bytes,
                 request_limit,
                 "business_request",
                 &private_root,
-            )?;
-            if existing.is_none() {
+            );
+            let input_cleanup = if existing.is_none() {
                 remove_created_file(
                     &input_path,
                     &private_bytes,
                     MAX_PRIVATE_BYTES,
                     "business_input",
                     &private_root,
-                )?;
-            }
+                )
+            } else {
+                Ok(())
+            };
+            request_cleanup.and(input_cleanup)?;
+            return Err(original);
         }
-        result
+        Ok(())
     })
 }
 

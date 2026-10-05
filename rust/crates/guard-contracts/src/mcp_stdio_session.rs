@@ -22,6 +22,8 @@ pub struct McpStdioSessionOpenRequestV1 {
     /// Resolved launch argv (tokens resolved by the control plane, like the
     /// probe's `mcp_launch_tokens`/`resolve_argv_from_tokens`).
     pub argv: Vec<String>,
+    /// Proxy process whose lifetime owns this session. Required; never inferred from the id.
+    pub owner_pid: u32,
     /// Optional harness/env overlay applied on top of the scrubbed env.
     #[serde(default)]
     pub extra_env: Option<std::collections::BTreeMap<String, String>>,

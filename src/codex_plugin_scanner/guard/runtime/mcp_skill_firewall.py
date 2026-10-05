@@ -58,13 +58,16 @@ def portal_mcp_server_identity(
     publisher: str | None = None,
     install_source: str | None = None,
 ) -> dict[str, object]:
-    return context_mcp_descriptor("mcp_server_descriptor", {
-        "identity": asdict(identity),
-        "config_path": config_path,
-        "args": list(args),
-        "publisher": publisher,
-        "install_source": install_source,
-    })
+    return context_mcp_descriptor(
+        "mcp_server_descriptor",
+        {
+            "identity": asdict(identity),
+            "config_path": config_path,
+            "args": list(args),
+            "publisher": publisher,
+            "install_source": install_source,
+        },
+    )
 
 
 def _portal_mcp_server_identity_from_parts(
@@ -99,11 +102,14 @@ def portal_mcp_tool_identity(
     schema: object | None = None,
     description: str | None = None,
 ) -> dict[str, object]:
-    return context_mcp_descriptor("mcp_tool_descriptor", {
-        "identity": asdict(identity),
-        "schema": schema,
-        "description": description,
-    })
+    return context_mcp_descriptor(
+        "mcp_tool_descriptor",
+        {
+            "identity": asdict(identity),
+            "schema": schema,
+            "description": description,
+        },
+    )
 
 
 def skill_identity_metadata(

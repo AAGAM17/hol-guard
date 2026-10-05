@@ -38,18 +38,20 @@ os.environ.pop("HOL_GUARD_TEST_ALLOW_BROWSER_OPEN", None)
 
 
 @pytest.fixture(autouse=True)
-def _default_unit_tests_to_python_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep legacy unit fixtures off the production native default.
+def _default_unit_test_native_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use the compiled authority in native regression jobs.
 
-    Production default remains ``auto``. Native-authority tests monkeypatch
-    ``native_mode`` or delete this variable themselves. There is no Python
-    semantic evaluator; ``off`` exercises the fail-safe surface.
+    A caller's explicit mode is preserved, including deliberate unavailable
+    runtime tests. Regression CI supplies an exact native binary; defaulting
+    those jobs to ``off`` would disable the implementation they must test.
+    Ordinary isolated unit runs retain the explicit fail-safe surface.
     """
 
     monkeypatch.setenv("HOL_GUARD_TEST_MODE", "1")
     monkeypatch.setenv("HOL_GUARD_NATIVE_DIAGNOSTIC", "1")
     if "HOL_GUARD_NATIVE" not in os.environ:
-        monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
+        mode = "force" if os.environ.get("HOL_GUARD_NATIVE_REGRESSION") == "1" else "off"
+        monkeypatch.setenv("HOL_GUARD_NATIVE", mode)
 
 
 class _GuardCommandsProxy:
@@ -201,8 +203,11 @@ def native_mcp_probe(
     from codex_plugin_scanner.guard import config
 
     monkeypatch.setattr(config, "resolve_guard_home", lambda: _native_context_home)
-    from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
+    from codex_plugin_scanner.guard.native_policy_snapshot_publisher import (
+        provision_native_verifier_key_for_store,
+    )
     from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+    from codex_plugin_scanner.guard.store import GuardStore
 
     homes: list[Path] = []
 
@@ -210,10 +215,11 @@ def native_mcp_probe(
         key_dir = home / "native-runtime"
         key_dir.mkdir(mode=0o700, exist_ok=True)
         key_dir.chmod(0o700)
-        key = key_dir / "key"
-        key.write_bytes(os.urandom(32))
-        key.chmod(0o600)
-        provision_native_policy_verifier_key(home, b"\x07" * 32)
+        # Provision the resident with this home's own GuardStore verifier
+        # key, not an unrelated constant.  Approvals and policy decisions in
+        # these tests are signed with the store's real key; keying the
+        # resident with anything else makes authentic approvals unverifiable.
+        provision_native_verifier_key_for_store(GuardStore(home))
         homes.append(home)
 
     yield provision_home

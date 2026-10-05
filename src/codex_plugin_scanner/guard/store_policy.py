@@ -1507,14 +1507,35 @@ class StorePolicyMixin:
         # mutates `sync_state` and may mint a key (generation advance), so it stays
         # on the Python side; the resulting snapshot is shipped to Rust.
         with self._connect() as connection:
-            integrity_state = self._refresh_policy_integrity_state(
-                connection,
-                now=current_time,
-                create_key=True,
-            ) or {}
+            has_local_policy = (
+                connection.execute(
+                    f"select 1 from policy_decisions where source not in {_REMOTE_POLICY_SOURCE_PLACEHOLDERS} limit 1",
+                    _REMOTE_POLICY_SOURCE_PARAMS,
+                ).fetchone()
+                is not None
+            )
+            integrity_state = (
+                self._refresh_policy_integrity_state(
+                    connection,
+                    now=current_time,
+                    create_key=True,
+                )
+                or {}
+                if has_local_policy
+                else {}
+            )
 
-        integrity_key, integrity_key_id = self._policy_integrity_secret_material(create=True)
-        local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
+        # Resident startup needs the same verifier authority even when only
+        # remote policy rows (or no policy rows) exist. Procuring that key does
+        # not refresh, sign, or promote remote policy into local authority.
+        resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
+        if has_local_policy:
+            integrity_key, integrity_key_id = resident_key, resident_key_id
+        else:
+            integrity_key, integrity_key_id = None, None
+        # Local-once approvals live in a separate table from policy_decisions.
+        # Their integrity evidence must not depend on has_local_policy.
+        local_once_key, local_once_key_id = resident_key, resident_key_id
 
         # The resident refuses to serve until the owner-private verifier key
         # exists under this guard home (consume_for_spawn gate). Publishers
@@ -1522,8 +1543,8 @@ class StorePolicyMixin:
         # the same prerequisite or every request fails closed on
         # native_policy_verifier_key_missing. Provisioning is O_EXCL +
         # never-replace, so it is idempotent and safe to run per lookup.
-        if integrity_key is not None:
-            provision_native_policy_verifier_key(Path(self.guard_home), integrity_key)
+        if resident_key is not None:
+            provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
 
         request: dict[str, object] = {
             "schema": "guard-policy-decision-lookup-request.v1",
@@ -1566,6 +1587,7 @@ class StorePolicyMixin:
             guard_home=self.guard_home,
             timeout_seconds=10.0,
             required_feature=POLICY_DECISION_LOOKUP_FEATURE,
+            response_schema="guard-policy-decision-lookup-result.v1",
         )
         if response is None:
             raise ValueError("native_policy_decision_lookup_unavailable")
@@ -1576,9 +1598,7 @@ class StorePolicyMixin:
             raw = response.get("code", response.get("payload"))
             code = raw if isinstance(raw, str) and raw else "failed"
             raise ValueError(
-                code
-                if code.startswith("native_policy_decision_lookup_")
-                else f"native_policy_decision_lookup_{code}"
+                code if code.startswith("native_policy_decision_lookup_") else f"native_policy_decision_lookup_{code}"
             )
         return cast("PolicyDecisionLookupResult", response["payload"])
 

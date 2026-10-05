@@ -253,7 +253,10 @@ class NativePackageAdvisoryAuthorityError(RuntimeError):
 
 
 def package_advisory_ids_native(
-    *, artifact: Mapping[str, object], store_path: Path, guard_home: Path,
+    *,
+    artifact: Mapping[str, object],
+    store_path: Path,
+    guard_home: Path,
 ) -> tuple[str, ...]:
     request: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
@@ -262,9 +265,12 @@ def package_advisory_ids_native(
         "guard_home": str(guard_home),
         "artifact": dict(artifact),
     }
-    request_digest = "sha256:" + hashlib.sha256(
-        json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-    ).hexdigest()
+    request_digest = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+    )
     response = _resident_request(
         operation="package_advisory_ids",
         request=request,

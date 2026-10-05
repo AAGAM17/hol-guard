@@ -325,7 +325,9 @@ def build_tool_call_hash(
         "source_scope": artifact.source_scope,
         "transport": artifact.transport,
         "arguments": arguments,
-        "config": None if config is None else {
+        "config": None
+        if config is None
+        else {
             **_tool_call_configuration(config),
             "managed_policy_hash": config.managed_policy_hash,
             "managed_policy_status": config.managed_policy_status,
@@ -335,9 +337,7 @@ def build_tool_call_hash(
     }
     if config is not None:
         request["extension_control_digest"] = current_extension_control_binding_digest()
-    token_or_digest, _risk_categories = context_mcp_tool_approval_hash(
-        request, expect_token=config is not None
-    )
+    token_or_digest, _risk_categories = context_mcp_tool_approval_hash(request, expect_token=config is not None)
     return token_or_digest
 
 
@@ -346,9 +346,17 @@ def _tool_call_configuration(config: GuardConfig) -> dict[str, object]:
     return {
         field: getattr(config, field)
         for field in (
-            "mode", "default_action", "artifact_actions", "publisher_actions", "harness_actions",
-            "risk_actions", "harness_risk_actions", "security_level", "protection_posture",
-            "protection_posture_explicit", "managed_locked_settings",
+            "mode",
+            "default_action",
+            "artifact_actions",
+            "publisher_actions",
+            "harness_actions",
+            "risk_actions",
+            "harness_risk_actions",
+            "security_level",
+            "protection_posture",
+            "protection_posture_explicit",
+            "managed_locked_settings",
         )
     }
 
@@ -679,8 +687,6 @@ def _evaluate_current_tool_call(
     )
 
 
-
-
 def _tool_call_decision_with_reuse(
     current: ToolCallDecision,
     reuse: ApprovalReuseDecision,
@@ -725,14 +731,14 @@ def _tool_call_decision_with_reuse(
     )
 
 
-
-
 def tool_call_risk_signals(artifact: GuardArtifact, arguments: object) -> tuple[str, ...]:
     return _risk_signals_from_categories(artifact, arguments, tool_call_risk_categories(artifact, arguments))
 
 
 def _risk_signals_from_categories(
-    artifact: GuardArtifact, arguments: object, categories: tuple[str, ...],
+    artifact: GuardArtifact,
+    arguments: object,
+    categories: tuple[str, ...],
 ) -> tuple[str, ...]:
     browser_intent = normalize_browser_mcp_intent(artifact, arguments)
     signals_by_category: dict[str, str] = {
@@ -769,8 +775,6 @@ def tool_call_risk_categories(artifact: GuardArtifact, arguments: object) -> tup
         {"name": artifact.name, "command": artifact.command, "metadata": dict(artifact.metadata)},
         arguments,
     )
-
-
 
 
 def tool_call_risk_summary(artifact: GuardArtifact, arguments: object) -> str:
@@ -962,5 +966,3 @@ def block_tool_call(
 
 
 _dedupe = dedupe_preserving_order
-
-

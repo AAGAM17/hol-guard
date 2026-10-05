@@ -90,12 +90,9 @@ fn acknowledgement(reply: Reply) -> Option<Acknowledgement> {
         return None;
     }
     let message: Message = serde_json::from_slice(&reply.bytes).ok()?;
-    let valid = |s: &str| {
-        !s.is_empty()
-            && s.len() <= 256
-            && s.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-    };
+    // Provider IDs are opaque strings, not a client-defined alphabet. They are
+    // only fingerprinted, never interpolated into URLs, headers or diagnostics.
+    let valid = |s: &str| !s.is_empty() && s.len() <= 256;
     if !valid(&message.id) || !valid(&message.thread_id) {
         return None;
     }

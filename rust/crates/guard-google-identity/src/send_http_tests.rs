@@ -98,3 +98,17 @@ fn malformed_duplicate_extra_and_oversized_acknowledgements_never_confirm() {
     wrong_type.json = false;
     assert!(acknowledgement(wrong_type).is_none());
 }
+
+#[test]
+fn opaque_provider_ids_do_not_lose_a_valid_acknowledgement() {
+    let ack = acknowledgement(reply(
+        200,
+        "{\"id\":\"opaque.id:+/α\",\"threadId\":\"thread.with:punctuation/+\"}".as_bytes(),
+    ))
+    .unwrap();
+    assert_eq!(ack.id.as_str(), "opaque.id:+/α");
+    assert_eq!(ack.thread_id.as_str(), "thread.with:punctuation/+");
+    let oversized =
+        serde_json::to_vec(&serde_json::json!({"id":"x".repeat(257),"threadId":"thread"})).unwrap();
+    assert!(acknowledgement(reply(200, &oversized)).is_none());
+}

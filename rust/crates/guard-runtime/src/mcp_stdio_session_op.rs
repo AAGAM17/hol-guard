@@ -139,12 +139,6 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
         Ok(v) => v,
         Err(code) => return err_result(&code),
     };
-    // Reap entries whose child already exited: a proxy that died without
-    // `session_close` leaves live registrations that otherwise count toward
-    // MAX_SESSIONS forever and orphan the server process group. try_lock so a
-    // session mid-recv isn't stalled by the sweep; a contended entry is in
-    // use and stays.
-    let mut reaped: Vec<Arc<Mutex<SessionEntry>>> = Vec::new();
     let mut registry = match sessions() {
         Ok(g) => g,
         Err(code) => {
@@ -154,24 +148,8 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
             return err_result(&code);
         }
     };
-    registry.retain(|_, arc| match arc.try_lock() {
-        Ok(mut guard) => match guard.child.try_wait() {
-            Ok(Some(_)) => {
-                reaped.push(arc.clone());
-                false
-            }
-            _ => true,
-        },
-        _ => true,
-    });
     if registry.contains_key(&request.session_id) {
         drop(registry);
-        for arc in reaped {
-            if let Ok(mut guard) = arc.lock() {
-                let SessionEntry { session, child } = &mut *guard;
-                session.close(child);
-            }
-        }
         let mut s = session;
         let mut c = child;
         s.close(&mut c);
@@ -179,12 +157,6 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
     }
     if registry.len() >= MAX_SESSIONS {
         drop(registry);
-        for arc in reaped {
-            if let Ok(mut guard) = arc.lock() {
-                let SessionEntry { session, child } = &mut *guard;
-                session.close(child);
-            }
-        }
         let mut s = session;
         let mut c = child;
         s.close(&mut c);
@@ -195,12 +167,6 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
         Arc::new(Mutex::new(SessionEntry { session, child })),
     );
     drop(registry);
-    for arc in reaped {
-        if let Ok(mut guard) = arc.lock() {
-            let SessionEntry { session, child } = &mut *guard;
-            session.close(child);
-        }
-    }
     let mut r = McpStdioSessionResultV1::status("opened");
     r.payload = Some(Value::String(request.session_id.clone()));
     encode(r)

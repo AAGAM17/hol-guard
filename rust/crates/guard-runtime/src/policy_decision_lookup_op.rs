@@ -1705,8 +1705,8 @@ fn lookup_result(
     starting_revision: i64,
 ) -> Value {
     let stable_revision = match approval_authority_revision(conn) {
-        Ok(revision) if revision >= starting_revision => revision,
-        _ => starting_revision.saturating_sub(1),
+        Ok(revision) if revision == starting_revision => starting_revision,
+        _ => -1,
     };
     let mut decision = decision;
     if let (Some(Value::Object(ref mut m)), false) = (&mut decision, consume_one_shot) {

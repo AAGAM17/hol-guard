@@ -322,6 +322,7 @@ def _short_option_shape(
     for index, character in enumerate(argument[1:], start=1):
         short_option = f"-{character}"
         if short_option in options_with_values:
+            flags.add(short_option)
             advance = 1 if index + 1 < len(argument) else 2
             assignments = frozenset((flag, True) for flag in flags)
             transitions.add(_OptionTransition(advance, assignments))

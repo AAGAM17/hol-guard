@@ -401,6 +401,13 @@ impl LiveMcpSession {
     pub fn is_closed(&self) -> bool {
         self.closed
     }
+
+    /// True once the drain pump has exited and the inbox is empty —
+    /// `try_recv` reports `Disconnected`, not merely `Empty`. Used to reap a
+    /// dead session without discarding undelivered frames still in flight.
+    pub fn is_drained_and_idle(&self) -> bool {
+        !self.closed && matches!(self.inbox.try_recv(), Err(mpsc::TryRecvError::Disconnected))
+    }
 }
 
 #[cfg(test)]

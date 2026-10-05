@@ -15,7 +15,8 @@ fi
 export CARGO_TARGET_DIR="$repo_root/rust/target/native-coverage"
 # cargo-llvm-cov documents show-env for external tests that execute cargo-built binaries.
 # Use the same instrumentation contract here and in Sonar's final report job.
-source <(cargo +"$toolchain" llvm-cov show-env --export-prefix)
+coverage_env="$(cargo +"$toolchain" llvm-cov show-env --export-prefix)"
+eval "$coverage_env"
 cargo +"$toolchain" llvm-cov clean --workspace
 cargo +"$toolchain" build --locked --release     -p guard-command -p hol-guard-runtime     --bin guard-command-source --bin hol-guard-runtime
 

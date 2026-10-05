@@ -31,33 +31,10 @@ _ALLOWED_ICON_NAMES: Final = frozenset(
 )
 _ALLOWED_LAUNCHERS: Final = frozenset({"bunx", "npx", "npm", "pnpm", "uvx", "yarn", "pipx"})
 _DIRECT_COMMAND_RESERVED: Final = _ALLOWED_LAUNCHERS | frozenset(
-    {
-        "bash",
-        "bun",
-        "cargo",
-        "cmd",
-        "dash",
-        "deno",
-        "docker",
-        "dotnet",
-        "env",
-        "fish",
-        "go",
-        "java",
-        "node",
-        "perl",
-        "php",
-        "podman",
-        "powershell",
-        "pwsh",
-        "python",
-        "python3",
-        "ruby",
-        "sh",
-        "uv",
-        "wsl",
-        "zsh",
-    }
+    (
+        "bash bun cargo cmd dash deno docker dotnet env fish go java node perl php podman "
+        "powershell pwsh python python3 ruby sh uv wsl zsh"
+    ).split()
 )
 _DIRECT_COMMAND: Final = re.compile(r"[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9_-]+)*", re.ASCII)
 _TOOL_STATES: Final = frozenset({"inherit", "allow", "review", "block"})

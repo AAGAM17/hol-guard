@@ -397,7 +397,9 @@ def try_daemon_hook(
     token = (_token_loader or _read_daemon_auth_token)(guard_home)
     if token is None or time.monotonic() >= deadline:
         return None
-    timeout = min(float(timeout_seconds) * 0.5, _DAEMON_TIMEOUT_BUDGET_SECONDS)
+    event_name = _event_name(input_text)
+    grok_prompt = harness.strip().lower().replace("_", "-") == "grok" and event_name == "UserPromptSubmit"
+    timeout = min(float(timeout_seconds) * 0.5, 10.0 if grok_prompt else _DAEMON_TIMEOUT_BUDGET_SECONDS)
     if grok_observe_event(harness, _event_name(input_text)):
         timeout = min(timeout, 1.0)
     transport_deadline = min(deadline, time.monotonic() + timeout)
@@ -410,8 +412,7 @@ def try_daemon_hook(
             opener.add_handler(deadline_http_handler(transport_deadline))
     except (OSError, urllib.error.URLError, TimeoutError, ValueError):
         return None
-    event_name = _event_name(input_text)
-    if harness.strip().lower().replace("_", "-") == "grok" and event_name == "UserPromptSubmit":
+    if grok_prompt:
         prepared_input = prepare_grok_prompt(
             endpoint,
             token,

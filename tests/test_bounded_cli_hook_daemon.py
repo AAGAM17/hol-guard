@@ -53,7 +53,8 @@ def test_frozen_grok_transport_budget_and_failure(tmp_path: Path, event: str) ->
     assert result is None
     payload, code = failure_payload(harness="grok", event_name=event, reason="unavailable", recording_only=False)
     if event in {"PreToolUse", "UserPromptSubmit"}:
-        assert 4 < captured[0] <= 5
+        cap = 10 if event == "UserPromptSubmit" else 5
+        assert cap - 1 < captured[0] <= cap
         assert payload["decision"] == ("block" if event == "UserPromptSubmit" else "deny")
     else:
         assert 0 < captured[0] <= 1

@@ -43,7 +43,7 @@ def test_prompt_prepares_workspace_and_preserves_native_block(
             clock[0] += 2.0
             return READY
         assert body["prompt"] == "synthetic prompt"
-        assert body["guard_remaining_ms"] == 3000
+        assert body["guard_remaining_ms"] == 8000
         assert "guard_remaining_seconds" not in body
         return {"decision": "block", "policy_action": "block", "reason": "native block"}
 
@@ -63,7 +63,7 @@ def test_prompt_prepares_workspace_and_preserves_native_block(
     stdout, _, status = result
     assert status != 0
     assert json.loads(stdout)["policy_action"] == "block"
-    assert [call[1] for call in calls] == [5.0, 3.0]
+    assert [call[1] for call in calls] == [10.0, 8.0]
 
 
 @pytest.mark.parametrize(
@@ -125,12 +125,40 @@ def test_spent_readiness_budget_does_not_start_semantic_review(tmp_path: Path, m
 
     def transport(url, *_args, **_kwargs):
         calls.append(url)
-        clock[0] = 15.0
+        clock[0] = 20.0
         return READY
 
     monkeypatch.setattr(module, "_http_json", transport)
     assert module._post_hook(json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path)})) is None
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("outer_seconds,preparation_seconds,remaining", [(4.0, 2.0, 2.0), (15.0, 8.0, 2.0)])
+def test_cold_preparation_preserves_outer_deadline_and_requires_native_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outer_seconds: float, preparation_seconds: float, remaining: float
+) -> None:
+    module = _load_script(tmp_path, harness="grok", timeout_seconds=85)
+    clock = [10.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(module, "_HOOK_DEADLINE_MONOTONIC", clock[0] + outer_seconds)
+    monkeypatch.setattr(module, "_daemon_auth", lambda: ("127.0.0.1", 9, "fixture"))
+    calls = []
+
+    def transport(url, _token, *, data, timeout):
+        calls.append(timeout)
+        if url.endswith("/readiness"):
+            assert timeout == min(10.0, outer_seconds)
+            clock[0] += preparation_seconds
+            return READY
+        assert timeout == remaining
+        assert json.loads(data)["guard_remaining_ms"] == int(remaining * 1000)
+        return {"decision": "block", "policy_action": "block", "reason": "native block"}
+
+    monkeypatch.setattr(module, "_http_json", transport)
+    result = module._post_hook(json.dumps({"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path)}))
+    assert result is not None
+    assert json.loads(result[0])["policy_action"] == "block"
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize("event,timeout", [("SessionStart", 1.0), ("PreToolUse", 5.0)])
@@ -162,12 +190,12 @@ def test_python_bridge_prepares_workspace_with_one_budget_and_preserves_block(
 
     def transport(endpoint, token, data, *, deadline, **_kwargs):
         assert token == "fixture"
-        assert deadline == 15.0
+        assert deadline == 20.0
         calls.append((endpoint, json.loads(data)))
         if endpoint.endswith("/readiness"):
             clock[0] += 2.0
             return READY
-        assert calls[-1][1]["guard_remaining_ms"] == 3000
+        assert calls[-1][1]["guard_remaining_ms"] == 8000
         assert "guard_remaining_seconds" not in calls[-1][1]
         return {"decision": "block", "policy_action": "block", "reason": "native block"}
 

@@ -4,8 +4,6 @@
 use super::{GoogleSendCredential, GrantPurpose};
 use crate::directory::DirectoryError;
 use std::io::Read;
-use std::sync::OnceLock;
-use std::time::Duration;
 use zeroize::Zeroizing;
 
 impl GoogleSendCredential {
@@ -22,18 +20,7 @@ impl GoogleSendCredential {
         let encoded: String =
             oauth2::url::form_urlencoded::byte_serialize(address.as_bytes()).collect();
         let uri = format!("https://admin.googleapis.com/admin/directory/v1/users/{encoded}?projection=basic&viewType=admin_view&fields=kind,id,primaryEmail,customerId,suspended,archived,aliases,nonEditableAliases,etag");
-        static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-        let agent = AGENT.get_or_init(|| {
-            ureq::Agent::config_builder()
-                .https_only(true)
-                .proxy(None)
-                .max_redirects(0)
-                .max_response_header_size(16 * 1024)
-                .timeout_global(Some(Duration::from_secs(5)))
-                .http_status_as_error(false)
-                .build()
-                .into()
-        });
+        let agent = super::token_agent();
         let authorization = Zeroizing::new(format!("Bearer {}", self.access_token.as_str()));
         let mut response = agent
             .get(&uri)

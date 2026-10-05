@@ -3,6 +3,61 @@ use super::*;
 use guard_policy_snapshot::{integrity_mac, policy_digest};
 
 #[test]
+fn expiry_after_persistence_removes_new_files_and_preserves_shared_input() {
+    let fixture = Fixture::new("business-producer-rollback");
+    let prepared = prepare(input(b"shared-private-body", &[])).unwrap();
+    let fail_after_writes = || {
+        let calls = std::cell::Cell::new(0);
+        move || {
+            calls.set(calls.get() + 1);
+            calls.get() < 3
+        }
+    };
+    assert_eq!(
+        persist_prepared_review(
+            &fixture.store,
+            "business-failed",
+            &prepared,
+            fail_after_writes()
+        )
+        .unwrap_err(),
+        "native_business_resolution_expired"
+    );
+    let requests = fixture.root.join("workspace-review-requests");
+    let inputs = fixture.root.join(DIRECTORY);
+    assert!(!requests.join("business-failed.json").exists());
+    assert_eq!(std::fs::read_dir(&inputs).unwrap().count(), 0);
+    persist_prepared_review(&fixture.store, "business-kept", &prepared, || true).unwrap();
+    let kept = std::fs::read(requests.join("business-kept.json")).unwrap();
+    assert_eq!(std::fs::read_dir(&inputs).unwrap().count(), 1);
+    assert!(persist_prepared_review(
+        &fixture.store,
+        "business-other",
+        &prepared,
+        fail_after_writes()
+    )
+    .is_err());
+    assert!(!requests.join("business-other.json").exists());
+    assert_eq!(std::fs::read_dir(&inputs).unwrap().count(), 1);
+    assert_eq!(
+        std::fs::read(requests.join("business-kept.json")).unwrap(),
+        kept
+    );
+    assert!(
+        super::super::super::workspace_review_request::load(&fixture.store, "business-kept")
+            .is_ok()
+    );
+    assert_eq!(
+        persist_prepared_review(&fixture.store, "business-kept", &prepared, || true).unwrap_err(),
+        "native_business_request_exists"
+    );
+    assert_eq!(
+        std::fs::read(requests.join("business-kept.json")).unwrap(),
+        kept
+    );
+}
+
+#[test]
 fn native_producer_materializes_authenticated_frozen_snapshot_without_exporting_body() {
     let fixture = Fixture::new("business-producer-owned");
     let value = input(b"private-source-body", &[]);

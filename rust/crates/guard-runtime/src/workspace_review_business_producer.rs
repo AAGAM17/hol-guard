@@ -19,6 +19,8 @@ impl OwnedGoogleBusinessReview {
     }
     /// Refresh provider evidence before claiming. Changed provider revisions
     /// cannot be silently substituted for the immutable reviewed request.
+    /// Expiry after consumption spends the approval without permitting dispatch;
+    /// callers must prepare and approve a new request rather than retry it.
     pub(crate) fn claim(
         self,
         store: &super::super::PolicySnapshotStore,
@@ -37,8 +39,11 @@ impl OwnedGoogleBusinessReview {
             &self.request_id,
             decision,
         )?;
-        if owned.binding() != binding || !refreshed.is_current() {
+        if owned.binding() != binding {
             return Err("native_business_claim_input_changed".into());
+        }
+        if !refreshed.is_current() {
+            return Err("native_business_claim_expired_after_consume".into());
         }
         Ok((refreshed, owned))
     }
@@ -129,33 +134,102 @@ fn persist_prepared_review(
         if !current() {
             return Err("native_business_resolution_expired".into());
         }
-        super::super::policy_store_persistence::persist_private_bytes(
-            &directory.join(format!("{}.json", context.snapshot_digest)),
-            &private_bytes,
+        let input_path = directory.join(format!("{}.json", context.snapshot_digest));
+        let request_path = requests.join(format!("{request_id}.json"));
+        let request_limit = 4 * guard_contracts::NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES as u64;
+        let read = super::super::policy_store_persistence::read_private_json;
+        if read(
+            &request_path,
+            request_limit,
+            "business_request",
+            &private_root,
+        )?
+        .is_some()
+        {
+            return Err("native_business_request_exists".into());
+        }
+        let existing = read(
+            &input_path,
             MAX_PRIVATE_BYTES,
             "business_input",
             &private_root,
         )?;
-        super::super::policy_store_persistence::persist_private_bytes(
-            &requests.join(format!("{request_id}.json")),
-            &state_bytes,
-            4 * guard_contracts::NATIVE_WORKSPACE_REVIEW_MAX_DECISION_BYTES as u64,
-            "business_request",
-            &private_root,
-        )?;
-        if !current() {
-            return Err("native_business_resolution_expired".into());
-        }
-        let loaded = super::super::workspace_review_request::load(store, request_id)?;
-        if loaded
-            .business_input
+        if existing
             .as_ref()
-            .is_none_or(|loaded| loaded.binding() != prepared.binding())
+            .is_some_and(|(_, bytes)| bytes != &private_bytes)
         {
             return Err("native_business_snapshot_changed".into());
         }
-        Ok(())
+        let result = (|| {
+            if existing.is_none() {
+                super::super::policy_store_persistence::persist_private_bytes(
+                    &input_path,
+                    &private_bytes,
+                    MAX_PRIVATE_BYTES,
+                    "business_input",
+                    &private_root,
+                )?;
+            }
+            super::super::policy_store_persistence::persist_private_bytes(
+                &request_path,
+                &state_bytes,
+                request_limit,
+                "business_request",
+                &private_root,
+            )?;
+            if !current() {
+                return Err("native_business_resolution_expired".into());
+            }
+            let loaded = super::super::workspace_review_request::load(store, request_id)?;
+            if loaded
+                .business_input
+                .as_ref()
+                .is_none_or(|loaded| loaded.binding() != prepared.binding())
+            {
+                return Err("native_business_snapshot_changed".into());
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            remove_created_file(
+                &request_path,
+                &state_bytes,
+                request_limit,
+                "business_request",
+                &private_root,
+            )?;
+            if existing.is_none() {
+                remove_created_file(
+                    &input_path,
+                    &private_bytes,
+                    MAX_PRIVATE_BYTES,
+                    "business_input",
+                    &private_root,
+                )?;
+            }
+        }
+        result
     })
+}
+
+// Called under the transition lock, only for paths absent before preparation.
+// Validate private-file protections and ownership before removing our bytes.
+fn remove_created_file(
+    path: &std::path::Path,
+    expected: &[u8],
+    limit: u64,
+    kind: &str,
+    root: &std::path::Path,
+) -> Result<(), String> {
+    let Some((_, bytes)) =
+        super::super::policy_store_persistence::read_private_json(path, limit, kind, root)?
+    else {
+        return Ok(());
+    };
+    if bytes != expected {
+        return Err("native_business_rollback_input_changed".into());
+    }
+    std::fs::remove_file(path).map_err(|_| "native_business_rollback_failed".into())
 }
 
 #[cfg(test)]

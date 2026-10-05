@@ -67,7 +67,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert payload["env"]["CI_PYTHON_VERSION"] == "3.12.14"
     assert "test-plan" not in jobs
     assert "tests" not in jobs
-    assert jobs["coverage-plan"]["needs"] == "native-command-evaluators"
+    assert jobs["coverage-plan"]["needs"] == ["plan", "native-command-evaluators"]
     for name in ("coverage-plan", "compatibility", "cisco-full", "cross-platform", "windows-updater"):
         needs = jobs[name]["needs"]
         assert "native-command-evaluators" in (needs if isinstance(needs, list) else [needs])
@@ -101,7 +101,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     ):
         plan_job = jobs[planner]
         execution_job = jobs[executor]
-        assert set(execution_job["needs"]) == {planner, "native-command-evaluators"}
+        assert set(execution_job["needs"]) == {planner, "plan", "native-command-evaluators"}
         assert execution_job["strategy"]["matrix"]["shard-index"] == list(range(count))
         for job in (plan_job, execution_job):
             setup = next(step for step in job["steps"] if step.get("uses") == "./.github/actions/setup-ci-python")

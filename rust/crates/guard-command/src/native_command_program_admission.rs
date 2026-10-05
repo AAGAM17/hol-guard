@@ -4,7 +4,10 @@ use super::*;
 
 #[path = "native_command_program_admission_direct_mcp.rs"]
 mod direct_mcp;
-pub(super) use direct_mcp::valid_direct_mcp_command;
+
+pub(super) fn valid_direct_mcp_command(value: &str) -> bool {
+    direct_mcp::valid_direct_mcp_command(value)
+}
 
 fn valid_mcp_server_name(value: &str) -> bool {
     !value.is_empty()

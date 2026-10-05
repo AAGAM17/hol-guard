@@ -63,6 +63,7 @@ pub mod launch_identity_environment;
 pub mod mcp_arguments;
 pub mod mcp_launch_environment;
 pub mod mcp_tool_approval;
+pub mod mcp_tool_catalog;
 pub mod mcp_tool_policy;
 pub mod mcp_tool_risk;
 pub mod native_command_catalog;

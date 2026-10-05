@@ -243,6 +243,12 @@ fn build_context_token_fields(
 /// First-difference validation over two opaque tokens; malformed input fails
 /// closed as changed content, matching the legacy contract exactly.
 fn validate_context_tokens(saved: &Value, current: &Value) -> Option<String> {
+    // Identical opaque tokens (including the `guard-context-unbound:*`
+    // sentinel, which `parse_context_token` rejects below but which Python
+    // compares byte-equal) are by definition unchanged — no context lost.
+    if saved == current {
+        return None;
+    }
     let saved = parse_context_token(saved);
     let current = parse_context_token(current);
     let (Some(saved), Some(current)) = (saved, current) else {
@@ -734,6 +740,16 @@ fn evaluate_request(
             result.runtime_resolved_argv =
                 guard_command::launch_identity::resolved_runtime_launch_argv(identity, args);
         }
+        ContextDigestKindV1::McpToolCatalogFingerprint {
+            entries,
+            state,
+            version,
+        } => {
+            let (digest, canonical) =
+                guard_command::mcp_tool_catalog::tool_catalog_fingerprint(entries, state, version);
+            result.digest = digest;
+            result.tool_catalog = canonical;
+        }
     }
     Ok(())
 }
@@ -801,6 +817,7 @@ pub(crate) fn evaluate_context_digest_request(
         runtime_identity_reusable: None,
         runtime_resolved_executable: None,
         runtime_resolved_argv: None,
+        tool_catalog: None,
     };
     if let Err(code) = evaluate_request(request, &mut result) {
         result.status = "error".to_owned();

@@ -346,6 +346,21 @@ pub enum ContextDigestKindV1 {
         #[serde(default)]
         args: Vec<String>,
     },
+    /// MCP tools/list boundary: canonicalize each advertised tool entry
+    /// (name-strip, `input_schema`→`inputSchema`, `output_schema`→`outputSchema`,
+    /// deepcopy) and return the sha256 fingerprint over
+    /// `{state, tools(sorted-by-name), version}` plus the canonicalized page.
+    /// Replaces `_tool_catalog_fingerprint`/`_normalized_tools_catalog_page`.
+    McpToolCatalogFingerprint {
+        /// Ordered `["name", definition]` pairs — a JSON object cannot carry
+        /// duplicate names distinctly, and the page's duplicate-name rejection
+        /// requires seeing every raw entry.
+        entries: Vec<(String, Value)>,
+        /// Catalog lifecycle state (e.g. `"pending"`, `"complete"`).
+        state: String,
+        /// Catalog schema/version token baked into the fingerprint.
+        version: String,
+    },
 }
 
 // `deny_unknown_fields` cannot combine with `flatten` (serde rejects the
@@ -455,4 +470,9 @@ pub struct ContextDigestResultV1 {
     /// projection kind; `null` when the launch is unpinnable.
     #[serde(default)]
     pub runtime_resolved_argv: Option<Vec<String>>,
+    /// Canonicalized tool page — `name → entry` map, `null` when the raw
+    /// `tools` payload was malformed (non-dict item, non-str key, blank or
+    /// duplicate name). Explicit `null` mirrors `_normalized_tools_catalog_page`.
+    #[serde(default)]
+    pub tool_catalog: Option<Map<String, Value>>,
 }

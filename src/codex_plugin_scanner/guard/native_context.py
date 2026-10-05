@@ -857,6 +857,44 @@ def context_runtime_launch_identity_projection(
     return reusable, executable, resolved_argv
 
 
+def context_mcp_tool_catalog_fingerprint(
+    entries: Sequence[tuple[str, Mapping[str, object]]] | Mapping[str, Mapping[str, object]],
+    *,
+    state: str,
+    version: str = "mcp-advertised-tool-catalog-v2",
+    guard_home: Path | None = None,
+) -> tuple[str | None, dict[str, dict[str, object]] | None]:
+    """Canonical tools/list fingerprint + normalized page — no fallback.
+
+    ``entries`` accepts either a ``name → definition`` mapping or a sequence
+    of ``(name, definition)`` pairs; the latter preserves duplicate names so
+    the native validator can reject them the same way the raw ``tools`` page
+    boundary does. Returns ``(fingerprint, page)``: ``fingerprint`` is ``None``
+    when the canonical document can't be serialized (Python ``json.dumps``
+    ``allow_nan=False`` raises; ``None`` mirrors that failure) and ``page`` is
+    ``None`` for any malformed payload (mirrors
+    ``_normalized_tools_catalog_page``).
+    """
+    if isinstance(entries, Mapping):
+        wire_entries = [[name, definition] for name, definition in entries.items()]
+    else:
+        wire_entries = [[name, dict(definition)] for name, definition in entries]
+    result = native_context_digest(
+        "mcp_tool_catalog_fingerprint",
+        {"entries": wire_entries, "state": state, "version": version},
+        guard_home=_resolve_digest_home(guard_home),
+    )
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        raise ValueError("native_mcp_tool_catalog_fingerprint_unavailable")
+    digest = result.get("digest")
+    page = result.get("tool_catalog")
+    if digest is not None and (not isinstance(digest, str) or not digest):
+        raise ValueError("native_mcp_tool_catalog_fingerprint_unavailable")
+    if page is not None and not isinstance(page, dict):
+        raise ValueError("native_mcp_tool_catalog_fingerprint_unavailable")
+    return digest, page
+
+
 def context_package_evidence(
     material: object,
     *,
@@ -1050,11 +1088,12 @@ __all__ = [
     "bound_context_digest_home",
     "context_browser_mcp",
     "context_digest_guard_home",
+    "context_mcp_arguments_projection",
     "context_mcp_descriptor",
     "context_mcp_identity",
-    "context_mcp_arguments_projection",
     "context_mcp_redact_json",
     "context_mcp_tool_approval_hash",
+    "context_mcp_tool_catalog_fingerprint",
     "context_mcp_tool_policy",
     "context_mcp_tool_risk",
     "context_opaque_digest",

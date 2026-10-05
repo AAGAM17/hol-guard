@@ -82,7 +82,7 @@ class StoreTemporaryMcpMixin:
                         resolved_at=resolved_at,
                     )
                 else:
-                    result = {"resolved": False, "policy_written": True}
+                    result: dict[str, object] = {"resolved": False, "policy_written": True}
         if next_control_state is not None:
             self._finalize_policy_integrity_control_state(next_control_state)
         return result, covered_ids

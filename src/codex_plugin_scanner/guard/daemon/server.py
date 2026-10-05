@@ -98,7 +98,10 @@ from ..cloud_exception_requests import (
 )
 from ..codex_binding_capture_writer import start_codex_binding_capture_writer
 from ..codex_live_decision import complete_codex_live_decision, resolve_codex_live_allow_authority
-from ..codex_live_decision_revalidation import revalidate_codex_live_allow
+from ..codex_live_decision_revalidation import (
+    revalidate_codex_live_allow,
+    review_live_codex_decision,
+)
 from ..codex_resume import get_request_resume_status, retry_request_resume
 from ..config import (
     VALID_RECEIPT_REDACTION_LEVELS,
@@ -6263,18 +6266,16 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             claimed_saved_allow_hash=claimed_saved_allow_hash,
             claimed_approval_request_id=claimed_approval_request_id,
             reviewer=lambda hook_payload, workspace, claimed_hash, claimed_request_id: (
-                daemon_server.hook_process_runner.review(
-                    payload=hook_payload,
-                    harness="codex",
+                review_live_codex_decision(
+                    daemon_server.hook_worker,
+                    hook_payload=hook_payload,
+                    workspace=workspace,
                     home_dir=home_dir,
                     guard_home=daemon_server.store.guard_home,
-                    workspace=workspace,
-                    hook_env={},
-                    deadline=time.monotonic() + _RUNTIME_LIVE_DECISION_REVIEW_TIMEOUT_SECONDS,
-                    claim_saved_approval=False,
                     claimed_saved_allow_hash=claimed_hash,
                     claimed_approval_request_id=claimed_request_id,
-                ).payload
+                    deadline=time.monotonic() + _RUNTIME_LIVE_DECISION_REVIEW_TIMEOUT_SECONDS,
+                )
             ),
         )
 

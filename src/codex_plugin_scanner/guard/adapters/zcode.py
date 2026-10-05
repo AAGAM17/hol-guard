@@ -501,6 +501,15 @@ class ZCodeHarnessAdapter(HarnessAdapter):
         if isinstance(history, dict) and self._valid_enabled_record(history.get(str(path))):
             recorded = history[str(path)]
             return {"present": recorded["present"], "value": recorded["value"]}
+        config_key = state.get("managed_config_path")
+        if (
+            isinstance(history, dict)
+            and path.name == _ZCODE_CLI_FILE_CONFIG
+            and isinstance(config_key, str)
+            and self._valid_enabled_record(history.get(config_key))
+        ):
+            recorded = history[config_key]
+            return {"present": recorded["present"], "value": recorded["value"]}
         legacy = state.get("hooks_enabled_before")
         if state.get("managed_config_path") == str(path) and self._valid_enabled_record(legacy):
             return {"present": legacy["present"], "value": legacy["value"]}

@@ -1527,10 +1527,9 @@ class StorePolicyMixin:
 
         if has_local_policy:
             integrity_key, integrity_key_id = self._policy_integrity_secret_material(create=True)
-            local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
         else:
             integrity_key, integrity_key_id = None, None
-            local_once_key, local_once_key_id = None, None
+        local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
 
         # The resident refuses to serve until the owner-private verifier key
         # exists under this guard home (consume_for_spawn gate). Publishers

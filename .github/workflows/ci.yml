@@ -233,7 +233,8 @@ jobs:
 
   coverage:
     name: coverage (3.12, ${{ matrix.shard-index }})
-    needs: [coverage-plan, native-command-evaluators]
+    needs: [plan, coverage-plan, native-command-evaluators]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -377,7 +378,8 @@ jobs:
         if: steps.token-presence.outputs.has-token == 'true'
 
   scheduling-sensitive:
-    needs: native-command-evaluators
+    needs: [plan, native-command-evaluators]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -393,7 +395,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
   compatibility:
-    needs: native-command-evaluators
+    needs: [plan, native-command-evaluators]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -441,7 +444,7 @@ jobs:
   ci-python-312:
     name: ci (3.12)
     if: always()
-    needs: [native-workspace, quality, coverage-plan, coverage, compatibility, scheduling-sensitive]
+    needs: [plan, native-workspace, quality, coverage-plan, coverage, compatibility, scheduling-sensitive]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -458,16 +461,23 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
           SCHEDULING_SENSITIVE_RESULT: ${{ needs.scheduling-sensitive.result }}
+          PLAN_DATA_ONLY: ${{ needs.plan.outputs.data_only }}
         run: |
-          test "$NATIVE_WORKSPACE_RESULT" = "success"
-          test "$QUALITY_RESULT" = "success"
-          test "$COVERAGE_PLAN_RESULT" = "success"
-          test "$COVERAGE_RESULT" = "success"
-          test "$COMPATIBILITY_RESULT" = "success"
-          test "$SCHEDULING_SENSITIVE_RESULT" = "success"
+          # Plan-aware: a lane-eligible job that the planner skipped is acceptable
+          # only on a data-only plan. On a full plan skipped still fails.
+          if [ "$PLAN_DATA_ONLY" = "true" ]; then
+            ok_set='success skipped'
+          else
+            ok_set='success'
+          fi
+          for r in "$NATIVE_WORKSPACE_RESULT" "$QUALITY_RESULT" "$COVERAGE_PLAN_RESULT" \
+                   "$COVERAGE_RESULT" "$COMPATIBILITY_RESULT" "$SCHEDULING_SENSITIVE_RESULT"; do
+            case " $ok_set " in *" $r "*) : ;; *) echo "dependency result not OK: $r"; exit 1;; esac
+          done
 
   pi-exact-continuation:
-    needs: native-command-evaluators
+    needs: [plan, native-command-evaluators]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     name: Pi exact continuation (actual SDKs)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -482,6 +492,8 @@ jobs:
       - uses: ./.github/actions/ci-job-pi-exact-continuation
 
   dashboard:
+    needs: [plan]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -501,7 +513,8 @@ jobs:
           echo "Bundle JS: ${js_size:-unknown}, CSS: ${css_size:-unknown}"
 
   cisco-full:
-    needs: native-command-evaluators
+    needs: [plan, native-command-evaluators]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -510,7 +523,8 @@ jobs:
       - uses: ./.github/actions/ci-job-cisco-full
 
   cross-platform:
-    needs: native-command-evaluators
+    needs: [plan, native-command-evaluators]
+    if: github.event_name != 'pull_request' || needs.plan.outputs.data_only != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

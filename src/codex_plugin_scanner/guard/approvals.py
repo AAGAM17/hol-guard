@@ -1942,15 +1942,18 @@ def _approval_once_policy_expires_at(resolved_at: str) -> str:
 _LOCAL_APPROVAL_NATIVE_PUBLICATION_TIMEOUT_SECONDS = 8.0
 
 
-def _await_saved_approval_native_snapshot(store: GuardStore) -> None:
+def _await_saved_approval_native_snapshot(store: GuardStore) -> bool:
     """Publish the saved decision before a waiting hook can observe it."""
 
     from .native_policy_snapshot import await_registered_native_policy_publication
 
-    await_registered_native_policy_publication(
+    published = await_registered_native_policy_publication(
         Path(store.guard_home),
         timeout_seconds=_LOCAL_APPROVAL_NATIVE_PUBLICATION_TIMEOUT_SECONDS,
     )
+    if not published:
+        _LOGGER.warning("Native policy snapshot was not acknowledged before resolving the approval")
+    return published
 
 
 def _record_local_once_approval(

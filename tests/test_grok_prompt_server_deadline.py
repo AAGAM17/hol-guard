@@ -37,10 +37,15 @@ def test_server_deadline_includes_elapsed_admission_and_missing_policy_blocks(
     responses = []
     caps = []
     original_factory = RuntimeHookDeadline.from_remaining_hint
+
+    def make_deadline(hint, **kwargs):
+        kwargs.setdefault("monotonic", lambda: 106.0)
+        return original_factory(hint, **kwargs)
+
     monkeypatch.setattr(
         RuntimeHookDeadline,
         "from_remaining_hint",
-        lambda hint, **kwargs: original_factory(hint, monotonic=lambda: 106.0, **kwargs),
+        make_deadline,
     )
     monkeypatch.setattr(server, "_native_mode_requires_rust", lambda: True)
     daemon = SimpleNamespace(
@@ -74,10 +79,13 @@ def test_server_deadline_includes_elapsed_admission_and_missing_policy_blocks(
     )
     assert caps == [expected_cap]
     expected_deadline = 100.0 + expected_cap
+    clock_start = 100.0 if expected_cap == 10 else 106.0
+    if expected_remaining is None and expected_cap == 10:
+        expected_remaining = 9.75
     if expected_remaining is not None:
         if not hints and expected_cap != 10:
             expected_remaining = 2.75
-        expected_deadline = min(expected_deadline, 106.0 + expected_remaining)
+        expected_deadline = min(expected_deadline, clock_start + expected_remaining)
     assert captured == [expected_deadline]
     assert responses == [{"decision": "block", "reason_code": "native_policy_not_ready"}]
 

@@ -6438,7 +6438,11 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         if grok_prompt and hint_missing:
             remaining_hint = admission_seconds
         hinted_deadline = (
-            RuntimeHookDeadline.from_remaining_hint(remaining_hint, maximum_budget_seconds=10.0)
+            RuntimeHookDeadline.from_remaining_hint(
+                remaining_hint,
+                monotonic=lambda: transport_deadline - admission_seconds,
+                maximum_budget_seconds=10.0,
+            )
             if grok_prompt
             else RuntimeHookDeadline.from_remaining_hint(remaining_hint)
         )

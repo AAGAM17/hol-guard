@@ -34,7 +34,9 @@ _COLUMNS = (
 
 
 class NativeActivityStore(Protocol):
-    guard_home: object
+    @property
+    def guard_home(self) -> object: ...
+
     _guard_event_queue_limit: int
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]: ...

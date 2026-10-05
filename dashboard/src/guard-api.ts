@@ -2341,6 +2341,25 @@ export async function resetSettings(proof?: ApprovalGateWriteProof): Promise<Gua
   });
 }
 
+export async function fetchBusinessReviewSummary(
+  requestId: string, signal?: AbortSignal,
+): Promise<import("./business-review-summary").BusinessReviewSummary | null> {
+  if (isGuardDemoMode()) return null;
+  const response = await fetchWithGuardAuth(
+    `/v1/requests/${encodeURIComponent(requestId)}/business-summary`,
+    { signal, cache: "no-store" },
+  );
+  if (response.status === 404) {
+    const payload = await response.json() as { error?: unknown };
+    if (payload.error === "native_local_business_summary_unavailable") return null;
+  }
+  if (!response.ok) throw new Error("Saved business details are unavailable.");
+  const { parseBusinessReviewSummary } = await import("./business-review-summary");
+  const summary = parseBusinessReviewSummary(await response.json(), requestId);
+  if (!summary) throw new Error("Saved business details are unavailable.");
+  return summary;
+}
+
 export async function fetchRequest(requestId: string): Promise<GuardApprovalRequest> {
   if (isGuardDemoMode()) {
     return getDemoRequest(requestId);

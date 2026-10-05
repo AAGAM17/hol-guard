@@ -1,0 +1,72 @@
+import { expect, test, type Page } from "@playwright/test";
+import { resolveProofDir } from "./proof-dir";
+import { defaultSettingsPayload, emptyInventoryPayload, emptyPoliciesPayload, emptyReceiptsPayload, freeStateSnapshot } from "./fixture-states";
+
+const summary = {
+  schema: "guard-native-local-business-review-summary.v1", version: 1, request_id: "business-test",
+  request_snapshot_digest: "a".repeat(64), prepared_input_binding: "b".repeat(64),
+  service: "google_gmail", operation: "mail_send", audience_kind: "named", audience_expansion_state: "known",
+  recipient_count: 3, record_count: 1, byte_count: 24, attachment_count: 0, inspection_state: "unknown",
+  sensitivity_labels: ["confidential"], snapshot_fact_completeness: "known",
+  account_currentness: "not_asserted", execution_state: "not_checked",
+};
+const approval = {
+  request_id: "business-test", harness: "codex", artifact_id: "business-ui-fixture", artifact_name: "Send email",
+  artifact_type: "tool_action_request", artifact_hash: "fixture", publisher: "codex-local",
+  policy_action: "require-reapproval", recommended_scope: "artifact", allowed_scopes: ["artifact"],
+  scope_restrictions: ["provider_account_unverified_once_only"], changed_fields: ["command"], source_scope: "project",
+  config_path: "project-config.json", workspace: null, launch_target: null, transport: "stdio", review_command: "",
+  approval_url: "", status: "pending", resolution_action: null, resolution_scope: null, reason: null,
+  created_at: "2026-10-05T00:00:00Z", resolved_at: null, action_envelope_json: null, decision_v2_json: null,
+};
+
+async function mount(page: Page, nextSummary: () => unknown) {
+  await page.route("**/v1/**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    let body: unknown = {};
+    if (path.endsWith("/initialize")) body = { auth_token: "business-ui-fixture-session" };
+    else if (path.endsWith("/runtime")) body = { ...freeStateSnapshot, pending_count: 1 };
+    else if (path.endsWith("/business-summary")) body = nextSummary();
+    else if (path.endsWith("/requests/business-test")) body = approval;
+    else if (path.endsWith("/requests")) body = { items: [approval], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
+    else if (path.endsWith("/receipts/latest")) {
+      await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_found" }) });
+      return;
+    }
+    else if (path.endsWith("/receipts")) body = emptyReceiptsPayload;
+    else if (path.endsWith("/policy")) body = emptyPoliciesPayload;
+    else if (path.endsWith("/settings")) body = defaultSettingsPayload;
+    else if (path.endsWith("/inventory")) body = emptyInventoryPayload;
+    else if (path.endsWith("/diff")) body = null;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+  await page.goto("/requests/business-test?guardDaemon=http://127.0.0.1:4277");
+}
+
+for (const [name, width, height] of [["desktop", 1280, 900], ["phone", 390, 844]] as const) {
+  test(`saved summary stays honest and readable on ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await mount(page, () => summary);
+    const panel = page.getByRole("region", { name: "Saved business action details" });
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("Send email · Gmail");
+    await expect(panel).toContainText("does not verify the work account");
+    await expect(panel).toContainText("or confirm execution");
+    await expect(panel).toContainText("Counts alone do not establish");
+    await expect(panel).not.toContainText("a".repeat(64));
+    await expect(panel.getByRole("button")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: `${resolveProofDir()}/business-summary-${name}.png`, fullPage: true });
+  });
+}
+
+test("malformed metadata is unavailable and refresh recovers", async ({ page }) => {
+  let value: unknown = { ...summary, subject: "private-canary" };
+  await mount(page, () => value);
+  await expect(page.getByText("Saved business details could not be loaded.")).toBeVisible();
+  await expect(page.getByText("private-canary")).toHaveCount(0);
+  value = summary;
+  await page.getByRole("button", { name: "Refresh details" }).click();
+  await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+});

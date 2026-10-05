@@ -51,6 +51,7 @@ import {
 } from "./review-scope-controls";
 import { buildWhatWouldHappen, pastDecisionVerb, PrimaryActionCard } from "./review-states";
 import type { ReviewViewModel, ReviewWorkspaceProps } from "./review-workspace";
+import { BusinessReviewSummaryPanel } from "./business-review-summary-panel";
 
 const commonScopeValues = new Set<DecisionScope>(["artifact", "workspace"]);
 
@@ -440,6 +441,7 @@ export function ReviewDecisionCard(props: {
         </div>
 
         <PrimaryActionCard item={item} />
+        <BusinessReviewSummaryPanel key={item.request_id} requestId={item.request_id} />
         {item.scope_restrictions?.includes("provider_account_unverified_once_only") ? (
           <p className="mt-4 text-sm leading-6 text-brand-dark">
             Guard cannot verify this provider account. Approval applies once to this exact call; remembered approvals are unavailable.

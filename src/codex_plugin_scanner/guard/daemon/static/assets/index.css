@@ -5042,6 +5042,10 @@
     text-decoration-line: underline;
   }
 
+  .underline-offset-4 {
+    text-underline-offset: 4px;
+  }
+
   .accent-brand-blue {
     accent-color: var(--brand-blue);
   }

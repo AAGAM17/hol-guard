@@ -17739,6 +17739,25 @@ async function resetSettings(proof) {
     })
   });
 }
+async function fetchBusinessReviewSummary(requestId, signal) {
+  if (isGuardDemoMode()) return null;
+  const response = await fetchWithGuardAuth(
+    `/v1/requests/${encodeURIComponent(requestId)}/business-summary`,
+    { signal, cache: "no-store" }
+  );
+  if (response.status === 404) {
+    const payload = await response.json();
+    if (payload.error === "native_local_business_summary_unavailable") return null;
+  }
+  if (!response.ok) throw new Error("Saved business details are unavailable.");
+  const { parseBusinessReviewSummary: parseBusinessReviewSummary2 } = await __vitePreload(async () => {
+    const { parseBusinessReviewSummary: parseBusinessReviewSummary3 } = await Promise.resolve().then(() => businessReviewSummary);
+    return { parseBusinessReviewSummary: parseBusinessReviewSummary3 };
+  }, true ? void 0 : void 0);
+  const summary = parseBusinessReviewSummary2(await response.json(), requestId);
+  if (!summary) throw new Error("Saved business details are unavailable.");
+  return summary;
+}
 async function fetchRequest(requestId) {
   if (isGuardDemoMode()) {
     return getDemoRequest(requestId);
@@ -29969,6 +29988,92 @@ function pastDecisionVerb(decision) {
       return "blocked";
   }
 }
+const businessOperationLabels = {
+  mail_read: "Read email",
+  mail_draft: "Prepare an email draft",
+  mail_send: "Send email",
+  mail_label: "Change email labels",
+  mail_permanent_delete: "Permanently delete email",
+  mail_settings: "Change email settings",
+  drive_read: "Read Drive files",
+  drive_edit: "Edit Drive files",
+  drive_share: "Share Drive files",
+  calendar_read: "Read calendar events",
+  calendar_invite: "Invite calendar attendees"
+};
+const businessServiceLabels = {
+  google_gmail: "Gmail",
+  google_drive: "Google Drive",
+  google_calendar: "Google Calendar"
+};
+const fields = ["schema", "version", "request_id", "request_snapshot_digest", "prepared_input_binding", "service", "operation", "audience_kind", "audience_expansion_state", "recipient_count", "record_count", "byte_count", "attachment_count", "inspection_state", "sensitivity_labels", "snapshot_fact_completeness", "account_currentness", "execution_state"];
+function parseBusinessReviewSummary(value, requestId) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value;
+  if (Object.keys(item).length !== fields.length || !fields.every((field) => Object.hasOwn(item, field))) return null;
+  if (item.schema !== "guard-native-local-business-review-summary.v1" || item.version !== 1 || item.request_id !== requestId || item.account_currentness !== "not_asserted" || item.execution_state !== "not_checked") return null;
+  if (![item.request_snapshot_digest, item.prepared_input_binding].every((digest) => typeof digest === "string" && /^[0-9a-f]{64}$/.test(digest))) return null;
+  if (typeof item.service !== "string" || !Object.hasOwn(businessServiceLabels, item.service) || typeof item.operation !== "string" || !Object.hasOwn(businessOperationLabels, item.operation)) return null;
+  const servicePrefix = { google_gmail: "mail_", google_drive: "drive_", google_calendar: "calendar_" }[item.service];
+  if (!item.operation.startsWith(servicePrefix)) return null;
+  if (typeof item.audience_kind !== "string" || !["private", "named", "public", "unknown"].includes(item.audience_kind)) return null;
+  if (![item.audience_expansion_state, item.inspection_state, item.snapshot_fact_completeness].every((state) => typeof state === "string" && ["known", "unknown", "unsupported"].includes(state))) return null;
+  if (![item.recipient_count, item.record_count, item.byte_count, item.attachment_count].every((count) => typeof count === "number" && Number.isSafeInteger(count) && count >= 0)) return null;
+  const labels = item.sensitivity_labels;
+  if (!Array.isArray(labels) || labels.length > 5 || !labels.every((label) => typeof label === "string" && ["public", "personal", "confidential", "secret", "unknown"].includes(label)) || new Set(labels).size !== labels.length) return null;
+  return item;
+}
+const businessReviewSummary = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  businessOperationLabels,
+  businessServiceLabels,
+  parseBusinessReviewSummary
+}, Symbol.toStringTag, { value: "Module" }));
+function BusinessReviewSummaryDetails({ summary }) {
+  const count = new Intl.NumberFormat();
+  const audience = { private: "Private", named: "Named recipients", public: "Public", unknown: "Unknown" }[summary.audience_kind];
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mt-5 border-t border-slate-200 pt-4", "aria-label": "Saved business action details", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-sm font-semibold text-brand-dark", children: [
+      businessOperationLabels[summary.operation],
+      " · ",
+      businessServiceLabels[summary.service]
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("dl", { className: "mt-3 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3", children: [
+      ["Audience", audience],
+      ["Recipients", count.format(summary.recipient_count)],
+      ["Records", count.format(summary.record_count)],
+      ["Attachments", count.format(summary.attachment_count)],
+      ["Content size", `${count.format(summary.byte_count)} bytes`],
+      ["Sensitivity", summary.sensitivity_labels.length ? summary.sensitivity_labels.join(", ") : "Not labeled"]
+    ].map(([label, value]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: label }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "mt-1 break-words text-brand-dark", children: value })
+    ] }, label)) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm leading-6 text-brand-dark", children: "These details describe the saved request. This summary does not verify the work account or confirm execution." }),
+    summary.audience_expansion_state !== "known" || summary.inspection_state !== "known" || summary.snapshot_fact_completeness !== "known" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm leading-6 text-brand-dark", children: "Some recipient or content details are unknown or unsupported. Counts alone do not establish that the action is safe." }) : null,
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs leading-5 text-muted-foreground", children: "Message content, exact recipients and attachments are not shown in this summary." })
+  ] });
+}
+function BusinessReviewSummaryPanel({ requestId }) {
+  const [state, setState] = reactExports.useState(null);
+  const [revision, setRevision] = reactExports.useState(0);
+  reactExports.useEffect(() => {
+    const controller = new AbortController();
+    setState({ requestId, status: "loading", summary: null });
+    fetchBusinessReviewSummary(requestId, controller.signal).then((summary) => {
+      if (!controller.signal.aborted) setState({ requestId, status: "ready", summary });
+    }).catch(() => {
+      if (!controller.signal.aborted) setState({ requestId, status: "error", summary: null });
+    });
+    return () => controller.abort();
+  }, [requestId, revision]);
+  if (!state || state.requestId !== requestId || state.status === "loading") return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm text-muted-foreground", role: "status", children: "Checking saved business details…" });
+  if (state.status === "error") return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 text-sm text-brand-dark", role: "status", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Saved business details could not be loaded." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "mt-2 min-h-11 rounded-lg px-3 text-brand-blue underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue", onClick: () => setRevision((value) => value + 1), children: "Refresh details" })
+  ] });
+  return state.summary ? /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessReviewSummaryDetails, { summary: state.summary }) : null;
+}
 const commonScopeValues = /* @__PURE__ */ new Set(["artifact", "workspace"]);
 function resolvedActionCopy(item, action, persistedExactAction) {
   if (item !== null) return buildRetryAfterApprovalCopy(item, action, persistedExactAction);
@@ -30314,6 +30419,7 @@ function ReviewDecisionCard(props) {
         /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { tone: watchOnlyObservation ? "info" : actionPresentation.tone, children: watchOnlyObservation ? "Would have stopped" : actionPresentation.label })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(PrimaryActionCard, { item }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessReviewSummaryPanel, { requestId: item.request_id }, item.request_id),
       item.scope_restrictions?.includes("provider_account_unverified_once_only") ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm leading-6 text-brand-dark", children: "Guard cannot verify this provider account. Approval applies once to this exact call; remembered approvals are unavailable." }) : null,
       resolutionBlockReason !== null && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 rounded-xl border border-brand-attention/30 bg-brand-attention/[0.06] p-4", role: "alert", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(

@@ -2881,6 +2881,11 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         if parsed.path == "/v1/connect/state":
             self._write_legacy_pairing_disabled()
             return
+        if len(path_parts) == 4 and path_parts[:2] == ["v1", "requests"] and path_parts[3] == "business-summary":
+            from .business_review_summary import handle_business_review_summary
+
+            handle_business_review_summary(self, path_parts[2])
+            return
         if len(path_parts) == 3 and path_parts[:2] == ["v1", "requests"]:
             approval = store.get_approval_request(path_parts[2])
             if approval is None:
@@ -7581,6 +7586,8 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         if len(path_parts) >= 2 and path_parts[:2] == ["v1", "supply-chain"]:
             return True
         if self.command == "GET":
+            if len(path_parts) == 4 and path_parts[:2] == ["v1", "requests"] and path_parts[3] == "business-summary":
+                return True
             if len(path_parts) == 4 and path_parts[:3] == ["v1", "mcp-policy", "requests"]:
                 return True
             if len(path_parts) == 3 and path_parts[:2] in (

@@ -1986,21 +1986,18 @@ def _read_cloud_review_recovery_health(store: GuardStore) -> dict[str, object] |
     return read_cloud_review_recovery_health(store)
 
 
-def _complete_current_binding_repair(store: GuardStore) -> dict[str, object]:
-    """One current-device confirmation. Failure leaves the recovery sentence in place."""
+def _read_cloud_review_recovery_repair(store: GuardStore) -> dict[str, object]:
+    """Read a repair that was already recorded. Failure leaves the recovery sentence in place."""
 
     try:
-        from .sqlite_cloud_review_recovery import complete_authenticated_current_binding_repair
+        from .sqlite_cloud_review_recovery import read_cloud_review_recovery_repair
 
-        return complete_authenticated_current_binding_repair(
-            store,
-            now=datetime.now(timezone.utc).isoformat(),
-        )
+        return read_cloud_review_recovery_repair(store)
     except Exception as repair_error:
         import logging
 
         logging.getLogger(__name__).warning(
-            "Guard could not complete the current-binding Cloud repair: %s",
+            "Guard could not read the current-binding Cloud repair: %s",
             type(repair_error).__name__,
         )
         return {"status": "unavailable", "reason": "repair_check_failed"}
@@ -2059,7 +2056,7 @@ def _build_runtime_cloud_context(
     )
     dashboard_url, inbox_url, fleet_url, connect_url = _resolve_guard_urls(sync_url)
     recovery_health = _read_cloud_review_recovery_health(store)
-    repair_status = _complete_current_binding_repair(store)
+    repair_status = _read_cloud_review_recovery_repair(store)
     recovery_summary = recovery_health.get("summary") if recovery_health is not None else ""
     recovery_detail = "" if repair_status.get("status") == "completed" else recovery_summary
     if not isinstance(recovery_detail, str):

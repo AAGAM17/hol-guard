@@ -610,16 +610,13 @@ def _cloud_review_recovery_surface(store: GuardStore) -> tuple[dict[str, object]
     """Read the persisted recovery record. This does not create consent or authority."""
 
     from ..sqlite_cloud_review_recovery import (
-        complete_authenticated_current_binding_repair,
         read_cloud_review_recovery_health,
+        read_cloud_review_recovery_repair,
     )
 
     try:
         health = read_cloud_review_recovery_health(store)
-        repair = complete_authenticated_current_binding_repair(
-            store,
-            now=datetime.now(timezone.utc).isoformat(),
-        )
+        repair = read_cloud_review_recovery_repair(store)
     except Exception as repair_error:
         import logging
 

@@ -344,8 +344,13 @@ def test_incomplete_local_recovery_is_not_confirmed_as_cloud_repair() -> None:
             raise AssertionError("incomplete recovery must not read OAuth")
 
     store = _Store()
+    health = store.payloads[recovery.RECOVERY_HEALTH_STATE_KEY]
+    assert isinstance(health, dict)
+    assert health["summary"] == recovery.INCOMPLETE_CLOUD_RECOVERY_DETAIL
+    assert "Local protection is working" not in str(health["summary"])
     result = recovery.complete_authenticated_current_binding_repair(store, now="2026-10-04T05:00:00+00:00")
     assert result == {"status": "recovery_incomplete", "reason": "local_recovery_incomplete"}
+    assert recovery.read_cloud_review_recovery_repair(store) == result
     assert recovery.REPAIR_ATTEMPT_STATE_KEY not in store.payloads
 
 
@@ -465,6 +470,41 @@ def test_cli_status_names_partial_cloud_recovery_instead_of_local_only(tmp_path:
     }
     assert status["cloud_review_recovery"]["cloudReview"] is False
     assert recovered.get_sync_payload("guard_exact_cloud_review_capability") is None
+    assert recovered.get_sync_payload(recovery.REPAIR_ATTEMPT_STATE_KEY) is None
+
+    incomplete = GuardStore(tmp_path / "incomplete")
+    incomplete.set_sync_payload(
+        recovery.RECOVERY_HEALTH_STATE_KEY,
+        recovery.cloud_review_recovery_health(cloud_review=False, local_cli=False),
+        "2026-10-04T05:00:00+00:00",
+    )
+    incomplete_status = _build_cloud_context(incomplete)
+    assert incomplete_status["cloud_state_detail"] == recovery.INCOMPLETE_CLOUD_RECOVERY_DETAIL
+    assert "Local protection is working" not in str(incomplete_status["cloud_state_detail"])
+
+
+def test_cli_status_does_not_record_a_matching_binding_repair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.cli.product import _build_cloud_context
+
+    store = GuardStore(tmp_path / "status")
+    store.set_sync_payload(
+        recovery.RECOVERY_HEALTH_STATE_KEY,
+        recovery.cloud_review_recovery_health(cloud_review=False, local_cli=True),
+        "2026-10-04T05:00:00+00:00",
+    )
+    store.set_sync_payload(
+        "oauth_local_credentials",
+        {"grant_id": "grant-1", "workspace_id": "22222222-2222-4222-8222-222222222222", "machine_id": "machine-1"},
+        "2026-10-04T05:00:00+00:00",
+    )
+
+    def refuse_completion(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("status must not record a Cloud repair")
+
+    monkeypatch.setattr(recovery, "complete_authenticated_current_binding_repair", refuse_completion)
+    status = _build_cloud_context(store)
+    assert status["cloud_review_recovery_repair"]["status"] != "completed"
+    assert store.get_sync_payload(recovery.REPAIR_ATTEMPT_STATE_KEY) is None
 
 
 def test_upgrade_and_harness_restart_keep_consumed_revoked_and_replay_state(

@@ -202,6 +202,9 @@ def _copy_complete_table(src: sqlite3.Connection, dst: sqlite3.Connection, table
 
 RECOVERY_HEALTH_STATE_KEY = "guard_cloud_review_recovery_health"
 PARTIAL_CLOUD_RECOVERY_DETAIL = "Local protection is working. Restore this device's Cloud connection to sync reviews."
+INCOMPLETE_CLOUD_RECOVERY_DETAIL = (
+    "Cloud Review recovery did not finish. Sign in on this device before reviews can sync."
+)
 
 
 def cloud_review_recovery_health(*, cloud_review: bool, local_cli: bool) -> dict[str, object]:
@@ -218,7 +221,7 @@ def cloud_review_recovery_health(*, cloud_review: bool, local_cli: bool) -> dict
     else:
         reason = "recovery_incomplete"
         repair = "authenticated_current_binding"
-        summary = PARTIAL_CLOUD_RECOVERY_DETAIL
+        summary = INCOMPLETE_CLOUD_RECOVERY_DETAIL
     return {
         "cloudReview": cloud_review,
         "localCli": local_cli,
@@ -266,6 +269,36 @@ def read_cloud_review_recovery_health(store: object) -> dict[str, object] | None
 
 REPAIR_ATTEMPT_STATE_KEY = "guard_cloud_review_recovery_repair"
 _INSTALLATION_CLAIM_FIELDS = ("installation_id", "machine_installation_id")
+
+
+def read_cloud_review_recovery_repair(store: object) -> dict[str, object]:
+    """Return the recorded repair, if any. This does not write consent, authority, or repair state."""
+
+    health = read_cloud_review_recovery_health(store)
+    if health is None or health.get("repair") != "authenticated_current_binding":
+        return {"status": "not_required", "reason": "no_pending_repair"}
+    if health.get("reason") != "cloud_review_salvage_failed":
+        return {"status": "recovery_incomplete", "reason": "local_recovery_incomplete"}
+    getter = getattr(store, "get_sync_payload", None)
+    binding_getter = getattr(store, "get_review_event_oauth_binding", None)
+    if getter is None or binding_getter is None:
+        return {"status": "authentication_required", "reason": "oauth_binding_missing"}
+    payload = getter("oauth_local_credentials")
+    binding = binding_getter()
+    if not isinstance(payload, dict) or not isinstance(binding, dict):
+        return {"status": "authentication_required", "reason": "oauth_binding_missing"}
+    installation_id = str(binding.get("machine_installation_id") or "").strip()
+    workspace_id = str(binding.get("workspace_id") or "").strip()
+    if not installation_id or not workspace_id:
+        return {"status": "authentication_required", "reason": "oauth_binding_missing"}
+    for field in _INSTALLATION_CLAIM_FIELDS:
+        claimed = payload.get(field)
+        if isinstance(claimed, str) and claimed.strip() and claimed.strip() != installation_id:
+            return {"status": "binding_mismatch", "reason": "installation_disagrees"}
+    existing = _matching_completed_repair(getter(REPAIR_ATTEMPT_STATE_KEY), workspace_id, installation_id)
+    if existing is not None:
+        return existing
+    return {"status": "authentication_required", "reason": "current_binding_unconfirmed"}
 
 
 def complete_authenticated_current_binding_repair(store: object, *, now: str) -> dict[str, object]:

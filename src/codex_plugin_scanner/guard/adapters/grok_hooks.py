@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import TextIO
 
 from ..redaction import redact_text
@@ -252,9 +253,10 @@ def replay_grok_hook_stdout_line() -> None:
     line = _grok_hook_stdout_line.get()
     if not line:
         return
-    # codeql[py/clear-text-logging-sensitive-data] The stored line is already redacted.
-    sys.stdout.write(line)
-    sys.stdout.flush()
+    with suppress(OSError):
+        # codeql[py/clear-text-logging-sensitive-data] The stored line is already redacted.
+        sys.stdout.write(line)
+        sys.stdout.flush()
 
 
 def _redact_grok_value(value: object) -> object:
@@ -296,10 +298,10 @@ def emit_grok_hook_response(
     if output_stream is None:
         _grok_hook_stdout_line.set(line)
     stream = output_stream if output_stream is not None else sys.stdout
-    # stdout is the harness delivery channel. The line is redacted before it is written.
-    # codeql[py/clear-text-logging-sensitive-data]
-    stream.write(line)
-    stream.flush()
+    with suppress(OSError):
+        # stdout is the harness delivery channel. Values are redacted before serialization.
+        stream.write(line)  # codeql[py/clear-text-logging-sensitive-data]
+        stream.flush()
 
 
 def grok_hook_process_exit(policy_action: str) -> int:

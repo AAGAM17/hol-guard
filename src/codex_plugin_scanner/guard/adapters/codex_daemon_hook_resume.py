@@ -27,9 +27,9 @@ GUARD_APPROVAL_URL_KEY = "guardApprovalUrl"
 _POLL_INTERVAL_SECONDS = 0.2
 _GET_TIMEOUT_CAP_SECONDS = 1.5
 _FINALIZE_TIMEOUT_CAP_SECONDS = 12.0
-_FINALIZE_MAX_ATTEMPTS = 3
 # These 409s can precede a committed allow when the grant, resident
 # revalidation, or continuation row is not visible yet. Other rejections stop.
+# Retry them until the hook deadline. Do not add codes or raise the timeout cap.
 _RETRYABLE_LIVE_DECISION_ERRORS = frozenset(
     {
         "continuation_not_recorded",
@@ -139,9 +139,12 @@ def _complete_resolution(
     if action not in {"allow", "block"}:
         return None
     path = f"/v1/requests/{quote(request_id, safe='')}/live-decision"
-    for attempt in range(_FINALIZE_MAX_ATTEMPTS):
+    pending_report: BaseException | None = None
+    while True:
         remaining = deadline - time.monotonic()
         if remaining < _POLL_INTERVAL_SECONDS:
+            if pending_report is not None:
+                _report_live_decision_rejection(pending_report)
             return None
         try:
             payload = _daemon_json_post(
@@ -151,7 +154,8 @@ def _complete_resolution(
                 timeout_seconds=min(remaining, _FINALIZE_TIMEOUT_CAP_SECONDS),
             )
         except (ValueError, urllib.error.HTTPError) as error:
-            if attempt + 1 < _FINALIZE_MAX_ATTEMPTS and _retryable_live_decision_rejection(error):
+            if _retryable_live_decision_rejection(error):
+                pending_report = error
                 time.sleep(min(_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
                 continue
             _report_live_decision_rejection(error)
@@ -159,14 +163,13 @@ def _complete_resolution(
         except (OSError, TimeoutError, http.client.HTTPException, urllib.error.URLError):
             # Completion may already be committed. Replaying this exact request
             # still requires daemon authentication and fresh policy validation.
-            if attempt + 1 < _FINALIZE_MAX_ATTEMPTS:
-                time.sleep(min(_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
+            pending_report = None
+            time.sleep(min(_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
             continue
         if not isinstance(payload, Mapping) or payload.get("completed") is not True:
             return None
         completed_action = payload.get("action")
         return action if completed_action == action else None
-    return None
 
 
 def _retryable_live_decision_rejection(error: BaseException) -> bool:

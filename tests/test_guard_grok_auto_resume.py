@@ -596,6 +596,28 @@ def test_grok_hook_response_redacts_cleartext_secrets(capsys: pytest.CaptureFixt
     assert payload["approval_url"].endswith("sk-*****")
 
 
+def test_grok_hook_write_errors_do_not_replace_the_decision() -> None:
+    from codex_plugin_scanner.guard.adapters import grok_hooks
+
+    class _Broken(io.StringIO):
+        def write(self, text: str) -> int:
+            del text
+            raise BrokenPipeError("closed")
+
+        def flush(self) -> None:
+            raise BrokenPipeError("closed")
+
+    grok_hooks.emit_grok_hook_response(policy_action="block", reason="kept", output_stream=_Broken())
+    grok_hooks._grok_hook_stdout_line.set('{"decision":"deny"}\n')
+    previous = sys.stdout
+    sys.stdout = _Broken()
+    try:
+        grok_hooks.replay_grok_hook_stdout_line()
+    finally:
+        sys.stdout = previous
+        grok_hooks.clear_grok_hook_stdout_line()
+
+
 def test_non_grok_hook_json_stays_pretty(capsys: pytest.CaptureFixture[str]) -> None:
     from codex_plugin_scanner.guard.cli.commands_support_interaction import _emit_hook_response
 

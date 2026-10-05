@@ -185,6 +185,44 @@ def test_finalize_timeout_covers_one_fresh_review() -> None:
     assert resume._FINALIZE_TIMEOUT_CAP_SECONDS >= 8
 
 
+def test_retryable_rejection_continues_until_the_hook_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from codex_plugin_scanner.guard.adapters.codex_daemon_hook_auth import _DaemonResponseError
+
+    clock = [0.0]
+    calls = 0
+
+    def post(**_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise _DaemonResponseError(
+            409,
+            json.dumps({"completed": False, "error": "request_not_resolved"}),
+            authenticated=True,
+        )
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", sleep)
+    monkeypatch.setattr(resume, "_daemon_json_post", post)
+    assert (
+        resume._complete_resolution(
+            request_id="abcd1234ef567890",
+            action="allow",
+            hook_input="{}",
+            state_path=tmp_path / "daemon-state.json",
+            deadline=2.0,
+        )
+        is None
+    )
+    assert calls > 3
+    assert clock[0] <= 2.0
+    assert capsys.readouterr().err.strip() == "guard_live_decision_rejection request_not_resolved"
+
+
 def test_final_live_decision_rejection_reports_only_the_error_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -210,7 +248,7 @@ def test_final_live_decision_rejection_reports_only_the_error_code(
             action="allow",
             hook_input="{}",
             state_path=tmp_path / "daemon-state.json",
-            deadline=time.monotonic() + 15,
+            deadline=time.monotonic() + 0.45,
         )
         is None
     )
@@ -274,4 +312,9 @@ def test_transport_failure_is_bounded_by_attempts_and_deadline(
         is None
     )
     assert clock[0] <= budget
-    assert len(timeouts) == (0 if budget < 0.2 else 1 if budget < 1 else 3)
+    if budget < resume._POLL_INTERVAL_SECONDS:
+        assert timeouts == []
+    elif budget < 1:
+        assert len(timeouts) == 1
+    else:
+        assert len(timeouts) > 3

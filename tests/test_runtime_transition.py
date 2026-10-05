@@ -764,7 +764,11 @@ def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, p
     plan = replace(plan, files=(*plan.files, *prepared.files))
     begin(runtime, plan)
     runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
-    assert b"candidate-workspace" in config.read_bytes()
+    for change in prepared.files:
+        if change.after is None:
+            assert not change.path.exists()
+        else:
+            assert change.path.read_bytes() == change.after
     assert b"simple_mode = true" in config.read_bytes()
     if previous_backup is not None:
         assert backup.stat().st_ino == previous_backup.st_ino

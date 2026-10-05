@@ -19,7 +19,8 @@ rm -f "$report"
 # Build the exact release-profile objects used by the coverage shards under the
 # instrumentation environment documented by cargo-llvm-cov for external tests.
 export CARGO_TARGET_DIR="$repo_root/rust/target/native-coverage"
-source <(cargo +"$toolchain" llvm-cov show-env --export-prefix)
+coverage_env="$(cargo +"$toolchain" llvm-cov show-env --export-prefix)"
+eval "$coverage_env"
 cargo +"$toolchain" llvm-cov clean --workspace
 
 # Cargo-run tests provide direct unit/integration coverage.

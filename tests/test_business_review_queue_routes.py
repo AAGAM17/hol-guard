@@ -21,6 +21,8 @@ def values(count):
 def test_native_pages_are_bounded_selectable_and_do_not_create_sql_rows(tmp_path, monkeypatch):
     store = GuardStore(guard_home=tmp_path)
     monkeypatch.setattr(route, "read_native_business_review_queue", lambda home: values(5))
+    monkeypatch.setattr(route, "read_native_business_review_summary", lambda home, request_id:
+        next((item for item in values(5) if item["request_id"] == request_id), None))
     cursor = None
     found = []
     for expected in (2, 2, 1):
@@ -96,6 +98,8 @@ def test_real_local_http_routes_expose_only_read_only_projection(tmp_path, monke
         calls.append(home)
         return values(1)
     monkeypatch.setattr(route, "read_native_business_review_queue", discover)
+    monkeypatch.setattr(route, "read_native_business_review_summary", lambda home, request_id:
+        values(1)[0] if request_id == "opaque-000" else None)
     daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
     daemon.start()
     try:
@@ -125,6 +129,9 @@ def test_real_local_http_routes_expose_only_read_only_projection(tmp_path, monke
         def failed_discovery(home):
             raise route.NativeBusinessReviewQueueReadError()
         monkeypatch.setattr(route, "read_native_business_review_queue", failed_discovery)
+        def failed_summary(home, request_id):
+            raise route.NativeBusinessReviewSummaryReadError()
+        monkeypatch.setattr(route, "read_native_business_review_summary", failed_summary)
         original_get = store.get_approval_request
         monkeypatch.setattr(store, "get_approval_request", lambda request_id:
             {"request_id": "sql-available", "status": "pending"} if request_id == "sql-available"
@@ -145,3 +152,34 @@ def test_real_local_http_routes_expose_only_read_only_projection(tmp_path, monke
             assert json.loads(rejected.value.read()) == {"error": "native_local_business_queue_read_failed"}
     finally:
         daemon.stop()
+
+
+@pytest.mark.parametrize("harness,status,include_totals,sql_cursor", [
+    ("codex", "pending", True, None),
+    (None, "resolved", False, None),
+    (None, "pending", False, "sql-next"),
+])
+def test_irrelevant_pages_do_not_contact_native(tmp_path, monkeypatch,
+    harness, status, include_totals, sql_cursor):
+    store = GuardStore(guard_home=tmp_path)
+    monkeypatch.setattr(route, "read_native_business_review_queue",
+        lambda home: pytest.fail("this SQL page cannot contain native rows"))
+    expected = {"items": [{"request_id": "sql-1"}], "next_cursor": sql_cursor,
+        "total_count": 1, "total_pending_count": 1, "status": status}
+    monkeypatch.setattr(store, "list_approval_request_page", lambda **kwargs: dict(expected))
+    assert route.local_request_page(store, status=status, limit=1, cursor=None,
+        harness=harness, search=None, include_totals=include_totals) == expected
+
+
+def test_selected_detail_reads_only_its_summary_even_if_other_queue_records_fail(tmp_path, monkeypatch):
+    store = GuardStore(guard_home=tmp_path)
+    monkeypatch.setattr(route, "read_native_business_review_queue",
+        lambda home: pytest.fail("detail must not discover unrelated snapshots"))
+    calls = []
+    def read(home, request_id):
+        calls.append(request_id)
+        return values(1)[0] if request_id == "opaque-000" else None
+    monkeypatch.setattr(route, "read_native_business_review_summary", read)
+    assert route.native_request_detail(store, "opaque-000")["request_id"] == "opaque-000"
+    assert route.native_request_detail(store, "unknown") is None
+    assert calls == ["opaque-000", "unknown"]

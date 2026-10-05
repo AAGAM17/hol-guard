@@ -5,9 +5,18 @@
 //! content, recipient/domain values, account identifiers, or resource details.
 
 use super::PolicySnapshotStore;
+use guard_policy_snapshot::PolicySnapshotV3;
 use serde_json::{json, Value};
 
 const MAX_QUEUE_ITEMS: usize = 128;
+
+fn same_policy(before: &PolicySnapshotV3, after: &PolicySnapshotV3) -> bool {
+    before.generation == after.generation
+        && before.policy_digest == after.policy_digest
+        && before.rule_digest == after.rule_digest
+        && before.runtime_identity == after.runtime_identity
+        && before.scope_contract.scope_digest == after.scope_contract.scope_digest
+}
 
 /// Local presentation of saved pending snapshots; not a decision or a statement
 /// that a snapshot remains dispatchable. No private request material leaves Rust.
@@ -35,11 +44,7 @@ pub(crate) fn queue(store: &PolicySnapshotStore) -> Result<Value, String> {
         }
     }
     let after = store.current_snapshot()?;
-    if before.generation != after.generation
-        || before.policy_digest != after.policy_digest
-        || before.rule_digest != after.rule_digest
-        || before.runtime_identity != after.runtime_identity
-        || before.scope_contract.scope_digest != after.scope_contract.scope_digest
+    if !same_policy(&before, &after)
         || selectors != super::workspace_review_request::pending_selectors(store)?
     {
         return Err("native_local_business_queue_unavailable".into());
@@ -93,12 +98,7 @@ fn build_with_recheck(
     });
     before_recheck();
     let after = store.current_snapshot()?;
-    if before.generation != after.generation
-        || before.policy_digest != after.policy_digest
-        || before.rule_digest != after.rule_digest
-        || before.runtime_identity != after.runtime_identity
-        || before.scope_contract.scope_digest != after.scope_contract.scope_digest
-    {
+    if !same_policy(&before, &after) {
         return Err("native_local_business_summary_unavailable".into());
     }
     Ok(summary)

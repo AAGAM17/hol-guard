@@ -9,6 +9,10 @@ from ..runtime.native_business_review_queue import (
     NativeBusinessReviewQueueReadError,
     read_native_business_review_queue,
 )
+from ..runtime.native_business_review_summary import (
+    NativeBusinessReviewSummaryReadError,
+    read_native_business_review_summary,
+)
 from ..store_approvals import InvalidApprovalCursorError
 
 _CURSOR_PREFIX = "native-business-v1:"
@@ -60,22 +64,31 @@ def _native_items(store, *, harness: str | None, search: str | None) -> list[dic
 
 def local_request_page(store, *, status, limit, cursor, harness, search, include_totals):
     """Keep SQL cursors intact, then paginate native rows in a separate phase."""
+    native_cursor = isinstance(cursor, str) and cursor.startswith(_CURSOR_PREFIX)
+    page = None
+    if not native_cursor:
+        page = store.list_approval_request_page(
+            status=status, limit=limit, cursor=cursor, harness=harness, search=search,
+            include_totals=include_totals,
+        )
+        # Other harnesses cannot contain native rows. Without totals, resolved
+        # history and unfinished SQL pagination need no native membership read.
+        if (harness and harness != "native-business") or (
+            not include_totals and (status == "resolved" or page.get("next_cursor"))
+        ):
+            return page
     try:
         items = _native_items(store, harness=harness, search=search)
     except NativeBusinessReviewQueueReadError:
         if isinstance(cursor, str) and cursor.startswith(_CURSOR_PREFIX):
             raise InvalidApprovalCursorError("native queue unavailable; refresh") from None
-        page = store.list_approval_request_page(
-            status=status, limit=limit, cursor=cursor, harness=harness, search=search,
-            include_totals=include_totals,
-        )
+        assert page is not None
         page["native_business_queue_error"] = "native_local_business_queue_read_failed"
         return page
     digest = hashlib.sha256(json.dumps(
         {"items": items, "status": status, "harness": harness, "search": search},
         sort_keys=True, separators=(",", ":"),
     ).encode()).hexdigest()
-    native_cursor = isinstance(cursor, str) and cursor.startswith(_CURSOR_PREFIX)
     if native_cursor:
         pieces = cursor[len(_CURSOR_PREFIX):].split(":")
         if (len(pieces) != 2 or pieces[0] != digest or not pieces[1].isascii()
@@ -94,10 +107,7 @@ def local_request_page(store, *, status, limit, cursor, harness, search, include
             f"{_CURSOR_PREFIX}{digest}:{following}" if following < len(items) else None
         )
     else:
-        page = store.list_approval_request_page(
-            status=status, limit=limit, cursor=cursor, harness=harness, search=search,
-            include_totals=include_totals,
-        )
+        assert page is not None
         if status != "resolved" and items and not page.get("next_cursor"):
             # Append only after SQL pagination ends, keeping each page bounded.
             available = limit - len(page["items"])
@@ -112,5 +122,10 @@ def local_request_page(store, *, status, limit, cursor, harness, search, include
 
 
 def native_request_detail(store, request_id: str):
-    return next((item for item in _native_items(store, harness=None, search=None)
-                 if item["request_id"] == request_id), None)
+    if store.get_approval_request(request_id) is not None:
+        raise NativeBusinessReviewQueueReadError()
+    try:
+        summary = read_native_business_review_summary(store.guard_home, request_id)
+    except NativeBusinessReviewSummaryReadError:
+        raise NativeBusinessReviewQueueReadError() from None
+    return project_request(summary) if summary is not None else None

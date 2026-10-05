@@ -82,7 +82,7 @@ pub(super) fn lower_catalog(
             .iter()
             .chain(mcp_sources.iter())
             .try_fold(0usize, |total, bytes| total.checked_add(bytes.len()))
-            .is_none_or(|size| size > MAX_PROGRAM_BYTES)
+            .is_none_or(|size| size > MAX_SOURCE_CATALOG_BYTES)
     {
         return Err("command_source_catalog_bytes_invalid");
     }

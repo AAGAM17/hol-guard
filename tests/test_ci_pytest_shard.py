@@ -95,12 +95,17 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert verify_index < upload_index
     assert "if" not in native_steps[upload_index]
 
+    coverage_producer = jobs["native-coverage-evaluators"]
+    assert "needs" not in coverage_producer
+    assert coverage_producer["timeout-minutes"] == 10
     coverage_build = next(
-        step for step in native_steps if step.get("name") == "Build coverage-instrumented native evaluators"
+        step
+        for step in coverage_producer["steps"]
+        if step.get("name") == "Build coverage-instrumented native evaluators"
     )
     coverage_upload = next(
         step
-        for step in native_steps
+        for step in coverage_producer["steps"]
         if step.get("uses", "").startswith("actions/upload-artifact@")
         and step["with"]["name"] == "pytest-native-command-coverage-evaluators"
     )
@@ -113,7 +118,11 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     ):
         plan_job = jobs[planner]
         execution_job = jobs[executor]
-        assert set(execution_job["needs"]) == {planner, "native-command-evaluators"}
+        assert set(execution_job["needs"]) == {
+            planner,
+            "native-command-evaluators",
+            "native-coverage-evaluators",
+        }
         assert execution_job["strategy"]["matrix"]["shard-index"] == list(range(count))
         for job in (plan_job, execution_job):
             setup = next(step for step in job["steps"] if step.get("uses") == "./.github/actions/setup-ci-python")

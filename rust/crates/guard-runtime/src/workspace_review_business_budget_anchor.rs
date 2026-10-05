@@ -53,7 +53,8 @@ pub(super) fn load(base: &Path) -> Result<Option<Anchor>, String> {
         || value.version != 1
         || !super::super::super::super::workspace_review_claim_index::valid_digest(&value.root)
         || value.last_time_ms == 0
-        || !value.replay_index.validate()
+        || !(value.replay_index.validate()
+            || (value.replay_index.claim_count == 0 && value.replay_index.root == value.root))
     {
         return Err(invalid());
     }

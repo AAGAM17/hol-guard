@@ -16,7 +16,6 @@ use std::path::{Path, PathBuf};
 mod anchor;
 const DIRECTORY: &str = "business-budget-ledger";
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
-const CAPACITY: usize = 128;
 fn invalid() -> String {
     "native_business_budget_state_invalid".into()
 }
@@ -105,7 +104,7 @@ fn reserve_at(
         if matched.is_empty() {
             return Err("native_business_budget_no_matching_declaration".into());
         }
-        let (mut ledger, previous) = load(store.state_base())?;
+        let (mut ledger, mut previous) = load(store.state_base())?;
         if previous
             .as_ref()
             .is_some_and(|anchor| time_ms < anchor.last_time_ms)
@@ -115,6 +114,7 @@ fn reserve_at(
         let claim_id = request_digest(request_id);
         if previous
             .as_ref()
+            .filter(|saved| saved.replay_index.claim_count > 0)
             .map(|saved| replay::find_claim(store.state_base(), &saved.replay_index, &claim_id))
             .transpose()?
             .flatten()
@@ -128,11 +128,27 @@ fn reserve_at(
             time_ms.saturating_sub(event.time_ms)
                 < guard_policy_snapshot::business_budget::BUSINESS_BUDGET_MAX_WINDOW_MS
         });
-        if ledger.events.len() >= CAPACITY {
-            return Err("native_business_budget_capacity".into());
-        }
         for (key, budget) in &matched {
             ensure_capacity(&ledger, key, budget, time_ms, &input.facts().volume)?;
+        }
+        // Commit an authenticated empty starting point before creating any
+        // immutable files. Orphans from a failed first reservation can then
+        // be ignored without treating a missing anchor as empty history.
+        if previous.is_none() {
+            let empty_root = digest_bytes(&encode(&empty_ledger())?);
+            anchor::store(
+                store.state_base(),
+                empty_root.clone(),
+                time_ms,
+                replay::ClaimIndexAnchor {
+                    root: empty_root,
+                    claim_count: 0,
+                },
+            )?;
+            previous = anchor::load(store.state_base())?;
+            if previous.is_none() {
+                return Err(invalid());
+            }
         }
         let mut buckets: Vec<_> = matched.into_iter().map(|(key, _)| key).collect();
         buckets.sort_unstable();
@@ -145,6 +161,9 @@ fn reserve_at(
             volume: input.facts().volume.clone(),
         });
         let bytes = encode(&ledger)?;
+        if bytes.len() as u64 > MAX_BYTES {
+            return Err("native_business_budget_storage_capacity".into());
+        }
         let root_digest = digest_bytes(&bytes);
         let (path, private_root) = path(store.state_base(), &root_digest, true)?;
         if let Some((_, existing)) =
@@ -174,6 +193,7 @@ fn reserve_at(
             store.state_base(),
             previous
                 .as_ref()
+                .filter(|saved| saved.replay_index.claim_count > 0)
                 .map(|saved| saved.replay_index.root.as_str()),
             &claim,
         )?;
@@ -297,6 +317,13 @@ fn encode(ledger: &Ledger) -> Result<Vec<u8>, String> {
     canonical_json_bytes(&serde_json::to_value(ledger).map_err(|_| invalid())?)
         .map_err(|_| invalid())
 }
+fn empty_ledger() -> Ledger {
+    Ledger {
+        schema: "guard.business-budget-ledger.v1".into(),
+        version: 1,
+        events: Vec::new(),
+    }
+}
 fn load(base: &Path) -> Result<(Ledger, Option<anchor::Anchor>), String> {
     let previous = anchor::load(base)?;
     let Some(saved) = &previous else {
@@ -304,15 +331,16 @@ fn load(base: &Path) -> Result<(Ledger, Option<anchor::Anchor>), String> {
         if base.join(DIRECTORY).try_exists().map_err(|_| invalid())? {
             return Err("native_business_budget_anchor_missing".into());
         }
-        return Ok((
-            Ledger {
-                schema: "guard.business-budget-ledger.v1".into(),
-                version: 1,
-                events: Vec::new(),
-            },
-            None,
-        ));
+        return Ok((empty_ledger(), None));
     };
+    if saved.replay_index.claim_count == 0 {
+        let ledger = empty_ledger();
+        let expected = digest_bytes(&encode(&ledger)?);
+        if saved.root != expected || saved.replay_index.root != expected {
+            return Err(invalid());
+        }
+        return Ok((ledger, previous));
+    }
     let (file, root) = path(base, &saved.root, false)?;
     let (_, bytes) = super::super::super::policy_store_persistence::read_private_json(
         &file,
@@ -328,7 +356,6 @@ fn load(base: &Path) -> Result<(Ledger, Option<anchor::Anchor>), String> {
     if ledger.schema != "guard.business-budget-ledger.v1"
         || ledger.version != 1
         || ledger.events.is_empty()
-        || ledger.events.len() > CAPACITY
         || encode(&ledger)? != bytes
     {
         return Err(invalid());

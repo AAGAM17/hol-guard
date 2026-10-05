@@ -248,7 +248,7 @@ fn expired_volume_compacts_but_permanent_replay_tombstones_remain() {
 }
 
 #[test]
-fn failed_replay_index_commit_returns_no_token_and_cannot_reinitialize_history() {
+fn failed_first_commit_recovers_from_authenticated_empty_anchor() {
     let fixture = Fixture::new("business-budget-index-failure");
     install(&fixture, json!([declaration("account")]));
     super::super::super::super::policy_store_persistence::persist_private_bytes(
@@ -267,8 +267,27 @@ fn failed_replay_index_commit_returns_no_token_and_cannot_reinitialize_history()
         time(&fixture)
     )
     .is_err());
-    assert!(anchor::load(&fixture.root).unwrap().is_none());
+    assert_eq!(
+        anchor::load(&fixture.root)
+            .unwrap()
+            .unwrap()
+            .replay_index
+            .claim_count,
+        0
+    );
     assert!(fixture.root.join(DIRECTORY).exists());
+    assert!(load(&fixture.root).unwrap().0.events.is_empty());
+    std::fs::remove_file(fixture.root.join("workspace-review-claims")).unwrap();
+    reserve_at(
+        &fixture.store,
+        "budget-failed",
+        &prepared(),
+        &actor(),
+        time(&fixture),
+    )
+    .unwrap();
+    assert_eq!(load(&fixture.root).unwrap().0.events.len(), 1);
+    std::fs::remove_file(fixture.root.join("business-budget-anchor.test.json")).unwrap();
     assert_eq!(
         reserve_at(
             &fixture.store,
@@ -281,6 +300,34 @@ fn failed_replay_index_commit_returns_no_token_and_cannot_reinitialize_history()
         .unwrap(),
         "native_business_budget_anchor_missing"
     );
+}
+
+#[test]
+fn declared_allowance_above_128_has_no_event_count_cap() {
+    let fixture = Fixture::new("business-budget-large-allowance");
+    let mut budget = declaration("account");
+    for field in [
+        "maximumActions",
+        "maximumRecipients",
+        "maximumRecords",
+        "maximumBytes",
+    ] {
+        budget[field] = json!(1000000);
+    }
+    install(&fixture, json!([budget]));
+    let now = time(&fixture);
+    let input = prepared();
+    for index in 0..129 {
+        reserve_at(
+            &fixture.store,
+            &format!("budget-many-{index}"),
+            &input,
+            &actor(),
+            now,
+        )
+        .unwrap();
+    }
+    assert_eq!(load(&fixture.root).unwrap().0.events.len(), 129);
 }
 
 #[test]

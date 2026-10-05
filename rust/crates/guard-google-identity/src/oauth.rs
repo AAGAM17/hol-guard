@@ -31,12 +31,15 @@ impl GrantPurpose {
         }
     }
 }
+#[path = "account.rs"]
+mod account;
 #[path = "directory_http.rs"]
 mod directory_http;
 #[path = "send_http.rs"]
 mod send_http;
 #[path = "oauth_start.rs"]
 mod start;
+pub use account::{GoogleSendAccount, GoogleSendAccountError};
 
 /// Configuration must come from the authenticated worker, not callback/tool
 /// arguments. The client session binding is owned by that worker's authorized
@@ -56,6 +59,8 @@ pub struct GoogleSendAuthorization {
 /// Private credential material remains in the worker. No Clone, Debug,
 /// serialization or token getter. A successful callback is not enrollment.
 pub struct GoogleSendCredential {
+    account_lease: Option<std::sync::Arc<std::sync::RwLock<bool>>>,
+    account_epoch: Option<String>,
     purpose: GrantPurpose,
     access_token: Zeroizing<String>,
     refresh_token: Option<Zeroizing<String>>,
@@ -64,6 +69,9 @@ pub struct GoogleSendCredential {
     expires_monotonic: Instant,
 }
 impl GoogleSendCredential {
+    pub(crate) fn account_epoch(&self) -> Option<&str> {
+        self.account_epoch.as_deref()
+    }
     pub fn identity(&self) -> &GoogleIdentityEvidence {
         &self.identity
     }
@@ -74,6 +82,12 @@ impl GoogleSendCredential {
         self.refresh_token.is_some()
     }
     pub fn is_current(&self) -> bool {
+        self.account_lease
+            .as_ref()
+            .is_none_or(|lease| lease.read().is_ok_and(|active| *active))
+            && self.time_is_current()
+    }
+    fn time_is_current(&self) -> bool {
         bounded_ascii(&self.access_token, 8192)
             && Instant::now() < self.expires_monotonic
             && now().is_ok_and(|time| time < self.expires_at && time < self.identity.expires_at())
@@ -226,6 +240,8 @@ impl GoogleSendAuthorization {
             Instant::now(),
         )?;
         Ok(GoogleSendCredential {
+            account_lease: None,
+            account_epoch: None,
             purpose: self.purpose,
             access_token: response.access_token,
             refresh_token: response.refresh_token,

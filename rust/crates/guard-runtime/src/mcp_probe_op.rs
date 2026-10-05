@@ -12,12 +12,14 @@ use guard_contracts::{
     MCP_STDIO_PROBE_RESULT_SCHEMA,
 };
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 static PROBES: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 
+#[cfg(unix)]
 fn probe_cancellation(request_id: &str) -> Result<Arc<AtomicBool>, String> {
     if request_id.is_empty() || request_id.len() > 128 {
         return Err("invalid_mcp_request_id".to_owned());
@@ -48,8 +50,10 @@ pub(crate) fn cancel_mcp_stdio_probe(request_id: &str) -> Result<Vec<u8>, String
     crate::encode_response(&serde_json::json!({"status":"ok", "cancelled":cancellation.is_some()}))
 }
 
+#[cfg(unix)]
 struct ProbeRegistration<'a>(&'a str);
 
+#[cfg(unix)]
 impl Drop for ProbeRegistration<'_> {
     fn drop(&mut self) {
         if let Some(probes) = PROBES.get() {

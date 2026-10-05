@@ -366,8 +366,10 @@ def test_grok_install_proof_covers_hooks_and_managed_config(
     assert _live_hook_verification(store.list_managed_installs(), store) == {"grok": True}
     artifacts = manifest["protection_artifact_proof"]["artifacts"]
     assert isinstance(artifacts, list)
-    artifact_paths = {item["path"] for item in artifacts if isinstance(item, dict)}
-    assert any(path.endswith("managed_config.toml") for path in artifact_paths)
+    artifact_paths = {
+        item["path"].replace("\\", "/") for item in artifacts if isinstance(item, dict)
+    }
+    assert any(path.endswith(".grok/managed_config.toml") for path in artifact_paths)
     assert any(path.endswith("hol-guard-pretooluse.json") for path in artifact_paths)
     assert any(path.endswith("hol-guard-prompt.json") for path in artifact_paths)
 

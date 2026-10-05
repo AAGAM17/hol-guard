@@ -267,6 +267,8 @@ def test_grok_hook_command_rejects_placeholder_invocations(tmp_path: Path) -> No
 
 
 def test_grok_managed_config_rejects_inline_commented_rule(tmp_path: Path) -> None:
+    import tomlkit
+
     from codex_plugin_scanner.guard.adapters.grok_user_config import prepare_user_config_text
 
     context = _ctx(tmp_path)
@@ -280,13 +282,9 @@ def test_grok_managed_config_rejects_inline_commented_rule(tmp_path: Path) -> No
         )
         is False
     )
-    assert (
-        _grok_managed_config_is_active(
-            "# BEGIN HOL GUARD MANAGED GROK\n[permission]\n"
-            "deny = [] # Read(**/.grok/auth/**)\n# END HOL GUARD MANAGED GROK\n"
-        )
-        is False
-    )
+    document = tomlkit.parse(valid)
+    document["permission"]["deny"] = tomlkit.array().comment("Read(**/.grok/auth/**)")
+    assert _grok_managed_config_is_active(tomlkit.dumps(document), context) is False
 
 
 def test_live_grok_hooks_reject_placeholder_command_and_marker_only_config(

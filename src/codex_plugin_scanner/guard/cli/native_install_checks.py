@@ -169,7 +169,7 @@ def _grok_event_has_command_hook(entries: object, context: HarnessContext | None
 
 
 def _grok_managed_config_is_active(managed_text: str, context: HarnessContext | None = None) -> bool:
-    """Require the credential deny rule in the parsed managed permission table."""
+    """Verify durable permission floors, compatibility, and catch-all backup hooks."""
     from ..adapters.grok_config import MANAGED_DENY_RULES
     from ..codex_config import tomllib
 
@@ -257,7 +257,7 @@ def _grok_protection_checks(context: HarnessContext) -> dict[str, object]:
         )
     elif not _grok_prompt_hook_is_observe(prompt_hook, context):
         warnings.append(
-            "Grok Guard observe hooks are missing prompt, session, or subagent events. "
+            "The Grok prompt gate or lifecycle hooks are missing. "
             "Re-run `hol-guard apps repair grok`."
         )
     try:
@@ -275,7 +275,7 @@ def _grok_protection_checks(context: HarnessContext) -> dict[str, object]:
         )
     elif not managed_config.is_file() or not _grok_managed_config_is_active(managed_text, context):
         warnings.append(
-            "Grok managed permission rules are missing from ~/.grok/config.toml. Re-run `hol-guard apps connect grok`."
+            "Grok protection settings are missing or stale in .grok/config.toml. Re-run `hol-guard apps connect grok`."
         )
     shim_path = context.guard_home / "bin" / "guard-grok"
     if not shim_path.is_file():
@@ -287,7 +287,7 @@ def _grok_protection_checks(context: HarnessContext) -> dict[str, object]:
         "pretool_hook_installed": pretool_hook.is_file(),
         "prompt_hook_installed": prompt_hook.is_file(),
         "pretool_catchall_installed": _grok_pretool_is_catchall(pretool_hook, context),
-        "managed_config_installed": managed_config.is_file(),
+        "managed_config_installed": _grok_managed_config_is_active(managed_text, context),
         "launch_shim_installed": shim_path.is_file(),
         "warnings": warnings,
         "ready": not warnings,

@@ -478,18 +478,31 @@ def classify_cloud_review_worker(
         return "unknown"
     from .cloud_review_sync_worker import configured_cloud_review_poll_seconds
 
-    if age > configured_cloud_review_poll_seconds() * 3:
+    stored = state.get("worker_poll_seconds")
+    poll = (
+        float(stored)
+        if isinstance(stored, (int, float)) and stored > 0
+        else configured_cloud_review_poll_seconds()
+    )
+    if age > poll * 3:
         return "dead"
     if state.get("state") == "error":
         return "failing"
     return "alive"
 
 
-def record_cloud_review_worker_heartbeat(store: GuardStore, *, now: str | None = None) -> None:
+def record_cloud_review_worker_heartbeat(
+    store: GuardStore,
+    *,
+    now: str | None = None,
+    poll_seconds: float | None = None,
+) -> None:
     """Persist one worker liveness mark without changing delivery cursors."""
 
     state = _load_sync_state(store)
     state["last_worker_heartbeat_at"] = now or _now()
+    if poll_seconds is not None:
+        state["worker_poll_seconds"] = float(poll_seconds)
     _save_sync_state(store, state)
 
 

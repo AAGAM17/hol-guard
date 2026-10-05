@@ -157,7 +157,7 @@ def _cloud_sync_sync_loop(
     queue_refresh_pending = False
     while not stop_event.is_set():
         try:
-            sync.record_cloud_review_worker_heartbeat(store)
+            sync.record_cloud_review_worker_heartbeat(store, poll_seconds=poll_interval)
         except Exception:
             _LOGGER.warning("Cloud Review worker heartbeat could not be recorded", exc_info=True)
         observed_generation = wake_signal.generation()

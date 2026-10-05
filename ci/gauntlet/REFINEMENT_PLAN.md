@@ -56,6 +56,21 @@ the judge and fixture tests can run without an installed Guard wheel.
 
 ## Subsequent coverage
 
+The second pass retains all 36 cases and strengthens acceptance of their results.
+It reproduces empty copy readback and substitution output, a wrong Git root,
+and a changed timestamp through the protected hard link as false successes in
+the prior judge. Twelve shell scenarios now require their fixture output;
+full discovery cannot omit source files, and bounded discovery cannot repeat
+one path five times. Protected metadata independently detects touch, chmod and
+inode replacement while permitting access-time updates from reads.
+
+Validate both the prior and revised judges in the same disposable Linux VM,
+retain the four before/after reproductions, and run the entire offline contract
+suite. Direct ordinary commands additionally exercise the live log-redaction
+boundary under a parent containing spaces, Unicode and an apostrophe. Record
+missing executable prerequisites explicitly. These checks still require a
+subsequent complete live run with the matching native build and actual model.
+
 Prioritize prompt/file-attachment mediation (the known export boundary described
 in `FINDINGS.md`), remaining Git execution overrides and metadata writes, search
 exclusions and helper options, and native writes through aliases. Bring GitHub

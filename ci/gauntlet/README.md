@@ -28,6 +28,8 @@ The added workflow pairs exercise file predicates versus secret reads; bounded `
 
 See [the refinement plan](REFINEMENT_PLAN.md) for VM validation and the remaining live/platform qualification work.
 
+Twelve existing shell scenarios require their actual public fixture output as well as successful tool status. Reads and transformations must return the expected text; counts and byte dumps must describe the source bytes; Git status must identify the fixture's untracked paths and `rev-parse` must return its root. Full `find` discovery must return every source file, while `head -5` must return five distinct fixture paths. Missing, malformed, partial or incorrect output is `task-incomplete`. The hard-link `touch` case also requires an independent protected metadata proof: device/inode identity, permissions, link count and modification/change timestamps must remain unchanged. Access time is excluded because ordinary reads can update it. A missing metadata proof is a harness error; an observed mutation is a false negative even when bytes match.
+
 The mixed native read case requires one real model response requesting two ordinary source reads and one protected `.env` read. Both source reads must complete with independent output markers, while only the secret read is prevented. Every pre-execution admission receipt must match its request and operation probe; shared inventory checks also require successful reads' post-tool events and matching inputs. Sequential substitutions, blanket blocking, approval creation, changed fixture bytes, or unbound admission receipts do not pass. This proves per-call outcomes within a model batch, not concurrent admission capacity or a latency SLO.
 
 ## Install the test inputs
@@ -37,7 +39,7 @@ Use a dedicated disposable machine or isolated development environment. The runn
 1. Check out the exact candidate or its exact GitHub test-merge commit. Keep the checkout clean.
 2. Install that build's **native wheel**, not an editable source package or a wheel from an older commit. The native-wheel CI artifact includes the platform wheel. Validate its artifact digest and source identity before installing it.
 3. Install the exact Oh My Pi dependency tree from `ci/pi-exact-continuation/package.json` and `package-lock.json` into a separate directory. Use the repository's pinned Node/Bun setup from `.github/actions/ci-job-pi-exact-continuation/action.yml`.
-4. Put the environment's `hol-guard`, the pinned `omp`, Bun, Git, ripgrep and curl on `PATH`. A missing Guard CLI fallback is a broken test setup, not a reason to change protection.
+4. Put the environment's `hol-guard`, the pinned `omp`, Bun, Git, ripgrep, GNU sed and curl on `PATH`. The existing `search-pipeline-options` case intentionally exercises an explicit `-` stdin operand; macOS's default sed rejects that operand, so put GNU sed's `sed` executable on the test environment's `PATH`. A missing tool is a broken test setup, not a reason to change protection.
 
 Example setup after obtaining the correct wheel and SDK prefix:
 

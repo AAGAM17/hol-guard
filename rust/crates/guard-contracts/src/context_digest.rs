@@ -228,6 +228,18 @@ pub enum ContextDigestKindV1 {
     OpaqueMaterialDigest {
         material: String,
     },
+    /// MCP call-argument projection: `_safe_mcp_arguments` + the launch-target
+    /// digest + serialized display string, in one round-trip. `arguments` is
+    /// `None` when the JSON-RPC params carry no `arguments` key.
+    McpArgumentsProjection {
+        tool_name: String,
+        #[serde(default)]
+        arguments: Option<Value>,
+    },
+    /// stdio `_redact_json` parity for remote/stdio traffic recording.
+    McpRedactJson {
+        material: Value,
+    },
     /// Select and hash package-manager policy environment values natively.
     PackageEnvironmentPolicy {
         manager: String,
@@ -362,4 +374,19 @@ pub struct ContextDigestResultV1 {
     pub mcp_tool_risk: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_tool_policy: Option<McpToolPolicyResultV1>,
+    /// `_launch_target` output — `"{tool} {serialized} [arguments-sha256:X]"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_launch_target: Option<String>,
+    /// `_safe_mcp_arguments` output. Explicit `null` when the request carried
+    /// no `arguments` — Python's `_safe_mcp_arguments(None)` returns `None`,
+    /// so the field must always be present for this kind.
+    #[serde(default)]
+    pub mcp_safe_arguments: Option<Value>,
+    /// Serialized display string for the launch target (canonical JSON of the
+    /// safe arguments, or `""` when arguments were absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_serialized_arguments: Option<String>,
+    /// stdio `_redact_json` output for traffic recording.
+    #[serde(default)]
+    pub mcp_redacted_value: Option<Value>,
 }

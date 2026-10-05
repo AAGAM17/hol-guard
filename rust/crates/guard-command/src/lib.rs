@@ -23,7 +23,7 @@ mod command_evaluation_tests;
 mod command_launcher_floors;
 pub mod command_model;
 mod command_operand_matchers;
-mod command_option_parsing;
+pub mod command_option_parsing;
 mod command_segment_parsing;
 #[cfg(unix)]
 pub mod command_shell_read_factors;
@@ -60,6 +60,7 @@ pub mod launch_identity;
 #[cfg(unix)]
 pub mod launch_identity_binding;
 pub mod launch_identity_environment;
+pub mod mcp_arguments;
 pub mod mcp_launch_environment;
 pub mod mcp_tool_approval;
 pub mod mcp_tool_policy;

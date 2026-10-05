@@ -388,7 +388,7 @@ fn check_netloc(netloc: &str) -> Result<(), String> {
 
 /// `urllib.parse.urlsplit(url)` at CPython 3.14 fidelity.
 /// `Err` carries the `ValueError` message text.
-pub(crate) fn urlsplit(url: &str) -> Result<UrlSplit, String> {
+pub fn urlsplit(url: &str) -> Result<UrlSplit, String> {
     // url.lstrip(_WHATWG_C0_CONTROL_OR_SPACE)
     let stripped = url.trim_start_matches(is_c0_or_space);
     // remove \t \r \n everywhere
@@ -446,13 +446,7 @@ pub(crate) fn urlsplit(url: &str) -> Result<UrlSplit, String> {
 /// `urllib.parse.urlunsplit((scheme, netloc, url, query, fragment))` —
 /// CPython 3.14: empty netloc re-materializes `//` when the scheme is in
 /// `uses_netloc` and the path is empty or absolute.
-pub(crate) fn urlunsplit(
-    scheme: &str,
-    netloc: &str,
-    url: &str,
-    query: &str,
-    fragment: &str,
-) -> String {
+pub fn urlunsplit(scheme: &str, netloc: &str, url: &str, query: &str, fragment: &str) -> String {
     let effective_netloc: Option<&str> = if netloc.is_empty() {
         if !scheme.is_empty()
             && USES_NETLOC.contains(&scheme)

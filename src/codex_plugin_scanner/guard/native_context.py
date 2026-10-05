@@ -42,7 +42,8 @@ _RESULT_OPTIONAL_KEYS = {
     "token", "digest", "validation_reason", "environment_values", "package_context",
     "mcp_server_identity", "mcp_tool_identity", "package_launcher",
     "mcp_descriptor", "browser_mcp", "mcp_tool_risk", "mcp_tool_policy",
-    "mcp_launch_environment",
+    "mcp_launch_environment", "mcp_launch_target", "mcp_safe_arguments",
+    "mcp_serialized_arguments", "mcp_redacted_value",
 }
 _RESULT_CODES = {
     "ok",
@@ -52,6 +53,7 @@ _RESULT_CODES = {
     "native_mcp_risk_pattern_failed",
     "native_mcp_risk_serialization_failed",
     "canonical_json_unencodable",
+    "native_mcp_arguments_invalid",
 }
 _MAX_REQUEST_BYTES = 2 * 1024 * 1024
 _TIMEOUT_SECONDS = 0.5
@@ -861,6 +863,48 @@ def context_mcp_tool_approval_hash(
     return digest, tuple(categories)
 
 
+
+def context_mcp_arguments_projection(
+    tool_name: str, arguments: object
+) -> tuple[object, str, str]:
+    """`_safe_mcp_arguments` + `_mcp_arguments_digest` + `_launch_target`, one op.
+
+    Returns ``(safe_arguments, launch_target, digest)``. ``arguments`` may be
+    any JSON value; ``None`` means the JSON-RPC params carried no ``arguments``
+    key. Unencodable/non-JSON material fails at the transport boundary, the
+    same rejection the JSON-RPC layer already applied.
+    """
+    fields = json.loads(json.dumps({"tool_name": tool_name, "arguments": arguments}))
+    result = native_context_digest(
+        "mcp_arguments_projection", fields, guard_home=_resolve_digest_home(None),
+    )
+    ok = isinstance(result, dict) and result.get("status") == "ok"
+    launch_target = result.get("mcp_launch_target") if ok else None
+    serialized = result.get("mcp_serialized_arguments") if ok else None
+    digest = result.get("digest") if ok else None
+    if (
+        not ok
+        or "mcp_safe_arguments" not in result
+        or not isinstance(launch_target, str)
+        or not isinstance(serialized, str)
+        or not _is_sha256_digest(digest)
+    ):
+        raise ValueError("native_mcp_arguments_projection_unavailable")
+    return result["mcp_safe_arguments"], launch_target, digest
+
+
+def context_mcp_redact_json(value: object) -> object:
+    """stdio `_redact_json` parity for recorded MCP traffic; terminal on failure."""
+    fields = json.loads(json.dumps({"material": value}))
+    result = native_context_digest(
+        "mcp_redact_json", fields, guard_home=_resolve_digest_home(None),
+    )
+    ok = isinstance(result, dict) and result.get("status") == "ok"
+    if not ok or "mcp_redacted_value" not in result:
+        raise ValueError("native_mcp_redact_json_unavailable")
+    return result["mcp_redacted_value"]
+
+
 __all__ = [
     "bind_context_digest_home",
     "bound_context_digest_home",
@@ -868,6 +912,8 @@ __all__ = [
     "context_digest_guard_home",
     "context_mcp_descriptor",
     "context_mcp_identity",
+    "context_mcp_arguments_projection",
+    "context_mcp_redact_json",
     "context_mcp_tool_approval_hash",
     "context_mcp_tool_policy",
     "context_mcp_tool_risk",

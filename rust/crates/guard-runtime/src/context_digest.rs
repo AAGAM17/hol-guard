@@ -28,6 +28,7 @@ const TOKEN_HASH_FIELDS: [&str; 5] = ["identity", "content", "capabilities", "po
 
 pub(super) const ERR_COMPONENT: &str = "native_context_component_invalid";
 const ERR_VALUES: &str = "native_context_values_invalid";
+const ERR_ARGUMENTS: &str = "native_mcp_arguments_invalid";
 
 fn component_hash(component: &str, value: &Value) -> Result<String, &'static str> {
     component_hash_with(component, |out| write_canonical_json(value, out))
@@ -442,6 +443,43 @@ fn evaluate_request(
             // NO JSON serialization (module specifiers, source text, h:s:n).
             result.digest = Some(digest_bytes(material.as_bytes()));
         }
+        ContextDigestKindV1::McpArgumentsProjection {
+            tool_name,
+            arguments,
+        } => {
+            // _launch_target: safe arguments + display serialization +
+            // sha256 over the RAW arguments (default=str is irrelevant at
+            // the JSON transport boundary — every surviving value is a JSON
+            // scalar/container already).
+            let arguments_value = arguments.clone().unwrap_or(Value::Null);
+            let safe = match arguments {
+                Some(inner) => guard_command::mcp_arguments::mcp_safe_arguments(inner)
+                    .map_err(|_| ERR_ARGUMENTS)?,
+                None => Value::Null,
+            };
+            let mut digest_material = Vec::with_capacity(256);
+            write_canonical_json(&arguments_value, &mut digest_material)?;
+            result.digest = Some(digest_bytes(&digest_material));
+            let serialized = if arguments.is_some() {
+                let mut out = Vec::with_capacity(256);
+                write_canonical_json(&safe, &mut out)?;
+                String::from_utf8(out).map_err(|_| "canonical_json_unencodable")?
+            } else {
+                String::new()
+            };
+            result.mcp_serialized_arguments = Some(serialized.clone());
+            result.mcp_safe_arguments = Some(safe);
+            let label = format!(
+                "{tool_name} {serialized} [arguments-sha256:{}]",
+                result.digest.as_deref().unwrap_or("")
+            );
+            result.mcp_launch_target = Some(label.trim().to_owned());
+        }
+        ContextDigestKindV1::McpRedactJson { material } => {
+            result.mcp_redacted_value = Some(
+                guard_command::mcp_arguments::redact_json(material).map_err(|_| ERR_ARGUMENTS)?,
+            );
+        }
         ContextDigestKindV1::PackageEnvironmentPolicy {
             manager,
             environment,
@@ -667,6 +705,10 @@ pub(crate) fn evaluate_context_digest_request(
         browser_mcp: None,
         mcp_tool_risk: None,
         mcp_tool_policy: None,
+        mcp_launch_target: None,
+        mcp_safe_arguments: None,
+        mcp_serialized_arguments: None,
+        mcp_redacted_value: None,
     };
     if let Err(code) = evaluate_request(request, &mut result) {
         result.status = "error".to_owned();

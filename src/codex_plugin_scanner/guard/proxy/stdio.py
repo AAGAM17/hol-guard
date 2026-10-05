@@ -13,7 +13,6 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..action_lattice import most_restrictive_guard_action
 from ..approvals import (
@@ -178,36 +177,16 @@ class ProxyLaunchIdentityChangedError(RuntimeError):
     """Raised when launch identity changes across subprocess creation."""
 
 
-def _redact_scalar(value: str) -> str:
-    lower_value = value.lower()
-    if any(token in lower_value for token in ("authorization", "api-key", "bearer ", "token", "secret")):
-        return "*****"
-    return value
-
-
 def _redact_json(value: Any) -> Any:
-    if isinstance(value, str):
-        parsed = urlsplit(value)
-        if parsed.scheme and parsed.netloc and parsed.query:
-            pairs = []
-            for key, item in parse_qsl(parsed.query, keep_blank_values=True):
-                if any(token in key.lower() for token in ("key", "token", "auth", "secret")):
-                    pairs.append((key, "*****"))
-                    continue
-                pairs.append((key, item))
-            return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(pairs), parsed.fragment))
-        return _redact_scalar(value)
-    if isinstance(value, list):
-        return [_redact_json(item) for item in value]
-    if isinstance(value, dict):
-        redacted: dict[str, Any] = {}
-        for key, item in value.items():
-            if any(token in key.lower() for token in ("authorization", "api-key", "token", "secret")):
-                redacted[key] = "*****"
-                continue
-            redacted[str(key)] = _redact_json(item)
-        return redacted
-    return value
+    """Redact recorded traffic for display; native authority only.
+
+    The resident `mcp_redact_json` op owns the scalar/query/map-key fragment
+    tables. A native failure is terminal — silent Python fallback could persist
+    secrets unredacted.
+    """
+    from ..native_context import context_mcp_redact_json
+
+    return context_mcp_redact_json(value)
 
 
 def _blocked_tool_response(

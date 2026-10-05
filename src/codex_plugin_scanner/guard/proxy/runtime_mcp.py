@@ -19,7 +19,6 @@ from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from typing import IO, Any, Literal, TextIO, cast
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 from ..action_lattice import (
@@ -93,7 +92,6 @@ from .stdio import (
     _is_timeout_response,
     _quarantine_process,
     _readline_with_timeout,
-    _redact_json,
     _timeout_response,
 )
 
@@ -337,47 +335,19 @@ def _postclaim_tool_action(decision: ToolCallDecision) -> GuardAction:
     )
 
 
-_SECRET_ARGUMENT_KEY_FRAGMENTS = (
-    "apikey",
-    "authorization",
-    "cookie",
-    "credential",
-    "password",
-    "secret",
-    "token",
-)
-
-
-def _secret_shaped_argument_key(key: object) -> bool:
-    normalized = "".join(character for character in str(key).casefold() if character.isalnum())
-    return any(fragment in normalized for fragment in _SECRET_ARGUMENT_KEY_FRAGMENTS)
-
-
-def _redact_mcp_scalar(value: str) -> str:
-    parsed = urlsplit(value)
-    if parsed.scheme and parsed.netloc and parsed.query:
-        query = [
-            (key, "*****" if _secret_shaped_argument_key(key) else item)
-            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
-        ]
-        value = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
-    redacted = _redact_json(value)
-    return redacted if isinstance(redacted, str) else "*****"
-
-
 def _safe_mcp_arguments(value: object) -> object:
-    """Project MCP arguments into a display/persistence-safe representation."""
+    """Project MCP arguments into a display/persistence-safe representation.
 
-    if isinstance(value, Mapping):
-        return {
-            str(key): "*****" if _secret_shaped_argument_key(key) else _safe_mcp_arguments(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list | tuple):
-        return [_safe_mcp_arguments(item) for item in value]
-    if isinstance(value, str):
-        return _redact_mcp_scalar(value)
-    return value
+    Native authority only: the resident `mcp_arguments_projection` op owns the
+    secret-shaped-key masking, URL query redaction, and scalar fragment tables.
+    `None` means no `arguments` key — preserved so absent and null digest alike.
+    Native failure is terminal; the silent-Python-redaction fallback was an
+    accountability leak (secrets could persist unredacted).
+    """
+    from ..native_context import context_mcp_arguments_projection
+
+    safe_arguments, _launch, _digest = context_mcp_arguments_projection("", value)
+    return safe_arguments
 
 
 def _safe_mcp_params(params: Mapping[str, object]) -> dict[str, object]:
@@ -385,11 +355,11 @@ def _safe_mcp_params(params: Mapping[str, object]) -> dict[str, object]:
 
 
 def _mcp_arguments_digest(arguments: object) -> str:
-    try:
-        serialized = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
-    except (TypeError, ValueError):
-        serialized = repr(arguments)
-    return sha256(serialized.encode("utf-8")).hexdigest()
+    """sha256 over the canonical JSON encoding of the RAW arguments."""
+    from ..native_context import context_mcp_arguments_projection
+
+    _safe, _launch, digest = context_mcp_arguments_projection("", arguments)
+    return digest
 
 
 def _browser_intent_payload(
@@ -4035,12 +4005,10 @@ class RuntimeMcpGuardProxy:
 
     @staticmethod
     def _launch_target(tool_name: str, arguments: object) -> str:
-        safe_arguments = _safe_mcp_arguments(arguments)
-        serialized_arguments = (
-            json.dumps(safe_arguments, sort_keys=True, separators=(",", ":")) if arguments is not None else ""
-        )
-        digest = _mcp_arguments_digest(arguments)
-        return f"{tool_name} {serialized_arguments} [arguments-sha256:{digest}]".strip()
+        from ..native_context import context_mcp_arguments_projection
+
+        _safe, launch_target, _digest = context_mcp_arguments_projection(tool_name, arguments)
+        return launch_target
 
 
 class ElicitationMcpGuardProxy(RuntimeMcpGuardProxy):

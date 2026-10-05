@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, TypeGuard
 from ..aibom_detection import extend_detection_with_workspace_aibom
 from ..models import GuardArtifact, HarnessDetection
 from ..shims import prepare_guard_shim, remove_guard_shim
+from .adapter_safe_output import write_text_at_authorized_path
 from .base import (
     HarnessAdapter,
     HarnessContext,
@@ -576,7 +577,7 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                     payload.pop("hooks", None)
                 else:
                     payload["hooks"] = hooks
-                candidate.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                write_text_at_authorized_path(candidate, json.dumps(payload, indent=2) + "\n")
 
         if state_path.is_file():
             state_path.unlink()

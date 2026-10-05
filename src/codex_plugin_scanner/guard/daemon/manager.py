@@ -2700,7 +2700,11 @@ def _bounded_process_query_stdout(
             if overflow.wait(min(_GUARD_DAEMON_PROCESS_QUERY_MONITOR_INTERVAL_SECONDS, remaining)):
                 break
         if process.poll() is not None and reader.is_alive():
-            reader.join(timeout=_GUARD_DAEMON_PROCESS_QUERY_TERMINATE_GRACE_SECONDS)
+            # A completed child can leave its reader waiting to be scheduled.
+            # Drain within the original query deadline; termination grace is
+            # reserved for cleanup after that deadline, not successful output.
+            reader.join(timeout=max(0.0, deadline - time.monotonic()))
+            timed_out = reader.is_alive()
     except BaseException:
         _terminate_bounded_process_query(process)
         raise

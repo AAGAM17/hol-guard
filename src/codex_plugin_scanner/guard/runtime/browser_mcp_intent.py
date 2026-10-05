@@ -8,8 +8,9 @@ match.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal
 
 from ..models import GuardArtifact
 from ..native_context import context_browser_mcp
@@ -99,7 +100,12 @@ def browser_intent_display_target(
 
 
 __all__ = [
-    "BrowserIntent", "BrowserMethod", "BrowserProfileMode", "GuardBrowserAutomationIntentV1",
-    "is_browser_mcp_server", "classify_browser_operation", "normalize_browser_mcp_intent",
+    "BrowserIntent",
+    "BrowserMethod",
+    "BrowserProfileMode",
+    "GuardBrowserAutomationIntentV1",
     "browser_intent_display_target",
+    "classify_browser_operation",
+    "is_browser_mcp_server",
+    "normalize_browser_mcp_intent",
 ]

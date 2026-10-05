@@ -49,10 +49,10 @@ from .memory_pattern_fingerprint import (
     build_memory_pattern_fingerprint,
 )
 from .models import GUARD_ACTION_VALUES
-from .runtime.approval_context import approval_context_tokens_validation_reason
-from .store_base import *
 from .native_execution import _resident_request
 from .native_policy_snapshot_windows_key import provision_native_policy_verifier_key
+from .runtime.approval_context import approval_context_tokens_validation_reason
+from .store_base import *
 from .store_event_receipts import _local_once_approval_is_reusable, _verify_local_once_approval
 from .store_local_once_authority import LOCAL_ONCE_LEGACY_AUTHORITY_KIND
 

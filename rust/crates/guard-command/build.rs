@@ -7,9 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// The canonical envelope is the raw source documents plus one acceptance
-// contribution. 4 MiB no longer fits that add, and 64 KiB is the headroom.
-const MAX_INPUT_BYTES: u64 = 4 * 1024 * 1024 + 64 * 1024;
+const MAX_INPUT_BYTES: u64 = 8 * 1024 * 1024;
 
 fn read_input(root: &Path, path: &Path) -> String {
     let relative = path.strip_prefix(root).expect("input inside source tree");

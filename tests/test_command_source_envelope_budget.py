@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-_LIMIT = re.compile(r"4 \* 1024 \* 1024 \+ 64 \* 1024")
+_LIMIT = re.compile(r"8 \* 1024 \* 1024")
 
 
 def _acceptance():
@@ -33,8 +33,9 @@ def _limits() -> dict[str, str]:
 def test_acceptance_envelope_fits_the_shipped_budget_and_not_the_old_one() -> None:
     limits = _limits()
     assert all(_LIMIT.search(text) for text in limits.values())
-    assert ".take(4 * 1024 * 1024 + 64 * 1024 + 1)" in limits["stdin"]
+    assert all("4 * 1024 * 1024 + 64 * 1024" not in text for text in limits.values())
+    assert ".take(8 * 1024 * 1024 + 1)" in limits["stdin"]
     envelope = _acceptance().projected_acceptance_envelope_length(ROOT)
-    shipped = 4 * 1024 * 1024 + 64 * 1024
+    shipped = 8 * 1024 * 1024
     previous = 4 * 1024 * 1024
     assert previous < envelope <= shipped

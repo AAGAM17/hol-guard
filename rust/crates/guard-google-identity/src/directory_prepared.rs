@@ -48,6 +48,9 @@ impl ResolvedGoogleWorkerInput {
             business_input_snapshot_digest(&body, &[]).map_err(|_| DirectoryError::Invalid)?;
         let mut recipients = Vec::new();
         for recipient in self.recipients() {
+            // Resolution refuses multiple literal aliases of one principal.
+            // Keep exact address/domain facts bound; repeating an identical
+            // mailbox across To/Cc/Bcc counts it once below.
             let identity_binding = binding(
                 &self.directory.namespace_key,
                 b"hol-guard.google-resolved-mailbox.v1\0",

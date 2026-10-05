@@ -23,10 +23,20 @@ pub struct InspectedGoogleWorkerInput {
 
 impl GoogleWorkerInput {
     /// Inspect all original MIME headers/wire text and the decoded text body.
+    /// This bounded profile accepts UTF-8 and unencoded header text only;
+    /// unsupported charsets and RFC 2047 words cannot obtain a clean scan.
     /// No lossy decoding, caller-supplied finding, network or model call.
     pub fn inspect_outbound(self) -> Result<InspectedGoogleWorkerInput, OutboundInspectionError> {
         if !self.is_current() {
             return Err(OutboundInspectionError::Expired);
+        }
+        let wire = self.input().wire_input().mime_bytes();
+        let boundary = wire
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .ok_or(OutboundInspectionError::UnsupportedEncoding)?;
+        if wire[..boundary].windows(2).any(|w| w == b"=?") {
+            return Err(OutboundInspectionError::UnsupportedEncoding);
         }
         let mut version = None;
         for bytes in [

@@ -131,6 +131,9 @@ impl GoogleDirectoryCredential {
     }
     /// Consume the directory grant and inspected input together. Named users
     /// only; groups and inaccessible/ambiguous rows are unresolved, not guessed.
+    /// This pilot supports at most eight recipient entries with a strict
+    /// 15-second freshness budget; slow lookup fails closed. Multiple literal
+    /// aliases of one principal are unresolved until canonical audience support.
     pub fn resolve_owned_input(
         self,
         input: InspectedGoogleWorkerInput,
@@ -149,6 +152,9 @@ impl GoogleDirectoryCredential {
     ) -> Result<ResolvedGoogleWorkerInput, DirectoryError> {
         if self.identity().tenant_binding() != input.input().identity().tenant_binding() {
             return Err(DirectoryError::TenantMismatch);
+        }
+        if input.input().input().recipients().len() > 8 {
+            return Err(DirectoryError::Unresolved);
         }
         let deadline = Instant::now() + Duration::from_secs(15);
         let current = || {
@@ -178,6 +184,7 @@ impl GoogleDirectoryCredential {
             hash.update(field.as_bytes());
         }
         let mut recipients = Vec::new();
+        let mut principal_addresses = std::collections::BTreeMap::new();
         for literal in input.input().input().recipients() {
             if !current() {
                 return Err(DirectoryError::Expired);
@@ -189,6 +196,12 @@ impl GoogleDirectoryCredential {
                 b"hol-guard.google-directory-user.v1\0",
                 &[&customer_binding, &user.id],
             );
+            if principal_addresses
+                .insert(principal_binding.clone(), literal.address())
+                .is_some_and(|previous| previous != literal.address())
+            {
+                return Err(DirectoryError::Unresolved);
+            }
             for field in [literal.address(), &principal_binding, &user.etag] {
                 hash.update((field.len() as u64).to_be_bytes());
                 hash.update(field.as_bytes());
@@ -197,6 +210,8 @@ impl GoogleDirectoryCredential {
                 BusinessRecipientKindV1::To => 0,
                 BusinessRecipientKindV1::Cc => 1,
                 BusinessRecipientKindV1::Bcc => 2,
+                // Drive collaborators and Calendar attendees require another
+                // operation profile, never implicit conversion to mail recipients.
                 _ => return Err(DirectoryError::Invalid),
             }]);
             recipients.push(ResolvedGoogleRecipient {

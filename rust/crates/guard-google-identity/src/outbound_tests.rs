@@ -59,3 +59,20 @@ fn ordinary_security_discussion_retains_owned_input_and_versioned_inspection() {
         .unwrap();
     assert_ne!(inspected.inspection_binding(), changed.inspection_binding());
 }
+
+#[test]
+fn encoded_header_words_cannot_bypass_credential_inspection() {
+    for subject in [
+        format!("=?UTF-8?B?{}?=", Base64::encode_string(CANARY.as_bytes())),
+        format!("=?UTF-8?Q?{}?=", CANARY.replace('_', "=5F")),
+        "=?UTF-8?B?b3JkaW5hcnk=?=".into(),
+    ] {
+        let input = credential("subject-one")
+            .prepare_command(encoded_command(&subject, "7bit", "body"))
+            .unwrap();
+        assert_eq!(
+            input.inspect_outbound().err(),
+            Some(OutboundInspectionError::UnsupportedEncoding)
+        );
+    }
+}

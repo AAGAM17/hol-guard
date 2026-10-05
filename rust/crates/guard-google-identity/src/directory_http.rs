@@ -29,6 +29,7 @@ impl GoogleSendCredential {
             .map_err(|_| DirectoryError::Unavailable)?;
         match response.status().as_u16() {
             200 => {}
+            401 => return Err(DirectoryError::Expired),
             404 | 403 => return Err(DirectoryError::Unresolved),
             429 | 500..=599 => return Err(DirectoryError::Unavailable),
             _ => return Err(DirectoryError::Invalid),

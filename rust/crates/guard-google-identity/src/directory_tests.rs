@@ -26,6 +26,42 @@ fn bytes(row: &Value) -> Zeroizing<Vec<u8>> {
     Zeroizing::new(serde_json::to_vec(row).unwrap())
 }
 
+fn addressed_input(to: &str) -> InspectedGoogleWorkerInput {
+    use base64ct::{Base64UrlUnpadded, Encoding};
+    let mime = format!("From: sender@work.example\r\nTo: {to}\r\nSubject: Synthetic\r\nContent-Type: text/plain\r\n\r\nbody");
+    let raw = Base64UrlUnpadded::encode_string(mime.as_bytes());
+    let command = format!("gws gmail users messages send --params '{{\"userId\":\"me\"}}' --json '{{\"raw\":\"{raw}\"}}'");
+    crate::oauth::worker_input_tests::credential("subject-one")
+        .prepare_command(command)
+        .unwrap()
+        .inspect_outbound()
+        .unwrap()
+}
+
+#[test]
+fn duplicate_principal_aliases_and_oversized_pilot_audiences_refuse() {
+    let result = grant().resolve_with(
+        addressed_input("recipient@work.example, alias@work.example"),
+        |_, address| {
+            let mut value = row(address);
+            if address != "sender@work.example" {
+                value = row("recipient@work.example");
+                value["aliases"] = json!(["alias@work.example"]);
+            }
+            Ok(bytes(&value))
+        },
+    );
+    assert_eq!(result.err(), Some(DirectoryError::Unresolved));
+    let addresses = (0..9)
+        .map(|n| format!("user{n}@work.example"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let result = grant().resolve_with(addressed_input(&addresses), |_, _| {
+        panic!("oversized pilot must refuse before provider lookup")
+    });
+    assert_eq!(result.err(), Some(DirectoryError::Unresolved));
+}
+
 #[test]
 fn provider_user_and_exact_alias_resolve_to_one_private_principal() {
     let mut row = row("primary@work.example");

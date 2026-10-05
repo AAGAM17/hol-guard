@@ -122,15 +122,10 @@ pub trait RiskDetectApi {
 /// `EvalError::Validation("deadline_exceeded ...")` — callers treat it the
 /// same as the Python `except _DeadlineExceededError` arms.
 pub trait ManifestDepsApi {
-    /// `manifest_dependency_targets.evaluation_targets(artifact,
-    /// workspace_dir, explicit_targets=, include_locked=)` (:33).
-    fn evaluation_targets(
-        &self,
-        artifact: &GuardArtifact,
-        workspace_dir: Option<&Path>,
-        explicit_targets: &[Map<String, Value>],
-        include_locked: bool,
-    ) -> Vec<Map<String, Value>>;
+    // `manifest_dependency_targets.evaluation_targets` is implemented inline in
+    // `targets::manifest_dependency_targets` — the resident trait seam was a
+    // stub that never produced `manifest_unsynced`, degrading the eval to
+    // `monitor` for unrecognized lockfile deps.
     /// `_dependency_map_for_path(path, text, deadline=)` (:81) — dispatches on
     /// the manifest/lockfile filename to the per-format parser. `deadline` is
     /// a monotonic deadline in seconds; expiry raises

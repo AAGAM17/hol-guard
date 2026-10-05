@@ -1636,55 +1636,6 @@ impl RiskDetectApi for ResidentRisk {
 struct ResidentManifestDeps;
 
 impl ManifestDepsApi for ResidentManifestDeps {
-    fn evaluation_targets(
-        &self,
-        artifact: &GuardArtifact,
-        workspace_dir: Option<&Path>,
-        explicit_targets: &[Map<String, Value>],
-        include_locked: bool,
-    ) -> Vec<Map<String, Value>> {
-        let mut out: Vec<Map<String, Value>> = explicit_targets.to_vec();
-        if !include_locked {
-            return out;
-        }
-        let Some(ws) = workspace_dir else {
-            return out;
-        };
-        for key in ["manifest_paths", "lockfile_paths"] {
-            let Some(Value::Array(paths)) = artifact.metadata.get(key).cloned() else {
-                continue;
-            };
-            for rel in paths.iter().filter_map(Value::as_str) {
-                let Some(resolved) = resolve_path_within_workspace(ws, rel) else {
-                    continue;
-                };
-                let Ok(text) = std::fs::read_to_string(&resolved) else {
-                    continue;
-                };
-                let deps = guard_command::package_manifest_diff::parse_manifest_dependencies(
-                    rel,
-                    &text,
-                    text.len(),
-                    4000,
-                );
-                for (name, version) in deps {
-                    out.push(
-                        json!({
-                            "ecosystem": ecosystem_for_path(rel),
-                            "name": name,
-                            "package_name": name,
-                            "version": version,
-                            "source": rel,
-                        })
-                        .as_object()
-                        .cloned()
-                        .unwrap_or_default(),
-                    );
-                }
-            }
-        }
-        out
-    }
 
     fn dependency_map_for_path(
         &self,
@@ -1717,30 +1668,6 @@ impl ManifestDepsApi for ResidentManifestDeps {
         )
     }
 }
-
-fn ecosystem_for_path(path: &str) -> &'static str {
-    let name = Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    match name {
-        "package.json"
-        | "package-lock.json"
-        | "npm-shrinkwrap.json"
-        | "yarn.lock"
-        | "pnpm-lock.yaml"
-        | "bun.lock"
-        | "bun.lockb" => "npm",
-        "requirements.txt" | "Pipfile" | "Pipfile.lock" | "poetry.lock" | "pyproject.toml"
-        | "uv.lock" | "setup.py" => "pypi",
-        "Cargo.toml" | "Cargo.lock" => "cargo",
-        "Gemfile" | "Gemfile.lock" => "rubygems",
-        "composer.json" | "composer.lock" => "packagist",
-        "go.mod" | "go.sum" => "go",
-        _ => "",
-    }
-}
-
 /// Package-identity seam — delegates to `supply_chain_package_identity` fns.
 struct ResidentPackageIdentity;
 

@@ -1,0 +1,60 @@
+use super::*;
+
+fn test_home(label: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "hol-guard-discovery-{label}-{}-{}",
+        std::process::id(),
+        now_ms().unwrap()
+    ));
+    ensure_private_directory(&path, true).unwrap()
+}
+
+#[test]
+fn live_fallback_is_not_hidden_by_empty_older_runtime_scopes() {
+    let base = test_home("empty-scopes");
+    let digest = runtime_digest().unwrap();
+    state_scope(&base, &digest).unwrap();
+    for index in 0..32 {
+        ensure_private_directory(&base.join(format!("resident-v3-{index:016x}")), true).unwrap();
+    }
+    let fallback_digest = "fe".repeat(32);
+    let fallback = state_scope(&base, &fallback_digest).unwrap();
+    publish_state(
+        &fallback,
+        1,
+        std::process::id(),
+        &fallback_digest,
+        "loopback",
+        "127.0.0.1:1".to_owned(),
+        &[9u8; crate::AUTH_TOKEN_BYTES],
+    )
+    .unwrap();
+
+    let states = discover_home_states_prefer(&base, Some(&digest)).unwrap();
+    assert!(states.iter().any(|(_, found, _)| found == &fallback_digest));
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn fallback_directory_work_is_bounded_across_scopes() {
+    let base = test_home("aggregate-bound");
+    let digest = runtime_digest().unwrap();
+    state_scope(&base, &digest).unwrap();
+    for index in 0..65 {
+        let scope = state_scope(&base, &format!("{index:016x}{}", "0".repeat(48))).unwrap();
+        for entry in 0..64 {
+            let private_root = private_root_for_scope(&scope).unwrap();
+            private_file(
+                &scope.join(format!("unrelated-{entry}")),
+                true,
+                &private_root,
+            )
+            .unwrap();
+        }
+    }
+    assert_eq!(
+        discover_home_states_prefer(&base, Some(&digest)).unwrap_err(),
+        "native_resident_state_list_failed"
+    );
+    fs::remove_dir_all(base).unwrap();
+}

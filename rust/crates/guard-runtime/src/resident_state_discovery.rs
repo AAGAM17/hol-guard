@@ -71,17 +71,21 @@ pub(crate) fn discover_home_states_prefer(
     if truncated && preferred_candidate.is_none() {
         return Err("native_resident_state_list_failed".to_owned());
     }
-    // Order fallback scopes by digest prefix, then path, and keep a bounded
-    // set. The caller's scope is tracked separately and is not part of this sort.
+    // Order fallback scopes deterministically. The caller's scope is tracked
+    // separately; fallback I/O is bounded across the whole set below.
     fallback_candidates
         .sort_unstable_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)));
-    fallback_candidates.truncate(MAX_SCOPES - usize::from(preferred_candidate.is_some()));
     // A preferred-scope listing failure still fail-closes. Other preferred
     // errors fall through so an older runtime can answer. One broken older
     // directory must not fail every hook.
     let mut states = Vec::new();
     if let Some((path, digest_prefix)) = preferred_candidate {
-        match load_scope_states(&path, &digest_prefix, &private_root) {
+        match load_scope_states(
+            &path,
+            &digest_prefix,
+            &private_root,
+            &mut DiscoveryBudget::new(),
+        ) {
             Ok(found) => states.extend(found),
             Err(error) if error == "native_resident_state_list_failed" => return Err(error),
             Err(_) => {}
@@ -90,10 +94,26 @@ pub(crate) fn discover_home_states_prefer(
     let preferred_live = states.iter().any(|(_, _, state)| {
         validate_package_process_identity(state.process_id, &state.process_start_marker).is_ok()
     });
+    if truncated && !preferred_live {
+        // An unseen fallback may still hold the home-wide resident owner lock.
+        return Err("native_resident_state_list_failed".to_owned());
+    }
     if !preferred_live {
+        // Empty and stale version directories must not displace the live
+        // resident. Bound total fallback I/O instead of selecting hash prefixes.
+        let mut budget = DiscoveryBudget::new();
         for (path, digest_prefix) in fallback_candidates {
-            if let Ok(found) = load_scope_states(&path, &digest_prefix, &private_root) {
-                states.extend(found);
+            match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
+                Ok(found) => {
+                    if states.len() + found.len() > MAX_SCOPES * MAX_STATE_FILES {
+                        return Err("native_resident_state_list_failed".to_owned());
+                    }
+                    states.extend(found);
+                }
+                Err(_) if budget.exhausted => {
+                    return Err("native_resident_state_list_failed".to_owned())
+                }
+                Err(_) => {}
             }
         }
     }
@@ -107,19 +127,51 @@ pub(crate) fn discover_home_states_prefer(
     Ok(states)
 }
 
+struct DiscoveryBudget {
+    entries: usize,
+    reads: usize,
+    exhausted: bool,
+}
+
+impl DiscoveryBudget {
+    fn new() -> Self {
+        Self {
+            entries: MAX_DIRECTORY_ENTRIES,
+            reads: MAX_SCOPES * MAX_STATE_READ_ATTEMPTS,
+            exhausted: false,
+        }
+    }
+
+    fn consume(&mut self, read: bool) -> Result<(), String> {
+        let remaining = if read {
+            &mut self.reads
+        } else {
+            &mut self.entries
+        };
+        if *remaining == 0 {
+            self.exhausted = true;
+            return Err("native_resident_state_list_failed".to_owned());
+        }
+        *remaining -= 1;
+        Ok(())
+    }
+}
+
 fn load_scope_states(
     scope: &Path,
     digest_prefix: &str,
     private_root: &Path,
+    budget: &mut DiscoveryBudget,
 ) -> Result<Vec<(PathBuf, String, ResidentState)>, String> {
     let scope = ensure_private_directory_under(scope, private_root, true)?;
-    let mut paths = state_paths(&scope)?;
+    let mut paths = state_paths_with_budget(&scope, budget)?;
     paths.sort_by_key(|path| std::cmp::Reverse(generation_number(path).unwrap_or(0)));
     let mut states = Vec::new();
     for (attempted, path) in paths.into_iter().enumerate() {
         if attempted >= MAX_STATE_READ_ATTEMPTS || states.len() == MAX_STATE_FILES {
             break;
         }
+        budget.consume(true)?;
         let Ok(state) = read_state_file_raw(&path, private_root) else {
             continue;
         };
@@ -137,10 +189,18 @@ fn load_scope_states(
 }
 
 pub(super) fn state_paths(scope: &Path) -> Result<Vec<PathBuf>, String> {
+    state_paths_with_budget(scope, &mut DiscoveryBudget::new())
+}
+
+fn state_paths_with_budget(
+    scope: &Path,
+    budget: &mut DiscoveryBudget,
+) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     let mut scanned = 0usize;
     let mut truncated = false;
     for entry in fs::read_dir(scope).map_err(|_| "native_resident_state_list_failed".to_owned())? {
+        budget.consume(false)?;
         // Count every entry so unrelated names cannot hide a later state file.
         scanned += 1;
         if scanned > MAX_DIRECTORY_ENTRIES {

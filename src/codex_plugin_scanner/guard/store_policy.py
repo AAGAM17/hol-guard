@@ -1525,11 +1525,17 @@ class StorePolicyMixin:
                 else {}
             )
 
+        # Resident startup needs the same verifier authority even when only
+        # remote policy rows (or no policy rows) exist. Procuring that key does
+        # not refresh, sign, or promote remote policy into local authority.
+        resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
         if has_local_policy:
-            integrity_key, integrity_key_id = self._policy_integrity_secret_material(create=True)
+            integrity_key, integrity_key_id = resident_key, resident_key_id
         else:
             integrity_key, integrity_key_id = None, None
-        local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
+        # Local-once approvals live in a separate table from policy_decisions.
+        # Their integrity evidence must not depend on has_local_policy.
+        local_once_key, local_once_key_id = resident_key, resident_key_id
 
         # The resident refuses to serve until the owner-private verifier key
         # exists under this guard home (consume_for_spawn gate). Publishers
@@ -1537,8 +1543,8 @@ class StorePolicyMixin:
         # the same prerequisite or every request fails closed on
         # native_policy_verifier_key_missing. Provisioning is O_EXCL +
         # never-replace, so it is idempotent and safe to run per lookup.
-        if integrity_key is not None:
-            provision_native_policy_verifier_key(Path(self.guard_home), integrity_key)
+        if resident_key is not None:
+            provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
 
         request: dict[str, object] = {
             "schema": "guard-policy-decision-lookup-request.v1",

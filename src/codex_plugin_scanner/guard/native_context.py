@@ -43,7 +43,9 @@ _RESULT_OPTIONAL_KEYS = {
     "mcp_server_identity", "mcp_tool_identity", "package_launcher",
     "mcp_descriptor", "browser_mcp", "mcp_tool_risk", "mcp_tool_policy",
     "mcp_launch_environment", "mcp_launch_target", "mcp_safe_arguments",
-    "mcp_serialized_arguments", "mcp_redacted_value",
+    "mcp_serialized_arguments", "mcp_redacted_value", "runtime_identity",
+    "runtime_identity_match", "runtime_identity_reusable",
+    "runtime_resolved_executable", "runtime_resolved_argv",
 }
 _RESULT_CODES = {
     "ok",
@@ -55,6 +57,21 @@ _RESULT_CODES = {
     "canonical_json_unencodable",
     "native_mcp_arguments_invalid",
 }
+
+# Filesystem authority: launch/executable identities hash on-disk bytes and
+# stat metadata, so the same request legitimately produces a different result
+# after entrypoint/executable bytes change.  `mcp_launch_environment` is also
+# uncacheable because it carries granted credentials (see the transport
+# comment below).  Every other kind is a pure function of request content.
+_UNCACHEABLE_DIGEST_KINDS = frozenset(
+    {
+        "mcp_launch_environment",
+        "runtime_executable_identity",
+        "runtime_launch_identity",
+        "runtime_launch_identity_matches",
+        "runtime_launch_identity_projection",
+    }
+)
 _MAX_REQUEST_BYTES = 2 * 1024 * 1024
 _TIMEOUT_SECONDS = 0.5
 
@@ -499,7 +516,7 @@ def native_context_digest(
         # it is excluded from the canonical material.
         content_sha256 = (
             _canonical_request_sha256({"kind": kind, **kind_fields})
-            if kind != "mcp_launch_environment"
+            if kind not in _UNCACHEABLE_DIGEST_KINDS
             else None
         )
     except (TypeError, ValueError):
@@ -717,6 +734,129 @@ def context_mcp_launch_environment(
     return values
 
 
+def context_runtime_executable_identity(
+    command: object,
+    *,
+    search_path: str | None = None,
+    cwd: Path | None = None,
+    home_dir: Path | None = None,
+    require_executable: bool = True,
+    guard_home: Path | None = None,
+) -> dict[str, Any]:
+    """Transport `build_runtime_executable_identity` inputs to native authority; no fallback."""
+    result = native_context_digest(
+        "runtime_executable_identity",
+        {
+            "command": command if command is None or isinstance(command, (str, int, float, bool, list, dict)) else None,
+            "search_path": search_path,
+            "cwd": str(cwd) if cwd is not None else None,
+            "home_dir": str(home_dir) if home_dir is not None else None,
+            "require_executable": require_executable,
+        },
+        guard_home=_resolve_digest_home(guard_home),
+    )
+    identity = result.get("runtime_identity") if isinstance(result, dict) else None
+    if not isinstance(result, dict) or result.get("status") != "ok" or not isinstance(identity, dict):
+        raise ValueError("native_runtime_executable_identity_unavailable")
+    return identity
+
+
+def context_runtime_launch_identity(
+    command: object,
+    *,
+    args: Sequence[object] = (),
+    structured_command: bool = False,
+    direct_executable: bool = False,
+    search_path: str | None = None,
+    cwd: Path | None = None,
+    home_dir: Path | None = None,
+    launch_env: Mapping[str, str] | None = None,
+    guard_home: Path | None = None,
+) -> dict[str, Any]:
+    """Transport `build_runtime_launch_identity` inputs to native authority; no fallback."""
+    result = native_context_digest(
+        "runtime_launch_identity",
+        {
+            "command": command if command is None or isinstance(command, (str, int, float, bool, list, dict)) else None,
+            "args": list(args),
+            "structured_command": structured_command,
+            "direct_executable": direct_executable,
+            "search_path": search_path,
+            "cwd": str(cwd) if cwd is not None else None,
+            "home_dir": str(home_dir) if home_dir is not None else None,
+            "launch_env": dict(launch_env) if launch_env is not None else None,
+        },
+        guard_home=_resolve_digest_home(guard_home),
+    )
+    identity = result.get("runtime_identity") if isinstance(result, dict) else None
+    if not isinstance(result, dict) or result.get("status") != "ok" or not isinstance(identity, dict):
+        raise ValueError("native_runtime_launch_identity_unavailable")
+    return identity
+
+
+def context_runtime_launch_identity_matches(
+    expected_identity: Mapping[str, object],
+    command: object,
+    *,
+    args: Sequence[object] = (),
+    structured_command: bool = False,
+    direct_executable: bool = False,
+    search_path: str | None = None,
+    cwd: Path | None = None,
+    launch_env: Mapping[str, str] | None = None,
+    guard_home: Path | None = None,
+) -> bool:
+    """`runtime_launch_identity_matches` — rebuild current identity natively and compare."""
+    result = native_context_digest(
+        "runtime_launch_identity_matches",
+        {
+            "expected_identity": dict(expected_identity),
+            "command": command if command is None or isinstance(command, (str, int, float, bool, list, dict)) else None,
+            "args": list(args),
+            "structured_command": structured_command,
+            "direct_executable": direct_executable,
+            "search_path": search_path,
+            "cwd": str(cwd) if cwd is not None else None,
+            "launch_env": dict(launch_env) if launch_env is not None else None,
+        },
+        guard_home=_resolve_digest_home(guard_home),
+    )
+    verdict = result.get("runtime_identity_match") if isinstance(result, dict) else None
+    if not isinstance(result, dict) or result.get("status") != "ok" or not isinstance(verdict, bool):
+        raise ValueError("native_runtime_launch_identity_matches_unavailable")
+    return verdict
+
+
+def context_runtime_launch_identity_projection(
+    identity: Mapping[str, object],
+    *,
+    args: Sequence[str] = (),
+    guard_home: Path | None = None,
+) -> tuple[bool, str | None, tuple[str, ...] | None]:
+    """Reusable/resolved-executable/resolved-argv for a stored identity — no fallback."""
+    result = native_context_digest(
+        "runtime_launch_identity_projection",
+        {
+            "identity": dict(identity),
+            "args": list(args),
+        },
+        guard_home=_resolve_digest_home(guard_home),
+    )
+    if not isinstance(result, dict) or result.get("status") != "ok" or "runtime_resolved_argv" not in result:
+        raise ValueError("native_runtime_launch_identity_projection_unavailable")
+    reusable = result.get("runtime_identity_reusable")
+    executable = result.get("runtime_resolved_executable")
+    argv = result.get("runtime_resolved_argv")
+    if not isinstance(reusable, bool) or (executable is not None and not isinstance(executable, str)):
+        raise ValueError("native_runtime_launch_identity_projection_unavailable")
+    resolved_argv: tuple[str, ...] | None = None
+    if argv is not None:
+        if not isinstance(argv, list) or not all(isinstance(part, str) for part in argv):
+            raise ValueError("native_runtime_launch_identity_projection_unavailable")
+        resolved_argv = tuple(argv)
+    return reusable, executable, resolved_argv
+
+
 def context_package_evidence(
     material: object,
     *,
@@ -921,6 +1061,10 @@ __all__ = [
     "context_package_environment_values",
     "context_package_evidence",
     "context_package_launcher_token",
+    "context_runtime_executable_identity",
+    "context_runtime_launch_identity",
+    "context_runtime_launch_identity_matches",
+    "context_runtime_launch_identity_projection",
     "context_sha256_digest",
     "is_unbound_context_digest",
     "native_context_digest",

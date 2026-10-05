@@ -7,6 +7,8 @@
 //! components and project the typed result, never a Python-built hash, into
 //! approval evidence.
 
+use std::path::Path;
+
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -647,6 +649,91 @@ fn evaluate_request(
                 package: guard_command::mcp_decision::package_token(command_name, args),
             });
         }
+        ContextDigestKindV1::RuntimeExecutableIdentity {
+            command,
+            search_path,
+            cwd,
+            home_dir,
+            require_executable,
+        } => {
+            result.runtime_identity = Some(
+                guard_command::launch_identity::build_runtime_executable_identity(
+                    command.as_ref().unwrap_or(&Value::Null),
+                    search_path.as_deref(),
+                    cwd.as_deref().map(Path::new),
+                    home_dir.as_deref().map(Path::new),
+                    *require_executable,
+                ),
+            );
+        }
+        ContextDigestKindV1::RuntimeLaunchIdentity {
+            command,
+            args,
+            structured_command,
+            direct_executable,
+            search_path,
+            cwd,
+            home_dir,
+            launch_env,
+        } => {
+            let launch_env_value = launch_env.as_ref().map(|env| {
+                Value::Object(
+                    env.iter()
+                        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                        .collect(),
+                )
+            });
+            result.runtime_identity = Some(
+                guard_command::launch_identity::build_runtime_launch_identity(
+                    command.as_ref().unwrap_or(&Value::Null),
+                    args,
+                    *structured_command,
+                    *direct_executable,
+                    search_path.as_deref(),
+                    cwd.as_deref().map(Path::new),
+                    home_dir.as_deref().map(Path::new),
+                    launch_env_value.as_ref(),
+                ),
+            );
+        }
+        ContextDigestKindV1::RuntimeLaunchIdentityMatches {
+            expected_identity,
+            command,
+            args,
+            structured_command,
+            direct_executable,
+            search_path,
+            cwd,
+            launch_env,
+        } => {
+            let launch_env_value = launch_env.as_ref().map(|env| {
+                Value::Object(
+                    env.iter()
+                        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                        .collect(),
+                )
+            });
+            result.runtime_identity_match = Some(
+                guard_command::launch_identity::runtime_launch_identity_matches(
+                    expected_identity,
+                    command.as_ref().unwrap_or(&Value::Null),
+                    args,
+                    *structured_command,
+                    *direct_executable,
+                    search_path.as_deref(),
+                    cwd.as_deref().map(Path::new),
+                    launch_env_value.as_ref(),
+                ),
+            );
+        }
+        ContextDigestKindV1::RuntimeLaunchIdentityProjection { identity, args } => {
+            result.runtime_identity_reusable =
+                Some(guard_command::launch_identity::runtime_launch_identity_is_reusable(identity));
+            result.runtime_resolved_executable =
+                guard_command::launch_identity::resolved_runtime_launch_executable(identity);
+            result.runtime_resolved_argv =
+                guard_command::launch_identity::resolved_runtime_launch_argv(identity, args);
+        }
     }
     Ok(())
 }
@@ -709,6 +796,11 @@ pub(crate) fn evaluate_context_digest_request(
         mcp_safe_arguments: None,
         mcp_serialized_arguments: None,
         mcp_redacted_value: None,
+        runtime_identity: None,
+        runtime_identity_match: None,
+        runtime_identity_reusable: None,
+        runtime_resolved_executable: None,
+        runtime_resolved_argv: None,
     };
     if let Err(code) = evaluate_request(request, &mut result) {
         result.status = "error".to_owned();

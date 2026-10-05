@@ -299,6 +299,53 @@ pub enum ContextDigestKindV1 {
         command_name: String,
         args: Vec<String>,
     },
+    /// `build_runtime_executable_identity` — resolve + content-bind an
+    /// executable with per-evaluation nonces for unverifiable cases.
+    /// `command: null` models Python's `command is None`.
+    RuntimeExecutableIdentity {
+        command: Option<Value>,
+        search_path: Option<String>,
+        cwd: Option<String>,
+        home_dir: Option<String>,
+        require_executable: bool,
+    },
+    /// `build_runtime_launch_identity` — content-bind executable plus
+    /// code-bearing entrypoints from the real launch cwd.
+    RuntimeLaunchIdentity {
+        command: Option<Value>,
+        #[serde(default)]
+        args: Vec<Value>,
+        structured_command: bool,
+        direct_executable: bool,
+        search_path: Option<String>,
+        cwd: Option<String>,
+        home_dir: Option<String>,
+        #[serde(default)]
+        launch_env: Option<BTreeMap<String, String>>,
+    },
+    /// `runtime_launch_identity_matches` — rebuild the current identity and
+    /// compare verification digests.
+    RuntimeLaunchIdentityMatches {
+        expected_identity: Value,
+        command: Option<Value>,
+        #[serde(default)]
+        args: Vec<Value>,
+        structured_command: bool,
+        direct_executable: bool,
+        search_path: Option<String>,
+        cwd: Option<String>,
+        #[serde(default)]
+        launch_env: Option<BTreeMap<String, String>>,
+    },
+    /// Identity post-processors — `runtime_launch_identity_is_reusable`,
+    /// `resolved_runtime_launch_executable`, `resolved_runtime_launch_argv`.
+    /// `resolved_argv` re-probes shebang bytes, so it runs here where fs is
+    /// legal rather than in Python callers.
+    RuntimeLaunchIdentityProjection {
+        identity: Value,
+        #[serde(default)]
+        args: Vec<String>,
+    },
 }
 
 // `deny_unknown_fields` cannot combine with `flatten` (serde rejects the
@@ -389,4 +436,23 @@ pub struct ContextDigestResultV1 {
     /// stdio `_redact_json` output for traffic recording.
     #[serde(default)]
     pub mcp_redacted_value: Option<Value>,
+    /// `build_runtime_executable_identity` / `build_runtime_launch_identity`
+    /// output — the full launch-identity object, verbatim Python dict shape.
+    /// These kinds always produce it; `Option` keeps it absent on other kinds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_identity: Option<Value>,
+    /// `runtime_launch_identity_matches` verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_identity_match: Option<bool>,
+    /// `runtime_launch_identity_is_reusable` verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_identity_reusable: Option<bool>,
+    /// `resolved_runtime_launch_executable` result (absent/`null` when
+    /// unpinnable).
+    #[serde(default)]
+    pub runtime_resolved_executable: Option<String>,
+    /// `resolved_runtime_launch_argv` result — always present for the
+    /// projection kind; `null` when the launch is unpinnable.
+    #[serde(default)]
+    pub runtime_resolved_argv: Option<Vec<String>>,
 }

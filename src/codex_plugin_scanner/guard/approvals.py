@@ -674,6 +674,18 @@ def evaluation_has_terminal_policy_action(evaluation: Mapping[str, object]) -> b
     return False
 
 
+def _raise_temporary_mcp_resolution_error(result: Mapping[str, object], *, request_id: str, fallback: str | None) -> None:
+    error = result.get("error")
+    if error == "already_resolved":
+        raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")
+    if error == "not_found":
+        raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
+    if isinstance(error, str) and error:
+        raise ValueError(error)
+    if fallback is not None:
+        raise ValueError(fallback)
+
+
 @_serialize_approval_resolution
 def apply_approval_resolution(
     *,
@@ -905,14 +917,11 @@ def apply_approval_resolution(
             commit_resolution=False,
         )
         if preview.get("policy_written") is not True:
-            error = preview.get("error")
-            if error == "already_resolved":
-                raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")
-            if error == "not_found":
-                raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
-            if isinstance(error, str) and error:
-                raise ValueError(error)
-            raise ValueError("temporary_mcp_grant_not_written")
+            _raise_temporary_mcp_resolution_error(
+                preview,
+                request_id=request_id,
+                fallback="temporary_mcp_grant_not_written",
+            )
         if not _await_saved_approval_native_snapshot(store):
             raise ValueError("native_policy_snapshot_unacknowledged")
         temporary_mcp_result, temporary_mcp_resolved_ids = store.apply_temporary_mcp_grant_resolution(
@@ -924,13 +933,11 @@ def apply_approval_resolution(
             approval_gate_grant=resolved_gate_grant,
         )
         if temporary_mcp_result.get("resolved") is not True:
-            error = temporary_mcp_result.get("error")
-            if error == "already_resolved":
-                raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")
-            if error == "not_found":
-                raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
-            if isinstance(error, str) and error:
-                raise ValueError(error)
+            _raise_temporary_mcp_resolution_error(
+                temporary_mcp_result,
+                request_id=request_id,
+                fallback=None,
+            )
     if local_tool_selection is not None:
         local_tool_decision = local_tool_grant_decision(
             harness=str(request["harness"]),

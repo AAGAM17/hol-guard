@@ -261,7 +261,9 @@ def _redact_compact_json_values(value: object) -> object:
         return [_redact_compact_json_values(item) for item in value]
     if isinstance(value, str):
         return redact_text(value).text
-    return value
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return redact_text(str(value)).text
 
 
 def emit_compact_hook_json(payload: PayloadDict) -> None:

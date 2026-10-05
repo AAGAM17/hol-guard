@@ -961,11 +961,14 @@ fn policy_row_specificity(row: &Value, harness: &str) -> (u8, u8, u8, u8, u8, u8
 }
 
 fn policy_row_outranks(candidate: &Value, selected: &Value, harness: &str) -> bool {
-    let candidate_severity = guard_action_severity(&row_value(candidate, "action"), GuardAction::Block);
-    let selected_severity = guard_action_severity(&row_value(selected, "action"), GuardAction::Block);
+    let candidate_severity =
+        guard_action_severity(&row_value(candidate, "action"), GuardAction::Block);
+    let selected_severity =
+        guard_action_severity(&row_value(selected, "action"), GuardAction::Block);
     candidate_severity > selected_severity
         || (candidate_severity == selected_severity
-            && policy_row_specificity(candidate, harness) > policy_row_specificity(selected, harness))
+            && policy_row_specificity(candidate, harness)
+                > policy_row_specificity(selected, harness))
 }
 
 /// `_distinct_non_null`.

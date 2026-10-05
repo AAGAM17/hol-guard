@@ -1,5 +1,30 @@
 """Owner context for the isolated Grok client without package imports."""
 
+import json
+from collections.abc import Sequence
+from pathlib import Path
+
+from .bounded_cli_hook_envelope import _json_object
+
+
+def configured_grok_payload(input_text: str, cli_args: Sequence[str]) -> str:
+    """Bind missing host context to the workspace already owned by its hook."""
+    payload = _json_object(input_text)
+    if payload is None:
+        return input_text
+    cwd = payload.get("cwd")
+    if cwd is not None and (not isinstance(cwd, str) or cwd.strip()):
+        return input_text
+    try:
+        workspace = cli_args[cli_args.index("--workspace") + 1]
+    except (ValueError, IndexError):
+        return input_text
+    if not Path(workspace).is_absolute():
+        return input_text
+    payload["cwd"] = workspace
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
 GROK_HOOK_INVOCATION_TEMPLATE = """
 _GROK_HOME = None
 _GROK_WORKSPACE = None
@@ -42,7 +67,9 @@ def _configure_grok_invocation():
 
 def _grok_invocation_payload(input_text):
     payload = _json_object(input_text)
-    if payload is not None and payload.get("cwd") is None and _GROK_WORKSPACE is not None:
+    cwd = payload.get("cwd") if payload is not None else None
+    missing_cwd = cwd is None or (isinstance(cwd, str) and not cwd.strip())
+    if payload is not None and missing_cwd and _GROK_WORKSPACE is not None:
         payload["cwd"] = _GROK_WORKSPACE
         return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     return input_text

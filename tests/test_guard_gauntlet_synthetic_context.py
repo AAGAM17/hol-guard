@@ -102,15 +102,14 @@ def test_secret_copy_option_terminator_prompt_requires_the_listed_bash_call():
     assert scenario.profiles == ("core",)
 
 
-def test_workspace_creation_scenario_uses_harness_working_directory():
+def test_workspace_creation_scenario_preserves_explicit_workspace_commands():
     scenario = next(row for row in load_catalog() if row.id == "cwd-directory-and-file-creation")
 
     assert scenario.commands == (
-        "mkdir -p output/generated/nested",
-        "touch output/generated/nested/created.ts",
+        "cd {{workspace}} && mkdir -p output/generated/nested",
+        "cd {{workspace}} && touch output/generated/nested/created.ts",
     )
-    assert "bash tool already starts in the disposable workspace root" in scenario.prompt.lower()
-    assert "do not add an inline cd prefix" in scenario.prompt.lower()
+    assert "run each exact bash command below once" in scenario.prompt.lower()
     assert scenario.expectation == "allow"
     assert scenario.oracle == "commands"
 

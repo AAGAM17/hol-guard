@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import pytest
 
 from codex_plugin_scanner.guard.runtime.browser_mcp_intent import normalize_browser_mcp_intent
@@ -13,6 +12,7 @@ pytestmark = pytest.mark.usefixtures("native_context_digest")
 def _normalized_url(url: str):
     artifact, arguments = _browser_artifact(arguments={"url": url})
     return normalize_browser_mcp_intent(artifact, arguments)
+
 
 from codex_plugin_scanner.guard.mcp_tool_calls import (
     build_tool_call_artifact,
@@ -140,8 +140,6 @@ class TestBrowserIntentLiterals:
         assert "browser.privileged" in BrowserIntent.__args__  # type: ignore[attr-defined]
 
 
-
-
 class TestNormalizeBrowserMcpIntent:
     """HGBM014: normalize_browser_mcp_intent function."""
 
@@ -238,15 +236,18 @@ class TestIsBrowserMcpServer:
 
 
 class TestBrowserArgumentShapes:
-    @pytest.mark.parametrize("arguments", [
-        {"url": "https://example.com"},
-        '{"url": "https://example.com"}',
-        {"href": "https://example.com"},
-        {"target": "https://example.com"},
-        {"uri": "https://example.com"},
-        {"pageUrl": "https://example.com"},
-        {"arguments": {"url": "https://example.com"}},
-    ])
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            {"url": "https://example.com"},
+            '{"url": "https://example.com"}',
+            {"href": "https://example.com"},
+            {"target": "https://example.com"},
+            {"uri": "https://example.com"},
+            {"pageUrl": "https://example.com"},
+            {"arguments": {"url": "https://example.com"}},
+        ],
+    )
     def test_argument_target(self, arguments) -> None:
         artifact, _ = _browser_artifact()
         assert normalize_browser_mcp_intent(artifact, arguments).target_url == "https://example.com"
@@ -258,16 +259,24 @@ class TestBrowserArgumentShapes:
 
 
 class TestBrowserTargets:
-    @pytest.mark.parametrize(("url", "origin", "domain", "path"), [
-        ("http://127.0.0.1:3000/a", "http://127.0.0.1:3000", "127.0.0.1", "/a"),
-        ("http://[::1]:3000/a", "http://[::1]:3000", "::1", "/a"),
-        ("https://hol.org/a", "https://hol.org", "hol.org", "/a"),
-        ("https://app.hol.org/a", "https://app.hol.org", "app.hol.org", "/a"),
-        ("http://localhost:3000/a", "http://localhost:3000", "localhost", "/a"),
-        ("https://hol.org/guard/integrations/slack?token=x#y", "https://hol.org", "hol.org", "/guard/integrations/slack"),
-        ("https://hol.org/", "https://hol.org", "hol.org", "/"),
-        ("https://hol.org", "https://hol.org", "hol.org", ""),
-    ])
+    @pytest.mark.parametrize(
+        ("url", "origin", "domain", "path"),
+        [
+            ("http://127.0.0.1:3000/a", "http://127.0.0.1:3000", "127.0.0.1", "/a"),
+            ("http://[::1]:3000/a", "http://[::1]:3000", "::1", "/a"),
+            ("https://hol.org/a", "https://hol.org", "hol.org", "/a"),
+            ("https://app.hol.org/a", "https://app.hol.org", "app.hol.org", "/a"),
+            ("http://localhost:3000/a", "http://localhost:3000", "localhost", "/a"),
+            (
+                "https://hol.org/guard/integrations/slack?token=x#y",
+                "https://hol.org",
+                "hol.org",
+                "/guard/integrations/slack",
+            ),
+            ("https://hol.org/", "https://hol.org", "hol.org", "/"),
+            ("https://hol.org", "https://hol.org", "hol.org", ""),
+        ],
+    )
     def test_target_identity(self, url, origin, domain, path) -> None:
         intent = _normalized_url(url)
         assert (intent.target_origin, intent.target_domain, intent.target_path_prefix) == (origin, domain, path)
@@ -360,23 +369,27 @@ class TestOperationMaps:
 class TestVolatileFields:
     """HGBM030: Volatile field detection."""
 
-
     def test_detects_volatile_fields_in_arguments(self) -> None:
-        artifact, arguments = _browser_artifact(arguments={"url": "https://example.com", "timeout": 30000, "pageId": "tab1"})
+        artifact, arguments = _browser_artifact(
+            arguments={"url": "https://example.com", "timeout": 30000, "pageId": "tab1"}
+        )
         assert normalize_browser_mcp_intent(artifact, arguments).volatile_fields_dropped == ("timeout", "pageId")
 
 
 class TestSensitiveSurfaces:
-    @pytest.mark.parametrize(("operation", "arguments", "schema", "flag"), [
-        ("read_cookies", {}, {}, "cookies"),
-        ("read_storage", {}, {}, "storage"),
-        ("evaluate_script", {}, {}, "script_eval"),
-        ("raw_cdp", {}, {}, "cdp"),
-        ("upload_file", {"filePath": "/tmp/file.txt"}, {}, "upload"),
-        ("save_file", {"downloadPath": "/tmp/file.txt"}, {}, "download"),
-        ("fill_form", {}, {"properties": {"password": {"type": "string"}}}, "password_field"),
-        ("network_intercept", {}, {}, "network_intercept"),
-    ])
+    @pytest.mark.parametrize(
+        ("operation", "arguments", "schema", "flag"),
+        [
+            ("read_cookies", {}, {}, "cookies"),
+            ("read_storage", {}, {}, "storage"),
+            ("evaluate_script", {}, {}, "script_eval"),
+            ("raw_cdp", {}, {}, "cdp"),
+            ("upload_file", {"filePath": "/tmp/file.txt"}, {}, "upload"),
+            ("save_file", {"downloadPath": "/tmp/file.txt"}, {}, "download"),
+            ("fill_form", {}, {"properties": {"password": {"type": "string"}}}, "password_field"),
+            ("network_intercept", {}, {}, "network_intercept"),
+        ],
+    )
     def test_sensitive_surface(self, operation, arguments, schema, flag) -> None:
         artifact, _ = _browser_artifact(tool_name=operation)
         artifact.metadata["tool_schema"] = schema
@@ -384,12 +397,15 @@ class TestSensitiveSurfaces:
 
 
 class TestProfileMode:
-    @pytest.mark.parametrize(("args", "mode"), [
-        (["--isolated"], "isolated"),
-        (["--user-data-dir=/tmp/profile"], "dedicated"),
-        (["--remote-debugging-port=9222"], "remote-debugging"),
-        ([], "unknown"),
-    ])
+    @pytest.mark.parametrize(
+        ("args", "mode"),
+        [
+            (["--isolated"], "isolated"),
+            (["--user-data-dir=/tmp/profile"], "dedicated"),
+            (["--remote-debugging-port=9222"], "remote-debugging"),
+            ([], "unknown"),
+        ],
+    )
     def test_profile_mode(self, args, mode) -> None:
         artifact, arguments = _browser_artifact(arguments={})
         artifact.metadata["args"] = args

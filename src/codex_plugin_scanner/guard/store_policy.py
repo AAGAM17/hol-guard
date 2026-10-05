@@ -1507,11 +1507,14 @@ class StorePolicyMixin:
         # mutates `sync_state` and may mint a key (generation advance), so it stays
         # on the Python side; the resulting snapshot is shipped to Rust.
         with self._connect() as connection:
-            integrity_state = self._refresh_policy_integrity_state(
-                connection,
-                now=current_time,
-                create_key=True,
-            ) or {}
+            integrity_state = (
+                self._refresh_policy_integrity_state(
+                    connection,
+                    now=current_time,
+                    create_key=True,
+                )
+                or {}
+            )
 
         integrity_key, integrity_key_id = self._policy_integrity_secret_material(create=True)
         local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
@@ -1576,9 +1579,7 @@ class StorePolicyMixin:
             raw = response.get("code", response.get("payload"))
             code = raw if isinstance(raw, str) and raw else "failed"
             raise ValueError(
-                code
-                if code.startswith("native_policy_decision_lookup_")
-                else f"native_policy_decision_lookup_{code}"
+                code if code.startswith("native_policy_decision_lookup_") else f"native_policy_decision_lookup_{code}"
             )
         return cast("PolicyDecisionLookupResult", response["payload"])
 

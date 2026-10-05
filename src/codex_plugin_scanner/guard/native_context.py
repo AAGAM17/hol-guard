@@ -39,9 +39,18 @@ _REQUEST_SCHEMA = "guard-context-digest-request.v1"
 _RESULT_SCHEMA = "guard-context-digest-result.v1"
 _RESULT_REQUIRED_KEYS = {"schema", "request_id", "request_sha256", "status", "code"}
 _RESULT_OPTIONAL_KEYS = {
-    "token", "digest", "validation_reason", "environment_values", "package_context",
-    "mcp_server_identity", "mcp_tool_identity", "package_launcher",
-    "mcp_descriptor", "browser_mcp", "mcp_tool_risk", "mcp_tool_policy",
+    "token",
+    "digest",
+    "validation_reason",
+    "environment_values",
+    "package_context",
+    "mcp_server_identity",
+    "mcp_tool_identity",
+    "package_launcher",
+    "mcp_descriptor",
+    "browser_mcp",
+    "mcp_tool_risk",
+    "mcp_tool_policy",
     "mcp_launch_environment",
 }
 _RESULT_CODES = {
@@ -235,28 +244,21 @@ _OK_NULLABLE_OUTPUT_FIELD: dict[str, str] = {
 
 
 def _is_sha256_digest(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 def _valid_browser_projection(browser: Any) -> bool:
     if not isinstance(browser, dict):
         return False
     operation = browser.get("operation")
-    intents = {"browser.navigation", "browser.inspect", "browser.interact",
-               "browser.transfer", "browser.privileged"}
+    intents = {"browser.navigation", "browser.inspect", "browser.interact", "browser.transfer", "browser.privileged"}
     if operation == "server":
         return set(browser) == {"operation", "is_browser"} and type(browser["is_browser"]) is bool
     if operation == "display":
         return set(browser) == {"operation", "target"} and isinstance(browser["target"], str)
     if operation == "classify":
         return set(browser) == {"operation", "intent"} and (
-            browser["intent"] is None or (
-                isinstance(browser["intent"], str) and browser["intent"] in intents
-            )
+            browser["intent"] is None or (isinstance(browser["intent"], str) and browser["intent"] in intents)
         )
     if operation != "normalize" or set(browser) != {"operation", "intent"}:
         return False
@@ -264,21 +266,39 @@ def _valid_browser_projection(browser: Any) -> bool:
     if model is None:
         return True
     strings = {"intent", "operation", "method", "profile_mode", "mcp_server_name", "mcp_tool_name"}
-    optional = {"target_url", "target_origin", "target_domain", "target_path_prefix",
-                "mcp_server_identity_hash", "mcp_tool_identity_hash", "mcp_schema_hash"}
+    optional = {
+        "target_url",
+        "target_origin",
+        "target_domain",
+        "target_path_prefix",
+        "mcp_server_identity_hash",
+        "mcp_tool_identity_hash",
+        "mcp_schema_hash",
+    }
     lists = {"sensitive_surface_flags", "volatile_fields_dropped"}
     if (
         not isinstance(model, dict)
         or set(model) != strings | optional | lists | {"version"}
-        or type(model["version"]) is not int or model["version"] != 1
+        or type(model["version"]) is not int
+        or model["version"] != 1
         or any(not isinstance(model[key], str) for key in strings)
         or any(model[key] is not None and not isinstance(model[key], str) for key in optional)
         or any(not isinstance(model[key], list) for key in lists)
         or any(not isinstance(item, str) for key in lists for item in model[key])
     ):
         return False
-    surfaces = {"cookies", "storage", "auth_headers", "cdp", "script_eval",
-                "upload", "download", "clipboard", "network_intercept", "password_field"}
+    surfaces = {
+        "cookies",
+        "storage",
+        "auth_headers",
+        "cdp",
+        "script_eval",
+        "upload",
+        "download",
+        "clipboard",
+        "network_intercept",
+        "password_field",
+    }
     return (
         model["intent"] in intents
         and model["method"] in {"navigate", "read", "interact", "upload", "privileged"}
@@ -324,18 +344,14 @@ def _decode_result(
     launch_environment = payload.get("mcp_launch_environment")
     if launch_environment is not None and (
         not isinstance(launch_environment, dict)
-        or any(
-            not isinstance(name, str) or not isinstance(value, str)
-            for name, value in launch_environment.items()
-        )
+        or any(not isinstance(name, str) or not isinstance(value, str) for name, value in launch_environment.items())
     ):
         return None
     values = payload.get("environment_values")
     if values is not None and (
         not isinstance(values, dict)
         or any(
-            not isinstance(name, str)
-            or (digest is not None and not _is_sha256_digest(digest))
+            not isinstance(name, str) or (digest is not None and not _is_sha256_digest(digest))
             for name, digest in values.items()
         )
     ):
@@ -349,10 +365,7 @@ def _decode_result(
             or not isinstance(context["portable"], bool)
             or not isinstance(context["components"], list)
             or not context["components"]
-            or (
-                context["non_portable_reason"] is not None
-                and not isinstance(context["non_portable_reason"], str)
-            )
+            or (context["non_portable_reason"] is not None and not isinstance(context["non_portable_reason"], str))
         ):
             return None
         for component in context["components"]:
@@ -364,14 +377,18 @@ def _decode_result(
             ):
                 return None
     for field, string_fields, optional_fields, digest_fields in (
-        ("mcp_server_identity",
-         {"config_path", "command", "args_hash", "package_source", "transport", "env_values_hash", "identity_hash"},
-         {"package_name", "package_version"},
-         {"args_hash", "env_values_hash", "identity_hash"}),
-        ("mcp_tool_identity",
-         {"server_hash", "tool_name", "schema_hash", "description_hash", "identity_hash"},
-         set(),
-         {"schema_hash", "description_hash", "identity_hash"}),
+        (
+            "mcp_server_identity",
+            {"config_path", "command", "args_hash", "package_source", "transport", "env_values_hash", "identity_hash"},
+            {"package_name", "package_version"},
+            {"args_hash", "env_values_hash", "identity_hash"},
+        ),
+        (
+            "mcp_tool_identity",
+            {"server_hash", "tool_name", "schema_hash", "description_hash", "identity_hash"},
+            set(),
+            {"schema_hash", "description_hash", "identity_hash"},
+        ),
     ):
         identity = payload.get(field)
         if identity is None:
@@ -388,15 +405,23 @@ def _decode_result(
         ):
             return None
         if field == "mcp_server_identity" and (
-            not isinstance(identity["env_keys"], list)
-            or any(not isinstance(key, str) for key in identity["env_keys"])
+            not isinstance(identity["env_keys"], list) or any(not isinstance(key, str) for key in identity["env_keys"])
         ):
             return None
     descriptor = payload.get("mcp_descriptor")
     if descriptor is not None:
         if kind == "mcp_server_descriptor":
-            strings = {"argsHash", "command", "commandHash", "configPath", "envValuesHash",
-                       "identityHash", "packageSource", "transport", "transportHash"}
+            strings = {
+                "argsHash",
+                "command",
+                "commandHash",
+                "configPath",
+                "envValuesHash",
+                "identityHash",
+                "packageSource",
+                "transport",
+                "transportHash",
+            }
             optional = {"dependencyHash", "packageName", "packageVersion", "publisherStableId"}
             hashes = {"argsHash", "commandHash", "envValuesHash", "identityHash", "transportHash"}
             optional_hashes = {"dependencyHash"}
@@ -423,10 +448,13 @@ def _decode_result(
             if (
                 not isinstance(descriptor["envKeys"], list)
                 or any(not isinstance(key, str) for key in descriptor["envKeys"])
-                or (publisher is not None and (
-                    not publisher.startswith("publisher:")
-                    or not _is_sha256_digest(publisher.removeprefix("publisher:"))
-                ))
+                or (
+                    publisher is not None
+                    and (
+                        not publisher.startswith("publisher:")
+                        or not _is_sha256_digest(publisher.removeprefix("publisher:"))
+                    )
+                )
             ):
                 return None
         elif descriptor["hashScope"] not in {"full", "manifest"}:
@@ -496,9 +524,7 @@ def native_context_digest(
         # Cache on the request *content* — `request_id` is random per call, so
         # it is excluded from the canonical material.
         content_sha256 = (
-            _canonical_request_sha256({"kind": kind, **kind_fields})
-            if kind != "mcp_launch_environment"
-            else None
+            _canonical_request_sha256({"kind": kind, **kind_fields}) if kind != "mcp_launch_environment" else None
         )
     except (TypeError, ValueError):
         # Components the canonical encoder cannot express (non-JSON values,
@@ -510,11 +536,7 @@ def native_context_digest(
     # authority, not transport work.
     # Launch environments contain granted credentials: do not retain them in
     # the digest result cache or hash the input a second time for caching.
-    cache_key = (
-        (content_sha256, canonical_guard_home_path(guard_home))
-        if content_sha256 is not None
-        else None
-    )
+    cache_key = (content_sha256, canonical_guard_home_path(guard_home)) if content_sha256 is not None else None
     cached = None
     if cache_key is not None:
         with _RESULT_CACHE_LOCK:
@@ -737,7 +759,9 @@ def context_package_evidence(
 def context_mcp_identity(kind: str, request: dict[str, Any]) -> dict[str, Any] | None:
     """Transport MCP identity inputs to native authority; never synthesize identity."""
     result = native_context_digest(
-        kind, {"request": request}, guard_home=_resolve_digest_home(None),
+        kind,
+        {"request": request},
+        guard_home=_resolve_digest_home(None),
     )
     identity = result.get(kind) if isinstance(result, dict) and result.get("status") == "ok" else None
     return identity if isinstance(identity, dict) else None
@@ -746,19 +770,34 @@ def context_mcp_identity(kind: str, request: dict[str, Any]) -> dict[str, Any] |
 def context_mcp_descriptor(kind: str, request: dict[str, Any]) -> dict[str, Any]:
     """Project native MCP descriptor semantics, without local synthesis."""
     result = native_context_digest(
-        kind, {"request": request}, guard_home=_resolve_digest_home(None),
+        kind,
+        {"request": request},
+        guard_home=_resolve_digest_home(None),
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
         raise ValueError("native_mcp_descriptor_unavailable")
     return result["mcp_descriptor"]
 
-_MCP_RISK_CATEGORIES = frozenset({
-    "filesystem_access", "command_execution", "destructive_mutation",
-    "outbound_network", "privileged_system_mutation", "secret_access",
-    "tool_schema_mismatch", "browser_navigation", "browser_inspection",
-    "browser_interaction", "browser_transfer", "browser_privileged",
-    "browser_external_domain", "browser_shared_profile", "browser_sensitive_surface",
-})
+
+_MCP_RISK_CATEGORIES = frozenset(
+    {
+        "filesystem_access",
+        "command_execution",
+        "destructive_mutation",
+        "outbound_network",
+        "privileged_system_mutation",
+        "secret_access",
+        "tool_schema_mismatch",
+        "browser_navigation",
+        "browser_inspection",
+        "browser_interaction",
+        "browser_transfer",
+        "browser_privileged",
+        "browser_external_domain",
+        "browser_shared_profile",
+        "browser_sensitive_surface",
+    }
+)
 
 
 def context_mcp_tool_risk(artifact: dict[str, Any], arguments: object) -> tuple[str, ...]:
@@ -766,9 +805,11 @@ def context_mcp_tool_risk(artifact: dict[str, Any], arguments: object) -> tuple[
     fields = json.loads(json.dumps({"artifact": artifact, "arguments": arguments}, default=str))
     result = native_context_digest("mcp_tool_risk", fields, guard_home=_resolve_digest_home(None))
     categories = result.get("mcp_tool_risk") if isinstance(result, dict) and result.get("status") == "ok" else None
-    if not isinstance(categories, list) or any(
-        not isinstance(category, str) or category not in _MCP_RISK_CATEGORIES for category in categories
-    ) or len(categories) != len(set(categories)):
+    if (
+        not isinstance(categories, list)
+        or any(not isinstance(category, str) or category not in _MCP_RISK_CATEGORIES for category in categories)
+        or len(categories) != len(set(categories))
+    ):
         raise ValueError("native_mcp_tool_risk_unavailable")
     return tuple(categories)
 
@@ -802,7 +843,9 @@ def context_mcp_tool_policy(request: dict[str, Any]) -> dict[str, Any]:
 def context_browser_mcp(request: dict[str, Any]) -> dict[str, Any]:
     """Project native browser semantics; native absence is not a negative match."""
     result = native_context_digest(
-        "browser_mcp", {"request": request}, guard_home=_resolve_digest_home(None),
+        "browser_mcp",
+        {"request": request},
+        guard_home=_resolve_digest_home(None),
     )
     browser = result.get("browser_mcp") if isinstance(result, dict) and result.get("status") == "ok" else None
     if not _valid_browser_projection(browser) or browser["operation"] != request.get("operation"):
@@ -813,7 +856,8 @@ def context_browser_mcp(request: dict[str, Any]) -> dict[str, Any]:
 def context_package_launcher_token(command_name: str, args: Sequence[str]) -> str | None:
     """Project native launcher selection; absence is distinct from native failure."""
     result = native_context_digest(
-        "package_launcher_token", {"command_name": command_name, "args": list(args)},
+        "package_launcher_token",
+        {"command_name": command_name, "args": list(args)},
         guard_home=_resolve_digest_home(None),
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
@@ -821,9 +865,7 @@ def context_package_launcher_token(command_name: str, args: Sequence[str]) -> st
     return result["package_launcher"]["package"]
 
 
-def context_mcp_tool_approval_hash(
-    request: dict[str, Any], *, expect_token: bool
-) -> tuple[str, tuple[str, ...]]:
+def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: bool) -> tuple[str, tuple[str, ...]]:
     """Compose the full MCP approval hash natively; no local fallback.
 
     Requests must be plain JSON types — the worker owns canonicalization, so
@@ -837,16 +879,15 @@ def context_mcp_tool_approval_hash(
     except (TypeError, ValueError) as exc:
         raise ValueError("native_mcp_tool_approval_hash_unavailable") from exc
     result = native_context_digest(
-        "build_mcp_tool_approval_hash", fields, guard_home=_resolve_digest_home(None),
+        "build_mcp_tool_approval_hash",
+        fields,
+        guard_home=_resolve_digest_home(None),
     )
     ok = isinstance(result, dict) and result.get("status") == "ok"
     categories = result.get("mcp_tool_risk") if ok else None
     if (
         not isinstance(categories, list)
-        or any(
-            not isinstance(category, str) or category not in _MCP_RISK_CATEGORIES
-            for category in categories
-        )
+        or any(not isinstance(category, str) or category not in _MCP_RISK_CATEGORIES for category in categories)
         or len(categories) != len(set(categories))
     ):
         raise ValueError("native_mcp_tool_approval_hash_unavailable")

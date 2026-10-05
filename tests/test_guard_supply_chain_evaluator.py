@@ -21,9 +21,9 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, generate_private_key
 
 import codex_plugin_scanner.guard.runtime.supply_chain_package_eval as evaluator_module
-from codex_plugin_scanner.guard.runtime import supply_chain_package_services as package_services
 from codex_plugin_scanner.guard.cli.oauth_client import generate_dpop_key_pair
 from codex_plugin_scanner.guard.models import GuardAction
+from codex_plugin_scanner.guard.runtime import supply_chain_package_services as package_services
 from codex_plugin_scanner.guard.runtime.lockfile_parse_result import (
     DependencyMapParser,
     LockfileParseResult,
@@ -3356,5 +3356,3 @@ def test_bundle_reason_message_uses_block_copy_for_stale_blocked_bundle() -> Non
 
     assert "blocked" in message.lower()
     assert "monitor mode" not in message
-
-

@@ -41,7 +41,17 @@ not occupy the exclusive mutation lock, save SQL rows or consume decisions.
 The Python discovery adapter checks this presentation shape and uses only the
 authenticated resident transport. Unavailable native support or a missing policy
 returns optional absence; transport, schema or native verification failures
-raise a finite read error. The adapter is not yet connected to the Core queue
-and detail routes. Saved native requests therefore still need that integration
-before this interface is a complete selectable review path. A saved pending
-snapshot is not evidence that its account or dispatch authority remains current.
+raise a finite read error. Local Core queue and detail routes consume discovery
+without persisting SQL rows. Existing SQL pagination runs first, followed by
+bounded native pages with a membership/filter-bound cursor. Changed membership
+requires a queue refresh. A collision with a SQL request ID refuses projection.
+Hosted-origin requests retain the existing SQL-only routes.
+
+Projected native rows are explicitly display-only. The incumbent DTO uses its
+conservative review action for compatibility; this is not a native policy
+decision. The detail view labels the row read-only, explains that review and
+execution are not connected, and offers no individual or bulk approval. Backend
+decision routes still refuse these IDs because discovery creates no SQL approval
+row. A saved pending snapshot is not evidence that its account or dispatch
+authority remains current. Real producer-to-installed-resident-to-Core selection
+still requires qualification, separately from mocked HTTP and browser checks.

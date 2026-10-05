@@ -20,7 +20,9 @@ const approval = {
   created_at: "2026-10-05T00:00:00Z", resolved_at: null, action_envelope_json: null, decision_v2_json: null,
 };
 
-async function mount(page: Page, nextSummary: () => unknown) {
+async function mount(page: Page, nextSummary: () => unknown, displayOnly = false) {
+  const request = displayOnly ? { ...approval, harness: "native-business", created_at: "",
+    allowed_scopes: [], recommended_scope: null, native_business_review_display_only: true } : approval;
   await page.route("**/v1/**", async route => {
     const path = new URL(route.request().url()).pathname;
     let body: unknown = {};
@@ -33,8 +35,8 @@ async function mount(page: Page, nextSummary: () => unknown) {
         return;
       }
     }
-    else if (path.endsWith("/requests/business-test")) body = approval;
-    else if (path.endsWith("/requests")) body = { items: [approval], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
+    else if (path.endsWith("/requests/business-test")) body = request;
+    else if (path.endsWith("/requests")) body = { items: [request], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
     else if (path.endsWith("/receipts/latest")) {
       await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_found" }) });
       return;
@@ -48,6 +50,15 @@ async function mount(page: Page, nextSummary: () => unknown) {
   });
   await page.goto("/requests/business-test?guardDaemon=http://127.0.0.1:4277");
 }
+
+test("native projected detail is explicitly read-only and offers no decision", async ({ page }) => {
+  await mount(page, () => summary, true);
+  await expect(page.getByText("Review is not connected yet")).toBeVisible();
+  await expect(page.getByText("This saved business request is read-only.", { exact: false })).toBeVisible();
+  await expect(page.getByText("From Native business workflow", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Approve|Block once|Stop this/ })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+});
 
 for (const [name, width, height] of [["desktop", 1280, 900], ["phone", 390, 844]] as const) {
   test(`saved summary stays honest and readable on ${name}`, async ({ page }) => {

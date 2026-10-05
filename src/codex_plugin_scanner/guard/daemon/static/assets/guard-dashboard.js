@@ -13599,7 +13599,7 @@ const BULK_HIGH_CATEGORY_IDS = /* @__PURE__ */ new Set([
   "file_delete_cleanup"
 ]);
 function bulkApprovalRiskTier(group) {
-  if (group.primary.decision_contract_error !== void 0 || group.primary.policy_action === "block" || group.primary.policy_action === "sandbox-required") {
+  if (group.primary.native_business_review_display_only || group.primary.decision_contract_error !== void 0 || group.primary.policy_action === "block" || group.primary.policy_action === "sandbox-required") {
     return "blocked";
   }
   const categoryId = resolveQueueCategory(group.primary).id;
@@ -14999,6 +14999,9 @@ function policyActionLabel(action) {
   return guardActionPresentation(action).label;
 }
 function requestResolutionBlockReason(item) {
+  if (item.native_business_review_display_only) {
+    return "This saved business request is read-only. Review decisions and execution are not connected yet.";
+  }
   if (item.decision_contract_error !== void 0) {
     return "HOL Guard found inconsistent stored decision data. This request cannot be approved; rerun the action to create a fresh, consistent review request.";
   }
@@ -15067,6 +15070,7 @@ function serializeMcpInput(payload, maxLength = null) {
   }
 }
 function harnessDisplayName(harness) {
+  if (harness === "native-business") return "Native business workflow";
   if (typeof harness !== "string") {
     return "Unknown app";
   }
@@ -30416,7 +30420,7 @@ function ReviewDecisionCard(props) {
             harnessName
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { tone: watchOnlyObservation ? "info" : actionPresentation.tone, children: watchOnlyObservation ? "Would have stopped" : actionPresentation.label })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { tone: item.native_business_review_display_only || watchOnlyObservation ? "info" : actionPresentation.tone, children: item.native_business_review_display_only ? "Read-only" : watchOnlyObservation ? "Would have stopped" : actionPresentation.label })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(PrimaryActionCard, { item }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessReviewSummaryPanel, { requestId: item.request_id }, item.request_id),
@@ -30430,7 +30434,7 @@ function ReviewDecisionCard(props) {
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-brand-attention", children: "This decision cannot be overridden" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-brand-attention", children: item.native_business_review_display_only ? "Review is not connected yet" : "This decision cannot be overridden" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark", children: resolutionBlockReason }),
           item.superseded_by_request_id ? /* @__PURE__ */ jsxRuntimeExports.jsx(
             "a",

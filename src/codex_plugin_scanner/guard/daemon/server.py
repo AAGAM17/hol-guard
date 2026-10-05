@@ -2887,6 +2887,20 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             handle_business_review_summary(self, path_parts[2])
             return
         if len(path_parts) == 3 and path_parts[:2] == ["v1", "requests"]:
+            if not self._is_hosted_dashboard_origin():
+                from .business_review_queue import NativeBusinessReviewQueueReadError, native_request_detail
+
+                try:
+                    native_detail = native_request_detail(store, unquote(path_parts[2]))
+                except NativeBusinessReviewQueueReadError:
+                    self._write_json(
+                        {"error": "native_local_business_queue_read_failed"}, status=503,
+                        extra_headers={"Cache-Control": "no-store"},
+                    )
+                    return
+                if native_detail is not None:
+                    self._write_json(native_detail, extra_headers={"Cache-Control": "no-store"})
+                    return
             approval = store.get_approval_request(path_parts[2])
             if approval is None:
                 self._write_json(
@@ -5143,8 +5157,13 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             self._write_json({"error": "invalid_status"}, status=400)
             return
         include_totals = self._query_bool(query_string, "include_totals", default=True)
+        from .business_review_queue import NativeBusinessReviewQueueReadError, local_request_page
+
         try:
-            page = self.server.store.list_approval_request_page(  # type: ignore[attr-defined]
+            read_page = self.server.store.list_approval_request_page if self._is_hosted_dashboard_origin() else (
+                lambda **options: local_request_page(self.server.store, **options)
+            )
+            page = read_page(
                 status=status_filter,
                 limit=limit,
                 cursor=self._query_string(query_string, "cursor"),
@@ -5152,6 +5171,12 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 search=self._query_string(query_string, "search"),
                 include_totals=include_totals,
             )
+        except NativeBusinessReviewQueueReadError:
+            self._write_json(
+                {"error": "native_local_business_queue_read_failed"}, status=503,
+                extra_headers={"Cache-Control": "no-store"},
+            )
+            return
         except InvalidApprovalCursorError:
             self._write_json(
                 {
@@ -5165,7 +5190,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 status=400,
             )
             return
-        self._write_json(page)
+        self._write_json(page, extra_headers={"Cache-Control": "no-store"})
 
     @staticmethod
     def _optional_bool(value: object, *, default: bool) -> bool:

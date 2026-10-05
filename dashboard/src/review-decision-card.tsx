@@ -435,8 +435,8 @@ export function ReviewDecisionCard(props: {
               From {harnessName}
             </p>
           </div>
-          <Badge tone={watchOnlyObservation ? "info" : actionPresentation.tone}>
-            {watchOnlyObservation ? "Would have stopped" : actionPresentation.label}
+          <Badge tone={item.native_business_review_display_only || watchOnlyObservation ? "info" : actionPresentation.tone}>
+            {item.native_business_review_display_only ? "Read-only" : watchOnlyObservation ? "Would have stopped" : actionPresentation.label}
           </Badge>
         </div>
 
@@ -456,7 +456,9 @@ export function ReviewDecisionCard(props: {
                 aria-hidden="true"
               />
               <div>
-                <p className="text-sm font-semibold text-brand-attention">This decision cannot be overridden</p>
+                <p className="text-sm font-semibold text-brand-attention">
+                  {item.native_business_review_display_only ? "Review is not connected yet" : "This decision cannot be overridden"}
+                </p>
                 <p className="mt-1 text-sm text-brand-dark">{resolutionBlockReason}</p>
                 {item.superseded_by_request_id ? (
                   <a className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-blue underline"

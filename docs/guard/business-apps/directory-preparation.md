@@ -42,8 +42,7 @@ Under the existing transition lock it reads current signed policy, checks the
 business floor, persists the existing private input/request schema, authenticates
 the native origin and reloads the result. Body bytes remain in the private input;
 request metadata carries bindings. Disabled business policy and blocked actions
-cannot publish a review. The held review refreshes directory evidence before an
-owned claim. Failed preparation removes newly created matching files under the
+cannot publish a review. Failed preparation removes newly created matching files under the
 transition lock, preserves existing shared input and refuses request ID collisions.
 Cleanup failure is reported explicitly because private files may remain.
 The held review refreshes directory evidence before an

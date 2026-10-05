@@ -14,8 +14,8 @@ and compound commands that retain the destructive-operation block.
 
 Literal help suppresses this contribution's route observation. A value such as
 `--body '--help'` does not count as a help flag, nor does a flag after `--`.
-Dry-run and draft flags do not mint authority or suppress review: drafts and
-other staging operations can already transmit data. Supported scalar option
+Dry-run and draft flags do not mint authority or suppress review: creating
+drafts can already transmit data. Supported scalar option
 values are skipped while matching the route, including interspersed JSON
 parameters and the pinned `-o` alias.
 

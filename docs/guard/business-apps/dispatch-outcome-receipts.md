@@ -17,7 +17,10 @@ receipt keeps its original meaning and identity.
 | `provider_effect` | Always `not_checked`. API acceptance does not prove delivery, audience visibility or an independently inspected provider effect. |
 | `retry_authority` | Always `none`. Neither a receipt nor a missing receipt grants permission to send again. |
 
-The strict Rust decoder checks schema/version, lowercase digest shape and
+The Rust decoder `parse_native_business_dispatch_receipt` accepts original bytes
+and caps them at 1,024 bytes before JSON decoding or string allocation. The public
+receipt has no generic Deserialize implementation that could skip this bound.
+It checks schema/version, lowercase digest shape and
 acknowledgement/attempt consistency. Unknown fields and invented confirmed-effect
 or retry-authority values are rejected. A parsed receipt remains untrusted
 metadata; it must never enter an authorization evaluator as a grant. Consumers

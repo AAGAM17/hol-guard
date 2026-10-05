@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 pub const NATIVE_BUSINESS_DISPATCH_RECEIPT_V1_SCHEMA: &str =
     "guard-native-business-dispatch-receipt.v1";
+pub const NATIVE_BUSINESS_DISPATCH_RECEIPT_MAX_BYTES: usize = 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -33,8 +34,7 @@ pub enum BusinessDispatchRetryAuthorityV1 {
 /// The opaque bindings correlate observations with an existing consumed decision
 /// and frozen input. Neither this unsigned receipt nor an API acknowledgement
 /// authorizes dispatch, restores an owned handle, or confirms delivery.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields, try_from = "ReceiptWire")]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct NativeBusinessDispatchReceiptV1 {
     pub schema: String,
     pub version: u16,
@@ -59,6 +59,20 @@ struct ReceiptWire {
     provider_effect: BusinessProviderEffectV1,
     retry_authority: BusinessDispatchRetryAuthorityV1,
     acknowledgement_binding: Option<String>,
+}
+
+/// Decode original bytes before allocating JSON strings. The public receipt
+/// deliberately has no generic Deserialize implementation: use this bounded
+/// entry point, not an already parsed caller-controlled JSON value.
+pub fn parse_native_business_dispatch_receipt(
+    bytes: &[u8],
+) -> Result<NativeBusinessDispatchReceiptV1, &'static str> {
+    if bytes.len() > NATIVE_BUSINESS_DISPATCH_RECEIPT_MAX_BYTES {
+        return Err("native_business_dispatch_receipt_too_large");
+    }
+    let wire: ReceiptWire =
+        serde_json::from_slice(bytes).map_err(|_| "native_business_dispatch_receipt_invalid")?;
+    wire.try_into()
 }
 
 impl TryFrom<ReceiptWire> for NativeBusinessDispatchReceiptV1 {

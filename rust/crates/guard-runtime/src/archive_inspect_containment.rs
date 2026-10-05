@@ -349,7 +349,7 @@ fn apply_seccomp_deny_list() -> Result<(), ()> {
     #[cfg(target_arch = "aarch64")]
     const SYS_KEXEC_FILE_LOAD: i64 = 294;
     #[cfg(not(target_arch = "aarch64"))]
-    const SYS_KEXEC_FILE_LOAD: i64 = libc::SYS_kexec_file_load as i64;
+    const SYS_KEXEC_FILE_LOAD: i64 = libc::SYS_kexec_file_load;
 
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
     for syscall in [

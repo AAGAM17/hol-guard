@@ -143,6 +143,7 @@ def _native_package_intent(
     *,
     workspace: Path | None,
     home_dir: Path | None,
+    guard_home: Path | None,
     canonical_command: CanonicalCommand | None,
     environment: Mapping[str, str] | None,
 ) -> PackageIntent | None:
@@ -167,7 +168,7 @@ def _native_package_intent(
                 canonical_command.to_dict() if hasattr(canonical_command, "to_dict") else canonical_command
             ),
             environment=environment,
-            guard_home=resolve_guard_home(),
+            guard_home=guard_home if guard_home is not None else resolve_guard_home(),
         )
     except Exception:
         return None
@@ -191,6 +192,7 @@ def parse_package_intent(
         command_text,
         workspace=workspace,
         home_dir=home_dir,
+        guard_home=guard_home,
         canonical_command=canonical_command,
         environment=environment,
     )

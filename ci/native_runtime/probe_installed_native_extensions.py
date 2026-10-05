@@ -55,6 +55,17 @@ def require(condition: bool, code: str) -> None:
         raise RuntimeError(f"installed_native_extensions_failed:{code}")
 
 
+def close_native_residents_with_retry(home: Path) -> bool:
+    deadline = time.monotonic() + 10.0
+    while True:
+        if close_native_residents(home, deadline_monotonic=deadline):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.25, remaining))
+
+
 def installed_native_case_runner():
     spec = importlib.util.spec_from_file_location(
         "installed_native_extension_case", Path(__file__).with_name("installed_native_extension_case.py")
@@ -337,7 +348,7 @@ def exercise(root: Path) -> dict[str, object]:
         case("external-reenabled", "ollama push example-model", revision, matched="command.ollama.push")
         previous_publisher = daemon._server.hook_worker.policy_snapshot_publisher
         daemon.stop()
-        require(close_native_residents(home), "restart_containment")
+        require(close_native_residents_with_retry(home), "restart_containment")
         daemon = GuardDaemonServer(store, host="127.0.0.1", port=0, home_dir=root, workspace_dir=workspace)
         daemon.start()
         case("restart-retains-controls", "ollama rm example-model", revision, matched="command.ollama.rm")
@@ -470,7 +481,7 @@ def exercise(root: Path) -> dict[str, object]:
         }
     finally:
         daemon.stop()
-        require(close_native_residents(home), "final_containment")
+        require(close_native_residents_with_retry(home), "final_containment")
 
 
 def main() -> int:

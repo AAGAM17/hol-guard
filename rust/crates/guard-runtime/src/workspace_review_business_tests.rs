@@ -6,9 +6,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[path = "workspace_review_owned_input_tests.rs"]
-mod owned_input_tests;
+pub(super) mod owned_input_tests;
 
-fn input(primary: &[u8], attachments: &[Vec<u8>]) -> Value {
+pub(super) fn input(primary: &[u8], attachments: &[Vec<u8>]) -> Value {
     let total = primary.len() + attachments.iter().map(Vec::len).sum::<usize>();
     json!({"schema":"guard.private-business-input.v1","version":1,
         "primary_base64":Base64::encode_string(primary),
@@ -39,21 +39,21 @@ fn receipt(snapshot: &PolicySnapshotV3) -> NativeHookDecisionReceiptV1 {
         "deadline_budget_ms":100})).unwrap()
 }
 
-fn write(root: &Path, path: &Path, value: &Value) {
+pub(super) fn write(root: &Path, path: &Path, value: &Value) {
     let mut file = crate::resident_state::private_file(path, false, root).unwrap();
     file.set_len(0).unwrap();
     file.write_all(&canonical_json_bytes(value).unwrap())
         .unwrap();
 }
 
-struct Fixture {
-    root: PathBuf,
-    store: super::super::PolicySnapshotStore,
-    snapshot: PolicySnapshotV3,
-    key: [u8; 32],
+pub(super) struct Fixture {
+    pub(super) root: PathBuf,
+    pub(super) store: super::super::PolicySnapshotStore,
+    pub(super) snapshot: PolicySnapshotV3,
+    pub(super) key: [u8; 32],
 }
 impl Fixture {
-    fn new(label: &str) -> Self {
+    pub(super) fn new(label: &str) -> Self {
         let root = super::super::tests::test_root(label);
         let key = super::super::tests::install_test_key(&root, 29);
         let store = super::super::PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();

@@ -41,12 +41,7 @@ impl GoogleSendCredential {
         if !self.is_current() {
             return Err(GoogleWorkerInputError::Expired);
         }
-        if !self
-            .identity()
-            .sender
-            .as_ref()
-            .is_some_and(|sender| sender.matches(input.sender()))
-        {
+        if !self.sender_matches(input.sender()) {
             return Err(GoogleWorkerInputError::Sender);
         }
         let mut digest = Sha256::new();

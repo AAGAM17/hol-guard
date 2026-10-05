@@ -18,6 +18,7 @@ const MAX_KEYS: u64 = 64 * 1024;
 const LIFETIME: u64 = 300;
 const CLOCK_SKEW: u64 = 30;
 
+pub mod directory;
 pub mod oauth;
 pub mod outbound;
 mod sender;

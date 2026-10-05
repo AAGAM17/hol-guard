@@ -740,6 +740,7 @@ dependencies = [
  "guard-archive",
  "guard-command",
  "guard-contracts",
+ "guard-google-identity",
  "guard-hook-core",
  "guard-policy-snapshot",
  "guard-rule-contract",

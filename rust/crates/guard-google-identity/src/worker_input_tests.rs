@@ -79,3 +79,22 @@ fn worker_refuses_foreign_sender_expired_credentials_and_shell_composition() {
         Some(GoogleWorkerInputError::Command)
     );
 }
+
+#[test]
+fn worker_refuses_both_wall_clock_deadlines_with_live_monotonic_lease() {
+    for expire_identity in [false, true] {
+        let mut credential = credential("subject-one");
+        assert!(credential.expires_monotonic > Instant::now());
+        if expire_identity {
+            credential.identity.expires_at = 0;
+        } else {
+            credential.expires_at = 0;
+        }
+        assert_eq!(
+            credential
+                .prepare_command(command("sender@work.example", "body"))
+                .err(),
+            Some(GoogleWorkerInputError::Expired)
+        );
+    }
+}

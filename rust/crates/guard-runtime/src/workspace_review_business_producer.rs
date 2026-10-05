@@ -5,6 +5,19 @@ use super::*;
 use guard_google_identity::directory::PreparedGoogleBusinessRequest;
 use serde_json::json;
 
+#[path = "workspace_review_business_journal.rs"]
+mod journal;
+
+// This owned value is never serialized, cloned, or published through an RPC.
+// A consumed approval is not dispatch permission until budgets and current
+// worker policy have also been enforced by the future registered worker.
+#[allow(dead_code)]
+pub(crate) struct ClaimedGoogleBusinessRequest {
+    input: PreparedGoogleBusinessRequest,
+    owned: PreparedBusinessInputV1,
+    journal: journal::Journal,
+}
+
 // The managed worker route is deliberately not published as a generic resident
 // RPC. These types are kept private until its authenticated route is connected.
 #[allow(dead_code)]
@@ -25,7 +38,7 @@ impl OwnedGoogleBusinessReview {
         self,
         store: &super::super::PolicySnapshotStore,
         decision: &[u8],
-    ) -> Result<(PreparedGoogleBusinessRequest, PreparedBusinessInputV1), String> {
+    ) -> Result<ClaimedGoogleBusinessRequest, String> {
         let binding = self.input.prepared_input().binding().to_owned();
         let refreshed = self
             .input
@@ -45,7 +58,14 @@ impl OwnedGoogleBusinessReview {
         if !refreshed.is_current() {
             return Err("native_business_claim_expired_after_consume".into());
         }
-        Ok((refreshed, owned))
+        // Failure here spends the approval without releasing a worker value.
+        // The journal never recreates a claim or permits restart dispatch.
+        let journal = journal::Journal::claimed(store, &self.request_id, owned.binding())?;
+        Ok(ClaimedGoogleBusinessRequest {
+            input: refreshed,
+            owned,
+            journal,
+        })
     }
 }
 

@@ -6423,15 +6423,20 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         from .hook_request_parsing import (
             HookPayloadReferenceError,
             hook_payload_reference_size,
+            runtime_hook_event_name,
         )
 
+        grok_prompt = default_harness == "grok" and runtime_hook_event_name(payload) == "UserPromptSubmit"
+        admission_seconds = 10.0 if grok_prompt else _RUNTIME_HOOK_ADMISSION_TIMEOUT_SECONDS
         transport_deadline = self._daemon_server().request_deadline(
             self.request,
-            _RUNTIME_HOOK_ADMISSION_TIMEOUT_SECONDS,
+            admission_seconds,
         )
         params = parse_qs(query)
         remaining_hint = _runtime_hook_remaining_hint(payload)
-        hinted_deadline = RuntimeHookDeadline.from_remaining_hint(remaining_hint)
+        hinted_deadline = RuntimeHookDeadline.from_remaining_hint(
+            remaining_hint, **({"maximum_budget_seconds": 10.0} if grok_prompt else {})
+        )
         hook_deadline = RuntimeHookDeadline(expires_at=min(hinted_deadline.expires_at, transport_deadline))
         hook_env = _runtime_hook_env_overlay_from_payload(payload)
         payload = {key: value for key, value in payload.items() if key != "hook_env"}

@@ -36,6 +36,10 @@ _NODE_PROBE_TIMEOUT = 5.0
 _DAEMON_READINESS_TIMEOUT = 25.0
 _DAEMON_CLEANUP_TIMEOUT = 10.0
 _NATIVE_CLEANUP_RETRY_INTERVAL = 0.25
+# Resident stop force-kills only at the end of its own 2s budget. This process
+# timeout has to outlast that budget so the stopper can retire a dead
+# generation before the probe kills it. The cleanup deadline stays 10s.
+_NATIVE_STOP_TIMEOUT_SECONDS = 3.0
 _NODE_PROBE_SOURCE = 'const typedValue: string = "node-capability-probe";\nprocess.stdout.write(typedValue);\n'
 _ENV_ALLOWLIST = {
     "COMSPEC",
@@ -1045,7 +1049,7 @@ def _cleanup_native(identity: Any, guard_home: Path) -> None:
                         executable=identity.path,
                         state_dir=guard_home / "native-runtime",
                         environment=_native_cleanup_environment(),
-                        timeout_seconds=min(2.0, remaining),
+                        timeout_seconds=min(_NATIVE_STOP_TIMEOUT_SECONDS, remaining),
                         deadline_monotonic=deadline,
                     ):
                         cleanup_error = RuntimeError("native resident stop did not complete")

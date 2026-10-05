@@ -759,7 +759,7 @@ def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, p
     backup = adapter._backup_path(ctx, "config.toml")
     previous_backup = backup.stat() if backup.exists() else None
     prepared = adapter.prepare_install(replace(ctx, workspace_dir=ctx.home_dir / "candidate-workspace"))
-    assert len(prepared.files) == 10
+    assert len(prepared.files) == 11
     assert config.read_bytes() == next(change.before for change in prepared.files if change.path == config)
     plan = replace(plan, files=(*plan.files, *prepared.files))
     begin(runtime, plan)

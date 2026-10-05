@@ -44,7 +44,9 @@ fn reserved_direct_mcp_command(value: &str) -> bool {
 pub(super) fn valid_direct_mcp_command(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
-        && !value.ends_with(".exe")
+        && ![".exe", ".cmd", ".bat"]
+            .iter()
+            .any(|suffix| value.ends_with(suffix))
         && (value.as_bytes()[0].is_ascii_lowercase() || value.as_bytes()[0].is_ascii_digit())
         && !reserved_direct_mcp_command(value)
         && value.split('.').all(|part| {

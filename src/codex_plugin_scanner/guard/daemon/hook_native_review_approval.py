@@ -452,7 +452,7 @@ def _proven_codex_wait_process(payload: Mapping[str, object]) -> dict[str, objec
         return None
     if not isinstance(start_token, str) or not start_token:
         return None
-    if not process_identity_matches(raw):
+    if not process_identity_matches(raw):  # NOSONAR(S2583) A live start token can match.
         return None
     return {"pid": pid, "startToken": start_token}
 

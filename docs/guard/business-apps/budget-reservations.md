@@ -23,8 +23,15 @@ Every matching chunk counts actions, recipients, records and bytes. Dropping a
 reservation, including after an uncertain provider outcome, does not refund
 usage. Changed windows or limits preserve bucket identity. Volume older than
 the maximum supported window can leave the active ledger, while replay
-tombstones remain in the existing immutable index. Old immutable files are
-retained; administrative retention and recovery remain unfinished.
+tombstones remain in the existing immutable index. After a protected commit,
+superseded ledger files are removed on a best-effort basis; replay-index nodes
+and failed-write orphans remain. Administrative retention remains unfinished.
+
+Reservations currently require Unix directory synchronization. Windows and
+other unsupported platforms refuse before accessing reservation state with
+`native_business_budget_durability_unavailable`. Their directory-entry durability
+and crash-recovery protocol remain unfinished; a non-Unix sync no-op is never
+used as a reservation durability barrier.
 
 There is no connected worker caller, actor registry or Cloud allocation
 authority yet. Budget-bearing business actions remain refused by native review

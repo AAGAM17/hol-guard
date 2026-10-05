@@ -77,6 +77,7 @@ fn reserve_at(
     actor: &ActorBindings,
     time_ms: u64,
 ) -> Result<Reservation, String> {
+    ensure_durable_platform()?;
     if time_ms == 0
         || !super::super::super::workspace_review_request::valid_request_id(request_id)
         || input.facts().require_complete_facts().is_err()
@@ -229,6 +230,17 @@ fn reserve_at(
     })
 }
 
+fn ensure_durable_platform() -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        Err("native_business_budget_durability_unavailable".into())
+    }
+}
+
 fn request_digest(request_id: &str) -> String {
     let mut bytes = b"guard.business-budget-request.v1\0".to_vec();
     bytes.extend_from_slice(request_id.as_bytes());
@@ -264,7 +276,7 @@ fn bucket(
     }
     // Window/limits/policy generation are deliberately absent: lowering a
     // limit or changing a window must not silently reset previous usage.
-    let bytes=canonical_json_bytes(&serde_json::json!({"domain":"guard.business-budget-bucket.v1","id":budget.id,"scope":budget.scope,"binding":binding})).map_err(|_| invalid())?;
+    let bytes = canonical_json_bytes(&serde_json::json!({"domain":"guard.business-budget-bucket.v1","id":budget.id,"scope":budget.scope,"binding":binding})).map_err(|_| invalid())?;
     Ok(digest_bytes(&bytes))
 }
 
@@ -414,6 +426,15 @@ fn load(base: &Path) -> Result<(Ledger, Option<anchor::Anchor>), String> {
     Ok((ledger, previous))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "workspace_review_business_budget_tests.rs"]
 mod tests;
+
+#[cfg(all(test, not(unix)))]
+#[test]
+fn unsupported_durability_refuses_before_state_access() {
+    assert_eq!(
+        ensure_durable_platform().unwrap_err(),
+        "native_business_budget_durability_unavailable"
+    );
+}

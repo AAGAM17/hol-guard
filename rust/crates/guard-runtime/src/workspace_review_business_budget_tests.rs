@@ -331,6 +331,35 @@ fn declared_allowance_above_128_has_no_event_count_cap() {
 }
 
 #[test]
+fn superseded_ledger_cleanup_preserves_current_usage_and_replay() {
+    let fixture = Fixture::new("business-budget-cleanup");
+    install(&fixture, json!([declaration("account")]));
+    let now = time(&fixture);
+    let input = prepared();
+    let first = reserve_at(&fixture.store, "budget-first", &input, &actor(), now).unwrap();
+    let (old, _) = path(&fixture.root, &first.ledger_root, false).unwrap();
+    let second = reserve_at(&fixture.store, "budget-second", &input, &actor(), now).unwrap();
+    assert!(!old.exists());
+    assert!(path(&fixture.root, &second.ledger_root, false)
+        .unwrap()
+        .0
+        .exists());
+    assert_eq!(load(&fixture.root).unwrap().0.events.len(), 2);
+    assert_eq!(
+        reserve_at(&fixture.store, "budget-third", &input, &actor(), now)
+            .err()
+            .unwrap(),
+        "native_business_budget_exceeded"
+    );
+    assert_eq!(
+        reserve_at(&fixture.store, "budget-first", &input, &actor(), now)
+            .err()
+            .unwrap(),
+        "native_business_budget_reservation_replay"
+    );
+}
+
+#[test]
 fn every_volume_metric_counts_split_actions_without_an_action_limit_masking_it() {
     let input = prepared();
     for (field, amount) in [

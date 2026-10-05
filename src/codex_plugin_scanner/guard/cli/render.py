@@ -254,17 +254,28 @@ _TRUST_SENSITIVE_STRING_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tupl
 )
 
 
+def _redact_compact_json_values(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: _redact_compact_json_values(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_compact_json_values(item) for item in value]
+    if isinstance(value, str):
+        return redact_text(value).text
+    return value
+
+
 def emit_compact_hook_json(payload: PayloadDict) -> None:
     """Write one redacted hook JSON line and flush it.
 
     Harnesses that parse the last stdout line cannot use a pretty document,
-    because that document's last line is a closing brace.
+    because that document's last line is a closing brace. Redaction runs on
+    values before serialization so a token cannot consume the closing quote.
     """
 
-    sanitized = _coerce_object_dict(_sanitize_payload_for_output(payload, command="hook"))
+    sanitized = _redact_compact_json_values(_coerce_object_dict(_sanitize_payload_for_output(payload, command="hook")))
     rendered = json.dumps(sanitized, separators=(",", ":"), default=str)
-    redacted = redact_text(rendered)
-    sys.stdout.write(redacted.text)
+    # stdout is the harness delivery channel. Values are redacted before serialization.
+    sys.stdout.write(rendered)  # codeql[py/clear-text-logging-sensitive-data]
     sys.stdout.write("\n")
     sys.stdout.flush()
 

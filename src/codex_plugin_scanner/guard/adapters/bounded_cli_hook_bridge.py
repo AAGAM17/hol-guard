@@ -163,14 +163,15 @@ def bounded_cli_hook_command(
         if desktop_proxy is not None:
             return desktop_proxy
     if frozen_launcher or harness.strip().lower() == "grok":
-        isolated_command = _isolated_bounded_hook_command(
-            guard_home=guard_home,
-            harness=harness,
-            timeout_seconds=timeout_seconds,
-            prepared_files=prepared_files,
-        )
-        if isolated_command is not None:
-            return isolated_command
+        if not any(option in cli_args for option in ("--home", "--workspace")):
+            isolated_command = _isolated_bounded_hook_command(
+                guard_home=guard_home,
+                harness=harness,
+                timeout_seconds=timeout_seconds,
+                prepared_files=prepared_files,
+            )
+            if isolated_command is not None:
+                return isolated_command
         if frozen_launcher:
             return (
                 python_executable,

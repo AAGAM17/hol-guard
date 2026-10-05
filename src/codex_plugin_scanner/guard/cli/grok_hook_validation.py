@@ -155,6 +155,8 @@ def _isolated_stdlib_client(args: tuple[str, ...], context: HarnessContext | Non
             return False
         if context is None:
             return True
+        if context.workspace_dir is not None or context.home_dir.resolve() != Path.home().resolve():
+            return False
         expected_script = bounded_hook_script_path(context.guard_home, "grok")
         return expected_script is not None and script == expected_script.resolve()
     except OSError:

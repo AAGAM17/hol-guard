@@ -95,7 +95,14 @@ impl GoogleSendCredential {
     }
 
     pub(super) fn refresh_registered(&self) -> Result<Self, IdentityError> {
-        self.refresh_with(exchange_http, userinfo_http)
+        self.refresh_registered_with_agent(token_agent())
+    }
+
+    fn refresh_registered_with_agent(&self, agent: &ureq::Agent) -> Result<Self, IdentityError> {
+        self.refresh_with(
+            |request| exchange_http_with_agent(request, agent),
+            |access| userinfo_http(access, agent),
+        )
     }
 
     fn refresh_with<E: std::error::Error>(
@@ -238,9 +245,12 @@ impl GoogleSendCredential {
     }
 }
 
-fn userinfo_http(access: &str) -> Result<HttpResponse, ExchangeTransportError> {
+fn userinfo_http(
+    access: &str,
+    agent: &ureq::Agent,
+) -> Result<HttpResponse, ExchangeTransportError> {
     let authorization = Zeroizing::new(format!("Bearer {access}"));
-    let mut response = token_agent()
+    let mut response = agent
         .get(USERINFO_URL)
         .header("authorization", authorization.as_str())
         .header("accept", "application/json")
@@ -262,3 +272,7 @@ fn userinfo_http(access: &str) -> Result<HttpResponse, ExchangeTransportError> {
 #[cfg(test)]
 #[path = "refresh_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "refresh_http_tests.rs"]
+mod http_tests;

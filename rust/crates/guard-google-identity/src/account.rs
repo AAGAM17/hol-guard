@@ -62,11 +62,20 @@ impl GoogleSendAccount {
         &mut self,
         renew: impl FnOnce(&GoogleSendCredential) -> Result<GoogleSendCredential, crate::IdentityError>,
     ) -> Result<(), crate::IdentityError> {
-        if !self.can_refresh() {
+        self.refresh_with_epoch(renew, new_epoch)
+    }
+
+    pub(super) fn refresh_with_epoch(
+        &mut self,
+        renew: impl FnOnce(&GoogleSendCredential) -> Result<GoogleSendCredential, crate::IdentityError>,
+        create_epoch: impl FnOnce() -> Result<String, GoogleSendAccountError>,
+    ) -> Result<(), crate::IdentityError> {
+        let available = self.can_refresh();
+        self.revoke();
+        if !available {
             return Err(crate::IdentityError::Invalid);
         }
-        let epoch = new_epoch().map_err(|_| crate::IdentityError::Invalid)?;
-        self.revoke();
+        let epoch = create_epoch().map_err(|_| crate::IdentityError::Invalid)?;
         let replacement = renew(&self.credential)?;
         if replacement.purpose != GrantPurpose::Send
             || !replacement.is_current()

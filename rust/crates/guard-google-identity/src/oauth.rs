@@ -389,12 +389,19 @@ fn json_media_type(headers: &oauth2::http::HeaderMap) -> bool {
 }
 
 fn exchange_http(request: HttpRequest) -> Result<HttpResponse, ExchangeTransportError> {
+    exchange_http_with_agent(request, token_agent())
+}
+
+fn exchange_http_with_agent(
+    request: HttpRequest,
+    agent: &ureq::Agent,
+) -> Result<HttpResponse, ExchangeTransportError> {
     let valid = request.method() == "POST" && *request.uri() == TOKEN_URL;
     let body = Zeroizing::new(request.into_body());
     if !valid || body.len() > 16 * 1024 {
         return Err(ExchangeTransportError);
     }
-    let mut response = token_agent()
+    let mut response = agent
         .post(TOKEN_URL)
         .header("content-type", "application/x-www-form-urlencoded")
         .header("accept", "application/json")

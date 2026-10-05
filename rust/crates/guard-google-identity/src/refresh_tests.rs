@@ -40,6 +40,33 @@ fn rollback_during_exchange_or_identity_lookup_never_returns_authorization() {
 }
 
 #[test]
+fn entropy_or_missing_refresh_failure_revokes_pending_inputs_before_any_exchange() {
+    for entropy in [true, false] {
+        let mut original = credential("subject-one");
+        if !entropy {
+            original.refresh_token = None;
+        }
+        let mut account = GoogleSendAccount::new(original).unwrap();
+        let pending = account
+            .prepare_command(command("sender@work.example", "pending"))
+            .unwrap();
+        let exchanges = Cell::new(0);
+        assert_eq!(
+            account.refresh_with_epoch(
+                |_| {
+                    exchanges.set(exchanges.get() + 1);
+                    Err(IdentityError::ExchangeUnavailable)
+                },
+                || Err(GoogleSendAccountError::Unavailable)
+            ),
+            Err(IdentityError::Invalid)
+        );
+        assert_eq!(exchanges.get(), 0);
+        assert!(!pending.is_current() && !account.is_current() && !account.can_refresh());
+    }
+}
+
+#[test]
 fn malformed_duplicate_and_provider_error_responses_never_create_credentials() {
     for userinfo_failure in [false, true] {
         for status in [200, 401, 503] {

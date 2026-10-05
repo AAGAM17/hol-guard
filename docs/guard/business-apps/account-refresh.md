@@ -29,9 +29,13 @@ both wall/monotonic observations. Clock rollback refuses before release. Success
 creates a fresh account generation, so prior input/inspection commitments and
 approvals cannot authorize newly prepared inputs, even for identical bytes.
 
-Exchange, decoding, identity or timing failure leaves the owner unavailable.
+Entropy, missing-refresh, exchange, decoding, identity or timing failure leaves
+the owner unavailable. Pending inputs are revoked before generation creation.
 It cannot automatically retry authorization renewal or resend a business action.
 Explicit reconnect creates a new verified owner; persistent enrollment and the
 reconnect/disconnect UI remain unfinished. No native worker route is enabled,
 and no isolated credential custody or protected business mode is qualified.
+HTTP adapter tests use an in-memory ureq transport to inspect the fixed POST/form
+and GET/bearer requests and exercise response framing, media types, status errors
+and size limits. They perform no DNS lookup, TLS handshake or provider call.
 All tests here use synthetic provider responses, not a live Google account.

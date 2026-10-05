@@ -259,11 +259,11 @@ def test_live_coverage_matrix_opens_every_generated_response_file(tmp_path: Path
     raw_shard = str(planner["with"]["shard-count"])
     env_match = re.fullmatch(r"\$\{\{\s*env\.([A-Z0-9_]+)\s*\}\}", raw_shard)
     count = int(workflow_env[env_match.group(1)]) if env_match else int(raw_shard)
-    # The coverage matrix emits shard indices via `fromJSON(needs.coverage-plan.outputs.shard-indices)`;
-    # assert on the intended 0..count-1 range rather than the un-substituted expression.
     raw_indices = jobs["coverage"]["strategy"]["matrix"]["shard-index"]
-    indices = list(range(count)) if isinstance(raw_indices, str) and "fromJSON" in raw_indices else raw_indices
-    assert indices == list(range(count))
+    assert raw_indices == "${{ fromJSON(needs.coverage-plan.outputs.shard-indices) }}"
+    assert jobs["coverage-plan"]["outputs"]["shard-count"] == "${{ steps.shard-indices.outputs.count }}"
+    assert planner["with"]["shard-count"] == "${{ env.CI_PYTEST_COVERAGE_SHARDS }}"
+    indices = list(range(count))
     command = next(
         step["run"] for step in jobs["coverage"]["steps"] if step.get("name", "").startswith("Run coverage shard")
     )

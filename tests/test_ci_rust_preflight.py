@@ -38,7 +38,7 @@ def test_required_rust_checks_are_parallel_to_the_fast_artifact_producer() -> No
     assert "if" not in step and "continue-on-error" not in step
     assert "--skip" not in step["run"] and "|| true" not in step["run"]
     producer = jobs["native-command-evaluators"]
-    assert "needs" not in producer and producer["timeout-minutes"] == 10
+    assert "needs" not in producer and producer["timeout-minutes"] == 5
     commands = "\n".join(step.get("run", "") for step in producer["steps"])
     assert "cargo fmt --manifest-path rust/Cargo.toml --all --check" in commands
     assert "cargo clippy" not in commands and "cargo test" not in commands

@@ -31,12 +31,15 @@ _ALLOWED_ICON_NAMES: Final = frozenset(
 )
 _ALLOWED_LAUNCHERS: Final = frozenset({"bunx", "npx", "npm", "pnpm", "uvx", "yarn", "pipx"})
 _DIRECT_COMMAND_RESERVED: Final = _ALLOWED_LAUNCHERS | frozenset(
-    (
+    re.findall(
+        r"\\S+",
         "bash busybox bun cargo cmd csh dash deno docker dotnet env fish go java ksh lua node nodejs perl php "
-        "podman powershell pwsh py python python3 pythonw ruby sh sudo tcsh ts-node tsx uv wsl zsh"
-    ).split()
+        "podman powershell pwsh py python python3 pythonw ruby sh sudo tcsh ts-node tsx uv wsl zsh",
+    )
 )
-_DIRECT_COMMAND_VERSIONED_BASES: Final = tuple("java lua node nodejs perl php py python pythonw ruby".split())
+_DIRECT_COMMAND_VERSIONED_BASES: Final = tuple(
+    re.findall(r"\\S+", "java lua node nodejs perl php py python pythonw ruby")
+)
 _DIRECT_COMMAND: Final = re.compile(r"[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9_-]+)*", re.ASCII)
 _TOOL_STATES: Final = frozenset({"inherit", "allow", "review", "block"})
 _REMOTE_TOOL_STATES: Final = frozenset({"inherit", "review", "block"})

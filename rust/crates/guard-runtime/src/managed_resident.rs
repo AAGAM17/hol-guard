@@ -353,3 +353,7 @@ use client_stream::{
 #[cfg(test)]
 #[path = "managed_resident_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "managed_resident_dead_generation_tests.rs"]
+mod dead_generation_tests;

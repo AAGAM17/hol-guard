@@ -69,6 +69,10 @@ impl GoogleSendCredential {
 }
 
 impl GoogleWorkerInput {
+    #[cfg(test)]
+    pub(crate) fn test_credential(self) -> GoogleSendCredential {
+        self.credential
+    }
     pub(crate) fn send_once(
         self,
         bytes: &[u8],

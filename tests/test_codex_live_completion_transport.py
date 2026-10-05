@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+import json
 import threading
 import time
 from contextlib import suppress
@@ -97,6 +98,76 @@ def test_unproven_or_changed_decision_does_not_retry_or_allow(
         nonlocal calls
         calls += 1
         return response
+
+    monkeypatch.setattr(resume, "_daemon_json_post", post)
+    assert (
+        resume._complete_resolution(
+            request_id="abcd1234ef567890",
+            action="allow",
+            hook_input="{}",
+            state_path=tmp_path / "daemon-state.json",
+            deadline=time.monotonic() + 15,
+        )
+        is None
+    )
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        "continuation_not_recorded",
+        "exact_approval_authority_missing",
+        "fresh_policy_revalidation_failed",
+        "request_not_resolved",
+    ],
+)
+def test_transient_live_decision_rejection_retries_the_same_post(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_code: str
+) -> None:
+    from codex_plugin_scanner.guard.adapters.codex_daemon_hook_auth import _DaemonResponseError
+
+    calls: list[dict[str, object]] = []
+
+    def post(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise _DaemonResponseError(
+                409,
+                json.dumps({"completed": False, "error": error_code}),
+                authenticated=True,
+            )
+        return {"completed": True, "action": "allow", "replayed": True}
+
+    monkeypatch.setattr(resume, "_daemon_json_post", post)
+    result = resume._complete_resolution(
+        request_id="abcd1234ef567890",
+        action="allow",
+        hook_input='{"tool_name":"Read"}',
+        state_path=tmp_path / "daemon-state.json",
+        deadline=time.monotonic() + 15,
+    )
+    assert result == "allow"
+    assert len(calls) == 2
+    for key in ("path", "payload", "state_path"):
+        assert calls[0][key] == calls[1][key]
+
+
+def test_terminal_live_decision_rejection_is_not_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from codex_plugin_scanner.guard.adapters.codex_daemon_hook_auth import _DaemonResponseError
+
+    calls = 0
+
+    def post(**_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise _DaemonResponseError(
+            409,
+            json.dumps({"completed": False, "error": "policy_no_longer_reviewable"}),
+            authenticated=True,
+        )
 
     monkeypatch.setattr(resume, "_daemon_json_post", post)
     assert (

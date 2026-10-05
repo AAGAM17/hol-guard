@@ -9,6 +9,7 @@ approve-then-continue flow without starting a second Codex run.
 from __future__ import annotations
 
 import http.client
+import json
 import re
 import sys
 import time
@@ -27,6 +28,16 @@ _POLL_INTERVAL_SECONDS = 0.2
 _GET_TIMEOUT_CAP_SECONDS = 1.5
 _FINALIZE_TIMEOUT_CAP_SECONDS = 5.0
 _FINALIZE_MAX_ATTEMPTS = 3
+# These 409s can precede a committed allow when the grant, resident
+# revalidation, or continuation row is not visible yet. Other rejections stop.
+_RETRYABLE_LIVE_DECISION_ERRORS = frozenset(
+    {
+        "continuation_not_recorded",
+        "exact_approval_authority_missing",
+        "fresh_policy_revalidation_failed",
+        "request_not_resolved",
+    }
+)
 _REQUEST_URL_RE = re.compile(r"(https?://[^\s]+/requests/([A-Za-z0-9_-]{8,128}))", re.IGNORECASE)
 
 
@@ -138,7 +149,10 @@ def _complete_resolution(
                 payload={"hook_input": hook_input},
                 timeout_seconds=min(remaining, _FINALIZE_TIMEOUT_CAP_SECONDS),
             )
-        except (ValueError, urllib.error.HTTPError):
+        except (ValueError, urllib.error.HTTPError) as error:
+            if attempt + 1 < _FINALIZE_MAX_ATTEMPTS and _retryable_live_decision_rejection(error):
+                time.sleep(min(_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
+                continue
             return None
         except (OSError, TimeoutError, http.client.HTTPException, urllib.error.URLError):
             # Completion may already be committed. Replaying this exact request
@@ -151,6 +165,20 @@ def _complete_resolution(
         completed_action = payload.get("action")
         return action if completed_action == action else None
     return None
+
+
+def _retryable_live_decision_rejection(error: BaseException) -> bool:
+    status = getattr(error, "status", None)
+    detail = getattr(error, "detail", None)
+    if status != 409 or not isinstance(detail, str) or not detail:
+        return False
+    try:
+        payload = json.loads(detail)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return payload.get("error") in _RETRYABLE_LIVE_DECISION_ERRORS
 
 
 def _open_pending_approval(approval_url: str | None, *, state_path: str | Path) -> None:

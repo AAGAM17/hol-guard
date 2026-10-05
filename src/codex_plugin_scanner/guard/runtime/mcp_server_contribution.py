@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Mapping
 from functools import lru_cache
@@ -29,6 +30,7 @@ _ALLOWED_ICON_NAMES: Final = frozenset(
     }
 )
 _ALLOWED_LAUNCHERS: Final = frozenset({"bunx", "npx", "npm", "pnpm", "uvx", "yarn", "pipx"})
+_DIRECT_COMMAND: Final = re.compile(r"[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9_-]+)*", re.ASCII)
 _TOOL_STATES: Final = frozenset({"inherit", "allow", "review", "block"})
 _REMOTE_TOOL_STATES: Final = frozenset({"inherit", "review", "block"})
 _REMOTE_MCP_URL_MAX_LENGTH: Final = 260
@@ -45,6 +47,22 @@ def contributions_dir() -> Path:
 
 def catalog_id_for_mcp_id(mcp_id: str) -> str:
     return f"command.mcp-{mcp_id.removeprefix('mcp.')}"
+
+
+def direct_mcp_command_name(value: object) -> str | None:
+    """Recognize a portable executable basename for tightening-only MCP defaults.
+
+    Paths may be POSIX or Windows, independent of the host running Guard. This
+    is catalog selection, never executable authentication or saved approval.
+    """
+    if not isinstance(value, str) or not value or "://" in value:
+        return None
+    name = value.replace("\\", "/").rsplit("/", 1)[-1]
+    if name.endswith(".exe"):
+        name = name[:-4]
+    if len(name) > 128 or _DIRECT_COMMAND.fullmatch(name) is None:
+        return None
+    return name
 
 
 def _normalized_tool_name(name: object) -> str:
@@ -235,6 +253,10 @@ def validate_mcp_contribution(payload: Mapping[str, object], *, filename: str = 
     if launch_kind == "package-launcher":
         if launch.get("command") not in _ALLOWED_LAUNCHERS:
             raise ValueError(f"{filename} launch command is not an allowlisted package launcher")
+    elif launch_kind == "direct-command":
+        command = launch.get("command")
+        if direct_mcp_command_name(command) != command:
+            raise ValueError(f"{filename} direct command must be a canonical executable basename without .exe")
     elif launch_kind == "remote-http":
         if normalized_remote_mcp_url(launch.get("url")) is None:
             raise ValueError(
@@ -270,6 +292,8 @@ def validate_mcp_contribution(payload: Mapping[str, object], *, filename: str = 
             raise ValueError(f"{filename} declares unsupported MCP tool state {state!r}")
         if launch_kind == "remote-http" and state not in _REMOTE_TOOL_STATES:
             raise ValueError(f"{filename} remote HTTP contributions cannot declare allow defaults")
+        if launch_kind == "direct-command" and state == "allow":
+            raise ValueError(f"{filename} direct-command contributions cannot declare allow defaults")
 
 
 def mcp_catalog_ids(root: Path | None = None) -> frozenset[str]:
@@ -357,6 +381,7 @@ def _load_packaged_payloads() -> tuple[dict[str, object], ...]:
 
 def _finalize_payloads(payloads: tuple[dict[str, object], ...]) -> tuple[dict[str, object], ...]:
     packages: dict[str, str] = {}
+    commands: dict[str, str] = {}
     remote_urls: dict[str, str] = {}
     remote_names: dict[str, str] = {}
     ids: set[str] = set()
@@ -379,6 +404,15 @@ def _finalize_payloads(payloads: tuple[dict[str, object], ...]) -> tuple[dict[st
             if previous is not None:
                 raise ValueError(f"duplicate MCP launch package {package} for {previous} and {mcp_id}")
             packages[key] = mcp_id
+            continue
+        if launch.get("kind") == "direct-command":
+            command = launch.get("command")
+            if not isinstance(command, str) or direct_mcp_command_name(command) != command:
+                raise ValueError(f"{mcp_id} has invalid direct command")
+            previous = commands.get(command)
+            if previous is not None:
+                raise ValueError(f"duplicate MCP direct command {command} for {previous} and {mcp_id}")
+            commands[command] = mcp_id
             continue
         if launch.get("kind") != "remote-http":
             raise ValueError(f"{mcp_id} has unsupported launch metadata")

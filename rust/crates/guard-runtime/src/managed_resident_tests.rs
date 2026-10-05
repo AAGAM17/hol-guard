@@ -288,8 +288,12 @@ fn retire_clients_for_update_terminates_exact_process() {
         panic!("child did not acquire a lease");
     }
     let digest = runtime_digest().unwrap();
+    // This correctness test authenticates the entire test executable. LLVM
+    // coverage makes that unoptimized binary much larger than the shipped
+    // runtime, so fingerprinting must not consume the fixture's stop budget.
+    // Production stop deadlines remain unchanged in stop_managed.
     let retirement =
-        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(10));
+        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(60));
     if let Err(error) = retirement {
         let _ = child.kill();
         let _ = child.wait();

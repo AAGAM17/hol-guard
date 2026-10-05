@@ -170,7 +170,7 @@ def bounded_cli_hook_command(
             prepared_files=prepared_files,
         )
         if isolated_command is not None:
-            return isolated_command
+            return (*isolated_command, config_json) if harness.strip().lower() == "grok" else isolated_command
         if frozen_launcher:
             return (
                 python_executable,

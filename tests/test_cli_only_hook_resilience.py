@@ -13,6 +13,7 @@ from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.copilot import (
     _hook_command_parts as copilot_hook_command_parts,  # pyright: ignore[reportPrivateUsage]
 )
+from codex_plugin_scanner.guard.adapters.cursor_hook_config import isolated_cursor_hook_python
 from codex_plugin_scanner.guard.adapters.grok import GrokHarnessAdapter
 from codex_plugin_scanner.guard.adapters.hermes import (
     _pretool_payload as hermes_pretool_payload,  # pyright: ignore[reportPrivateUsage]
@@ -59,8 +60,12 @@ def test_managed_cli_hooks_use_bounded_process_bridge(
 ) -> None:
     command = factory(_context(tmp_path))
 
-    assert command[1:3] == ("-I", "-c")
-    assert "bounded_cli_hook_bridge" in command[3]
+    if harness == "grok" and isolated_cursor_hook_python() is not None:
+        assert command[1] == "-I"
+        assert Path(command[2]).is_file()
+    else:
+        assert command[1:3] == ("-I", "-c")
+        assert "bounded_cli_hook_bridge" in command[3]
     config = cast(dict[str, object], json.loads(command[-1]))
     assert config["harness"] == harness
     assert config["timeout_seconds"] == timeout_seconds

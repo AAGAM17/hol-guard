@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from types import ModuleType
@@ -205,3 +206,45 @@ def test_prompt_without_workspace_still_requires_native_review(
     assert result is not None
     assert json.loads(result[0])["policy_action"] == "block"
     assert calls == ["http://127.0.0.1:9/v1/hooks/grok"]
+
+
+def test_isolated_invocation_binds_home_and_keeps_actual_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script(tmp_path, harness="grok")
+    configured = {
+        "harness": "grok",
+        "guard_home": module.GUARD_HOME,
+        "cli_args": [
+            "guard",
+            "hook",
+            "--guard-home",
+            module.GUARD_HOME,
+            "--harness",
+            "grok",
+            "--home",
+            str(tmp_path / "home"),
+            "--workspace",
+            str(tmp_path / "fallback-workspace"),
+            "--json",
+        ],
+    }
+    monkeypatch.setattr(module.sys, "argv", ["grok.py", json.dumps(configured)])
+    assert module._configure_grok_invocation()
+    assert "home=" in module._loopback_url("127.0.0.1", 9, "/v1/hooks/grok")
+    actual = {"hook_event_name": "UserPromptSubmit", "cwd": str(tmp_path / "actual-workspace")}
+    assert json.loads(module._grok_invocation_payload(json.dumps(actual))) == actual
+    fallback = json.loads(module._grok_invocation_payload('{"hook_event_name":"UserPromptSubmit"}'))
+    assert fallback["cwd"] == str(tmp_path / "fallback-workspace")
+
+
+@pytest.mark.parametrize("argument", ["not-json", '{"harness":"grok","guard_home":"/redirected"}'])
+def test_invalid_isolated_context_blocks_prompt_before_authentication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], argument: str
+) -> None:
+    module = _load_script(tmp_path, harness="grok")
+    monkeypatch.setattr(module.sys, "argv", ["grok.py", argument])
+    monkeypatch.setattr(module.sys, "stdin", io.StringIO('{"hook_event_name":"UserPromptSubmit","prompt":"test"}'))
+    monkeypatch.setattr(module, "_daemon_auth", lambda: pytest.fail("invalid context must not authenticate"))
+    assert module.main() == 0
+    assert json.loads(capsys.readouterr().out)["decision"] == "block"

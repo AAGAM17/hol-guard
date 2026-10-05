@@ -102,7 +102,7 @@ def is_grok_hook_command(command: str, context: HarnessContext | None = None) ->
         args = _arguments(command)
         if len(args) == 9:
             return _desktop_proxy(args, context)
-        if len(args) == 3 and args[1] == "-I":
+        if len(args) in {3, 4} and args[1] == "-I":
             return _isolated_stdlib_client(args, context)
         if len(args) == 3 and args[1] == "__guard-bounded-hook":
             expected = Path(prune_safe_cli_executable(sys.executable)).resolve()
@@ -151,6 +151,23 @@ def _isolated_stdlib_client(args: tuple[str, ...], context: HarnessContext | Non
             or script.name != "grok.py"
             or "managed/bounded-hooks" not in script.as_posix()
             or not script.is_file()
+        ):
+            return False
+        if context is None and len(args) == 3:
+            return True
+        if len(args) == 4:
+            config = json.loads(args[3])
+            if not isinstance(config, dict) or not isinstance(config.get("frozen_launcher"), bool):
+                return False
+            executable = config.get("python_executable")
+            if not isinstance(executable, str) or not Path(executable).is_absolute():
+                return False
+            if _config(args[3], executable, frozen=config["frozen_launcher"], context=context) is None:
+                return False
+            if Path(config["guard_home"]).resolve() != script.parent.parent.parent.resolve():
+                return False
+        elif context is not None and (
+            context.workspace_dir is not None or context.home_dir.resolve() != Path.home().resolve()
         ):
             return False
         if context is None:

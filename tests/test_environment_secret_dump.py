@@ -145,7 +145,7 @@ def test_grok_pretool_denies_python_environ_dump(tmp_path: Path, monkeypatch, ca
             "grok",
         ]
     )
-    payload = json.loads(capsys.readouterr().out)
+    payload = json.loads(capsys.readouterr().out.splitlines()[-1])
 
     assert rc == 2
     assert payload["decision"] == "deny"

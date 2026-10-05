@@ -384,10 +384,14 @@ pub fn mcp_tool_approval_digest(
     material.insert("tool_identity".to_owned(), json!(request.tool_identity));
     material.insert("transport".to_owned(), json!(request.transport));
     if let Some(value) = &request.authority_hash {
-        material.insert("tool_authority_hash".to_owned(), value.clone());
+        if !value.is_null() {
+            material.insert("tool_authority_hash".to_owned(), value.clone());
+        }
     }
     if let Some(value) = &request.provider_hash {
-        material.insert("provider_catalog_hash".to_owned(), value.clone());
+        if !value.is_null() {
+            material.insert("provider_catalog_hash".to_owned(), value.clone());
+        }
     }
     if let Some(workspace) = &request.workspace {
         material.insert("workspace".to_owned(), json!(workspace));

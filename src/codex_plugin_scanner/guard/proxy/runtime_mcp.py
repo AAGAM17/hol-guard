@@ -491,6 +491,11 @@ class _NativeMcpChildIo:
 
     # stdout side -----------------------------------------------------------
     def next_frame(self, timeout_seconds: float, required: bool) -> _ChildOutputFrame | None:
+        # Test/injection seam: locally-queued frames are delivered before the
+        # resident so callers can synthesize inbound child events (e.g.
+        # `tools/list_changed`) without a native inject op.
+        if self._pending:
+            return _ChildOutputFrame(line=self._pending.popleft())
         result = mcp_stdio_session_recv_native(
             self._session_id,
             guard_home=self._guard_home,
@@ -1029,6 +1034,13 @@ class RuntimeMcpGuardProxy:
                     raise RuntimeError(
                         "Guard runtime MCP server launch identity changed while the child process was starting."
                     )
+                # RTM-022: no reader-pump thread exists for resident-owned
+                # sessions. Install a plain injection buffer so callers/tests
+                # that write ``_child_output_queue`` (e.g. synthesizing a
+                # post-claim ``list_changed`` notification) reach the drain
+                # loop on both transports. ``_next_child_output_frame`` drains
+                # this buffer before polling the native session.
+                self._child_output_queue = queue.Queue()
                 return _NativeChildProcess(native_session_id, self.context.guard_home)
             # opened is None => the native session feature is unsupported or
             # the resident is unreachable; keep the Python pipe transport.
@@ -3246,6 +3258,15 @@ class RuntimeMcpGuardProxy:
         required: bool,
     ) -> _ChildOutputFrame | None:
         if isinstance(child_stdout, _NativeMcpChildIo):
+            # Drain the resident-path injection buffer first so synthesized
+            # frames (post-claim notifications in tests) are observed before
+            # the next real child frame.
+            injected = self._child_output_queue
+            if injected is not None:
+                try:
+                    return injected.get_nowait()
+                except queue.Empty:
+                    pass
             return child_stdout.next_frame(timeout_seconds, required)
         output_queue = self._child_output_queue if child_stdout is self._active_child_stdout else None
         if output_queue is not None:

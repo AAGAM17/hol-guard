@@ -36,7 +36,7 @@ use super::context_digest_json::write_canonical_json_with_limit;
 use crate::claim_reuse::approval_authority_revision;
 
 const LOCAL_ONCE_LEGACY_AUTHORITY_KIND: &str = "legacy";
-const LOCAL_ONCE_INTEGRITY_PURPOSE: &str = "local-once-approval";
+const LOCAL_ONCE_INTEGRITY_PURPOSE: &str = "guard-local-once-approval";
 const NON_CONSUMING_POLICY_MATCH_LIMIT: i64 = 256;
 const POLICY_LOOKUP_COLUMNS: &str = "decision_id, harness, scope, artifact_id, action, \
      artifact_hash, workspace, publisher, source, reason, owner, expires_at, updated_at, \

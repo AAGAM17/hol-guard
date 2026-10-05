@@ -80,6 +80,7 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     install_fake_system_keyring,
+    native_context_digest: Path,
     grant_kind: str,
     mutation: str,
     direct: bool = False,
@@ -259,13 +260,27 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
             elif claimed and mutation == "postclaim-config":
                 proxy._current_config_provider = lambda: replace(config, risk_actions={"mcp_dangerous_tool": "block"})
             elif claimed:
-                assert proxy._child_output_queue is not None
-                proxy._child_output_queue.put(
-                    runtime._ChildOutputFrame(
-                        line=json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed", "params": {}})
+                if proxy._child_output_queue is not None:
+                    proxy._child_output_queue.put(
+                        runtime._ChildOutputFrame(
+                            line=json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed", "params": {}})
+                            + "\n"
+                        )
+                    )
+                else:
+                    # Native MCP session plane owns the child's stdout; there is
+                    # no Python output queue to inject a `tools/list_changed`
+                    # frame into. Queue the notification on the native
+                    # transport's pending seam so the forward drain reads it
+                    # and the catalog differs at `immediately_before_forward`.
+                    native_process = proxy._active_process
+                    assert native_process is not None
+                    native_stdout = native_process.stdout
+                    assert native_stdout is not None
+                    native_stdout._pending.append(
+                        json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed", "params": {}})
                         + "\n"
                     )
-                )
             if claimed:
                 mutation_applied.append(True)
             return claimed
@@ -330,9 +345,9 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
     assert len(marker.read_text().splitlines()) == 1
 
 
-def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, install_fake_system_keyring):
+def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, "retained", "none"
+        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, "retained", "none"
     )
 
 
@@ -340,17 +355,17 @@ def test_retained_rule_cannot_satisfy_fresh_approval(tmp_path, monkeypatch, inst
     "mutation",
     ["expired", "unavailable-review", "malformed-review", "http-malformed", "http-missing-auth", "http-unavailable"],
 )
-def test_invalid_review_never_launches(tmp_path, monkeypatch, install_fake_system_keyring, mutation):
+def test_invalid_review_never_launches(tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, mutation):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, "local-once", mutation
+        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, "local-once", mutation
     )
 
 
 @pytest.mark.parametrize("grant_kind", ["single", "local-once", "bulk"])
 @pytest.mark.parametrize("mutation", ["none", "older-allow"])
-def test_direct_postclaim_revalidation(tmp_path, monkeypatch, install_fake_system_keyring, grant_kind, mutation):
+def test_direct_postclaim_revalidation(tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, grant_kind, mutation):
     test_fresh_opencode_reapproval_runs_exactly_once(
-        tmp_path, monkeypatch, install_fake_system_keyring, grant_kind, mutation, direct=True
+        tmp_path, monkeypatch, install_fake_system_keyring, native_context_digest, grant_kind, mutation, direct=True
     )
 
 

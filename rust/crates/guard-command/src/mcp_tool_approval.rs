@@ -163,10 +163,14 @@ fn capabilities_material(
             .unwrap_or(Value::Null),
     );
     if let Some(value) = metadata.get("mcp_tool_authority_hash") {
-        map.insert("tool_authority_hash".to_owned(), value.clone());
+        if !value.is_null() {
+            map.insert("tool_authority_hash".to_owned(), value.clone());
+        }
     }
     if let Some(value) = metadata.get("mcp_provider_catalog_hash") {
-        map.insert("provider_catalog_hash".to_owned(), value.clone());
+        if !value.is_null() {
+            map.insert("provider_catalog_hash".to_owned(), value.clone());
+        }
     }
     Value::Object(map)
 }

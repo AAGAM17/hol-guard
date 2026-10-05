@@ -179,6 +179,48 @@ def _native_context_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[P
     close_native_residents(guard_home)
 
 
+@pytest.fixture
+def native_prompt_analysis(
+    native_hook_force: Path,
+    _native_context_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    from codex_plugin_scanner.guard import config
+
+    monkeypatch.setattr(config, "resolve_guard_home", lambda: _native_context_home)
+    return _native_context_home
+
+
+@pytest.fixture
+def native_mcp_probe(
+    native_hook_force: Path,
+    _native_context_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[Callable[[Path], None]]:
+    """Exercise MCP discovery through the real keyed native resident."""
+    from codex_plugin_scanner.guard import config
+
+    monkeypatch.setattr(config, "resolve_guard_home", lambda: _native_context_home)
+    from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
+    from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+
+    homes: list[Path] = []
+
+    def provision_home(home: Path) -> None:
+        key_dir = home / "native-runtime"
+        key_dir.mkdir(mode=0o700, exist_ok=True)
+        key_dir.chmod(0o700)
+        key = key_dir / "key"
+        key.write_bytes(os.urandom(32))
+        key.chmod(0o600)
+        provision_native_policy_verifier_key(home, b"\x07" * 32)
+        homes.append(home)
+
+    yield provision_home
+    for home in homes:
+        close_native_residents(home)
+
+
 def _context_digest_runtime_binary() -> Path | None:
     """Locate the compiled runtime for ambient digest calls."""
 

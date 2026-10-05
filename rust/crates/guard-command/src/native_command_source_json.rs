@@ -23,6 +23,18 @@ pub(super) fn decode(bytes: &[u8]) -> Result<Value, &'static str> {
     .deserialize(&mut decoder)
     .map_err(|_| "command_source_json_invalid")?;
     decoder.end().map_err(|_| "command_source_json_invalid")?;
+    // A source program must be a JSON object. Under serde_json
+    // `arbitrary_precision`, a bare number decodes through the private
+    // `$serde_json::private::Number` marker map and `is_object()` reports true;
+    // reject that marker shape too so scalars and ambiguous top-levels are
+    // refused regardless of numeric encoding.
+    let is_number_marker = value
+        .as_object()
+        .map(|map| map.len() == 1 && map.contains_key("$serde_json::private::Number"))
+        .unwrap_or(false);
+    if !value.is_object() || is_number_marker {
+        return Err("command_source_json_invalid");
+    }
     Ok(value)
 }
 

@@ -506,6 +506,7 @@ def test_authenticated_saved_package_block_is_terminal_before_generic_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     approval_surface: str,
+    native_context_digest: Path,
 ) -> None:
     context = _context(tmp_path)
     assert context.workspace_dir is not None
@@ -572,6 +573,7 @@ def test_authenticated_saved_package_block_is_terminal_before_generic_approval(
 def test_package_retry_claims_inner_and_outer_exact_one_shot_allows_after_revision_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    native_context_digest: Path,
 ) -> None:
     context = _context(tmp_path)
     assert context.workspace_dir is not None

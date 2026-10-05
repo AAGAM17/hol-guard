@@ -1,4 +1,5 @@
 use super::*;
+use crate::pep440::{SpecifierSet, Version};
 
 /// `supply_chain_bundle_models.SupplyChainBundleResponse` (:460) mirror —
 /// the signed Guard Cloud bundle response. `signed_bundle` preserves the exact
@@ -71,24 +72,6 @@ pub trait SupplyChainBundleApi {
         &self,
         bundle_payload: &Map<String, Value>,
     ) -> EvalResult<BTreeMap<String, String>>;
-}
-
-/// `packaging.specifiers.SpecifierSet` mirror (opaque to this module —
-/// constructed only through `JsSemverApi`).
-#[derive(Debug, Clone)]
-pub struct SpecifierSet {
-    /// Normalized specifier string, preserved for byte-parity reparsing.
-    pub normalized: String,
-}
-
-/// `packaging.version.Version` mirror.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Version {
-    /// Canonical normalized rendering (`str(Version(v))`).
-    pub normalized: String,
-    /// `Version.release` — the dotted release-segment tuple used by the
-    /// caret/tilde specifier ports (:4550, :4572).
-    pub release: Vec<u64>,
 }
 
 /// `packaging` + `.runtime.js_semver` seam — per-package policy version

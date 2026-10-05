@@ -10,7 +10,8 @@ import shlex
 import subprocess
 import sys
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections import deque
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import IO, Any, Literal, TextIO, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import uuid4
 
 from ..action_lattice import (
     GuardActionNormalization,
@@ -79,6 +81,12 @@ from ..runtime.surface_server import GuardSurfaceRuntime
 from ..store import GuardStore
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _tool_decision_scanner_evidence
 from ._env import _build_scrubbed_env
+from ..native_execution import (
+    mcp_stdio_session_close_native,
+    mcp_stdio_session_open_native,
+    mcp_stdio_session_recv_native,
+    mcp_stdio_session_send_native,
+)
 from .stdio import (
     ProxyIoTimeoutError,
     _blocked_tool_response,
@@ -439,6 +447,122 @@ class _ChildOutputFrame:
     error: BaseException | None = None
 
 
+class _NativeMcpChildIo:
+    """Child-side transport over the native MCP stdio session ops (RTM-022/023).
+
+    Quacks like the pipe pair ``_forward_message``/``_drain_child_messages``
+    use: ``write``/``flush`` frame a client→child message via ``send``;
+    ``next_frame`` surfaces the next inbound child event via ``recv``. The
+    resident owns the subprocess, newline framing, correlation, and teardown;
+    this adapter only marshals frames. Returned ``line`` values are re-parsed
+    by the relay so the existing catalog-poison/quarantine gate is preserved.
+    """
+
+    def __init__(self, session_id: str, guard_home: Path) -> None:
+        self._session_id = session_id
+        self._guard_home = guard_home
+        self._pending: deque[str] = deque()
+
+    # stdin side ------------------------------------------------------------
+    def write(self, data: str) -> int:
+        """Accept a ``json.dumps(message) + "\\n"`` write like a text pipe."""
+        text = data.rstrip("\n")
+        try:
+            message = json.loads(text)
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+            raise RuntimeError("native MCP session received a non-JSON frame") from exc
+        result = mcp_stdio_session_send_native(
+            self._session_id, message, guard_home=self._guard_home
+        )
+        if result is None or result.get("status") != "sent":
+            raise RuntimeError("native MCP session send failed")
+        return len(data)
+
+    def flush(self) -> None:  # resident op is already synchronous/flushed
+        return None
+
+    def writelines(self, lines: Iterable[str]) -> None:
+        for line in lines:
+            self.write(line)
+
+    def close(self) -> None:
+        mcp_stdio_session_close_native(self._session_id, guard_home=self._guard_home)
+
+    # stdout side -----------------------------------------------------------
+    def next_frame(self, timeout_seconds: float, required: bool) -> _ChildOutputFrame | None:
+        result = mcp_stdio_session_recv_native(
+            self._session_id,
+            guard_home=self._guard_home,
+            timeout_seconds=timeout_seconds,
+        )
+        if result is None:
+            return _ChildOutputFrame(
+                error=RuntimeError("native MCP session recv transport failure")
+            )
+        status = str(result.get("status", ""))
+        if status == "event":
+            payload = result.get("payload")
+            return _ChildOutputFrame(line=json.dumps(payload) + "\n")
+        if status == "timeout":
+            if required:
+                return _ChildOutputFrame(
+                    error=ProxyIoTimeoutError(
+                        source="child_response", timeout_seconds=timeout_seconds
+                    )
+                )
+            return None
+        # "error" status — surface as a frame error so the relay fails closed.
+        code = result.get("payload")
+        return _ChildOutputFrame(
+            error=RuntimeError(f"native MCP session error: {code}")
+        )
+
+    def readline(self) -> str:  # pragma: no cover - compatibility sink
+        return ""
+
+class _NativeChildProcess:
+    """Popen-shaped adapter over a resident-owned MCP stdio session.
+
+    ``serve``/``run_session`` only touch ``stdin``/``stdout``/teardown; the
+    resident owns the real subprocess, so ``stdin``/``stdout`` share one
+    ``_NativeMcpChildIo`` transport and lifecycle calls delegate to ``close``.
+    ``returncode`` is ``0`` on clean close and ``-9`` on quarantine/cancel.
+    """
+
+    def __init__(self, session_id: str, guard_home: Path) -> None:
+        self._session_id = session_id
+        self._guard_home = guard_home
+        io = _NativeMcpChildIo(session_id, guard_home)
+        self.stdin: _NativeMcpChildIo = io
+        self.stdout: _NativeMcpChildIo = io
+        self.stderr = None
+        self._closed = False
+        self._cancelled = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        mcp_stdio_session_close_native(self._session_id, guard_home=self._guard_home)
+
+    def terminate(self) -> None:
+        self.close()
+
+    def kill(self) -> None:
+        self._cancelled = True
+        self.close()
+
+    def poll(self) -> int | None:
+        return self.returncode if self._closed else None
+
+    def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
+        self.close()
+        return self.returncode
+
+    @property
+    def returncode(self) -> int:
+        return -9 if self._cancelled else 0
+
 def _canonical_tool_catalog_entry(name: str, definition: Mapping[str, object]) -> dict[str, object]:
     """Normalize internal aliases while retaining every advertised field."""
 
@@ -783,46 +907,91 @@ class RuntimeMcpGuardProxy:
             daemon=True,
         ).start()
 
-    def _start_process(self) -> subprocess.Popen[str]:
-        # A catalog belongs to one concrete server process. A replacement
-        # process must explicitly advertise a complete root-to-terminal list
-        # before any saved allow can be reused against it.
+    def _prepare_launch(self) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+        """Compute launch identity/env shared by the Popen and native paths.
+
+        Populates ``self._active_*`` identity fields; callers clear them on
+        failure. Native resident must be reachable — these calls raise.
+        """
         self._reset_child_process_state()
         launch_env = _configured_server_launch_environment(self.server_env_keys)
         child_env = dict(launch_env)
         child_env.update(origin_harness_env(self.harness))
         configured_env = _configured_server_environment(launch_env, self.server_env_keys)
+        self._active_runtime_launch_identity = build_runtime_launch_identity(
+            self.command[0] if self.command else "",
+            args=self.command[1:],
+            structured_command=True,
+            search_path=launch_env.get("PATH"),
+            cwd=self.context.workspace_dir or Path.cwd(),
+            launch_env=launch_env,
+        )
+        self._active_executable_identity = _resolved_executable_identity(
+            self.command[0] if self.command else "",
+            launch_cwd=self.context.workspace_dir,
+            launch_env=launch_env,
+            launch_args=self.command[1:],
+        )
+        self._active_server_env_values_hash = build_configured_environment_hash(
+            launch_env,
+            configured_keys=self.server_env_keys,
+        )
+        self._active_server_identity = build_mcp_server_identity(
+            config_path=self.config_path,
+            command=self.command[0] if self.command else "",
+            args=tuple(self.command[1:]),
+            transport=self.transport,
+            env=configured_env,
+            env_keys=self.server_env_keys,
+        )
+        return launch_env, child_env, configured_env
+
+    def _clear_launch_identity(self) -> None:
+        self._active_executable_identity = None
+        self._active_runtime_launch_identity = None
+        self._active_server_env_values_hash = None
+        self._active_server_identity = None
+
+    def _start_process(self) -> subprocess.Popen[str] | _NativeChildProcess:
+        # A catalog belongs to one concrete server process. A replacement
+        # process must explicitly advertise a complete root-to-terminal list
+        # before any saved allow can be reused against it.
+        launch_env: dict[str, str] = {}
+        child_env: dict[str, str] = {}
         process: subprocess.Popen[str] | None = None
+        native_session_id: str | None = None
         try:
-            # Identity and digest calls raise when the native resident is
-            # unreachable; keep them inside the failure boundary so partial
-            # state is unwound.
-            self._active_runtime_launch_identity = build_runtime_launch_identity(
-                self.command[0] if self.command else "",
-                args=self.command[1:],
-                structured_command=True,
-                search_path=launch_env.get("PATH"),
-                cwd=self.context.workspace_dir or Path.cwd(),
-                launch_env=launch_env,
+            launch_env, child_env, _configured_env = self._prepare_launch()
+            executable = resolved_runtime_launch_executable(
+                self._active_runtime_launch_identity
             )
-            self._active_executable_identity = _resolved_executable_identity(
-                self.command[0] if self.command else "",
-                launch_cwd=self.context.workspace_dir,
-                launch_env=launch_env,
-                launch_args=self.command[1:],
+            argv = [executable] + [str(a) for a in self.command[1:]]
+            native_session_id = (
+                f"mcp-{self.harness}-{self.server_name}-{os.getpid()}-{uuid4().hex[:8]}"
             )
-            self._active_server_env_values_hash = build_configured_environment_hash(
-                launch_env,
-                configured_keys=self.server_env_keys,
+            opened = mcp_stdio_session_open_native(
+                argv,
+                session_id=native_session_id,
+                home_dir=self.context.guard_home,
+                extra_env=child_env,
+                guard_home=self.context.guard_home,
             )
-            self._active_server_identity = build_mcp_server_identity(
-                config_path=self.config_path,
-                command=self.command[0] if self.command else "",
-                args=tuple(self.command[1:]),
-                transport=self.transport,
-                env=configured_env,
-                env_keys=self.server_env_keys,
-            )
+            if opened is not None:
+                # Resident owns the child (RTM-022 data plane). A non-"opened"
+                # status is terminal — never fall back to the Python transport
+                # on a real open failure (ADR 0006: native failure is terminal).
+                if opened.get("status") != "opened":
+                    raise RuntimeError(
+                        f"native MCP session open failed: {opened.get('payload')}"
+                    )
+                if not self._verify_post_spawn_launch_identity(launch_env=launch_env):
+                    raise RuntimeError(
+                        "Guard runtime MCP server launch identity changed while the child process was starting."
+                    )
+                return _NativeChildProcess(native_session_id, self.context.guard_home)
+            # opened is None => the native session feature is unsupported or
+            # the resident is unreachable; keep the Python pipe transport.
+            native_session_id = None
             process = subprocess.Popen(
                 self.command,
                 stdin=subprocess.PIPE,
@@ -831,7 +1000,7 @@ class RuntimeMcpGuardProxy:
                 text=True,
                 cwd=self.context.workspace_dir,
                 env=child_env,
-                executable=resolved_runtime_launch_executable(self._active_runtime_launch_identity),
+                executable=executable,
             )
             if not self._verify_post_spawn_launch_identity(launch_env=launch_env):
                 raise RuntimeError(
@@ -843,10 +1012,11 @@ class RuntimeMcpGuardProxy:
         except BaseException:
             if process is not None:
                 _quarantine_process(process)
-            self._active_executable_identity = None
-            self._active_runtime_launch_identity = None
-            self._active_server_env_values_hash = None
-            self._active_server_identity = None
+            elif native_session_id is not None:
+                mcp_stdio_session_close_native(
+                    native_session_id, guard_home=self.context.guard_home
+                )
+            self._clear_launch_identity()
             raise
 
     def _verify_post_spawn_launch_identity(self, *, launch_env: Mapping[str, str]) -> bool:
@@ -3034,6 +3204,8 @@ class RuntimeMcpGuardProxy:
         timeout_seconds: float,
         required: bool,
     ) -> _ChildOutputFrame | None:
+        if isinstance(child_stdout, _NativeMcpChildIo):
+            return child_stdout.next_frame(timeout_seconds, required)
         output_queue = self._child_output_queue if child_stdout is self._active_child_stdout else None
         if output_queue is not None:
             try:

@@ -1,3 +1,4 @@
+import { recordBusinessQueueReadFailure } from "./business-review-queue-status";
 import {
   GUARD_ACTION_TYPES,
   GUARD_DECISION_V2_ACTIONS,
@@ -151,6 +152,7 @@ type RawGuardInventoryItem = Omit<GuardInventoryItem, "last_policy_action"> & {
 };
 
 type ApprovalRequestListPayload = {
+  native_business_queue_error?: unknown;
   items?: RawGuardApprovalRequest[] | null;
   next_cursor?: unknown;
   total_pending_count?: unknown;
@@ -1565,6 +1567,7 @@ function normalizeApprovalPage(
   payload: ApprovalRequestListPayload,
   statusFallback: GuardApprovalPageStatus = "pending"
 ): GuardApprovalPage {
+  recordBusinessQueueReadFailure(payload.native_business_queue_error !== undefined);
   return {
     items: normalizeApprovalRequests(payload.items),
     next_cursor: isStringOrNull(payload.next_cursor) ? payload.next_cursor : null,

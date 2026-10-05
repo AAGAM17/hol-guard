@@ -20,7 +20,7 @@ const approval = {
   created_at: "2026-10-05T00:00:00Z", resolved_at: null, action_envelope_json: null, decision_v2_json: null,
 };
 
-async function mount(page: Page, nextSummary: () => unknown, displayOnly = false) {
+async function mount(page: Page, nextSummary: () => unknown, displayOnly = false, nativeFailure: "with-sql" | "empty" | null = null) {
   const request = displayOnly ? { ...approval, harness: "native-business", created_at: "",
     allowed_scopes: [], recommended_scope: null, native_business_review_display_only: true } : approval;
   await page.route("**/v1/**", async route => {
@@ -36,7 +36,9 @@ async function mount(page: Page, nextSummary: () => unknown, displayOnly = false
       }
     }
     else if (path.endsWith("/requests/business-test")) body = request;
-    else if (path.endsWith("/requests")) body = { items: [request], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
+    else if (path.endsWith("/requests")) body = { items: nativeFailure === "empty" ? [] : [request], next_cursor: null,
+      total_pending_count: nativeFailure === "empty" ? 0 : 1, total_count: nativeFailure === "empty" ? 0 : 1, status: "pending",
+      ...(nativeFailure ? { native_business_queue_error: "native_local_business_queue_read_failed" } : {}) };
     else if (path.endsWith("/receipts/latest")) {
       await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_found" }) });
       return;
@@ -48,7 +50,18 @@ async function mount(page: Page, nextSummary: () => unknown, displayOnly = false
     else if (path.endsWith("/diff")) body = null;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
-  await page.goto("/requests/business-test?guardDaemon=http://127.0.0.1:4277");
+  await page.goto(`${nativeFailure === "empty" ? "/inbox" : "/requests/business-test"}?guardDaemon=http://127.0.0.1:4277`);
+}
+
+for (const state of ["with-sql", "empty"] as const) {
+  test(`native discovery failure is visible with ${state}`, async ({ page }) => {
+    await mount(page, () => summary, false, state);
+    await expect(page.getByText("Saved business requests could not be loaded.")).toBeVisible();
+    await expect(page.getByText("Other Guard requests remain available.", { exact: false })).toBeVisible();
+    if (state === "with-sql") {
+      await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+    }
+  });
 }
 
 test("native projected detail is explicitly read-only and offers no decision", async ({ page }) => {

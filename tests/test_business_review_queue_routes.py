@@ -125,7 +125,19 @@ def test_real_local_http_routes_expose_only_read_only_projection(tmp_path, monke
         def failed_discovery(home):
             raise route.NativeBusinessReviewQueueReadError()
         monkeypatch.setattr(route, "read_native_business_review_queue", failed_discovery)
-        for path in ("/v1/requests", "/v1/requests/opaque-000"):
+        original_get = store.get_approval_request
+        monkeypatch.setattr(store, "get_approval_request", lambda request_id:
+            {"request_id": "sql-available", "status": "pending"} if request_id == "sql-available"
+            else original_get(request_id))
+        request = urllib.request.Request(base + "/v1/requests/sql-available", headers=headers)
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert json.loads(response.read())["request_id"] == "sql-available"
+        request = urllib.request.Request(base + "/v1/requests", headers=headers)
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read())
+            assert payload["native_business_queue_error"] == "native_local_business_queue_read_failed"
+            assert payload["items"] == []
+        for path in ("/v1/requests/opaque-000",):
             request = urllib.request.Request(base + path, headers=headers)
             with pytest.raises(urllib.error.HTTPError) as rejected:
                 urllib.request.urlopen(request, timeout=5)

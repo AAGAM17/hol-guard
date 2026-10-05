@@ -43,7 +43,12 @@ def read_native_business_review_queue(guard_home: Path) -> list[dict[str, object
         response = json.loads(encoded.decode("utf-8"))
         # No installed policy is an optional feature absence. Corrupt or stale
         # policy/request state and transport failures are never an empty queue.
-        if response == {"error": "native_policy_snapshot_missing"}:
+        if (
+            isinstance(response, dict)
+            and set(response) in ({"error"}, {"error", "retryable"})
+            and response.get("error") == "native_policy_snapshot_missing"
+            and ("retryable" not in response or type(response["retryable"]) is bool)
+        ):
             return []
         if not isinstance(response, dict) or set(response) != {"schema", "version", "items"}:
             raise NativeBusinessReviewQueueReadError()

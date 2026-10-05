@@ -118,7 +118,8 @@ def read_native_business_review_summary(guard_home: Path, request_id: str) -> di
         response = json.loads(encoded.decode("utf-8"))
         if (
             isinstance(response, dict)
-            and set(response) == {"error"}
+            and set(response) in ({"error"}, {"error", "retryable"})
+            and ("retryable" not in response or type(response["retryable"]) is bool)
             and response["error"]
             in (
                 "native_local_business_summary_unavailable",

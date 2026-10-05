@@ -60,7 +60,17 @@ def _native_items(store, *, harness: str | None, search: str | None) -> list[dic
 
 def local_request_page(store, *, status, limit, cursor, harness, search, include_totals):
     """Keep SQL cursors intact, then paginate native rows in a separate phase."""
-    items = _native_items(store, harness=harness, search=search)
+    try:
+        items = _native_items(store, harness=harness, search=search)
+    except NativeBusinessReviewQueueReadError:
+        if isinstance(cursor, str) and cursor.startswith(_CURSOR_PREFIX):
+            raise InvalidApprovalCursorError("native queue unavailable; refresh") from None
+        page = store.list_approval_request_page(
+            status=status, limit=limit, cursor=cursor, harness=harness, search=search,
+            include_totals=include_totals,
+        )
+        page["native_business_queue_error"] = "native_local_business_queue_read_failed"
+        return page
     digest = hashlib.sha256(json.dumps(
         {"items": items, "status": status, "harness": harness, "search": search},
         sort_keys=True, separators=(",", ":"),

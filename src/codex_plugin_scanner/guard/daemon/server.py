@@ -2887,7 +2887,8 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             handle_business_review_summary(self, path_parts[2])
             return
         if len(path_parts) == 3 and path_parts[:2] == ["v1", "requests"]:
-            if not self._is_hosted_dashboard_origin():
+            approval = store.get_approval_request(path_parts[2])
+            if approval is None and not self._is_hosted_dashboard_origin():
                 from .business_review_queue import NativeBusinessReviewQueueReadError, native_request_detail
 
                 try:
@@ -2901,7 +2902,6 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 if native_detail is not None:
                     self._write_json(native_detail, extra_headers={"Cache-Control": "no-store"})
                     return
-            approval = store.get_approval_request(path_parts[2])
             if approval is None:
                 self._write_json(
                     {

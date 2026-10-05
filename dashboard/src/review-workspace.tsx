@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BusinessQueueReadNotice, useBusinessQueueReadFailure } from "./business-review-queue-status";
 import { HiMiniChevronDown } from "react-icons/hi2";
 import { useRequestReadState } from "./request-read-state";
 import type {
@@ -74,6 +75,7 @@ export type ReviewWorkspaceProps = {
 
 const QUEUE_PAGE_SIZE = 10;
 export function ReviewWorkspace(props: ReviewWorkspaceProps) {
+  const businessQueueReadFailed = useBusinessQueueReadFailure();
   const { requests, activeRequestId, detail } = props;
   const readState = useRequestReadState();
   const queueRef = useRef<HTMLDivElement>(null);
@@ -240,6 +242,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   ]);
 
   if (requests.length === 0) {
+    if (businessQueueReadFailed) return <BusinessQueueReadNotice />;
     return <ReviewEmptyState runtime={props.runtime} resolutionMessage={props.resolutionMessage} codexResume={props.codexResume} onRetryResume={props.onRetryResume} />;
   }
 
@@ -253,6 +256,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
 
   return (
     <div className="space-y-6">
+      {businessQueueReadFailed && <BusinessQueueReadNotice />}
       <ReviewHeader
         count={requests.length}
         filteredCount={filteredRequests.length}

@@ -39,6 +39,20 @@ def summary():
 
 
 @pytest.mark.parametrize(
+    "code", ["native_local_business_summary_unavailable", "native_workspace_review_request_missing"]
+)
+def test_real_native_absence_error_envelope_is_optional(tmp_path, monkeypatch, code):
+    monkeypatch.setattr(adapter, "native_runtime_status", lambda: SimpleNamespace(
+        available=True, compatible=True, identity=SimpleNamespace(path=Path("/test/native")),
+        capabilities=SimpleNamespace(features=("resident-protocol-v2", "native-local-business-review-summary-v1")),
+    ))
+    monkeypatch.setattr(adapter, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(adapter, "native_resident_client_request", lambda **kwargs:
+        json.dumps({"error": code, "retryable": False}).encode())
+    assert adapter.read_native_business_review_summary(tmp_path, "business-test") is None
+
+
+@pytest.mark.parametrize(
     "change",
     [
         {"subject": "private-canary"},

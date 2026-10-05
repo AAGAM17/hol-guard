@@ -2,6 +2,9 @@ use super::super::tests::{input, Fixture};
 use super::*;
 use guard_policy_snapshot::{integrity_mac, policy_digest};
 
+#[path = "workspace_review_business_core_transport_tests.rs"]
+mod core_transport_tests;
+
 fn local_queue(fixture: &Fixture) -> Result<Value, String> {
     let request = json!({"operation":"workspace_review_local_queue","request":{}});
     let response = crate::resident_ops::evaluate_resident_bytes(

@@ -58,9 +58,20 @@ pub(super) struct Fixture {
 impl Fixture {
     pub(super) fn new(label: &str) -> Self {
         let root = super::super::tests::test_root(label);
+        Self::from_root(root, &"a".repeat(64))
+    }
+    pub(super) fn for_core_transport(label: &str, runtime_identity: &str) -> Self {
+        let home = super::super::tests::test_root(label);
+        let root = home.join("native-runtime");
+        crate::resident_state::ensure_private_directory(&root, true).unwrap();
+        Self::from_root(root, runtime_identity)
+    }
+    fn from_root(root: PathBuf, runtime_identity: &str) -> Self {
         let key = super::super::tests::install_test_key(&root, 29);
-        let store = super::super::PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+        let store = super::super::PolicySnapshotStore::new(&root, runtime_identity).unwrap();
         let mut snapshot = super::super::tests::signed_snapshot(1, &key, &root);
+        snapshot.runtime_identity = runtime_identity.to_owned();
+        snapshot.scope_contract.scope_digest = super::super::scope_digest_for_test(&root);
         snapshot.business_policy = Some(serde_json::from_value(json!({"schema":"guard.native-business-policy.v1",
             "version":1,"defaultAction":"block","rules":[{"id":"mail.review","action":"review",
                 "match":{"schema":"guard.business-policy-match.v1","version":1,

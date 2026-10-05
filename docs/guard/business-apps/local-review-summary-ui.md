@@ -15,7 +15,7 @@ This validation is a presentation boundary, not a policy evaluator.
 
 The view reports loading and transport/schema failures, with a bounded refresh
 action. An available but incompatible runtime, or transport/schema failure,
-returns a finite 503 error. An unavailable runtime, missing capability or an
+returns a finite 503 error for summary reads. An unavailable runtime, missing capability or an
 explicit native no-summary/missing-request response returns 404
 and omits the panel; omission does not establish safety.
 The summary does not include message content, exact recipients, attachments,
@@ -46,6 +46,15 @@ without persisting SQL rows. Existing SQL pagination runs first, followed by
 bounded native pages with a membership/filter-bound cursor. Changed membership
 requires a queue refresh. A collision with a SQL request ID refuses projection.
 Hosted-origin requests retain the existing SQL-only routes.
+
+Native discovery failures return the SQL page with a finite
+`native_business_queue_error` field. The local view warns that the saved business
+queue is incomplete, including when the SQL page is empty; it does not claim an
+empty successful business queue. SQL detail reads remain available without
+native discovery. An already-issued native cursor requires a refresh if
+discovery fails. Native absence errors accept the resident's actual
+`error`/boolean `retryable` envelope, while malformed or extra fields remain
+read failures.
 
 Projected native rows are explicitly display-only. The incumbent DTO uses its
 conservative review action for compatibility; this is not a native policy

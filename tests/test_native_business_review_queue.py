@@ -54,7 +54,7 @@ def test_failed_or_malformed_native_discovery_cannot_be_an_empty_queue(tmp_path,
 
 
 def test_missing_policy_is_optional_absence(tmp_path, resident):
-    resident[0](b'{"error":"native_policy_snapshot_missing"}')
+    resident[0](b'{"error":"native_policy_snapshot_missing","retryable":false}')
     assert adapter.read_native_business_review_queue(tmp_path) == []
 
 

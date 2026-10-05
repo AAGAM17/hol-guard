@@ -51,16 +51,52 @@ pub(crate) fn claim_owned_business_request_with<T>(
     ),
     String,
 > {
+    claim_owned_business_request_with_clock(policy_store, request_id, decision, now_ms, after_claim)
+}
+
+pub(crate) fn claim_owned_business_request_with_clock<T>(
+    policy_store: &policy_store::PolicySnapshotStore,
+    request_id: &str,
+    decision: &[u8],
+    clock: impl FnMut() -> Result<u64, String>,
+    after_claim: impl FnOnce(
+        &guard_command::business_input::PreparedBusinessInputV1,
+    ) -> Result<T, String>,
+) -> Result<
+    (
+        VerifiedWorkspaceReviewDecision,
+        guard_command::business_input::PreparedBusinessInputV1,
+        T,
+    ),
+    String,
+> {
+    let envelope = decode_canonical_decision(decision)?;
+    let clock = std::cell::RefCell::new(clock);
     let (verified, input, after_claim) = claim_request_with_clock_and(
         policy_store,
         request_id,
         decision,
         true,
-        now_ms,
+        || clock.borrow_mut()(),
         |input| {
-            after_claim(input.as_ref().ok_or_else(|| {
-                "native_workspace_review_business_input_missing".to_owned()
-            })?)
+            let observed_time_ms = clock.borrow_mut()()?;
+            let result = after_claim(
+                input
+                    .as_ref()
+                    .ok_or_else(|| "native_workspace_review_business_input_missing".to_owned())?,
+            )?;
+            let release_time_ms = clock.borrow_mut()()?;
+            if release_time_ms < observed_time_ms {
+                return Err("native_workspace_review_clock_rollback".into());
+            }
+            if release_time_ms
+                >= envelope
+                    .expires_at_ms
+                    .min(policy_store.current_snapshot()?.expires_at_ms)
+            {
+                return Err("native_workspace_review_decision_expired".into());
+            }
+            Ok(result)
         },
     )?;
     Ok((

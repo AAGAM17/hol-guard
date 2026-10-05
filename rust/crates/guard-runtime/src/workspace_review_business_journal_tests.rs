@@ -68,6 +68,9 @@ fn changed_record_invalid_ack_and_wrong_store_refuse_transitions() {
         &serde_json::json!({"changed":true}),
     );
     assert!(journal.start(&fixture.store).is_err());
+    // Corrupt retained evidence intentionally refuses new claims in that
+    // store. Exercise independent invalid-ack cases in an intact store.
+    let fixture = Fixture::new("business-journal-invalid-ack");
     let journal = Journal::claimed(&fixture.store, "business-ack", &"a".repeat(64))
         .unwrap()
         .start(&fixture.store)
@@ -109,10 +112,10 @@ fn capacity_and_failed_persistence_refuse_without_returning_a_handle() {
     let directory = fixture.root.join(DIRECTORY);
     crate::resident_state::ensure_private_directory(&directory, true).unwrap();
     for index in 0..CAPACITY {
-        persist(
-            &directory.join(format!("retained-{index}.json")),
-            &fixture.root,
-            b"{}",
+        Journal::claimed(
+            &fixture.store,
+            &format!("retained-{index}"),
+            &"a".repeat(64),
         )
         .unwrap();
     }
@@ -126,4 +129,27 @@ fn capacity_and_failed_persistence_refuse_without_returning_a_handle() {
         .unwrap();
     assert!(Journal::claimed(&other.store, "business-invalid", &"a".repeat(64)).is_err());
     assert!(directory.join("business-invalid.json").is_dir());
+}
+
+#[test]
+fn crash_temporary_does_not_consume_the_last_retained_slot() {
+    let fixture = Fixture::new("business-journal-temp-capacity");
+    for index in 0..CAPACITY - 1 {
+        Journal::claimed(
+            &fixture.store,
+            &format!("retained-{index}"),
+            &"a".repeat(64),
+        )
+        .unwrap();
+    }
+    let path = fixture
+        .root
+        .join(DIRECTORY)
+        .join(".retained-0.json.123.987654.tmp");
+    persist(&path, &fixture.root, b"{}").unwrap();
+    Journal::claimed(&fixture.store, "business-last", &"a".repeat(64)).unwrap();
+    assert!(path.exists());
+    assert!(Journal::claimed(&fixture.store, "business-full", &"a".repeat(64)).is_err());
+    assert!(!persistence_temporary(".unrecognized.tmp"));
+    assert!(!persistence_temporary(".business-id.json.pid.123.tmp"));
 }

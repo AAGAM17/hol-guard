@@ -67,12 +67,7 @@ impl Journal {
         crate::resident_state::ensure_private_directory_under(&directory, &root, true)?;
         // No automatic pruning: retained attempts must not disappear and
         // masquerade as permission to resend. Capacity refuses new work.
-        let count = std::fs::read_dir(&directory)
-            .map_err(|_| INVALID.to_owned())?
-            .take(CAPACITY + 1)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| INVALID.to_owned())?
-            .len();
+        let count = retained_count(&directory, &root)?;
         if count >= CAPACITY {
             return Err("native_business_attempt_capacity".into());
         }
@@ -154,6 +149,78 @@ impl Journal {
             Ok(())
         })
     }
+}
+
+fn retained_count(directory: &Path, root: &Path) -> Result<usize, String> {
+    let mut count = 0;
+    for (index, entry) in std::fs::read_dir(directory)
+        .map_err(|_| INVALID.to_owned())?
+        .enumerate()
+    {
+        // Bound scanning independently of retained capacity. Crash leftovers
+        // are preserved; too many unexpected/temporary entries refuse safely.
+        if index >= CAPACITY * 4 {
+            return Err("native_business_attempt_scan_limit".into());
+        }
+        let entry = entry.map_err(|_| INVALID.to_owned())?;
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| INVALID.to_owned())?;
+        if persistence_temporary(&name) {
+            if !entry.file_type().map_err(|_| INVALID.to_owned())?.is_file() {
+                return Err(INVALID.into());
+            }
+            continue;
+        }
+        let id = name
+            .strip_suffix(".json")
+            .ok_or_else(|| INVALID.to_owned())?;
+        if !super::super::super::workspace_review_request::valid_request_id(id) {
+            return Err(INVALID.into());
+        }
+        let bytes = read(&entry.path(), root)?.ok_or_else(|| INVALID.to_owned())?;
+        let record: Record = serde_json::from_slice(&bytes).map_err(|_| INVALID.to_owned())?;
+        if record.schema != "guard.private-business-attempt.v1"
+            || record.version != 1
+            || record.request_id != id
+            || !super::super::super::workspace_review_claim_index::valid_digest(
+                &record.input_binding,
+            )
+            || (record.status == Status::ApiAccepted) != record.acknowledgement_binding.is_some()
+            || record.acknowledgement_binding.as_deref().is_some_and(|v| {
+                !super::super::super::workspace_review_claim_index::valid_digest(v)
+            })
+            || encode(&record)? != bytes
+        {
+            return Err(INVALID.into());
+        }
+        count += 1;
+        if count >= CAPACITY {
+            return Ok(count);
+        }
+    }
+    Ok(count)
+}
+
+fn persistence_temporary(name: &str) -> bool {
+    let Some(value) = name.strip_prefix('.').and_then(|v| v.strip_suffix(".tmp")) else {
+        return false;
+    };
+    let mut parts = value.rsplitn(3, '.');
+    let (Some(stamp), Some(pid), Some(file)) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    let Some(id) = file.strip_suffix(".json") else {
+        return false;
+    };
+    super::super::super::workspace_review_request::valid_request_id(id)
+        && !stamp.is_empty()
+        && stamp.bytes().all(|b| b.is_ascii_digit())
+        && stamp.parse::<u128>().is_ok()
+        && !pid.is_empty()
+        && pid.bytes().all(|b| b.is_ascii_digit())
+        && pid.parse::<u32>().is_ok()
 }
 
 fn encode(record: &Record) -> Result<Vec<u8>, String> {

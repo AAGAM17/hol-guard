@@ -176,6 +176,99 @@ def test_live_codex_pause_freezes_the_attached_hook_before_upload(tmp_path: Path
     assert result["status"] == "resumed"
 
 
+def test_detached_block_cites_the_published_pause_binding(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    response = _pause(store, tmp_path, harness="codex", payload=_live_payload())
+    request_id = response["approval_request_id"]
+    assert isinstance(request_id, str)
+    request = store.get_approval_request(request_id)
+    assert request is not None
+    snapshot = request["continuation_snapshot"]
+    assert isinstance(snapshot, dict)
+    assert snapshot["capability"] == "suspended-response"
+    operation = store.get_guard_operation_for_approval_request(request_id)
+    assert operation is not None
+    metadata = operation["metadata"]
+    assert isinstance(metadata, dict)
+    detached = dict(metadata)
+    detached["codex_browser_wait_process"] = {"pid": 2_147_483_646, "startToken": "stale-start-token"}
+    store.upsert_guard_operation(
+        operation_id=str(operation["operation_id"]),
+        session_id=str(operation["session_id"]),
+        harness="codex",
+        operation_type=str(operation["operation_type"]),
+        status=str(operation["status"]),
+        approval_request_ids=[request_id],
+        resume_token=None,
+        metadata=detached,
+        now=datetime.now(timezone.utc).isoformat(),
+    )
+    blocked = continue_request_after_application(
+        store,
+        request_row=request,
+        action="block",
+        now=datetime.now(timezone.utc).isoformat(),
+        headless=False,
+    )
+    assert blocked["continuationStatus"] == "blocked_not_resumed"
+    with store._connect() as connection:
+        row = connection.execute(
+            """select payload_json from guard_review_outbox_events
+               where local_request_id = ? and event_type = 'review.continuation.blocked_not_resumed'""",
+            (request_id,),
+        ).fetchone()
+    assert row is not None
+    result = json.loads(row["payload_json"])["continuationResult"]
+    assert result["status"] == "blocked_not_resumed"
+    assert result["capability"] == snapshot["capability"]
+    assert result["correlationId"] == snapshot["correlationId"]
+
+
+def test_detached_allow_remains_a_retry_only_degradation(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    response = _pause(store, tmp_path, harness="codex", payload=_live_payload())
+    request_id = response["approval_request_id"]
+    assert isinstance(request_id, str)
+    request = store.get_approval_request(request_id)
+    assert request is not None
+    operation = store.get_guard_operation_for_approval_request(request_id)
+    assert operation is not None
+    metadata = operation["metadata"]
+    assert isinstance(metadata, dict)
+    detached = dict(metadata)
+    detached["codex_browser_wait_process"] = {"pid": 2_147_483_646, "startToken": "stale-start-token"}
+    store.upsert_guard_operation(
+        operation_id=str(operation["operation_id"]),
+        session_id=str(operation["session_id"]),
+        harness="codex",
+        operation_type=str(operation["operation_type"]),
+        status=str(operation["status"]),
+        approval_request_ids=[request_id],
+        resume_token=None,
+        metadata=detached,
+        now=datetime.now(timezone.utc).isoformat(),
+    )
+    manual = continue_request_after_application(
+        store,
+        request_row=request,
+        action="allow",
+        now=datetime.now(timezone.utc).isoformat(),
+        headless=False,
+    )
+    assert manual["continuationStatus"] == "manual_retry_required"
+    assert manual["continuationCapability"] == "retry-only"
+    with store._connect() as connection:
+        row = connection.execute(
+            """select payload_json from guard_review_outbox_events
+               where local_request_id = ? and event_type = 'review.continuation.manual_retry_required'""",
+            (request_id,),
+        ).fetchone()
+    assert row is not None
+    result = json.loads(row["payload_json"])["continuationResult"]
+    assert result["capability"] == "retry-only"
+    assert result["status"] == "manual_retry_required"
+
+
 def test_codex_pause_without_a_live_hook_stays_retry_only(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "guard-home")
     response = _pause(

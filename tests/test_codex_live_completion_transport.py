@@ -183,6 +183,45 @@ def test_terminal_live_decision_rejection_is_not_retried(
     assert calls == 1
 
 
+def test_finalize_timeout_covers_one_fresh_review() -> None:
+    assert resume._FINALIZE_TIMEOUT_CAP_SECONDS >= 8
+
+
+def test_final_live_decision_rejection_reports_only_the_error_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from codex_plugin_scanner.guard.adapters.codex_daemon_hook_auth import _DaemonResponseError
+
+    def post(**_kwargs: object) -> None:
+        raise _DaemonResponseError(
+            409,
+            json.dumps(
+                {
+                    "completed": False,
+                    "error": "fresh_policy_revalidation_failed",
+                    "detail": "https://127.0.0.1/requests/abcd1234ef567890",
+                }
+            ),
+            authenticated=True,
+        )
+
+    monkeypatch.setattr(resume, "_daemon_json_post", post)
+    assert (
+        resume._complete_resolution(
+            request_id="abcd1234ef567890",
+            action="allow",
+            hook_input="{}",
+            state_path=tmp_path / "daemon-state.json",
+            deadline=time.monotonic() + 15,
+        )
+        is None
+    )
+    captured = capsys.readouterr()
+    assert captured.err.strip() == "guard_live_decision_rejection fresh_policy_revalidation_failed"
+    assert "http" not in captured.err
+    assert "abcd1234ef567890" not in captured.err
+
+
 def test_authentication_failure_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
 

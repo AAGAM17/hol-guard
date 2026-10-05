@@ -448,6 +448,10 @@ _MAX_CONCURRENT_RUNTIME_HOOKS_PER_HARNESS = 24
 _RUNTIME_HOOK_ADMISSION_TIMEOUT_SECONDS = 3.0
 _RUNTIME_HOOK_PROCESS_TIMEOUT_SECONDS = 1.45
 _RUNTIME_POST_HOOK_PROCESS_TIMEOUT_SECONDS = 2.75
+# The waiting hook revalidates through one resident evaluation. The 1.45s
+# admission slice expires before that evaluation returns under load, and the
+# hook then keeps the original deny after Cloud has already applied the decision.
+_RUNTIME_LIVE_DECISION_REVIEW_TIMEOUT_SECONDS = 8.0
 _DAEMON_REQUEST_READ_TIMEOUT_SECONDS = 0.4
 _DAEMON_SERVE_THREAD_START_TIMEOUT_SECONDS = 5.0
 _DAEMON_CONNECTION_ADMISSION_WAIT_SECONDS = 0.05
@@ -6266,7 +6270,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                     guard_home=daemon_server.store.guard_home,
                     workspace=workspace,
                     hook_env={},
-                    deadline=time.monotonic() + _RUNTIME_HOOK_PROCESS_TIMEOUT_SECONDS,
+                    deadline=time.monotonic() + _RUNTIME_LIVE_DECISION_REVIEW_TIMEOUT_SECONDS,
                     claim_saved_approval=False,
                     claimed_saved_allow_hash=claimed_hash,
                     claimed_approval_request_id=claimed_request_id,

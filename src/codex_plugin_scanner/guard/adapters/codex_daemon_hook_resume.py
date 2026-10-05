@@ -26,7 +26,7 @@ GUARD_APPROVAL_REQUEST_ID_KEY = "guardApprovalRequestId"
 GUARD_APPROVAL_URL_KEY = "guardApprovalUrl"
 _POLL_INTERVAL_SECONDS = 0.2
 _GET_TIMEOUT_CAP_SECONDS = 1.5
-_FINALIZE_TIMEOUT_CAP_SECONDS = 5.0
+_FINALIZE_TIMEOUT_CAP_SECONDS = 12.0
 _FINALIZE_MAX_ATTEMPTS = 3
 # These 409s can precede a committed allow when the grant, resident
 # revalidation, or continuation row is not visible yet. Other rejections stop.
@@ -39,6 +39,7 @@ _RETRYABLE_LIVE_DECISION_ERRORS = frozenset(
     }
 )
 _REQUEST_URL_RE = re.compile(r"(https?://[^\s]+/requests/([A-Za-z0-9_-]{8,128}))", re.IGNORECASE)
+_LIVE_DECISION_ERROR_CODE_RE = re.compile(r"[a-z0-9_]{1,80}")
 
 
 def apply_browser_approval_wait(
@@ -153,6 +154,7 @@ def _complete_resolution(
             if attempt + 1 < _FINALIZE_MAX_ATTEMPTS and _retryable_live_decision_rejection(error):
                 time.sleep(min(_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
                 continue
+            _report_live_decision_rejection(error)
             return None
         except (OSError, TimeoutError, http.client.HTTPException, urllib.error.URLError):
             # Completion may already be committed. Replaying this exact request
@@ -168,17 +170,31 @@ def _complete_resolution(
 
 
 def _retryable_live_decision_rejection(error: BaseException) -> bool:
+    return _live_decision_error_code(error) in _RETRYABLE_LIVE_DECISION_ERRORS
+
+
+def _report_live_decision_rejection(error: BaseException) -> None:
+    code = _live_decision_error_code(error)
+    if code is None:
+        return
+    print(f"guard_live_decision_rejection {code}", file=sys.stderr, flush=True)
+
+
+def _live_decision_error_code(error: BaseException) -> str | None:
     status = getattr(error, "status", None)
     detail = getattr(error, "detail", None)
     if status != 409 or not isinstance(detail, str) or not detail:
-        return False
+        return None
     try:
         payload = json.loads(detail)
     except json.JSONDecodeError:
-        return False
+        return None
     if not isinstance(payload, dict):
-        return False
-    return payload.get("error") in _RETRYABLE_LIVE_DECISION_ERRORS
+        return None
+    code = payload.get("error")
+    if not isinstance(code, str) or not _LIVE_DECISION_ERROR_CODE_RE.fullmatch(code):
+        return None
+    return code
 
 
 def _open_pending_approval(approval_url: str | None, *, state_path: str | Path) -> None:

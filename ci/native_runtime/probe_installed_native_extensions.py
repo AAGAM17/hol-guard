@@ -27,6 +27,12 @@ from codex_plugin_scanner.guard.native_policy_snapshot_constants import (
     _PUBLISH_TIMEOUT_SECONDS,
 )
 from codex_plugin_scanner.guard.native_resident_client import (
+    NATIVE_RESIDENT_CLEANUP_RETRY_INTERVAL_SECONDS as _NATIVE_CLEANUP_RETRY_INTERVAL,
+)
+from codex_plugin_scanner.guard.native_resident_client import (
+    NATIVE_RESIDENT_CLEANUP_TIMEOUT_SECONDS as _DAEMON_CLEANUP_TIMEOUT,
+)
+from codex_plugin_scanner.guard.native_resident_client import (
     close_native_residents,
     native_resident_client_failure_code,
 )
@@ -56,14 +62,20 @@ def require(condition: bool, code: str) -> None:
 
 
 def close_native_residents_with_retry(home: Path) -> bool:
-    deadline = time.monotonic() + 10.0
+    deadline = time.monotonic() + _DAEMON_CLEANUP_TIMEOUT
     while True:
-        if close_native_residents(home, deadline_monotonic=deadline):
-            return True
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
-        time.sleep(min(0.25, remaining))
+        try:
+            if close_native_residents(home, deadline_monotonic=deadline):
+                return True
+        except (OSError, RuntimeError):
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(_NATIVE_CLEANUP_RETRY_INTERVAL, remaining))
 
 
 def installed_native_case_runner():

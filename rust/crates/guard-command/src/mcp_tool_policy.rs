@@ -77,6 +77,17 @@ fn risk_default(config: &Map<String, Value>) -> Option<&'static str> {
     )
 }
 
+/// Keep the default recommendation and its approval-token bytes in sync.
+/// Explicit risk overrides are handled by the callers before this exception.
+fn balanced_prompt_review(config: &Map<String, Value>) -> bool {
+    !config
+        .get("protection_posture_explicit")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && string(config, "mode") == "prompt"
+        && string(config, "security_level") == DEFAULT_SECURITY_LEVEL
+}
+
 /// Render historical approval policy bytes from borrowed inputs, without a policy DTO clone.
 pub fn write_tool_policy_context(
     request: &McpToolApprovalContextRequestV1,
@@ -123,7 +134,12 @@ pub fn write_tool_policy_context(
                 if let Some(value) = configured_risk(config, &request.harness) {
                     Some(value)
                 } else if let Some(action) = risk_default(config) {
-                    write_json_string(action, out);
+                    let effective = if balanced_prompt_review(config) {
+                        "review"
+                    } else {
+                        action
+                    };
+                    write_json_string(effective, out);
                     continue;
                 } else {
                     None
@@ -163,10 +179,6 @@ pub fn evaluate_tool_policy(
     .or_else(|| config.get("default_action"));
     let risk_override = configured_risk(config, &request.harness);
     let explicit = risk_override.filter(|value| !value.is_null());
-    let posture_explicit = config
-        .get("protection_posture_explicit")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
     let (raw_action, mut source, mut summary_code) = if categories.is_empty() {
         (Some("allow"), "heuristic", "no_risk")
     } else if explicit.is_none() && routine_browser(&categories) {
@@ -178,11 +190,7 @@ pub fn evaluate_tool_policy(
             None => risk_default(config).map(Some),
         };
         if let Some(risk_action) = risk_action {
-            if explicit.is_none()
-                && !posture_explicit
-                && string(config, "mode") == "prompt"
-                && string(config, "security_level") == DEFAULT_SECURITY_LEVEL
-            {
+            if explicit.is_none() && balanced_prompt_review(config) {
                 (Some("review"), "risk-policy", "risk")
             } else {
                 (risk_action, "policy", "risk")
@@ -231,5 +239,104 @@ mod tests {
             .unwrap();
             assert_eq!(evaluate_tool_policy(&request).unwrap().action, expected);
         }
+    }
+
+    fn context_bytes(config: Value) -> Vec<u8> {
+        let request = McpToolApprovalContextRequestV1 {
+            config: config.as_object().unwrap().clone(),
+            harness: "codex".to_owned(),
+            artifact_id: "policy-proof".to_owned(),
+            publisher: None,
+            identity: Value::Null,
+            content: Value::Null,
+            capabilities: Value::Null,
+            sandbox: Value::Null,
+            extension_control_digest: String::new(),
+        };
+        let mut bytes = Vec::new();
+        write_tool_policy_context(&request, &mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn implicit_risk_context_matches_balanced_prompt_recommendation() {
+        for (mode, expected) in [("block", "require-reapproval"), ("prompt", "review")] {
+            let config = serde_json::json!({
+                "mode": mode, "security_level": "balanced", "default_action": "allow",
+            });
+            let policy: Value = serde_json::from_slice(&context_bytes(config.clone())).unwrap();
+            let request: McpToolPolicyRequestV1 = serde_json::from_value(serde_json::json!({
+                "artifact": {"name": "workspace:summarize", "command": "summarize", "metadata": {}},
+                "arguments": {"cmd": "echo hi"}, "config": config,
+                "harness": "codex", "artifact_id": "policy-proof", "publisher": null,
+            }))
+            .unwrap();
+            assert_eq!(policy["effective_risk_action"], expected);
+            assert_eq!(
+                policy["effective_risk_action"],
+                evaluate_tool_policy(&request).unwrap().action
+            );
+            assert!(policy.get("protection_posture_explicit").is_none());
+        }
+    }
+
+    #[test]
+    fn approval_context_preserves_explicit_risk_overrides_and_null() {
+        for override_value in [
+            serde_json::json!("block"),
+            serde_json::json!("warn"),
+            Value::Null,
+        ] {
+            let mut config = serde_json::json!({
+                "mode": "prompt", "security_level": "balanced", "default_action": "allow",
+                "risk_actions": {"mcp_dangerous_tool": override_value},
+            });
+            let global: Value = serde_json::from_slice(&context_bytes(config.clone())).unwrap();
+            assert_eq!(global["effective_risk_action"], override_value);
+            config["harness_risk_actions"] = serde_json::json!({
+                "codex": {"mcp_dangerous_tool": "require-reapproval"},
+            });
+            let harness: Value = serde_json::from_slice(&context_bytes(config)).unwrap();
+            assert_eq!(harness["effective_risk_action"], "require-reapproval");
+        }
+    }
+
+    #[test]
+    fn explicit_posture_and_non_default_levels_keep_their_native_defaults() {
+        for level in ["balanced", "strict", "paranoid"] {
+            for explicit in [false, true] {
+                if level == "balanced" && !explicit {
+                    continue;
+                }
+                let config = serde_json::json!({
+                    "mode": "prompt", "security_level": level, "default_action": "allow",
+                    "protection_posture": "strict", "protection_posture_explicit": explicit,
+                });
+                let expected = risk_default(config.as_object().unwrap());
+                let policy: Value = serde_json::from_slice(&context_bytes(config)).unwrap();
+                assert_eq!(policy["effective_risk_action"], serde_json::json!(expected));
+                assert_eq!(
+                    policy.get("protection_posture_explicit").is_some(),
+                    explicit
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn balanced_prompt_context_uses_canonical_review_bytes() {
+        let bytes = context_bytes(serde_json::json!({
+            "mode": "prompt", "security_level": "balanced", "default_action": "allow",
+        }));
+        assert_eq!(
+            String::from_utf8(bytes).unwrap(),
+            concat!(
+            "{\"artifact_override\":null,\"default_action\":\"allow\",",
+            "\"effective_risk_action\":\"review\",",
+            "\"evaluator_policy_version\":\"mcp-tool-call-evaluation-v5\",",
+            "\"managed_locked_settings\":null,\"managed_policy_hash\":null,",
+            "\"managed_policy_status\":null,\"mode\":\"prompt\",\"security_level\":\"balanced\"}",
+        )
+        );
     }
 }

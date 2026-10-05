@@ -32,10 +32,11 @@ _ALLOWED_ICON_NAMES: Final = frozenset(
 _ALLOWED_LAUNCHERS: Final = frozenset({"bunx", "npx", "npm", "pnpm", "uvx", "yarn", "pipx"})
 _DIRECT_COMMAND_RESERVED: Final = _ALLOWED_LAUNCHERS | frozenset(
     (
-        "bash bun cargo cmd dash deno docker dotnet env fish go java node perl php podman "
-        "powershell pwsh python python3 ruby sh uv wsl zsh"
+        "bash busybox bun cargo cmd csh dash deno docker dotnet env fish go java ksh lua node nodejs perl php "
+        "podman powershell pwsh py python python3 pythonw ruby sh sudo tcsh ts-node tsx uv wsl zsh"
     ).split()
 )
+_DIRECT_COMMAND_VERSIONED_BASES: Final = tuple("java lua node nodejs perl php py python pythonw ruby".split())
 _DIRECT_COMMAND: Final = re.compile(r"[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9_-]+)*", re.ASCII)
 _TOOL_STATES: Final = frozenset({"inherit", "allow", "review", "block"})
 _REMOTE_TOOL_STATES: Final = frozenset({"inherit", "review", "block"})
@@ -55,6 +56,16 @@ def catalog_id_for_mcp_id(mcp_id: str) -> str:
     return f"command.mcp-{mcp_id.removeprefix('mcp.')}"
 
 
+def _reserved_direct_mcp_command(name: str) -> bool:
+    if name in _DIRECT_COMMAND_RESERVED:
+        return True
+    for base in _DIRECT_COMMAND_VERSIONED_BASES:
+        suffix = name.removeprefix(base)
+        if suffix != name and suffix and suffix[0].isdigit() and all(ch.isdigit() or ch == "." for ch in suffix):
+            return True
+    return False
+
+
 def direct_mcp_command_name(value: object) -> str | None:
     """Recognize a portable executable basename for tightening-only MCP defaults.
 
@@ -68,7 +79,7 @@ def direct_mcp_command_name(value: object) -> str | None:
         if name.endswith(suffix):
             name = name[: -len(suffix)]
             break
-    if len(name) > 128 or _DIRECT_COMMAND.fullmatch(name) is None or name in _DIRECT_COMMAND_RESERVED:
+    if len(name) > 128 or _DIRECT_COMMAND.fullmatch(name) is None or _reserved_direct_mcp_command(name):
         return None
     return name
 

@@ -16,7 +16,7 @@ class CompletedQuery:
     def __init__(self) -> None:
         self.stdout = io.BytesIO(b"verified inventory\n")
 
-    def poll(self) -> int:
+    def poll(self) -> int | None:
         return 0
 
     def wait(self, *, timeout: float) -> int:
@@ -69,3 +69,37 @@ def test_completed_query_rejects_reader_that_misses_original_deadline(monkeypatc
         gate.set()
         for reader in readers:
             reader.join(timeout=1.0)
+
+
+def test_expired_query_remains_rejected_when_child_and_reader_finish(monkeypatch):
+    class QueryExitedAfterTimeout(CompletedQuery):
+        polls = 0
+
+        def poll(self) -> int | None:
+            self.polls += 1
+            return None if self.polls == 1 else 0
+
+    class ReaderFinishesOnJoin:
+        def __init__(self, *, target, args, **_kwargs):
+            self.target = target
+            self.args = args
+            self.alive = True
+
+        def start(self):
+            pass
+
+        def is_alive(self):
+            return self.alive
+
+        def join(self, *, timeout):
+            if self.alive:
+                self.target(*self.args)
+                self.alive = False
+
+    query = QueryExitedAfterTimeout()
+    clock = iter((0.0, 1.0))
+    monkeypatch.setattr(manager, "_spawn_bounded_process_query", lambda _command: query)
+    monkeypatch.setattr(manager.time, "monotonic", lambda: next(clock, 1.0))
+    monkeypatch.setattr(manager.threading, "Thread", ReaderFinishesOnJoin)
+
+    assert manager._bounded_process_query_stdout(["fixture-query"], timeout_seconds=0.05) is None

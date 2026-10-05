@@ -23,7 +23,7 @@ def canonical_bytes(value: object) -> bytes:
 
 
 def read_object(path: Path) -> dict:
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 4 * 1024 * 1024:
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 8 * 1024 * 1024:
         raise ValueError(f"invalid source file: {path.relative_to(ROOT)}")
 
     def unique(pairs: list[tuple[str, object]]) -> dict:

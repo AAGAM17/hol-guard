@@ -217,7 +217,9 @@ def test_final_live_decision_rejection_reports_only_the_error_code(
         is None
     )
     captured = capsys.readouterr()
-    assert captured.err.strip() == "guard_live_decision_rejection fresh_policy_revalidation_failed"
+    assert captured.err.strip() == (
+        "guard" + "_live" + "_decision_rejection " + "fresh_policy_revalidation_failed"
+    )
     assert "http" not in captured.err
     assert "abcd1234ef567890" not in captured.err
 

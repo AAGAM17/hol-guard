@@ -275,11 +275,6 @@ def project_cloud_review_event(
                 "payload_snapshot_invalid",
                 "Stored Review event snapshot has no local request identifier.",
             )
-        if oauth is not None and event.get("reviewClaim") is None:
-            raise StoredReviewEventError(
-                "review_event_claim_invalid",
-                "review_event_claim_invalid:claim_missing",
-            )
         native_replay = False
         request_id = stored_event.snapshot.get("request_id")
         if (
@@ -295,6 +290,11 @@ def project_cloud_review_event(
                 )
             native_replay = stored_event.native_replay is True or marker_status == "native"
         _require_native_replay_context(stored_event.event_type, event, native_replay=native_replay)
+        if oauth is not None and event.get("reviewClaim") is None:
+            raise StoredReviewEventError(
+                "review_event_claim_invalid",
+                "review_event_claim_invalid:claim_missing",
+            )
     except StoredReviewEventError as error:
         if error.reason == "native_replay_context_unavailable":
             store.retry_review_events(

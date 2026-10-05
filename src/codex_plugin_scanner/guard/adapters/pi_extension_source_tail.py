@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .pi_extension_contained_tests_source import with_contained_test_routing
+from .pi_extension_input_source import INPUT_HANDLER_SOURCE
 from .pi_extension_source_tail_shared_v1 import build_source_tail_shared_v1
 
 
@@ -27,15 +28,10 @@ def build_extension_source_tail(
         lifecycle_abort_event_source=lifecycle_abort_event_source,
         tool_approval_continuation_source=tool_approval_continuation_source,
         workspace_readiness_source=workspace_readiness_source,
-        input_readiness_source=(
-            "    const readiness = await ensureGuardWorkspaceReady(ctx.cwd);\n"
-            "    if (!readiness.ready) {\n"
-            '      ctx.ui.notify("HOL Guard could not prepare protection for this prompt. "\n'
-            '        + "Retry the prompt to reconnect (" + readiness.reasonCode + ").", "warning");\n'
-            '      return { action: "handled", handled: true };\n'
-            "    }\n"
-        ),
     )
+    input_start = shared_source.index('  pi.on("input",')
+    input_end = shared_source.index('  pi.on("tool_call",', input_start)
+    shared_source = shared_source[:input_start] + INPUT_HANDLER_SOURCE + shared_source[input_end:]
     if harness == "omp":
         shared_source = with_contained_test_routing(shared_source)
     return shared_source + (

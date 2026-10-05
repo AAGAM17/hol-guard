@@ -10,7 +10,6 @@ def build_source_tail_shared_v1(
     lifecycle_abort_event_source: str,
     tool_approval_continuation_source: str,
     workspace_readiness_source: str = "",
-    input_readiness_source: str = "",
 ) -> str:
     return (
         lifecycle_abort_event_source + "  function scheduleApprovalResume(\n"
@@ -63,8 +62,7 @@ def build_source_tail_shared_v1(
         '    if (event.source === "extension") return { action: "continue" };\n'
         "    invalidateInputApprovalResumes();\n"
         "    const inputBinding = captureInputApprovalResumeBinding(ctx);\n"
-        + input_readiness_source
-        + "    const response = await runGuard(\n"
+        "    const response = await runGuard(\n"
         '      { hook_event_name: "UserPromptSubmit", prompt: event.text, config_path: GUARD_CONFIG_PATH },\n'
         "      ctx.cwd,\n"
         "    );\n"

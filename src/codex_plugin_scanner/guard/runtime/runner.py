@@ -3335,6 +3335,21 @@ def sync_guard_events(
         total_accepted += uploaded
         if uploaded == 0 or len(pending_events) < 200:
             break
+        completed = set(completed_ids)
+        ready_ids = {str(event["event_id"]) for event in ready_events}
+        last_done: dict[str, object] | None = None
+        for event in pending_events:
+            event_id = str(event["event_id"])
+            if event_id not in ready_ids or event_id in completed:
+                last_done = event
+                continue
+            break
+        if last_done is None:
+            break
+        cursor = (str(last_done["occurred_at"]), str(last_done["event_id"]))
+        if cursor == after:
+            break
+        after = cursor
     summary: dict[str, object] = {"synced_at": synced_at, "events": total_events, "accepted": total_accepted}
     store.set_sync_payload("guard_events_v1_summary", summary, synced_at)
     return summary

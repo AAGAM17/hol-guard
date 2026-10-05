@@ -347,6 +347,22 @@ def complete_authenticated_current_binding_repair(store: object, *, now: str) ->
     return {"status": "completed", "reason": "current_binding_confirmed"}
 
 
+def note_authenticated_cloud_review_round_trip(store: object, *, now: str) -> None:
+    """Replace a salvage warning after Cloud accepts a review batch.
+
+    This does not read stored sign-in metadata, create consent, or change
+    tombstones, replay counters, or revocation records.
+    """
+
+    health = read_cloud_review_recovery_health(store)
+    if health is None or health.get("repair") != "authenticated_current_binding":
+        return
+    local_cli = health.get("localCli")
+    if not isinstance(local_cli, bool):
+        return
+    persist_cloud_review_recovery_health(store, cloud_review=True, local_cli=local_cli, now=now)
+
+
 def _matching_completed_repair(
     payload: object,
     workspace_id: str,

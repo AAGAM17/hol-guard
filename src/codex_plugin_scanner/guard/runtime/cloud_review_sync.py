@@ -165,6 +165,10 @@ def _complete_sync_state(
     pending_error = errors[0] if errors else outbox_status.get("last_error")
     if accepted > 0 or outbox_status["depth"] == 0:
         state["last_success_at"] = completed_at
+    if accepted > 0:
+        from ..sqlite_cloud_review_recovery import note_authenticated_cloud_review_round_trip
+
+        note_authenticated_cloud_review_round_trip(store, now=completed_at)
     if delivered > 0:
         state.update({"last_delivery_at": completed_at, "last_delivery_binding": delivery_binding})
     state.update(

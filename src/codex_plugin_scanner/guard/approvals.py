@@ -895,6 +895,26 @@ def apply_approval_resolution(
             approval_gate_grant=resolved_gate_grant,
             now=resolved_at,
         )
+        preview, _preview_ids = store.apply_temporary_mcp_grant_resolution(
+            request_id=request_id,
+            decisions=[temporary_decision],
+            selection=temporary_mcp_selection,
+            reason=reason,
+            resolved_at=resolved_at,
+            approval_gate_grant=resolved_gate_grant,
+            commit_resolution=False,
+        )
+        if preview.get("policy_written") is not True:
+            error = preview.get("error")
+            if error == "already_resolved":
+                raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")
+            if error == "not_found":
+                raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
+            if isinstance(error, str) and error:
+                raise ValueError(error)
+            raise ValueError("temporary_mcp_grant_not_written")
+        if not _await_saved_approval_native_snapshot(store):
+            raise ValueError("native_policy_snapshot_unacknowledged")
         temporary_mcp_result, temporary_mcp_resolved_ids = store.apply_temporary_mcp_grant_resolution(
             request_id=request_id,
             decisions=[temporary_decision],
@@ -911,8 +931,6 @@ def apply_approval_resolution(
                 raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
             if isinstance(error, str) and error:
                 raise ValueError(error)
-        else:
-            native_policy_written = True
     if local_tool_selection is not None:
         local_tool_decision = local_tool_grant_decision(
             harness=str(request["harness"]),

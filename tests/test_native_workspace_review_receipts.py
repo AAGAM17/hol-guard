@@ -619,3 +619,82 @@ def test_held_native_activity_page_does_not_block_a_later_receipt(
     assert result["accepted"] == 1
     pending = store.list_guard_events_v1(uploaded=False, limit=300)
     assert [event["event_id"] for event in pending] == [f"native-{index:03d}" for index in range(200)]
+
+
+def test_mixed_upload_page_reaches_later_receipts_without_skipping_an_omitted_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard.runtime import runner
+
+    store = _activity_store(tmp_path, sync=False, queue_limit=300)
+    for index in range(198):
+        store.add_guard_event_v1(
+            GuardEventV1(
+                event_id=f"native-{index:03d}",
+                idempotency_key=f"native-activity:held:{index:03d}",
+                event_type="receipt.created",
+                source="edge",
+                occurred_at="2026-10-04T00:00:00+00:00",
+                payload={"receiptKind": "native_policy_decision", "activity": {"decision": "deny"}},
+            )
+        )
+    store.add_guard_event_v1(
+        GuardEventV1(
+            event_id="native-198",
+            idempotency_key="receipt.created:omitted",
+            event_type="receipt.created",
+            source="edge",
+            occurred_at="2026-10-04T00:00:00+00:00",
+            payload={"receiptId": "omitted"},
+        )
+    )
+    store.add_guard_event_v1(
+        GuardEventV1(
+            event_id="native-199",
+            idempotency_key="receipt.created:accepted-in-page",
+            event_type="receipt.created",
+            source="edge",
+            occurred_at="2026-10-04T00:00:00+00:00",
+            payload={"receiptId": "accepted-in-page"},
+        )
+    )
+    for index in range(40):
+        store.add_guard_event_v1(
+            GuardEventV1(
+                event_id=f"later-{index:02d}",
+                idempotency_key=f"receipt.created:later:{index:02d}",
+                event_type="receipt.created",
+                source="edge",
+                occurred_at="2026-10-04T00:00:01+00:00",
+                payload={"receiptId": f"later-{index:02d}"},
+            )
+        )
+    batches: list[list[str]] = []
+
+    def capture_post(*, request: object, timeout_seconds: int, retry_timeout_seconds: int) -> dict[str, object]:
+        del timeout_seconds, retry_timeout_seconds
+        raw = getattr(request, "data", None)
+        assert isinstance(raw, bytes)
+        body = json.loads(raw.decode("utf-8"))
+        events = body["events"]
+        assert isinstance(events, list)
+        event_ids = [str(event["eventId"]) for event in events if isinstance(event, dict)]
+        batches.append(event_ids)
+        statuses = [{"status": "accepted", "eventId": event_id} for event_id in event_ids if event_id != "native-198"]
+        return {"statuses": statuses}
+
+    monkeypatch.setattr(runner, "_urlopen_json_with_timeout_retry", capture_post)
+    result = runner.sync_guard_events(
+        store,
+        auth_context={
+            "access_token": "synthetic-test-token",
+            "sync_url": "http://127.0.0.1:9/api/guard/receipts/sync",
+        },
+    )
+    assert batches[0] == ["native-198", "native-199"]
+    assert batches[1] == ["native-198", *[f"later-{index:02d}" for index in range(40)]]
+    assert result["accepted"] == 41
+    pending = store.list_guard_events_v1(uploaded=False, limit=300)
+    pending_ids = [event["event_id"] for event in pending]
+    assert pending_ids == [f"native-{index:03d}" for index in range(199)]

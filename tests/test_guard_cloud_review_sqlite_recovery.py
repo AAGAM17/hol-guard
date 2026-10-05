@@ -352,6 +352,16 @@ def test_incomplete_local_recovery_is_not_confirmed_as_cloud_repair() -> None:
     assert result == {"status": "recovery_incomplete", "reason": "local_recovery_incomplete"}
     assert recovery.read_cloud_review_recovery_repair(store) == result
     assert recovery.REPAIR_ATTEMPT_STATE_KEY not in store.payloads
+    recovery.note_authenticated_cloud_review_round_trip(store, now="2026-10-04T05:00:02+00:00")
+    restored = recovery.read_cloud_review_recovery_health(store)
+    assert restored is not None
+    assert restored["reason"] == "cloud_review_restored"
+    assert restored["localCli"] is False
+    assert recovery.read_cloud_review_recovery_repair(store) == {
+        "status": "not_required",
+        "reason": "no_pending_repair",
+    }
+    assert recovery.REPAIR_ATTEMPT_STATE_KEY not in store.payloads
 
 
 def test_authenticated_current_binding_repair_does_not_create_consent(

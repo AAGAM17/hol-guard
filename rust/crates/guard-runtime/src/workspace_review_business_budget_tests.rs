@@ -3,6 +3,9 @@ use super::*;
 use guard_policy_snapshot::{integrity_mac, policy_digest};
 use serde_json::{json, Value};
 
+#[path = "workspace_review_business_budget_process_tests.rs"]
+mod process_tests;
+
 fn declaration(scope: &str) -> Value {
     json!({"schema":"guard.business-budget.v1","version":1,"id":format!("mail.{scope}"),"scope":scope,
     "windowMs":86400000,"maximumActions":2,"maximumRecipients":100,"maximumRecords":100,"maximumBytes":100000,

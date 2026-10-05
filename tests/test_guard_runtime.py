@@ -4082,6 +4082,54 @@ clearer UX and an implementation plan with technical references.
         assert output["approval_requests"]
         assert output.get("reason_code") != "native_hook_worker_exception"
 
+    def test_codex_post_tool_unrelated_runtime_error_still_blocks_secret_output(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ) -> None:
+        rc, output = self._run_codex_hook_with_stubbed_edge(
+            monkeypatch,
+            tmp_path,
+            capsys,
+            event={
+                "event": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "rg TOKEN a/file.ts"},
+                "tool_response": {"stdout": "a/file.ts:1:auth_token=canary"},
+                "source_scope": "project",
+            },
+            edge=lambda: RuntimeError("worker bug"),
+        )
+
+        assert rc == 1
+        assert output["approval_requests"]
+        assert output.get("reason_code") != "native_hook_worker_exception"
+
+    def test_codex_post_tool_unrelated_runtime_error_on_clean_output_stays_worker_exception(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ) -> None:
+        rc, output = self._run_codex_hook_with_stubbed_edge(
+            monkeypatch,
+            tmp_path,
+            capsys,
+            event={
+                "event": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "echo hello"},
+                "tool_response": {"stdout": "hello"},
+                "source_scope": "project",
+            },
+            edge=lambda: RuntimeError("worker bug"),
+        )
+
+        assert rc == 0
+        assert output["reason_code"] == "native_hook_worker_exception"
+        assert not output.get("approval_requests")
+
     def test_codex_post_tool_missing_edge_continues_clean_output(
         self,
         monkeypatch,

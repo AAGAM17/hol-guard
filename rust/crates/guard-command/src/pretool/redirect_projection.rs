@@ -129,11 +129,39 @@ pub(super) fn project(
 /// floor of the raw command. The raw text's generic "unparsed command"
 /// review is the only floor the projection discharges, except that a file
 /// write still requires review.
+fn redirect_disqualifies_containment(reason: &str) -> bool {
+    // A file redirect is a shell effect. Pytest and inline-eval profiles are
+    // only valid for the exact command, so the projection must not inherit them.
+    matches!(
+        reason,
+        "native_pytest_readonly_containment_required"
+            | "native_python_eval_readonly_containment_required"
+            | "native_node_eval_readonly_containment_required"
+    )
+}
+
 pub(super) fn join(
     mut projected: PreToolResultV1,
     raw: PreToolResultV1,
     writes_file: bool,
 ) -> PreToolResultV1 {
+    // Stripping a benign descriptor copy must not replace an allow the raw
+    // command already earned. A file write still goes through the floors below.
+    if !writes_file
+        && raw.decision == "allow"
+        && matches!(raw.minimum_action.as_str(), "allow" | "warn")
+    {
+        return raw;
+    }
+    if writes_file && redirect_disqualifies_containment(&projected.reason_code) {
+        projected.minimum_action = "review".into();
+        projected.policy_action = "review".into();
+        projected.decision = "deny".into();
+        projected.explicitly_benign = false;
+        projected.reason_code = "native_command_redirect_write_review".into();
+        projected.reason =
+            "HOL Guard requires review because this command writes its output to a file.".into();
+    }
     projected.action.sensitive_target |= raw.action.sensitive_target;
     projected.action.bounded &= raw.action.bounded;
     if raw.reason_code != "native_command_review_required"

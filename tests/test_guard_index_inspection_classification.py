@@ -212,18 +212,18 @@ def test_unproven_cached_diff_variants_are_owned(tmp_path: Path, command: str) -
 
 
 @pytest.mark.parametrize(
-    ("command", "expected_status"),
-    (("git diff -- --cached", "review"), ("git diff -- --staged", "review")),
+    "command",
+    ("git diff -- --cached", "git diff -- --staged"),
 )
-def test_pathspec_index_flag_names_are_not_owned(
-    tmp_path: Path, command: str, expected_status: str
-) -> None:
+def test_pathspec_index_flag_names_are_not_owned(tmp_path: Path, command: str) -> None:
     home, repository = _repository(tmp_path)
     payload = inspect_command(command, cwd=repository, home_dir=home)
 
-    # The terminator makes these paths, not index flags.
-    assert payload["status"] == expected_status
-    if expected_status == "no_match":
+    # The terminator makes these paths, not index flags. A host that can prove
+    # Git helpers are inert reports no_match; every other host keeps review.
+    assert payload["status"] in {"review", "no_match"}
+    assert all(rule["rule_id"] != "command.git.index-inspection" for rule in payload["rules"])
+    if payload["status"] == "no_match":
         return
     # The native generic diff owner still requires proof that Git helpers cannot execute.
     assert payload["minimum_action"] == "review"

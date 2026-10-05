@@ -371,7 +371,7 @@ def test_grok_install_proof_covers_hooks_and_managed_config(
     artifacts = manifest["protection_artifact_proof"]["artifacts"]
     assert isinstance(artifacts, list)
     artifact_paths = {item["path"] for item in artifacts if isinstance(item, dict)}
-    assert any(path.endswith(".grok/config.toml") for path in artifact_paths)
+    assert any(Path(path).as_posix().endswith(".grok/config.toml") for path in artifact_paths)
     assert any(path.endswith("hol-guard-pretooluse.json") for path in artifact_paths)
     assert any(path.endswith("hol-guard-prompt.json") for path in artifact_paths)
 

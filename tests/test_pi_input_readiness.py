@@ -122,6 +122,7 @@ console.log(JSON.stringify({cold, inFlightTool, warm, protectedResult, extension
 
 @pytest.mark.parametrize("harness", ["pi", "omp"])
 @pytest.mark.parametrize("change", ["deadline", "cwd", "prompt", "abort", "generation"])
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node is required to execute the generated input handler")
 def test_pending_input_returns_in_time_and_rejects_changed_context(tmp_path: Path, harness: str, change: str) -> None:
     source = managed_extension_source(
         guard_home=tmp_path / "guard-home",

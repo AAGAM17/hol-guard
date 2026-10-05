@@ -448,9 +448,14 @@ def _post_hook(input_text: str) -> tuple[str, str, int] | None:
     if timeout <= 0:
         return None
     if HARNESS == "grok" and _event_name(input_text) == "UserPromptSubmit":
-        parsed = _post_grok_prompt(input_text, host, port, token, timeout)
-    else:
-        parsed = _http_json(url, token, data=input_text.encode("utf-8"), timeout=timeout)
+        deadline = min(_HOOK_DEADLINE_MONOTONIC, time.monotonic() + timeout)
+        input_text = _prepare_grok_prompt(input_text, host, port, token, deadline)
+        if input_text is None:
+            return None
+        timeout = deadline - time.monotonic()
+        if timeout <= 0:
+            return None
+    parsed = _http_json(url, token, data=input_text.encode("utf-8"), timeout=timeout)
     if parsed is None:
         return None
     return _apply_grok_wait(input_text, _to_native(parsed, _event_name(input_text)))

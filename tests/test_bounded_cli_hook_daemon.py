@@ -173,6 +173,9 @@ def test_grok_benign_prompt_requires_successful_daemon_review(
         class Response:
             status = 200
 
+            def __init__(self, *, ready: bool = False) -> None:
+                self.ready = ready
+
             def __enter__(self) -> Response:
                 return self
 
@@ -183,12 +186,14 @@ def test_grok_benign_prompt_requires_successful_daemon_review(
                 return "http://127.0.0.1:7777/v1/hooks/grok"
 
             def read(self, _limit: int) -> bytes:
+                if self.ready:
+                    return b'{"ready":true,"workspace_acknowledged":true,"worker_ready":true}'
                 return b"{}"
 
         class Opener:
             def open(self, _request: object, *, timeout: float) -> Response:
                 assert timeout > 0
-                return Response()
+                return Response(ready=str(getattr(_request, "full_url", "")).endswith("/readiness"))
 
         monkeypatch.setattr(
             bounded_cli_hook_daemon,

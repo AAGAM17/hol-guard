@@ -136,3 +136,39 @@ def test_passive_and_pretool_calls_keep_existing_transport(
     monkeypatch.setattr(module, "_http_json", transport)
     assert module._post_hook(json.dumps({"hook_event_name": event})) is None
     assert calls == [("http://127.0.0.1:9/v1/hooks/grok", timeout)]
+
+
+def test_python_bridge_prepares_workspace_with_one_budget_and_preserves_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon as daemon
+    from codex_plugin_scanner.guard.adapters import bounded_hook_http as http
+
+    clock = [10.0]
+    monkeypatch.setattr(http.time, "monotonic", lambda: clock[0])
+    calls = []
+
+    def transport(endpoint, token, data, *, deadline, **_kwargs):
+        assert token == "fixture"
+        assert deadline == 15.0
+        calls.append((endpoint, json.loads(data)))
+        if endpoint.endswith("/readiness"):
+            clock[0] += 2.0
+            return READY
+        assert calls[-1][1]["guard_remaining_ms"] == 3000
+        assert "guard_remaining_seconds" not in calls[-1][1]
+        return {"decision": "block", "policy_action": "block", "reason": "native block"}
+
+    monkeypatch.setattr(http, "post_hook_json", transport)
+    monkeypatch.setattr(daemon, "post_hook_json", transport)
+    result = daemon.try_daemon_hook(
+        guard_home=tmp_path, harness="grok", timeout_seconds=85,
+        input_text=json.dumps({"hook_event_name": "user_prompt_submit", "cwd": str(tmp_path),
+                               "guard_remaining_seconds": 999}),
+        _endpoint_loader=lambda *_args: "http://127.0.0.1:9/v1/hooks/grok",
+        _token_loader=lambda *_args: "fixture",
+        _opener_builder=lambda: object(),
+    )
+    assert result is not None
+    assert json.loads(result[0])["policy_action"] == "block"
+    assert len(calls) == 2

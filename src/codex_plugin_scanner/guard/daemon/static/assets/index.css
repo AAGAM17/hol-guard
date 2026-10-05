@@ -3659,6 +3659,10 @@
     }
   }
 
+  .bg-slate-400 {
+    background-color: var(--color-slate-400);
+  }
+
   .bg-slate-900\/45 {
     background-color: #0f172b73;
   }

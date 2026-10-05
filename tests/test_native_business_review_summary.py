@@ -38,6 +38,27 @@ def summary():
     }
 
 
+def test_summary_sql_collision_is_absent_without_contacting_native(tmp_path, monkeypatch):
+    store = GuardStore(tmp_path / "guard-home")
+    monkeypatch.setattr(store, "get_approval_request", lambda request_id: {"request_id": request_id})
+    monkeypatch.setattr(route, "read_native_business_review_summary",
+        lambda *args: pytest.fail("SQL review must not read another native snapshot"))
+    daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
+    daemon.start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{daemon.port}/v1/requests/business-test/business-summary",
+            headers={"X-Guard-Dashboard-Session": _dashboard_token(store)},
+        )
+        with pytest.raises(urllib.error.HTTPError) as rejected:
+            urllib.request.urlopen(request, timeout=5)
+        assert rejected.value.code == 404
+        assert rejected.value.headers["Cache-Control"] == "no-store"
+        assert json.loads(rejected.value.read()) == {"error": "native_local_business_summary_unavailable"}
+    finally:
+        daemon.stop()
+
+
 @pytest.mark.parametrize(
     "code", ["native_local_business_summary_unavailable", "native_workspace_review_request_missing"]
 )

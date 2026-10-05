@@ -64,7 +64,7 @@ for (const state of ["with-sql", "empty"] as const) {
       await expect(page.getByText("Nothing to review", { exact: true })).toHaveCount(0);
     }
     if (state === "with-sql") {
-      await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Saved business action details" })).toHaveCount(0);
     }
   });
 }
@@ -91,7 +91,7 @@ test(`native projected detail is explicitly read-only on ${name}`, async ({ page
 for (const [name, width, height] of [["desktop", 1280, 900], ["phone", 390, 844]] as const) {
   test(`saved summary stays honest and readable on ${name}`, async ({ page }) => {
     await page.setViewportSize({ width, height });
-    await mount(page, () => summary);
+    await mount(page, () => summary, true);
     const panel = page.getByRole("region", { name: "Saved business action details" });
     await expect(panel).toBeVisible();
     await expect(panel).toContainText("Send email · Gmail");
@@ -108,7 +108,7 @@ for (const [name, width, height] of [["desktop", 1280, 900], ["phone", 390, 844]
 
 test("malformed metadata is unavailable and refresh recovers", async ({ page }) => {
   let value: unknown = { ...summary, subject: "private-canary" };
-  await mount(page, () => value);
+  await mount(page, () => value, true);
   await expect(page.getByText("Saved business details could not be loaded.")).toBeVisible();
   await expect(page.getByText("private-canary")).toHaveCount(0);
   value = summary;
@@ -118,10 +118,19 @@ test("malformed metadata is unavailable and refresh recovers", async ({ page }) 
 
 test("native read failure offers refresh instead of disappearing", async ({ page }) => {
   let value: unknown = { error: "native_local_business_summary_read_failed" };
-  await mount(page, () => value);
+  await mount(page, () => value, true);
   await expect(page.getByText("Saved business details could not be loaded.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh details" })).toBeVisible();
   value = summary;
   await page.getByRole("button", { name: "Refresh details" }).click();
   await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+});
+
+test("SQL review does not request inapplicable native details", async ({ page }) => {
+  let reads = 0;
+  await mount(page, () => { reads += 1; return { error: "native_local_business_summary_read_failed" }; });
+  await expect(page.getByText("Paused action", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Saved business action details" })).toHaveCount(0);
+  await expect(page.getByText("Saved business details could not be loaded.")).toHaveCount(0);
+  expect(reads).toBe(0);
 });

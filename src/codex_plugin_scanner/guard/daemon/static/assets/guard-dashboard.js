@@ -30409,6 +30409,15 @@ function ReviewDecisionCard(props) {
   const topAlertItems = nativeDisplayOnly ? [] : buildTopAlertItems(item);
   const evidenceItems = nativeDisplayOnly ? [] : buildEvidenceItems(item);
   const actionPresentation = guardActionPresentation(item.policy_action);
+  let sectionLabel = "Paused action";
+  let badgeLabel = actionPresentation.label;
+  if (nativeDisplayOnly) {
+    sectionLabel = "Saved request";
+    badgeLabel = "Read-only";
+  } else if (watchOnlyObservation) {
+    sectionLabel = "Watch-only finding";
+    badgeLabel = "Would have stopped";
+  }
   const persistExactAllow = item !== null && willPersistExactAction(item, "allow", allowScope, rememberExactAction);
   const persistExactBlock = item !== null && willPersistExactAction(item, "block", blockScope, watchOnlyObservation);
   let resolvedAllowButtonLabel = allowButtonLabel(allowScope);
@@ -30443,17 +30452,17 @@ function ReviewDecisionCard(props) {
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-slate-100 p-4 sm:p-5", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: nativeDisplayOnly ? "Saved request" : watchOnlyObservation ? "Watch-only finding" : "Paused action" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: sectionLabel }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "mt-2 text-lg font-semibold text-brand-dark", children: plainTitle }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-sm text-muted-foreground", children: [
             "From ",
             harnessName
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { tone: item.native_business_review_display_only || watchOnlyObservation ? "info" : actionPresentation.tone, children: item.native_business_review_display_only ? "Read-only" : watchOnlyObservation ? "Would have stopped" : actionPresentation.label })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { tone: item.native_business_review_display_only || watchOnlyObservation ? "info" : actionPresentation.tone, children: badgeLabel })
       ] }),
       !nativeDisplayOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(PrimaryActionCard, { item }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessReviewSummaryPanel, { requestId: item.request_id }, item.request_id),
+      nativeDisplayOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessReviewSummaryPanel, { requestId: item.request_id }, item.request_id),
       item.scope_restrictions?.includes("provider_account_unverified_once_only") ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm leading-6 text-brand-dark", children: "Guard cannot verify this provider account. Approval applies once to this exact call; remembered approvals are unavailable." }) : null,
       resolutionBlockReason !== null && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 rounded-xl border border-brand-attention/30 bg-brand-attention/[0.06] p-4", role: "alert", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -30641,6 +30650,8 @@ function riskIndicatorClass(level) {
 function QueueItemRow({ item, active, readState, index, onOpenRequest, selectionMode = false, selectable = false, selected = false, onToggleSelect }) {
   const risk = riskScore(item);
   const riskLevel = riskLevelFromScore(risk);
+  const nativeDisplayOnly = item.native_business_review_display_only === true;
+  const riskLabel = nativeDisplayOnly ? "Risk: unassessed" : `Risk: ${riskLevel}`;
   const category = resolveQueueCategory(item);
   const CategoryIcon = iconForQueueCategory(category.id);
   const preview = queueItemPreview(item);
@@ -30731,11 +30742,11 @@ function QueueItemRow({ item, active, readState, index, onOpenRequest, selection
                 "span",
                 {
                   role: "img",
-                  "aria-label": `Risk: ${riskLevel}`,
+                  "aria-label": riskLabel,
                   className: "group/icon relative flex h-2 w-2 shrink-0 items-center justify-center",
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${riskIndicatorClass(riskLevel)}` }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-brand-blue px-2 py-1 text-[10px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/icon:opacity-100", children: `Risk: ${riskLevel}` })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${nativeDisplayOnly ? "bg-slate-400" : riskIndicatorClass(riskLevel)}` }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-brand-blue px-2 py-1 text-[10px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/icon:opacity-100", children: riskLabel })
                   ]
                 }
               ),

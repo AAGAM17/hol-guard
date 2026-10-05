@@ -7,6 +7,7 @@ import { groupDuplicates, isBulkApprovableGroup } from "./queue-state";
 import type { GuardApprovalRequest, GuardRuntimeSnapshot } from "./guard-types";
 import { ReviewEmptyState } from "./review-states";
 import { freeStateSnapshot } from "../e2e/fixture-states";
+import { QueueItemRow } from "./review-queue-item";
 
 export const sampleSummary = {
   schema: "guard-native-local-business-review-summary.v1", version: 1, request_id: "business-test",
@@ -43,6 +44,13 @@ const displayOnlyRequest: GuardApprovalRequest = {
 assert.match(requestResolutionBlockReason(displayOnlyRequest) ?? "", /read-only/);
 assert.equal(isBulkApprovableGroup(groupDuplicates([displayOnlyRequest])[0]), false);
 console.log("Native projection: individual and bulk decision controls disabled PASS");
+const nativeQueueMarkup = renderToStaticMarkup(<QueueItemRow item={displayOnlyRequest}
+  active={false} index={0} onOpenRequest={() => {}}
+  readState={{ isRead: () => false, markRead: () => {}, markUnread: () => {},
+    markAllRead: () => {}, readCount: 0 }} />);
+assert.match(nativeQueueMarkup, /Risk: unassessed/);
+assert.doesNotMatch(nativeQueueMarkup, /Risk: low|bg-emerald-400/);
+console.log("Native queue risk: unassessed presentation PASS");
 
 const emptyStateRuntime = { ...freeStateSnapshot,
   cloud_pairing_state: { ...freeStateSnapshot.cloud_pairing_state, plan_id: null }

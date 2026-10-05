@@ -14,6 +14,7 @@ permissions:
 
 env:
   CI_PYTHON_VERSION: "3.12.14"
+  CI_PYTEST_COVERAGE_SHARDS: "128"
   UV_HTTP_TIMEOUT: "300"
   CI_UV_CACHE_DEPENDENCY_GLOB: |
     pyproject.toml
@@ -188,6 +189,9 @@ jobs:
     needs: native-command-evaluators
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      shard-indices: ${{ steps.shard-indices.outputs.indices }}
+      shard-count: ${{ steps.shard-indices.outputs.count }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -214,9 +218,18 @@ jobs:
       - uses: ./.github/actions/plan-pytest
         with:
           python-version: "3.12"
-          shard-count: "128"
+          shard-count: ${{ env.CI_PYTEST_COVERAGE_SHARDS }}
           telemetry-branch: ${{ github.event.pull_request.base.ref || github.ref_name }}
           github-token: ${{ github.token }}
+      - name: Emit resolved shard indices
+        id: shard-indices
+        shell: bash
+        run: |
+          indices=$(ls pytest-shards/shard-*.txt | sed -E 's#.*shard-([0-9]+)\.txt#\1#' | sort -n | tr '\n' ' ' | sed 's/ $//')
+          test -n "$indices" || { echo "no shard files produced" >&2; exit 1; }
+          json=$(echo "$indices" | tr ' ' '\n' | jq -R 'tonumber' | jq -cs .)
+          echo "indices=${json}" >> "$GITHUB_OUTPUT"
+          echo "count=$(echo "$indices" | wc -w | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
   coverage:
     name: coverage (3.12, ${{ matrix.shard-index }})
@@ -226,12 +239,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-                       28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
-                       53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
-                       78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102,
-                       103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122,
-                       123, 124, 125, 126, 127]
+        shard-index: ${{ fromJSON(needs.coverage-plan.outputs.shard-indices) }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -300,7 +308,7 @@ jobs:
 
   duration-manifest-candidate:
     if: needs.coverage.result == 'success'
-    needs: coverage
+    needs: [coverage, coverage-plan]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -318,7 +326,7 @@ jobs:
         run: |
           shopt -s globstar nullglob
           reports=(duration-reports/**/pytest-durations.json)
-          if [ "${#reports[@]}" -ne 128 ]; then
+          if [ "${#reports[@]}" -ne "${{ needs.coverage-plan.outputs.shard-count }}" ]; then
             echo "Incomplete attempt reports; retain the previous duration manifest."
             echo "complete=false" >> "$GITHUB_OUTPUT"
             exit 0

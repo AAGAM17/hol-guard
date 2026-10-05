@@ -191,7 +191,7 @@ fn probe(
         || filters::unused(
             &binary,
             leading,
-            &cwd,
+            declared_cwd,
             git_home,
             execution_environment,
             deadline,

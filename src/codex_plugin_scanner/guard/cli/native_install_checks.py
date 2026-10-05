@@ -256,10 +256,7 @@ def _grok_protection_checks(context: HarnessContext) -> dict[str, object]:
             "Grok Guard pre-tool hook still uses a stale per-tool matcher list. Re-run `hol-guard apps repair grok`."
         )
     elif not _grok_prompt_hook_is_observe(prompt_hook, context):
-        warnings.append(
-            "The Grok prompt gate or lifecycle hooks are missing. "
-            "Re-run `hol-guard apps repair grok`."
-        )
+        warnings.append("The Grok prompt gate or lifecycle hooks are missing. Re-run `hol-guard apps repair grok`.")
     try:
         managed_text = managed_config.read_text(encoding="utf-8") if managed_config.is_file() else ""
         managed_read_error = False

@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 
 use super::{
     ensure_private_directory_under, private_root_for_state_base, read_state_file_raw,
-    validate_package_process_identity, validate_state, ResidentState, MAX_STATE_FILES,
-    STATE_FILE_PREFIX, STATE_FILE_SUFFIX,
+    validate_package_process_identity, validate_runtime_process_identity, validate_state,
+    ResidentState, MAX_STATE_FILES, STATE_FILE_PREFIX, STATE_FILE_SUFFIX,
 };
 
 const MAX_SCOPES: usize = 16;
+const MAX_RETAINED_STATES: usize = MAX_SCOPES * MAX_STATE_FILES;
 // Unrelated files and stale per-version scopes are skipped. This cap only
 // fail-closes when a flooded directory might have hidden the caller's runtime
 // before that scope was seen.
@@ -79,13 +80,9 @@ pub(crate) fn discover_home_states_prefer(
     // errors fall through so an older runtime can answer. One broken older
     // directory must not fail every hook.
     let mut states = Vec::new();
+    let mut budget = DiscoveryBudget::new();
     if let Some((path, digest_prefix)) = preferred_candidate {
-        match load_scope_states(
-            &path,
-            &digest_prefix,
-            &private_root,
-            &mut DiscoveryBudget::new(),
-        ) {
+        match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
             Ok(found) => states.extend(found),
             Err(error) if error == "native_resident_state_list_failed" => return Err(error),
             Err(_) => {}
@@ -101,14 +98,24 @@ pub(crate) fn discover_home_states_prefer(
     if !preferred_live {
         // Empty and stale version directories must not displace the live
         // resident. Bound total fallback I/O instead of selecting hash prefixes.
-        let mut budget = DiscoveryBudget::new();
         for (path, digest_prefix) in fallback_candidates {
             match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
                 Ok(found) => {
-                    if states.len() + found.len() > MAX_SCOPES * MAX_STATE_FILES {
+                    if states.len() + found.len() > MAX_RETAINED_STATES {
                         return Err("native_resident_state_list_failed".to_owned());
                     }
+                    let live = found.iter().any(|(_, _, state)| {
+                        validate_runtime_process_identity(
+                            state.process_id,
+                            &state.process_start_marker,
+                            &state.runtime_sha256,
+                        )
+                        .is_ok()
+                    });
                     states.extend(found);
+                    if live {
+                        break;
+                    }
                 }
                 Err(_) if budget.exhausted => {
                     return Err("native_resident_state_list_failed".to_owned())
@@ -171,6 +178,7 @@ fn load_scope_states(
         if attempted >= MAX_STATE_READ_ATTEMPTS || states.len() == MAX_STATE_FILES {
             break;
         }
+        // Count actual reads only; a per-scope limit may stop before this read.
         budget.consume(true)?;
         let Ok(state) = read_state_file_raw(&path, private_root) else {
             continue;

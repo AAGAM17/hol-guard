@@ -222,10 +222,26 @@ def grok_hooks_protection_ready(context: HarnessContext) -> bool:
     )
 
 
+def _grok_has_legacy_deny_rules(text: str) -> bool:
+    from ..adapters.grok_config import MANAGED_DENY_RULES
+    from ..codex_config import tomllib
+
+    try:
+        payload = tomllib.loads(text)
+    except (ValueError, TypeError):
+        return False
+    permission = payload.get("permission")
+    denied = permission.get("deny") if isinstance(permission, dict) else None
+    return isinstance(denied, list) and any(
+        rule not in denied and rule.replace("**/", "~/", 1) in denied
+        for rule in MANAGED_DENY_RULES
+        if rule.startswith("Read(**/")
+    )
+
+
 def _grok_protection_checks(context: HarnessContext) -> dict[str, object]:
     """Report missing or stale Grok protection artifacts with repair instructions."""
     from ..adapters.grok import GrokHarnessAdapter
-    from ..adapters.grok_config import MANAGED_DENY_RULES
 
     adapter = GrokHarnessAdapter()
     hooks_dir = adapter._hooks_dir(context)
@@ -250,10 +266,9 @@ def _grok_protection_checks(context: HarnessContext) -> dict[str, object]:
     except (OSError, UnicodeError):
         managed_text = ""
         managed_read_error = True
-    legacy_rules = {rule.replace("**/", "~/", 1) for rule in MANAGED_DENY_RULES if rule.startswith("Read(**/")}
     if managed_read_error:
         warnings.append("Grok managed config could not be read. Re-run `hol-guard apps repair grok`.")
-    elif any(rule in managed_text for rule in legacy_rules):
+    elif _grok_has_legacy_deny_rules(managed_text):
         warnings.append(
             "Grok managed deny rules still use literal home prefixes that Grok does not expand. "
             "Re-run `hol-guard apps repair grok`."

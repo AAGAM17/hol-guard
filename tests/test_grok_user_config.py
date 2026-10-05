@@ -65,6 +65,26 @@ def test_uninstall_retains_preexisting_guard_rules_and_later_user_changes() -> N
     assert restored["compat"]["claude"]["hooks"] is True
 
 
+def test_later_identical_user_rule_and_hook_survive_uninstall() -> None:
+    merged, state = prepare_user_config_text("", "guard hook", previous_state={})
+    document = tomlkit.parse(merged)
+    document["permission"]["deny"].append("Read(**/.env)")
+    original = document["hooks"]["PreToolUse"][0].unwrap()
+    document["hooks"]["PreToolUse"].append(tomlkit.item(original))
+    restored = tomllib.loads(remove_user_config_settings(tomlkit.dumps(document), state))
+    assert restored["permission"]["deny"] == ["Read(**/.env)"]
+    assert restored["hooks"]["PreToolUse"] == [original]
+
+
+def test_inline_hook_array_round_trips_without_losing_user_handler() -> None:
+    existing = '[hooks]\nPreToolUse=[{matcher="custom_tool",hooks=[{type="command",command="custom-check"}]}]\n'
+    merged, state = prepare_user_config_text(existing, "guard hook", previous_state={})
+    parsed = tomllib.loads(merged)
+    assert len(parsed["hooks"]["PreToolUse"]) == 2
+    restored = tomllib.loads(remove_user_config_settings(merged, state))
+    assert restored == tomllib.loads(existing)
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -99,6 +119,10 @@ def test_vendor_refresh_cannot_remove_durable_protection(tmp_path: Path, monkeyp
     vendor.unlink()  # Grok's authenticated configuration refresh owns this file.
     assert _grok_protection_checks(context)["ready"] is True
     durable = context.home_dir / ".grok" / "config.toml"
+    document = tomlkit.parse(durable.read_text())
+    document["permission"]["deny"].append("Read(~/.ssh/**)")
+    durable.write_text(tomlkit.dumps(document) + "# Read(~/.grok/auth/**) is a user comment.\n")
+    assert _grok_protection_checks(context)["ready"] is True
     payload = tomllib.loads(durable.read_text())
     assert set(MANAGED_DENY_RULES) <= set(payload["permission"]["deny"])
     for event in ("PreToolUse", "UserPromptSubmit", "SessionStart", "SubagentStart"):
@@ -121,3 +145,30 @@ def test_legacy_backup_hooks_migrate_without_changing_vendor_settings(
     GrokHarnessAdapter().install(context)
     assert tomllib.loads(vendor.read_text()) == tomllib.loads(enterprise)
     assert "old guard hook" not in vendor.read_text()
+
+
+def test_malformed_config_leaves_uninstall_artifacts_intact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import Mock
+
+    context = HarnessContext(tmp_path / "home", None, tmp_path / "guard")
+    monkeypatch.delenv("GROK_HOME", raising=False)
+    shim = context.guard_home / "bin" / "guard-grok"
+    shim.parent.mkdir(parents=True)
+    shim.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.adapters.grok.prepare_guard_shim",
+        lambda *args, **kwargs: PreparedGuardShim((), {"shim_path": str(shim), "notes": []}),
+    )
+    remove_shim = Mock()
+    monkeypatch.setattr("codex_plugin_scanner.guard.adapters.grok.remove_guard_shim", remove_shim)
+    adapter = GrokHarnessAdapter()
+    adapter.install(context)
+    hooks = adapter._hooks_dir(context) / "hol-guard-pretooluse.json"
+    before = hooks.read_bytes()
+    config = adapter._protection_config_path(context)
+    config.write_text("[permission\n")
+    with pytest.raises(ValueError):
+        adapter.uninstall(context)
+    remove_shim.assert_not_called()
+    assert shim.is_file() and hooks.read_bytes() == before
+    assert config.read_text() == "[permission\n"

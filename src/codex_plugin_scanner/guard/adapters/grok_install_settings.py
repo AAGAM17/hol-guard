@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .base import HarnessContext, _ensure_path_within_root
@@ -12,8 +13,6 @@ from .grok_state import _prior_compat_hooks_from_state
 from .grok_user_config import remove_user_config_settings
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from .grok import GrokHarnessAdapter
 
 
@@ -39,14 +38,17 @@ def uninstall_settings(adapter: GrokHarnessAdapter, context: HarnessContext) -> 
     state = parse_install_state(state_path.read_bytes() if state_path.is_file() else None)
     durable = adapter._protection_config_path(context)
     owned = state.get("user_config_settings")
+    changes: list[tuple[Path, bytes]] = []
     if durable.is_file() and isinstance(owned, Mapping):
         _ensure_path_within_root(adapter._grok_home_dir(context), durable, label="Grok")
         restored = remove_user_config_settings(durable.read_text(encoding="utf-8"), owned)
-        durable.write_text(restored.rstrip() + "\n", encoding="utf-8")
+        changes.append((durable, (restored.rstrip() + "\n").encode("utf-8")))
     legacy = adapter._managed_config_path(context)
     if legacy.is_file():
         _ensure_path_within_root(adapter._grok_home_dir(context), legacy, label="Grok")
         before = legacy.read_bytes()
         after = remove_legacy_settings(before, state_path, state)
         if after is not None and after != before:
-            legacy.write_bytes(after)
+            changes.append((legacy, after))
+    for path, content in changes:
+        path.write_bytes(content)

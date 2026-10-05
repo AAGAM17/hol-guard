@@ -6,6 +6,7 @@ from collections.abc import Mapping, MutableMapping
 from typing import Any
 
 import tomlkit
+from tomlkit.items import AoT
 
 from .grok_config import (
     FOREIGN_HOOK_COMPAT_VENDORS,
@@ -44,9 +45,9 @@ def _remove_owned(document: Any, state: Mapping[str, object]) -> None:
     if isinstance(permission, Mapping) and isinstance(added_rules, list):
         denied = permission.get("deny")
         if isinstance(denied, list):
-            for index in reversed(range(len(denied))):
-                if denied[index] in added_rules:
-                    del denied[index]
+            for rule in added_rules:
+                if rule in denied:
+                    denied.remove(rule)
     hooks = document.get("hooks")
     command = state.get("hook_command")
     owned_events = state.get("added_hook_events")
@@ -54,9 +55,10 @@ def _remove_owned(document: Any, state: Mapping[str, object]) -> None:
         for event in owned_events:
             groups = hooks.get(event) if isinstance(event, str) else None
             if isinstance(groups, list):
-                for index in reversed(range(len(groups))):
+                for index in range(len(groups)):
                     if _owned_hook(groups[index], command):
                         del groups[index]
+                        break
     compat = document.get("compat")
     prior = state.get("prior_compat_hooks")
     if isinstance(compat, Mapping) and isinstance(prior, Mapping):
@@ -134,7 +136,7 @@ def prepare_user_config_text(
             raise ValueError(f"Grok hooks.{event} must be an array of tables.")
         if any(_owned_hook(group, hook_command) for group in groups):
             continue
-        group = tomlkit.table()
+        group = tomlkit.table() if isinstance(groups, AoT) else tomlkit.inline_table()
         handler = tomlkit.inline_table()
         handler.update(
             type="command",
@@ -145,6 +147,9 @@ def prepare_user_config_text(
         groups.append(group)
         added_events.append(event)
     merged = tomlkit.dumps(document)
+    validated = tomlkit.parse(merged)
+    if validated.unwrap() != document.unwrap():
+        raise ValueError("Grok settings did not survive TOML serialization.")
     if tomlkit.parse(existing_text).unwrap() == document.unwrap():
         merged = existing_text
     return merged, {

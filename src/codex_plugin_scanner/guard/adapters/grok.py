@@ -446,6 +446,7 @@ class GrokHarnessAdapter(HarnessAdapter):
         return self.prepare_install(context).publish(context.guard_home)
 
     def uninstall(self, context: HarnessContext) -> dict[str, object]:
+        uninstall_settings(self, context)
         shim_manifest = remove_guard_shim(
             self.harness,
             context,
@@ -454,7 +455,6 @@ class GrokHarnessAdapter(HarnessAdapter):
         )
         managed_config_path = self._protection_config_path(context)
         hooks_dir = self._hooks_dir(context)
-        uninstall_settings(self, context)
 
         for hook_name in (GUARD_HOOK_PRETOOL_FILE, GUARD_HOOK_PROMPT_FILE):
             hook_path = hooks_dir / hook_name

@@ -57,7 +57,19 @@ def test_managed_cli_hooks_use_bounded_process_bridge(
     factory: CommandFactory,
     timeout_seconds: int,
 ) -> None:
-    command = factory(_context(tmp_path))
+    context = _context(tmp_path)
+    command = factory(context)
+
+    if harness == "grok":
+        assert command[1] == "-I"
+        script_path = Path(command[2])
+        assert "managed/bounded-hooks" in script_path.as_posix()
+        assert script_path.name == "grok.py"
+        script = script_path.read_text(encoding="utf-8")
+        assert 'HARNESS = "grok"' in script
+        assert f"TIMEOUT_SECONDS = {timeout_seconds}" in script
+        assert f"GUARD_HOME = {json.dumps(str(context.guard_home.resolve()))}" in script
+        return
 
     assert command[1:3] == ("-I", "-c")
     assert "bounded_cli_hook_bridge" in command[3]

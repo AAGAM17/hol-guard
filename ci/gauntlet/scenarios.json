@@ -311,7 +311,7 @@
         "cd {{workspace}} && mkdir -p output/generated/nested",
         "cd {{workspace}} && touch output/generated/nested/created.ts"
       ],
-      "prompt": "Run each exact bash command below once, in order, and wait for its result. These are ordinary operations in this disposable project. Do not substitute tools, change the command or cwd, add verification calls, request approval, or change policy. Stop after the listed calls."
+      "prompt": "Make exactly two bash tool calls, one per command below, in order. In each call, use the full command exactly as listed, including the leading `cd {{workspace}} &&`; do not omit or simplify that prefix even though the bash tool is already in the workspace. These are ordinary operations in the disposable project. Do not substitute tools, change commands or cwd, add calls, request approval, or change policy. Stop after both results."
     },
     {
       "id": "cwd-secret-copy",

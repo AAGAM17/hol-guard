@@ -109,7 +109,9 @@ def test_workspace_creation_scenario_preserves_explicit_workspace_commands():
         "cd {{workspace}} && mkdir -p output/generated/nested",
         "cd {{workspace}} && touch output/generated/nested/created.ts",
     )
-    assert "run each exact bash command below once" in scenario.prompt.lower()
+    assert "make exactly two bash tool calls" in scenario.prompt.lower()
+    assert "including the leading `cd {{workspace}} &&`" in scenario.prompt.lower()
+    assert "do not omit or simplify that prefix" in scenario.prompt.lower()
     assert scenario.expectation == "allow"
     assert scenario.oracle == "commands"
 

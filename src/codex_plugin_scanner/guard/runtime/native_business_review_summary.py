@@ -83,19 +83,22 @@ def valid_business_review_summary(value: object, request_id: str) -> dict[str, o
     return dict(value)
 
 
+class NativeBusinessReviewSummaryReadError(RuntimeError):
+    """Finite presentation failure; private native details are never echoed."""
+
+    def __init__(self) -> None:
+        super().__init__("native_local_business_summary_read_failed")
+
+
 def read_native_business_review_summary(guard_home: Path, request_id: str) -> dict[str, object] | None:
     """Read an existing frozen snapshot. Never stage, approve, or dispatch work."""
     if not isinstance(request_id, str) or re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", request_id) is None:
         return None
     try:
         status = native_runtime_status()
-        if (
-            not status.available
-            or not status.compatible
-            or status.identity is None
-            or status.capabilities is None
-            or not {"resident-protocol-v2", _FEATURE}.issubset(status.capabilities.features)
-        ):
+        if not status.available or not status.compatible or status.identity is None or status.capabilities is None:
+            raise NativeBusinessReviewSummaryReadError()
+        if not {"resident-protocol-v2", _FEATURE}.issubset(status.capabilities.features):
             return None
         payload = json.dumps(
             {"operation": "workspace_review_local_summary", "request": {"request_id": request_id}},
@@ -109,7 +112,21 @@ def read_native_business_review_summary(guard_home: Path, request_id: str) -> di
             timeout_seconds=2.0,
         )
         if encoded is None:
+            raise NativeBusinessReviewSummaryReadError()
+        response = json.loads(encoded.decode("utf-8"))
+        if (
+            isinstance(response, dict)
+            and set(response) == {"error"}
+            and response["error"]
+            in (
+                "native_local_business_summary_unavailable",
+                "native_workspace_review_request_missing",
+            )
+        ):
             return None
-        return valid_business_review_summary(json.loads(encoded.decode("utf-8")), request_id)
-    except (UnicodeDecodeError, ValueError, TypeError, OSError):
-        return None
+        summary = valid_business_review_summary(response, request_id)
+        if summary is None:
+            raise NativeBusinessReviewSummaryReadError()
+        return summary
+    except (UnicodeDecodeError, ValueError, TypeError, OSError) as error:
+        raise NativeBusinessReviewSummaryReadError() from error

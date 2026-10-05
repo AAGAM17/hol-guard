@@ -14,7 +14,9 @@ Account-currentness and execution fields must retain their explicit uncertainty.
 This validation is a presentation boundary, not a policy evaluator.
 
 The view reports loading and transport/schema failures, with a bounded refresh
-action. A missing native summary is omitted; omission does not establish safety.
+action. Runtime/transport/schema failures return a finite 503 error. Missing
+capability or an explicit native no-summary/missing-request response returns 404
+and omits the panel; omission does not establish safety.
 The summary does not include message content, exact recipients, attachments,
 account identifiers or binding digests in the visible UI. Unknown or unsupported
 facts have a visible warning when metadata is available.

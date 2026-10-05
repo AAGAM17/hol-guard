@@ -26,7 +26,13 @@ async function mount(page: Page, nextSummary: () => unknown) {
     let body: unknown = {};
     if (path.endsWith("/initialize")) body = { auth_token: "business-ui-fixture-session" };
     else if (path.endsWith("/runtime")) body = { ...freeStateSnapshot, pending_count: 1 };
-    else if (path.endsWith("/business-summary")) body = nextSummary();
+    else if (path.endsWith("/business-summary")) {
+      body = nextSummary();
+      if (body && typeof body === "object" && "error" in body && body.error === "native_local_business_summary_read_failed") {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify(body) });
+        return;
+      }
+    }
     else if (path.endsWith("/requests/business-test")) body = approval;
     else if (path.endsWith("/requests")) body = { items: [approval], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
     else if (path.endsWith("/receipts/latest")) {
@@ -66,6 +72,16 @@ test("malformed metadata is unavailable and refresh recovers", async ({ page }) 
   await mount(page, () => value);
   await expect(page.getByText("Saved business details could not be loaded.")).toBeVisible();
   await expect(page.getByText("private-canary")).toHaveCount(0);
+  value = summary;
+  await page.getByRole("button", { name: "Refresh details" }).click();
+  await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
+});
+
+test("native read failure offers refresh instead of disappearing", async ({ page }) => {
+  let value: unknown = { error: "native_local_business_summary_read_failed" };
+  await mount(page, () => value);
+  await expect(page.getByText("Saved business details could not be loaded.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh details" })).toBeVisible();
   value = summary;
   await page.getByRole("button", { name: "Refresh details" }).click();
   await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();

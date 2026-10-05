@@ -116,7 +116,25 @@ def test_missing_capability_never_contacts_resident(tmp_path, monkeypatch):
     assert adapter.read_native_business_review_summary(tmp_path, "business-test") is None
 
 
-@pytest.mark.parametrize("available", [True, False])
+@pytest.mark.parametrize("encoded", [None, b"not-json", b"{}", b'{"error":"native_workspace_review_request_invalid"}'])
+def test_transport_or_schema_failure_is_not_genuine_absence(tmp_path, monkeypatch, encoded):
+    monkeypatch.setattr(
+        adapter,
+        "native_runtime_status",
+        lambda: SimpleNamespace(
+            available=True,
+            compatible=True,
+            identity=SimpleNamespace(path=Path("/test/native")),
+            capabilities=SimpleNamespace(features=("resident-protocol-v2", "native-local-business-review-summary-v1")),
+        ),
+    )
+    monkeypatch.setattr(adapter, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(adapter, "native_resident_client_request", lambda **kwargs: encoded)
+    with pytest.raises(RuntimeError, match="native_local_business_summary_read_failed"):
+        adapter.read_native_business_review_summary(tmp_path, "business-test")
+
+
+@pytest.mark.parametrize("available", [True, False, "failure"])
 def test_http_requires_dashboard_session_and_disables_caching(tmp_path, monkeypatch, available):
     store = GuardStore(tmp_path / "guard-home")
     daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
@@ -124,6 +142,8 @@ def test_http_requires_dashboard_session_and_disables_caching(tmp_path, monkeypa
 
     def read(guard_home, request_id):
         calls.append((guard_home, request_id))
+        if available == "failure":
+            raise adapter.NativeBusinessReviewSummaryReadError()
         return summary() if available else None
 
     monkeypatch.setattr(route, "read_native_business_review_summary", read)
@@ -151,11 +171,15 @@ def test_http_requires_dashboard_session_and_disables_caching(tmp_path, monkeypa
         except urllib.error.HTTPError as error:
             response = error
         with response:
-            assert response.status == (200 if available else 404)
-            assert response.headers["Cache-Control"] == "no-store"
-            assert json.loads(response.read()) == (
-                summary() if available else {"error": "native_local_business_summary_unavailable"}
+            expected_status = 503 if available == "failure" else (200 if available else 404)
+            expected_body = (
+                {"error": "native_local_business_summary_read_failed"}
+                if available == "failure"
+                else (summary() if available else {"error": "native_local_business_summary_unavailable"})
             )
+            assert response.status == expected_status
+            assert response.headers["Cache-Control"] == "no-store"
+            assert json.loads(response.read()) == expected_body
         assert calls == [(store.guard_home, "business-test")]
     finally:
         daemon.stop()

@@ -223,14 +223,10 @@ pub(crate) fn session_recv(request: &McpStdioSessionRecvRequestV1) -> Result<Vec
         let now = std::time::Instant::now();
         let remaining = deadline.saturating_duration_since(now);
         match entry.session.next_event(remaining) {
-            Ok(None) => match child_exit_code(&mut entry.child) {
-                Ok(Some(exit_code)) => return exited_result(exit_code),
-                Ok(None) => {
-                    let mut r = McpStdioSessionResultV1::status("timeout");
-                    r.timed_out = Some(true);
-                    return encode(r);
-                }
-                Err(code) => return err_result(&code),
+            Ok(None) => {
+                let mut r = McpStdioSessionResultV1::status("timeout");
+                r.timed_out = Some(true);
+                return encode(r);
             },
             Err(guard_command::mcp_stdio_session::SessionReadError::Eof) => {
                 match child_exit_code(&mut entry.child) {

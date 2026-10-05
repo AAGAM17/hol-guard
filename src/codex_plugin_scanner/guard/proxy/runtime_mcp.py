@@ -462,6 +462,7 @@ class _NativeMcpChildIo:
         self._session_id = session_id
         self._guard_home = guard_home
         self._pending: deque[str] = deque()
+        self.exit_code: int | None = None
 
     # stdin side ------------------------------------------------------------
     def write(self, data: str) -> int:
@@ -504,6 +505,9 @@ class _NativeMcpChildIo:
             payload = result.get("payload")
             return _ChildOutputFrame(line=json.dumps(payload) + "\n")
         if status in {"exited", "eof"}:
+            code = result.get("exit_code")
+            if isinstance(code, int) and not isinstance(code, bool):
+                self.exit_code = code
             return _ChildOutputFrame()
         if status == "timeout":
             if required:
@@ -558,6 +562,9 @@ class _NativeChildProcess:
 
     def poll(self) -> int | None:
         if self._returncode is not None:
+            return self._returncode
+        if self.stdin.exit_code is not None:
+            self._returncode = self.stdin.exit_code
             return self._returncode
         if self._cancelled:
             return -9

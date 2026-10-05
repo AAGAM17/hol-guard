@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import sys
@@ -228,6 +229,30 @@ def _dedupe_grok_block_reason(reason: str) -> str:
 
 
 _last_grok_policy_action = ""
+_grok_hook_stdout_line: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "grok_hook_stdout_line",
+    default=None,
+)
+
+
+def clear_grok_hook_stdout_line() -> None:
+    """Drop a decision line from an earlier hook in this process."""
+
+    _grok_hook_stdout_line.set(None)
+
+
+def replay_grok_hook_stdout_line() -> None:
+    """Write the harness decision again so it stays the last stdout line.
+
+    Publisher teardown can run after the decision is already on stdout. Grok
+    parses that last line, so a later ``}`` or traceback must not replace it.
+    """
+
+    line = _grok_hook_stdout_line.get()
+    if not line:
+        return
+    sys.stdout.write(line)
+    sys.stdout.flush()
 
 
 def emit_grok_hook_response(
@@ -255,9 +280,12 @@ def emit_grok_hook_response(
         recording_only=recording_only,
     )
     _last_grok_policy_action = "allow" if payload.get("decision") not in {"deny", "block"} else live_action
+    line = json.dumps(payload, separators=(",", ":")) + "\n"
+    if output_stream is None:
+        _grok_hook_stdout_line.set(line)
     stream = output_stream if output_stream is not None else sys.stdout
     # stdout is the harness delivery channel; approval payloads must reach the operator.
-    stream.write(json.dumps(payload, separators=(",", ":")) + "\n")  # codeql[py/clear-text-logging-sensitive-data]
+    stream.write(line)  # codeql[py/clear-text-logging-sensitive-data]
     stream.flush()
 
 

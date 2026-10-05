@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import io
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import redirect_stdout, suppress
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -20,7 +21,7 @@ from ..native_mode import (
 )
 from ..native_policy_snapshot_acked import recording_only_from_acked_snapshot
 from ..store import GuardStore
-from .commands_support_interaction import _emit
+from .commands_support_interaction import _emit_hook_response
 
 _NATIVE_RECEIPT_DRAIN_TIMEOUT_SECONDS = 0.25
 
@@ -43,6 +44,9 @@ def try_native_hook_authority(
     """
     if not _native_mode_requires_rust():
         return None
+    from ..adapters.grok_hooks import clear_grok_hook_stdout_line, replay_grok_hook_stdout_line
+
+    clear_grok_hook_stdout_line()
     worker: HookWorker | None = None
     evidence_writer: RuntimeHookEvidenceWriter | None = None
     try:
@@ -78,15 +82,23 @@ def try_native_hook_authority(
             recording_only=recording_only_from_acked_snapshot(store),
         )
     finally:
-        if worker is not None:
-            close = getattr(worker, "close", None)
-            if callable(close):
-                close()
-        if evidence_writer is not None:
-            # A one-shot hook must not hold the harness response open for
-            # control-plane persistence. Persistence is best effort; the
-            # security result is already returned and never depends on it.
-            _ = evidence_writer.stop(timeout_seconds=_NATIVE_RECEIPT_DRAIN_TIMEOUT_SECONDS)
+        # Teardown must not replace a decision already written for the harness,
+        # and must not append another stdout line after that decision.
+        with redirect_stdout(io.StringIO()):
+            if worker is not None:
+                close = getattr(worker, "close", None)
+                if callable(close):
+                    with suppress(Exception):
+                        close()
+            if evidence_writer is not None:
+                # A one-shot hook must not hold the harness response open for
+                # control-plane persistence. Persistence is best effort; the
+                # security result is already returned and never depends on it.
+                with suppress(Exception):
+                    _ = evidence_writer.stop(timeout_seconds=_NATIVE_RECEIPT_DRAIN_TIMEOUT_SECONDS)
+        # Teardown may write or raise after the compact decision. Put that
+        # decision back on stdout so Grok's last-line parser still sees it.
+        replay_grok_hook_stdout_line()
 
 
 def route_native_hook(
@@ -133,8 +145,8 @@ def route_native_hook(
             if writer is not None:
                 with suppress(Exception):
                     writer.stop(timeout_seconds=_NATIVE_RECEIPT_DRAIN_TIMEOUT_SECONDS)
-        _emit(
-            "hook",
+        _emit_hook_response(
+            args,
             availability_harness_response(
                 payload,
                 harness=args.harness,
@@ -145,7 +157,6 @@ def route_native_hook(
                 home_dir=context.home_dir,
                 guard_home=context.guard_home,
             ),
-            True,
         )
         return 0
     from .commands_hook_native_pipeline import run_native_hook_pipeline
@@ -192,11 +203,12 @@ def route_native_hook(
             )
         # Availability responses are already harness wire documents. A hook
         # caller need not pass --json to receive a parseable deny response.
-        _emit("hook", native_result, True)
+        # Grok reads the last stdout line, so that document has to be one line.
+        _emit_hook_response(args, native_result)
         return 0
     except Exception:
-        _emit(
-            "hook",
+        _emit_hook_response(
+            args,
             availability_harness_response(
                 payload,
                 harness=args.harness,
@@ -208,6 +220,5 @@ def route_native_hook(
                 guard_home=context.guard_home,
                 recording_only=recording_only_from_acked_snapshot(store),
             ),
-            True,
         )
         return 0

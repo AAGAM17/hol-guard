@@ -254,6 +254,21 @@ _TRUST_SENSITIVE_STRING_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tupl
 )
 
 
+def emit_compact_hook_json(payload: PayloadDict) -> None:
+    """Write one redacted hook JSON line and flush it.
+
+    Harnesses that parse the last stdout line cannot use a pretty document,
+    because that document's last line is a closing brace.
+    """
+
+    sanitized = _coerce_object_dict(_sanitize_payload_for_output(payload, command="hook"))
+    rendered = json.dumps(sanitized, separators=(",", ":"), default=str)
+    redacted = redact_text(rendered)
+    sys.stdout.write(redacted.text)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
 def emit_guard_payload(command: str, payload: PayloadDict, as_json: bool) -> None:
     """Render Guard payloads as JSON or human-friendly rich output."""
 

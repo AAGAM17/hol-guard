@@ -95,6 +95,19 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert verify_index < upload_index
     assert "if" not in native_steps[upload_index]
 
+    coverage_build = next(
+        step for step in native_steps if step.get("name") == "Build coverage-instrumented native evaluators"
+    )
+    coverage_upload = next(
+        step
+        for step in native_steps
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+        and step["with"]["name"] == "pytest-native-command-coverage-evaluators"
+    )
+    assert coverage_build["run"] == "bash scripts/ci/build_native_coverage_evaluators.sh"
+    assert "rust/target/native-coverage/release/guard-command-source" in coverage_upload["with"]["path"]
+    assert "rust/target/native-coverage/release/hol-guard-runtime" in coverage_upload["with"]["path"]
+
     for planner, executor, version, env_name, count, width in (
         ("coverage-plan", "coverage", "3.12", "CI_PYTHON_VERSION", 128, 3),
     ):
@@ -116,12 +129,12 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
             step
             for step in execution_job["steps"]
             if step.get("uses", "").startswith("actions/download-artifact@")
-            and step["with"]["name"] == "pytest-native-command-evaluators"
+            and step["with"]["name"] == "pytest-native-command-coverage-evaluators"
         )
-        assert native_download["with"]["path"] == "rust/target/release"
+        assert native_download["with"]["path"] == "rust/target/native-coverage/release"
         commands = "\n".join(step.get("run", "") for step in execution_job["steps"])
-        assert "HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER=$GITHUB_WORKSPACE/" in commands
-        assert "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/" in commands
+        assert "HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/native-coverage/" in commands
+        assert "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/native-coverage/" in commands
         assert "HOL_GUARD_NATIVE_REGRESSION=1" in commands
         assert f"shard-%0{width}d.txt" in commands
         assert "python scripts/ci/pytest_shard.py" not in commands
@@ -131,6 +144,9 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     coverage_job = _workflow_job(workflow, "coverage", "duration-manifest-candidate")
     scheduling_job = "\n".join(step.get("run", "") for step in jobs["scheduling-sensitive"]["steps"])
     assert "--cov --cov-branch --cov-report=" in coverage_job
+    assert "LLVM_PROFILE_FILE:" in coverage_job
+    assert "rust-profraw/shard-" in coverage_job
+    assert "rust-profraw/*.profraw" in coverage_job
     assert "COVERAGE_CORE" not in coverage_job
     assert "-p pytest_coverage_core" not in coverage_job
     assert jobs["coverage"]["name"] == "coverage (3.12, ${{ matrix.shard-index }})"

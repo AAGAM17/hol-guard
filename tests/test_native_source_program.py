@@ -192,8 +192,12 @@ def test_depth_and_configuration_limits(compiler: Path, example: dict) -> None:
 
 
 def test_native_input_byte_budget(compiler: Path, example: dict) -> None:
-    result = subprocess.run(
+    expanded = subprocess.run(
         [str(compiler), "compile"], input=canonical(example) + b" " * (4 * 1024 * 1024), capture_output=True, timeout=60
+    )
+    assert expanded.returncode == 0
+    result = subprocess.run(
+        [str(compiler), "compile"], input=canonical(example) + b" " * (8 * 1024 * 1024), capture_output=True, timeout=60
     )
     assert result.returncode != 0
 

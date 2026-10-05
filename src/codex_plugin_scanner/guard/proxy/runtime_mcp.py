@@ -1177,6 +1177,13 @@ class RuntimeMcpGuardProxy:
         tool_definition = self._tool_catalog.get(tool_name, {})
         tool_description_value = tool_definition.get("description")
         tool_schema = tool_definition.get("inputSchema", tool_definition.get("input_schema"))
+        # The native canonical catalog page retains `name` inside each entry.
+        # Strip it before building the public artifact so the name-matched
+        # `mcp_tool_authority_hash` is not written into hash-affecting
+        # `metadata`; the full definition is bound via
+        # `runtime_private_metadata` below without changing the exact
+        # saved-block artifact hash.
+        public_tool_definition = {key: value for key, value in tool_definition.items() if key != "name"}
         catalog_generation = self._tool_catalog_generation
         catalog_state = self._tool_catalog_state
         catalog_fingerprint = _tool_catalog_fingerprint(
@@ -1202,7 +1209,7 @@ class RuntimeMcpGuardProxy:
             server_identity=self._session_server_identity(),
             tool_schema=tool_schema,
             tool_description=tool_description_value if isinstance(tool_description_value, str) else None,
-            tool_definition=tool_definition,
+            tool_definition=public_tool_definition,
             provider_catalog_hash=(
                 self.store.read_mcp_provider_authority_hash() if composio_requires_action_review(tool_name) else None
             ),

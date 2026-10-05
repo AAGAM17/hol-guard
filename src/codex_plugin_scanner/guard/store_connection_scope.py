@@ -123,11 +123,6 @@ def transaction(store: GuardStore, connection: sqlite3.Connection) -> Iterator[s
     notification: dict[str, object] | None = None
     try:
         yield connection
-        store_review_event_outbox_schema.finalize_review_event_payload_hashes(connection)
-        outbox_generation = store_review_event_outbox_schema.commit_review_event_transaction(
-            connection, initial_changes, profiler.record_commit
-        )
-        notification = store._take_policy_integrity_state_notification(connection)
     except BaseException as error:
         if isinstance(error, sqlite3.OperationalError) and sqlite_error_is_busy_locked(error):
             profiler.record_busy_locked()
@@ -136,6 +131,12 @@ def transaction(store: GuardStore, connection: sqlite3.Connection) -> Iterator[s
             connection.rollback()
         store._take_policy_integrity_state_notification(connection)
         raise
+    else:
+        store_review_event_outbox_schema.finalize_review_event_payload_hashes(connection)
+        outbox_generation = store_review_event_outbox_schema.commit_review_event_transaction(
+            connection, initial_changes, profiler.record_commit
+        )
+        notification = store._take_policy_integrity_state_notification(connection)
     finally:
         profiler.record_transaction((time.monotonic() - started) * 1000)
     store_review_event_outbox_schema.notify_review_event_wake(store.path, outbox_generation)

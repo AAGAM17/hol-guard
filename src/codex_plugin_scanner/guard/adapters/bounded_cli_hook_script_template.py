@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .bounded_cli_hook_script_native import BOUNDED_HOOK_NATIVE_TEMPLATE
+from .grok_hook_readiness_template import GROK_HOOK_READINESS_TEMPLATE
 from .hook_http_deadline import HOOK_HTTP_DEADLINE_TEMPLATE
 from .hook_input_reader import HOOK_INPUT_READER_TEMPLATE
 
@@ -423,6 +424,8 @@ def _apply_grok_wait(input_text: str, native: tuple[str, str, int]) -> tuple[str
     return text, stderr, 0 if allowed else exit_code
 
 
+__GROK_HOOK_READINESS__
+
 def _post_hook(input_text: str) -> tuple[str, str, int] | None:
     if time.monotonic() >= _HOOK_DEADLINE_MONOTONIC:
         return None
@@ -438,6 +441,14 @@ def _post_hook(input_text: str) -> tuple[str, str, int] | None:
         timeout = min(timeout, 1.0)
     if timeout <= 0:
         return None
+    if HARNESS == "grok" and _event_name(input_text) == "UserPromptSubmit":
+        deadline = min(_HOOK_DEADLINE_MONOTONIC, time.monotonic() + timeout)
+        input_text = _prepare_grok_prompt(input_text, host, port, token, deadline)
+        if input_text is None:
+            return None
+        timeout = deadline - time.monotonic()
+        if timeout <= 0:
+            return None
     parsed = _http_json(url, token, data=input_text.encode("utf-8"), timeout=timeout)
     if parsed is None:
         return None
@@ -472,5 +483,6 @@ if __name__ == "__main__":
     raise SystemExit(main())
 '''.replace("__HOOK_INPUT_READER__", HOOK_INPUT_READER_TEMPLATE)
     .replace("__HOOK_HTTP_DEADLINE__", HOOK_HTTP_DEADLINE_TEMPLATE)
+    .replace("__GROK_HOOK_READINESS__", GROK_HOOK_READINESS_TEMPLATE)
     .replace("__HOOK_NATIVE_RESPONSES__\n", BOUNDED_HOOK_NATIVE_TEMPLATE)
 )

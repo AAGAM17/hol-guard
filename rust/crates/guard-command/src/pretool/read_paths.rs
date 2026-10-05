@@ -20,10 +20,11 @@ fn matches_sensitive_system_root(lowered: &str) -> bool {
     sensitive_system_root_prefix(lowered).is_some()
 }
 
-/// A verified project may live under a sensitive root on macOS, where `$TMPDIR`
-/// canonicalizes from `/var/folders` to `/private/var/folders`. Containment in
-/// that project is not permission to read the root itself or its first child
-/// (`/var/tmp`, `/private/var/folders`).
+/// A verified project may live under `/var` or `/private/var` on macOS, where
+/// `$TMPDIR` canonicalizes from `/var/folders` to `/private/var/folders`.
+/// Containment there is not permission to read that root, its first child
+/// (`/var/tmp`, `/private/var/folders`), or `/etc`, `/dev`, `/proc`, `/sys`,
+/// or `/private/etc`.
 fn inside_verified_project_scope(canonical: &std::path::Path, root: Option<&str>) -> bool {
     let Some(root) = root else {
         return false;

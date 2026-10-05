@@ -1040,7 +1040,7 @@ def _cleanup_native(identity: Any, guard_home: Path) -> None:
         except (OSError, RuntimeError) as exc:
             cleanup_error = exc
         state_files = _native_state_files(guard_home)
-        if state_files:
+        if state_files or not stop_confirmed:
             remaining = deadline - time.monotonic()
             if remaining > 0:
                 stop_confirmed = False
@@ -1050,6 +1050,10 @@ def _cleanup_native(identity: Any, guard_home: Path) -> None:
                         state_dir=guard_home / "native-runtime",
                         environment=_native_cleanup_environment(),
                         timeout_seconds=min(_NATIVE_STOP_TIMEOUT_SECONDS, remaining),
+                        # This isolated probe owns the fixture Guard home. Retire
+                        # its verified clients too, so a retry can authenticate
+                        # idempotent containment after the generation disappears.
+                        retire_clients=True,
                         deadline_monotonic=deadline,
                     ):
                         cleanup_error = RuntimeError("native resident stop did not complete")

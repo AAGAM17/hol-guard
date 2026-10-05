@@ -11,6 +11,41 @@ fn reply(status: u16, body: &[u8]) -> Reply {
 }
 
 #[test]
+fn revoked_account_lease_refuses_before_transport() {
+    let mut credential = credential("subject-one");
+    credential.account_lease = Some(std::sync::Arc::new(std::sync::RwLock::new(false)));
+    let calls = Cell::new(0);
+    assert_eq!(
+        credential
+            .send_with(b"{}", |_, _, _| {
+                calls.set(calls.get() + 1);
+                None
+            })
+            .err(),
+        Some(GoogleDispatchError::Expired)
+    );
+    assert_eq!(calls.get(), 0);
+}
+
+#[test]
+fn bounded_transport_holds_lease_against_concurrent_revocation() {
+    let mut credential = credential("subject-one");
+    let active = std::sync::Arc::new(std::sync::RwLock::new(true));
+    credential.account_lease = Some(std::sync::Arc::clone(&active));
+    let calls = Cell::new(0);
+    let result = credential
+        .send_with(b"{}", |_, _, _| {
+            calls.set(calls.get() + 1);
+            assert!(active.try_write().is_err());
+            None
+        })
+        .unwrap();
+    assert!(matches!(result, RawSendAttempt::Unconfirmed));
+    assert_eq!(calls.get(), 1);
+    *active.try_write().unwrap() = false;
+}
+
+#[test]
 fn one_fixed_attempt_preserves_exact_body_and_returns_private_acknowledgement() {
     let calls = Cell::new(0);
     let body = br#"{"raw":"synthetic"}"#;

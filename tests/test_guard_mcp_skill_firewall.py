@@ -18,19 +18,25 @@ from codex_plugin_scanner.guard.runtime.mcp_skill_firewall import (
 )
 from codex_plugin_scanner.guard.runtime.skill_protection import build_skill_identity
 
-
 pytestmark = pytest.mark.usefixtures("native_context_digest")
 
 
 @pytest.mark.parametrize("kind", ("mcp_server_descriptor", "mcp_tool_descriptor"))
 def test_cached_mcp_identity_cannot_synthesize_descriptor_without_native_authority(
-    monkeypatch: pytest.MonkeyPatch, kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
 ) -> None:
     server = build_mcp_server_identity(
-        config_path=".mcp.json", command="npx", args=("demo@1.2.3",), transport="stdio", env={},
+        config_path=".mcp.json",
+        command="npx",
+        args=("demo@1.2.3",),
+        transport="stdio",
+        env={},
     )
     tool = build_mcp_tool_identity(
-        server_hash=server.identity_hash, tool_name="read", schema={"type": "object"},
+        server_hash=server.identity_hash,
+        tool_name="read",
+        schema={"type": "object"},
     )
     real_digest = native_context.native_context_digest
 

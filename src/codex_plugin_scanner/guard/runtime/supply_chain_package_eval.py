@@ -34,6 +34,7 @@ from ..stable_digest import stable_digest_hex
 from ..store import GuardStore
 from ..store_evidence import EvidenceRecord
 from ..text import ensure_terminal_punctuation as _ensure_terminal_punctuation
+from . import supply_chain_package_services as package_services
 from .js_semver import version_matches_js_selector
 from .lockfile_evaluation_support import (
     collect_lockfile_parse_results,
@@ -100,8 +101,6 @@ from .supply_chain_package_identity import (
     normalize_ecosystem,
     parse_package_identity,
 )
-
-from . import supply_chain_package_services as package_services
 from .supply_chain_package_services import (
     _normalize_package_name,
     _optional_string,
@@ -536,7 +535,9 @@ def _evaluate_package_request_artifact_uncached(
             bundle_response = None
             bundle_meta = None
     workspace_fingerprint = (
-        package_services._workspace_fingerprint(workspace_id, workspace_dir=workspace_dir, artifact=artifact, bundle_meta=bundle_meta)
+        package_services._workspace_fingerprint(
+            workspace_id, workspace_dir=workspace_dir, artifact=artifact, bundle_meta=bundle_meta
+        )
         if workspace_id is not None
         else None
     )
@@ -1319,12 +1320,14 @@ def _evaluate_with_cloud(
             None,
         )
     evaluate_url = package_services._normalized_supply_chain_evaluate_url(sync_url, workspace_id)
-    request_payload = package_services._build_request_payload(artifact=artifact,
-    targets=targets,
-    workspace_dir=workspace_dir,
-    workspace_fingerprint=workspace_fingerprint,
-    policy_version=bundle_meta["policy_hash"] if bundle_meta is not None else "local:none",
-    parse_text_result=_parse_lockfile_text_result,)
+    request_payload = package_services._build_request_payload(
+        artifact=artifact,
+        targets=targets,
+        workspace_dir=workspace_dir,
+        workspace_fingerprint=workspace_fingerprint,
+        policy_version=bundle_meta["policy_hash"] if bundle_meta is not None else "local:none",
+        parse_text_result=_parse_lockfile_text_result,
+    )
     request_data = json.dumps(request_payload).encode("utf-8")
 
     def evaluation_request(context: dict[str, object]) -> urllib.request.Request:
@@ -3128,8 +3131,10 @@ def _fallback_package_results(
                     or (
                         verify_registry_identity
                         and (requested_range := _optional_string(target.get("range"))) is not None
-                        and package_services._registry_resolved_target_version(target=target,
-                        requested_range=requested_range,)
+                        and package_services._registry_resolved_target_version(
+                            target=target,
+                            requested_range=requested_range,
+                        )
                         is not None
                     )
                 ),
@@ -3634,10 +3639,12 @@ def _external_tarball_dependency_result(
             ),
             None,
         )
-    scan, retained_download = package_services._scan_external_tarball(source_url,
-    retain_download=retain_download,
-    request_deadline=request_deadline,
-    guard_home=guard_home,)
+    scan, retained_download = package_services._scan_external_tarball(
+        source_url,
+        retain_download=retain_download,
+        request_deadline=request_deadline,
+        guard_home=guard_home,
+    )
     if scan is None:
         return (
             _heuristic_package_result(
@@ -4222,7 +4229,9 @@ def _resolved_target_version(
     exact_version = _exact_version(requested_range)
     if exact_version is not None:
         return exact_version
-    registry_version = package_services._registry_resolved_target_version(target=target, requested_range=requested_range)
+    registry_version = package_services._registry_resolved_target_version(
+        target=target, requested_range=requested_range
+    )
     if registry_version is not None:
         return registry_version
     return None
@@ -4491,8 +4500,6 @@ def _normalize_bundle_action(value: str) -> str:
     return "monitor"
 
 
-
-
 def _dict_items(value: object) -> tuple[dict[str, object], ...]:
     if not isinstance(value, (list, tuple)):
         return ()
@@ -4503,8 +4510,6 @@ def _first_dict_item(value: object) -> dict[str, object] | None:
     for item in _dict_items(value):
         return item
     return None
-
-
 
 
 def _split_namespace_name(value: str, *, ecosystem: str) -> tuple[str | None, str]:
@@ -4545,8 +4550,6 @@ def _requested_specifier_is_range(value: str | None, *, ecosystem: str) -> bool:
     if ecosystem not in _DIST_TAG_RANGE_ECOSYSTEMS:
         return False
     return re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", normalized) is not None
-
-
 
 
 def _decision_rank(value: str) -> int:
@@ -4600,8 +4603,6 @@ def _package_display_name(package: dict[str, object]) -> str:
     namespace = _optional_string(package.get("namespace"))
     name = _optional_string(package.get("name")) or "package"
     return f"{namespace}/{name}" if namespace is not None else name
-
-
 
 
 def _target_candidate_names(target: dict[str, object]) -> tuple[str, ...]:

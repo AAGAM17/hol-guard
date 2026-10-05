@@ -5,18 +5,23 @@ classification, target redaction, profile detection, and sensitive surfaces are
 owned by the bundled Rust runtime; native failure never means a safe/non-browser
 match.
 """
+
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal
 
 from ..models import GuardArtifact
 from ..native_context import context_browser_mcp
 
 BrowserIntent = Literal[
-    "browser.navigation", "browser.inspect", "browser.interact",
-    "browser.transfer", "browser.privileged",
+    "browser.navigation",
+    "browser.inspect",
+    "browser.interact",
+    "browser.transfer",
+    "browser.privileged",
 ]
 BrowserMethod = Literal["navigate", "read", "interact", "submit", "upload", "download", "privileged"]
 BrowserProfileMode = Literal["isolated", "dedicated", "remote-debugging", "shared", "unknown"]
@@ -62,44 +67,62 @@ def is_browser_mcp_server(artifact: GuardArtifact) -> bool:
 
 
 def classify_browser_operation(operation: str, server_name: str = "") -> BrowserIntent | None:
-    return context_browser_mcp({
-        "operation": "classify", "tool_operation": operation, "server_name": server_name,
-    })["intent"]
+    return context_browser_mcp(
+        {
+            "operation": "classify",
+            "tool_operation": operation,
+            "server_name": server_name,
+        }
+    )["intent"]
 
 
 def normalize_browser_mcp_intent(
     artifact: GuardArtifact,
     arguments: object,
 ) -> GuardBrowserAutomationIntentV1 | None:
-    model = context_browser_mcp({
-        "operation": "normalize", "artifact": _artifact_dto(artifact),
-        "arguments": _argument_dto(arguments),
-    })["intent"]
+    model = context_browser_mcp(
+        {
+            "operation": "normalize",
+            "artifact": _artifact_dto(artifact),
+            "arguments": _argument_dto(arguments),
+        }
+    )["intent"]
     if model is None:
         return None
-    return GuardBrowserAutomationIntentV1(**{
-        **model,
-        "sensitive_surface_flags": tuple(model["sensitive_surface_flags"]),
-        "volatile_fields_dropped": tuple(model["volatile_fields_dropped"]),
-    })
+    return GuardBrowserAutomationIntentV1(
+        **{
+            **model,
+            "sensitive_surface_flags": tuple(model["sensitive_surface_flags"]),
+            "volatile_fields_dropped": tuple(model["volatile_fields_dropped"]),
+        }
+    )
 
 
 def browser_intent_display_target(
     intent: GuardBrowserAutomationIntentV1,
     arguments: object,
 ) -> str:
-    return context_browser_mcp({
-        "operation": "display",
-        "intent": {
-            "intent": intent.intent, "operation": intent.operation,
-            "target_domain": intent.target_domain, "target_origin": intent.target_origin,
-        },
-        "arguments": _argument_dto(arguments),
-    })["target"]
+    return context_browser_mcp(
+        {
+            "operation": "display",
+            "intent": {
+                "intent": intent.intent,
+                "operation": intent.operation,
+                "target_domain": intent.target_domain,
+                "target_origin": intent.target_origin,
+            },
+            "arguments": _argument_dto(arguments),
+        }
+    )["target"]
 
 
 __all__ = [
-    "BrowserIntent", "BrowserMethod", "BrowserProfileMode", "GuardBrowserAutomationIntentV1",
-    "is_browser_mcp_server", "classify_browser_operation", "normalize_browser_mcp_intent",
+    "BrowserIntent",
+    "BrowserMethod",
+    "BrowserProfileMode",
+    "GuardBrowserAutomationIntentV1",
     "browser_intent_display_target",
+    "classify_browser_operation",
+    "is_browser_mcp_server",
+    "normalize_browser_mcp_intent",
 ]

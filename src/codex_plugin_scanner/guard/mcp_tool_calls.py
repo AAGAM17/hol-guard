@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -16,7 +15,12 @@ from .config import GuardConfig
 from .local_cli_trust import apply_local_mcp_extension_decision
 from .mcp_fresh_approval import fresh_local_tool_approval_matches, fresh_lookup_preserves_claim
 from .models import GuardAction, GuardArtifact, GuardReceipt, PolicyDecision
-from .native_context import context_mcp_tool_approval_hash, context_mcp_tool_policy, context_mcp_tool_risk, context_opaque_digest
+from .native_context import (
+    context_mcp_tool_approval_hash,
+    context_mcp_tool_policy,
+    context_mcp_tool_risk,
+    context_opaque_digest,
+)
 from .receipts import build_receipt
 from .runtime.approval_context import (
     approval_context_tokens_validation_reason,
@@ -48,7 +52,6 @@ from .runtime.mcp_protection import (
 from .runtime.mcp_skill_firewall import enrich_artifact_with_mcp_skill_firewall, scanner_evidence_for_mcp_skill_firewall
 from .store import GuardStore, browser_mcp_exact_match_context
 from .temporary_mcp_approvals import runtime_grant_selectors
-
 
 _NON_EXECUTED_TOOL_CALL_TAXONOMY: Mapping[GuardAction, tuple[str, str]] = {
     "review": ("runtime_tool_call_review_required", "runtime tool call awaiting review"),
@@ -322,7 +325,9 @@ def build_tool_call_hash(
         "source_scope": artifact.source_scope,
         "transport": artifact.transport,
         "arguments": arguments,
-        "config": None if config is None else {
+        "config": None
+        if config is None
+        else {
             **_tool_call_configuration(config),
             "managed_policy_hash": config.managed_policy_hash,
             "managed_policy_status": config.managed_policy_status,
@@ -332,9 +337,7 @@ def build_tool_call_hash(
     }
     if config is not None:
         request["extension_control_digest"] = current_extension_control_binding_digest()
-    token_or_digest, _risk_categories = context_mcp_tool_approval_hash(
-        request, expect_token=config is not None
-    )
+    token_or_digest, _risk_categories = context_mcp_tool_approval_hash(request, expect_token=config is not None)
     return token_or_digest
 
 
@@ -343,9 +346,17 @@ def _tool_call_configuration(config: GuardConfig) -> dict[str, object]:
     return {
         field: getattr(config, field)
         for field in (
-            "mode", "default_action", "artifact_actions", "publisher_actions", "harness_actions",
-            "risk_actions", "harness_risk_actions", "security_level", "protection_posture",
-            "protection_posture_explicit", "managed_locked_settings",
+            "mode",
+            "default_action",
+            "artifact_actions",
+            "publisher_actions",
+            "harness_actions",
+            "risk_actions",
+            "harness_risk_actions",
+            "security_level",
+            "protection_posture",
+            "protection_posture_explicit",
+            "managed_locked_settings",
         )
     }
 
@@ -674,8 +685,6 @@ def _evaluate_current_tool_call(
     )
 
 
-
-
 def _tool_call_decision_with_reuse(
     current: ToolCallDecision,
     reuse: ApprovalReuseDecision,
@@ -720,14 +729,14 @@ def _tool_call_decision_with_reuse(
     )
 
 
-
-
 def tool_call_risk_signals(artifact: GuardArtifact, arguments: object) -> tuple[str, ...]:
     return _risk_signals_from_categories(artifact, arguments, tool_call_risk_categories(artifact, arguments))
 
 
 def _risk_signals_from_categories(
-    artifact: GuardArtifact, arguments: object, categories: tuple[str, ...],
+    artifact: GuardArtifact,
+    arguments: object,
+    categories: tuple[str, ...],
 ) -> tuple[str, ...]:
     browser_intent = normalize_browser_mcp_intent(artifact, arguments)
     signals_by_category: dict[str, str] = {
@@ -764,8 +773,6 @@ def tool_call_risk_categories(artifact: GuardArtifact, arguments: object) -> tup
         {"name": artifact.name, "command": artifact.command, "metadata": dict(artifact.metadata)},
         arguments,
     )
-
-
 
 
 def tool_call_risk_summary(artifact: GuardArtifact, arguments: object) -> str:
@@ -957,5 +964,3 @@ def block_tool_call(
 
 
 _dedupe = dedupe_preserving_order
-
-

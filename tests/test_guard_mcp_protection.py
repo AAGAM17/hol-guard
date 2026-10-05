@@ -14,7 +14,6 @@ from codex_plugin_scanner.guard.mcp_tool_calls import (
     build_tool_call_hash,
     evaluate_tool_call,
     tool_call_risk_categories,
-    tool_call_risk_signals,
 )
 from codex_plugin_scanner.guard.models import GuardArtifact, HarnessDetection, PolicyDecision
 from codex_plugin_scanner.guard.runtime.mcp_protection import (
@@ -34,11 +33,12 @@ def _native_mcp_identity_authority(native_context_digest: Path) -> None:
     home = native_context.context_digest_guard_home()
     assert home is not None, "MCP identity controls require a bound guard home"
     result = native_context.native_context_digest(
-        "canonical_sha256", {"material": None, "prefix": None},
-        guard_home=home, timeout_seconds=5.0,
+        "canonical_sha256",
+        {"material": None, "prefix": None},
+        guard_home=home,
+        timeout_seconds=5.0,
     )
     assert result is not None and result["status"] == "ok"
-
 
 
 def test_mcp_server_identity_hashes_args_and_sorts_env_keys() -> None:
@@ -84,11 +84,14 @@ def test_mcp_transport_normalization_preserves_approval_binding() -> None:
     ],
 )
 def test_mcp_schema_identity_preserves_large_integer_boundaries(
-    bound: int, expected_schema_hash: str,
+    bound: int,
+    expected_schema_hash: str,
 ) -> None:
     identity = build_mcp_tool_identity(
-        server_hash="bound-server", tool_name="read",
-        schema={"type": "integer", "maximum": bound}, description="Read",
+        server_hash="bound-server",
+        tool_name="read",
+        schema={"type": "integer", "maximum": bound},
+        description="Read",
     )
 
     assert identity.schema_hash == expected_schema_hash
@@ -362,24 +365,34 @@ def test_evaluate_tool_call_honors_strict_mcp_risk_action(tmp_path) -> None:
     assert decision.source == "policy"
 
 
-
 @pytest.mark.parametrize(
     "projection",
     [
         None,
         {"action": "future-action", "source": "policy", "summary_code": "risk", "risk_categories": []},
         {"action": "allow", "source": "future-source", "summary_code": "no_risk", "risk_categories": []},
-        {"action": "allow", "source": "policy", "summary_code": "risk", "risk_categories": ["secret_access", "secret_access"]},
+        {
+            "action": "allow",
+            "source": "policy",
+            "summary_code": "risk",
+            "risk_categories": ["secret_access", "secret_access"],
+        },
     ],
 )
 def test_evaluate_tool_call_rejects_unavailable_or_malformed_native_policy(
-    tmp_path, monkeypatch, projection,
+    tmp_path,
+    monkeypatch,
+    projection,
 ) -> None:
     from codex_plugin_scanner.guard import native_context
 
     artifact = build_tool_call_artifact(
-        harness="codex", server_name="workspace", tool_name="summarize",
-        source_scope="project", config_path=".mcp.json", transport="stdio",
+        harness="codex",
+        server_name="workspace",
+        tool_name="summarize",
+        source_scope="project",
+        config_path=".mcp.json",
+        transport="stdio",
     )
     native_digest = native_context.native_context_digest
 
@@ -393,8 +406,11 @@ def test_evaluate_tool_call_rejects_unavailable_or_malformed_native_policy(
         evaluate_tool_call(
             store=GuardStore(tmp_path / "guard-home"),
             config=GuardConfig(guard_home=tmp_path / "guard-home", workspace=tmp_path / "workspace"),
-            artifact=artifact, artifact_hash="tool-hash", arguments={},
+            artifact=artifact,
+            artifact_hash="tool-hash",
+            arguments={},
         )
+
 
 def test_evaluate_tool_call_honors_gentle_mcp_risk_action(tmp_path) -> None:
     artifact = build_tool_call_artifact(
@@ -1227,7 +1243,8 @@ def test_mcp_server_identity_splits_pip_style_single_equals_versions() -> None:
 
 @pytest.mark.parametrize("kind", ["mcp_server_identity", "mcp_tool_identity"])
 def test_native_identity_failure_cannot_bind_mcp_approval(
-    kind: str, monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from codex_plugin_scanner.guard import native_context
 
@@ -1242,16 +1259,18 @@ def test_native_identity_failure_cannot_bind_mcp_approval(
     with pytest.raises(ValueError, match=f"native_{kind}_unavailable"):
         if kind == "mcp_server_identity":
             build_mcp_server_identity(
-                config_path=".mcp.json", command="npx", args=("demo@1.2.3",),
+                config_path=".mcp.json",
+                command="npx",
+                args=("demo@1.2.3",),
                 transport="stdio",
             )
         else:
             build_mcp_tool_identity(
-                server_hash="server", tool_name="inspect", schema={"type": "object"},
+                server_hash="server",
+                tool_name="inspect",
+                schema={"type": "object"},
                 description=None,
             )
-
-
 
 
 def test_mcp_tool_schema_flags_file_command_and_url_arguments() -> None:
@@ -1472,11 +1491,14 @@ def test_mcp_tool_schema_mismatch_warns_when_benign_name_has_dangerous_schema() 
     assert tool_call_risk_categories(artifact, {}) == ("command_execution", "tool_schema_mismatch")
 
 
-@pytest.mark.parametrize(("index", "expected"), [
-    ("0", ("command_execution", "tool_schema_mismatch")),
-    ("5", ()),
-    ("missing", ()),
-])
+@pytest.mark.parametrize(
+    ("index", "expected"),
+    [
+        ("0", ("command_execution", "tool_schema_mismatch")),
+        ("5", ()),
+        ("missing", ()),
+    ],
+)
 def test_tool_risk_resolves_only_existing_array_reference(index, expected) -> None:
     artifact = build_tool_call_artifact(
         harness="codex",
@@ -1491,5 +1513,3 @@ def test_tool_risk_resolves_only_existing_array_reference(index, expected) -> No
         },
     )
     assert tool_call_risk_categories(artifact, {}) == expected
-
-

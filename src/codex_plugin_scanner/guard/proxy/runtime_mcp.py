@@ -61,6 +61,12 @@ from ..mcp_tool_calls import (
     tool_call_risk_summary,
 )
 from ..models import GuardAction, GuardArtifact, HarnessDetection
+from ..native_execution import (
+    mcp_stdio_session_close_native,
+    mcp_stdio_session_open_native,
+    mcp_stdio_session_recv_native,
+    mcp_stdio_session_send_native,
+)
 from ..package_execution_context import build_package_execution_context
 from ..policy.engine import build_decision_v2
 from ..runtime.approval_context import (
@@ -81,12 +87,6 @@ from ..runtime.surface_server import GuardSurfaceRuntime
 from ..store import GuardStore
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _tool_decision_scanner_evidence
 from ._env import _build_scrubbed_env
-from ..native_execution import (
-    mcp_stdio_session_close_native,
-    mcp_stdio_session_open_native,
-    mcp_stdio_session_recv_native,
-    mcp_stdio_session_send_native,
-)
 from .stdio import (
     ProxyIoTimeoutError,
     _blocked_tool_response,
@@ -472,9 +472,7 @@ class _NativeMcpChildIo:
             message = json.loads(text)
         except json.JSONDecodeError as exc:  # pragma: no cover - defensive
             raise RuntimeError("native MCP session received a non-JSON frame") from exc
-        result = mcp_stdio_session_send_native(
-            self._session_id, message, guard_home=self._guard_home
-        )
+        result = mcp_stdio_session_send_native(self._session_id, message, guard_home=self._guard_home)
         if result is None or result.get("status") != "sent":
             raise RuntimeError("native MCP session send failed")
         return len(data)
@@ -502,9 +500,7 @@ class _NativeMcpChildIo:
             timeout_seconds=timeout_seconds,
         )
         if result is None:
-            return _ChildOutputFrame(
-                error=RuntimeError("native MCP session recv transport failure")
-            )
+            return _ChildOutputFrame(error=RuntimeError("native MCP session recv transport failure"))
         status = str(result.get("status", ""))
         if status == "event":
             payload = result.get("payload")
@@ -517,19 +513,16 @@ class _NativeMcpChildIo:
         if status == "timeout":
             if required:
                 return _ChildOutputFrame(
-                    error=ProxyIoTimeoutError(
-                        source="child_response", timeout_seconds=timeout_seconds
-                    )
+                    error=ProxyIoTimeoutError(source="child_response", timeout_seconds=timeout_seconds)
                 )
             return None
         # "error" status — surface as a frame error so the relay fails closed.
         code = result.get("payload")
-        return _ChildOutputFrame(
-            error=RuntimeError(f"native MCP session error: {code}")
-        )
+        return _ChildOutputFrame(error=RuntimeError(f"native MCP session error: {code}"))
 
     def readline(self) -> str:  # pragma: no cover - compatibility sink
         return ""
+
 
 class _NativeChildProcess:
     """Popen-shaped adapter over a resident-owned MCP stdio session.
@@ -583,18 +576,17 @@ class _NativeChildProcess:
         )
         if result is not None and result.get("status") == "exited":
             exit_code = result.get("exit_code")
-            self._returncode = (
-                exit_code if isinstance(exit_code, int) and not isinstance(exit_code, bool) else -1
-            )
+            self._returncode = exit_code if isinstance(exit_code, int) and not isinstance(exit_code, bool) else -1
         return self._returncode
 
-    def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
+    def wait(self, timeout: float | None = None) -> int:
         self.close()
         return self.returncode
 
     @property
     def returncode(self) -> int | None:
         return self.poll()
+
 
 def _canonical_tool_catalog_entry(name: str, definition: Mapping[str, object]) -> dict[str, object]:
     """Normalize internal aliases while retaining every advertised field."""
@@ -995,21 +987,13 @@ class RuntimeMcpGuardProxy:
         native_session_id: str | None = None
         try:
             launch_env, child_env, _configured_env = self._prepare_launch()
-            executable = resolved_runtime_launch_executable(
-                self._active_runtime_launch_identity
-            )
+            executable = resolved_runtime_launch_executable(self._active_runtime_launch_identity)
             # `executable` is None for an unverified launch identity; argv must
             # stay a strict list[str] to serialize into `Vec<String>`. A None
             # means the resident cannot take the child — treat it as
             # unavailable (`opened=None`) and keep the Python pipe transport.
-            argv = (
-                [executable] + [str(a) for a in self.command[1:]]
-                if isinstance(executable, str)
-                else None
-            )
-            native_session_id = (
-                f"mcp-{self.harness}-{self.server_name}-{os.getpid()}-{uuid4().hex[:8]}"
-            )
+            argv = [executable] + [str(a) for a in self.command[1:]] if isinstance(executable, str) else None
+            native_session_id = f"mcp-{self.harness}-{self.server_name}-{os.getpid()}-{uuid4().hex[:8]}"
             opened = (
                 mcp_stdio_session_open_native(
                     argv,
@@ -1027,9 +1011,7 @@ class RuntimeMcpGuardProxy:
                 # status is terminal — never fall back to the Python transport
                 # on a real open failure (ADR 0006: native failure is terminal).
                 if opened.get("status") != "opened":
-                    raise RuntimeError(
-                        f"native MCP session open failed: {opened.get('payload')}"
-                    )
+                    raise RuntimeError(f"native MCP session open failed: {opened.get('payload')}")
                 if not self._verify_post_spawn_launch_identity(launch_env=launch_env):
                     raise RuntimeError(
                         "Guard runtime MCP server launch identity changed while the child process was starting."
@@ -1066,9 +1048,7 @@ class RuntimeMcpGuardProxy:
             if process is not None:
                 _quarantine_process(process)
             elif native_session_id is not None:
-                mcp_stdio_session_close_native(
-                    native_session_id, guard_home=self.context.guard_home
-                )
+                mcp_stdio_session_close_native(native_session_id, guard_home=self.context.guard_home)
             self._clear_launch_identity()
             raise
 

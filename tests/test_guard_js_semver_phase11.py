@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 
-from codex_plugin_scanner.guard.runtime import supply_chain_package_eval as supply_chain_package_eval_module
 from codex_plugin_scanner.guard.runtime import supply_chain_package_services as package_services
 from codex_plugin_scanner.guard.runtime.js_semver import (
     highest_js_version_for_selector,

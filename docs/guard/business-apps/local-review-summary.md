@@ -5,8 +5,8 @@ finite `workspace_review_local_summary` operation. Its request accepts only a
 request ID; the caller cannot supply facts, paths, account identity or policy.
 Use the existing authenticated resident transport and canonical JSON framing.
 
-The operation loads the existing private workspace-review snapshot under the
-authority transition lock. Native origin authentication, frozen-input digest,
+The operation loads the existing private workspace-review snapshot and checks
+current policy before and after loading. Native origin authentication, frozen-input digest,
 canonical encoding and current policy checks remain in the existing loader.
 The response schema is `guard-native-local-business-review-summary.v1`.
 
@@ -24,7 +24,8 @@ does not consume a decision, reserve an attempt or return an execution grant.
 
 Older runtimes do not advertise this capability. The caller must treat an
 unsupported operation, missing business snapshot, changed input or policy,
-invalid origin, and busy transition lock as unavailable summary data.
+and invalid origin as unavailable summary data. This read does not occupy the
+exclusive authority transition lock used for decision and enrollment mutations.
 
 The local UI consumer, verified account presentation, private content preview
 and business-worker enrollment remain separate work. This capability alone

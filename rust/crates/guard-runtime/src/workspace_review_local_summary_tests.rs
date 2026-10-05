@@ -61,7 +61,7 @@ fn changed_private_snapshot_refuses_summary_instead_of_exporting_unverified_fact
 }
 
 #[test]
-fn summary_obeys_transition_fence_and_rejects_caller_supplied_facts() {
+fn summary_does_not_acquire_transition_write_lock_and_rejects_caller_supplied_facts() {
     let fixture = Fixture::new("business-local-summary-fence");
     fixture.stage(&input(b"LOCAL_BODY", &[]));
     let result =
@@ -69,7 +69,7 @@ fn summary_obeys_transition_fence_and_rejects_caller_supplied_facts() {
             Ok(summary(&fixture))
         })
         .unwrap();
-    assert_eq!(result.unwrap_err(), "native_approval_authority_busy");
+    assert!(result.is_ok());
     let forged = json!({"operation":"workspace_review_local_summary",
         "request":{"request_id":"business-test","recipient_count":0}});
     assert!(crate::resident_ops::evaluate_resident_bytes(
@@ -77,4 +77,68 @@ fn summary_obeys_transition_fence_and_rejects_caller_supplied_facts() {
         Some(&fixture.store)
     )
     .is_err());
+}
+
+#[test]
+fn generic_pending_request_has_a_finite_unavailable_summary_error() {
+    let root = super::super::super::tests::test_root("business-summary-generic");
+    let key = super::super::super::tests::install_test_key(&root, 71);
+    let store = super::super::super::PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+    let snapshot = super::super::super::tests::signed_snapshot(1, &key, &root);
+    store
+        .push(&json!({"schema":"guard-policy-snapshot-push.v1","snapshot":snapshot}))
+        .unwrap();
+    let directory = root.join("workspace-review-requests");
+    crate::resident_state::ensure_private_directory(&directory, true).unwrap();
+    write(
+        &root,
+        &directory.join("generic-request.json"),
+        &json!({
+            "schema":"guard-native-workspace-review-request.v1","version":1,
+            "request_id":"generic-request","status":"pending",
+            "action":{},"intent":{},"revision":{},"policy":{}
+        }),
+    );
+    let operation = json!({"operation":"workspace_review_local_summary",
+        "request":{"request_id":"generic-request"}});
+    let error = crate::resident_ops::evaluate_resident_bytes(
+        &canonical_json_bytes(&operation).unwrap(),
+        Some(&store),
+    )
+    .unwrap_err();
+    assert_eq!(error, "native_local_business_summary_unavailable");
+    let response: Value = serde_json::from_slice(&crate::resident_protocol::safe_error_response(
+        &error, false,
+    ))
+    .unwrap();
+    assert_eq!(
+        response["error"],
+        "native_local_business_summary_unavailable"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn policy_change_during_summary_loading_refuses_the_stale_projection() {
+    let fixture = Fixture::new("business-local-summary-policy-change");
+    fixture.stage(&input(b"LOCAL_POLICY_BOUND_BODY", &[]));
+    let mut updated = fixture.snapshot.clone();
+    updated.generation += 1;
+    updated.policy_digest = policy_digest(&updated).unwrap();
+    updated.integrity.mac = integrity_mac(&updated, &fixture.key).unwrap();
+    let result =
+        super::super::super::workspace_review_local_summary::build_with_policy_change_test_hook(
+            &fixture.store,
+            "business-test",
+            || {
+                fixture
+                    .store
+                    .push(&json!({"schema":"guard-policy-snapshot-push.v1", "snapshot":updated}))
+                    .unwrap();
+            },
+        );
+    assert_eq!(
+        result.unwrap_err(),
+        "native_local_business_summary_unavailable"
+    );
 }

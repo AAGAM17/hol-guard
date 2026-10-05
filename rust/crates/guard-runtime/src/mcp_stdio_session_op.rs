@@ -156,11 +156,24 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
         return err_result("mcp_session_exists");
     }
     if registry.len() >= MAX_SESSIONS {
-        drop(registry);
-        let mut s = session;
-        let mut c = child;
-        s.close(&mut c);
-        return err_result("mcp_session_registry_full");
+        registry.retain(|_, arc| match arc.try_lock() {
+            Ok(mut g) => {
+                let SessionEntry { session, child } = &mut *g;
+                let dead = matches!(child.try_wait(), Ok(Some(_))) && session.is_drained_and_idle();
+                if dead {
+                    session.close(child);
+                }
+                !dead
+            }
+            Err(_) => true,
+        });
+        if registry.len() >= MAX_SESSIONS {
+            drop(registry);
+            let mut s = session;
+            let mut c = child;
+            s.close(&mut c);
+            return err_result("mcp_session_registry_full");
+        }
     }
     registry.insert(
         request.session_id.clone(),

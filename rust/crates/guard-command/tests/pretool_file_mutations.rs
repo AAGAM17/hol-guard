@@ -4,8 +4,8 @@ use serde_json::json;
 
 #[test]
 fn routine_file_mutations_do_not_inherit_sensitive_or_directory_delete_access() {
-    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/file-mutations");
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/file-mutations");
     std::fs::create_dir_all(&fixtures).unwrap();
     let mut attempt = 0;
     let root = loop {

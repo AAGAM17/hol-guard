@@ -245,4 +245,4 @@ def test_native_preflight_stops_known_contract_failures_before_shard_fanout() ->
     assert "--ignore" not in check["run"] and "--deselect" not in check["run"]
     assert check["env"]["HOL_GUARD_NATIVE_REGRESSION"] == "1"
     assert document["jobs"]["coverage-plan"]["needs"] == "native-command-evaluators"
-    assert len(document["jobs"]["coverage"]["strategy"]["matrix"]["shard-index"]) == 128
+    assert len(document["jobs"]["coverage"]["strategy"]["matrix"]["shard-index"]) == 58

@@ -58,6 +58,11 @@ for (const state of ["with-sql", "empty"] as const) {
     await mount(page, () => summary, false, state);
     await expect(page.getByText("Saved business requests could not be loaded.")).toBeVisible();
     await expect(page.getByText("Other Guard requests remain available.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh queue", exact: true })).toBeVisible();
+    if (state === "empty") {
+      await expect(page.getByText("All clear", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Nothing to review", { exact: true })).toHaveCount(0);
+    }
     if (state === "with-sql") {
       await expect(page.getByRole("region", { name: "Saved business action details" })).toBeVisible();
     }

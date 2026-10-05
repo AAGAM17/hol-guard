@@ -12553,7 +12553,16 @@ function useBusinessQueueReadFailure() {
 function BusinessQueueReadNotice() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { role: "alert", className: "rounded-xl border border-brand-attention/30 bg-brand-attention/[0.06] p-4", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-brand-attention", children: "Saved business requests could not be loaded." }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark", children: "Other Guard requests remain available. The saved business queue is incomplete; refresh to try again." })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark", children: "Other Guard requests remain available. The saved business queue is incomplete; refresh to try again." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: () => window.location.reload(),
+        className: "mt-3 min-h-11 rounded-lg border border-brand-attention/30 px-3 text-sm font-semibold text-brand-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+        children: "Refresh queue"
+      }
+    )
   ] });
 }
 const GUARD_ACTIONS$1 = [
@@ -29873,7 +29882,7 @@ function ReviewCodexResumePanel({ resume, onRetry }) {
     ] })
   ] });
 }
-function ReviewEmptyState({ runtime, resolutionMessage, codexResume, onRetryResume }) {
+function ReviewEmptyState({ runtime, resolutionMessage, codexResume, onRetryResume, queueReadIncomplete = false }) {
   const protectionHealth = runtime === null ? unavailableProtectionHealth() : protectionHealthFor(runtime);
   const presentation = useProtectionPresentationState(protectionHealth);
   if (runtime === null) {
@@ -29894,7 +29903,7 @@ function ReviewEmptyState({ runtime, resolutionMessage, codexResume, onRetryResu
   const protectionLabel = presentation === "checking" ? "Checking" : protectionHealth.label;
   const protectionDetail = presentation === "checking" ? "Guard is confirming local protection. This takes a moment." : protectionHealth.detail;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
+    !queueReadIncomplete && /* @__PURE__ */ jsxRuntimeExports.jsx(
       GuardHero,
       {
         status: heroStatus,
@@ -29906,7 +29915,7 @@ function ReviewEmptyState({ runtime, resolutionMessage, codexResume, onRetryResu
       ProofStrip,
       {
         items: [
-          { label: "Queue", value: "All clear", tone: "green" },
+          { label: "Queue", value: queueReadIncomplete ? "Incomplete" : "All clear", tone: queueReadIncomplete ? "slate" : "green" },
           { label: "Protection", value: protectionLabel, tone: protectionHealth.state === "protected" ? "green" : "slate" },
           { label: "Apps protected", value: protectedAppsCount, tone: protectedAppsCount > 0 ? "green" : "slate" }
         ]
@@ -31282,8 +31291,19 @@ function ReviewWorkspace(props) {
     filteredRequests
   ]);
   if (requests.length === 0) {
-    if (businessQueueReadFailed) return /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessQueueReadNotice, {});
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(ReviewEmptyState, { runtime: props.runtime, resolutionMessage: props.resolutionMessage, codexResume: props.codexResume, onRetryResume: props.onRetryResume });
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
+      businessQueueReadFailed && /* @__PURE__ */ jsxRuntimeExports.jsx(BusinessQueueReadNotice, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ReviewEmptyState,
+        {
+          runtime: props.runtime,
+          resolutionMessage: props.resolutionMessage,
+          codexResume: props.codexResume,
+          onRetryResume: props.onRetryResume,
+          queueReadIncomplete: businessQueueReadFailed
+        }
+      )
+    ] });
   }
   const activeItem = activeRequest ?? filteredRequests[0] ?? requests[0];
   const progressIndex = filteredRequests.findIndex((r) => r.request_id === activeItem.request_id);

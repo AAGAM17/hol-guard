@@ -242,8 +242,12 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   ]);
 
   if (requests.length === 0) {
-    if (businessQueueReadFailed) return <BusinessQueueReadNotice />;
-    return <ReviewEmptyState runtime={props.runtime} resolutionMessage={props.resolutionMessage} codexResume={props.codexResume} onRetryResume={props.onRetryResume} />;
+    return <div className="space-y-6">
+      {businessQueueReadFailed && <BusinessQueueReadNotice />}
+      <ReviewEmptyState runtime={props.runtime} resolutionMessage={props.resolutionMessage}
+        codexResume={props.codexResume} onRetryResume={props.onRetryResume}
+        queueReadIncomplete={businessQueueReadFailed} />
+    </div>;
   }
 
   const activeItem = activeRequest ?? filteredRequests[0] ?? requests[0];

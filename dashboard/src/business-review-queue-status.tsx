@@ -18,5 +18,9 @@ export function BusinessQueueReadNotice() {
   return <div role="alert" className="rounded-xl border border-brand-attention/30 bg-brand-attention/[0.06] p-4">
     <p className="text-sm font-semibold text-brand-attention">Saved business requests could not be loaded.</p>
     <p className="mt-1 text-sm text-brand-dark">Other Guard requests remain available. The saved business queue is incomplete; refresh to try again.</p>
+    <button type="button" onClick={() => window.location.reload()}
+      className="mt-3 min-h-11 rounded-lg border border-brand-attention/30 px-3 text-sm font-semibold text-brand-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+      Refresh queue
+    </button>
   </div>;
 }

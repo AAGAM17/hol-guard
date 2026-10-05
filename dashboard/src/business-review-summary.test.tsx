@@ -4,7 +4,9 @@ import { parseBusinessReviewSummary } from "./business-review-summary";
 import { BusinessReviewSummaryDetails } from "./business-review-summary-panel";
 import { requestResolutionBlockReason } from "./approval-center-utils";
 import { groupDuplicates, isBulkApprovableGroup } from "./queue-state";
-import type { GuardApprovalRequest } from "./guard-types";
+import type { GuardApprovalRequest, GuardRuntimeSnapshot } from "./guard-types";
+import { ReviewEmptyState } from "./review-states";
+import { freeStateSnapshot } from "../e2e/fixture-states";
 
 export const sampleSummary = {
   schema: "guard-native-local-business-review-summary.v1", version: 1, request_id: "business-test",
@@ -41,3 +43,23 @@ const displayOnlyRequest: GuardApprovalRequest = {
 assert.match(requestResolutionBlockReason(displayOnlyRequest) ?? "", /read-only/);
 assert.equal(isBulkApprovableGroup(groupDuplicates([displayOnlyRequest])[0]), false);
 console.log("Native projection: individual and bulk decision controls disabled PASS");
+
+const emptyStateRuntime = { ...freeStateSnapshot,
+  cloud_pairing_state: { ...freeStateSnapshot.cloud_pairing_state, plan_id: null }
+} as GuardRuntimeSnapshot;
+const incompleteMarkup = renderToStaticMarkup(<ReviewEmptyState
+  runtime={emptyStateRuntime} resolutionMessage="SQL decision saved."
+  codexResume={null} queueReadIncomplete />);
+assert.match(incompleteMarkup, /SQL decision saved\./);
+assert.match(incompleteMarkup, /Incomplete/);
+assert.doesNotMatch(incompleteMarkup, /Nothing to review|All clear/);
+const retryMarkup = renderToStaticMarkup(<ReviewEmptyState
+  runtime={emptyStateRuntime} resolutionMessage={null}
+  queueReadIncomplete onRetryResume={() => {}}
+  codexResume={{ request_id: "sql-request", operation_id: "resume-test", harness: "codex",
+    resolution_action: "allow", strategy: null, supported: true, status: "failed",
+    thread_id: null, reason: "local_service_unavailable", message: null, last_error: null,
+    attempt_count: 1, created_at: null, updated_at: null, last_attempt_at: null, sent_at: null }} />);
+assert.match(retryMarkup, /Retry resume/);
+assert.doesNotMatch(retryMarkup, /Nothing to review|All clear/);
+console.log("Incomplete native queue: SQL resolution and resume controls preserved PASS");

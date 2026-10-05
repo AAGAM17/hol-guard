@@ -53,6 +53,8 @@ pub(crate) mod workspace_review_business;
 pub(crate) mod workspace_review_claim_index;
 #[path = "workspace_review_decision.rs"]
 pub(crate) mod workspace_review_decision;
+#[path = "workspace_review_local_summary.rs"]
+pub(crate) mod workspace_review_local_summary;
 #[path = "workspace_review_request.rs"]
 pub(crate) mod workspace_review_request;
 #[path = "workspace_review_secure_state.rs"]

@@ -1,6 +1,20 @@
 """Authenticated workspace preparation for the generated Grok prompt client."""
 
 GROK_HOOK_READINESS_TEMPLATE = """
+def _post_grok_prompt(input_text, host, port, token, timeout):
+    deadline = min(_HOOK_DEADLINE_MONOTONIC, time.monotonic() + timeout)
+    for attempt in range(2):
+        prepared = _prepare_grok_prompt(input_text, host, port, token, deadline)
+        remaining = deadline - time.monotonic()
+        if prepared is None or remaining <= 0:
+            return None
+        result = _http_json(_loopback_url(host, port, "/v1/hooks/grok"), token,
+                            data=prepared.encode("utf-8"), timeout=remaining)
+        if (result is None or result.get("decision") != "block"
+                or result.get("reason_code") != "native_prompt_unavailable" or attempt == 1):
+            return result
+    return None
+
 def _prepare_grok_prompt(input_text, host, port, token, deadline):
     payload = _json_object(input_text)
     if payload is None:

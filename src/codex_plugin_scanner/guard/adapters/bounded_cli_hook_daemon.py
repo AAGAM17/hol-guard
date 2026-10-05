@@ -16,7 +16,7 @@ from ..daemon.hook_availability_policy import hook_event_pauses_when_unavailable
 from ..private_file_io import read_private_regular_text
 from .bounded_cli_hook_envelope import _canonical_event_token, _event_name, _json_object
 from .bounded_cli_hook_failure import grok_observe_event
-from .bounded_hook_http import post_hook_json, prepare_grok_prompt
+from .bounded_hook_http import post_grok_prompt, post_hook_json
 from .zcode_hooks import zcode_authority_block_reason, zcode_hook_process_exit
 
 _MAX_HOOK_RESPONSE_BYTES = 1_000_000
@@ -413,7 +413,7 @@ def try_daemon_hook(
     except (OSError, urllib.error.URLError, TimeoutError, ValueError):
         return None
     if grok_prompt:
-        prepared_input = prepare_grok_prompt(
+        parsed = post_grok_prompt(
             endpoint,
             token,
             input_text,
@@ -421,17 +421,15 @@ def try_daemon_hook(
             deadline=transport_deadline,
             max_bytes=_MAX_HOOK_RESPONSE_BYTES,
         )
-        if prepared_input is None:
-            return None
-        input_text = prepared_input
-    parsed = post_hook_json(
-        endpoint,
-        token,
-        input_text.encode("utf-8"),
-        opener=opener,
-        deadline=transport_deadline,
-        max_bytes=_MAX_HOOK_RESPONSE_BYTES,
-    )
+    else:
+        parsed = post_hook_json(
+            endpoint,
+            token,
+            input_text.encode("utf-8"),
+            opener=opener,
+            deadline=transport_deadline,
+            max_bytes=_MAX_HOOK_RESPONSE_BYTES,
+        )
     if parsed is None:
         return None
     if harness.strip().lower().replace("_", "-") == "hermes":

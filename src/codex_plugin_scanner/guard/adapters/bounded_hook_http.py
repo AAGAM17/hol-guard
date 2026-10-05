@@ -9,6 +9,37 @@ import urllib.request
 from urllib.parse import urlparse
 
 
+def post_grok_prompt(
+    endpoint: str,
+    token: str,
+    input_text: str,
+    *,
+    opener: urllib.request.OpenerDirector,
+    deadline: float,
+    max_bytes: int,
+) -> dict[str, object] | None:
+    """Retry one unavailable prompt review, never a semantic denial or the deadline."""
+    for attempt in range(2):
+        if time.monotonic() >= deadline:
+            return None
+        prepared = prepare_grok_prompt(
+            endpoint, token, input_text, opener=opener, deadline=deadline, max_bytes=max_bytes
+        )
+        if prepared is None:
+            return None
+        result = post_hook_json(
+            endpoint, token, prepared.encode("utf-8"), opener=opener, deadline=deadline, max_bytes=max_bytes
+        )
+        if (
+            result is None
+            or result.get("decision") != "block"
+            or result.get("reason_code") != "native_prompt_unavailable"
+            or attempt == 1
+        ):
+            return result
+    return None
+
+
 def post_hook_json(
     endpoint: str,
     token: str,

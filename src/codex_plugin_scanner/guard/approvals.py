@@ -773,6 +773,7 @@ def apply_approval_resolution(
     )
     persisted_rule = persist_policy is True or (persist_policy is None and scope != "artifact")
     local_once_fallback = False
+    native_policy_written = False
     if persisted_rule:
         store.ensure_policy_integrity_ready_for_write(
             harness=decision.harness if decision.harness != "*" else None,
@@ -780,6 +781,7 @@ def apply_approval_resolution(
             now=resolved_at,
         )
         store.upsert_policy(decision, resolved_at, approval_gate_grant=resolved_gate_grant)
+        native_policy_written = True
         if action == "allow" and requires_local_once_approval(request):
             local_once_fallback = _record_local_once_approval(
                 store,
@@ -803,6 +805,7 @@ def apply_approval_resolution(
             resolved_at,
             approval_gate_grant=resolved_gate_grant,
         )
+        native_policy_written = True
         if action == "allow" and requires_local_once_approval(request):
             local_once_fallback = _record_local_once_approval(
                 store,
@@ -880,6 +883,13 @@ def apply_approval_resolution(
             resolved_at,
             approval_gate_grant=resolved_gate_grant,
         )
+        native_policy_written = True
+
+    if native_policy_written:
+        # The waiting hook observes this resolution and then revalidates the
+        # original action against the acknowledged native snapshot. Keep the
+        # request pending until that snapshot is current.
+        _await_saved_approval_native_snapshot(store)
 
     resolution_harness = None if scope == "global" else str(request["harness"])
     resolve_matching_scope_requests = (
@@ -1877,6 +1887,20 @@ def _now() -> str:
 def _approval_once_policy_expires_at(resolved_at: str) -> str:
     parsed = datetime.fromisoformat(resolved_at.replace("Z", "+00:00"))
     return (parsed + _APPROVAL_ONCE_POLICY_TTL).isoformat()
+
+
+_LOCAL_APPROVAL_NATIVE_PUBLICATION_TIMEOUT_SECONDS = 8.0
+
+
+def _await_saved_approval_native_snapshot(store: GuardStore) -> None:
+    """Publish the saved decision before a waiting hook can observe it."""
+
+    from .native_policy_snapshot import await_registered_native_policy_publication
+
+    await_registered_native_policy_publication(
+        Path(store.guard_home),
+        timeout_seconds=_LOCAL_APPROVAL_NATIVE_PUBLICATION_TIMEOUT_SECONDS,
+    )
 
 
 def _record_local_once_approval(

@@ -388,6 +388,26 @@ def notify_native_policy_mutation(guard_home: Path) -> None:
         publisher.request_publish()
 
 
+def await_registered_native_policy_publication(guard_home: Path, *, timeout_seconds: float) -> bool:
+    """Refresh publishers that are already serving a snapshot and wait for the new ack.
+
+    A publisher that has never acknowledged a snapshot is left alone. Waiting
+    on it would block local decisions in a process that cannot publish.
+    """
+
+    if timeout_seconds <= 0:
+        return False
+    with _PUBLISHER_LOCK:
+        publishers = tuple(_PUBLISHERS.get(_publisher_key(guard_home), ()))
+    awaiting = [publisher for publisher in publishers if not publisher.closed and publisher.is_ready()]
+    if not awaiting:
+        return True
+    for publisher in awaiting:
+        publisher.request_publish()
+    deadline = time.monotonic() + timeout_seconds
+    return any(publisher.wait_until_ready(deadline) for publisher in awaiting)
+
+
 def local_cli_publication_status(guard_home: Path, revision: int) -> dict[str, object]:
     """Inspect existing publishers without starting a runtime or claiming readiness."""
     with _PUBLISHER_LOCK:
@@ -433,6 +453,7 @@ __all__ = [
     "native_policy_snapshot",
     "native_policy_snapshot_v3",
     "native_policy_verifier_key_id",
+    "await_registered_native_policy_publication",
     "notify_native_policy_mutation",
     "provision_native_policy_verifier_key",
     "snapshot_bytes_v3",

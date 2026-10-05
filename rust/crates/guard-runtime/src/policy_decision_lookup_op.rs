@@ -994,10 +994,17 @@ fn hash_partition_probes(
     if let Some(legacy_idx) = legacy_index {
         // `artifact_hash is not null` keeps the legacy probe disjoint from the
         // nullable probe (Python embeds the guard; the Rust port dropped it).
-        let mut legacy_predicate =
-            format!("{base_predicate} and artifact_hash is not null and artifact_hash not like ?");
+        // The legacy partial indexes carry `artifact_hash not like
+        // 'guard-approval-context:v1:%'` in their WHERE clause. SQLite only
+        // honors INDEXED BY on a partial index when the query WHERE implies
+        // the index predicate textually — a bound parameter cannot be proven
+        // equal, so the pattern must be embedded as a literal (it is a
+        // compile-time constant, never interpolated data). Matches Python
+        // `_hash_partition_probes` verbatim.
+        let mut legacy_predicate = format!(
+            "{base_predicate} and artifact_hash is not null and artifact_hash not like '{APPROVAL_CONTEXT_SQL_PATTERN}'"
+        );
         let mut legacy_parameters = base_parameters.clone();
-        legacy_parameters.push(Value::from(APPROVAL_CONTEXT_SQL_PATTERN));
         for h in &distinct {
             legacy_predicate.push_str(" and artifact_hash <> ?");
             legacy_parameters.push(Value::from(*h));

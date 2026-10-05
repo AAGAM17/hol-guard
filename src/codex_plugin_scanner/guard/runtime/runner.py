@@ -3344,12 +3344,10 @@ def sync_guard_events(
                 last_done = event
                 continue
             break
-        if last_done is None:
-            break
-        cursor = (str(last_done["occurred_at"]), str(last_done["event_id"]))
-        if cursor == after:
-            break
-        after = cursor
+        if last_done is not None:
+            cursor = (str(last_done["occurred_at"]), str(last_done["event_id"]))
+            if cursor != after:
+                after = cursor
     summary: dict[str, object] = {"synced_at": synced_at, "events": total_events, "accepted": total_accepted}
     store.set_sync_payload("guard_events_v1_summary", summary, synced_at)
     return summary

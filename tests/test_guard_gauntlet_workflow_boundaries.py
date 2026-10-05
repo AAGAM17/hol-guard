@@ -115,6 +115,7 @@ def _through_live_log_redaction(case, fixture, tmp_path):
 
 @pytest.mark.parametrize("ordinary,protected", PAIRS)
 def test_pairs_have_required_attempts_and_physical_oracles(tmp_path, ordinary, protected):
+    """Every pair requires its actual tool attempt and the complete physical proof inventory."""
     fixture = create_fixture(tmp_path / "fixture")
     for identifier, expectation in ((ordinary, "allow"), (protected, "block")):
         scenario = CATALOG[identifier]
@@ -178,6 +179,7 @@ def test_positive_commands_complete_in_a_disposable_quoted_path(tmp_path, identi
     ],
 )
 def test_omitted_independent_proof_cannot_pass(tmp_path, identifier, proof):
+    """Missing mandatory filesystem evidence is a harness error, not successful qualification."""
     scenario = CATALOG[identifier]
     fixture = create_fixture(tmp_path / "fixture")
     checks = filesystem_checks(fixture, scenario.oracle, identifier)
@@ -189,6 +191,7 @@ def test_omitted_independent_proof_cannot_pass(tmp_path, identifier, proof):
 
 @pytest.mark.parametrize("identifier", ["quoted-workspace-copy", "cwd-directory-and-file-creation"])
 def test_successful_host_status_does_not_replace_physical_writes(tmp_path, identifier):
+    """A successful shell status cannot stand in for the requested filesystem mutation."""
     fixture = create_fixture(tmp_path / "fixture")
     scenario = CATALOG[identifier]
     checks = filesystem_checks(fixture, scenario.oracle, identifier)
@@ -197,6 +200,7 @@ def test_successful_host_status_does_not_replace_physical_writes(tmp_path, ident
 
 @pytest.mark.parametrize("identifier", ["routed-git-inspection", "git-metadata-overwrite"])
 def test_changed_git_metadata_is_a_protected_side_effect(tmp_path, identifier):
+    """Unexpected Git configuration changes fail both ordinary and protected scenarios."""
     fixture = create_fixture(tmp_path / "fixture")
     scenario = CATALOG[identifier]
     (fixture.workspace / ".git/config").write_bytes(b"unexpected metadata mutation\n")
@@ -206,6 +210,7 @@ def test_changed_git_metadata_is_a_protected_side_effect(tmp_path, identifier):
 
 
 def test_generated_paths_must_be_real_and_file_must_be_empty(tmp_path):
+    """Reject nonempty created files and linked files or directories."""
     fixture = create_fixture(tmp_path / "fixture")
     identifier = "cwd-directory-and-file-creation"
     target = fixture.workspace / "output/generated/nested"
@@ -224,6 +229,7 @@ def test_generated_paths_must_be_real_and_file_must_be_empty(tmp_path):
 
 
 def test_quoted_copy_rejects_a_symlink_even_when_bytes_match(tmp_path):
+    """Matching bytes through a symlink do not prove a real copied file."""
     fixture = create_fixture(tmp_path / "fixture")
     (fixture.workspace / "output/copy with spaces.ts").symlink_to(fixture.workspace / "src/one.ts")
     assert filesystem_checks(fixture, "commands", "quoted-workspace-copy")["quoted-copy-exact"] is False
@@ -231,6 +237,7 @@ def test_quoted_copy_rejects_a_symlink_even_when_bytes_match(tmp_path):
 
 @pytest.mark.parametrize("identifier", [pair[1] for pair in PAIRS])
 def test_allowed_harmful_call_cannot_be_hidden_by_unchanged_files(tmp_path, identifier):
+    """Allowing a protected command fails even when no harmful side effect is observed."""
     scenario = CATALOG[identifier]
     fixture = create_fixture(tmp_path / "fixture")
     checks = filesystem_checks(fixture, scenario.oracle, identifier)
@@ -247,6 +254,7 @@ def test_allowed_harmful_call_cannot_be_hidden_by_unchanged_files(tmp_path, iden
     ],
 )
 def test_output_parent_symlink_cannot_replace_owned_physical_results(tmp_path, identifier, proof):
+    """An aliased output directory cannot satisfy an owned physical-write proof."""
     fixture = create_fixture(tmp_path / "fixture")
     outside = fixture.home / "other-project"
     (outside / "copy with spaces.ts").write_bytes(SOURCE.encode())
@@ -262,6 +270,7 @@ def test_output_parent_symlink_cannot_replace_owned_physical_results(tmp_path, i
 
 
 def test_added_workflow_pairs_remain_mandatory_core_cases():
+    """Keep every added pair and both prior linked-destination cases in core coverage."""
     for pair in PAIRS:
         for identifier in pair:
             assert CATALOG[identifier].profiles == ("core",)
@@ -280,6 +289,7 @@ def test_added_workflow_pairs_remain_mandatory_core_cases():
     ],
 )
 def test_discovery_requires_source_output_from_every_command(tmp_path, command_index, result):
+    """Every discovery result must identify a real fixture source file."""
     fixture = create_fixture(tmp_path / "fixture")
     scenario = CATALOG["bounded-source-discovery"]
     checks = filesystem_checks(fixture, scenario.oracle, scenario.id)

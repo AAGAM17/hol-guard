@@ -89,10 +89,12 @@ def test_partial_rerun_retains_previous_manifest_without_publishing(tmp_path: Pa
         [
             "bash",
             "-c",
-            build["run"].replace(
+            build["run"]
+            .replace(
                 "scripts/ci/build_pytest_duration_manifest.py",
                 str(ROOT / "scripts" / "ci" / "build_pytest_duration_manifest.py"),
-            ),
+            )
+            .replace("${{ needs.coverage-plan.outputs.shard-count }}", "128"),
         ],
         cwd=tmp_path,
         env={"GITHUB_OUTPUT": str(output)},

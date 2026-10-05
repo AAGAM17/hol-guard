@@ -189,6 +189,7 @@ pub struct LiveMcpSession {
     /// Buffered client→server responses keyed by `response_key(id)` that
     /// arrived while awaiting a different correlation.
     buffered_client: ResponseBuffers,
+    peeked: Option<Value>,
     closed: bool,
 }
 
@@ -292,6 +293,7 @@ impl LiveMcpSession {
                 _drain: Some(drain),
                 buffered_child: ResponseBuffers::default(),
                 buffered_client: ResponseBuffers::default(),
+                peeked: None,
                 closed: false,
             },
             child,
@@ -322,18 +324,26 @@ impl LiveMcpSession {
     ) -> Result<Option<SessionEvent>, SessionReadError> {
         let deadline = Instant::now() + timeout;
         loop {
-            let now = Instant::now();
-            let msg = if now >= deadline {
-                match self.inbox.try_recv() {
-                    Ok(msg) => msg,
-                    Err(mpsc::TryRecvError::Empty) => return Ok(None),
-                    Err(mpsc::TryRecvError::Disconnected) => return Err(SessionReadError::Eof),
-                }
+            let msg = if let Some(msg) = self.peeked.take() {
+                msg
             } else {
-                match self.inbox.recv_timeout(deadline - now) {
-                    Ok(msg) => msg,
-                    Err(mpsc::RecvTimeoutError::Timeout) => return Ok(None),
-                    Err(mpsc::RecvTimeoutError::Disconnected) => return Err(SessionReadError::Eof),
+                let now = Instant::now();
+                if now >= deadline {
+                    match self.inbox.try_recv() {
+                        Ok(msg) => msg,
+                        Err(mpsc::TryRecvError::Empty) => return Ok(None),
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            return Err(SessionReadError::Eof);
+                        }
+                    }
+                } else {
+                    match self.inbox.recv_timeout(deadline - now) {
+                        Ok(msg) => msg,
+                        Err(mpsc::RecvTimeoutError::Timeout) => return Ok(None),
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            return Err(SessionReadError::Eof);
+                        }
+                    }
                 }
             };
             if !is_rpc_message(&msg) {
@@ -405,8 +415,22 @@ impl LiveMcpSession {
     /// True once the drain pump has exited and the inbox is empty —
     /// `try_recv` reports `Disconnected`, not merely `Empty`. Used to reap a
     /// dead session without discarding undelivered frames still in flight.
-    pub fn is_drained_and_idle(&self) -> bool {
-        !self.closed && matches!(self.inbox.try_recv(), Err(mpsc::TryRecvError::Disconnected))
+    pub fn is_drained_and_idle(&mut self) -> bool {
+        if self.closed
+            || self.peeked.is_some()
+            || !self.buffered_child.map.is_empty()
+            || !self.buffered_client.map.is_empty()
+        {
+            return false;
+        }
+        match self.inbox.try_recv() {
+            Ok(msg) => {
+                self.peeked = Some(msg);
+                false
+            }
+            Err(mpsc::TryRecvError::Empty) => false,
+            Err(mpsc::TryRecvError::Disconnected) => true,
+        }
     }
 }
 

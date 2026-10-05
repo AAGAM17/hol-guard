@@ -469,8 +469,11 @@ mod tests {
         assert!(source.len() > MAX_PROGRAM_BYTES);
         assert!(source.len() <= MAX_SOURCE_CATALOG_BYTES);
 
-        let output = compile_catalog(&[source.as_slice()], TRUST_MAP)
-            .expect("a valid source catalog above 4 MiB must compile");
-        assert_eq!(output.catalog_projection_kind, "complete");
+        let output = compile_addition(&[source.as_slice()], TRUST_MAP)
+            .expect("a valid source catalog above 4 MiB must compile as an addition");
+        assert_eq!(
+            output.catalog_projection_kind,
+            "addition-only-not-release-catalog"
+        );
     }
 }

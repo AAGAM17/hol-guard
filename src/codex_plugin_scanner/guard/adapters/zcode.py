@@ -352,8 +352,10 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                 hooks = {}
             payload["hooks"] = hooks
             enabled_history[str(path)] = self._recorded_enabled_for(previous_state, path, hooks)
-            if hooks.get("enabled") is False and self._hooks_have_managed_entries(hooks):
-                raise ValueError("ZCode user hooks are disabled; explicitly enable them before installing Guard.")
+            if hooks.get("enabled") is False and self._hooks_have_handlers(hooks):
+                raise ValueError(
+                    f"ZCode user hooks are disabled in {path.name}; explicitly enable them before installing Guard."
+                )
             self._sync_managed_hook_groups(hooks, managed_hook_command)
             # Each ZCode surface only registers hooks when its own config
             # opts in with hooks.enabled: true; without the flag entries
@@ -444,23 +446,26 @@ class ZCodeHarnessAdapter(HarnessAdapter):
 
         surfaces: list[tuple[Path, dict[str, object]]] = []
         for path in (self._config_path(context), self._file_config_path(context)):
+            if not path.is_file():
+                if path == self._config_path(context):
+                    surfaces.append((path, {}))
+                # An absent setting.json means the npm CLI has not migrated
+                # yet; creating it here would mark that migration done and
+                # strand the user's config.json settings. The CLI's own
+                # migration copies Guard's config.json hooks over instead.
+                continue
             _ensure_path_within_root(self._zcode_home_dir(context), path, label="ZCode")
-            if path.is_file():
-                try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as error:
-                    raise ValueError(f"ZCode config must be a JSON object: {path.name}") from error
-            else:
-                payload = {}
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as error:
+                raise ValueError(f"ZCode config must be a JSON object: {path.name}") from error
+            if not isinstance(payload, dict):
+                raise ValueError(f"ZCode config must be a JSON object: {path.name}")
             if path == self._config_path(context):
-                if not isinstance(payload, dict):
-                    raise ValueError("ZCode config must be a JSON object.")
                 if not isinstance(payload.get("mcp"), dict):
                     payload["mcp"] = {}
                 if not isinstance(payload.get("plugins"), dict):
                     payload["plugins"] = {}
-            elif not isinstance(payload, dict):
-                payload = {}
             surfaces.append((path, payload))
         return surfaces
 
@@ -540,14 +545,15 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                     hooks["enabled"] = original.get("value")
                 elif not original["present"] and hooks.get("enabled") is True:
                     hooks.pop("enabled", None)
-                # The CLI's own default skeleton ships a root-only hooks
-                # object; drop it only when Guard introduced the flag.
-                if (
-                    candidate == self._file_config_path(context)
-                    and not original["present"]
-                    and not self._hooks_have_handlers(hooks)
-                ):
-                    hooks = {}
+                if not original["present"]:
+                    # Guard introduced the enabled flag here; keep the user's
+                    # own root settings (timeoutMs, maxOutputBytes, the CLI
+                    # skeleton's empty events) and drop only Guard's litter.
+                    events = hooks.get(ZCODE_HOOKS_EVENTS_KEY)
+                    if isinstance(events, dict) and not events:
+                        hooks.pop(ZCODE_HOOKS_EVENTS_KEY, None)
+                    if not hooks:
+                        hooks = {}
                 if json.dumps(hooks, sort_keys=True) == hooks_before:
                     continue
                 if not hooks:

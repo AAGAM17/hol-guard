@@ -114,6 +114,41 @@ def test_invalid_config_json_is_rejected(tmp_path, contents):
     assert json.loads(settings.read_text()) == {"ui": {"theme": "dark"}}
 
 
+@pytest.mark.parametrize("contents", ["[]", "null", "not json"])
+def test_invalid_file_config_is_never_clobbered(tmp_path, contents):
+    context = _ctx(tmp_path)
+    _write_cli_config(context.home_dir, {})
+    settings = _file_config(context.home_dir)
+    settings.write_text(contents)
+    with pytest.raises(ValueError):
+        ZCodeHarnessAdapter().prepare_install(context)
+    assert settings.read_text() == contents
+
+
+def test_absent_file_config_is_not_created(tmp_path):
+    """The CLI's one-time migration must stay available to carry hooks over."""
+
+    context = _ctx(tmp_path)
+    config = _write_cli_config(context.home_dir, {})
+    ZCodeHarnessAdapter().install(context)
+    settings = _file_config(context.home_dir)
+    assert not settings.exists()
+    assert _managed_handlers(json.loads(config.read_text()))
+
+
+def test_uninstall_preserves_user_root_hook_settings(tmp_path):
+    context = _ctx(tmp_path)
+    _write_cli_config(context.home_dir, {})
+    settings = _file_config(context.home_dir)
+    settings.write_text(json.dumps({"hooks": {"timeoutMs": 9000, "events": {}}}))
+    adapter = ZCodeHarnessAdapter()
+    adapter.install(context)
+    adapter.uninstall(context)
+
+    hooks = json.loads(settings.read_text())["hooks"]
+    assert hooks == {"timeoutMs": 9000}
+
+
 def test_uninstall_restores_each_surface(tmp_path):
     context = _ctx(tmp_path)
     config = _write_cli_config(context.home_dir, {"hooks": {"enabled": False}})
@@ -169,6 +204,25 @@ def test_uninstall_handles_removed_file_config(tmp_path):
     assert not settings.exists()
     # Install scaffolds the mcp/plugins sections; uninstall preserves them.
     assert json.loads(config.read_text()) == {"legacy": True, "mcp": {}, "plugins": {}}
+
+
+def test_install_does_not_enable_disabled_user_hooks_without_managed_entries(tmp_path):
+    """A user's deliberately disabled hooks are never force-enabled."""
+
+    context = _ctx(tmp_path)
+    config = _write_cli_config(
+        context.home_dir,
+        {
+            "hooks": {
+                "enabled": False,
+                "events": {"PreToolUse": [{"matcher": "Read", "hooks": [{"type": "command", "command": "echo mine"}]}]},
+            }
+        },
+    )
+    before = config.read_bytes()
+    with pytest.raises(ValueError, match="user hooks are disabled"):
+        ZCodeHarnessAdapter().prepare_install(context)
+    assert config.read_bytes() == before
 
 
 def test_install_does_not_enable_disabled_user_hooks(tmp_path):

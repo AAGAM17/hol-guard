@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -12,8 +14,9 @@ import pytest
 
 from ci.gauntlet.catalog import load_catalog
 from ci.gauntlet.evidence import assess_case
-from ci.gauntlet.fixtures import SOURCE, create_fixture, filesystem_checks
+from ci.gauntlet.fixtures import SOURCE, SOURCE_FILES, create_fixture, filesystem_checks
 from ci.gauntlet.proofs import required_checks
+from ci.gauntlet.runner import _fixture_replacements, read_case_logs
 from tests.test_guard_gauntlet import observed_case
 
 PAIRS = (
@@ -47,12 +50,14 @@ def test_judge_utilities_import_without_an_installed_guard_runtime():
     )
 
 
-def _case(scenario, checks):
+def _case(scenario, checks, outputs=None):
     """Assemble synthetic judge input only; this is not a live transcript."""
     case = observed_case()
     case["events"], case["guard_observations"] = [], []
     for index, command in enumerate(scenario.commands):
         row = observed_case(command, blocked=scenario.expectation == "block")
+        if outputs is not None:
+            row["events"][2]["result"] = {"content": [{"type": "text", "text": outputs[index].decode()}]}
         for event in row["events"][:-1]:
             if event["type"] == "model_turn":
                 event["calls"][0]["id"] = f"call-{index}"
@@ -65,6 +70,46 @@ def _case(scenario, checks):
     case["events"].append({"type": "agent_end", "terminal": True})
     case["native_routes"] = {"native_resident": len(case["guard_observations"])}
     case["filesystem"] = checks
+    return case
+
+
+def _through_live_log_redaction(case, fixture, tmp_path):
+    """Route synthetic events through the same log boundary as real OMP evidence."""
+    raw_events = []
+    for event in case["events"]:
+        if event["type"] == "model_turn":
+            raw_events.append(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "stopReason": event["stop_reason"],
+                        "content": [{"type": "toolCall", **call} for call in event["calls"]],
+                    },
+                }
+            )
+        elif event["type"] == "agent_end":
+            raw_events.append({"type": "agent_end", "isTerminal": event["terminal"]})
+        else:
+            raw_events.append(event)
+    observations = []
+    for row in case["guard_observations"]:
+        raw = json.dumps(row["input"], sort_keys=True)
+        observations.append(
+            {
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"input", "input_sha256", "observed_input_sha256"}
+                },
+                "input_json": raw,
+                "input_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+            }
+        )
+    raw_log, guard_log = tmp_path / "host.ndjson", tmp_path / "guard.ndjson"
+    raw_log.write_text("\n".join(json.dumps(event) for event in raw_events))
+    guard_log.write_text("\n".join(json.dumps(row) for row in observations))
+    read_case_logs(case, raw_log, guard_log, _fixture_replacements(fixture))
     return case
 
 
@@ -107,7 +152,10 @@ def test_positive_commands_complete_in_a_disposable_quoted_path(tmp_path, identi
         outputs.append(result.stdout)
     checks = filesystem_checks(fixture, scenario.oracle, scenario.id)
     assert all(checks.values()), checks
-    assert assess_case(scenario, _case(scenario, checks))["outcome"] == "pass"
+    case = _through_live_log_redaction(_case(rendered, checks, outputs), fixture, tmp_path)
+    commands = [event["args"]["command"] for event in case["events"] if event["type"] == "tool_execution_start"]
+    assert commands == list(scenario.commands)
+    assert assess_case(scenario, case)["outcome"] == "pass"
     if identifier == "stdin-sed-transformation":
         assert outputs == [SOURCE.replace("fixture", "public").encode()]
     elif identifier == "quoted-workspace-copy":
@@ -116,6 +164,7 @@ def test_positive_commands_complete_in_a_disposable_quoted_path(tmp_path, identi
         assert outputs[-1].decode().strip() == str(fixture.workspace)
     elif identifier == "bounded-source-discovery":
         assert all(b"src/one.ts" in output for output in outputs[:2])
+        assert set(outputs[2].decode().splitlines()) & SOURCE_FILES.keys()
 
 
 @pytest.mark.parametrize(
@@ -217,3 +266,25 @@ def test_added_workflow_pairs_remain_mandatory_core_cases():
         for identifier in pair:
             assert CATALOG[identifier].profiles == ("core",)
     assert {"linked-destination-copy", "linked-destination-touch"} <= CATALOG.keys()
+
+
+@pytest.mark.parametrize("command_index", range(3))
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        {},
+        {"content": []},
+        {"content": [{"type": "text", "text": ""}]},
+        {"content": [{"type": "text", "text": "src/nonexistent.ts\n"}]},
+    ],
+)
+def test_discovery_requires_source_output_from_every_command(tmp_path, command_index, result):
+    fixture = create_fixture(tmp_path / "fixture")
+    scenario = CATALOG["bounded-source-discovery"]
+    checks = filesystem_checks(fixture, scenario.oracle, scenario.id)
+    case = _case(scenario, checks, [b"src/one.ts\n"] * 3)
+    assert assess_case(scenario, case)["outcome"] == "pass"
+    ends = [event for event in case["events"] if event["type"] == "tool_execution_end"]
+    ends[command_index]["result"] = result
+    assert assess_case(scenario, case)["outcome"] == "task-incomplete"

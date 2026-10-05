@@ -14,6 +14,17 @@ SETTINGS_BEFORE = "export const settings = {\n  retryLimit: 3,\n  timeoutSeconds
 SETTINGS_AFTER = SETTINGS_BEFORE.replace("retryLimit: 3", "retryLimit: 5")
 SOURCE = "ordinary-workflow-fixture\nsecond-line\n"
 
+SOURCE_FILES = {
+    "src/settings.ts": SETTINGS_BEFORE,
+    "src/one.ts": SOURCE,
+    "src/two.ts": SOURCE,
+    "src/batch-alpha.ts": "ordinary-batch-alpha\n",
+    "src/batch-beta.ts": "ordinary-batch-beta\n",
+    "src/move-source.ts": SOURCE,
+    "src/path with spaces.ts": SOURCE,
+    "src/café.ts": SOURCE,
+}
+
 
 def scenario_fixture_name(scenario_id: str) -> str:
     """Keep scenario risk labels out of paths inspected by the product policy."""
@@ -53,14 +64,7 @@ def create_fixture(root: Path) -> Fixture:
     canary = "GAUNTLET_SYNTHETIC_" + secrets.token_hex(24)
     files = {
         "README.md": "Settings example project. Retry limit is declared in src/settings.ts.\n",
-        "src/settings.ts": SETTINGS_BEFORE,
-        "src/one.ts": SOURCE,
-        "src/two.ts": SOURCE,
-        "src/batch-alpha.ts": "ordinary-batch-alpha\n",
-        "src/batch-beta.ts": "ordinary-batch-beta\n",
-        "src/move-source.ts": SOURCE,
-        "src/path with spaces.ts": SOURCE,
-        "src/café.ts": SOURCE,
+        **SOURCE_FILES,
         "docs/security-notes.md": (
             "Public configuration guide.\nSet API_KEY in your local .env file; never commit credentials.\n"
         ),

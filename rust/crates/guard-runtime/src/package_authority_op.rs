@@ -1636,7 +1636,6 @@ impl RiskDetectApi for ResidentRisk {
 struct ResidentManifestDeps;
 
 impl ManifestDepsApi for ResidentManifestDeps {
-
     fn dependency_map_for_path(
         &self,
         path: &str,

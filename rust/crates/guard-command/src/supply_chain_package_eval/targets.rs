@@ -16,7 +16,10 @@ pub(super) fn evaluation_targets(
         return explicit;
     }
     let intent_kind = optional_string(artifact.metadata.get("intent_kind"));
-    if !matches!(intent_kind.as_deref(), None | Some("install") | Some("sync")) {
+    if !matches!(
+        intent_kind.as_deref(),
+        None | Some("install") | Some("sync")
+    ) {
         return Vec::new();
     }
     manifest_dependency_targets(deps, artifact, workspace_dir, false)
@@ -35,7 +38,10 @@ pub(super) fn cloud_evaluation_targets(
         return explicit;
     }
     let intent_kind = optional_string(artifact.metadata.get("intent_kind"));
-    if !matches!(intent_kind.as_deref(), None | Some("install") | Some("sync")) {
+    if !matches!(
+        intent_kind.as_deref(),
+        None | Some("install") | Some("sync")
+    ) {
         return Vec::new();
     }
     manifest_dependency_targets(deps, artifact, workspace_dir, true)
@@ -86,8 +92,16 @@ fn manifest_dependency_targets(
 
     // lockfile_dependencies: (parent dir, ecosystem, normalized_name -> version)
     let mut lockfile_dependencies: Vec<(PathBuf, String, BTreeMap<String, String>)> = Vec::new();
-    if let Some(lockfile_paths) = artifact.metadata.get("lockfile_paths").and_then(Value::as_array) {
-        for rel in lockfile_paths.iter().filter_map(Value::as_str).filter(|p| !p.is_empty()) {
+    if let Some(lockfile_paths) = artifact
+        .metadata
+        .get("lockfile_paths")
+        .and_then(Value::as_array)
+    {
+        for rel in lockfile_paths
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|p| !p.is_empty())
+        {
             let Some(lockfile_path) = resolve_path_within_workspace(ws, rel) else {
                 continue;
             };
@@ -125,7 +139,11 @@ fn manifest_dependency_targets(
     }
 
     let mut unsynced: Vec<Map<String, Value>> = Vec::new();
-    for rel in manifest_paths.iter().filter_map(Value::as_str).filter(|p| !p.is_empty()) {
+    for rel in manifest_paths
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|p| !p.is_empty())
+    {
         let Some(ecosystem) = manifest_ecosystem_for_path(rel) else {
             continue;
         };
@@ -138,8 +156,12 @@ fn manifest_dependency_targets(
         let Some(manifest_text) = deps.workspace_io.read_text(ws, rel) else {
             continue;
         };
-        let dependency_map =
-            super::manifest_dependencies::artifact_manifest_dependency_map(deps, &package_manager, rel, &manifest_text);
+        let dependency_map = super::manifest_dependencies::artifact_manifest_dependency_map(
+            deps,
+            &package_manager,
+            rel,
+            &manifest_text,
+        );
         let manifest_parent = manifest_path.parent().map(|p| p.to_path_buf());
         // `manifest_path.parent.parents` — strict ancestors, excluding the parent dir.
         let manifest_ancestors: Vec<PathBuf> = manifest_parent
@@ -151,9 +173,9 @@ fn manifest_dependency_targets(
             .iter()
             .filter(|(lp, leco, _)| {
                 *leco == ecosystem
-                    && manifest_parent.as_ref().is_some_and(|mp| {
-                        lp == mp || manifest_ancestors.iter().any(|a| a == lp)
-                    })
+                    && manifest_parent
+                        .as_ref()
+                        .is_some_and(|mp| lp == mp || manifest_ancestors.iter().any(|a| a == lp))
             })
             .collect();
         let scoped_versions: Vec<&BTreeMap<String, String>> = if applicable.is_empty() {
@@ -186,7 +208,9 @@ fn manifest_dependency_targets(
         }
         for (package_name, specifier) in dependency_map {
             let normalized_name = normalize_package_name(deps, ecosystem, &package_name);
-            let locked_version = lockfile_versions.get(&normalized_name).and_then(|v| v.clone());
+            let locked_version = lockfile_versions
+                .get(&normalized_name)
+                .and_then(|v| v.clone());
             if !include_locked && locked_version.is_some() {
                 continue;
             }
@@ -215,7 +239,10 @@ fn manifest_dependency_targets(
             );
             target.insert(
                 "version".into(),
-                exact_version.clone().map(Value::String).unwrap_or(Value::Null),
+                exact_version
+                    .clone()
+                    .map(Value::String)
+                    .unwrap_or(Value::Null),
             );
             target.insert(
                 "range".into(),
@@ -235,18 +262,26 @@ fn manifest_dependency_targets(
             target.insert("dependency_group".into(), Value::Null);
             target.insert("extras".into(), Value::Array(Vec::new()));
             target.insert("editable".into(), Value::Bool(false));
-            target.insert("package_manager".into(), Value::String(package_manager.clone()));
+            target.insert(
+                "package_manager".into(),
+                Value::String(package_manager.clone()),
+            );
             target.insert(
                 "redacted_command".into(),
-                redacted_command.clone().map(Value::String).unwrap_or(Value::Null),
+                redacted_command
+                    .clone()
+                    .map(Value::String)
+                    .unwrap_or(Value::Null),
             );
-            target.insert("manifest_unsynced".into(), Value::Bool(locked_version.is_none()));
+            target.insert(
+                "manifest_unsynced".into(),
+                Value::Bool(locked_version.is_none()),
+            );
             unsynced.push(target);
         }
     }
     unsynced
 }
-
 
 /// `_targets_from_artifact` (:2190-2254).
 // supply_chain_package_eval.py:2190-2254

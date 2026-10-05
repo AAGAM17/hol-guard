@@ -73,7 +73,6 @@ class TestGrokManagedCompat:
         assert "hooks = false" not in restored_claude
         tomllib.loads(restored)
 
-
     def test_install_merges_preexisting_compat_tables(self, tmp_path: Path, monkeypatch) -> None:
         ctx = _ctx(tmp_path)
         managed = ctx.home_dir / ".grok" / "config.toml"

@@ -94,11 +94,15 @@ function names are rejected.
 
 Contributors do not need a Rust toolchain. The reviewed compiler ships inside the
 installed `hol-guard` package at `codex_plugin_scanner/_native/guard-command-source`
-and is digest-verified on every invocation. The simplest contributor validation is the
-preparation command (it resolves the packaged compiler automatically):
+and is digest-verified on every invocation. Resolve it once, then pass it to the
+preparation command:
 
 ```sh
+COMPILER=$(uv run --no-sync python -c \
+  'from codex_plugin_scanner.guard.extension_builder.native_source_compiler import find_packaged_source_compiler as f; print(f())')
+
 uv run --no-sync python scripts/prepare_extension_contribution.py \
+  --compiler "$COMPILER" \
   --source contributions/command-sources/command.<name>.json \
   --fixture tests/fixtures/command-source-<slug>.v1.json
 ```

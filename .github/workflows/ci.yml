@@ -39,8 +39,8 @@ jobs:
     permissions:
       contents: read
     outputs:
-      lanes: ${{ steps.plan.outputs.lanes }}
-      data_only: ${{ steps.plan.outputs.data_only }}
+      lanes: ${{ steps.plan.outputs.lanes || steps.plan_fallback.outputs.lanes }}
+      data_only: ${{ steps.plan.outputs.data_only || steps.plan_fallback.outputs.data_only }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -49,12 +49,72 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: ${{ env.CI_PYTHON_VERSION }}
+      - name: Extract trusted planner from the base revision
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        # The merge-commit checkout is PR-controlled, so a contribution could
+        # rewrite scripts/ci/plan_changes.py to emit data_only=true (CWE-807).
+        # Resolve the strict merge parent, then execute the planner files from
+        # that trusted revision only. If the base has no planner, the PR is
+        # introducing it, which is definitionally not a data-only change:
+        # emit a conservative full plan without running the untrusted copy.
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Push runs post-merge main code, which is trusted by review. The
+            # base is the push's before-SHA (server-side, not contributor input).
+            BASE="${{ github.event.before }}"
+            HEAD="$GITHUB_SHA"
+            if ! printf '%s' "$BASE" | grep -Eq '^[0-9a-f]{40}$'; then
+              # First push / branch create has no before-SHA: full plan.
+              printf '{"base":"","head":"%s","lanes":["full"],"data_only":false,"escalate_reason":"no-push-base","changed":[]}\n' "$HEAD" > ci-plan.json
+              echo "PLAN_READY=1" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "PLAN_BASE_SHA=$BASE" >> "$GITHUB_ENV"
+            echo "PLAN_HEAD_SHA=$HEAD" >> "$GITHUB_ENV"
+            echo "PLANNER_DIR=$PWD" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # Require the exact two-parent PR merge; an ambiguous checkout plans full.
+          PARENTS=$(git rev-list --parents -n 1 "$GITHUB_SHA" | wc -w)
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          if [ "$PARENTS" -ne 3 ]; then
+            printf '{"base":"","head":"%s","lanes":["full"],"data_only":false,"escalate_reason":"ambiguous-merge","changed":[]}\n' "$HEAD" > ci-plan.json
+            echo "PLAN_READY=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          BASE=$(git log -1 --format=%P "$GITHUB_SHA" | awk '{print $1}')
+          echo "PLAN_BASE_SHA=$BASE" >> "$GITHUB_ENV"
+          echo "PLAN_HEAD_SHA=$HEAD" >> "$GITHUB_ENV"
+          mkdir -p trusted/scripts/ci
+          for f in scripts/ci/plan_changes.py scripts/ci/pr_merge_base.py scripts/ci/__init__.py scripts/__init__.py; do
+            if git cat-file -e "$BASE:$f" 2>/dev/null; then
+              git show "$BASE:$f" > "trusted/$f"
+            elif [ "$f" = "scripts/ci/plan_changes.py" ]; then
+              echo "planner absent at trusted base; forcing full plan"
+              printf '{"base":"%s","head":"%s","lanes":["full"],"data_only":false,"escalate_reason":"planner-introduced","changed":[]}\n' "$BASE" "$HEAD" > ci-plan.json
+              echo "PLAN_READY=1" >> "$GITHUB_ENV"
+            else
+              : > "trusted/$f"
+            fi
+          done
+          if [ ! -f ci-plan.json ]; then
+            echo "PLANNER_DIR=$PWD/trusted" >> "$GITHUB_ENV"
+          fi
+      - name: Fallback plan for a planner-introducing PR
+        id: plan_fallback
+        if: github.event_name == 'pull_request' && env.PLAN_READY == '1'
+        run: |
+          cat ci-plan.json
+          echo "lanes=full" >> "$GITHUB_OUTPUT"
+          echo "data_only=false" >> "$GITHUB_OUTPUT"
       - name: Compute change plan
         id: plan
+        if: env.PLAN_READY != '1'
         env:
           PLAN_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python scripts/ci/plan_changes.py --output ci-plan.json
+          python "${PLANNER_DIR:-.}/scripts/ci/plan_changes.py" --root "$PWD" --base "${PLAN_BASE_SHA:-}" --head "${PLAN_HEAD_SHA:-}" --output ci-plan.json
           LANES=$(python -c "import json;print(' '.join(json.load(open('ci-plan.json'))['lanes']))")
           DATA_ONLY=$(python -c "import json;print(str(json.load(open('ci-plan.json'))['data_only']).lower())")
           echo "lanes=$LANES" >> "$GITHUB_OUTPUT"
@@ -591,7 +651,7 @@ jobs:
   required:
     name: hol-guard / required
     if: always()
-    needs: [plan, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform]
+    needs: [plan, native-workspace, native-command-evaluators, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -615,21 +675,30 @@ jobs:
               print(f"::error::plan job result: {plan_result}")
               sys.exit(1)
           data_only = os.environ.get("PLAN_DATA_ONLY") == "true"
-          # Required set the aggregate must always evaluate. A job is a hard
-          # failure only if it ran and failed/cancelled; a missing entry means a
-          # job was dropped from the graph or never scheduled -> fail closed.
-          required = ["quality","coverage-plan","coverage","compatibility",
-                      "scheduling-sensitive","dashboard","cisco-full","ci-python-312",
-                      "pi-exact-continuation","cross-platform"]
-          missing = [j for j in required if j not in needs]
+          # Always-on providers are never lane-gated: they must succeed on every
+          # plan, including data-only. A failed or cancelled provider (or a
+          # skipped one, which means its `if`/needs chain broke) must not let a
+          # data-only plan coast through on surviving lane-gated residue.
+          always_on = ["plan","native-workspace","native-command-evaluators",
+                       "quality","coverage-plan","ci-python-312"]
+          # Lane-gated required set: skipped is acceptable only on a data-only
+          # plan; failure/cancelled always fails.
+          required = ["coverage","compatibility","scheduling-sensitive",
+                      "dashboard","cisco-full","pi-exact-continuation","cross-platform"]
+          missing = [j for j in always_on + required if j not in needs]
           if missing:
               print("::error::required jobs absent from needs graph: "+", ".join(missing))
               sys.exit(1)
+          bad_providers = [j for j in always_on
+                           if needs.get(j, {}).get("result") != "success"]
           failed = [j for j in required
                     if needs.get(j, {}).get("result") in ("failure","cancelled")]
           print(f"plan lanes={os.environ.get('PLAN_LANES')} data_only={data_only}")
-          for j in required:
+          for j in always_on + required:
               print(f"  {j}: {needs.get(j,{}).get('result')}")
+          if bad_providers:
+              print("::error::always-on jobs did not succeed: " + ", ".join(bad_providers))
+              sys.exit(1)
           if failed:
               print("::error::required jobs failed: " + ", ".join(failed))
               sys.exit(1)
@@ -648,10 +717,10 @@ jobs:
           if skipped and not data_only:
               print("::error::required jobs skipped on a full-lane plan: "+", ".join(skipped))
               sys.exit(1)
-          # A data-only plan must leave a real residue; if EVERY required job
-          # skipped, the plan produced no evidence -> fail closed.
-          if data_only and len(skipped) == len(required):
-              print("::error::data-only plan skipped every required job")
-              sys.exit(1)
+          # Evidence residue is already enforced: `always_on` (plan, quality,
+          # coverage-plan, ci-python-312, plus the native providers) must succeed,
+          # so a data-only plan cannot coast with no green evidence. Lane-gated
+          # jobs are all skipped on data-only by design — counting them as
+          # residue would fail every valid fast lane.
           print("required aggregate: all planned required results green")
           PY

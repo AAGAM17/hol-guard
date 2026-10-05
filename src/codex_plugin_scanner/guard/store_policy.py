@@ -1507,6 +1507,13 @@ class StorePolicyMixin:
         # mutates `sync_state` and may mint a key (generation advance), so it stays
         # on the Python side; the resulting snapshot is shipped to Rust.
         with self._connect() as connection:
+            has_local_policy = (
+                connection.execute(
+                    f"select 1 from policy_decisions where source not in {_REMOTE_POLICY_SOURCE_PLACEHOLDERS} limit 1",
+                    _REMOTE_POLICY_SOURCE_PARAMS,
+                ).fetchone()
+                is not None
+            )
             integrity_state = (
                 self._refresh_policy_integrity_state(
                     connection,
@@ -1514,10 +1521,16 @@ class StorePolicyMixin:
                     create_key=True,
                 )
                 or {}
+                if has_local_policy
+                else {}
             )
 
-        integrity_key, integrity_key_id = self._policy_integrity_secret_material(create=True)
-        local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
+        if has_local_policy:
+            integrity_key, integrity_key_id = self._policy_integrity_secret_material(create=True)
+            local_once_key, local_once_key_id = self._policy_integrity_secret_material(create=False)
+        else:
+            integrity_key, integrity_key_id = None, None
+            local_once_key, local_once_key_id = None, None
 
         # The resident refuses to serve until the owner-private verifier key
         # exists under this guard home (consume_for_spawn gate). Publishers

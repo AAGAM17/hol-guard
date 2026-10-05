@@ -185,8 +185,9 @@ def main() -> int:
     parser.add_argument("--output", default="ci-plan.json")
     parser.add_argument("--base", default=None, help="Trusted base SHA (else resolved)")
     parser.add_argument("--head", default=None, help="Head SHA (else GITHUB_SHA)")
+    parser.add_argument("--root", default=None, help="Repo root (default: script's repo)")
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[2]
+    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[2]
     env = dict(os.environ)
     if args.base:
         env["PLAN_BASE_SHA"] = args.base

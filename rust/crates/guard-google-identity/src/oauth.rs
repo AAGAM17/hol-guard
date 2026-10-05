@@ -40,6 +40,8 @@ mod send_http;
 #[path = "oauth_start.rs"]
 mod start;
 pub use account::{GoogleSendAccount, GoogleSendAccountError};
+#[path = "refresh.rs"]
+mod refresh;
 
 /// Configuration must come from the authenticated worker, not callback/tool
 /// arguments. The client session binding is owned by that worker's authorized
@@ -59,6 +61,7 @@ pub struct GoogleSendAuthorization {
 /// Private credential material remains in the worker. No Clone, Debug,
 /// serialization or token getter. A successful callback is not enrollment.
 pub struct GoogleSendCredential {
+    refresh_registration: Option<refresh::Registration>,
     account_lease: Option<std::sync::Arc<std::sync::RwLock<bool>>>,
     account_epoch: Option<String>,
     purpose: GrantPurpose,
@@ -201,21 +204,7 @@ impl GoogleSendAuthorization {
             || !bounded_ascii(&response.id_token, super::MAX_TOKEN)
             || response.expires_in == 0
             || response.expires_in > 3600
-            || response.scopes.len() != 3
-            || !response.scopes.iter().any(|scope| {
-                matches!(
-                    scope.as_str(),
-                    "email" | "https://www.googleapis.com/auth/userinfo.email"
-                )
-            })
-            || !response
-                .scopes
-                .iter()
-                .any(|scope| scope.as_str() == "openid")
-            || !response
-                .scopes
-                .iter()
-                .any(|scope| scope.as_str() == self.purpose.scope())
+            || !refresh::valid_scopes(self.purpose, &response.scopes)
             || response
                 .refresh_token
                 .as_ref()
@@ -225,6 +214,9 @@ impl GoogleSendAuthorization {
         }
         let received_at = now()?;
         self.challenge.check_time(received_at)?;
+        let mut registration = (self.purpose == GrantPurpose::Send
+            && response.refresh_token.is_some())
+        .then(|| refresh::Registration::capture(&self));
         let identity = verify_identity(self.challenge, &response.id_token, &response.access_token)?;
         if identity.sender.is_none() {
             return Err(IdentityError::Invalid);
@@ -240,6 +232,10 @@ impl GoogleSendAuthorization {
             Instant::now(),
         )?;
         Ok(GoogleSendCredential {
+            refresh_registration: registration.take().map(|mut value| {
+                value.observed_at = observed;
+                value
+            }),
             account_lease: None,
             account_epoch: None,
             purpose: self.purpose,

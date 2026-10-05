@@ -28,8 +28,10 @@ new random account generation into their digest and outbound inspection binding,
 so identical bytes cannot reuse an approval from the prior generation. They
 require fresh native review. A revoked owner cannot be revived by replacement.
 
-Replacement currently consumes the existing verified OAuth completion result.
-It does not implement a refresh-token exchange, persistent enrollment, an
+Replacement consumes the existing verified OAuth completion result. The
+[registered refresh path](account-refresh.md) now renews authorization against
+fixed Google endpoints and invalidates the previous account generation.
+It does not implement persistent enrollment, an
 authenticated worker registry, disconnect UI or isolated credential custody.
 Those remain necessary for the real non-engineer setup/task journey. The
 production native worker-admission type still has no valid value. Source tests

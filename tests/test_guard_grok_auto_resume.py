@@ -592,6 +592,63 @@ def test_non_grok_hook_json_stays_pretty(capsys: pytest.CaptureFixture[str]) -> 
     assert json.loads(captured)["decision"] == "deny"
 
 
+def test_grok_quiet_publisher_close_leaves_one_decision_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    from codex_plugin_scanner.guard.adapters.grok_hooks import emit_grok_hook_response
+    from codex_plugin_scanner.guard.cli.commands_hook_native_authority import try_native_hook_authority
+    from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
+
+    class _Writer:
+        def __init__(self, *, store: GuardStore) -> None:
+            del store
+
+        def stop(self, *, timeout_seconds: float) -> bool:
+            del timeout_seconds
+            return True
+
+    class _Worker:
+        def __init__(self, *, store: GuardStore, activity_writer: object, **_kwargs: object) -> None:
+            del store, activity_writer, _kwargs
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.cli.commands_hook_native_authority._native_mode_requires_rust",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.cli.commands_hook_native_authority.RuntimeHookEvidenceWriter",
+        _Writer,
+    )
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.cli.commands_hook_native_authority.HookWorker",
+        _Worker,
+    )
+
+    def pipeline(_worker: HookWorker) -> int:
+        emit_grok_hook_response(policy_action="allow", reason="", event_name="PreToolUse")
+        return 0
+
+    result = try_native_hook_authority(
+        payload={"hook_event_name": "PreToolUse"},
+        harness="grok",
+        home_dir=tmp_path / "home",
+        guard_home=tmp_path / "guard-home",
+        workspace=tmp_path / "workspace",
+        store=GuardStore(tmp_path / "guard-home"),
+        pipeline=pipeline,
+    )
+    assert result == 0
+    stdout = capfd.readouterr().out
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert json.loads(stdout)["decision"] == "allow"
+
+
 def test_grok_decision_line_survives_publisher_close_stdout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

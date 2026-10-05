@@ -78,7 +78,7 @@ jobs:
 
   native-command-evaluators:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -132,17 +132,6 @@ jobs:
             rust/target/release/hol-guard-runtime
           if-no-files-found: error
           retention-days: 1
-      - name: Build coverage-instrumented native evaluators
-        run: bash scripts/ci/build_native_coverage_evaluators.sh
-      - name: Upload coverage-instrumented native evaluators
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: pytest-native-command-coverage-evaluators
-          path: |
-            rust/target/native-coverage/release/guard-command-source
-            rust/target/native-coverage/release/hol-guard-runtime
-          if-no-files-found: error
-          retention-days: 1
       - name: Upload matching native command projections
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -152,6 +141,28 @@ jobs:
             contributions/extensions/
             docs/guard/extensions/
             src/codex_plugin_scanner/guard/contracts/data/extensions/
+          if-no-files-found: error
+          retention-days: 1
+
+  native-coverage-evaluators:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: pytest-native-coverage
+      - name: Build coverage-instrumented native evaluators
+        run: bash scripts/ci/build_native_coverage_evaluators.sh
+      - name: Upload coverage-instrumented native evaluators
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pytest-native-command-coverage-evaluators
+          path: |
+            rust/target/native-coverage/release/guard-command-source
+            rust/target/native-coverage/release/hol-guard-runtime
           if-no-files-found: error
           retention-days: 1
 
@@ -191,7 +202,7 @@ jobs:
 
   coverage:
     name: coverage (3.12, ${{ matrix.shard-index }})
-    needs: [coverage-plan, native-command-evaluators]
+    needs: [coverage-plan, native-command-evaluators, native-coverage-evaluators]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -317,7 +328,7 @@ jobs:
   sonar:
     if: vars.SONAR_CI_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       actions: read

@@ -125,9 +125,7 @@ def filesystem_checks(fixture: Fixture, oracle: str, scenario_id: str) -> dict[s
     if scenario_id == "quoted-workspace-copy":
         output = fixture.workspace / "output"
         checks["quoted-copy-exact"] = (
-            output.is_dir()
-            and not output.is_symlink()
-            and exact_bytes(output / "copy with spaces.ts", SOURCE.encode())
+            output.is_dir() and not output.is_symlink() and exact_bytes(output / "copy with spaces.ts", SOURCE.encode())
         )
     if scenario_id == "cwd-directory-and-file-creation":
         directories = [fixture.workspace / name for name in ("output", "output/generated", "output/generated/nested")]

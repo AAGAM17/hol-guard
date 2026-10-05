@@ -42,6 +42,26 @@ fn disconnect_posts_refresh_material_only_to_fixed_project_revocation_endpoint()
 }
 
 #[test]
+fn maximum_length_percent_encoded_token_is_sent_without_truncation() {
+    let mut original = credential("subject-one");
+    let expected = "%".repeat(8192);
+    original.refresh_token = Some(Zeroizing::new(expected.clone()));
+    let account = GoogleSendAccount::new(original).unwrap();
+    let (agent, wire) = agent(vec![response(200, "text/plain", "")]);
+    assert_eq!(
+        account.disconnect_with_agent(&agent),
+        GoogleProjectGrantRevocation::Acknowledged
+    );
+    let wire = wire.lock().unwrap();
+    let request = std::str::from_utf8(&wire.requests[0]).unwrap();
+    let (_, body) = request.split_once("\r\n\r\n").unwrap();
+    assert_eq!(body.len(), 6 + 3 * expected.len());
+    let pairs: Vec<_> = oauth2::url::form_urlencoded::parse(body.as_bytes()).collect();
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].1, expected);
+}
+
+#[test]
 fn failure_or_redirect_keeps_pending_inputs_revoked_and_never_retries() {
     for reply in [
         response(400, "application/json", "{}"),

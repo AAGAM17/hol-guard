@@ -35,9 +35,13 @@ impl GoogleSendAccount {
             return GoogleProjectGrantRevocation::Unconfirmed;
         }
         let body = Zeroizing::new(
-            oauth2::url::form_urlencoded::Serializer::new(String::new())
-                .append_pair("token", token.as_str())
-                .finish(),
+            // Avoid reallocating/freeing intermediate token-bearing buffers.
+            // Each bounded ASCII byte needs at most three encoded bytes.
+            oauth2::url::form_urlencoded::Serializer::new(String::with_capacity(
+                6 + 3 * token.len(),
+            ))
+            .append_pair("token", token.as_str())
+            .finish(),
         );
         let response = agent
             .post(REVOKE_URL)

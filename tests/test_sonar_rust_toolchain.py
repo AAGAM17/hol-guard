@@ -30,6 +30,9 @@ def test_sonar_preparation_precedes_analysis_and_fails_closed() -> None:
         i for i, step in enumerate(steps) if step.get("name") == "Wait for successful pytest coverage producers"
     )
     setup_index = next(i for i, step in enumerate(steps) if step.get("name") == "Prepare Python coverage")
+    rust_coverage_index = next(
+        i for i, step in enumerate(steps) if step.get("name") == "Generate current-checkout Rust coverage"
+    )
     clippy_index = next(
         i for i, step in enumerate(steps) if step.get("name") == "Check Rust workspace with pinned Clippy"
     )
@@ -44,10 +47,12 @@ def test_sonar_preparation_precedes_analysis_and_fails_closed() -> None:
     assert "needs" not in job
     assert steps[0]["id"] == "token-presence"
     assert job["permissions"] == {"contents": "read", "actions": "read"}
-    assert wait_index < download_index < setup_index < scan_index
+    assert wait_index < download_index < setup_index < rust_coverage_index < scan_index
     assert "select_pytest_coverage.py" in steps[wait_index]["run"]
     assert "SONAR_TOKEN" not in steps[wait_index].get("env", {})
     assert setup["run"] == "bash scripts/ci/prepare_sonar_analysis.sh"
+    assert steps[rust_coverage_index]["run"] == "bash scripts/ci/prepare_sonar_rust_coverage.sh coverage-data"
+    assert "SONAR_TOKEN" not in steps[rust_coverage_index].get("env", {})
     assert '"rust/rust-toolchain.toml"' in script
     assert script.index(install) < script.index(default)
     assert steps[clippy_index]["run"] == clippy

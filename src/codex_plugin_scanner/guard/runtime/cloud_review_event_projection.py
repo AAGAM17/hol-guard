@@ -290,7 +290,7 @@ def project_cloud_review_event(
                 )
             native_replay = stored_event.native_replay is True or marker_status == "native"
         _require_native_replay_context(stored_event.event_type, event, native_replay=native_replay)
-        if oauth is not None and event.get("reviewClaim") is None:
+        if oauth is not None and event.get("reviewClaim") is None and not native_replay:
             raise StoredReviewEventError(
                 "review_event_claim_invalid",
                 "review_event_claim_invalid:claim_missing",

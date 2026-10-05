@@ -10,8 +10,8 @@ CANONICAL_REQUEST_KINDS = (
     "immutable_policy_block",
     "watch_only_observation",
 )
-_TRUE_MARKERS = {True, 1, "1"}
-_FALSE_MARKERS = {False, 0, "0"}
+_TRUE_MARKERS = {True, "1"}
+_FALSE_MARKERS = {False, "0"}
 
 
 def canonical_request_kind(item: Mapping[str, object]) -> str | None:

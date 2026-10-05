@@ -264,7 +264,8 @@ def _project_row(
 
 
 def _copy_row(row: sqlite3.Row) -> dict[str, object]:
-    return {str(key): row[key] for key in row.keys()}
+    names = row.keys()
+    return {str(name): row[name] for name in names}
 
 
 def _activity_event(

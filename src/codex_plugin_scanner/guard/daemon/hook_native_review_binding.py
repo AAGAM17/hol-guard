@@ -176,7 +176,11 @@ def _execution_intent_digest(receipt: object) -> str | None:
     if not isinstance(receipt, Mapping):
         return None
     digest = receipt.get("execution_intent_digest")
-    if not isinstance(digest, str) or len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
         return None
     return digest
 

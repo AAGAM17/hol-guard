@@ -257,6 +257,16 @@ def replay_grok_hook_stdout_line() -> None:
     sys.stdout.flush()
 
 
+def _redact_grok_value(value: object) -> object:
+    if isinstance(value, str):
+        return redact_text(value).text
+    if isinstance(value, Mapping):
+        return {k: _redact_grok_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_grok_value(v) for v in value]
+    return value
+
+
 def emit_grok_hook_response(
     *,
     policy_action: str,
@@ -282,7 +292,7 @@ def emit_grok_hook_response(
         recording_only=recording_only,
     )
     _last_grok_policy_action = "allow" if payload.get("decision") not in {"deny", "block"} else live_action
-    line = redact_text(json.dumps(payload, separators=(",", ":"))).text + "\n"
+    line = json.dumps(_redact_grok_value(payload), separators=(",", ":")) + "\n"
     if output_stream is None:
         _grok_hook_stdout_line.set(line)
     stream = output_stream if output_stream is not None else sys.stdout

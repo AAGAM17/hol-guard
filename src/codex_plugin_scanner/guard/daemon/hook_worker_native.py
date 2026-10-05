@@ -517,7 +517,7 @@ class HookWorkerNativeMixin:
                 and policy_snapshot is not None
                 and policy_snapshot.get("mode") == "enforce"
             ):
-                raise NativePolicyBindingRefreshError(failure)
+                raise NativePolicyBindingRefreshError(failure, policy_snapshot.get("generation"))
             if event_name == "PostToolUse":
                 self._record_post_tool_activity(
                     harness=harness,

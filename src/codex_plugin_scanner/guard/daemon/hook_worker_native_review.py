@@ -20,11 +20,12 @@ CONTROL_BINDING_REFRESH_ERRORS = frozenset(
 
 
 class NativePolicyBindingRefreshError(RuntimeError):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, generation: object = None) -> None:
         if code not in CONTROL_BINDING_REFRESH_ERRORS:
             raise ValueError("unsupported native binding refresh")
         super().__init__(code)
         self.code = code
+        self.generation = generation if isinstance(generation, int) and not isinstance(generation, bool) else None
 
 
 def review_native_edge(
@@ -77,12 +78,9 @@ def review_native_edge(
             )
             if can_refresh and deadline is not None:
                 publisher = getattr(worker, "policy_snapshot_publisher", None)
-                request_publish = getattr(publisher, "request_publish", None)
-                if callable(request_publish):
-                    current = getattr(publisher, "current_snapshot_binding", lambda: None)()
-                    rejected_gen = snapshot.get("generation") if snapshot else None
-                    if not (isinstance(current, dict) and current.get("generation") != rejected_gen):
-                        request_publish()
+                request_refresh = getattr(publisher, "request_control_binding_refresh", None)
+                if callable(request_refresh):
+                    request_refresh(error.generation)
                     snapshot = worker._native_policy_snapshot(workspace, deadline=deadline)
                     if snapshot is not None and snapshot.get("mode") == "enforce" and time.monotonic() < deadline:
                         continue

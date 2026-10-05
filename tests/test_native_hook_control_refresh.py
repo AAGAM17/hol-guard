@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
@@ -11,6 +12,7 @@ import pytest
 from codex_plugin_scanner.guard.daemon import hook_worker_native_review as review
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
 from codex_plugin_scanner.guard.native_hook_edge import review_raw_hook_native
+from codex_plugin_scanner.guard.native_policy_snapshot import NativePolicySnapshotPublisher
 from codex_plugin_scanner.guard.native_resident_client import (
     native_resident_client_failure_code,
     record_native_resident_client_failure_code,
@@ -22,7 +24,7 @@ from codex_plugin_scanner.guard.store import GuardStore
 def worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> HookWorker:
     result = HookWorker(store=GuardStore(tmp_path / "guard"), start_native_policy=False)
     monkeypatch.setattr(result, "_native_policy_snapshot", Mock(return_value={"generation": 2, "mode": "enforce"}))
-    monkeypatch.setattr(result.policy_snapshot_publisher, "request_publish", Mock())
+    monkeypatch.setattr(result.policy_snapshot_publisher, "request_control_binding_refresh", Mock())
     return result
 
 
@@ -57,12 +59,12 @@ def test_refresh_releases_fence_and_keeps_original_deadline(
         finally:
             held.pop()
 
-    def publish() -> None:
+    def publish(_generation: int | None) -> None:
         assert not held, "publication must happen after the rejected review releases its shared lease"
 
     monkeypatch.setattr(review, "native_review_fence", fence)
     publisher = Mock(side_effect=publish)
-    monkeypatch.setattr(worker.policy_snapshot_publisher, "request_publish", publisher)
+    monkeypatch.setattr(worker.policy_snapshot_publisher, "request_control_binding_refresh", publisher)
     native = Mock(side_effect=[review.NativePolicyBindingRefreshError(code), ({"policy_action": "allow"}, True)])
     monkeypatch.setattr(worker, "_review_native_edge_with_snapshot", native)
     deadline = time.monotonic() + 2
@@ -84,7 +86,7 @@ def test_actual_native_verdict_never_retries(
     monkeypatch.setattr(worker, "_review_native_edge_with_snapshot", native)
     assert _call(worker, tmp_path, time.monotonic() + 2)["policy_action"] == action
     native.assert_called_once()
-    worker.policy_snapshot_publisher.request_publish.assert_not_called()
+    worker.policy_snapshot_publisher.request_control_binding_refresh.assert_not_called()
 
 
 @pytest.mark.parametrize("deadline", [None, 0.0])
@@ -98,7 +100,7 @@ def test_missing_or_expired_deadline_stays_blocked(
     monkeypatch.setattr(worker, "_review_native_edge_with_snapshot", native)
     assert _call(worker, tmp_path, deadline)["decision"] == "block"
     native.assert_called_once()
-    worker.policy_snapshot_publisher.request_publish.assert_not_called()
+    worker.policy_snapshot_publisher.request_control_binding_refresh.assert_not_called()
 
 
 @pytest.mark.parametrize("replacement", [None, {"generation": 2, "mode": "observe"}])
@@ -126,7 +128,7 @@ def test_persistent_authority_failure_stops_after_one_refresh(
     assert response["decision"] == "block"
     assert response["native_failure_code"] == "native_command_control_authority_not_current"
     assert native.call_count == 2
-    worker.policy_snapshot_publisher.request_publish.assert_called_once()
+    worker.policy_snapshot_publisher.request_control_binding_refresh.assert_called_once()
 
 
 def test_fresh_authority_deny_is_preserved(worker: HookWorker, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,7 +142,7 @@ def test_fresh_authority_deny_is_preserved(worker: HookWorker, tmp_path: Path, m
     monkeypatch.setattr(worker, "_review_native_edge_with_snapshot", native)
     assert _call(worker, tmp_path, time.monotonic() + 2) == denied
     assert native.call_count == 2
-    worker.policy_snapshot_publisher.request_publish.assert_called_once()
+    worker.policy_snapshot_publisher.request_control_binding_refresh.assert_called_once()
 
 
 def test_isolated_worker_cannot_publish_refresh(
@@ -151,7 +153,7 @@ def test_isolated_worker_cannot_publish_refresh(
     monkeypatch.setattr(worker, "_review_native_edge_with_snapshot", native)
     assert _call(worker, tmp_path, time.monotonic() + 2)["decision"] == "block"
     native.assert_called_once()
-    worker.policy_snapshot_publisher.request_publish.assert_not_called()
+    worker.policy_snapshot_publisher.request_control_binding_refresh.assert_not_called()
 
 
 def test_invalid_next_request_clears_previous_admission_failure(tmp_path: Path) -> None:
@@ -172,6 +174,28 @@ def test_invalid_next_request_clears_previous_admission_failure(tmp_path: Path) 
         is None
     )
     assert native_resident_client_failure_code() is None
+
+
+def test_concurrent_rejections_withdraw_one_ack_only(tmp_path: Path) -> None:
+    publisher = NativePolicySnapshotPublisher(store=GuardStore(tmp_path / "guard"))
+    publisher._snapshot = {"generation": 4, "mode": "enforce"}
+    publisher._acked = True
+    epoch = publisher._epoch
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(publisher.request_control_binding_refresh, [4] * 32))
+    assert publisher._epoch == epoch + 1
+    assert publisher._acked is False
+    assert publisher._publish_event.is_set()
+
+
+def test_newer_ack_is_not_withdrawn_by_older_rejection(tmp_path: Path) -> None:
+    publisher = NativePolicySnapshotPublisher(store=GuardStore(tmp_path / "guard"))
+    publisher._snapshot = {"generation": 5, "mode": "enforce"}
+    publisher._acked = True
+    publisher.request_control_binding_refresh(4)
+    assert publisher._acked is True
+    assert publisher._epoch == 0
+    assert not publisher._publish_event.is_set()
 
 
 @pytest.mark.parametrize("code", sorted(review.CONTROL_BINDING_REFRESH_ERRORS))

@@ -78,7 +78,7 @@ jobs:
 
   native-command-evaluators:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -130,6 +130,17 @@ jobs:
           path: |
             rust/target/release/guard-command-source
             rust/target/release/hol-guard-runtime
+          if-no-files-found: error
+          retention-days: 1
+      - name: Build coverage-instrumented native evaluators
+        run: bash scripts/ci/build_native_coverage_evaluators.sh
+      - name: Upload coverage-instrumented native evaluators
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pytest-native-command-coverage-evaluators
+          path: |
+            rust/target/native-coverage/release/guard-command-source
+            rust/target/native-coverage/release/hol-guard-runtime
           if-no-files-found: error
           retention-days: 1
       - name: Upload matching native command projections
@@ -205,24 +216,27 @@ jobs:
         with:
           name: pytest-shard-plan-3.12
           path: pytest-shards
-      - name: Download native command evaluators
+      - name: Download coverage-instrumented native evaluators
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pytest-native-command-evaluators
-          path: rust/target/release
+          name: pytest-native-command-coverage-evaluators
+          path: rust/target/native-coverage/release
       - name: Download matching native command projections
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: pytest-native-command-projections
           path: .
       - run: |
-          chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
-          echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
-          echo "HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
-          echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" >> "$GITHUB_ENV"
+          chmod 0755 rust/target/native-coverage/release/guard-command-source rust/target/native-coverage/release/hol-guard-runtime
+          mkdir -p rust-profraw
+          echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/native-coverage/release/guard-command-source" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/native-coverage/release/guard-command-source" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/native-coverage/release/hol-guard-runtime" >> "$GITHUB_ENV"
           echo "HOL_GUARD_NATIVE_REGRESSION=1" >> "$GITHUB_ENV"
       - name: Run coverage shard ${{ matrix.shard-index }}
         shell: bash
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/rust-profraw/shard-${{ matrix.shard-index }}-%p-%m.profraw
         run: |
           shard_file=$(printf 'pytest-shards/shard-%03d.txt' "${{ matrix.shard-index }}")
           test -s "$shard_file"
@@ -245,7 +259,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pytest-coverage-${{ github.run_attempt }}-${{ matrix.shard-index }}
-          path: .coverage
+          path: |
+            .coverage
+            rust-profraw/*.profraw
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1

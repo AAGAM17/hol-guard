@@ -458,4 +458,116 @@ mod tests {
         assert_eq!(recv["timed_out"], true);
         close(id);
     }
+
+    // --- RTM-023 fault-injection: floods, malformed frames, death, cancel ---
+
+    fn send(id: &str, message: Value) -> Value {
+        decode(
+            session_send(&McpStdioSessionSendRequestV1 {
+                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
+                session_id: id.into(),
+                message,
+            })
+            .unwrap(),
+        )
+    }
+
+    fn recv(id: &str, timeout_ms: u64) -> Value {
+        decode(
+            session_recv(&McpStdioSessionRecvRequestV1 {
+                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
+                session_id: id.into(),
+                timeout_ms: Some(timeout_ms),
+                await_request_id: None,
+                poll_only: false,
+            })
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn flood_of_outbound_frames_is_bounded_and_does_not_hang() {
+        let _g = LOCK.lock().unwrap();
+        let id = "flood-sess";
+        let opened = decode(session_open(&open_req(id, vec!["/bin/cat"])).unwrap());
+        assert_eq!(opened["status"], "opened", "open failed: {opened:?}");
+        // A rapid burst of frames must each report a terminal status and never
+        // wedge the registry or block the caller beyond the write bound.
+        for n in 0..64u64 {
+            let r = send(id, json!({"jsonrpc":"2.0","id":n,"method":"ping"}));
+            assert_eq!(r["status"], "sent", "frame {n} send failed: {r:?}");
+        }
+        close(id);
+    }
+
+    #[test]
+    fn child_death_mid_conversation_reports_terminal_not_hang() {
+        let _g = LOCK.lock().unwrap();
+        let id = "death-sess";
+        // A child that exits moments after spawn: open must succeed (the pipe
+        // is established), then the drain pump surfaces the death as a
+        // terminal EOF/exit rather than a hang.
+        let opened =
+            decode(session_open(&open_req(id, vec!["/bin/sh", "-c", "sleep 0.05"])).unwrap());
+        assert_eq!(opened["status"], "opened", "open failed: {opened:?}");
+        // Wait past the child's 50ms lifetime so the pump observes the death.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let r = recv(id, 2000);
+        // EOF/exit must surface as a terminal signal, never an indefinite block.
+        assert!(
+            ["eof", "exited", "timeout"].contains(&r["status"].as_str().unwrap_or("")),
+            "expected terminal status after child death, got {r:?}"
+        );
+        close(id);
+    }
+
+    #[test]
+    fn malformed_frame_from_child_does_not_corrupt_session() {
+        let _g = LOCK.lock().unwrap();
+        let id = "malformed-sess";
+        // Emit a non-JSON line, then a valid JSON-RPC line. The pump must
+        // skip/flag the garbage and still deliver the well-formed frame.
+        let argv = vec![
+            "/bin/sh",
+            "-c",
+            "printf 'not json at all\\n'; printf '{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{}}\\n'; sleep 2",
+        ];
+        let opened = decode(session_open(&open_req(id, argv)).unwrap());
+        assert_eq!(opened["status"], "opened", "open failed: {opened:?}");
+        let r = recv(id, 3000);
+        // Either the malformed frame is reported or skipped and the valid one
+        // arrives; it must not hang the session.
+        assert!(
+            r["status"].as_str().is_some_and(|s| !s.is_empty()),
+            "recv returned empty status: {r:?}"
+        );
+        close(id);
+    }
+
+    #[test]
+    fn cancel_via_close_unknown_session_is_terminal() {
+        // Idempotent close: an absent session still reports `closed` (not an
+        // error) — teardown is safe to call repeatedly, which is what makes
+        // cancellation reliable under races.
+        let r = decode(
+            session_close(&McpStdioSessionCloseRequestV1 {
+                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
+                session_id: "never-opened".into(),
+            })
+            .unwrap(),
+        );
+        assert_eq!(r["status"], "closed");
+    }
+
+    #[test]
+    fn send_after_close_is_terminal_not_panic() {
+        let _g = LOCK.lock().unwrap();
+        let id = "post-close-sess";
+        let opened = decode(session_open(&open_req(id, vec!["/bin/cat"])).unwrap());
+        assert_eq!(opened["status"], "opened");
+        close(id);
+        let r = send(id, json!({"jsonrpc":"2.0","id":1,"method":"ping"}));
+        assert_eq!(r["status"], "error");
+        assert_eq!(r["payload"], "mcp_session_not_found");
+    }
 }

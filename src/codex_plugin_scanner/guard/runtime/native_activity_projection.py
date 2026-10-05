@@ -39,6 +39,8 @@ class NativeActivityStore(Protocol):
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]: ...
 
+    def _count_guard_event_upload_capacity(self, connection: sqlite3.Connection) -> int: ...
+
     def get_review_event_oauth_binding(self) -> Mapping[str, str] | None: ...
 
     def get_sync_payload(self, state_key: str) -> object: ...
@@ -339,10 +341,7 @@ def _commit(
                 (key,),
             ).fetchone()
             if already is None:
-                pending = connection.execute(
-                    "select count(*) as count from guard_cloud_events where uploaded_at is null"
-                ).fetchone()
-                pending_count = int(pending["count"]) if pending is not None else 0
+                pending_count = store._count_guard_event_upload_capacity(connection)
                 if pending_count >= store._guard_event_queue_limit:
                     stored_state = "dropped"
                 else:

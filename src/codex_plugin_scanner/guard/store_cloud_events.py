@@ -391,7 +391,7 @@ class StoreCloudEventsMixin:
             (event.idempotency_key,),
         ).fetchone()
         if existing is None:
-            pending_count = self._count_guard_events_v1_in_connection(connection, uploaded=False)
+            pending_count = self._count_guard_event_upload_capacity(connection)
             if pending_count >= self._guard_event_queue_limit:
                 capacity_row = connection.execute(
                     "select payload_json from sync_state where state_key = ?",
@@ -516,6 +516,35 @@ class StoreCloudEventsMixin:
         row = connection.execute(query).fetchone()
         return int(row["count"]) if row is not None else 0
 
+    def _count_guard_event_upload_capacity(self, connection: sqlite3.Connection) -> int:
+        """Count events that can still be uploaded.
+
+        A native activity row quarantined after a binding change stays stored and
+        unacknowledged. It must not take a slot from an event the current binding
+        can still send.
+        """
+
+        ledger = connection.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?",
+            ("native_activity_projection_ledger",),
+        ).fetchone()
+        if ledger is None:
+            return self._count_guard_events_v1_in_connection(connection, uploaded=False)
+        row = connection.execute(
+            """
+            select count(*) as count
+            from guard_cloud_events as event
+            where event.uploaded_at is null
+              and not exists (
+                select 1
+                from native_activity_projection_ledger as ledger
+                where ledger.idempotency_key = event.idempotency_key
+                  and ledger.state = 'quarantined'
+              )
+            """
+        ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
     def mark_guard_events_v1_uploaded(self, event_ids: list[str], uploaded_at: str) -> int:
         clean_ids = [event_id for event_id in event_ids if event_id.strip()]
         if not clean_ids:
@@ -526,10 +555,7 @@ class StoreCloudEventsMixin:
                 f"update guard_cloud_events set uploaded_at = ? where event_id in ({placeholders})",
                 (uploaded_at, *clean_ids),
             )
-            pending_count = self._count_guard_events_v1_in_connection(
-                connection,
-                uploaded=False,
-            )
+            pending_count = self._count_guard_event_upload_capacity(connection)
             if pending_count < self._guard_event_queue_limit:
                 capacity_row = connection.execute(
                     "select payload_json from sync_state where state_key = ?",

@@ -24,6 +24,21 @@ DEFAULT_ERROR_BACKOFF_SECONDS = 30.0
 DEFAULT_ERROR_BACKOFF_BASE_SECONDS = 1.0
 
 
+def configured_cloud_review_poll_seconds() -> float:
+    """Return the durable poll interval. A missing or unusable value stays at the default."""
+
+    raw = os.environ.get("GUARD_CLOUD_REVIEW_POLL_INTERVAL", "")
+    if not raw.strip():
+        return DEFAULT_SAFETY_POLL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_SAFETY_POLL_SECONDS
+    if value <= 0 or value != value or value == float("inf"):
+        return DEFAULT_SAFETY_POLL_SECONDS
+    return value
+
+
 @dataclass
 class CloudReviewSyncWorker:
     """Background worker for the Cloud Review event outbox."""
@@ -52,9 +67,7 @@ def start_cloud_sync_sync_worker(
 
     stop_event = threading.Event()
     wake_signal = review_event_wake_signal(store.path)
-    safety_poll = poll_interval or float(
-        os.environ.get("GUARD_CLOUD_REVIEW_POLL_INTERVAL", str(DEFAULT_SAFETY_POLL_SECONDS))
-    )
+    safety_poll = poll_interval or configured_cloud_review_poll_seconds()
     maximum_backoff = error_backoff or float(
         os.environ.get("GUARD_CLOUD_REVIEW_ERROR_BACKOFF", str(DEFAULT_ERROR_BACKOFF_SECONDS))
     )

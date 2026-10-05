@@ -318,11 +318,14 @@ def test_opted_in_native_activity_projects_without_review_consent(tmp_path: Path
     _bind(store)
     eligibility = _eligibility(store)
     assert eligibility.sync_enabled is True
-    assert project_native_policy_activity(
-        store,
-        eligibility=eligibility,
-        now="2020-01-01T00:00:00+00:00",
-    ).projected == 0
+    assert (
+        project_native_policy_activity(
+            store,
+            eligibility=eligibility,
+            now="2020-01-01T00:00:00+00:00",
+        ).projected
+        == 0
+    )
     receipt = _policy_receipt(observe_mode=True)
     store.record_native_decision_receipt(receipt)
     projected = project_native_policy_activity(store, eligibility=eligibility)
@@ -331,9 +334,7 @@ def test_opted_in_native_activity_projects_without_review_consent(tmp_path: Path
     assert len(events) == 1
     event = events[0]
     assert event["event_type"] == "receipt.created"
-    assert event["idempotency_key"] == (
-        f"native-activity:{_WORKSPACE_A}:{_INSTALLATION}:hook:{receipt['decision_id']}"
-    )
+    assert event["idempotency_key"] == (f"native-activity:{_WORKSPACE_A}:{_INSTALLATION}:hook:{receipt['decision_id']}")
     body = json.dumps(event["payload"], sort_keys=True)
     assert "native_policy_decision" in body
     assert '"decision": "observed"' in body
@@ -353,11 +354,14 @@ def test_opted_in_prompt_receipt_projects_without_approval_authority(tmp_path: P
     store = _activity_store(tmp_path, sync=True)
     _bind(store)
     eligibility = _eligibility(store, sync_enabled=True)
-    assert project_native_policy_activity(
-        store,
-        eligibility=eligibility,
-        now="2020-01-01T00:00:00+00:00",
-    ).projected == 0
+    assert (
+        project_native_policy_activity(
+            store,
+            eligibility=eligibility,
+            now="2020-01-01T00:00:00+00:00",
+        ).projected
+        == 0
+    )
     receipt = _policy_receipt(
         event_name="UserPromptSubmit",
         model_output_action="not_applicable",
@@ -420,11 +424,14 @@ def test_native_activity_backlog_is_withheld_until_authorized(tmp_path: Path) ->
     assert backfilled.projected == 1
     assert backfilled.withheld == 1
     assert len(_events(authorized)) == 1
-    assert project_native_policy_activity(
-        authorized,
-        eligibility=_eligibility(authorized),
-        now="2099-01-01T00:00:03+00:00",
-    ).projected == 0
+    assert (
+        project_native_policy_activity(
+            authorized,
+            eligibility=_eligibility(authorized),
+            now="2099-01-01T00:00:03+00:00",
+        ).projected
+        == 0
+    )
 
 
 def test_backfill_reduction_counts_only_rows_this_projection_consumed(
@@ -465,6 +472,32 @@ def test_backfill_reduction_counts_only_rows_this_projection_consumed(
     remaining = store.get_sync_payload("native_activity_backfill_authorization")
     assert isinstance(remaining, dict)
     assert remaining["limit"] == 4
+
+
+def test_quarantined_native_activity_does_not_consume_the_upload_queue(tmp_path: Path) -> None:
+    store = _activity_store(tmp_path, sync=True, queue_limit=1)
+    _bind(store)
+    eligibility = _eligibility(store, sync_enabled=True)
+    project_native_policy_activity(store, eligibility=eligibility, now="2020-01-01T00:00:00+00:00")
+    store.record_native_decision_receipt(_policy_receipt(request_id="bound-request"))
+    assert project_native_policy_activity(store, eligibility=eligibility).projected == 1
+    _bind(store, _WORKSPACE_B)
+    moved = _eligibility(store, sync_enabled=True)
+    quarantined = project_native_policy_activity(store, eligibility=moved)
+    assert quarantined.quarantined == 1
+    store.record_native_decision_receipt(_policy_receipt(request_id="current-request"))
+    projected = project_native_policy_activity(store, eligibility=moved)
+    assert projected.projected == 1
+    assert projected.dropped == 0
+    events = _events(store)
+    assert len(events) == 2
+    assert all(event["uploaded_at"] is None for event in events)
+    ready = sendable_guard_cloud_events(store, events, eligibility=moved)
+    assert len(ready) == 1
+    assert _WORKSPACE_B in str(ready[0]["idempotency_key"])
+    coverage = native_activity_coverage(store)
+    assert coverage["quarantined"] == 1
+    assert coverage["complete"] is False
 
 
 def test_changed_workspace_quarantines_native_activity_without_rekeying(tmp_path: Path) -> None:

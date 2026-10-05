@@ -467,6 +467,27 @@ class TestWorkerLiveness:
         record_cloud_review_worker_heartbeat(store)
         assert cloud_review_sync_status(store)["worker"] == "alive"
 
+    def test_liveness_follows_the_configured_poll_and_still_requires_a_heartbeat(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from codex_plugin_scanner.guard.runtime.cloud_review_sync import (
+            cloud_review_sync_status,
+            record_cloud_review_worker_heartbeat,
+        )
+        from codex_plugin_scanner.guard.store import GuardStore
+
+        store = GuardStore(tmp_path)
+        _configured_profile(store, monkeypatch)
+        monkeypatch.setenv("GUARD_CLOUD_REVIEW_POLL_INTERVAL", "120")
+        assert cloud_review_sync_status(store)["worker"] == "missing"
+        record_cloud_review_worker_heartbeat(store, now=_heartbeat_at(seconds_ago=100))
+        assert cloud_review_sync_status(store)["worker"] == "alive"
+        record_cloud_review_worker_heartbeat(store, now=_heartbeat_at(seconds_ago=362))
+        assert cloud_review_sync_status(store)["worker"] == "dead"
+        monkeypatch.setenv("GUARD_CLOUD_REVIEW_POLL_INTERVAL", "10")
+        record_cloud_review_worker_heartbeat(store, now=_heartbeat_at(seconds_ago=40))
+        assert cloud_review_sync_status(store)["worker"] == "dead"
+
     def test_dormant_worker_loop_writes_a_heartbeat_without_a_profile(self, tmp_path: Path) -> None:
         from codex_plugin_scanner.guard.runtime.cloud_review_sync import cloud_review_sync_status
         from codex_plugin_scanner.guard.runtime.cloud_review_sync_worker import (

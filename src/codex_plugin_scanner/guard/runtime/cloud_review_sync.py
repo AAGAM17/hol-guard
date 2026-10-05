@@ -456,8 +456,9 @@ def classify_cloud_review_worker(
 ) -> str:
     """Distinguish a dormant, missing, dead, failing, or live sync worker.
 
-    The dead threshold is three safety-poll intervals. A future or unparsable
-    heartbeat stays unknown instead of being reported as healthy.
+    The dead threshold is three configured poll intervals. A missing, future,
+    or unparsable heartbeat stays missing or unknown instead of being reported
+    as healthy.
     """
 
     if not sync_configured:
@@ -475,9 +476,9 @@ def classify_cloud_review_worker(
     age = (observed - seen.astimezone(timezone.utc)).total_seconds()
     if age < 0:
         return "unknown"
-    from .cloud_review_sync_worker import DEFAULT_SAFETY_POLL_SECONDS
+    from .cloud_review_sync_worker import configured_cloud_review_poll_seconds
 
-    if age > DEFAULT_SAFETY_POLL_SECONDS * 3:
+    if age > configured_cloud_review_poll_seconds() * 3:
         return "dead"
     if state.get("state") == "error":
         return "failing"

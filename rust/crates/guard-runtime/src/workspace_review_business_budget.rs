@@ -213,6 +213,14 @@ fn reserve_at(
                 claim_count,
             },
         )?;
+        if let Some(old) = previous
+            .as_ref()
+            .filter(|s| s.replay_index.claim_count > 0 && s.root != root_digest)
+        {
+            if let Ok((old_path, _)) = self::path(store.state_base(), &old.root, false) {
+                let _ = std::fs::remove_file(old_path);
+            }
+        }
         Ok(Reservation {
             request_id: request_id.into(),
             input_binding: input.binding().into(),

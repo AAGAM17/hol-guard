@@ -78,6 +78,63 @@ def test_complete_fixture_outputs_are_accepted(identifier):
     assert assess_case(CATALOG[identifier], _observed(identifier))["outcome"] == "pass"
 
 
+@pytest.mark.parametrize("identifier", OUTPUTS)
+def test_pinned_omp_timing_notice_preserves_required_stdout(identifier):
+    """OMP 18.1.18 appends timing after stdout, including its trailing newline."""
+    case = _observed(identifier)
+    for event in case["events"]:
+        if event["type"] == "tool_execution_end":
+            result = event["result"]
+            result["content"][0]["text"] += "\n\nWall time: 0.13 seconds"
+            result["details"] = {"timeoutSeconds": 300, "wallTimeMs": 125.0}
+    assert assess_case(CATALOG[identifier], case)["outcome"] == "pass"
+
+
+@pytest.mark.parametrize(
+    "elapsed,notice",
+    [(0, "0.00"), (117.19055300000036, "0.12"), (340.62337899999693, "0.34"), (125, "0.13")],
+)
+def test_timing_notice_matches_sdk_number_format(elapsed, notice):
+    case = _observed("stdin-sed-transformation")
+    result = next(event["result"] for event in case["events"] if event["type"] == "tool_execution_end")
+    result["content"][0]["text"] += f"\n\nWall time: {notice} seconds"
+    result["details"] = {"wallTimeMs": elapsed}
+    assert assess_case(CATALOG["stdin-sed-transformation"], case)["outcome"] == "pass"
+
+
+@pytest.mark.parametrize("elapsed", [None, True, "125", -1, float("inf"), float("nan"), 10**1000])
+def test_invalid_timing_metadata_cannot_hide_a_notice(elapsed):
+    case = _observed("stdin-sed-transformation")
+    result = next(event["result"] for event in case["events"] if event["type"] == "tool_execution_end")
+    result["content"][0]["text"] += "\n\nWall time: 0.13 seconds"
+    result["details"] = {"wallTimeMs": elapsed}
+    assert assess_case(CATALOG["stdin-sed-transformation"], case)["outcome"] == "task-incomplete"
+
+
+@pytest.mark.parametrize(
+    "text,details",
+    [
+        ("ordinary-workflow-public\nsecond-line\n\n\nWall time: 0.12 seconds", {"wallTimeMs": 125}),
+        ("ordinary-workflow-public\nsecond-line\n\n\nWall time: 0.13 seconds\n", {"wallTimeMs": 125}),
+        ("ordinary-workflow-public\nsecond-line\n\n\nWall time: 0.13 seconds", {}),
+        ("ordinary-workflow-public\nsecond-line\nWall time: 0.13 seconds", {"wallTimeMs": 125}),
+        ("ordinary-workflow-public\nsecond-line\n", {"wallTimeMs": 125}),
+        ("\n\nWall time: 0.13 seconds", {"wallTimeMs": 125}),
+        ("unrelated output\n\nWall time: 0.13 seconds", {"wallTimeMs": 125}),
+        (
+            "ordinary-workflow-public\nsecond-line\n\n\nWall time: 0.13 seconds\n\nWall time: 0.13 seconds",
+            {"wallTimeMs": 125},
+        ),
+    ],
+)
+def test_timing_normalization_rejects_wrong_missing_or_extra_stdout(text, details):
+    case = _observed("stdin-sed-transformation")
+    result = next(event["result"] for event in case["events"] if event["type"] == "tool_execution_end")
+    result["content"][0]["text"] = text
+    result["details"] = details
+    assert assess_case(CATALOG["stdin-sed-transformation"], case)["outcome"] == "task-incomplete"
+
+
 @pytest.mark.parametrize("identifier,index", CHECKED_OUTPUTS)
 @pytest.mark.parametrize(
     "result",

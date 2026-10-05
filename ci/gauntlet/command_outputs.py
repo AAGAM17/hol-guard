@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import re
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -27,6 +29,32 @@ OUTPUT_SCENARIOS = frozenset(
 )
 
 
+def _stdout(call: dict[str, Any], result: dict[str, Any], text: str) -> str | None:
+    """Remove only OMP's terminal timing notice, bound to its own result metadata.
+
+    The pinned BashTool joins stdout, an empty line and this notice. Preserve
+    stdout byte-for-byte, including its trailing newline and any notice-like
+    command output. JavaScript toFixed rounds exact ties away from zero.
+    """
+    details = result.get("details")
+    if call.get("name") != "bash" or not isinstance(details, dict) or "wallTimeMs" not in details:
+        return text
+    elapsed = details["wallTimeMs"]
+    if type(elapsed) not in (int, float) or elapsed < 0:
+        return None
+    try:
+        seconds = float(elapsed) / 1000
+        if not math.isfinite(seconds):
+            return None
+        rounded = Decimal.from_float(seconds).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (OverflowError, InvalidOperation):
+        return None
+    suffix = f"\n\nWall time: {rounded:.2f} seconds"
+    if not text.endswith(suffix):
+        return None
+    return text[: -len(suffix)]
+
+
 def _text(call: dict[str, Any]) -> str | None:
     """Require actual text output, rejecting missing or malformed content blocks."""
     result = call.get("result")
@@ -38,7 +66,7 @@ def _text(call: dict[str, Any]) -> str | None:
         for item in content
     ):
         return None
-    return "".join(item["text"] for item in content)
+    return _stdout(call, result, "".join(item["text"] for item in content))
 
 
 def _status(text: str | None, prefix: str = "", *, done: bool = False) -> bool:

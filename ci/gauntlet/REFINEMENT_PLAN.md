@@ -81,3 +81,13 @@ path behavior as a separate qualification lane until the runner supports them.
 Judge tests and direct shell fixture checks establish harness behavior. Only
 actual inference through pinned OMP and the matching native Guard build can
 establish product qualification.
+
+The first live Qwen 3.6 pass in an x86-64 Ubuntu VM exposed an SDK integration
+gap: OMP 18.1.18 appends `Wall time: ... seconds` to successful Bash results.
+Normalize only that terminal footer when it matches numeric result metadata;
+retain stdout exactly and keep the original public tool result unchanged.
+Regression checks must cover the SDK's exact-tie rounding, malformed metadata,
+fake or duplicate notices, and empty or incorrect stdout. Preserve the prior
+live attempt and rerun on the final matching native build before qualification.
+Install that wheel with a private umask and without an extraction cache that
+could retain group-writable permissions.

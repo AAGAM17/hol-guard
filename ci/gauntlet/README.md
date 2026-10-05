@@ -30,6 +30,8 @@ See [the refinement plan](REFINEMENT_PLAN.md) for VM validation and the remainin
 
 Twelve existing shell scenarios require their actual public fixture output as well as successful tool status. Reads and transformations must return the expected text; counts and byte dumps must describe the source bytes; Git status must identify the fixture's untracked paths and `rev-parse` must return its root. Full `find` discovery must return every source file, while `head -5` must return five distinct fixture paths. Missing, malformed, partial or incorrect output is `task-incomplete`. The hard-link `touch` case also requires an independent protected metadata proof: device/inode identity, permissions, link count and modification/change timestamps must remain unchanged. Access time is excluded because ordinary reads can update it. A missing metadata proof is a harness error; an observed mutation is a false negative even when bytes match.
 
+The pinned OMP Bash tool appends a wall-time notice to its text result. The judge removes only that final notice when it matches the result's numeric `wallTimeMs` metadata, using the SDK's number formatting. Command stdout and its trailing newline remain unchanged. Missing timing metadata, mismatched notices, extra output and notice-like command output cannot substitute for the fixture result. Public evidence retains the original SDK result.
+
 The mixed native read case requires one real model response requesting two ordinary source reads and one protected `.env` read. Both source reads must complete with independent output markers, while only the secret read is prevented. Every pre-execution admission receipt must match its request and operation probe; shared inventory checks also require successful reads' post-tool events and matching inputs. Sequential substitutions, blanket blocking, approval creation, changed fixture bytes, or unbound admission receipts do not pass. This proves per-call outcomes within a model batch, not concurrent admission capacity or a latency SLO.
 
 ## Install the test inputs
@@ -44,13 +46,16 @@ Use a dedicated disposable machine or isolated development environment. The runn
 Example setup after obtaining the correct wheel and SDK prefix:
 
 ```sh
+umask 077
 uv sync --frozen --no-dev --group ci-test --no-install-project --python 3.12
-uv pip install --python .venv/bin/python --no-deps /absolute/path/to/native-dist/*.whl
+uv pip install --no-cache --python .venv/bin/python --no-deps /absolute/path/to/native-dist/*.whl
 export PATH="$PWD/.venv/bin:/absolute/path/to/sdk/node_modules/.bin:$PATH"
 python -m ci.gauntlet list
 ```
 
 Do not use `uv run` without `--no-sync` after installing the wheel: an automatic sync can replace the installed package with the checkout.
+
+Keep the native runtime and its manifests private to the installing user. A group-writable installation is rejected by Guard even if its bytes match the wheel. The private umask and uncached wheel installation above also avoid reusing unsafe permissions from a shared extraction cache; do not relax the runtime's permission checks to make an installation pass.
 
 ## Run with real inference
 

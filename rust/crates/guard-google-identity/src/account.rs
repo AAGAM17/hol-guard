@@ -47,6 +47,62 @@ impl GoogleSendAccount {
         self.active.read().is_ok_and(|active| *active) && self.credential.is_current()
     }
 
+    pub fn can_refresh(&self) -> bool {
+        self.active.read().is_ok_and(|active| *active) && self.credential.can_refresh()
+    }
+
+    /// Renew only through registered fixed Google endpoints. Pending inputs
+    /// are revoked before exchange; any failure leaves this owner unavailable.
+    /// No retry or business send occurs during authorization renewal.
+    pub fn refresh(&mut self) -> Result<(), crate::IdentityError> {
+        self.refresh_with(|credential| credential.refresh_registered())
+    }
+
+    pub(super) fn refresh_with(
+        &mut self,
+        renew: impl FnOnce(&GoogleSendCredential) -> Result<GoogleSendCredential, crate::IdentityError>,
+    ) -> Result<(), crate::IdentityError> {
+        self.refresh_with_epoch(renew, new_epoch)
+    }
+
+    pub(super) fn refresh_with_epoch(
+        &mut self,
+        renew: impl FnOnce(&GoogleSendCredential) -> Result<GoogleSendCredential, crate::IdentityError>,
+        create_epoch: impl FnOnce() -> Result<String, GoogleSendAccountError>,
+    ) -> Result<(), crate::IdentityError> {
+        let available = self.can_refresh();
+        self.revoke();
+        if !available {
+            return Err(crate::IdentityError::Invalid);
+        }
+        let epoch = create_epoch().map_err(|_| crate::IdentityError::Invalid)?;
+        let replacement = renew(&self.credential)?;
+        if replacement.purpose != GrantPurpose::Send
+            || !replacement.is_current()
+            || replacement.account_lease.is_some()
+            || replacement.identity.account_binding != self.credential.identity.account_binding
+            || replacement.identity.tenant_binding != self.credential.identity.tenant_binding
+            || !self
+                .credential
+                .identity
+                .sender
+                .as_ref()
+                .is_some_and(|sender| {
+                    replacement
+                        .identity
+                        .sender
+                        .as_ref()
+                        .is_some_and(|other| sender.same_mailbox(other))
+                })
+        {
+            return Err(crate::IdentityError::Invalid);
+        }
+        self.credential = replacement;
+        self.active = Arc::new(RwLock::new(true));
+        self.epoch = epoch;
+        Ok(())
+    }
+
     pub fn prepare_command(
         &self,
         command: String,
@@ -57,6 +113,7 @@ impl GoogleSendAccount {
         // Only access material is leased; refresh material stays with the owner.
         let identity = &self.credential.identity;
         GoogleSendCredential {
+            refresh_registration: None,
             account_lease: Some(Arc::clone(&self.active)),
             account_epoch: Some(self.epoch.clone()),
             purpose: GrantPurpose::Send,

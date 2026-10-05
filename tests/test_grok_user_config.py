@@ -6,7 +6,7 @@ import pytest
 import tomlkit
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
-from codex_plugin_scanner.guard.adapters.grok import GrokHarnessAdapter
+from codex_plugin_scanner.guard.adapters.grok import GrokHarnessAdapter, grok_runtime_hooks_verified
 from codex_plugin_scanner.guard.adapters.grok_config import MANAGED_DENY_RULES, build_managed_config_block
 from codex_plugin_scanner.guard.adapters.grok_user_config import prepare_user_config_text, remove_user_config_settings
 from codex_plugin_scanner.guard.cli.native_install_checks import _grok_protection_checks
@@ -116,15 +116,20 @@ def test_vendor_refresh_cannot_remove_durable_protection(tmp_path: Path, monkeyp
     enterprise = '# Enterprise settings\nmodel="synthetic-enterprise-model"\n'
     vendor.write_text(enterprise)
     adapter = GrokHarnessAdapter()
-    adapter.install(context)
+    manifest = adapter.install(context)
+    artifacts = manifest["protection_artifact_paths"]
+    assert isinstance(artifacts, list)
+    assert str(adapter._protection_config_path(context)) in artifacts
     assert vendor.read_text() == enterprise
     vendor.unlink()  # Grok's authenticated configuration refresh owns this file.
     assert _grok_protection_checks(context)["ready"] is True
     durable = context.home_dir / ".grok" / "config.toml"
     document = tomlkit.parse(durable.read_text())
+    document["model"] = "synthetic-user-model"
     document["permission"]["deny"].append("Read(~/.ssh/**)")
     durable.write_text(tomlkit.dumps(document) + "# Read(~/.grok/auth/**) is a user comment.\n")
     assert _grok_protection_checks(context)["ready"] is True
+    assert grok_runtime_hooks_verified(context) is True
     payload = tomllib.loads(durable.read_text())
     assert set(MANAGED_DENY_RULES) <= set(payload["permission"]["deny"])
     for event in ("PreToolUse", "UserPromptSubmit", "SessionStart", "SubagentStart"):

@@ -18,10 +18,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 
 SHARD_COUNT = 128
-# The planner has a five-minute watchdog and each dependent coverage shard
-# has a ten-minute watchdog. Include one minute for polling and scheduling
-# overhead; this bound does not delay successful producers or define the CI
-# performance target.
+# coverage-plan (5 min) + coverage (10 min) + one minute of polling slack
 _DEFAULT_TIMEOUT_SECONDS = 960.0
 REPOSITORY_PATTERN = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _SHARD_NAME = re.compile(r"coverage \(3\.12, (0|[1-9][0-9]*)\)")

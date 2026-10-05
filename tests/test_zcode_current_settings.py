@@ -242,7 +242,7 @@ def test_install_does_not_enable_disabled_user_hooks(tmp_path):
                             "hooks": [
                                 {
                                     "type": "command",
-                                    "command": ZCodeHarnessAdapter()._managed_command_wrapper("echo guard"),
+                                    "command": "echo user hook",
                                 }
                             ],
                         }

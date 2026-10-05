@@ -7116,7 +7116,7 @@ def test_guard_hook_emits_copilot_native_allow_response_for_read_only_ls_pipelin
     _build_guard_fixture(home_dir, workspace_dir)
     event = {
         "toolName": "bash",
-        "toolArgs": json.dumps({"command": "ls /mock-workspace/app/guard/_components/ 2>/dev/null | head -40"}),
+        "toolArgs": json.dumps({"command": f"ls {workspace_dir}/app/guard/_components/ 2>/dev/null | head -40"}),
         "sourceScope": "project",
     }
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))

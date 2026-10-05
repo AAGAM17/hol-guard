@@ -4,9 +4,13 @@ use serde_json::json;
 
 #[test]
 fn routine_file_mutations_do_not_inherit_sensitive_or_directory_delete_access() {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock is after the Unix epoch")
+        .as_nanos();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/file-mutations")
-        .join(format!("fixture-{}", std::process::id()));
+        .join(format!("fixture-{}-{stamp}", std::process::id()));
     std::fs::create_dir_all(root.join("src")).unwrap();
     let root = std::fs::canonicalize(root).unwrap();
     std::fs::write(root.join("src/example.ts"), "ordinary source").unwrap();

@@ -2,7 +2,8 @@
 
 The native Unix helper obtains connection UID and group ID from the kernel on
 Linux and macOS. Its constructor accepts an actual Unix stream; it has no JSON,
-model argument or raw UID constructor. Missing or sentinel credentials refuse.
+model argument or raw UID constructor. A connected socket is required; Linux
+also requires a positive kernel peer PID. Missing or sentinel credentials refuse.
 Other platforms have no implementation of this input yet.
 
 This is a connection credential snapshot, not proof of the currently executing

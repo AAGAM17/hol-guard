@@ -17,9 +17,15 @@ pub(crate) struct UnixPeerIdentity {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 impl UnixPeerIdentity {
     pub(crate) fn read(stream: &std::os::unix::net::UnixStream) -> Result<Self, String> {
+        stream
+            .peer_addr()
+            .map_err(|_| "native_peer_identity_unavailable".to_owned())?;
         #[cfg(target_os = "linux")]
         let (uid, gid) = {
             let credentials = read_linux_credentials(stream)?;
+            if credentials.pid() <= 0 {
+                return Err("native_peer_identity_unavailable".into());
+            }
             (credentials.uid(), credentials.gid())
         };
         #[cfg(target_os = "macos")]
@@ -28,7 +34,8 @@ impl UnixPeerIdentity {
                 .map_err(|_| "native_peer_identity_unavailable".to_owned())?;
             (uid.as_raw(), gid.as_raw())
         };
-        // Linux unconnected sockets can report sentinel credentials.
+        // Reject credentials whose IDs cannot be represented. Linux also
+        // requires a connected socket and positive kernel peer PID above.
         if uid == u32::MAX || gid == u32::MAX {
             return Err("native_peer_identity_unavailable".into());
         }

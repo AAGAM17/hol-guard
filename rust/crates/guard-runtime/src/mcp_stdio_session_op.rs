@@ -24,7 +24,7 @@ use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::Child;
 #[cfg(unix)]
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(unix)]
 use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(unix)]
@@ -46,11 +46,26 @@ struct SessionEntry {
 }
 
 #[cfg(unix)]
-type SessionRegistryGuard<'a> =
-    std::sync::MutexGuard<'a, HashMap<String, Arc<Mutex<SessionEntry>>>>;
+impl Drop for SessionEntry {
+    fn drop(&mut self) {
+        self.session.close(&mut self.child);
+    }
+}
+
+/// Cancellation is reachable without taking the I/O mutex.
+#[cfg(unix)]
+struct SessionHandle {
+    state: Mutex<SessionEntry>,
+    cancellation: Arc<AtomicBool>,
+    owner_pid: u32,
+    owner_start: String,
+}
 
 #[cfg(unix)]
-static SESSIONS: OnceLock<Mutex<HashMap<String, Arc<Mutex<SessionEntry>>>>> = OnceLock::new();
+type SessionRegistryGuard<'a> = std::sync::MutexGuard<'a, HashMap<String, Arc<SessionHandle>>>;
+
+#[cfg(unix)]
+static SESSIONS: OnceLock<Mutex<HashMap<String, Arc<SessionHandle>>>> = OnceLock::new();
 
 #[cfg(unix)]
 fn sessions() -> Result<SessionRegistryGuard<'static>, String> {
@@ -63,7 +78,7 @@ fn sessions() -> Result<SessionRegistryGuard<'static>, String> {
 /// Look up a session's `Arc` under the registry lock, then drop the guard so a
 /// blocking `recv` doesn't serialize ops across other sessions.
 #[cfg(unix)]
-fn lookup(session_id: &str) -> Result<Arc<Mutex<SessionEntry>>, String> {
+fn lookup(session_id: &str) -> Result<Arc<SessionHandle>, String> {
     validate_session_id(session_id)?;
     sessions()?
         .get(session_id)
@@ -111,12 +126,104 @@ fn exited_result(exit_code: i32) -> Result<Vec<u8>, String> {
     encode(r)
 }
 
+#[cfg(unix)]
+fn close_handle(handle: Arc<SessionHandle>) {
+    handle.cancellation.store(true, Ordering::Release);
+    // A poisoned entry still owns a child and must be torn down.
+    let mut guard = handle.state.lock().unwrap_or_else(|e| e.into_inner());
+    let SessionEntry { session, child } = &mut *guard;
+    session.close(child);
+}
+
+#[cfg(unix)]
+fn owner_gone(handle: &SessionHandle) -> bool {
+    use crate::resident_process_identity::{process_is_definitively_gone, process_start_marker};
+    if process_is_definitively_gone(handle.owner_pid).unwrap_or(false) {
+        return true;
+    }
+    process_start_marker(handle.owner_pid).is_ok_and(|start| start != handle.owner_start)
+}
+
+/// Only dead owners may lose queued output. A live owner's exited child retains
+/// its final frames until recv/close, even if another proxy opens a session.
+#[cfg(unix)]
+fn reap_orphaned_sessions() {
+    let snapshot: Vec<_> = match sessions() {
+        Ok(registry) => registry
+            .iter()
+            .map(|(id, h)| (id.clone(), Arc::clone(h)))
+            .collect(),
+        Err(_) => return,
+    };
+    for (id, handle) in snapshot {
+        if !owner_gone(&handle) {
+            continue;
+        }
+        let removed = match sessions() {
+            Ok(mut registry) => {
+                if registry
+                    .get(&id)
+                    .is_some_and(|current| Arc::ptr_eq(current, &handle))
+                {
+                    registry.remove(&id)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        };
+        if let Some(handle) = removed {
+            close_handle(handle);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn start_reaper() -> Result<(), String> {
+    static STARTED: OnceLock<Result<(), String>> = OnceLock::new();
+    STARTED
+        .get_or_init(|| {
+            std::thread::Builder::new()
+                .name("guard-mcp-reaper".to_owned())
+                .spawn(|| loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    reap_orphaned_sessions();
+                })
+                .map(|_| ())
+                .map_err(|_| "mcp_session_reaper_unavailable".to_owned())
+        })
+        .clone()
+}
+
+pub(crate) fn close_all_sessions() {
+    #[cfg(unix)]
+    if let Ok(mut registry) = sessions() {
+        let handles: Vec<_> = registry.drain().map(|(_, handle)| handle).collect();
+        drop(registry);
+        for handle in handles {
+            close_handle(handle);
+        }
+    }
+}
+
 /// `mcp_stdio_session_open` — spawn + register a live session.
 #[cfg(unix)]
 pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec<u8>, String> {
     if validate_session_id(&request.session_id).is_err() {
         return err_result("invalid_mcp_session_id");
     }
+    if request.owner_pid == 0 || request.owner_pid > i32::MAX as u32 {
+        return err_result("invalid_mcp_session_owner");
+    }
+    let owner_start =
+        match crate::resident_process_identity::process_start_marker(request.owner_pid) {
+            Ok(marker) => marker,
+            Err(_) => return err_result("mcp_session_owner_unavailable"),
+        };
+    if let Err(code) = start_reaper() {
+        return err_result(&code);
+    }
+    reap_orphaned_sessions();
     let cancellation = Arc::new(AtomicBool::new(false));
     let home_dir = request
         .home_dir
@@ -133,7 +240,7 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
         request.extra_env.as_ref(),
         home_dir.as_deref(),
         cwd.as_deref(),
-        cancellation,
+        Arc::clone(&cancellation),
     );
     let (session, child) = match spawned {
         Ok(v) => v,
@@ -156,28 +263,20 @@ pub(crate) fn session_open(request: &McpStdioSessionOpenRequestV1) -> Result<Vec
         return err_result("mcp_session_exists");
     }
     if registry.len() >= MAX_SESSIONS {
-        registry.retain(|_, arc| match arc.try_lock() {
-            Ok(mut g) => {
-                let SessionEntry { session, child } = &mut *g;
-                let dead = matches!(child.try_wait(), Ok(Some(_))) && session.is_drained_and_idle();
-                if dead {
-                    session.close(child);
-                }
-                !dead
-            }
-            Err(_) => true,
-        });
-        if registry.len() >= MAX_SESSIONS {
-            drop(registry);
-            let mut s = session;
-            let mut c = child;
-            s.close(&mut c);
-            return err_result("mcp_session_registry_full");
-        }
+        drop(registry);
+        let mut s = session;
+        let mut c = child;
+        s.close(&mut c);
+        return err_result("mcp_session_registry_full");
     }
     registry.insert(
         request.session_id.clone(),
-        Arc::new(Mutex::new(SessionEntry { session, child })),
+        Arc::new(SessionHandle {
+            state: Mutex::new(SessionEntry { session, child }),
+            cancellation,
+            owner_pid: request.owner_pid,
+            owner_start,
+        }),
     );
     drop(registry);
     let mut r = McpStdioSessionResultV1::status("opened");
@@ -192,7 +291,7 @@ pub(crate) fn session_send(request: &McpStdioSessionSendRequestV1) -> Result<Vec
         Ok(e) => e,
         Err(code) => return err_result(&code),
     };
-    let mut guard = match entry.lock() {
+    let mut guard = match entry.state.lock() {
         Ok(g) => g,
         Err(_) => return err_result("mcp_session_unavailable"),
     };
@@ -210,7 +309,7 @@ pub(crate) fn session_recv(request: &McpStdioSessionRecvRequestV1) -> Result<Vec
         Ok(e) => e,
         Err(code) => return err_result(&code),
     };
-    let mut guard = match entry.lock() {
+    let mut guard = match entry.state.lock() {
         Ok(g) => g,
         Err(_) => return err_result("mcp_session_unavailable"),
     };
@@ -300,10 +399,7 @@ pub(crate) fn session_close(request: &McpStdioSessionCloseRequestV1) -> Result<V
     };
     match arc {
         Some(arc) => {
-            if let Ok(mut guard) = arc.lock() {
-                let SessionEntry { session, child } = &mut *guard;
-                session.close(child);
-            }
+            close_handle(arc);
             encode(McpStdioSessionResultV1::status("closed"))
         }
         None => encode(McpStdioSessionResultV1::status("closed")),
@@ -330,132 +426,5 @@ pub(crate) fn session_close(_r: &McpStdioSessionCloseRequestV1) -> Result<Vec<u8
 }
 
 #[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use std::sync::Mutex as TestMutex;
-
-    // Serialize tests that touch the shared SESSIONS registry.
-    static LOCK: TestMutex<()> = TestMutex::new(());
-
-    fn decode(bytes: Vec<u8>) -> Value {
-        serde_json::from_slice(&bytes).expect("result json")
-    }
-
-    fn open_req(id: &str, argv: Vec<&str>) -> McpStdioSessionOpenRequestV1 {
-        McpStdioSessionOpenRequestV1 {
-            schema: guard_contracts::MCP_STDIO_SESSION_OPEN_REQUEST_SCHEMA.to_owned(),
-            session_id: id.to_owned(),
-            argv: argv.iter().map(|s| s.to_string()).collect(),
-            extra_env: None,
-            home_dir: None,
-            cwd: None,
-        }
-    }
-
-    fn close(id: &str) {
-        let _ = session_close(&McpStdioSessionCloseRequestV1 {
-            schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
-            session_id: id.to_owned(),
-        });
-    }
-
-    #[test]
-    fn open_rejects_empty_and_overlong_session_id() {
-        let _g = LOCK.lock().unwrap();
-        for bad in ["", &"x".repeat(200)] {
-            let r = decode(session_open(&open_req(bad, vec!["/bin/cat"])).unwrap());
-            assert_eq!(r["status"], "error");
-            assert_eq!(r["payload"], "invalid_mcp_session_id");
-        }
-    }
-
-    #[test]
-    fn send_recv_close_unknown_session_is_terminal() {
-        let _g = LOCK.lock().unwrap();
-        let send = session_send(&McpStdioSessionSendRequestV1 {
-            schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
-            session_id: "nope".into(),
-            message: json!({"jsonrpc":"2.0","id":1,"result":{}}),
-        })
-        .unwrap();
-        assert_eq!(decode(send)["payload"], "mcp_session_not_found");
-    }
-
-    #[test]
-    fn duplicate_open_is_rejected() {
-        let _g = LOCK.lock().unwrap();
-        let id = "dup-sess";
-        let _ = session_open(&open_req(id, vec!["/bin/cat"]));
-        let second = decode(session_open(&open_req(id, vec!["/bin/cat"])).unwrap());
-        assert_eq!(second["status"], "error");
-        assert_eq!(second["payload"], "mcp_session_exists");
-        close(id);
-    }
-
-    #[test]
-    fn open_send_recv_close_roundtrip_via_cat_echo() {
-        let _g = LOCK.lock().unwrap();
-        let id = "echo-sess";
-        let opened = decode(session_open(&open_req(id, vec!["/bin/cat"])).unwrap());
-        assert_eq!(opened["status"], "opened", "open failed: {opened:?}");
-
-        // cat echoes our framed line back; a response-shaped frame surfaces
-        // as a child_response.
-        let frame = json!({"jsonrpc":"2.0","id":7,"result":{"ok":true}});
-        let sent = decode(
-            session_send(&McpStdioSessionSendRequestV1 {
-                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
-                session_id: id.into(),
-                message: frame.clone(),
-            })
-            .unwrap(),
-        );
-        assert_eq!(sent["status"], "sent", "send failed: {sent:?}");
-
-        let recv = decode(
-            session_recv(&McpStdioSessionRecvRequestV1 {
-                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
-                session_id: id.into(),
-                timeout_ms: Some(5000),
-                await_request_id: Some(json!(7)),
-                poll_only: false,
-            })
-            .unwrap(),
-        );
-        assert_eq!(recv["status"], "event", "recv failed: {recv:?}");
-        assert_eq!(recv["event_kind"], "child_response");
-        assert_eq!(recv["payload"]["id"], 7);
-
-        let closed = decode(
-            session_close(&McpStdioSessionCloseRequestV1 {
-                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
-                session_id: id.into(),
-            })
-            .unwrap(),
-        );
-        assert_eq!(closed["status"], "closed");
-    }
-
-    #[test]
-    fn recv_times_out_when_child_silent() {
-        let _g = LOCK.lock().unwrap();
-        let id = "silent-sess";
-        // `sleep` emits nothing; recv must return a bounded timeout, not hang.
-        let opened = decode(session_open(&open_req(id, vec!["/bin/sleep", "30"])).unwrap());
-        assert_eq!(opened["status"], "opened");
-        let recv = decode(
-            session_recv(&McpStdioSessionRecvRequestV1 {
-                schema: guard_contracts::MCP_STDIO_SESSION_IO_REQUEST_SCHEMA.to_owned(),
-                session_id: id.into(),
-                timeout_ms: Some(150),
-                await_request_id: None,
-                poll_only: false,
-            })
-            .unwrap(),
-        );
-        assert_eq!(recv["status"], "timeout");
-        assert_eq!(recv["timed_out"], true);
-        close(id);
-    }
-}
+#[path = "mcp_stdio_session_op_tests.rs"]
+mod tests;

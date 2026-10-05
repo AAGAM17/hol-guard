@@ -19,7 +19,10 @@
 
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::Read;
+
+#[path = "mcp_stdio_writer.rs"]
+mod writer;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -28,6 +31,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+use writer::SessionWriter;
 
 use crate::local_mcp_stdio::{
     is_rpc_message, kill_process_group, pop_json_message, probe_search_path,
@@ -179,7 +183,8 @@ pub enum SessionEvent {
 /// the native runtime. The caller (resident op) drives `write`/`next_event`
 /// while Python supplies policy verdicts out-of-band.
 pub struct LiveMcpSession {
-    stdin: std::process::ChildStdin,
+    writer: SessionWriter,
+    child_pid: i32,
     inbox: mpsc::Receiver<Value>,
     cancellation: Arc<AtomicBool>,
     _drain: Option<thread::JoinHandle<()>>,
@@ -282,12 +287,23 @@ impl LiveMcpSession {
             .map_err(|_| "transport_failed".to_owned())?;
         let stdin = child.stdin.take().ok_or("transport_failed")?;
         let stdout = child.stdout.take().ok_or("transport_failed")?;
+        let writer = match SessionWriter::spawn(stdin) {
+            Ok(writer) => writer,
+            Err(code) => {
+                kill_process_group(child.id() as i32);
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(code);
+            }
+        };
+        let child_pid = child.id() as i32;
         let (tx, rx) = mpsc::sync_channel::<Value>(SESSION_QUEUE);
         let cancel_tx = Arc::clone(&cancellation);
         let drain = thread::spawn(move || session_pump(stdout, tx, cancel_tx));
         Ok((
             LiveMcpSession {
-                stdin,
+                writer,
+                child_pid,
                 inbox: rx,
                 cancellation,
                 _drain: Some(drain),
@@ -306,12 +322,22 @@ impl LiveMcpSession {
         if self.closed {
             return Err("session_closed".to_owned());
         }
-        let mut framed = serde_json::to_vec(message).unwrap_or_default();
+        let mut framed =
+            serde_json::to_vec(message).map_err(|_| "child_frame_invalid".to_owned())?;
+        if framed.len() > SESSION_FRAME_LIMIT {
+            return Err("child_frame_too_large".to_owned());
+        }
         framed.push(b'\n');
-        self.stdin
-            .write_all(&framed)
-            .and_then(|_| self.stdin.flush())
-            .map_err(|_| "child_write_failed".to_owned())
+        let result = self
+            .writer
+            .write(framed, &self.cancellation, Duration::from_secs(5));
+        if result.is_err() {
+            // A timed-out write may have delivered part of a frame. Retire the
+            // transport rather than retrying and corrupting JSON-RPC framing.
+            self.cancel();
+            kill_process_group(self.child_pid);
+        }
+        result
     }
 
     /// Drain the next inbound child frame within `timeout`, classifying it.
@@ -324,6 +350,9 @@ impl LiveMcpSession {
     ) -> Result<Option<SessionEvent>, SessionReadError> {
         let deadline = Instant::now() + timeout;
         loop {
+            if self.cancellation.load(Ordering::Acquire) {
+                return Err(SessionReadError::Eof);
+            }
             let msg = if let Some(msg) = self.peeked.take() {
                 msg
             } else {
@@ -337,9 +366,12 @@ impl LiveMcpSession {
                         }
                     }
                 } else {
-                    match self.inbox.recv_timeout(deadline - now) {
+                    match self
+                        .inbox
+                        .recv_timeout((deadline - now).min(Duration::from_millis(25)))
+                    {
                         Ok(msg) => msg,
-                        Err(mpsc::RecvTimeoutError::Timeout) => return Ok(None),
+                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
                         Err(mpsc::RecvTimeoutError::Disconnected) => {
                             return Err(SessionReadError::Eof);
                         }
@@ -435,52 +467,5 @@ impl LiveMcpSession {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn response_key_canonicalizes_sort_order() {
-        // `{"a":1,"b":2}` id must correlate regardless of source key order.
-        let a = json!({"a":1,"b":2});
-        let b = json!({"b":2,"a":1});
-        assert_eq!(response_key(Some(&a)), response_key(Some(&b)));
-        assert_eq!(response_key(Some(&a)).unwrap(), "{\"a\":1,\"b\":2}");
-        assert_eq!(response_key(Some(&json!(7))).unwrap(), "7");
-        assert_eq!(response_key(Some(&json!("x"))).unwrap(), "\"x\"");
-        assert_eq!(response_key(Some(&Value::Null)), Some("null".into()));
-        assert_eq!(response_key(None), None);
-    }
-
-    #[test]
-    fn frame_classification() {
-        assert!(is_request(&json!({"method":"tools/call","id":1})));
-        assert!(!is_request(&json!({"id":1,"result":{}})));
-        assert!(is_response(&json!({"id":1,"result":{}})));
-        assert!(!is_response(&json!({"method":"tools/call","id":1})));
-        assert!(is_notification(
-            &json!({"method":"notifications/cancelled"})
-        ));
-        assert!(!is_notification(&json!({"id":1})));
-    }
-
-    #[test]
-    fn buffered_response_fifo_and_key() {
-        let mut buf = ResponseBuffers::default();
-        let r1 = json!({"id":1,"result":{"a":1}});
-        let r2 = json!({"id":1,"result":{"a":2}});
-        buf.buffer(r1.clone());
-        buf.buffer(r2.clone());
-        // FIFO within a correlation key.
-        assert_eq!(buf.pop(&json!(1)), Some(r1));
-        assert_eq!(buf.pop(&json!(1)), Some(r2));
-        assert_eq!(buf.pop(&json!(1)), None);
-        // An id-less message carries no correlation key and buffers nothing.
-        buf.buffer(json!({"result":{}}));
-        assert_eq!(buf.pop(&json!(2)), None);
-        // Per-key isolation.
-        buf.buffer(json!({"id":9,"result":{}}));
-        assert_eq!(buf.pop(&json!(3)), None);
-        assert_eq!(buf.pop(&json!(9)), Some(json!({"id":9,"result":{}})));
-    }
-}
+#[path = "mcp_stdio_session_tests.rs"]
+mod tests;

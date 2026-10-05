@@ -8,6 +8,7 @@ unavailable authority, not permission to substitute Python decisions.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from collections.abc import Mapping, Sequence
@@ -756,6 +757,7 @@ def mcp_stdio_session_open_native(
     request: dict[str, object] = {
         "schema": _MCP_STDIO_SESSION_OPEN_SCHEMA,
         "session_id": session_id,
+        "owner_pid": os.getpid(),
         "argv": list(argv),
         "extra_env": dict(extra_env) if extra_env else None,
         "home_dir": str(home_dir) if home_dir else None,

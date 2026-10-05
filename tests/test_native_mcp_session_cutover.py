@@ -80,3 +80,16 @@ def test_cleanup_transport_failure_preserves_the_original_launch_failure(launch)
         launch.proxy._start_process()
     launch.clear.assert_called_once()
     launch.python_spawn.assert_not_called()
+
+
+def test_native_session_open_binds_the_current_proxy_owner(monkeypatch, tmp_path):
+    import os
+
+    from codex_plugin_scanner.guard import native_execution
+
+    request = Mock(return_value={"status": "opened"})
+    monkeypatch.setattr(native_execution, "_resident_request", request)
+    native_execution.mcp_stdio_session_open_native(
+        ["/usr/bin/server"], session_id="opaque-owner-proof", guard_home=tmp_path
+    )
+    assert request.call_args.kwargs["request"]["owner_pid"] == os.getpid()

@@ -348,12 +348,14 @@ fn run() -> Result<(), String> {
                 && owner_flag == "--owner-process-id"
                 && digest_flag == "--runtime-sha256" =>
         {
-            managed_resident::serve_managed(
+            let result = managed_resident::serve_managed(
                 std::path::Path::new(state_dir),
                 managed_resident::parse_generation(generation)?,
                 managed_resident::parse_process_id(owner_process_id)?,
                 digest,
-            )
+            );
+            mcp_stdio_session_op::close_all_sessions();
+            result
         }
         [command, state_flag, state_dir, generation_flag, generation, digest_flag, digest]
             if command == "supervise-managed"

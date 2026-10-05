@@ -745,6 +745,7 @@ def test_openclaw_complete_plan_recovers_overlay_hook_manifest_and_launchers(tra
 @pytest.mark.parametrize("previous_exists", [False, True])
 def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, previous_exists):
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
+    from codex_plugin_scanner.guard.adapters.cursor_hook_config import isolated_cursor_hook_python
     from codex_plugin_scanner.guard.adapters.grok import GrokHarnessAdapter
 
     runtime, plan, _, _ = transition
@@ -759,7 +760,7 @@ def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, p
     backup = adapter._backup_path(ctx, "config.toml")
     previous_backup = backup.stat() if backup.exists() else None
     prepared = adapter.prepare_install(replace(ctx, workspace_dir=ctx.home_dir / "candidate-workspace"))
-    assert len(prepared.files) in {10, 11}
+    assert len(prepared.files) == (11 if isolated_cursor_hook_python() is not None else 10)
     assert config.read_bytes() == next(change.before for change in prepared.files if change.path == config)
     plan = replace(plan, files=(*plan.files, *prepared.files))
     begin(runtime, plan)

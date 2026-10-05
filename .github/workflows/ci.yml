@@ -560,6 +560,7 @@ jobs:
         env:
           PLAN_LANES: ${{ needs.plan.outputs.lanes }}
           PLAN_SHARD_COUNT: ${{ needs.coverage-plan.outputs.shard-count }}
+          EXPECTED_SHARDS: ${{ env.CI_PYTEST_COVERAGE_SHARDS }}
           PLAN_DATA_ONLY: ${{ needs.plan.outputs.data_only }}
           RESULTS: ${{ toJson(needs) }}
           EVENT_NAME: ${{ github.event_name }}
@@ -593,9 +594,14 @@ jobs:
           # Matrix cardinality: coverage must expand to exactly the planned shard
           # count. A truncated/empty matrix that still "passes" is a protection gap.
           shard_count = os.environ.get("PLAN_SHARD_COUNT", "")
-          if shard_count.isdigit() and int(shard_count) < 1:
-              print(f"::error::coverage-plan emitted empty shard matrix ({shard_count})")
-              sys.exit(1)
+          expected = os.environ.get("EXPECTED_SHARDS", "")
+          if not data_only:
+              if not shard_count.isdigit() or int(shard_count) < 1:
+                  print(f"::error::coverage-plan shard count invalid ({shard_count!r})")
+                  sys.exit(1)
+              if expected.isdigit() and int(shard_count) != int(expected):
+                  print(f"::error::coverage matrix {shard_count} != configured {expected}")
+                  sys.exit(1)
           skipped = [j for j in required if needs.get(j,{}).get("result")=="skipped"]
           if skipped and not data_only:
               print("::error::required jobs skipped on a full-lane plan: "+", ".join(skipped))

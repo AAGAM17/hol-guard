@@ -18,6 +18,9 @@ Lane selection is a pure function of the *changed file list* — a malicious PR 
 at most cause *more* lanes to run, never fewer than its diff requires, because any
 path outside the conservative fast set escalates to full.
 
+# The base must be the strict PR merge parent validated by ``pr_merge_base``
+# (or an explicit trusted ``PLAN_BASE_SHA``); ``GITHUB_BASE_REF`` is a mutable
+# branch name, never used as a diff anchor.
 Lanes
 -----
 - ``data``: ``contributions/**`` plus ``contracts/**`` schema/test data. Escalates
@@ -52,7 +55,6 @@ LANE_FULL = "full"
 # native/Python fan-out. Everything NOT matching fast set escalates to full.
 _DATA_PREFIXES = (
     "contributions/",
-    "contracts/extensions/",
     "contracts/mcp-servers/",
 )
 _DATA_GLOBS = (
@@ -74,8 +76,20 @@ _ESCALATE_ALWAYS = (
     re.compile(r"^pyproject\.toml$"),
     re.compile(r"^uv\.lock$"),
     re.compile(r"^rust-toolchain"),
+    # Authority surface under contracts/extensions/: generated catalog/program,
+    # packaging lists, and schemas carry security semantics; changes there take
+    # the full lane (maintainer regen PRs intentionally stay full).
+    re.compile(r"^contracts/extensions/"),
+    re.compile(r"^docs/"),
+    re.compile(r"^\.[^/]+$"),
 )
 
+
+
+# Raw-diff modes that are never data: symlink, gitlink, or a typechange to any
+# non-regular file. ``--no-renames`` surfaces renames as delete+add, so the
+# deleted source path escalates on its own.
+_UNSAFE_MODES = {"120000", "160000"}
 
 @dataclass
 class Plan:
@@ -103,27 +117,37 @@ def _escalates(path: str) -> str:
     return ""
 
 
-def changed_files(base: str, head: str, *, root: Path) -> list[str]:
-    """Diff the trusted base against the head; refuse ambiguous SHAs."""
-    if not SHA_RE.fullmatch(base) or not SHA_RE.fullmatch(head):
-        raise ValueError("plan_changes requires full commit SHAs")
-    result = subprocess.run(
-        ["git", "-C", str(root), "diff", "--name-only", "--no-renames", "--diff-filter=ACDMRT", base, head],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-    )
-    return sorted(p for p in result.stdout.splitlines() if p)
 
 
 def plan(base: str, head: str, *, root: Path) -> Plan:
-    files = changed_files(base, head, root=root)
+    raw = subprocess.run(
+        ["git", "-C", str(root), "diff", "--raw", "--no-renames", "--diff-filter=ACDMRT", base, head],
+        capture_output=True, text=True, check=True, timeout=60,
+    )
+    files: list[str] = []
+    unsafe: list[str] = []
+    for line in raw.stdout.splitlines():
+        meta, _, path = line.partition("\t")
+        if not meta.startswith(":") or not path:
+            continue
+        parts = meta[1:].split()
+        dst_mode = parts[1] if len(parts) > 1 else ""
+        status = parts[4][:1] if len(parts) > 4 else ""
+        files.append(path)
+        if status != "D" and dst_mode != "100644":
+            unsafe.append(path)
+    files = sorted(set(files))
     result = Plan(base=base, head=head, changed=files)
     if not files:
-        # Empty diff (e.g. already-merged or doc-only baseline): cheapest valid lane.
-        result.lanes = [LANE_DATA]
-        result.data_only = True
+        # Empty/ambiguous diff: never hand out the cheap lane blind.
+        result.lanes = [LANE_FULL]
+        result.data_only = False
+        result.escalate_reason = "empty-diff"
+        return result
+    for path in unsafe:
+        result.lanes = [LANE_FULL]
+        result.data_only = False
+        result.escalate_reason = f"unsafe-file-mode: {path}"
         return result
     for path in files:
         reason = _escalates(path)
@@ -139,7 +163,7 @@ def plan(base: str, head: str, *, root: Path) -> Plan:
 
 def resolve_base(environment: dict, *, root: Path) -> tuple[str, str]:
     """Return (base, head) from trusted event data, validating a PR merge checkout."""
-    head = environment.get("GITHUB_HEAD_SHA") or environment.get("GITHUB_SHA", "")
+    head = environment.get("PLAN_PR_HEAD_SHA") or environment.get("GITHUB_SHA", "")
     explicit_base = environment.get("PLAN_BASE_SHA", "")
     if explicit_base:
         if not SHA_RE.fullmatch(explicit_base):
@@ -166,6 +190,8 @@ def main() -> int:
     env = dict(os.environ)
     if args.base:
         env["PLAN_BASE_SHA"] = args.base
+    if args.head:
+        env["PLAN_PR_HEAD_SHA"] = args.head
     base, head = (args.base, args.head) if args.base and args.head else resolve_base(env, root=root)
     result = plan(base, head, root=root)
     Path(args.output).write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")

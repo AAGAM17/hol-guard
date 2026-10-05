@@ -92,12 +92,14 @@ def test_python_test_change_escalates(repo: Path) -> None:
     assert result.lanes == [LANE_FULL]
 
 
-def test_empty_diff_is_data(repo: Path) -> None:
+def test_empty_diff_escalates(repo: Path) -> None:
+    # An empty or ambiguous diff must never hand out the cheap lane blind.
     _write(repo, "README.md")
     base = _commit(repo, "base")
     head = base
     result = plan(base, head, root=repo)
-    assert result.lanes == [LANE_DATA]
+    assert result.lanes == [LANE_FULL]
+    assert result.escalate_reason == "empty-diff"
 
 
 def test_lockfile_escalates(repo: Path) -> None:
@@ -109,3 +111,28 @@ def test_lockfile_escalates(repo: Path) -> None:
     head = _commit(repo, "dep bump")
     result = plan(base, head, root=repo)
     assert result.lanes == [LANE_FULL]
+
+
+def test_authority_catalog_escalates(repo: Path) -> None:
+    # Generated/packaging/activation surfaces under contracts/extensions/ are
+    # authority-bearing: they always take the full lane even inside a data diff.
+    _write(repo, "contributions/extensions/command.foo.json")
+    _write(repo, "contracts/extensions/command-catalog.v1.json")
+    base = _commit(repo, "base")
+    _write(repo, "contributions/extensions/command.bar.json")
+    _write(repo, "contracts/extensions/command-catalog.v1.json", "{}")
+    head = _commit(repo, "catalog churn")
+    result = plan(base, head, root=repo)
+    assert result.lanes == [LANE_FULL]
+
+
+def test_symlink_escalates(repo: Path) -> None:
+    # A symlink under a data path must not ride the cheap lane.
+    _write(repo, "contributions/extensions/command.foo.json")
+    base = _commit(repo, "base")
+    (repo / "contributions/extensions/command.link.json").symlink_to("command.foo.json")
+    subprocess.run(["git", "-C", str(repo), "add", "contributions/extensions/command.link.json"], check=True)
+    head = _commit(repo, "symlink")
+    result = plan(base, head, root=repo)
+    assert result.lanes == [LANE_FULL]
+    assert "unsafe-file-mode" in result.escalate_reason

@@ -54,7 +54,7 @@ jobs:
         env:
           PLAN_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          uv run --no-sync python scripts/ci/plan_changes.py --output ci-plan.json
+          python scripts/ci/plan_changes.py --output ci-plan.json
           LANES=$(python -c "import json;print(' '.join(json.load(open('ci-plan.json'))['lanes']))")
           DATA_ONLY=$(python -c "import json;print(str(json.load(open('ci-plan.json'))['data_only']).lower())")
           echo "lanes=$LANES" >> "$GITHUB_OUTPUT"
@@ -549,7 +549,7 @@ jobs:
   required:
     name: hol-guard / required
     if: always()
-    needs: [plan, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312]
+    needs: [plan, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -574,7 +574,8 @@ jobs:
           # Required set the aggregate must always evaluate. In shadow mode all
           # ran; a job is a hard failure only if it ran and failed/cancelled.
           required = ["quality","coverage-plan","coverage","compatibility",
-                      "scheduling-sensitive","dashboard","cisco-full","ci-python-312"]
+                      "scheduling-sensitive","dashboard","cisco-full","ci-python-312",
+                      "pi-exact-continuation","cross-platform"]
           failed = [j for j in required
                     if needs.get(j, {}).get("result") in ("failure","cancelled")]
           print(f"plan lanes={os.environ.get('PLAN_LANES')} data_only={data_only}")

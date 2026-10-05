@@ -66,6 +66,71 @@ from .commands_support_workspace import _workspace_from_hook_payload
 _NATIVE_EDGE_EVENTS = frozenset({"PreToolUse", "PostToolUse", "UserPromptSubmit"})
 
 
+def _post_tool_secret_block_without_native_edge(
+    args: argparse.Namespace,
+    *,
+    action_envelope,
+    config: GuardConfig,
+    context: HarnessContext,
+    managed_install,
+    output_stream: TextIO | None,
+    payload: dict[str, object],
+    runtime_workspace: Path | None,
+    store: GuardStore,
+    recording_only: bool,
+    _claimed_saved_allow_hash: str | None,
+    _claimed_trusted_request_override: bool,
+    _claimed_approval_request_id: str | None,
+    _claim_saved_approval: bool,
+) -> int | None:
+    """Block credential-looking output when the native edge cannot answer.
+
+    A missing PostToolUse edge is not permission to release secret-looking
+    tool output. Clean output keeps the unavailable continuation. Watch mode
+    stays non-executable.
+    """
+
+    if recording_only:
+        return None
+    data_flow_signals = _runtime_action_data_flow_signals(action_envelope, workspace=runtime_workspace)
+    extension_control_snapshot = ExtensionControlRuntimeSnapshot.from_authority_view(
+        store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
+    )
+    with use_extension_control_snapshot(extension_control_snapshot):
+        runtime_artifact = _hook_runtime_artifact(
+            harness=args.harness,
+            payload=payload,
+            action_envelope=action_envelope,
+            data_flow_signals=data_flow_signals,
+            home_dir=context.home_dir,
+            guard_home=context.guard_home,
+            workspace=runtime_workspace,
+        )
+    if runtime_artifact is None:
+        return None
+    return _run_native_artifact_hook_flow(
+        args,
+        action_envelope=action_envelope,
+        config=config,
+        context=context,
+        data_flow_signals=data_flow_signals,
+        payload=payload,
+        runtime_artifact=runtime_artifact,
+        runtime_workspace=runtime_workspace,
+        store=store,
+        managed_install=managed_install,
+        output_stream=output_stream,
+        workspace=runtime_workspace,
+        native_edge_result=None,
+        native_edge_receipt=None,
+        native_recording_only=False,
+        _claimed_saved_allow_hash=_claimed_saved_allow_hash,
+        _claimed_trusted_request_override=_claimed_trusted_request_override,
+        _claimed_approval_request_id=_claimed_approval_request_id,
+        _claim_saved_approval=_claim_saved_approval,
+    )
+
+
 def run_native_hook_pipeline(
     args: argparse.Namespace,
     *,
@@ -125,19 +190,53 @@ def run_native_hook_pipeline(
             _persist_claude_guard_question_decision(store, payload)
             return 0
 
-    edge = worker.review_native_edge_decision(
-        payload=payload,
-        harness=args.harness,
-        default_harness=args.harness,
-        home_dir=context.home_dir,
-        guard_home=context.guard_home,
-        workspace=runtime_workspace,
-    )
+    event_name = _hook_event_name(payload) or runtime_hook_event_name(payload)
+    try:
+        edge = worker.review_native_edge_decision(
+            payload=payload,
+            harness=args.harness,
+            default_harness=args.harness,
+            home_dir=context.home_dir,
+            guard_home=context.guard_home,
+            workspace=runtime_workspace,
+        )
+    except RuntimeError:
+        # Linux pathlib raises RuntimeError on a symlink loop. That is a
+        # missing edge, not a worker crash, and must not release secret output.
+        if event_name != "PostToolUse":
+            raise
+        edge = {
+            "event_name": "PostToolUse",
+            "harness": args.harness,
+            "result": None,
+            "receipt": None,
+            "recording_only": False,
+            "failure_reason_code": "native_post_tool_unavailable",
+        }
     edge_result = edge.get("result") if isinstance(edge, Mapping) else None
     edge_receipt = edge.get("receipt") if isinstance(edge, Mapping) else None
     edge_failure = edge.get("failure_reason_code") if isinstance(edge, Mapping) else None
-    event_name = _hook_event_name(payload) or runtime_hook_event_name(payload)
+    recording_only = bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False
     if event_name in _NATIVE_EDGE_EVENTS and edge_result is None:
+        if event_name == "PostToolUse":
+            blocked = _post_tool_secret_block_without_native_edge(
+                args,
+                action_envelope=action_envelope,
+                config=config,
+                context=context,
+                managed_install=managed_install,
+                output_stream=output_stream,
+                payload=payload,
+                runtime_workspace=runtime_workspace,
+                store=store,
+                recording_only=recording_only,
+                _claimed_saved_allow_hash=_claimed_saved_allow_hash,
+                _claimed_trusted_request_override=_claimed_trusted_request_override,
+                _claimed_approval_request_id=_claimed_approval_request_id,
+                _claim_saved_approval=_claim_saved_approval,
+            )
+            if blocked is not None:
+                return blocked
         return _emit_native_unavailable(
             args,
             payload=payload,
@@ -146,7 +245,7 @@ def run_native_hook_pipeline(
             event_name=event_name,
             reason_code=str(edge_failure or "native_hook_event_unavailable"),
             worker=worker,
-            recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
+            recording_only=recording_only,
         )
 
     def fresh_copilot_tool_call_authority():

@@ -94,8 +94,36 @@ fn expiry_and_clock_rollback_after_journal_start_never_call_transport() {
             )
             .is_err());
         assert_eq!(count.get(), 0);
-        assert_eq!(status(&f)["status"], "attempt_started");
+        assert_eq!(status(&f)["status"], "not_attempted");
     }
+}
+
+#[test]
+fn resolution_expiring_after_attempt_start_records_no_transport_attempt() {
+    let f = Fixture::new("business-dispatch-resolution-after-start");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    let checks = Cell::new(0);
+    let sends = Cell::new(0);
+    let error = c
+        .dispatch_with(
+            &f.store,
+            |_| {
+                checks.set(checks.get() + 1);
+                checks.get() == 1
+            },
+            |_, _| {
+                sends.set(sends.get() + 1);
+                Ok(GoogleSendAttempt::Unconfirmed)
+            },
+            || Ok(time),
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error, "native_business_dispatch_resolution_expired");
+    assert_eq!(checks.get(), 2);
+    assert_eq!(sends.get(), 0);
+    assert_eq!(status(&f)["status"], "not_attempted");
 }
 
 #[test]
@@ -186,7 +214,14 @@ fn unknown_outcome_and_sdk_error_never_retry() {
         );
         assert_eq!(count.get(), 1);
         assert_eq!(result.is_err(), rejected);
-        assert_eq!(status(&f)["status"], "unconfirmed");
+        assert_eq!(
+            status(&f)["status"],
+            if rejected {
+                "not_attempted"
+            } else {
+                "unconfirmed"
+            }
+        );
     }
 }
 
@@ -264,4 +299,68 @@ fn missing_installed_authority_after_claim_does_not_call_transport() {
         )
         .is_err());
     assert_eq!(count.get(), 0);
+}
+
+#[test]
+fn sdk_refusal_with_failed_journal_write_reports_both_without_retry() {
+    let f = Fixture::new("business-dispatch-sdk-and-journal-failure");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    let count = Cell::new(0);
+    let error = c
+        .dispatch_with(
+            &f.store,
+            |_| true,
+            |_, _| {
+                count.set(count.get() + 1);
+                std::fs::remove_file(
+                    f.root
+                        .join("workspace-review-business-attempts/business-test.json"),
+                )
+                .unwrap();
+                Err(GoogleDispatchError::WrongPurpose)
+            },
+            || Ok(time),
+        )
+        .err()
+        .unwrap();
+    assert_eq!(count.get(), 1);
+    assert_eq!(
+        error,
+        "native_business_dispatch_spent_input_and_journal_unavailable"
+    );
+}
+
+#[test]
+fn policy_push_cannot_replace_snapshot_during_the_owned_call() {
+    let f = Fixture::new("business-dispatch-policy-push-fence");
+    let c = claimed(&f);
+    let time = c.lease.claimed_at_ms;
+    let generation = f.store.current_snapshot().unwrap().generation;
+    let mut snapshot = f.store.current_snapshot().unwrap();
+    snapshot.generation += 1;
+    snapshot.policy_digest = policy_digest(&snapshot).unwrap();
+    snapshot.integrity.mac = integrity_mac(&snapshot, &f.key).unwrap();
+    let push = json!({"schema":"guard-policy-snapshot-push.v1","snapshot":snapshot});
+    let result = c
+        .dispatch_with(
+            &f.store,
+            |_| true,
+            |_, _| {
+                assert_eq!(
+                    f.store.push(&push).err().unwrap(),
+                    "native_approval_authority_busy"
+                );
+                assert_eq!(f.store.current_snapshot().unwrap().generation, generation);
+                Ok(GoogleSendAttempt::Unconfirmed)
+            },
+            || Ok(time),
+        )
+        .unwrap();
+    assert!(result.journal_recorded);
+    f.store.push(&push).unwrap();
+    assert_eq!(
+        f.store.current_snapshot().unwrap().generation,
+        generation + 1
+    );
 }

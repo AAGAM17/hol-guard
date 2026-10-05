@@ -17,6 +17,7 @@ enum Status {
     AttemptStarted,
     ApiAccepted,
     Unconfirmed,
+    NotAttempted,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq)]
@@ -149,6 +150,13 @@ impl Journal {
             Status::Unconfirmed
         };
         self.transition(store, status, acknowledgement)
+    }
+
+    pub(super) fn refuse_unlocked(mut self, store: &PolicySnapshotStore) -> Result<(), String> {
+        if self.record.status != Status::AttemptStarted {
+            return Err(INVALID.into());
+        }
+        self.transition_unlocked(store, Status::NotAttempted, None)
     }
 
     fn transition(

@@ -53,11 +53,14 @@ impl Lease {
     // Called only after the native signed decision has been consumed, under
     // its transition lock. This metadata alone grants no dispatch authority;
     // the claimed handle retains the native verifier result separately.
-    pub(super) fn capture(store: &PolicySnapshotStore, decision: &[u8]) -> Result<Self, String> {
+    pub(super) fn capture(
+        store: &PolicySnapshotStore,
+        decision: &[u8],
+        claimed_at_ms: u64,
+    ) -> Result<Self, String> {
         let envelope: WorkspaceReviewDecisionEnvelopeV1 =
             serde_json::from_value(crate::strict_json_value(decision)?)
                 .map_err(|_| "native_business_dispatch_invalid".to_owned())?;
-        let claimed_at_ms = now_ms()?;
         let authority =
             workspace_review_authority::read_installed_record(store.state_base(), claimed_at_ms)?
                 .ok_or_else(|| "native_business_dispatch_authority_unavailable".to_owned())?;
@@ -76,6 +79,14 @@ impl Lease {
                 .min(store.current_snapshot()?.expires_at_ms)
                 .min(authority.expires_at_ms),
         })
+    }
+
+    pub(super) fn seal_clock(mut self, observed_at_ms: u64) -> Result<Self, String> {
+        if observed_at_ms < self.claimed_at_ms {
+            return Err("native_business_dispatch_clock_rollback".into());
+        }
+        self.claimed_at_ms = observed_at_ms;
+        Ok(self)
     }
 
     fn check(
@@ -147,30 +158,50 @@ impl<T> ClaimedBusinessReview<T> {
                 return Err("native_business_dispatch_resolution_expired".into());
             }
             let journal = self.journal.start_unlocked(store)?;
-            let last = clock()?;
-            if last < first {
-                return Err("native_business_dispatch_clock_rollback".into());
-            }
-            self.lease.check(store, &self.owned, last)?;
-            if !current(&self.input) {
-                return Err("native_business_dispatch_resolution_expired".into());
+            let admission = (|| {
+                let last = clock()?;
+                if last < first {
+                    return Err("native_business_dispatch_clock_rollback".into());
+                }
+                self.lease.check(store, &self.owned, last)?;
+                if !current(&self.input) {
+                    return Err("native_business_dispatch_resolution_expired".into());
+                }
+                Ok(())
+            })();
+            if let Err(error) = admission {
+                return if journal.refuse_unlocked(store).is_ok() {
+                    Err(error)
+                } else {
+                    Err("native_business_dispatch_spent_admission_and_journal_unavailable".into())
+                };
             }
             // Hold the same native transition lock through the bounded fixed
             // SDK call: a policy/authority update cannot race admission.
             let attempt = send(self.input, self.owned);
-            let acknowledgement = match &attempt {
-                Ok(GoogleSendAttempt::ApiAccepted { message_binding }) => {
-                    Some(message_binding.clone())
-                }
-                _ => None,
-            };
-            let journal_recorded = journal.finish_unlocked(store, acknowledgement).is_ok();
             match attempt {
-                Ok(attempt) => Ok(Outcome {
-                    attempt,
-                    journal_recorded,
-                }),
-                Err(_) => Err("native_business_dispatch_spent_input_unavailable".into()),
+                Ok(attempt) => {
+                    let acknowledgement = match &attempt {
+                        GoogleSendAttempt::ApiAccepted { message_binding } => {
+                            Some(message_binding.clone())
+                        }
+                        GoogleSendAttempt::Unconfirmed => None,
+                    };
+                    let journal_recorded = journal.finish_unlocked(store, acknowledgement).is_ok();
+                    Ok(Outcome {
+                        attempt,
+                        journal_recorded,
+                    })
+                }
+                // SDK errors are pre-I/O refusals; HTTP/provider uncertainty
+                // is represented by Unconfirmed above. Never conflate them.
+                Err(_) => {
+                    if journal.refuse_unlocked(store).is_ok() {
+                        Err("native_business_dispatch_spent_input_unavailable".into())
+                    } else {
+                        Err("native_business_dispatch_spent_input_and_journal_unavailable".into())
+                    }
+                }
             }
         })
     }

@@ -87,11 +87,11 @@ fn claim_refreshed_review<T>(
             store,
             request_id,
             decision,
-            |owned| {
+            |owned, observed_at_ms| {
                 if owned.binding() != binding {
                     return Err("native_business_claim_input_changed".into());
                 }
-                let lease = dispatch::Lease::capture(store, decision)?;
+                let lease = dispatch::Lease::capture(store, decision, observed_at_ms)?;
                 let journal =
                     journal::Journal::claimed_unlocked(store, request_id, owned.binding())?;
                 Ok((journal, lease))
@@ -100,6 +100,7 @@ fn claim_refreshed_review<T>(
     if owned.binding() != binding {
         return Err("native_business_claim_input_changed".into());
     }
+    let lease = lease.seal_clock(verified.observed_at_ms)?;
     if !current(&refreshed) {
         return Err("native_business_claim_expired_after_consume".into());
     }

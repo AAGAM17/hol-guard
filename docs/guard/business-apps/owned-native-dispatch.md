@@ -13,6 +13,12 @@ constructor exists. An API acknowledgement is distinct from delivery. Unknown
 outcome is retained without automatic retry; failed outcome persistence is
 reported separately and never triggers a second send.
 
+The dispatch clock floor comes from the native verifier/release observations,
+not a fresh lower wall-clock reading. Policy pushes take the same transition
+lock as dispatch and refuse busy instead of replacing the snapshot mid-call.
+SDK pre-I/O refusals retain `not_attempted`, distinct from uncertain sends;
+simultaneous refusal and journal-write failure has its own bounded error.
+
 The production entry also requires an authenticated registered-worker admission
 proof. Its type is currently uninhabited: there is no constructor or valid value,
 so the production entry cannot be activated by a native review approval alone.

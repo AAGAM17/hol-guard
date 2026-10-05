@@ -48,6 +48,20 @@ fn reservation_child() {
         }
     };
     std::fs::write(root.join(format!("result-{id}")), status).unwrap();
+    wait_for(&root.join(format!("verify-{id}")));
+    assert_eq!(
+        reserve_at(
+            &store,
+            &format!("budget-process-retry-{id}"),
+            &prepared(),
+            &actor(),
+            now + 1
+        )
+        .err()
+        .unwrap(),
+        "native_business_budget_exceeded"
+    );
+    std::fs::write(root.join(format!("verified-{id}")), b"budget_exceeded").unwrap();
 }
 
 #[test]
@@ -78,6 +92,14 @@ fn independent_processes_share_one_allowance() {
         wait_for(&fixture.root.join(format!("ready-{id}")));
     }
     std::fs::write(fixture.root.join("start-process-reservations"), b"start").unwrap();
+    for id in ["left", "right"] {
+        wait_for(&fixture.root.join(format!("result-{id}")));
+    }
+    // Serialize the post-race checks so neither can hide behind a busy lock.
+    for id in ["left", "right"] {
+        std::fs::write(fixture.root.join(format!("verify-{id}")), b"verify").unwrap();
+        wait_for(&fixture.root.join(format!("verified-{id}")));
+    }
     for child in &mut children.0 {
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {

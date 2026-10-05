@@ -12,8 +12,14 @@ fn declaration(scope: &str) -> Value {
     "match":{"schema":"guard.business-policy-match.v1","version":1,"services":["google_gmail"],"operations":["mail_send"]}})
 }
 fn install(fixture: &Fixture, budgets: Value) {
+    install_with_lifetime(fixture, budgets, None);
+}
+fn install_with_lifetime(fixture: &Fixture, budgets: Value, lifetime_ms: Option<u64>) {
     let mut snapshot = fixture.store.current_snapshot().unwrap();
     snapshot.generation += 1;
+    if let Some(lifetime_ms) = lifetime_ms {
+        snapshot.expires_at_ms = snapshot.issued_at_ms.checked_add(lifetime_ms).unwrap();
+    }
     let mut policy = serde_json::to_value(snapshot.business_policy.as_ref().unwrap()).unwrap();
     policy["budgets"] = budgets;
     snapshot.business_policy = Some(serde_json::from_value(policy).unwrap());
@@ -124,18 +130,39 @@ fn independently_opened_stores_share_durable_usage_after_reopen() {
     let right_store = PolicySnapshotStore::new(&fixture.root, &identity).unwrap();
     let now = time(&fixture);
     let barrier = std::sync::Barrier::new(2);
-    let wins = std::thread::scope(|scope| {
+    let results = std::thread::scope(|scope| {
         let run = |store: &PolicySnapshotStore, id: &str| {
             barrier.wait();
-            reserve_at(store, id, &prepared(), &actor(), now).is_ok()
+            reserve_at(store, id, &prepared(), &actor(), now)
         };
         let left_ref = &left_store;
         let right_ref = &right_store;
         let left = scope.spawn(move || run(left_ref, "budget-independent-left"));
         let right = scope.spawn(move || run(right_ref, "budget-independent-right"));
-        usize::from(left.join().unwrap()) + usize::from(right.join().unwrap())
+        [left.join().unwrap(), right.join().unwrap()]
     });
-    assert_eq!(wins, 1);
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    for error in results.iter().filter_map(|result| result.as_ref().err()) {
+        assert!(matches!(
+            error.as_str(),
+            "native_business_budget_exceeded" | "native_approval_authority_busy"
+        ));
+    }
+    // A busy race refusal alone does not prove an already-open store sees usage.
+    for (store, id) in [(&left_store, "left"), (&right_store, "right")] {
+        assert_eq!(
+            reserve_at(
+                store,
+                &format!("budget-open-retry-{id}"),
+                &prepared(),
+                &actor(),
+                now + 1
+            )
+            .err()
+            .unwrap(),
+            "native_business_budget_exceeded"
+        );
+    }
     drop(left_store);
     drop(right_store);
     let reopened = PolicySnapshotStore::new(&fixture.root, &identity).unwrap();
@@ -358,7 +385,9 @@ fn declared_allowance_above_128_has_no_event_count_cap() {
     ] {
         budget[field] = json!(1000000);
     }
-    install(&fixture, json!([budget]));
+    // 129 durable writes can exceed the ordinary 60-second fixture on busy
+    // disks. This capacity case does not test wall-clock expiry.
+    install_with_lifetime(&fixture, json!([budget]), Some(600_000));
     let now = time(&fixture);
     let input = prepared();
     for index in 0..129 {

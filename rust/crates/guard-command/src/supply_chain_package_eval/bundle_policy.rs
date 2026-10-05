@@ -245,12 +245,12 @@ pub(super) fn dependency_confusion_policy_package_result(
         );
     reason.insert("severity".to_string(), Value::String("high".into()));
     reason.insert("source".to_string(), Value::String("policy".into()));
-    return Some(package_target_result(
+    Some(package_target_result(
         target,
         decision,
         vec![reason],
         rule_string(rule, "ruleId"),
-    ));
+    ))
 }
 
 #[allow(dead_code)]

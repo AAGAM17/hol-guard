@@ -1091,6 +1091,8 @@ def test_generated_input_resume_cancels_after_session_change(tmp_path: Path) -> 
     harness_path = tmp_path / "input-resume.ts"
     script = f"""
 const GUARD_CONFIG_PATH = '/fixture/settings.json';
+function loadGuardDaemonConnection() {{ return {{stateId: 'fixture-daemon'}}; }}
+async function daemonWorkspaceReadiness() {{ return {{ready: true, daemonStateId: 'fixture-daemon'}}; }}
 let activeScenario;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function contextCwd(ctx) {{ return ctx.sessionManager.getCwd(); }}

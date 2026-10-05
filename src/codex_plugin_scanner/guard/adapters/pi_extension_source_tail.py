@@ -27,6 +27,14 @@ def build_extension_source_tail(
         lifecycle_abort_event_source=lifecycle_abort_event_source,
         tool_approval_continuation_source=tool_approval_continuation_source,
         workspace_readiness_source=workspace_readiness_source,
+        input_readiness_source=(
+            "    const readiness = await ensureGuardWorkspaceReady(ctx.cwd);\n"
+            "    if (!readiness.ready) {\n"
+            '      ctx.ui.notify("HOL Guard could not prepare protection for this prompt. "\n'
+            '        + "Retry the prompt to reconnect (" + readiness.reasonCode + ").", "warning");\n'
+            '      return { action: "handled", handled: true };\n'
+            "    }\n"
+        ),
     )
     if harness == "omp":
         shared_source = with_contained_test_routing(shared_source)

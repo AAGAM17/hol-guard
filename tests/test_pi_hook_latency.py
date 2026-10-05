@@ -360,7 +360,7 @@ def test_pi_extension_treats_authenticated_daemon_overload_as_terminal(tmp_path:
     guard_home = tmp_path / "guard-home"
     guard_home.mkdir()
     _ = (guard_home / "daemon-state.json").write_text(
-        json.dumps({"compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION, "port": 1}),
+        json.dumps({"compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION, "port": 1, "state_id": "test"}),
         encoding="utf-8",
     )
     _ = (guard_home / "daemon-auth-token").write_text("test-token", encoding="utf-8")
@@ -393,7 +393,8 @@ def test_pi_extension_treats_authenticated_daemon_overload_as_terminal(tmp_path:
         f"""
 import installGuard from {json.dumps(str(compiled_path))};
 let fetchCount = 0;
-globalThis.fetch = async () => {{
+globalThis.fetch = async (url) => {{
+  if (String(url).includes('/readiness')) return Response.json({{ready: true}});
   fetchCount += 1;
   return new Response(
     JSON.stringify({{ error: "daemon_hook_capacity" }}),
@@ -404,9 +405,12 @@ const handlers = new Map();
 installGuard({{ on: (event, handler) => handlers.set(event, handler), sendMessage: () => {{}} }});
 const handler = handlers.get("tool_call");
 const notices = [];
+const sessionManager = {{getSessionId: () => "test-session", getCwd: () => {json.dumps(str(tmp_path))}}};
+await handlers.get("session_start")({{}}, {{sessionManager, ui: {{notify() {{}}}}}});
 const results = await Promise.all(Array.from({{ length: 20 }}, (_, index) => handler(
   {{ toolCallId: `call-${{index}}`, toolName: "read", input: {{ path: "README.md" }} }},
-  {{ cwd: {json.dumps(str(tmp_path))}, ui: {{ notify: (reason) => notices.push(reason) }} }},
+  {{ cwd: {json.dumps(str(tmp_path))}, sessionManager,
+     ui: {{ notify: (reason) => notices.push(reason) }} }},
 )));
 console.log(JSON.stringify({{
   fetchCount,
@@ -440,7 +444,7 @@ def test_pi_extension_allows_only_one_cli_fallback_during_daemon_outage(tmp_path
     guard_home = tmp_path / "guard-home"
     guard_home.mkdir()
     _ = (guard_home / "daemon-state.json").write_text(
-        json.dumps({"compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION, "port": 1}),
+        json.dumps({"compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION, "port": 1, "state_id": "test"}),
         encoding="utf-8",
     )
     _ = (guard_home / "daemon-auth-token").write_text("test-token", encoding="utf-8")
@@ -506,15 +510,21 @@ def test_pi_extension_allows_only_one_cli_fallback_during_daemon_outage(tmp_path
     _ = harness_path.write_text(
         f"""
 import installGuard from {json.dumps(str(compiled_path))};
-globalThis.fetch = async () => {{ throw new Error("daemon unavailable"); }};
+globalThis.fetch = async (url) => {{
+  if (String(url).includes('/readiness')) return Response.json({{ready: true}});
+  throw new Error("daemon unavailable");
+}};
 const handlers = new Map();
 installGuard({{ on: (event, handler) => handlers.set(event, handler), sendMessage: () => {{}} }});
 const handler = handlers.get("tool_call");
 const notices = [];
+const sessionManager = {{getSessionId: () => "test-session", getCwd: () => {json.dumps(str(tmp_path))}}};
+await handlers.get("session_start")({{}}, {{sessionManager, ui: {{notify() {{}}}}}});
 const startedAt = performance.now();
 const results = await Promise.all(Array.from({{ length: 20 }}, (_, index) => handler(
   {{ toolCallId: `call-${{index}}`, toolName: "read", input: {{ path: "README.md" }} }},
-  {{ cwd: {json.dumps(str(tmp_path))}, ui: {{ notify: (reason) => notices.push(reason) }} }},
+  {{ cwd: {json.dumps(str(tmp_path))}, sessionManager,
+     ui: {{ notify: (reason) => notices.push(reason) }} }},
 )));
 console.log(JSON.stringify({{
   elapsedMs: performance.now() - startedAt,

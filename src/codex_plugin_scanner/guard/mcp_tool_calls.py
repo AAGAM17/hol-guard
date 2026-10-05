@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -16,7 +15,12 @@ from .config import GuardConfig
 from .local_cli_trust import apply_local_mcp_extension_decision
 from .mcp_fresh_approval import fresh_local_tool_approval_matches, fresh_lookup_preserves_claim
 from .models import GuardAction, GuardArtifact, GuardReceipt, PolicyDecision
-from .native_context import context_mcp_tool_approval_hash, context_mcp_tool_policy, context_mcp_tool_risk, context_opaque_digest
+from .native_context import (
+    context_mcp_tool_approval_hash,
+    context_mcp_tool_policy,
+    context_mcp_tool_risk,
+    context_opaque_digest,
+)
 from .receipts import build_receipt
 from .runtime.approval_context import (
     approval_context_tokens_validation_reason,
@@ -48,7 +52,6 @@ from .runtime.mcp_protection import (
 from .runtime.mcp_skill_firewall import enrich_artifact_with_mcp_skill_firewall, scanner_evidence_for_mcp_skill_firewall
 from .store import GuardStore, browser_mcp_exact_match_context
 from .temporary_mcp_approvals import runtime_grant_selectors
-
 
 _NON_EXECUTED_TOOL_CALL_TAXONOMY: Mapping[GuardAction, tuple[str, str]] = {
     "review": ("runtime_tool_call_review_required", "runtime tool call awaiting review"),
@@ -662,7 +665,9 @@ def _evaluate_current_tool_call(
     signals = _risk_signals_from_categories(artifact, arguments, categories)
     summary = {
         "no_risk": "Guard did not detect a high-risk signal in this tool call.",
-        "configuration_stricter": "Local Guard's current configuration is stricter than the tool-call-specific recommendation.",
+        "configuration_stricter": (
+            "Local Guard's current configuration is stricter than the tool-call-specific recommendation."
+        ),
         "risk": _risk_summary_from_signals(signals),
     }[policy["summary_code"]]
     return ToolCallDecision(

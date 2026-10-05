@@ -61,6 +61,12 @@ from ..mcp_tool_calls import (
     tool_call_risk_summary,
 )
 from ..models import GuardAction, GuardArtifact, HarnessDetection
+from ..native_execution import (
+    mcp_stdio_session_close_native,
+    mcp_stdio_session_open_native,
+    mcp_stdio_session_recv_native,
+    mcp_stdio_session_send_native,
+)
 from ..package_execution_context import build_package_execution_context
 from ..policy.engine import build_decision_v2
 from ..runtime.approval_context import (
@@ -81,12 +87,6 @@ from ..runtime.surface_server import GuardSurfaceRuntime
 from ..store import GuardStore
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _tool_decision_scanner_evidence
 from ._env import _build_scrubbed_env
-from ..native_execution import (
-    mcp_stdio_session_close_native,
-    mcp_stdio_session_open_native,
-    mcp_stdio_session_recv_native,
-    mcp_stdio_session_send_native,
-)
 from .stdio import (
     ProxyIoTimeoutError,
     _blocked_tool_response,
@@ -588,7 +588,7 @@ class _NativeChildProcess:
             )
         return self._returncode
 
-    def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
+    def wait(self, timeout: float | None = None) -> int:
         self.close()
         return self.returncode
 

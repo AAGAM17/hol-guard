@@ -14,12 +14,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from ..native_context import context_package_launcher_token
 from ..protect import _collect_package_specs
 from ._shell_execution_context_support import shell_path_identity_payload
 from .command_model import CanonicalCommand
 from .env_wrapper import parse_env_wrapper
 from .homebrew_intent import parse_brew_intent
-from ..native_context import context_package_launcher_token
 from .mcp_protection import _command_name
 from .package_intent_common import (
     IntentKind,

@@ -34,6 +34,7 @@ from ..stable_digest import stable_digest_hex
 from ..store import GuardStore
 from ..store_evidence import EvidenceRecord
 from ..text import ensure_terminal_punctuation as _ensure_terminal_punctuation
+from . import supply_chain_package_services as package_services
 from .js_semver import version_matches_js_selector
 from .lockfile_evaluation_support import (
     collect_lockfile_parse_results,
@@ -100,8 +101,6 @@ from .supply_chain_package_identity import (
     normalize_ecosystem,
     parse_package_identity,
 )
-
-from . import supply_chain_package_services as package_services
 from .supply_chain_package_services import (
     _normalize_package_name,
     _optional_string,
@@ -536,7 +535,9 @@ def _evaluate_package_request_artifact_uncached(
             bundle_response = None
             bundle_meta = None
     workspace_fingerprint = (
-        package_services._workspace_fingerprint(workspace_id, workspace_dir=workspace_dir, artifact=artifact, bundle_meta=bundle_meta)
+        package_services._workspace_fingerprint(
+            workspace_id, workspace_dir=workspace_dir, artifact=artifact, bundle_meta=bundle_meta
+        )
         if workspace_id is not None
         else None
     )
@@ -4222,7 +4223,9 @@ def _resolved_target_version(
     exact_version = _exact_version(requested_range)
     if exact_version is not None:
         return exact_version
-    registry_version = package_services._registry_resolved_target_version(target=target, requested_range=requested_range)
+    registry_version = package_services._registry_resolved_target_version(
+        target=target, requested_range=requested_range
+    )
     if registry_version is not None:
         return registry_version
     return None

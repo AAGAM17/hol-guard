@@ -7114,6 +7114,7 @@ def test_guard_hook_emits_copilot_native_allow_response_for_read_only_ls_pipelin
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"
     _build_guard_fixture(home_dir, workspace_dir)
+    (workspace_dir / "app" / "guard" / "_components").mkdir(parents=True, exist_ok=True)
     event = {
         "toolName": "bash",
         "toolArgs": json.dumps({"command": f"ls {workspace_dir}/app/guard/_components/ 2>/dev/null | head -40"}),

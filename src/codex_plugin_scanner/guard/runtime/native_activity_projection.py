@@ -156,7 +156,8 @@ def project_native_policy_activity(
     if not resolved.sync_enabled:
         return NativeActivityProjection(resolved, 0, 0, 0, 0)
     floor = _capture_watermark(store, resolved, recorded_now)
-    backfill_remaining = _backfill_remaining(store, resolved)
+    initial_backfill = _backfill_remaining(store, resolved)
+    backfill_remaining = initial_backfill
     projected = dropped = withheld = 0
     with store._connect() as connection:
         _ensure_ledger(connection)
@@ -183,11 +184,12 @@ def project_native_policy_activity(
             dropped += 1
         elif outcome == "withheld":
             withheld += 1
-    if projected and backfill_remaining < _backfill_remaining(store, resolved):
+    consumed_backfill = initial_backfill - backfill_remaining
+    if consumed_backfill > 0:
         _reduce_backfill(
             store,
             resolved,
-            used=_backfill_remaining(store, resolved) - backfill_remaining,
+            used=consumed_backfill,
             now=recorded_now,
         )
     return NativeActivityProjection(resolved, projected, dropped, withheld, quarantined)

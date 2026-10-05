@@ -405,7 +405,7 @@ def await_registered_native_policy_publication(guard_home: Path, *, timeout_seco
     for publisher in awaiting:
         publisher.request_publish()
     deadline = time.monotonic() + timeout_seconds
-    return any(publisher.wait_until_ready(deadline) for publisher in awaiting)
+    return all(publisher.wait_until_ready(deadline) for publisher in awaiting)
 
 
 def local_cli_publication_status(guard_home: Path, revision: int) -> dict[str, object]:

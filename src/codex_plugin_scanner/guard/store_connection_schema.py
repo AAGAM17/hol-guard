@@ -445,7 +445,7 @@ class StoreConnectionSchemaMixin:
                             self,
                             cloud_review=cloud_restored,
                             local_cli=cli_restored,
-                            now=quarantined_at,
+                            now=quarantined_at.isoformat(),
                         )
                     except Exception as health_error:
                         _store_logger.warning(

@@ -18,6 +18,7 @@ from codex_plugin_scanner.guard.models import GuardApprovalRequest
 from codex_plugin_scanner.guard.review_event_integrity import review_event_payload_digest
 from codex_plugin_scanner.guard.runtime import cloud_review_sync
 from codex_plugin_scanner.guard.runtime.cloud_review_event_projection import project_cloud_review_event
+from codex_plugin_scanner.guard.runtime.cloud_review_request_purpose import canonical_request_kind
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_review_event_outbox_writes import append_request_snapshot_event
 from tests.guard_review_event_outbox_test_support import as_int
@@ -555,6 +556,33 @@ def test_watch_only_snapshot_projects_schema_two_observation(
     assert captured[0]["requestKind"] == "watch_only_observation"
     assert captured[0]["eventSchemaVersion"] == 2
     assert captured[0]["reviewClaim"] is not None
+
+
+def test_unhashable_watch_only_marker_stays_unclassified_and_syncs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = GuardStore(tmp_path / "guard")
+    binding = _connect(store)
+    store.add_approval_request(_request("ambiguous"), _NOW)
+    row = _event_row(store)
+    payload = json.loads(str(row["payload_json"]))
+    snapshot = payload["requestSnapshot"]
+    assert isinstance(snapshot, dict)
+    snapshot["watch_only_observation"] = ["not-a-marker"]
+    _replace_event_payload(store, row, payload)
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(cloud_review_sync, "post_review_events", _accepting_transport(captured))
+
+    result = cloud_review_sync.sync_cloud_review_events_once(store, _auth(binding))
+
+    assert canonical_request_kind({"watch_only_observation": ["not-a-marker"]}) is None
+    assert canonical_request_kind({"watch_only_observation": {}}) is None
+    assert canonical_request_kind({"watch_only_observation": 1}) == "watch_only_observation"
+    assert canonical_request_kind({"watch_only_observation": 0}) == "reviewable_pause"
+    assert result["synced"] == 1
+    assert captured[0]["requestKind"] != "watch_only_observation"
+    assert captured[0]["eventSchemaVersion"] == 1
 
 
 def test_unconnected_store_is_not_enrolled_and_does_not_deliver(

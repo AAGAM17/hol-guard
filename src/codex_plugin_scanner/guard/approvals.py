@@ -911,6 +911,8 @@ def apply_approval_resolution(
                 raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
             if isinstance(error, str) and error:
                 raise ValueError(error)
+        else:
+            native_policy_written = True
     if local_tool_selection is not None:
         local_tool_decision = local_tool_grant_decision(
             harness=str(request["harness"]),
@@ -929,11 +931,11 @@ def apply_approval_resolution(
         )
         native_policy_written = True
 
-    if native_policy_written:
-        # The waiting hook observes this resolution and then revalidates the
-        # original action against the acknowledged native snapshot. Keep the
-        # request pending until that snapshot is current.
-        _await_saved_approval_native_snapshot(store)
+    # The waiting hook observes this resolution and then revalidates the
+    # original action against the acknowledged native snapshot. Keep the
+    # request pending until that snapshot is current.
+    if native_policy_written and not _await_saved_approval_native_snapshot(store):
+        raise ValueError("native_policy_snapshot_unacknowledged")
 
     resolution_harness = None if scope == "global" else str(request["harness"])
     resolve_matching_scope_requests = (

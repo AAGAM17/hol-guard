@@ -277,7 +277,17 @@ def test_partial_cloud_salvage_persists_recovery_health_without_consent(
     store = GuardStore(tmp_path / "guard")
     monkeypatch.setattr(recovery, "salvage_cloud_review_state", lambda **_kwargs: False)
     monkeypatch.setattr(store_connection_schema, "salvage_local_cli_state", lambda **_kwargs: True)
+    recorded_now: list[object] = []
+    original_persist = recovery.persist_cloud_review_recovery_health
+
+    def persist_and_record(store: object, *, cloud_review: bool, local_cli: bool, now: str) -> None:
+        recorded_now.append(now)
+        original_persist(store, cloud_review=cloud_review, local_cli=local_cli, now=now)
+
+    monkeypatch.setattr(recovery, "persist_cloud_review_recovery_health", persist_and_record)
     _recover(store, monkeypatch)
+    assert recorded_now
+    assert all(isinstance(value, str) for value in recorded_now)
     assert store._last_sqlite_recovery_details == {"cloud_review": False, "local_cli": True}
     assert store.get_sync_payload("oauth_local_credentials") is None
     assert store.get_sync_payload("guard_exact_cloud_review_capability") is None

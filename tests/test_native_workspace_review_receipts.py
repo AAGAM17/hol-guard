@@ -13,6 +13,7 @@ from codex_plugin_scanner.guard.native_decision_receipt import (
     canonical_receipt_bytes,
     validate_native_decision_receipt,
 )
+from codex_plugin_scanner.guard.runtime import native_activity_projection
 from codex_plugin_scanner.guard.runtime import native_workspace_review as native
 from codex_plugin_scanner.guard.runtime.exact_cloud_review import EXACT_CLOUD_REVIEW_REVOCATION_STATE_KEY
 from codex_plugin_scanner.guard.runtime.native_activity_projection import (
@@ -424,6 +425,46 @@ def test_native_activity_backlog_is_withheld_until_authorized(tmp_path: Path) ->
         eligibility=_eligibility(authorized),
         now="2099-01-01T00:00:03+00:00",
     ).projected == 0
+
+
+def test_backfill_reduction_counts_only_rows_this_projection_consumed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _activity_store(tmp_path, sync=True)
+    _bind(store)
+    store.record_native_decision_receipt(_policy_receipt(request_id="counted-old"))
+    store.set_sync_payload(
+        "native_activity_backfill_authorization",
+        {"installationId": _INSTALLATION, "limit": 5, "workspaceId": _WORKSPACE_A},
+        "2099-01-01T00:00:01+00:00",
+    )
+    original = native_activity_projection._backfill_remaining
+    calls = {"count": 0}
+
+    def later_writer_raises_the_stored_limit(store: GuardStore, eligibility: object) -> int:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return original(store, eligibility)  # type: ignore[arg-type]
+        return 50
+
+    monkeypatch.setattr(
+        native_activity_projection,
+        "_backfill_remaining",
+        later_writer_raises_the_stored_limit,
+    )
+
+    projected = project_native_policy_activity(
+        store,
+        eligibility=_eligibility(store),
+        now="2099-01-01T00:00:02+00:00",
+    )
+
+    assert projected.projected == 1
+    assert calls["count"] == 1
+    remaining = store.get_sync_payload("native_activity_backfill_authorization")
+    assert isinstance(remaining, dict)
+    assert remaining["limit"] == 4
 
 
 def test_changed_workspace_quarantines_native_activity_without_rekeying(tmp_path: Path) -> None:

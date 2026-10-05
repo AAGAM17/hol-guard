@@ -27,6 +27,9 @@ pub struct McpStdioSessionOpenRequestV1 {
     pub extra_env: Option<std::collections::BTreeMap<String, String>>,
     #[serde(default)]
     pub home_dir: Option<String>,
+    /// Optional working directory for the child process.
+    #[serde(default)]
+    pub cwd: Option<String>,
 }
 
 /// `send` — write a client→child JSON-RPC frame (or relay a verdict).
@@ -53,6 +56,9 @@ pub struct McpStdioSessionRecvRequestV1 {
     /// stashing interleaved responses/requests for later surfacing.
     #[serde(default)]
     pub await_request_id: Option<Value>,
+    /// Query child status without consuming a queued child frame.
+    #[serde(default)]
+    pub poll_only: bool,
 }
 
 /// `close`/`cancel` — cooperative cancel + process-group teardown.
@@ -67,7 +73,7 @@ pub struct McpStdioSessionCloseRequestV1 {
 #[derive(Debug, serde::Serialize)]
 pub struct McpStdioSessionResultV1 {
     pub schema: String,
-    /// `"opened" | "sent" | "event" | "closed" | "cancelled" | "timeout"`.
+    /// `"opened" | "sent" | "event" | "closed" | "cancelled" | "timeout" | "running" | "exited" | "eof" | "error"`.
     pub status: String,
     /// For `event`: `"child_response" | "child_request" | "child_notification"`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,6 +84,9 @@ pub struct McpStdioSessionResultV1 {
     /// True when the await correlation timed out (`status:"timeout"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timed_out: Option<bool>,
+    /// Process exit code when `status:"exited"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
 }
 
 impl McpStdioSessionResultV1 {
@@ -88,6 +97,7 @@ impl McpStdioSessionResultV1 {
             event_kind: None,
             payload: None,
             timed_out: None,
+            exit_code: None,
         }
     }
 }

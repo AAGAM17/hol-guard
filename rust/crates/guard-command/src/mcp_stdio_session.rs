@@ -37,8 +37,6 @@ use crate::local_mcp_stdio::{drain_stream, is_rpc_message, kill_process_group, p
 ///
 /// Maximum cross-correlated buffered responses held per response key.
 const MAX_BUFFERED_PER_KEY: usize = 8;
-/// Default per-message wait when the caller does not supply one.
-const DEFAULT_READ_TIMEOUT_MS: u64 = 500;
 
 // ---------------------------------------------------------------------------
 // JSON-RPC frame classification (`runtime_mcp.py` helpers).
@@ -165,6 +163,7 @@ impl LiveMcpSession {
         argv: &[String],
         extra_env: Option<&BTreeMap<String, String>>,
         home_dir: Option<&Path>,
+        cwd: Option<&Path>,
         cancellation: Arc<AtomicBool>,
     ) -> Result<(Self, Child), String> {
         if argv.is_empty() || argv.iter().any(|p| p.is_empty() || p.contains('\0')) {
@@ -176,10 +175,11 @@ impl LiveMcpSession {
         let tmp = std::env::temp_dir()
             .canonicalize()
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        let working_dir = cwd.unwrap_or(&tmp);
         let env = probe_env(tmp.to_str().unwrap_or("/tmp"), extra_env, home_dir);
         let mut cmd = Command::new(&argv[0]);
         cmd.args(&argv[1..])
-            .current_dir(&tmp)
+            .current_dir(working_dir)
             .env_clear()
             .envs(&env)
             .stdin(Stdio::piped())
@@ -228,36 +228,40 @@ impl LiveMcpSession {
     /// Drain the next inbound child frame within `timeout`, classifying it.
     /// Non-RPC noise is skipped by the drain pump; here we distinguish
     /// response / reverse-request / notification so the control plane applies
-    /// the right routing. `None` = timeout or pump EOF.
-    pub fn next_event(&mut self, timeout: Duration) -> Option<SessionEvent> {
-        let deadline = Instant::now() + timeout.max(Duration::from_millis(DEFAULT_READ_TIMEOUT_MS));
+    /// the right routing. `Ok(None)` = timeout; `Err(())` = pump EOF.
+    pub fn next_event(&mut self, timeout: Duration) -> Result<Option<SessionEvent>, ()> {
+        let deadline = Instant::now() + timeout;
         loop {
             let now = Instant::now();
-            if now >= deadline {
-                return None;
-            }
-            match self.inbox.recv_timeout(deadline - now) {
-                Ok(msg) => {
-                    if !is_rpc_message(&msg) {
-                        continue;
-                    }
-                    if is_response(&msg) {
-                        return Some(SessionEvent::ChildResponse(msg));
-                    }
-                    if is_request(&msg) {
-                        return Some(SessionEvent::ChildRequest(msg));
-                    }
-                    if is_notification(&msg) {
-                        return Some(SessionEvent::ChildNotification(msg));
-                    }
-
-                    // Unclassified object: treat as a notification-shaped frame
-                    // and let the control plane decide.
-                    return Some(SessionEvent::ChildNotification(msg));
+            let msg = if now >= deadline {
+                match self.inbox.try_recv() {
+                    Ok(msg) => msg,
+                    Err(mpsc::TryRecvError::Empty) => return Ok(None),
+                    Err(mpsc::TryRecvError::Disconnected) => return Err(()),
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => return None,
-                Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            } else {
+                match self.inbox.recv_timeout(deadline - now) {
+                    Ok(msg) => msg,
+                    Err(mpsc::RecvTimeoutError::Timeout) => return Ok(None),
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return Err(()),
+                }
+            };
+            if !is_rpc_message(&msg) {
+                continue;
             }
+            if is_response(&msg) {
+                return Ok(Some(SessionEvent::ChildResponse(msg)));
+            }
+            if is_request(&msg) {
+                return Ok(Some(SessionEvent::ChildRequest(msg)));
+            }
+            if is_notification(&msg) {
+                return Ok(Some(SessionEvent::ChildNotification(msg)));
+            }
+
+            // Unclassified object: treat as a notification-shaped frame
+            // and let the control plane decide.
+            return Ok(Some(SessionEvent::ChildNotification(msg)));
         }
     }
 

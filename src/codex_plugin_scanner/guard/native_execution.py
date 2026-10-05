@@ -718,6 +718,7 @@ def mcp_stdio_session_open_native(
     *,
     session_id: str,
     home_dir: Path | None = None,
+    cwd: Path | None = None,
     extra_env: Mapping[str, str] | None = None,
     guard_home: Path,
     timeout_seconds: float = 10.0,
@@ -728,6 +729,7 @@ def mcp_stdio_session_open_native(
         "argv": list(argv),
         "extra_env": dict(extra_env) if extra_env else None,
         "home_dir": str(home_dir) if home_dir else None,
+        "cwd": str(cwd) if cwd else None,
     }
     decoded = _resident_request(
         operation="mcp_stdio_session_open",
@@ -770,18 +772,20 @@ def mcp_stdio_session_recv_native(
     guard_home: Path,
     timeout_seconds: float = 30.0,
     await_request_id: object = None,
+    poll_only: bool = False,
 ) -> dict[str, object] | None:
     request: dict[str, object] = {
         "schema": _MCP_STDIO_SESSION_IO_SCHEMA,
         "session_id": session_id,
         "timeout_ms": int(timeout_seconds * 1000),
         "await_request_id": await_request_id,
+        "poll_only": poll_only,
     }
     return _resident_request(
         operation="mcp_stdio_session_recv",
         request=request,
         guard_home=guard_home,
-        timeout_seconds=timeout_seconds + 2.0,
+        timeout_seconds=timeout_seconds if poll_only else timeout_seconds + 2.0,
         required_feature=_MCP_STDIO_SESSION_FEATURE,
         response_schema=_MCP_STDIO_SESSION_RESULT_SCHEMA,
     )

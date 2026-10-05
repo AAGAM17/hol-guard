@@ -50,7 +50,9 @@ from .memory_pattern_fingerprint import (
 )
 from .models import GUARD_ACTION_VALUES
 from .native_execution import _resident_request
+from .native_policy_snapshot_constants import NATIVE_POLICY_VERIFIER_KEY_NAME
 from .native_policy_snapshot_windows_key import provision_native_policy_verifier_key
+from .native_policy_snapshot_windows_support import _runtime_state_directory
 from .runtime.approval_context import approval_context_tokens_validation_reason
 from .store_base import *
 from .store_event_receipts import _local_once_approval_is_reusable, _verify_local_once_approval
@@ -1543,8 +1545,22 @@ class StorePolicyMixin:
         # the same prerequisite or every request fails closed on
         # native_policy_verifier_key_missing. Provisioning is O_EXCL +
         # never-replace, so it is idempotent and safe to run per lookup.
+        verifier_path = _runtime_state_directory(Path(self.guard_home)) / NATIVE_POLICY_VERIFIER_KEY_NAME
         if resident_key is not None:
             provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
+        elif not verifier_path.is_file():
+            # A store with no integrity keyring AND no persisted verifier key has
+            # no authority to serve and must not honor any local approval. Return
+            # an empty degraded lookup rather than raising
+            # native_policy_decision_lookup_unavailable on a store that was never
+            # provisioned. When a verifier file persists, dispatch anyway so the
+            # resident degrades the integrity-less rows (ignored_local_integrity).
+            return {
+                "decision": None,
+                "ignored_local_integrity": None,
+                "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
+                "authority_revision": -1,
+            }
 
         request: dict[str, object] = {
             "schema": "guard-policy-decision-lookup-request.v1",

@@ -159,7 +159,7 @@ def force_compat_hooks_false(text: str, vendor: str) -> tuple[str, str | None]:
     previous_match = re.search(r"(?m)^[ \t]*hooks[ \t]*=[ \t]*(.*)$", block)
     previous = previous_match.group(1).strip() if previous_match else ""
     if previous_match:
-        block = re.sub(r"(?m)^[ \t]*hooks[ \t]*=[ \t]*[^\r\n]*$", "hooks = false", block, count=1)
+        block = re.sub(r"(?m)^[ \t]*hooks[ \t]*=[ \t]*[^\r\n]*\r?$", "hooks = false", block, count=1)
     else:
         header = f"[compat.{vendor}]"
         block = block.replace(header, header + "\nhooks = false", 1)
@@ -205,7 +205,7 @@ def restore_compat_hooks(text: str, prior_hooks: Mapping[str, str | None]) -> st
             block = re.sub(r"(?m)^[ \t]*hooks[ \t]*=[ \t]*[^\r\n]*(?:\r?\n)?", "", block, count=1)
         else:
             if re.search(r"(?m)^[ \t]*hooks[ \t]*=", block):
-                block = re.sub(r"(?m)^[ \t]*hooks[ \t]*=[ \t]*[^\r\n]*$", f"hooks = {previous}", block, count=1)
+                block = re.sub(r"(?m)^[ \t]*hooks[ \t]*=[ \t]*[^\r\n]*\r?$", f"hooks = {previous}", block, count=1)
             else:
                 header = f"[compat.{vendor}]"
                 block = block.replace(header, header + f"\nhooks = {previous}", 1)

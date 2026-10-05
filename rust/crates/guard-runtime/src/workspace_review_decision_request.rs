@@ -51,18 +51,14 @@ pub(crate) fn claim_owned_business_request_with<T>(
     ),
     String,
 > {
-    let (verified, input, after_claim) = claim_request_with_clock_and(
-        policy_store,
-        request_id,
-        decision,
-        true,
-        now_ms,
-        |input| {
-            after_claim(input.as_ref().ok_or_else(|| {
-                "native_workspace_review_business_input_missing".to_owned()
-            })?)
-        },
-    )?;
+    let (verified, input, after_claim) =
+        claim_request_with_clock_and(policy_store, request_id, decision, true, now_ms, |input| {
+            after_claim(
+                input
+                    .as_ref()
+                    .ok_or_else(|| "native_workspace_review_business_input_missing".to_owned())?,
+            )
+        })?;
     Ok((
         verified,
         input.ok_or_else(|| "native_workspace_review_business_input_missing".to_owned())?,

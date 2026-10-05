@@ -47,16 +47,7 @@ const RESERVED_DIRECT_MCP_COMMANDS: &[&str] = &[
 ];
 
 const VERSIONED_INTERPRETER_BASES: &[&str] = &[
-    "java",
-    "lua",
-    "node",
-    "nodejs",
-    "perl",
-    "php",
-    "py",
-    "python",
-    "pythonw",
-    "ruby",
+    "java", "lua", "node", "nodejs", "perl", "php", "py", "python", "pythonw", "ruby",
 ];
 
 fn numeric_version_suffix(value: &str, base: &str) -> bool {

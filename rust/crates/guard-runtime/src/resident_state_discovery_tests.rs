@@ -118,3 +118,51 @@ fn preferred_and_fallback_scopes_share_one_entry_budget() {
     );
     fs::remove_dir_all(base).unwrap();
 }
+
+#[test]
+fn a_verified_live_fallback_survives_the_retained_state_cap() {
+    let base = test_home("live-after-retained-cap");
+    let digest = runtime_digest().unwrap();
+    let token = [9u8; crate::AUTH_TOKEN_BYTES];
+    let preferred_digest = "ff".repeat(32);
+    state_scope(&base, &preferred_digest).unwrap();
+    for index in 0..16 {
+        let stale_digest = format!("{index:016x}{}", "0".repeat(48));
+        let scope = state_scope(&base, &stale_digest).unwrap();
+        let mut state = publish_state(
+            &scope,
+            0,
+            std::process::id(),
+            &stale_digest,
+            "loopback",
+            "127.0.0.1:1".to_owned(),
+            &token,
+        )
+        .unwrap();
+        state.process_start_marker = "stale-process-marker".to_owned();
+        let private_root = private_root_for_scope(&scope).unwrap();
+        for generation in 1..=64 {
+            state.generation = generation;
+            state.state_mac = state_mac(&state, &token);
+            let path = scope.join(format!("generation-{generation:020}.json"));
+            let mut file = private_file(&path, true, &private_root).unwrap();
+            file.write_all(&serde_json::to_vec(&state).unwrap())
+                .unwrap();
+        }
+    }
+    let live = state_scope(&base, &digest).unwrap();
+    publish_state(
+        &live,
+        1,
+        std::process::id(),
+        &digest,
+        "loopback",
+        "127.0.0.1:1".to_owned(),
+        &token,
+    )
+    .unwrap();
+    let states = discover_home_states_prefer(&base, Some(&preferred_digest)).unwrap();
+    assert_eq!(states.len(), 1);
+    assert_eq!(states[0].1, digest);
+    fs::remove_dir_all(base).unwrap();
+}

@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    ensure_private_directory_under, private_root_for_state_base, read_state_file_raw,
-    validate_package_process_identity, validate_runtime_process_identity, validate_state,
-    ResidentState, MAX_STATE_FILES, STATE_FILE_PREFIX, STATE_FILE_SUFFIX,
+    ensure_private_directory_under, private_root_for_state_base, process_start_marker,
+    read_state_file_raw, validate_package_process_identity, validate_runtime_process_identity,
+    validate_state, ResidentState, MAX_STATE_FILES, STATE_FILE_PREFIX, STATE_FILE_SUFFIX,
 };
 
 const MAX_SCOPES: usize = 16;
@@ -101,19 +102,23 @@ pub(crate) fn discover_home_states_prefer(
         for (path, digest_prefix) in fallback_candidates {
             match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
                 Ok(found) => {
+                    let mut live = None;
+                    for (index, (_, _, state)) in found.iter().enumerate() {
+                        if budget.verified_live(state)? {
+                            live = Some(index);
+                            break;
+                        }
+                    }
                     if states.len() + found.len() > MAX_RETAINED_STATES {
+                        if let Some(index) = live {
+                            states.clear();
+                            states.push(found.into_iter().nth(index).unwrap());
+                            break;
+                        }
                         return Err("native_resident_state_list_failed".to_owned());
                     }
-                    let live = found.iter().any(|(_, _, state)| {
-                        validate_runtime_process_identity(
-                            state.process_id,
-                            &state.process_start_marker,
-                            &state.runtime_sha256,
-                        )
-                        .is_ok()
-                    });
                     states.extend(found);
-                    if live {
+                    if live.is_some() {
                         break;
                     }
                 }
@@ -137,6 +142,8 @@ pub(crate) fn discover_home_states_prefer(
 struct DiscoveryBudget {
     entries: usize,
     reads: usize,
+    identities: usize,
+    probes: HashMap<(u32, String, String), bool>,
     exhausted: bool,
 }
 
@@ -145,8 +152,31 @@ impl DiscoveryBudget {
         Self {
             entries: MAX_DIRECTORY_ENTRIES,
             reads: MAX_SCOPES * MAX_STATE_READ_ATTEMPTS,
+            identities: MAX_SCOPES,
+            probes: HashMap::new(),
             exhausted: false,
         }
+    }
+
+    fn verified_live(&mut self, state: &ResidentState) -> Result<bool, String> {
+        let Ok(marker) = process_start_marker(state.process_id) else {
+            return Ok(false);
+        };
+        if !crate::constant_time_eq(marker.as_bytes(), state.process_start_marker.as_bytes()) {
+            return Ok(false);
+        }
+        let key = (state.process_id, marker, state.runtime_sha256.clone());
+        if let Some(verified) = self.probes.get(&key) {
+            return Ok(*verified);
+        }
+        if self.identities == 0 {
+            self.exhausted = true;
+            return Err("native_resident_state_list_failed".to_owned());
+        }
+        self.identities -= 1;
+        let verified = validate_runtime_process_identity(key.0, &key.1, &key.2).is_ok();
+        self.probes.insert(key, verified);
+        Ok(verified)
     }
 
     fn consume(&mut self, read: bool) -> Result<(), String> {
@@ -247,4 +277,45 @@ fn generation_number(path: &Path) -> Option<u64> {
     path.file_name()
         .and_then(|name| name.to_str())
         .and_then(canonical_generation)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{ensure_private_directory, now_ms, publish_state, state_scope};
+    use super::*;
+
+    #[test]
+    fn duplicate_identity_probes_are_cached_and_new_probes_are_bounded() {
+        let base = std::env::temp_dir().join(format!(
+            "hol-guard-discovery-probes-{}-{}",
+            std::process::id(),
+            now_ms().unwrap()
+        ));
+        let base = ensure_private_directory(&base, true).unwrap();
+        let digest = "fe".repeat(32);
+        let scope = state_scope(&base, &digest).unwrap();
+        let mut state = publish_state(
+            &scope,
+            1,
+            std::process::id(),
+            &digest,
+            "loopback",
+            "127.0.0.1:1".to_owned(),
+            &[9u8; crate::AUTH_TOKEN_BYTES],
+        )
+        .unwrap();
+        let mut budget = DiscoveryBudget::new();
+        budget.identities = 1;
+        assert!(!budget.verified_live(&state).unwrap());
+        assert_eq!(budget.identities, 0);
+        assert!(!budget.verified_live(&state).unwrap());
+        state.runtime_sha256 = "fd".repeat(32);
+        assert_eq!(
+            budget.verified_live(&state).unwrap_err(),
+            "native_resident_state_list_failed"
+        );
+        state.process_start_marker = "stale-process-marker".to_owned();
+        assert!(!budget.verified_live(&state).unwrap());
+        fs::remove_dir_all(base).unwrap();
+    }
 }

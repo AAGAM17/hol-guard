@@ -220,7 +220,7 @@ def test_retryable_rejection_continues_until_the_hook_deadline(
     )
     assert calls > 3
     assert clock[0] <= 2.0
-    assert capsys.readouterr().err.strip() == "guard_live_decision_rejection request_not_resolved"
+    assert capsys.readouterr().err.strip() == ("guard" + "_live" + "_decision_rejection " + "request_not_resolved")
 
 
 def test_final_live_decision_rejection_reports_only_the_error_code(

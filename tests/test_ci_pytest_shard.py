@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -54,6 +55,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     payload = expand_ci_job_actions(yaml.safe_load(workflow))
     jobs = payload["jobs"]
+    workflow_env = payload.get("env", {})
     plan_action = expand_ci_job_actions(yaml.safe_load((ROOT / ".github/actions/plan-pytest/action.yml").read_text()))
     plan_steps = plan_action["runs"]["steps"]
     collector = next(step["run"] for step in plan_steps if "build_pytest_shard_plan.py" in step.get("run", ""))
@@ -102,13 +104,21 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
         plan_job = jobs[planner]
         execution_job = jobs[executor]
         assert set(execution_job["needs"]) == {planner, "plan", "native-command-evaluators"}
-        assert execution_job["strategy"]["matrix"]["shard-index"] == list(range(count))
+        # Coverage consumes the planner-emitted shard indices via a dynamic matrix
+        # rather than a static literal range, so assert the expression references
+        # the coverage-plan output and that the planner emits the expected count.
+        raw_index = execution_job["strategy"]["matrix"]["shard-index"]
+        assert "fromJSON" in str(raw_index) and "coverage-plan.outputs.shard-indices" in str(raw_index)
         for job in (plan_job, execution_job):
             setup = next(step for step in job["steps"] if step.get("uses") == "./.github/actions/setup-ci-python")
             assert setup["with"]["python-version"] == "${{ env." + env_name + " }}"
         plan = next(step for step in plan_job["steps"] if step.get("uses") == "./.github/actions/plan-pytest")
         assert plan["with"]["python-version"] == version
-        assert plan["with"]["shard-count"] == str(count)
+        # shard-count is a `${{ env.NAME }}` reference into the workflow env block.
+        raw_count = str(plan["with"]["shard-count"])
+        env_ref = re.fullmatch(r"\$\{\{\s*env\.([A-Z0-9_]+)\s*\}\}", raw_count)
+        resolved = int(workflow_env[env_ref.group(1)]) if env_ref else int(raw_count)
+        assert resolved == count
         download = next(
             step for step in execution_job["steps"] if step.get("uses", "").startswith("actions/download-artifact@")
         )

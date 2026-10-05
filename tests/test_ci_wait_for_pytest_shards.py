@@ -419,7 +419,7 @@ def test_sonar_accepts_only_complete_coverage_from_verified_same_run_executions(
     jobs = workflow["jobs"]
     assert barrier.SHARD_COUNT == 128
     assert jobs["coverage"]["name"] == "coverage (3.12, ${{ matrix.shard-index }})"
-    assert jobs["coverage"]["strategy"]["matrix"]["shard-index"] == list(range(barrier.SHARD_COUNT))
+    assert jobs["coverage"]["strategy"]["matrix"]["shard-index"] == "${{ fromJSON(needs.coverage-plan.outputs.shard-indices) }}"
     producer = next(
         step for step in jobs["coverage"]["steps"] if step.get("name") == "Upload pytest coverage data artifact"
     )

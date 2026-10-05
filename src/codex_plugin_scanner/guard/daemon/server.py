@@ -6434,8 +6434,10 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         )
         params = parse_qs(query)
         remaining_hint = _runtime_hook_remaining_hint(payload)
-        hinted_deadline = RuntimeHookDeadline.from_remaining_hint(
-            remaining_hint, **({"maximum_budget_seconds": 10.0} if grok_prompt else {})
+        hinted_deadline = (
+            RuntimeHookDeadline.from_remaining_hint(remaining_hint, maximum_budget_seconds=10.0)
+            if grok_prompt
+            else RuntimeHookDeadline.from_remaining_hint(remaining_hint)
         )
         hook_deadline = RuntimeHookDeadline(expires_at=min(hinted_deadline.expires_at, transport_deadline))
         hook_env = _runtime_hook_env_overlay_from_payload(payload)

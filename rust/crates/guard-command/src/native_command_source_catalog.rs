@@ -453,7 +453,6 @@ pub fn compile_addition_with_mcp(
     admit(output)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

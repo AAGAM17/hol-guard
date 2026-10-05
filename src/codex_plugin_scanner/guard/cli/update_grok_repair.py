@@ -83,6 +83,11 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
         return False
     if _isolated_bounded_hook_is_current(command, context=context):
         return True
+    bounded_argv = _split_hook_command(command, posix=True)
+    if len(bounded_argv) != 3 or bounded_argv[1] != "-I":
+        bounded_argv = _split_hook_command(command, posix=False)
+    if len(bounded_argv) == 3 and bounded_argv[1] == "-I":
+        return False
     marker = f'"timeout_seconds":{GROK_HOOK_INTERNAL_TIMEOUT_SECONDS}'
     if marker not in command.replace(" ", ""):
         return False

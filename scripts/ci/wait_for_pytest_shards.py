@@ -18,10 +18,11 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 
 SHARD_COUNT = 128
-# The planner and each dependent shard have separate five-minute watchdogs.
-# Include one minute for polling and scheduling overhead; this bound does not
-# delay successful producers or define the CI performance target.
-_DEFAULT_TIMEOUT_SECONDS = 660.0
+# The planner has a five-minute watchdog and each dependent coverage shard
+# has a ten-minute watchdog. Include one minute for polling and scheduling
+# overhead; this bound does not delay successful producers or define the CI
+# performance target.
+_DEFAULT_TIMEOUT_SECONDS = 960.0
 REPOSITORY_PATTERN = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _SHARD_NAME = re.compile(r"coverage \(3\.12, (0|[1-9][0-9]*)\)")
 _PENDING_STATUSES = frozenset({"queued", "in_progress", "waiting", "pending", "requested"})

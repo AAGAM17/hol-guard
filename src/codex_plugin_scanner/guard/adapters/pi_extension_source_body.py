@@ -77,9 +77,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "  }\n"
         "  return null;\n"
         "}\n"
-        "\n"
-        + PROMPT_RESPONSE_HELPER_SOURCE
-        + "function fallbackGuardResponse(\n"
+        "\n" + PROMPT_RESPONSE_HELPER_SOURCE + "function fallbackGuardResponse(\n"
         "  reasonCode: string,\n"
         "  reason: string,\n"
         "): GuardResponse {\n"

@@ -261,6 +261,7 @@ pub fn parse_command(request: &CommandModelRequestV1) -> Result<CanonicalCommand
                 &raw_segment,
                 segments.last(),
             )
+            && !parser_wrappers::is_file_shell_invocation(executable.as_deref(), &arguments)
         {
             return Ok(uncertain(
                 request,

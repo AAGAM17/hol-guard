@@ -188,6 +188,18 @@ def _execution_intent_digest(receipt: object) -> str | None:
     return digest
 
 
+def _paused_native_policy_action(claimed_saved_allow_hash: str) -> str | None:
+    """Return the policy token frozen into a native-review-v4 pause identity."""
+
+    parts = claimed_saved_allow_hash.split(":")
+    if len(parts) not in {6, 7} or parts[0] != "native-review-v4":
+        return None
+    policy_action = parts[4]
+    if policy_action not in {"review", "require-reapproval"}:
+        return None
+    return policy_action
+
+
 def _accept_same_action_after_policy_refresh(
     store: object,
     *,
@@ -201,11 +213,11 @@ def _accept_same_action_after_policy_refresh(
     """See one exact grant after a policy generation changes its request digest.
 
     The generation-bound review identity changes when the resident publishes a
-    new snapshot. The waiting hook's action does not. Accept only the unconsumed
-    grant for that request when the fresh receipt is still a review and its
-    execution intent matches the intent stored with the original pause.
-    ``require-reapproval`` asks for a new decision, so an earlier grant does
-    not satisfy it.
+    new snapshot. The waiting hook's action does not. Accept the unconsumed
+    grant for that request when the fresh receipt names the execution intent
+    stored with the original pause. A fresh ``require-reapproval`` is accepted
+    only when that paused identity was already ``require-reapproval``. A weaker
+    pause, a block, or a different intent does not satisfy it.
     """
 
     validated = validate_native_decision_receipt(fresh_receipt)
@@ -224,7 +236,10 @@ def _accept_same_action_after_policy_refresh(
         or validated.get("policy_action") != parts[4]
     ):
         return False
-    if validated.get("policy_action") == "require-reapproval":
+    if (
+        validated.get("policy_action") == "require-reapproval"
+        and _paused_native_policy_action(claimed_saved_allow_hash) != "require-reapproval"
+    ):
         return False
     peek = getattr(store, "peek_exact_cloud_local_once_approval", None)
     load = getattr(store, "get_approval_request", None)

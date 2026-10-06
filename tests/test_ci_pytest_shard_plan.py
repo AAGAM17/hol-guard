@@ -115,8 +115,9 @@ def test_packaged_workload_runs_in_required_isolated_lane(profile: str) -> None:
     parent = "tests/test_guard_daemon_acceptance.py::test_packaged_correctness_workloads"
     node = f"{parent}[{profile}]"
     ordinary = "tests/test_guard_daemon_acceptance.py::test_adversarial_workload_nodeids_resolve"
-    shards, _loads = build_affinity_node_shards([node, ordinary], 1, {})
-    assert shards == [[ordinary]]
+    parallel_profile = f"{parent}[pi-960-four-client-8]"
+    shards, _loads = build_affinity_node_shards([node, ordinary, parallel_profile], 1, {})
+    assert shards == [sorted([ordinary, parallel_profile])]
     root = Path(__file__).resolve().parents[1]
     jobs = expand_ci_job_actions(yaml.safe_load((root / ".github/workflows/ci.yml").read_text()))["jobs"]
     step = next(
@@ -126,7 +127,9 @@ def test_packaged_workload_runs_in_required_isolated_lane(profile: str) -> None:
     )
     assert "if" not in step
     selected = shlex.split(step["run"])
-    assert parent in selected or node in selected
+    assert node in selected
+    assert parent not in selected
+    assert parallel_profile not in selected
     assert "scheduling-sensitive" in jobs["ci-python-312"]["needs"]
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import time
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar, Token
 from threading import Lock
 from typing import TYPE_CHECKING, cast
@@ -22,26 +22,51 @@ if TYPE_CHECKING:
     from .native_runtime_values import NativeRuntimeStatus
 
 _DEADLINE: ContextVar[float | None] = ContextVar("business_snapshot_deadline", default=None)
+_DEADLINE_CLOCK: ContextVar[Callable[[], float] | None] = ContextVar(
+    "business_snapshot_deadline_clock", default=None
+)
 _INSPECTED: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
 _CACHE_LOCK = Lock()
 _CACHE_LIMIT = 128
 
 
-def begin_business_deadline(deadline: float | None) -> Token[float | None]:
+def begin_business_deadline(
+    deadline: float | None,
+    *,
+    monotonic_clock: Callable[[], float] | None = None,
+) -> tuple[Token[float | None], Token[Callable[[], float] | None]]:
     if deadline is not None and (isinstance(deadline, bool) or not math.isfinite(deadline)):
         raise NativePolicySnapshotError("native_policy_snapshot_deadline_invalid")
     existing = _DEADLINE.get()
-    chosen = deadline if existing is None else existing if deadline is None else min(existing, deadline)
-    return _DEADLINE.set(chosen)
+    existing_clock = _DEADLINE_CLOCK.get()
+    if existing is None:
+        chosen = deadline
+        chosen_clock = monotonic_clock
+    elif deadline is None or existing <= deadline:
+        chosen = existing
+        chosen_clock = existing_clock
+    else:
+        chosen = deadline
+        chosen_clock = monotonic_clock if monotonic_clock is not None else existing_clock
+    return _DEADLINE.set(chosen), _DEADLINE_CLOCK.set(chosen_clock)
 
 
-def end_business_deadline(token: Token[float | None]) -> None:
-    _DEADLINE.reset(token)
+def end_business_deadline(
+    token: tuple[Token[float | None], Token[Callable[[], float] | None]],
+) -> None:
+    deadline_token, clock_token = token
+    _DEADLINE_CLOCK.reset(clock_token)
+    _DEADLINE.reset(deadline_token)
 
 
 def _remaining_timeout() -> float:
     deadline = _DEADLINE.get()
-    remaining = 5.0 if deadline is None else min(5.0, deadline - time.monotonic())
+    if deadline is None:
+        remaining = 5.0
+    else:
+        clock = _DEADLINE_CLOCK.get()
+        now = time.monotonic() if clock is None else clock()
+        remaining = min(5.0, deadline - now)
     if remaining <= 0:
         raise NativePolicySnapshotError("native_policy_snapshot_deadline_exceeded")
     return remaining

@@ -31,6 +31,9 @@ base64ct.workspace = true
 ureq = { version = "=3.3.0", default-features = false, features = ["rustls"] }
 url = "=2.5.8"
 
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
 [build-dependencies]
 guard-command-build = { path = "../guard-command-build" }
 serde_json.workspace = true

@@ -235,9 +235,19 @@ def test_snapshot_collision_recovers_then_uploads_without_changing_event_or_deci
     monkeypatch.setattr(delivery, "_post_json", respond)
     auth: dict[str, object] = {"oauth_source": "default", "sync_url": "https://guard.example", **binding}
     first = cloud_review_sync.sync_cloud_review_events_once(store, auth)
-    assert first["synced"] == 1
+    assert first["synced"] == 0
+    assert len(captured) == 1
+    assert captured[0]["localStreamSequence"] == 2
+    with store._connect() as connection:
+        retained = connection.execute(
+            "select stream_sequence, acknowledged_at, binding_status from guard_review_outbox_events"
+        ).fetchone()
+    assert retained is not None
+    assert int(retained["stream_sequence"]) == 530
+    assert retained["acknowledged_at"] is None
+    assert retained["binding_status"] == "ready"
     second = cloud_review_sync.sync_cloud_review_events_once(store, auth)
-    assert second["synced"] == 0
+    assert second["synced"] == 1
     assert len(captured) == 2
     assert [event["localStreamSequence"] for event in captured] == [2, 530]
     for key in ("eventId", "eventPayloadJson", "payloadHash", "localRequestId", "localEventSequence"):

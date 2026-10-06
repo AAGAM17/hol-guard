@@ -437,6 +437,12 @@ def sync_cloud_review_events_once(
                         binding=delivery_binding,
                     )
                     store.acknowledge_review_events(acknowledged_sequences, **delivery_binding)
+                    collision_sequences = {
+                        sequences[index]
+                        for index, item in enumerate(per_event_results)
+                        if item.get("code") == "review_event_snapshot_sequence_collision"
+                    }
+                    retry_before = set(retry_sequences)
                     retry_sequences, retry_results = recover_rejected_review_events(
                         store,
                         sequences=retry_sequences,
@@ -445,6 +451,7 @@ def sync_cloud_review_events_once(
                         binding=delivery_binding,
                         acknowledged_through=response.get("acknowledgedThrough"),
                     )
+                    retained_collisions = (collision_sequences & retry_before) - set(retry_sequences)
                     if retry_sequences:
                         message = retry_result_message(retry_results)
                         all_errors.append(message)
@@ -458,6 +465,11 @@ def sync_cloud_review_events_once(
                         store.requeue_pending_review_events(
                             changed_at=_now(), require_binding=True, snapshot_repair_sequences=snapshot_repairs
                         )
+                    # A renumbered snapshot stays ready and unacked. The next
+                    # sync posts that sequence. Sending it in this same call
+                    # acknowledges it before the collision remains observable.
+                    if retained_collisions:
+                        break
                     continue
 
             accounted = accepted + rejected

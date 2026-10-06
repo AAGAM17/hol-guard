@@ -1,7 +1,7 @@
 //! Whole-document native compilation. Compilation supplies no import authority,
 //! signature verification, activation, or authenticated action facts.
 //!
-//! The current binding cannot represent co-selectors or bounded lifetimes.
+//! The current binding cannot represent co-selectors or scoped lifetimes.
 //! Refuse those documents rather than projecting only `match.business`.
 
 use crate::business_match::BusinessPolicyMatchV1;
@@ -200,9 +200,19 @@ pub fn compile_business_document(
             return Err(BusinessDocumentError::UnsupportedRule);
         }
         let selector = selector.ok_or(BusinessDocumentError::UnsupportedRule)?;
-        if rule["lifetime"]["mode"] != "permanent" || !rule["lifetime"]["expiresAt"].is_null() {
-            return Err(BusinessDocumentError::UnsupportedLifetime);
-        }
+        let expires_at = match rule["lifetime"]["mode"].as_str() {
+            Some("permanent") if rule["lifetime"]["expiresAt"].is_null() => None,
+            Some("until") => {
+                let expiry = rule["lifetime"]["expiresAt"]
+                    .as_str()
+                    .ok_or(BusinessDocumentError::InvalidDocument)?;
+                if guard_contracts::canonical_policy_timestamp_nanos(expiry).is_none() {
+                    return Err(BusinessDocumentError::InvalidDocument);
+                }
+                Some(expiry.to_owned())
+            }
+            _ => return Err(BusinessDocumentError::UnsupportedLifetime),
+        };
         rules.push(BusinessPolicyRuleV1 {
             id: id.to_owned(),
             action: rule["effect"]
@@ -210,6 +220,7 @@ pub fn compile_business_document(
                 .ok_or(BusinessDocumentError::InvalidDocument)?
                 .to_owned(),
             selector,
+            expires_at,
         });
     }
     if rules.is_empty() {

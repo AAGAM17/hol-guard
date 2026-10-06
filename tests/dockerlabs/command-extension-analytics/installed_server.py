@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 from codex_plugin_scanner import __version__
 from codex_plugin_scanner.guard.approval_scope_support import request_scope_contract
@@ -104,6 +105,9 @@ def _safe_hook_response_summary(value: str) -> str:
         {
             "keys": sorted(payload),
             "policy_action": payload.get("policy_action"),
+            "permission_decision": payload.get("hookSpecificOutput", {}).get("permissionDecision")
+            if isinstance(payload.get("hookSpecificOutput"), dict)
+            else None,
             "decision_reason_code": payload.get("decision_reason_code"),
             "reason_code": payload.get("reason_code"),
             "approval_reuse": {
@@ -139,7 +143,7 @@ def _run_installed_hook(
     payload: Mapping[str, object],
     *,
     expected_status: int = 0,
-    expect_denial: bool = False,
+    expected_permission_decision: Literal["ask", "deny"] | None = None,
     policy_action: str | None = None,
 ) -> str:
     command = [
@@ -167,22 +171,28 @@ def _run_installed_hook(
         env={**os.environ, "HOME": str(GUARD_HOME)},
         timeout=30,
     )
-    if expect_denial:
-        expected_status = native_hook_verdict_exit_code(harness, "block", str(payload.get("hook_event_name", "")))
-    native_denial = False
-    if expect_denial and expected_status == 0 and completed.returncode == 0:
+    if expected_permission_decision is not None:
+        expected_action = "review" if expected_permission_decision == "ask" else "block"
+        expected_status = native_hook_verdict_exit_code(harness, expected_action, str(payload.get("hook_event_name", "")))
+    native_permission_matches = False
+    if expected_permission_decision is not None and expected_status == 0 and completed.returncode == 0:
         try:
             response = json.loads(completed.stdout)
         except json.JSONDecodeError:
             response = None
         if isinstance(response, dict):
             hook_output = response.get("hookSpecificOutput")
-            native_denial = (
-                response.get("policy_action") in {None, "review", "require-reapproval", "sandbox-required", "block"}
+            expected_actions = {None, "review", "require-reapproval"}
+            if expected_permission_decision == "deny":
+                expected_actions.update(("sandbox-required", "block"))
+            native_permission_matches = (
+                response.get("policy_action") in expected_actions
                 and isinstance(hook_output, dict)
-                and hook_output.get("permissionDecision") == "deny"
+                and hook_output.get("permissionDecision") == expected_permission_decision
             )
-    if completed.returncode != expected_status or (expect_denial and expected_status == 0 and not native_denial):
+    if completed.returncode != expected_status or (
+        expected_permission_decision is not None and expected_status == 0 and not native_permission_matches
+    ):
         diagnostic = (
             f"installed {harness} hook returned {completed.returncode}, expected {expected_status}; "
             + f"response={_safe_hook_response_summary(completed.stdout)}; "
@@ -227,8 +237,8 @@ def _invoke_real_harnesses() -> int:
     _run_installed_hook("codex", codex_pre)
     _run_installed_hook("codex", codex_post)
     _run_installed_hook("claude-code", claude_no_post)
-    _run_installed_hook("claude-code", claude_review, expect_denial=True)
-    _run_installed_hook("cursor", cursor_block, expect_denial=True, policy_action="block")
+    _run_installed_hook("claude-code", claude_review, expected_permission_decision="ask")
+    _run_installed_hook("cursor", cursor_block, expected_permission_decision="deny", policy_action="block")
     return 2
 
 
@@ -239,7 +249,7 @@ def _pending_workflow_request(store: GuardStore) -> dict[str, object]:
         "tool_input": {"command": _WORKFLOW_COMMAND},
         "tool_call_id": "codex_lab_workflow_initial_0001",
     }
-    hook_summary = _run_installed_hook("codex", payload, expect_denial=True)
+    hook_summary = _run_installed_hook("codex", payload, expected_permission_decision="deny")
     all_pending = store.list_approval_requests(status="pending")
     pending = [
         request
@@ -309,7 +319,7 @@ def _complete_workflow_authorization(store: GuardStore, request_id: str) -> dict
         "tool_input": {"command": _WORKFLOW_COMMAND},
         "tool_call_id": "codex_lab_workflow_drift_0002",
     }
-    _run_installed_hook("codex", drift, expect_denial=True)
+    _run_installed_hook("codex", drift, expected_permission_decision="deny")
     if len(store.list_events(event_name="workflow_capability.issued")) != 1:
         raise RuntimeError("executable drift changed capability issuance")
     if store.list_events(event_name="workflow_capability.claimed"):

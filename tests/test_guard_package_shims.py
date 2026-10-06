@@ -1982,6 +1982,12 @@ def test_guard_protect_ignores_stale_policy_bundle_package_family_block(
     home_dir = tmp_path / "guard-home"
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    marker_path = tmp_path / "npm-ran.json"
+    write_fake_manager_script(fake_bin=fake_bin, manager="npm", marker_path=marker_path, exit_code=0)
+    original_path = os.environ.get("PATH", "")
+    monkeypatch.setenv("PATH", os.pathsep.join(filter(None, [str(fake_bin), original_path])))
     server, thread, sync_url = _start_cloud_eval_server(
         decision="allow",
         package_name="cli",

@@ -1418,9 +1418,10 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
                 ))
             }
         };
-        let _ = (client_id, refresh_token); // refresh path is the stage-B port
         let dpop_key_material = gst::oauth_dpop_key_material(&oauth_credentials)?;
-        gst::resolve_guard_oauth_client_config(issuer).map_err(|e| {
+        // `(origin, authorize_url, token_endpoint, device_authorize_url,
+        // jwks_url, client_id)` — `token_endpoint` is element 2.
+        let oauth_client_config = gst::resolve_guard_oauth_client_config(issuer).map_err(|e| {
             EvalError::Validation(format!("Reconnect Guard to Guard Cloud to continue. {e}"))
         })?;
         let now_unix = std::time::SystemTime::now()
@@ -1435,11 +1436,47 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
         let access_token = match cached_access_token {
             Some(t) => t,
             None => {
-                return Err(EvalError::Validation(
-                    "Guard OAuth access token needs refresh; the resident refresh path \
-                     is not ported (stage A). Reauthorize Guard to continue."
-                        .to_owned(),
-                ))
+                // `runner.py` refresh leg — `_refresh_guard_oauth_access_token`:
+                // circuit-checked, `invalid_grant`-retried, rotation-persisted
+                // under `oauth-refresh.lock`. The reloader hands the loop the
+                // latest stored credential when a peer rotated mid-flight.
+                let store_ref = store;
+                let refreshed = crate::oauth_refresh::refresh_oauth_access_token(
+                    store,
+                    &oauth_credentials,
+                    &oauth_client_config.2,
+                    client_id,
+                    refresh_token,
+                    &dpop_key_material,
+                    &move || {
+                        store_ref
+                            .get_sync_payload("oauth_local_credentials")
+                            .and_then(|payload| {
+                                crate::oauth_secret_authority::resolve_credentials(
+                                    &payload,
+                                    &|_| {
+                                        crate::package_authority_op::load_oauth_secret_raw(
+                                            store_ref.guard_home(),
+                                            &payload,
+                                        )
+                                    },
+                                )
+                                .ok()
+                            })
+                            .and_then(|creds| {
+                                let rt = creds
+                                    .get("refresh_token")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_owned)?;
+                                let mat = gst::oauth_dpop_key_material(&creds).ok()?;
+                                Some((rt, mat))
+                            })
+                    },
+                );
+                match refreshed {
+                    Ok(auth) => auth.access_token,
+                    Err(e) => return Err(e),
+                }
             }
         };
         let sync_url = gst::validate_guard_sync_endpoint(

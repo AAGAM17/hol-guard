@@ -606,6 +606,7 @@ def native_context_digest(
     resident_key = (status.identity.sha256, canonical_home)
     with _READY_RESIDENTS_LOCK:
         cold_start = resident_key not in _READY_RESIDENTS
+        _READY_RESIDENTS.add(resident_key)
     deadline_started = time.monotonic()
     # The budget bounds steady-state degradation, not process startup: the
     # pooled resident is spawned lazily on the first request, and a contended
@@ -682,9 +683,6 @@ def native_context_digest(
         payload=envelope,
         deadline_monotonic=deadline_monotonic,
     )
-    if output is not None:
-        with _READY_RESIDENTS_LOCK:
-            _READY_RESIDENTS.add(resident_key)
     if output is None:
         native_record_resident_failure(
             status.identity.sha256,

@@ -176,6 +176,7 @@ impl PinnedHttpsTransport for UreqPinnedTransport {
             ));
         }
         let config = ureq::config::Config::builder()
+            .proxy(None)
             .https_only(true)
             .max_redirects(0)
             .http_status_as_error(false)

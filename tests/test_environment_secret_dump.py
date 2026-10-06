@@ -119,14 +119,15 @@ def test_grok_pretool_denies_python_environ_dump(tmp_path: Path, monkeypatch, ca
     from codex_plugin_scanner.guard.cli import commands_hook_native_authority
 
     original_availability = commands_hook_native_authority.availability_harness_response
+    worker_failures: list[BaseException] = []
 
     def expose_worker_failure(*args, **kwargs):
-        # Keep the underlying failure visible in this regression rather than
-        # accepting the production fail-closed envelope as a policy decision.
+        # The CLI catches exceptions too, so retain the original traceback and
+        # report it after main returns, before parsing the fail-closed response.
         if kwargs.get("reason_code") == "native_hook_worker_exception":
-            exception = sys.exception()
+            exception = sys.exc_info()[1]
             if exception is not None:
-                raise exception
+                worker_failures.append(exception)
         return original_availability(*args, **kwargs)
 
     monkeypatch.setattr(commands_hook_native_authority, "availability_harness_response", expose_worker_failure)
@@ -159,6 +160,8 @@ def test_grok_pretool_denies_python_environ_dump(tmp_path: Path, monkeypatch, ca
             "grok",
         ]
     )
+    if worker_failures:
+        raise worker_failures[0]
     payload = json.loads(capsys.readouterr().out)
 
     assert rc == 2

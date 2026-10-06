@@ -127,7 +127,10 @@ def test_sync_credentials_preserve_installation_id_when_cloud_workspace_changes(
     assert store.get_sync_payload("policy") == {"policy": "team"}
 
 
-def test_evaluate_detection_queues_access_graph_snapshot_without_syncing(tmp_path: Path) -> None:
+def test_evaluate_detection_queues_access_graph_snapshot_without_syncing(
+    tmp_path: Path,
+    native_context_digest: Path,
+) -> None:
     store = GuardStore(tmp_path / "guard-home")
     _seed_guard_cloud(store, workspace_id="workspace-alpha")
     artifact = _artifact(tmp_path)
@@ -173,7 +176,10 @@ def test_evaluate_detection_queues_instruction_access_graph_edges(tmp_path: Path
     assert any(edge["edgeType"] == "agent_uses_instruction" for edge in graph_payload["edges"])
 
 
-def test_evaluate_detection_queues_access_graph_snapshot_without_cloud_workspace(tmp_path: Path) -> None:
+def test_evaluate_detection_queues_access_graph_snapshot_without_cloud_workspace(
+    tmp_path: Path,
+    native_context_digest: Path,
+) -> None:
     store = GuardStore(tmp_path / "guard-home")
     _seed_guard_cloud(store)
     artifact = _artifact(tmp_path)

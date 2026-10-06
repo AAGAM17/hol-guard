@@ -5833,6 +5833,7 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
         from codex_plugin_scanner.guard.mcp.policy_tools import (
             apply_pending_policy_request,
             decline_pending_policy_request,
+            pending_policy_import_approval_binding,
         )
 
         action = payload.get("action")
@@ -5883,10 +5884,17 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
             approval_gate_grant = require_high_risk(
                 guard_home,
                 purpose="policy_import",
+                **pending_policy_import_approval_binding(store, request_id),
                 approval_gate_input=approval_gate_input_from_mapping(payload),
             )
         except ApprovalGateError as error:
             self._write_approval_gate_error(error)
+            return
+        except PolicyToolError as error:
+            self._write_json(
+                {"resolved": False, "error": error.code, "message": error.message},
+                status=400,
+            )
             return
 
         try:
@@ -5895,6 +5903,9 @@ class _GuardDaemonHandler(BaseHTTPRequestHandler):
                 request_id,
                 approval_gate_grant=approval_gate_grant,
             )
+        except ApprovalGateError as error:
+            self._write_approval_gate_error(error)
+            return
         except PolicyToolError as error:
             if error.code == "approval_already_resolved":
                 # VPC047: re-approving a terminal request is stable; return

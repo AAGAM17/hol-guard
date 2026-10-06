@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from ..approval_gate import ApprovalGateGrant
 from ..policy_document import GuardPolicyDocument, policy_document_digest
+from ..policy_document_authority import PolicyImportApprovalBinding, policy_import_approval_binding
 from ..policy_document_compile import build_policy_document_from_rows, compile_policy_document
 from ..policy_document_diff import diff_policy_documents
 from ..policy_document_io import CompiledPolicyRow
@@ -303,6 +304,24 @@ def execute_get_policy_creation(store: GuardStore, arguments: dict[str, object])
         "error": request.failure_code,
     }
     return _envelope(payload)
+
+
+def pending_policy_import_approval_binding(
+    store: GuardStore,
+    request_id: str,
+) -> PolicyImportApprovalBinding:
+    """Bind approval issuance to the stored candidate rechecked during apply."""
+    request = MCPolicyRequestRepository(store).get_request(request_id)
+    if request is None:
+        raise PolicyToolError("policy_request_not_found", "Policy request not found.")
+    try:
+        document = parse_policy_document_yaml(request.canonical_policy_yaml)
+        binding = policy_import_approval_binding(document, request.mode)
+    except ValueError:
+        raise PolicyToolError("candidate_invalid", "Stored policy candidate is invalid.") from None
+    if policy_document_digest(document) != request.policy_document_digest:
+        raise PolicyToolError("candidate_digest_mismatch", "Stored candidate digest mismatch.")
+    return binding
 
 
 def apply_pending_policy_request(

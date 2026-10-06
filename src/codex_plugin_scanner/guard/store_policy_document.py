@@ -11,6 +11,7 @@ from typing import Literal
 from .approval_gate import ApprovalGateGrant, require_high_risk
 from .policy_authority import validate_policy_write_authority
 from .policy_document import GuardPolicyDocument, policy_document_digest
+from .policy_document_authority import policy_import_approval_binding
 from .policy_document_compile import compile_policy_document
 from .policy_document_io import CompiledPolicyRow
 from .store_base import _validate_scoped_policy_artifact_target
@@ -130,6 +131,7 @@ class StorePolicyDocumentMixin:
         require_high_risk(
             self.guard_home,
             purpose="policy_import",
+            **policy_import_approval_binding(document, mode),
             approval_gate_grant=approval_gate_grant,
             now=now,
         )
@@ -318,6 +320,7 @@ class StorePolicyDocumentMixin:
         require_high_risk(
             self.guard_home,
             purpose="policy_import",
+            **policy_import_approval_binding(document, mode),
             approval_gate_grant=approval_gate_grant,
             now=now,
         )

@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from codex_plugin_scanner.guard.daemon.manager import load_guard_daemon_auth_token
 from codex_plugin_scanner.guard.mcp.policy_tools import decline_pending_policy_request, execute_create_policy
 from codex_plugin_scanner.guard.store import GuardStore
@@ -107,6 +109,95 @@ class TestDaemonMcpPolicyRequestSurface:
         )
         assert result["status"] == "pending"
         return str(result["requestId"])
+
+    @pytest.mark.parametrize("alter_grant", [False, True])
+    def test_approve_issues_document_bound_native_grant(
+        self,
+        store: GuardStore,
+        env_flags: None,
+        native_hook_force: Path,
+        native_mcp_probe,
+        monkeypatch: pytest.MonkeyPatch,
+        alter_grant: bool,
+    ) -> None:
+        from codex_plugin_scanner.guard.approval_gate import update_settings
+        from codex_plugin_scanner.guard.daemon import GuardDaemonServer
+
+        native_mcp_probe(store.guard_home)
+        from codex_plugin_scanner.guard import approval_gate
+        from codex_plugin_scanner.guard.daemon import server
+
+        native_gate = approval_gate._approval_gate_native
+
+        def require_native_result(method, *args, **kwargs):
+            result = native_gate(method, *args, **kwargs)
+            if method == "require_high_risk":
+                from codex_plugin_scanner.guard.native_resident_client import native_resident_client_failure_code
+
+                assert result is not None, native_resident_client_failure_code()
+            return result
+
+        monkeypatch.setattr(approval_gate, "_approval_gate_native", require_native_result)
+        if alter_grant:
+            from dataclasses import replace
+
+            issue_grant = server.require_high_risk
+
+            def issue_altered_grant(*args, **kwargs):
+                grant = issue_grant(*args, **kwargs)
+                assert grant is not None
+                return replace(grant, subject="different-document")
+
+            monkeypatch.setattr(server, "require_high_risk", issue_altered_grant)
+        password = "synthetic-policy-daemon-approval"
+        update_settings(
+            store.guard_home,
+            {
+                "enabled": True,
+                "new_password": password,
+                "confirm_password": password,
+                "cooldown_seconds": 0,
+            },
+        )
+        request_id = self._stage_pending_request(store)
+        daemon = GuardDaemonServer(store, host="127.0.0.1", port=0)
+        daemon.start()
+        try:
+            token = self._dashboard_token_for(store)
+            status, payload = self._read_response(
+                self._request(
+                    daemon.port,
+                    f"/v1/mcp-policy/requests/{request_id}/decision",
+                    method="POST",
+                    payload={
+                        "action": "approve",
+                        "approval_gate": {
+                            "password": password,
+                            "use_cooldown": False,
+                        },
+                    },
+                    token=token,
+                    origin="http://127.0.0.1:5474",
+                )
+            )
+        finally:
+            daemon.stop()
+        if alter_grant:
+            assert status == 403, payload
+            assert payload["error"] == "approval_gate_required"
+            assert store.list_policy_decisions() == []
+            from codex_plugin_scanner.guard.mcp.policy_store import MCPolicyRequestRepository
+
+            pending = MCPolicyRequestRepository(store).get_request(request_id)
+            assert pending is not None and pending.status == "failed"
+            assert pending.failure_code == "policy_write_failed"
+        else:
+            assert status == 200, payload
+            assert payload["resolved"] is True
+            assert len(store.list_policy_decisions()) == 1
+        _assert_no_policy_response_leaks(
+            {"requestId": request_id, **payload}, request_id=request_id, sensitive_values=(token, password)
+        )
 
     def test_get_returns_vpc045_fields(self, store: GuardStore, env_flags: None, tmp_path: Path) -> None:
         from codex_plugin_scanner.guard.daemon import GuardDaemonServer

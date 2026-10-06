@@ -344,6 +344,7 @@ def exercise(root: Path, target: Path, results: list[dict[str, object]]) -> None
     source_path.unlink()
     fixture_path.unlink()
     binding_path.unlink()
+    trust_map_path.write_bytes(baseline_trust_map)
     build()
     verify()
     require(export() == baseline and not descriptor.exists(), "source removal did not restore the original inventory")

@@ -77,15 +77,17 @@ def test_old_current_fence_consumer_cannot_receive_installation_key(tmp_path, na
     monkeypatch.setattr(
         store, "_policy_integrity_secret_material", lambda **kwargs: pytest.fail("key crossed old fence")
     )
-    with pytest.raises(NativePolicySnapshotError, match="native_business_source_current_fence_unavailable"):
-        with owner.approved_business_source_mutation(
+    with (
+        pytest.raises(NativePolicySnapshotError, match="native_business_source_current_fence_unavailable"),
+        owner.approved_business_source_mutation(
             store,
             document(),
             mode="replace",
             now="2026-10-06T00:00:00Z",
             approval_gate_grant=None,
-        ):
-            pytest.fail("old fence admitted installation")
+        ),
+    ):
+        pytest.fail("old fence admitted installation")
     assert not (store.guard_home / "native-runtime" / owner.ANCHOR_FILE_NAME).exists()
 
 

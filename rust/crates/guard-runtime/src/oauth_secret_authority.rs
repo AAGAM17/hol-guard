@@ -117,8 +117,11 @@ pub fn resolve_credentials(
         .as_object()
         .ok_or_else(|| "credentials_payload_not_object".to_owned())?;
     let secret_ref = non_empty_str(object.get(CREDENTIALS_REF_KEY));
-    let expected = non_empty_str(object.get(CREDENTIALS_HASH_KEY))
-        .ok_or_else(|| "credentials_hash_missing".to_owned())?;
+    let expected = non_empty_str(object.get(CREDENTIALS_HASH_KEY));
+    if secret_ref.is_none() && expected.is_none() && object.contains_key("refresh_token") {
+        return Ok(payload.clone());
+    }
+    let expected = expected.ok_or_else(|| "credentials_hash_missing".to_owned())?;
     let raw = read_secret(secret_ref).ok_or_else(|| "credentials_secret_unavailable".to_owned())?;
     if !secret_matches_fingerprint(&raw, expected)? {
         return Err("credentials_secret_fingerprint_mismatch".to_owned());

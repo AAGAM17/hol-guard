@@ -36,6 +36,7 @@ pep440_rs = "=0.7.3"
 toml = "0.9.5"
 roxmltree = "0.20.0"
 getrandom = "0.3.3"
+nix = { version = "0.31.3", features = ["process", "signal"] }
 ring = "0.17.14"
 rsa = "0.9.8"
 base64ct = "1.6.0"

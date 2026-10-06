@@ -2755,7 +2755,7 @@ def test_approval_queue_persists_exact_v1_context_instead_of_legacy_content_hash
     artifact = _artifact(tmp_path)
     detection = _detection(artifact)
     store = GuardStore(tmp_path / "guard-home")
-    config = _config(tmp_path, action=queued_action)
+    config = replace(_config(tmp_path, action=queued_action), guard_home=native_context_digest)
     evaluation = evaluate_detection(detection, store, config, persist=False)
 
     queued = queue_blocked_approvals(

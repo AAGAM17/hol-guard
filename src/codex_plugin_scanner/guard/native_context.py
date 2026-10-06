@@ -1249,13 +1249,13 @@ def context_mcp_arguments_projection(tool_name: str, arguments: object) -> tuple
         fields,
         guard_home=_resolve_digest_home(None),
     )
-    ok = isinstance(result, dict) and result.get("status") == "ok"
-    launch_target = result.get("mcp_launch_target") if ok else None
-    serialized = result.get("mcp_serialized_arguments") if ok else None
-    digest = result.get("digest") if ok else None
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        raise ValueError("native_mcp_arguments_projection_unavailable")
+    launch_target = result.get("mcp_launch_target")
+    serialized = result.get("mcp_serialized_arguments")
+    digest = result.get("digest")
     if (
-        not ok
-        or "mcp_safe_arguments" not in result
+        "mcp_safe_arguments" not in result
         or not isinstance(launch_target, str)
         or not isinstance(serialized, str)
         or not _is_sha256_digest(digest)
@@ -1272,8 +1272,7 @@ def context_mcp_redact_json(value: object) -> object:
         fields,
         guard_home=_resolve_digest_home(None),
     )
-    ok = isinstance(result, dict) and result.get("status") == "ok"
-    if not ok or "mcp_redacted_value" not in result:
+    if not isinstance(result, dict) or result.get("status") != "ok" or "mcp_redacted_value" not in result:
         raise _unavailable("native_mcp_redact_json_unavailable")
     return result["mcp_redacted_value"]
 

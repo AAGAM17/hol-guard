@@ -295,7 +295,7 @@ def test_pretool_call_records_runtime_receipt(
     )
     captured = capsys.readouterr()
     receipts = GuardStore(home_dir).list_receipts()
-    assert returncode == 0
+    assert returncode == 2
     assert receipts
     assert receipts[0]["harness"] == "hermes"
     native = json.loads(captured.out.strip().splitlines()[-1])

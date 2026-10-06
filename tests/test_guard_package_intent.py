@@ -739,6 +739,23 @@ def test_parse_package_intent_uv_add_sync_and_execute_are_supported(tmp_path: Pa
     assert sync_intent.lockfile_paths == ("uv.lock",)
 
 
+@pytest.mark.parametrize(
+    "options",
+    [
+        "--with-requirements requirements.txt",
+        "--with-requirements=requirements.txt",
+        "--with-editable ./local-tool",
+        "--with-editable=./local-tool",
+    ],
+)
+def test_uvx_dependency_options_do_not_replace_execution_target(options: str) -> None:
+    intent = parse_package_intent(f"uvx {options} ruff==0.6.9")
+
+    assert intent is not None
+    assert intent.targets[0].package_name == "ruff"
+    assert intent.targets[0].requested_specifier == "0.6.9"
+
+
 def test_parse_package_intent_skips_wrapper_flags_before_manager_detection() -> None:
     npm_intent = parse_package_intent("sudo -E npm install react")
     pip_intent = parse_package_intent("env -i pip install flask==3.0.0")

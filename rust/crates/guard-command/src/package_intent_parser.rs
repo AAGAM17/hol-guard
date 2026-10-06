@@ -600,7 +600,16 @@ fn exec_package_spec(tokens: &[String]) -> Option<String> {
         return first_positional(&tokens[1..], &["--bun"]);
     }
     if command == "uvx" {
-        return first_positional(&tokens[1..], &["--from", "--python", "--with"]);
+        return first_positional(
+            &tokens[1..],
+            &[
+                "--from",
+                "--python",
+                "--with",
+                "--with-requirements",
+                "--with-editable",
+            ],
+        );
     }
     None
 }
@@ -1280,9 +1289,9 @@ fn effective_execution_context(
 ) -> (Option<String>, String, Option<PathBuf>, String) {
     let mut effective_path: Option<String> = supplied_environment.get("PATH").cloned();
     let mut path_source = if effective_path.is_some() {
-        "env".to_owned()
+        "inherited".to_owned()
     } else {
-        "env_unset".to_owned()
+        "inherited_unset".to_owned()
     };
     let mut effective_cwd: Option<PathBuf> = Some(initial_cwd.to_path_buf());
     let mut cwd_source = initial_cwd_source.to_owned();
@@ -2875,6 +2884,22 @@ fn default_path() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cargo_git_ssh_source_userinfo_redacted_from_command() {
+        let intent = parse_package_intent(
+            "cargo install --git ssh://user:TOKEN@git.example.com/owner/repo.git",
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("cargo install intent");
+        assert_eq!(
+            intent.redacted_command,
+            "cargo install --git ssh://git.example.com/owner/repo.git"
+        );
+    }
 
     #[test]
     fn control_labels() {

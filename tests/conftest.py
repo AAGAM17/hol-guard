@@ -377,63 +377,19 @@ def package_intent_native(
     native transport it returns ``None``. This fixture provisions the shared
     enrolled guard home (verifier key seeded by ``_native_context_home``),
     forces the compiled runtime, and binds ``resolve_guard_home`` so the
-    parser resolves the enrolled home. Skips when no runtime binary is
-    resolvable, matching ``native_context_digest``.
+    parser resolves the enrolled home. Missing runtime binaries fail this
+    authoritative-parser suite rather than silently skipping its coverage.
     """
 
     from codex_plugin_scanner.guard import config
 
     binary = _context_digest_runtime_binary()
     if binary is None:
-        pytest.skip("package intent native tests require the compiled Rust runtime")
+        pytest.fail("package intent native tests require the compiled Rust runtime")
     monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
     monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(binary.resolve()))
     monkeypatch.setattr(config, "resolve_guard_home", lambda *a, **k: _native_context_home)
     return _native_context_home
-
-
-@pytest.fixture
-def package_intent_env_native(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Provision a fresh enrolled guard home + resident honoring test env.
-
-    Package-intent resolution reads ``HOME``/``PATH`` inside the *resident*
-    process — the session-pooled resident at ``_native_context_home`` was
-    spawned before any per-test ``monkeypatch.setenv`` ran, so it sees stale
-    values. This factory provisions a fresh enrolled home *and* spawns a
-    fresh resident against it after the caller sets ``HOME``/``PATH``, so
-    env-sensitive evidence (shim detection, manager resolution, home-dir
-    probing) exercises the patched environment. Returns a callable that
-    yields a ready-to-use ``guard_home`` once the caller has set env vars.
-    """
-
-    import tempfile
-
-    from codex_plugin_scanner.guard.native_policy_snapshot import (
-        provision_native_policy_verifier_key,
-    )
-    from codex_plugin_scanner.guard.native_resident_client import close_native_residents
-
-    binary = _context_digest_runtime_binary()
-    if binary is None:
-        pytest.skip("package intent native tests require the compiled Rust runtime")
-    monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
-    monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(binary.resolve()))
-
-    homes: list[Path] = []
-
-    def _fresh_home() -> Path:
-        home = Path(tempfile.mkdtemp(prefix="hol-guard-intent-home-"))
-        (home / "native-runtime").mkdir(mode=0o700, parents=True)
-        provision_native_policy_verifier_key(home, b"\x07" * 32)
-        homes.append(home)
-        return home
-
-    yield _fresh_home
-
-    for home in homes:
-        close_native_residents(home)
 
 
 @pytest.fixture

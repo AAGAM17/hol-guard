@@ -1602,15 +1602,15 @@ class StorePolicyMixin:
                         "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
                         "authority_revision": -1,
                     }
-        elif verifier_path is not None and not verifier_exists and not has_local_once_approvals:
-            # A store with no integrity keyring, no persisted verifier key, and
-            # no local-once approvals has no authority to serve and must not
-            # honor any local approval. Return an empty degraded lookup rather
-            # than raising native_policy_decision_lookup_unavailable on a store
-            # that was never provisioned. When local-once rows exist (even
-            # unsigned legacy ones) or a verifier file persists (or the home is
-            # untrusted so we cannot determine one), dispatch anyway so the
-            # resident emits ignored_local_integrity evidence.
+        elif verifier_path is None or (not verifier_exists and not has_local_once_approvals):
+            # An untrusted guard home (verifier_path is None) can never persist
+            # a verifier key, and a store with no integrity keyring, no
+            # persisted verifier, and no local-once approvals has no authority
+            # to serve. Return an empty degraded lookup rather than raising
+            # native_policy_decision_lookup_unavailable on a store that cannot
+            # be provisioned. When local-once rows exist (even unsigned legacy
+            # ones) the resident still needs the request to emit
+            # ignored_local_integrity evidence.
             return {
                 "decision": None,
                 "ignored_local_integrity": None,

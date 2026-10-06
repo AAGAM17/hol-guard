@@ -95,6 +95,15 @@ fn rewritten_removed_or_null_business_floor_fails_record_authentication() {
         fixture_file(&path, &canonical_json_bytes(&record).unwrap());
         assert!(PolicySnapshotStore::new(&root, &"a".repeat(64)).is_err());
     }
+    let mut legacy_null = original;
+    legacy_null["business_policy_floor"] = Value::Null;
+    legacy_null["floor_mac"] = Value::String(generation_floor_mac(
+        1,
+        legacy_null["policy_digest"].as_str().unwrap(),
+        &key,
+    ));
+    fixture_file(&path, &canonical_json_bytes(&legacy_null).unwrap());
+    assert!(PolicySnapshotStore::new(&root, &"a".repeat(64)).is_err());
     fs::remove_dir_all(root).unwrap();
 }
 

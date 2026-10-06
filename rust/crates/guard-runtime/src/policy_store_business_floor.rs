@@ -6,6 +6,14 @@ use guard_policy_snapshot::{
     canonical_json_bytes, digest_bytes, generation_floor_mac, PolicySnapshotV3,
 };
 
+pub(super) fn present_floor<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    use serde::Deserialize;
+    // Presence cannot mean a nullable removal of retained authority metadata.
+    String::deserialize(deserializer).map(Some)
+}
+
 pub(super) fn snapshot_floor(
     snapshot: Option<&PolicySnapshotV3>,
 ) -> Result<Option<String>, String> {

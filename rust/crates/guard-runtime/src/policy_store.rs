@@ -132,7 +132,11 @@ struct PolicyAuthorityRecordV3 {
     pub(super) floor_mac: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) command_control_floor: Option<policy_store_command_floor::CommandControlFloor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "policy_store_business_floor::present_floor",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub(super) business_policy_floor: Option<String>,
 }
 

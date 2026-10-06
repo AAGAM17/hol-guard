@@ -422,10 +422,8 @@ pub(crate) fn persist_rotated_oauth_refresh_token(
     let binding = refresh_binding(credentials, &recovered, access_token.is_some());
 
     let guard_home = store.guard_home().to_path_buf();
-    let _credential_lock = acquire_lock(
-        &guard_home.join(CREDENTIAL_LOCK_NAME),
-        OAUTH_LOCK_TIMEOUT,
-    )?;
+    let _credential_lock =
+        acquire_lock(&guard_home.join(CREDENTIAL_LOCK_NAME), OAUTH_LOCK_TIMEOUT)?;
 
     // Build the secret payload the same way `set_oauth_local_credentials` does:
     // canonical sorted-compact JSON of the secret material.

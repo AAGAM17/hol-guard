@@ -97,9 +97,31 @@ def test_hung_continuation_timing_runs_in_required_dedicated_lane_not_parallel_s
 
     root = Path(__file__).resolve().parents[1]
     jobs = expand_ci_job_actions(yaml.safe_load((root / ".github/workflows/ci.yml").read_text()))["jobs"]
-    commands = [step["run"] for step in jobs["scheduling-sensitive"]["steps"] if "run" in step]
-    assert any(module in shlex.split(command) or timing_node in shlex.split(command) for command in commands)
+    timing_step = next(
+        step
+        for step in jobs["scheduling-sensitive"]["steps"]
+        if step.get("name") == "Run scheduling-sensitive tests untraced"
+    )
+    assert "if" not in timing_step
+    selected = shlex.split(timing_step["run"])
+    assert module in selected or timing_node in selected
     assert "scheduling-sensitive" in jobs["ci-python-312"]["needs"]
+
+
+@pytest.mark.parametrize("condition", ["false", "github.event_name == 'schedule'"])
+def test_hung_continuation_routing_rejects_conditional_execution(monkeypatch, condition: str) -> None:
+    original = expand_ci_job_actions
+
+    def with_conditional_timing_step(workflow):
+        expanded = original(workflow)
+        for step in expanded["jobs"]["scheduling-sensitive"]["steps"]:
+            if step.get("name") == "Run scheduling-sensitive tests untraced":
+                step["if"] = condition
+        return expanded
+
+    monkeypatch.setattr(f"{__name__}.expand_ci_job_actions", with_conditional_timing_step)
+    with pytest.raises(AssertionError):
+        test_hung_continuation_timing_runs_in_required_dedicated_lane_not_parallel_shards()
 
 
 def test_affinity_plan_splits_only_an_oversized_file() -> None:

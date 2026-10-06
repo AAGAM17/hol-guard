@@ -155,9 +155,10 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert set(jobs["compatibility"]["strategy"]["matrix"]["python-version"]) == {"3.10", "3.11", "3.13", "3.14"}
     selected = shlex.split(scheduling_job)
     for node in SCHEDULING_ONLY_NODE_IDS:
-        assert f"--deselect {node}" in coverage_job or f"--deselect '{node}'" in coverage_job
         assert node in selected or node.split("::", 1)[0] in selected
-    assert coverage_job.count("--deselect ") == len(SCHEDULING_ONLY_NODE_IDS)
+    redundant_deselections = re.findall(r"--deselect '?([^'\s]+)'?", coverage_job)
+    assert set(redundant_deselections) <= SCHEDULING_ONLY_NODE_IDS
+    assert coverage_job.count("--deselect ") == len(set(redundant_deselections))
     assert {SCHEDULING_SENSITIVE_NODE, STORAGE_LIVENESS_NODE} <= SCHEDULING_ONLY_NODE_IDS
     assert jobs["scheduling-sensitive"]["strategy"]["matrix"]["python-version"] == ["3.12.14", "3.14.7"]
     timing_setup = next(

@@ -2494,4 +2494,58 @@ mod tests {
         .unwrap();
         assert_eq!(package_advisory_ids(&package), vec!["GHSA-X"]);
     }
+
+    /// Descriptor-race parity for the ported executable hasher. The Python
+    /// `test_windows_executable_hash_keeps_descriptor_race_checks` matrix was
+    /// retired with the approval_context helper cluster; this keeps the same
+    /// decision contract on the Rust side: any stat field that moves between
+    /// the pre-open probe and the opened descriptor yields `identity_raced`
+    /// with no digest, while an unmoved stat verifies.
+    #[test]
+    fn executable_hash_reports_identity_races() {
+        let (_dir, path) = temp_script("#!/bin/sh\necho hi\n");
+        let expected = stat_key(&fs::metadata(&path).unwrap());
+        let (digest, status, _shebang, _shebang_status) = cached_executable_hash(&path, expected);
+        assert_eq!(status, "verified");
+        assert!(digest.is_some());
+
+        fn assert_identity_raced(path: &Path, expected: StatKey) {
+            let (digest, status, _shebang, _shebang_status) =
+                cached_executable_hash(path, expected);
+            assert_eq!(status, "identity_raced");
+            assert!(digest.is_none());
+        }
+
+        let mut raced = expected;
+        raced.ino += 1;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.mode &= !0o111;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.mtime_ns += 1;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.ctime_ns += 1;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.size += 1;
+        assert_identity_raced(&path, raced);
+    }
+
+    /// `O_NOFOLLOW` must reject a final-component symlink exactly like the
+    /// Python `os.open(..., O_NOFOLLOW)` it replaced: nothing is hashed.
+    #[cfg(unix)]
+    #[test]
+    fn executable_hash_refuses_final_symlink() {
+        let (dir, path) = temp_script("#!/bin/sh\necho hi\n");
+        let link = dir.path().join("link.sh");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        let expected = stat_key(&fs::metadata(&link).unwrap());
+        assert_eq!(cached_executable_hash(&link, expected).1, "open_failed");
+    }
 }

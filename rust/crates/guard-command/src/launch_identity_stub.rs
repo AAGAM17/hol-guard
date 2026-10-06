@@ -10,17 +10,20 @@ use std::path::Path;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
+use crate::launch_identity_common::{
+    launch_argv_digest, normalized_launch_cwd, runtime_launch_argv, RuntimeLaunchArgv,
+};
+
 // Mirror the Unix implementation's contract shape on non-Unix targets: every
 // key a cross-platform consumer indexes must be present, but the identity
 // stays non-reusable (`reuse_nonce`) and `unsupported_platform`, so saved
 // approvals still fail closed and nothing claims a verified launch.
 
-// `reuse_nonce` must never be reusable, so it must stay unique even when the
-// OS RNG is unavailable. Hash entropy plus process id, a per-process counter,
-// and wall-clock nanos so two identities — including across processes where
-// the pid and counter may repeat — can never share a nonce a saved approval
-// could match. This is uniqueness, not a cryptographic guarantee if getrandom
-// fails; a constant zero nonce would let an attacker pin a stable identity.
+// `reuse_nonce` must never be reusable, so mix entropy with the per-process
+// counter, pid, and wall-clock nanos to avoid stable fallback identities —
+// unsupported identities stay unverified. This is uniqueness, not a
+// cryptographic guarantee if getrandom fails (wall-clock can repeat); a
+// constant zero nonce would let an attacker pin a stable identity.
 // Every call site produces a 16-byte nonce.
 fn token_hex() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,16 +40,6 @@ fn token_hex() -> String {
     hasher.update(COUNTER.fetch_add(1, Ordering::Relaxed).to_be_bytes());
     hasher.update(nanos.to_be_bytes());
     hex::encode(&hasher.finalize()[..16])
-}
-
-// `launch_identity.rs::launch_argv_digest` — sha256 over canonical JSON argv.
-// Digests borrowed `&Value` material; no intermediate String/Vec copies.
-fn launch_argv_digest(material: &Value) -> String {
-    let mut bytes = Vec::with_capacity(64);
-    if guard_contracts::write_canonical_json(material, &mut bytes).is_err() {
-        bytes.clear();
-    }
-    hex::encode(Sha256::digest(&bytes))
 }
 
 // `launch_identity.rs::unreusable_executable_identity` — non-Unix executables
@@ -83,16 +76,11 @@ fn unsupported_entrypoint_identity() -> Value {
     );
     map.insert(
         "selector_sha256".to_string(),
-        Value::String(launch_argv_digest(&Value::Array(Vec::new()))),
+        Value::String(launch_argv_digest(&[])),
     );
     map.insert("status".to_string(), Value::String("unproven".to_string()));
     map.insert("reuse_nonce".to_string(), Value::String(token_hex()));
     Value::Object(map)
-}
-
-fn launch_cwd_text(cwd: Option<&Path>) -> String {
-    cwd.map(|c| c.to_string_lossy().into_owned())
-        .unwrap_or_default()
 }
 
 pub fn build_runtime_executable_identity(
@@ -103,11 +91,21 @@ pub fn build_runtime_executable_identity(
     _require_executable: bool,
 ) -> Value {
     let _ = (search_path, home_dir);
+    // Same `launch_cwd` semantics as the Unix identity: expanduser +
+    // resolve(strict=False) via the shared normalizer, empty when no cwd is
+    // supplied (the key itself is part of the cross-platform contract).
     let mut identity = unsupported_executable_identity(command);
     if let Some(obj) = identity.as_object_mut() {
         obj.insert(
             "launch_cwd".to_string(),
-            Value::String(launch_cwd_text(cwd)),
+            Value::String(
+                cwd.map(|c| {
+                    normalized_launch_cwd(Some(c))
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .unwrap_or_default(),
+            ),
         );
     }
     identity
@@ -143,36 +141,49 @@ pub fn runtime_launch_identity_matches(
 pub fn build_runtime_launch_identity(
     command: &Value,
     args: &[Value],
-    _structured_command: bool,
+    structured_command: bool,
     _direct_executable: bool,
-    search_path: Option<&str>,
+    _search_path: Option<&str>,
     cwd: Option<&Path>,
-    home_dir: Option<&Path>,
+    _home_dir: Option<&Path>,
     _launch_env: Option<&Value>,
 ) -> Value {
-    // Digest the real argv vector so `argv_sha256` is present and content-bound,
-    // even though the identity remains non-reusable on unsupported platforms.
-    // One clone per element is the minimum Value ownership requires; borrow
-    // the command/args strings and build the canonical array in place.
-    let mut argv_values: Vec<Value> = Vec::with_capacity(1 + args.len());
-    if let Some(cmd) = command.as_str() {
-        if !cmd.trim().is_empty() {
-            argv_values.push(Value::String(cmd.to_string()));
-        }
-    }
-    for a in args {
-        if let Some(s) = a.as_str() {
-            argv_values.push(Value::String(s.to_string()));
-        }
-    }
-    let argv_material = Value::Array(argv_values);
-    json!({
-        "argv_sha256": launch_argv_digest(&argv_material),
-        "entrypoint": unsupported_entrypoint_identity(),
-        "executable": build_runtime_executable_identity(
-            command, search_path, cwd, home_dir, true,
+    // Derive the launch vector with the same rules the Unix implementation
+    // uses (shared `runtime_launch_argv`) so `argv_sha256` is content-bound
+    // and byte-identical across platforms: shell command strings are
+    // tokenized, structured commands stay a single executable element, and a
+    // malformed command or non-string arg fails closed to the empty-vector
+    // digest exactly like Unix. The identity itself remains non-reusable and
+    // unproven on unsupported platforms — the digest binds what was launched,
+    // never claims it was verified.
+    let effective_cwd = normalized_launch_cwd(cwd);
+    let launch_cwd = effective_cwd.to_string_lossy().into_owned();
+    let (argv_digest, executable_cmd) = match runtime_launch_argv(command, args, structured_command)
+    {
+        // The executable names the parsed first token of the launch vector,
+        // not the raw command string — matching the Unix builder. Move the
+        // token out of argv; a Valid vector always has at least one element.
+        RuntimeLaunchArgv::Valid(argv) => (
+            launch_argv_digest(&argv),
+            argv.into_iter()
+                .next()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         ),
-        "launch_cwd": launch_cwd_text(cwd),
+        RuntimeLaunchArgv::Invalid(executable_cmd) => (launch_argv_digest(&[]), executable_cmd),
+    };
+    // Build the unsupported executable identity once with the already
+    // normalized cwd — routing through build_runtime_executable_identity
+    // would canonicalize the same path a second time.
+    let mut executable = unsupported_executable_identity(&executable_cmd);
+    if let Some(obj) = executable.as_object_mut() {
+        obj.insert("launch_cwd".to_string(), Value::String(launch_cwd.clone()));
+    }
+    json!({
+        "argv_sha256": argv_digest,
+        "entrypoint": unsupported_entrypoint_identity(),
+        "executable": executable,
+        "launch_cwd": launch_cwd,
     })
 }
 
@@ -272,6 +283,32 @@ mod tests {
             assert!(!runtime_launch_identity_is_reusable(identity));
             assert!(resolved_runtime_launch_executable(identity).is_none());
         }
+        // The executable names the first parsed argv token, not the raw
+        // command string — `"python -m srv"` is a shell launch of `python`.
+        let shelled = build_runtime_launch_identity(
+            &Value::String("git status".to_string()),
+            &[],
+            false,
+            false,
+            None,
+            Some(cwd),
+            None,
+            None,
+        );
+        assert_eq!(
+            shelled
+                .get("executable")
+                .and_then(|e| e.get("command"))
+                .and_then(Value::as_str),
+            Some("git")
+        );
+        assert_eq!(
+            first
+                .get("executable")
+                .and_then(|e| e.get("command"))
+                .and_then(Value::as_str),
+            Some("python")
+        );
         // Two launches of the same vector produce distinct nonces, so a saved
         // approval can never pin a stable identity on this platform.
         assert_ne!(first, second);

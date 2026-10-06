@@ -62,6 +62,7 @@ pub mod launch_identity;
 pub mod launch_identity;
 #[cfg(unix)]
 pub mod launch_identity_binding;
+mod launch_identity_common;
 pub mod launch_identity_environment;
 pub mod mcp_arguments;
 pub mod mcp_launch_environment;

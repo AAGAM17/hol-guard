@@ -173,7 +173,9 @@ def _run_installed_hook(
     )
     if expected_permission_decision is not None:
         expected_action = "review" if expected_permission_decision == "ask" else "block"
-        expected_status = native_hook_verdict_exit_code(harness, expected_action, str(payload.get("hook_event_name", "")))
+        expected_status = native_hook_verdict_exit_code(
+            harness, expected_action, str(payload.get("hook_event_name", ""))
+        )
     native_permission_matches = False
     if expected_permission_decision is not None and expected_status == 0 and completed.returncode == 0:
         try:

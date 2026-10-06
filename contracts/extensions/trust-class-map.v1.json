@@ -91,6 +91,7 @@
       "command.genclave",
       "command.gitsync",
       "command.google-workspace.gog",
+      "command.mcp-asdecided",
       "command.mcp-contribos",
       "command.mcp-filesystem",
       "command.mcp-instapods",

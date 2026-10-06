@@ -71,7 +71,9 @@ class GuardLabKeyring(KeyringBackend):
 
 
 def _safe_hook_diagnostic(value: str) -> str:
-    redacted = re.sub(r"#guard-token=[^\s\"']+", "#guard-token=[REDACTED]", value.replace(SENTINEL, "[REDACTED]"))
+    redacted = re.sub(
+        r"([#&?]guard-token=)[^\s\"'&]+", r"\1[REDACTED]", value.replace(SENTINEL, "[REDACTED]")
+    )
     if len(redacted) <= _MAX_HOOK_DIAGNOSTIC_CHARS:
         return redacted
     return redacted[-_MAX_HOOK_DIAGNOSTIC_CHARS:]

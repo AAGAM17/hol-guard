@@ -97,7 +97,8 @@ def test_installed_claude_review_requires_native_approval(
             lab._run_installed_hook(harness, {"hook_event_name": "PreToolUse"}, expect_approval=True)
 
 
-def test_installed_hook_diagnostic_redacts_approval_tokens() -> None:
+@pytest.mark.parametrize("prefix", ["#", "#guardDaemon=http%3A%2F%2F127.0.0.1%3A4781&", "?"])
+def test_installed_hook_diagnostic_redacts_approval_tokens(prefix: str) -> None:
     lab = _lab()
-    value = 'approve http://127.0.0.1/requests/fixture#guard-token=fixture-token next'
-    assert lab._safe_hook_diagnostic(value) == 'approve http://127.0.0.1/requests/fixture#guard-token=[REDACTED] next'
+    value = f'approve http://127.0.0.1/requests/fixture{prefix}guard-token=fixture-token&view=inbox next'
+    assert lab._safe_hook_diagnostic(value) == value.replace("fixture-token", "[REDACTED]")

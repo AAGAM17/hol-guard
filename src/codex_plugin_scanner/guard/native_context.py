@@ -1208,7 +1208,8 @@ def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: boo
     try:
         fields = json.loads(json.dumps({"request": request}))
     except (TypeError, ValueError) as exc:
-        raise _unavailable("native_mcp_tool_approval_hash_unavailable") from exc
+        _LAST_DIGEST_FAILURE.set(None)
+        raise ValueError("native_mcp_tool_approval_hash_unavailable") from exc
     result = native_context_digest(
         "build_mcp_tool_approval_hash",
         fields,

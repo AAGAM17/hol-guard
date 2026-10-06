@@ -84,6 +84,13 @@ pub(super) fn load_legacy_authority(
     };
     let recovered_snapshot = business_policy_floor
         .as_ref()
+        .filter(|_| {
+            legacy_snapshot.generation >= floor_generation
+                && floor_digest.is_none_or(|d| {
+                    legacy_snapshot.generation != floor_generation
+                        || d == legacy_snapshot.policy_digest
+                })
+        })
         .map(|_| legacy_snapshot.clone());
     let mut generation_floor = floor_generation.max(legacy_snapshot.generation);
     let mut invalid_on_startup = false;
@@ -118,6 +125,7 @@ pub(super) fn load_legacy_authority(
     }
     let policy_digest = snapshot
         .as_ref()
+        .or(recovered_snapshot.as_ref())
         .map(|candidate| candidate.policy_digest.clone())
         .or_else(|| floor.map(|item| item.policy_digest));
     Ok(LoadedAuthority {

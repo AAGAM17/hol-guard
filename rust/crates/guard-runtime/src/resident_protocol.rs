@@ -62,6 +62,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "native-business-policy-document-compile-v1".into(),
         "native-business-source-codec-v1".into(),
         "native-business-source-anchor-codec-v1".into(),
+        "native-business-source-current-fence-v1".into(),
         "hook-envelope-v2".into(),
         "git-execution-context-v1".into(),
         "native-resident-client-v1".into(),
@@ -307,6 +308,11 @@ mod tests {
         for code in [
             "native_business_policy_floor_invalid",
             "native_business_policy_removal_requires_authority",
+            "native_business_source_authority_missing",
+            "native_business_source_authority_invalid",
+            "native_business_source_authority_not_current",
+            "native_business_source_mutation_in_progress",
+            "native_business_source_enforce_required",
         ] {
             let response: Value =
                 serde_json::from_slice(&safe_error_response(code, false)).unwrap();

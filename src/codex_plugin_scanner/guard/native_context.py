@@ -1249,7 +1249,7 @@ def context_mcp_arguments_projection(tool_name: str, arguments: object) -> tuple
         guard_home=_resolve_digest_home(None),
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
-        raise ValueError("native_mcp_arguments_projection_unavailable")
+        raise _unavailable("native_mcp_arguments_projection_unavailable")
     launch_target = result.get("mcp_launch_target")
     serialized = result.get("mcp_serialized_arguments")
     digest = result.get("digest")

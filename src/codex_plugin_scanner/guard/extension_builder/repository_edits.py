@@ -87,7 +87,7 @@ def _binding_id(path: str, content: str) -> tuple[str, str]:
     stem = path.rsplit("/", 1)[-1]
     if not isinstance(extension, str) or extension != stem[: -len(".v1.json")]:
         raise conflict(f"The repository trust binding {path} extension does not match its filename.")
-    if trust_class not in {"first-party", "trusted-library", "external"}:
+    if not isinstance(trust_class, str) or trust_class not in {"first-party", "trusted-library", "external"}:
         raise conflict(f"The repository trust binding {path} has an unknown trust class.")
     return extension, trust_class
 

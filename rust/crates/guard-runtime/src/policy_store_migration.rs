@@ -64,34 +64,11 @@ pub(super) fn load_legacy_authority(
 
     let floor_generation = floor.as_ref().map_or(0, |item| item.generation);
     let floor_digest = floor.as_ref().map(|item| item.policy_digest.as_str());
-    let business_policy_floor = if legacy_snapshot.generation >= floor_generation
-        && (legacy_snapshot.generation != floor_generation
-            || floor_digest.is_none_or(|digest| digest == legacy_snapshot.policy_digest))
-        && legacy_snapshot.scope_contract.scope_digest == expected_scope_digest
-        && validate_v3(
-            &legacy_snapshot,
-            floor_generation.max(1),
-            &legacy_snapshot.runtime_identity,
-            &legacy_snapshot.rule_digest,
-            verifier_key,
-            legacy_snapshot.issued_at_ms,
-        )
-        .is_ok()
-    {
-        super::policy_store_business_floor::snapshot_floor(Some(&legacy_snapshot))?
-    } else {
-        None
-    };
-    let recovered_snapshot = business_policy_floor
-        .as_ref()
-        .filter(|_| {
-            legacy_snapshot.generation >= floor_generation
-                && floor_digest.is_none_or(|d| {
-                    legacy_snapshot.generation != floor_generation
-                        || d == legacy_snapshot.policy_digest
-                })
-        })
-        .map(|_| legacy_snapshot.clone());
+    // Business authority is supported only by the combined retained record.
+    // Refuse an unsupported raw record rather than silently dropping its binding.
+    if legacy_snapshot.business_policy.is_some() {
+        return Err("native_policy_snapshot_state_invalid".to_owned());
+    }
     let mut generation_floor = floor_generation.max(legacy_snapshot.generation);
     let mut invalid_on_startup = false;
     let mut snapshot = None;
@@ -125,12 +102,11 @@ pub(super) fn load_legacy_authority(
     }
     let policy_digest = snapshot
         .as_ref()
-        .or(recovered_snapshot.as_ref())
         .map(|candidate| candidate.policy_digest.clone())
         .or_else(|| floor.map(|item| item.policy_digest));
     Ok(LoadedAuthority {
         snapshot,
-        recovered_snapshot,
+        recovered_snapshot: None,
         canonical_bytes,
         generation_floor,
         policy_digest,
@@ -138,7 +114,7 @@ pub(super) fn load_legacy_authority(
         migrate: true,
         // Command-control authority starts only from a current bound snapshot.
         command_control_floor: None,
-        business_policy_floor,
+        business_policy_floor: None,
     })
 }
 

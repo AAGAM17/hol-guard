@@ -164,7 +164,7 @@ fn authenticated_legacy_whole_snapshot_recovers_business_floor_without_weakening
 }
 
 #[test]
-fn explicit_legacy_migration_retains_business_floor_from_expired_authentic_source() {
+fn raw_business_record_is_refused_without_rewriting_authority() {
     let root = test_root("business-floor-legacy-expired");
     let key = install_test_key(&root, 75);
     let mut snapshot = business_snapshot(1, &key, &root);
@@ -185,14 +185,13 @@ fn explicit_legacy_migration_retains_business_floor_from_expired_authentic_sourc
         &root.join(GENERATION_FLOOR_FILE_NAME),
         &canonical_json_bytes(&serde_json::to_value(floor).unwrap()).unwrap(),
     );
-    PolicySnapshotStore::migrate_legacy_state(&root, &"a".repeat(64)).unwrap();
-    let restarted = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
-    assert_eq!(restarted.current_generation(), None);
+    let original = fs::read(root.join(SNAPSHOT_FILE_NAME)).unwrap();
     assert_eq!(
-        push(&restarted, signed_snapshot(2, &key, &root)).unwrap_err(),
-        "native_business_policy_removal_requires_authority"
+        PolicySnapshotStore::migrate_legacy_state(&root, &"a".repeat(64)).unwrap_err(),
+        "native_policy_snapshot_state_invalid"
     );
-    push(&restarted, business_snapshot(2, &key, &root)).unwrap();
+    assert_eq!(fs::read(root.join(SNAPSHOT_FILE_NAME)).unwrap(), original);
+    assert!(PolicySnapshotStore::new(&root, &"a".repeat(64)).is_err());
     fs::remove_dir_all(root).unwrap();
 }
 

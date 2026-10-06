@@ -4,6 +4,7 @@ No actor/provider credentials, custody, external dispatch or business acceptance
 """
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -116,3 +117,36 @@ def test_native_floor_refuses_approved_document_revision_rollback(tmp_path: Path
     with pytest.raises(NativePolicySnapshotError, match="native_business_source_codec_refused"):
         _install(store, document(1), _grant(store, document(1), initialize=False))
     assert owner.read_installed_business_source(store, _key(store)) == installed.source
+
+
+def test_expired_approval_cannot_open_committed_marker_after_sql_commit(tmp_path: Path, native_mcp_probe, monkeypatch):
+    from codex_plugin_scanner.guard.approval_gate import ApprovalGateError
+
+    store = GuardStore(tmp_path / "expiry-home")
+    native_mcp_probe(store.guard_home)
+    candidate = document()
+    grant = _grant(store, candidate)
+    require = owner._require_approved
+    checks = []
+
+    def expire_at_commit(current_store, binding, current_grant, now):
+        checks.append(now)
+        if len(checks) == 4:
+            now = (datetime.fromisoformat(grant.issued_at.replace("Z", "+00:00")) + timedelta(seconds=31)).isoformat()
+        return require(current_store, binding, current_grant, now)
+
+    monkeypatch.setattr(owner, "_require_approved", expire_at_commit)
+    with pytest.raises(ApprovalGateError):
+        _install(store, candidate, grant)
+    assert len(checks) == 4
+    marker = json.loads((store.guard_home / "native-runtime" / owner.ANCHOR_FILE_NAME).read_bytes())
+    assert marker["phase"] == "closed"
+    with pytest.raises(NativePolicySnapshotError, match="native_business_source_installation_incoherent"):
+        owner.read_installed_business_source(store, _key(store))
+    monkeypatch.setattr(owner, "_require_approved", require)
+    from codex_plugin_scanner.guard.native_business_source_recovery import recover_committed_business_source
+
+    recovered = recover_committed_business_source(
+        store, candidate, approval_gate_grant=_grant(store, candidate, initialize=False)
+    )
+    assert owner.read_installed_business_source(store, _key(store)) == recovered

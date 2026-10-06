@@ -265,6 +265,12 @@ def approved_business_source_mutation(
             )
         closed = build_business_source_anchor(source, key, "closed", deadline_monotonic=deadline)
         committed = build_business_source_anchor(source, key, "committed", deadline_monotonic=deadline)
+        _require_approved(
+            store,
+            binding,
+            approval_gate_grant,
+            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        )
         _write_private(store, ANCHOR_FILE_NAME, closed.anchor_bytes, MAX_ANCHOR_BYTES, deadline)
         write_retained_business_source_anchor(store, closed.anchor_bytes)
         _write_private(store, SOURCE_FILE_NAME, source.record_bytes, MAX_RECORD_BYTES, deadline)
@@ -281,5 +287,11 @@ def approved_business_source_mutation(
             or read_retained_business_source_anchor(store) != closed.anchor_bytes
         ):
             raise _error()
+        _require_approved(
+            store,
+            binding,
+            approval_gate_grant,
+            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        )
         write_retained_business_source_anchor(store, committed.anchor_bytes)
         _write_private(store, ANCHOR_FILE_NAME, committed.anchor_bytes, MAX_ANCHOR_BYTES, deadline)

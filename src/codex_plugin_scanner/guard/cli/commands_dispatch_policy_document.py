@@ -204,6 +204,32 @@ def _run_guard_policy_document_command(
         if store is None:
             raise RuntimeError("Guard policy command requires a policy store.")
 
+        if command == "recover-business-source":
+            from ..native_business_source_recovery import recover_committed_business_source
+
+            if os.environ.get(_POLICY_IMPORT_FLAG) != "1":
+                raise NativePolicySnapshotError("policy_import_disabled")
+            document, _ = _load_and_compile(Path(args.file))
+            gate_input = prompt_for_approval_gate(
+                store.guard_home,
+                use_cooldown=False,
+                summary="Approve recovery of this exact interrupted business source installation.",
+            )
+            grant = require_high_risk(
+                store.guard_home,
+                purpose="policy_import",
+                **policy_import_approval_binding(document, "replace"),
+                approval_gate_input=gate_input,
+            )
+            source = recover_committed_business_source(store, document, approval_gate_grant=grant)
+            _write_payload(
+                "policy recover-business-source",
+                {"digest": source.source_digest, "message": "Recovered the committed business source installation."},
+                as_json=as_json,
+                output_stream=output_stream,
+            )
+            return 0
+
         if command == "diff":
             candidate, _ = _load_and_compile(Path(args.file))
             base = build_policy_document_from_rows(store.list_policy_decisions(), include_provenance=True)

@@ -25,7 +25,10 @@ from typing import Any
 
 from .directory_path_authority import canonical_guard_home_path
 from .fork_safety import forget_in_child
-from .native_resident_client import native_resident_client_request
+from .native_resident_client import (
+    native_resident_client_failure_code,
+    native_resident_client_request,
+)
 from .native_response_decoder import native_error as _native_error
 from .native_runtime import NativeRuntimeStatus, _isolated_environment, native_runtime_status
 from .native_runtime_resilience import (
@@ -95,6 +98,9 @@ _TIMEOUT_SECONDS = 0.5
 # request for a (runtime, guard home) pair.  Steady-state requests keep the tight
 # budget; a cold start on a contended runner must not fail closed.
 _COLD_START_ALLOWANCE_SECONDS = 3.0
+# Failure code the pooled stream client reports when a request exhausts its
+# deadline — the one outcome that still deserves the cold-start allowance.
+_COLD_START_TIMEOUT_CODE = "native_client_timed_out"
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -606,7 +612,6 @@ def native_context_digest(
     resident_key = (status.identity.sha256, canonical_home)
     with _READY_RESIDENTS_LOCK:
         cold_start = resident_key not in _READY_RESIDENTS
-        _READY_RESIDENTS.add(resident_key)
     deadline_started = time.monotonic()
     # The budget bounds steady-state degradation, not process startup: the
     # pooled resident is spawned lazily on the first request, and a contended
@@ -683,6 +688,14 @@ def native_context_digest(
         payload=envelope,
         deadline_monotonic=deadline_monotonic,
     )
+    if output is not None or native_resident_client_failure_code() != _COLD_START_TIMEOUT_CODE:
+        # A request that ran out of budget while the spawn was still faulting
+        # in leaves the pair cold: the pool retired that client, so the next
+        # request spawns again and needs the allowance just as much.  Any other
+        # outcome — a response, or a hard failure — will not improve with more
+        # time, so the pair stops paying the startup allowance.
+        with _READY_RESIDENTS_LOCK:
+            _READY_RESIDENTS.add(resident_key)
     if output is None:
         native_record_resident_failure(
             status.identity.sha256,

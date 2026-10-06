@@ -262,16 +262,21 @@ def test_native_context_digest_grants_a_cold_start_allowance_once_per_home(
     assert budgets == [cold, warm, cold, warm]
 
 
-def test_native_context_digest_keeps_the_cold_start_allowance_after_a_failed_start(
+def test_native_context_digest_keeps_the_cold_start_allowance_after_a_timed_out_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A spawn that never answered leaves the pair cold for the next attempt."""
+    """A spawn that ran out of budget leaves the pair cold for the next attempt.
+
+    The pool retires a client whose request timed out, so the retry spawns a
+    fresh resident and needs the allowance just as much as the first attempt.
+    """
 
     budgets: list[int] = []
     monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
     monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
     monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
     monkeypatch.setattr(native_context, "_READY_RESIDENTS", set())
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: "native_client_timed_out")
     outcomes: list[bytes | None] = [None]
 
     def _client(*_args: object, **kwargs: object) -> bytes | None:
@@ -289,6 +294,36 @@ def test_native_context_digest_keeps_the_cold_start_allowance_after_a_failed_sta
     warm = int(native_context._TIMEOUT_SECONDS * 1_000)
     cold = warm + int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
     assert budgets == [cold, cold]
+
+
+def test_native_context_digest_stops_paying_the_allowance_after_a_hard_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure more time cannot fix must not keep costing the allowance."""
+
+    budgets: list[int] = []
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "_READY_RESIDENTS", set())
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: "native_client_exit_nonzero")
+    outcomes: list[bytes | None] = [None]
+
+    def _client(*_args: object, **kwargs: object) -> bytes | None:
+        envelope = json.loads(kwargs["payload"])
+        budgets.append(envelope["deadline_budget_ms"])
+        return outcomes.pop(0) if outcomes else _ok_result(envelope["request"])
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", _client)
+    guard_home = tmp_path / "one"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    assert (
+        native_context.native_context_digest("launch_argv_digest", {"argv": ["b"]}, guard_home=guard_home) is not None
+    )
+    warm = int(native_context._TIMEOUT_SECONDS * 1_000)
+    cold = warm + int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
+    assert budgets == [cold, warm]
 
 
 def test_native_context_digest_happy_path_binds_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

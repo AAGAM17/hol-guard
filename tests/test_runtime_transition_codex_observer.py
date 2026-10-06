@@ -57,6 +57,37 @@ def observe(context, workspace, identity, deadline, receipt_store=None):
         )
 
 
+@pytest.mark.parametrize(
+    ("desktop", "proxy", "expected"),
+    [
+        (None, "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard", {}),
+        ("0", "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard", {}),
+        ("1", "relative/proxy", {}),
+        (
+            "1",
+            "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard",
+            {
+                "HOL_GUARD_DESKTOP": "1",
+                "HOL_GUARD_DESKTOP_HOOK_PROXY": "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard",
+            },
+        ),
+    ],
+)
+def test_desktop_hook_proxy_context_is_explicit_and_minimal(monkeypatch, desktop, proxy, expected):
+    monkeypatch.delenv("HOL_GUARD_DESKTOP", raising=False)
+    monkeypatch.delenv("HOL_GUARD_DESKTOP_HOOK_PROXY", raising=False)
+    monkeypatch.delenv("HOL_GUARD_DESKTOP_RUNTIME_OWNER", raising=False)
+    if desktop is not None:
+        monkeypatch.setenv("HOL_GUARD_DESKTOP", desktop)
+    monkeypatch.setenv("HOL_GUARD_DESKTOP_HOOK_PROXY", proxy)
+    monkeypatch.setenv("HOL_GUARD_DESKTOP_RUNTIME_OWNER", "/untrusted/runtime-owner")
+
+    context = observer._desktop_hook_proxy_context()
+
+    assert context == expected
+    assert "HOL_GUARD_DESKTOP_RUNTIME_OWNER" not in context
+
+
 @pytest.mark.usefixtures("native_hook_force")
 @pytest.mark.parametrize("security_level", ["balanced", "paranoid"])
 def test_legacy_channel_uses_real_configured_hook_and_persisted_rust_receipts(tmp_path, monkeypatch, security_level):
@@ -233,6 +264,9 @@ def test_legacy_observer_refuses_unverified_state_without_relaunch(tmp_path, mon
 @pytest.mark.parametrize("security_level", [None, "paranoid"], ids=["default", "hard_block"])
 def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, monkeypatch, security_level):
     context, workspace, store = installed_context(tmp_path)
+    monkeypatch.setenv("HOL_GUARD_DESKTOP", "1")
+    monkeypatch.setenv("HOL_GUARD_DESKTOP_HOOK_PROXY", "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard")
+    monkeypatch.setenv("HOL_GUARD_DESKTOP_RUNTIME_OWNER", "/untrusted/runtime-owner")
     if security_level is not None:
         (context.guard_home / "config.toml").write_text(f'security_level = "{security_level}"\n')
     identity = native_runtime_status().identity
@@ -245,6 +279,7 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
     real_launch = observer.run_isolated_hook_process
     real_review = daemon._server.hook_worker.review_http_payload
     reviews = []
+    launched_environments = []
 
     def measured_review(**kwargs):
         result = real_review(**kwargs)
@@ -267,7 +302,22 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
 
     def measured_launch(*args, **kwargs):
         started = time.monotonic()
-        result = real_launch(*args, **kwargs)
+        environment = kwargs["environment"]
+        launched_environments.append(dict(environment))
+        assert environment.get("HOL_GUARD_DESKTOP") == "1"
+        assert environment.get("HOL_GUARD_DESKTOP_HOOK_PROXY") == "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard"
+        assert "HOL_GUARD_DESKTOP_RUNTIME_OWNER" not in environment
+        # This source-tree test exercises observer propagation. The real
+        # packaged Desktop E2E validates the signed proxy process itself.
+        child_kwargs = {
+            **kwargs,
+            "environment": {
+                key: value
+                for key, value in environment.items()
+                if key not in {"HOL_GUARD_DESKTOP", "HOL_GUARD_DESKTOP_HOOK_PROXY"}
+            },
+        }
+        result = real_launch(*args, **child_kwargs)
         assert not result.timed_out, {
             "elapsed": time.monotonic() - started,
             "returncode": result.returncode,
@@ -309,6 +359,7 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
         proof = observe(context, workspace, identity, time.monotonic() + 20)
         assert len(reviews) == 2 and all(item["probe_present"] and item["receipt_present"] for item in reviews)
         assert [item["decision"] for item in reviews] == ["allow", "deny"]
+        assert len(launched_environments) == 2
         assert all(not item["prompted"] for item in reviews)
         payload = verified_admission_payload(proof)
         assert proof.allow_receipt["decision"] == "allow"

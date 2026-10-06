@@ -206,6 +206,7 @@ def approved_business_source_mutation(
     approval_gate_grant: ApprovalGateGrant | None,
     deadline_monotonic: float | None = None,
     expected_current_digest: str | None | object = _UNSPECIFIED_CURRENT,
+    reject_already_installed: bool = False,
 ) -> Iterator[BusinessSourceMutation]:
     """Own the complete mutation lease; callers begin/commit SQL inside it.
 
@@ -240,6 +241,11 @@ def approved_business_source_mutation(
             raise _error("native_business_source_installation_key_unavailable")
         key = derive_native_policy_verifier_key(material[0])
         prior = _verify_installed(record, marker, retained, witness, key, deadline)
+        if reject_already_installed and prior is not None:
+            from .policy_document import policy_document_digest
+
+            if prior.source_digest == policy_document_digest(document):
+                raise _error("native_business_source_already_installed")
         if prepared is not None and (prior is None or prepared != prior.record_bytes):
             raise _error("native_business_source_recovery_required")
         if prior is None:

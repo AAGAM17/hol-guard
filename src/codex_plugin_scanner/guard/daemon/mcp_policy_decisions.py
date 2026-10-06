@@ -38,7 +38,7 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
     )
 
     action = payload.get("action")
-    if not isinstance(action, str) or action.strip() not in {"approve", "decline", "recover"}:
+    if not isinstance(action, str) or action.strip() not in {"approve", "decline", "recover", "inspect-recovery"}:
         handler._write_json(
             {"resolved": False, "error": "missing_required_fields"},
             status=400,
@@ -48,7 +48,7 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
     store = handler.server.store  # type: ignore[attr-defined]
     guard_home = store.guard_home
 
-    if action == "recover":
+    if action in {"recover", "inspect-recovery"}:
         from .business_policy_recovery import handle_business_policy_recovery
 
         handle_business_policy_recovery(handler, request_id, payload)
@@ -112,6 +112,7 @@ def _write_source_error(handler: PolicyDecisionHandler, error: Exception) -> Non
         "native_business_source_retention_unavailable",
         "native_business_source_retention_conflict",
         "native_business_source_recovery_required",
+        "native_business_source_recovery_identity_mismatch",
         "native_business_source_installation_key_unavailable",
     }
     code = str(error)

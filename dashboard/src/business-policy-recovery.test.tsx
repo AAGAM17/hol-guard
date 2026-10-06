@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
-import { recoverBusinessPolicy } from "./business-policy-recovery-api";
+import { inspectBusinessPolicy, recoverBusinessPolicy } from "./business-policy-recovery-api";
 import { BusinessPolicyRecoveryPanel } from "./business-policy-recovery-panel";
 
 const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -9,18 +9,28 @@ Object.defineProperty(globalThis, "window", { configurable: true, value: {
   sessionStorage: storage, localStorage: storage,
 } });
 const markup = renderToStaticMarkup(<BusinessPolicyRecoveryPanel
-  requestId="synthetic-request" candidateDigest="synthetic-digest" approvalGate={null} onRecovered={() => {}}
+  recoverPolicy={recoverBusinessPolicy}
+  requestId="synthetic-request" candidateDigest="synthetic-digest" approvalGate={null} onRecovered={() => {}} policy={{ spec: { rules: [] } }}
 />);
 assert.match(markup, /Checking local approval settings/);
 assert.match(markup, /disabled=""/);
 assert.match(markup, /does not resume an app task or resolve the original request/);
 const unconfiguredMarkup = renderToStaticMarkup(<BusinessPolicyRecoveryPanel
-  requestId="synthetic-request" candidateDigest="synthetic-digest" onRecovered={() => {}}
+  recoverPolicy={recoverBusinessPolicy}
+  requestId="synthetic-request" candidateDigest="synthetic-digest" onRecovered={() => {}} policy={{ spec: { rules: [] } }}
   approvalGate={{ enabled: false, configured: false, cooldown_seconds: 0, cooldown_active: false,
     cooldown_expires_at: null, locked_until: null, fail_closed: true, strict_all_decisions: true }}
 />);
 assert.match(unconfiguredMarkup, /Set up approval/);
 assert.match(unconfiguredMarkup, /disabled=""/);
+const recoveredMarkup = renderToStaticMarkup(<BusinessPolicyRecoveryPanel
+  recoverPolicy={recoverBusinessPolicy}
+  requestId="synthetic-request" candidateDigest="complete-original-digest" onRecovered={() => {}}
+  requestRecovered installed policy={{ spec: { rules: [{ effect: "deny" }] } }}
+/>);
+assert.match(recoveredMarkup, /complete-original-digest/);
+assert.match(recoveredMarkup, /already installed/);
+assert.doesNotMatch(recoveredMarkup, /Approve and recover policy/);
 
 const previousFetch = globalThis.fetch;
 try {
@@ -43,6 +53,16 @@ try {
   globalThis.fetch = async () => new Response(JSON.stringify({ message: "private-server-marker" }), { status: 503 });
   await assert.rejects(recoverBusinessPolicy({ requestId: "synthetic-request", candidateDigest: "synthetic-digest" }),
     (error: Error) => !error.message.includes("private-server-marker"));
+  const inspection = { state: "interrupted", candidateDigest: "synthetic-digest", requestRecovered: true,
+    policy: { spec: { rules: [{ effect: "deny" }] } }, provenanceRedacted: true };
+  globalThis.fetch = async () => new Response(JSON.stringify(inspection), { status: 200 });
+  assert.equal((await inspectBusinessPolicy("synthetic-request", "synthetic-digest")).requestRecovered, true);
+  for (const policy of [null, [], "unverified policy"]) {
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...inspection, policy }), { status: 200 });
+    await assert.rejects(inspectBusinessPolicy("synthetic-request", "synthetic-digest"), /not confirmed/);
+  }
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: "approval_gate_totp_required" }), { status: 403 });
+  await assert.rejects(recoverBusinessPolicy({ requestId: "synthetic-request", candidateDigest: "synthetic-digest" }), /fresh authenticator code/);
 } finally {
   globalThis.fetch = previousFetch;
 }

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ActionButton } from "./approval-center-primitives";
 import { ApprovalProofFieldInputs, buildApprovalProofCredentials, isApprovalProofSubmitDisabled } from "./approval-proof-inline";
-import { recoverBusinessPolicy } from "./business-policy-recovery-api";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
 
 export function BusinessPolicyRecoveryPanel(props: {
@@ -9,21 +8,28 @@ export function BusinessPolicyRecoveryPanel(props: {
   candidateDigest: string;
   approvalGate?: GuardApprovalGatePublicConfig | null;
   onRecovered: () => void;
+  policy?: Record<string, unknown>;
+  installed?: boolean;
+  requestRecovered?: boolean;
+  recoverPolicy: typeof import("./business-policy-recovery-api").recoverBusinessPolicy;
 }) {
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [recovered, setRecovered] = useState(false);
+  let buttonLabel = "Approve and recover policy";
+  if (busy) buttonLabel = "Recovering policy…";
+  const showProof = !recovered && !props.installed && props.policy != null;
   async function recover() {
-    if (busy || recovered) return;
+    if (busy || recovered || props.installed || props.policy == null) return;
     const proof = buildApprovalProofCredentials(props.approvalGate, { approvalPassword: password, approvalTotpCode: totp }, true);
     setPassword("");
     setTotp("");
     setBusy(true);
     setMessage(null);
     try {
-      await recoverBusinessPolicy({ requestId: props.requestId, candidateDigest: props.candidateDigest, ...proof });
+      await props.recoverPolicy({ requestId: props.requestId, candidateDigest: props.candidateDigest, ...proof });
       setRecovered(true);
       setMessage("Policy installation recovered. No app action was sent or replayed.");
       props.onRecovered();
@@ -41,7 +47,15 @@ export function BusinessPolicyRecoveryPanel(props: {
         Guard checks that it matches the saved policy and does not replace newer protection.
         This does not resume an app task or resolve the original request.
       </p>
-      {!recovered ? <>
+      {props.policy ? <details open className="space-y-2">
+        <summary className="cursor-pointer text-sm font-semibold text-brand-dark">Saved policy rules</summary>
+        <p className="text-sm text-brand-dark/75">Author metadata is hidden. The digest identifies the original saved policy.</p>
+        <p className="break-all font-mono text-xs text-brand-dark" aria-label="Saved policy digest">{props.candidateDigest}</p>
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs text-brand-dark">{JSON.stringify(props.policy, null, 2)}</pre>
+      </details> : null}
+      {props.installed ? <p role="status" className="text-sm text-brand-dark">This policy is already installed. The original request remains unchanged; you can decline it.</p> : null}
+      {props.requestRecovered && !props.installed ? <p role="status" className="text-sm text-brand-dark">This request was imported through recovery and cannot be approved again. An interrupted installation can still be recovered with fresh proof.</p> : null}
+      {showProof ? <>
         <ApprovalProofFieldInputs
           approvalGate={props.approvalGate ?? null}
           approvalPassword={password}
@@ -53,7 +67,7 @@ export function BusinessPolicyRecoveryPanel(props: {
         />
         <ActionButton onClick={() => void recover()} disabled={busy || isApprovalProofSubmitDisabled(props.approvalGate, {
           approvalPassword: password, approvalTotpCode: totp,
-        }, busy, true, true)}>{busy ? "Recovering policy…" : "Approve and recover policy"}</ActionButton>
+        }, busy, true, true)}>{buttonLabel}</ActionButton>
       </> : null}
       {message ? <p role="status" aria-live="polite" className="text-sm leading-6 text-brand-dark">{message}</p> : null}
     </section>

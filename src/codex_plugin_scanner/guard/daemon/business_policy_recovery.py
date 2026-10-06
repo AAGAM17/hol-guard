@@ -29,11 +29,16 @@ def handle_business_policy_recovery(handler, request_id, payload):
         _unavailable(handler)
         return
     try:
-        _check_feature_flags()
         document = parse_policy_document_yaml(request.canonical_policy_yaml)
         if not has_business_rules(document) or policy_document_digest(document) != request.policy_document_digest:
             _unavailable(handler)
             return
+        if payload.get("action") == "inspect-recovery":
+            from .business_policy_recovery_inspection import inspect_business_policy_recovery
+
+            handler._write_json(inspect_business_policy_recovery(store, request, document))
+            return
+        _check_feature_flags()
         grant = require_high_risk(
             store.guard_home,
             purpose="policy_import",
@@ -42,14 +47,29 @@ def handle_business_policy_recovery(handler, request_id, payload):
                 approval_gate_input_from_mapping(payload), use_cooldown=False, require_fresh_totp=True
             ),
         )
-        source = recover_committed_business_source(store, document, approval_gate_grant=grant)
+        from ..mcp.policy_recovery_state import stage_request_recovery
+
+        source = recover_committed_business_source(
+            store,
+            document,
+            approval_gate_grant=grant,
+            stage_request_recovery=lambda connection, digest, now: stage_request_recovery(
+                connection, request_id, digest, now
+            ),
+        )
     except ApprovalGateError as error:
         handler._write_approval_gate_error(error)
         return
     except (NativePolicySnapshotError, TimeoutError) as error:
         _write_source_error(handler, error)
         return
-    except (ValueError, PolicyToolError):
+    except PolicyToolError as error:
+        if error.code in {"policy_import_disabled", "mcp_policy_write_disabled"}:
+            handler._write_json({"error": error.code}, status=403)
+            return
+        _unavailable(handler)
+        return
+    except ValueError:
         _unavailable(handler)
         return
     # Recovery is a new policy import, not resolution/replay of an old request.

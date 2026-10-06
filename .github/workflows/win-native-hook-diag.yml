@@ -1,0 +1,134 @@
+name: Windows native hook worker diagnostic (temporary)
+
+# TEMPORARY diagnostic workflow scoped to the fix/windows-native-hook-worker
+# repair PR only. It exists to capture the real exception hidden behind
+# reason_code=native_hook_worker_exception on Windows runners. Removed before
+# merge once the fix is proven.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  UV_HTTP_TIMEOUT: "120"
+
+concurrency:
+  group: win-native-hook-diag-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-diag:
+    # Only run on the dedicated repair head branch so no other PR can trigger it.
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/windows-native-hook-worker' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+        with:
+          version: 0.9.26
+          enable-cache: true
+      - run: uv sync --frozen --no-dev --group ci-test --python 3.12
+      - uses: ./.github/actions/setup-rust
+      - name: Build native runtime
+        shell: pwsh
+        env:
+          HOL_GUARD_BUILD_SHA: ${{ github.sha }}
+        run: |
+          $version = uv run --no-sync python scripts/sync_repo_version.py --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:HOL_GUARD_PACKAGE_VERSION = $version.Trim()
+          cargo build --manifest-path rust/Cargo.toml --locked --release -p hol-guard-runtime -p guard-command --bin hol-guard-runtime --bin guard-command-source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\rust\target\release\hol-guard-runtime.exe self-test --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prove native source compiler output
+        shell: pwsh
+        env:
+          HOL_GUARD_BUILD_SHA: ${{ github.sha }}
+        run: |
+          $version = uv run --no-sync python scripts/sync_repo_version.py --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:HOL_GUARD_PACKAGE_VERSION = $version.Trim()
+          $arguments = @("--compiler", "rust/target/release/guard-command-source.exe")
+          $arguments += @("--changed-from", "${{ github.event.pull_request.base.sha }}")
+          uv run --no-sync python scripts/ci/verify_native_command_program.py @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = Get-Content rust/crates/guard-command/tests/fixtures/command-source-example.v1.json -Raw | ConvertFrom-Json
+          $trust = Get-Content contracts/extensions/trust-class-map.v1.json -Raw | ConvertFrom-Json
+          $request = [ordered]@{
+            schema = "guard.command-extension-build.v1"
+            sources = @($source)
+            mcp_sources = @()
+            trust = $trust
+            base = "packaged"
+          }
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          [System.IO.File]::WriteAllText((Join-Path $pwd "source-build.json"), ($request | ConvertTo-Json -Depth 100 -Compress), $utf8)
+          $compiled = Get-Content source-build.json -Raw | & .\rust\target\release\guard-command-source.exe compile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [System.IO.File]::WriteAllText((Join-Path $pwd "source-compiled.json"), ($compiled -join "`n"), $utf8)
+      - name: Assemble and install native wheel
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          HOL_GUARD_BUILD_SOURCE_COMPILER: rust/target/release/guard-command-source.exe
+        run: |
+          $version = (uv run --no-sync python scripts/sync_repo_version.py --check).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv build --wheel --out-dir pure-dist
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $runtime = "rust\target\release\hol-guard-runtime.exe"
+          $sourceCompiler = "rust\target\release\guard-command-source.exe"
+          $implementation = (Get-Content source-compiled.json -Raw | ConvertFrom-Json).implementation_digest
+          $baseProgram = (Get-Content source-compiled.json -Raw | ConvertFrom-Json).base_program_digest
+          $caps = & $runtime capabilities --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run --no-sync python scripts/build_native_hol_guard_wheel.py `
+            --wheel "pure-dist\hol_guard-$version-py3-none-any.whl" `
+            --runtime $runtime `
+            --output-dir native-dist `
+            --version $version `
+            --platform-tag win_amd64 `
+            --target x86_64-pc-windows-msvc `
+            --source-sha $env:SOURCE_SHA `
+            --rule-digest $caps.rule_digest `
+            --source-compiler $sourceCompiler `
+            --implementation-digest $implementation `
+            --base-program-digest $baseProgram
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $wheel = (Get-ChildItem native-dist\*.whl).FullName
+          uv pip uninstall --python .venv\Scripts\python.exe hol-guard
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv pip install --python .venv\Scripts\python.exe --no-deps --force-reinstall $wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the two failing cases with unmasked worker exceptions
+        shell: pwsh
+        env:
+          HOL_GUARD_NATIVE_REGRESSION: "1"
+          HOL_GUARD_TEST_USE_INSTALLED: "1"
+          HOL_GUARD_WIN_DIAG_DIR: ${{ github.workspace }}\win-diag
+        run: |
+          New-Item -ItemType Directory -Force -Path win-diag | Out-Null
+          uv run --no-sync python -m pytest -p conftest_win_diag `
+            tests/test_environment_secret_dump.py::test_grok_pretool_denies_python_environ_dump `
+            tests/test_hermes_runtime_hooks.py::test_pretool_call_records_runtime_receipt `
+            -vv --tb=long
+          exit $LASTEXITCODE
+      - name: Upload diagnostic output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: win-native-hook-diag
+          path: |
+            win-diag/*.txt
+            native-dist/*.whl
+          if-no-files-found: warn

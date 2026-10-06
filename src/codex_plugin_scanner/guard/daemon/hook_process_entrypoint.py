@@ -53,6 +53,34 @@ _HOOK_EVALUATOR_BOOTSTRAP_MODULES = (
     "codex_plugin_scanner.guard.store",
 )
 
+def _diag_dump_exception(error: BaseException, *, site: str) -> None:
+    """TEMPORARY Windows diagnostic: dump the live exception for the repair run.
+
+    Writes one file per exception into HOL_GUARD_WIN_DIAG_DIR so a spawned
+    worker/evaluator child can surface the traceback that fail-closed handling
+    would otherwise mask as ``native_hook_worker_exception``.
+    """
+
+    diag_dir = os.environ.get("HOL_GUARD_WIN_DIAG_DIR")
+    if not diag_dir:
+        return
+    try:
+        import traceback
+
+        out_dir = Path(diag_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        name = f"{site}-pid{os.getpid()}-{time.time_ns()}.txt"
+        text = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        (out_dir / name).write_text(f"{site} {type(error).__name__}\n{text}", encoding="utf-8")
+        import sys
+
+        sys.stderr.write(f"[win-diag:{site}] {type(error).__name__}: {error}\n")
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
 
 def _parse_timeout_env(raw: str | None, default: float) -> float | None:
     """Parse an env timeout to a positive float, or None to use ``default``."""
@@ -270,6 +298,7 @@ def _hook_evaluator_loop(
                 configured_guard_home=configured_guard_home,
             )
         except BaseException as error:
+            _diag_dump_exception(error, site="evaluator_loop")
             reason_code = (
                 "daemon_hook_process_not_ready"
                 if _hook_process_error_is_transient(error)
@@ -345,7 +374,8 @@ def _run_resident_hook_request(
             claimed_saved_allow_hash=parsed.claimed_saved_allow_hash,
             claimed_approval_request_id=parsed.claimed_approval_request_id,
         )
-    except Exception:
+    except Exception as error:
+        _diag_dump_exception(error, site="resident_hook_request")
         return _native_worker_fail_safe_result(
             parsed,
             event_name=event_name,

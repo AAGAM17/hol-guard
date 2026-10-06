@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from io import StringIO
+from urllib.parse import urlencode
 
 import pytest
 
 from codex_plugin_scanner.guard import runtime_transition_codex_observer as observer
 from codex_plugin_scanner.guard.adapters import codex as codex_adapter
-from codex_plugin_scanner.guard.adapters import desktop_hook_proxy
+from codex_plugin_scanner.guard.adapters import codex_daemon_hook_bridge, desktop_hook_proxy
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
 from codex_plugin_scanner.guard.codex_hook_integrity import hook_manifest_path
@@ -89,24 +91,36 @@ def test_desktop_hook_proxy_context_is_explicit_and_minimal(monkeypatch, desktop
     assert "HOL_GUARD_DESKTOP_RUNTIME_OWNER" not in context
 
 
-def test_frozen_desktop_probe_requires_the_signed_codex_proxy(monkeypatch, tmp_path):
+def test_frozen_desktop_configured_bridge_routes_probe_through_signed_proxy(monkeypatch, tmp_path):
     bundle = tmp_path / "HOL Guard.app"
     macos = bundle / "Contents" / "MacOS"
     macos.mkdir(parents=True)
     proxy = macos / "HOL Guard"
     proxy.write_text("signed app fixture", encoding="utf-8")
     proxy.chmod(0o755)
-    monkeypatch.setattr(observer.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(observer.sys, "platform", "darwin")
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "platform", "darwin")
     monkeypatch.setattr(desktop_hook_proxy, "_codesign_team", lambda _path: "TEAMID")
     monkeypatch.setenv("HOL_GUARD_DESKTOP", "1")
     monkeypatch.setenv("HOL_GUARD_DESKTOP_HOOK_PROXY", str(proxy))
 
-    command = observer._desktop_hook_proxy_probe_command(
-        bridge_config={"hook_timeouts": {"PreToolUse": 25}},
-        guard_home=tmp_path / "guard-home",
-        config_path=tmp_path / "home" / "config" / "config.toml",
-        workspace=tmp_path / "workspace",
+    guard_home = tmp_path / "guard-home"
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "cwd": str(workspace),
+        PROBE_FIELD: {
+            "schema": "hol-guard.transition-hook-probe.v1",
+            "operation_id": str(uuid.uuid4()),
+            "request_id": "transition-hook-" + uuid.uuid4().hex,
+        },
+    }
+    command = codex_daemon_hook_bridge._desktop_transition_probe_command(
+        data=json.dumps(payload),
+        state_path=guard_home / "daemon-state.json",
+        query=urlencode({"home": str(home)}),
+        hook_timeouts={"PreToolUse": 25},
         environment={"HOL_GUARD_DESKTOP": "1", "HOL_GUARD_DESKTOP_HOOK_PROXY": str(proxy)},
     )
 
@@ -122,30 +136,102 @@ def test_frozen_desktop_probe_requires_the_signed_codex_proxy(monkeypatch, tmp_p
         "guard",
         "hook",
         "--guard-home",
-        str((tmp_path / "guard-home").resolve()),
+        str(guard_home.resolve()),
         "--harness",
         "codex",
         "--home",
-        str((tmp_path / "home").resolve()),
+        str(home.resolve()),
         "--workspace",
-        str((tmp_path / "workspace").resolve()),
+        str(workspace.resolve()),
     ]
 
 
-def test_frozen_desktop_probe_fails_closed_without_proxy(monkeypatch, tmp_path):
-    monkeypatch.setattr(observer.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(observer.sys, "platform", "darwin")
+def test_frozen_desktop_configured_bridge_fails_closed_without_proxy(monkeypatch, tmp_path):
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "platform", "darwin")
     monkeypatch.setenv("HOL_GUARD_DESKTOP", "1")
     monkeypatch.delenv("HOL_GUARD_DESKTOP_HOOK_PROXY", raising=False)
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "cwd": str((tmp_path / "workspace").resolve()),
+        PROBE_FIELD: {
+            "schema": "hol-guard.transition-hook-probe.v1",
+            "operation_id": str(uuid.uuid4()),
+            "request_id": "transition-hook-" + uuid.uuid4().hex,
+        },
+    }
 
-    with pytest.raises(TransitionError, match="admission_hook_proxy_unavailable"):
-        observer._desktop_hook_proxy_probe_command(
-            bridge_config={"hook_timeouts": {"PreToolUse": 25}},
-            guard_home=tmp_path / "guard-home",
-            config_path=tmp_path / "home" / "config" / "config.toml",
-            workspace=tmp_path / "workspace",
+    with pytest.raises(RuntimeError, match="signed proxy"):
+        codex_daemon_hook_bridge._desktop_transition_probe_command(
+            data=json.dumps(payload),
+            state_path=tmp_path / "guard-home" / "daemon-state.json",
+            query=urlencode({"home": str(tmp_path / "home")}),
+            hook_timeouts={"PreToolUse": 25},
             environment={"HOL_GUARD_DESKTOP": "1"},
         )
+
+
+def test_desktop_bridge_runs_proxy_and_preserves_its_hook_channels(monkeypatch, tmp_path):
+    payload = json.dumps(
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pwd"},
+            "cwd": str(tmp_path),
+            PROBE_FIELD: {
+                "schema": "hol-guard.transition-hook-probe.v1",
+                "operation_id": str(uuid.uuid4()),
+                "request_id": "transition-hook-" + uuid.uuid4().hex,
+            },
+        }
+    )
+    launched = []
+    stdout, stderr = StringIO(), StringIO()
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        codex_daemon_hook_bridge,
+        "_bound_hook_input",
+        lambda *_args, **_kwargs: ("PreToolUse", payload, 10.0, time.monotonic()),
+    )
+    monkeypatch.setattr(
+        codex_daemon_hook_bridge,
+        "_desktop_transition_probe_command",
+        lambda **_kwargs: ("signed-proxy", "probe-config"),
+    )
+
+    def launch(command, **kwargs):
+        launched.append((tuple(command), kwargs))
+        return BoundedHookProcessResult(
+            returncode=0,
+            stdout='{"hookSpecificOutput":{"permissionDecision":"allow"}}',
+            output_limit_exceeded=False,
+            timed_out=False,
+            stderr='{"schema":"native-observation"}\n',
+        )
+
+    monkeypatch.setattr(codex_daemon_hook_bridge, "run_isolated_hook_process", launch)
+    monkeypatch.setattr(
+        codex_daemon_hook_bridge,
+        "bridge_review_response",
+        lambda **_kwargs: pytest.fail("daemon path ran"),
+    )
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "stdout", stdout)
+    monkeypatch.setattr(codex_daemon_hook_bridge.sys, "stderr", stderr)
+
+    result = codex_daemon_hook_bridge.main(
+        state_path=tmp_path / "guard" / "daemon-state.json",
+        fallback_command=("fallback",),
+        start_command=("start",),
+        query="home=%2Ftmp%2Fhome",
+        hook_timeouts={"PreToolUse": 10},
+    )
+
+    assert result == 0
+    assert launched[0][0] == ("signed-proxy", "probe-config")
+    assert launched[0][1]["input_text"] == payload
+    assert stdout.getvalue() == '{"hookSpecificOutput":{"permissionDecision":"allow"}}'
+    assert stderr.getvalue() == '{"schema":"native-observation"}\n'
 
 
 @pytest.mark.usefixtures("native_hook_force")
@@ -340,6 +426,7 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
     real_review = daemon._server.hook_worker.review_http_payload
     reviews = []
     launched_environments = []
+    launched_commands = []
 
     def measured_review(**kwargs):
         result = real_review(**kwargs)
@@ -364,11 +451,12 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
         started = time.monotonic()
         environment = kwargs["environment"]
         launched_environments.append(dict(environment))
+        launched_commands.append(tuple(args[0]))
         assert environment.get("HOL_GUARD_DESKTOP") == "1"
         assert environment.get("HOL_GUARD_DESKTOP_HOOK_PROXY") == "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard"
         assert "HOL_GUARD_DESKTOP_RUNTIME_OWNER" not in environment
-        # Keep selectors through the real configured hook child. Frozen
-        # Desktop qualification separately routes its probes through the proxy.
+        # The observer continues to launch the manifest-authenticated bridge.
+        # Frozen Desktop proxy selection is handled inside that bridge.
         result = real_launch(*args, **kwargs)
         assert not result.timed_out, {
             "elapsed": time.monotonic() - started,
@@ -412,6 +500,10 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
         assert len(reviews) == 2 and all(item["probe_present"] and item["receipt_present"] for item in reviews)
         assert [item["decision"] for item in reviews] == ["allow", "deny"]
         assert len(launched_environments) == 2
+        assert len(launched_commands) == 2
+        assert launched_commands[0] == launched_commands[1]
+        assert launched_commands[0][0] != "/bin/sh"
+        assert any("codex_daemon_hook_bridge.py" in part for part in launched_commands[0])
         assert all(not item["prompted"] for item in reviews)
         payload = verified_admission_payload(proof)
         assert proof.allow_receipt["decision"] == "allow"

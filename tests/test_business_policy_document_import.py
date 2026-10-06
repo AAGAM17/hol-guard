@@ -122,3 +122,48 @@ def test_business_import_requires_explicit_native_approval(tmp_path: Path, nativ
             approval_gate_grant=None,
         )
     assert not (store.guard_home / "native-runtime" / owner.ANCHOR_FILE_NAME).exists()
+
+
+def test_cli_business_inspection_uses_source_and_redacts_provenance(tmp_path, native_mcp_probe):
+    from codex_plugin_scanner.guard.policy_document_yaml import parse_policy_document_yaml
+
+    store = GuardStore(tmp_path / "inspection-home")
+    native_mcp_probe(store.guard_home)
+    candidate = document()
+    _install(store, candidate, _grant(store, candidate))
+    path = tmp_path / "source.yaml"
+    write_private_policy_text(path, json.dumps(candidate.to_mapping()))
+    for name in ("diff", "explain", "show", "export"):
+        output = io.StringIO()
+        assert (
+            command._run_guard_policy_document_command(
+                SimpleNamespace(policy_command=name, file=str(path), json=True, include_provenance=False),
+                store=store,
+                output_stream=output,
+            )
+            == 0
+        ), output.getvalue()
+        result = json.loads(output.getvalue())
+        if name == "explain":
+            assert result["rules"] == 1 and result["actions"] == {"review": 1}
+            assert result["scopes"] == {"business": 1} and result["compiled_rows"] == 0
+        elif name in {"show", "export"}:
+            exported = parse_policy_document_yaml(result["yaml"])
+            assert exported.rules[0].match == candidate.rules[0].match
+            assert exported.rules[0].provenance.source == "local"
+            assert exported.rules[0].provenance.created_at == "1970-01-01T00:00:00Z"
+
+
+def test_legacy_replacement_plan_cannot_hide_installed_business_rules(tmp_path, native_mcp_probe):
+    from codex_plugin_scanner.guard.business_policy_document_import import plan_document_for_import
+    from codex_plugin_scanner.guard.policy_document_yaml import parse_policy_document_yaml
+
+    store = GuardStore(tmp_path / "planning-home")
+    native_mcp_probe(store.guard_home)
+    candidate = document()
+    _install(store, candidate, _grant(store, candidate))
+    value = candidate.to_mapping()
+    value["spec"]["rules"] = []
+    empty = parse_policy_document_yaml(json.dumps(value))
+    with pytest.raises(NativePolicySnapshotError, match="native_business_policy_removal_requires_authority"):
+        plan_document_for_import(store, empty, (), "replace")

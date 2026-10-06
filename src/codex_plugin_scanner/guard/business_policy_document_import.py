@@ -44,6 +44,7 @@ def compile_document_for_import(document: GuardPolicyDocument):
 
 def plan_document_for_import(store, document, compiled_rows, mode):
     if not has_business_rules(document):
+        refuse_legacy_import_over_business_source(store)
         return store.plan_policy_document_import(compiled_rows, mode=mode)
     from .store_policy_document import PolicyDocumentImportPlan
 

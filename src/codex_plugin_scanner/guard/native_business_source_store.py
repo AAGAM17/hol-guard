@@ -243,15 +243,13 @@ def approved_business_source_mutation(
             from .policy_document_compile import build_policy_document_from_rows
 
             imported = [row for row in store.list_policy_decisions() if row.get("source") == "policy-yaml-import"]
-            current_digest = (
-                prior.source_digest
-                if prior is not None
-                else (
-                    policy_document_digest(build_policy_document_from_rows(imported, document_id="local-policy"))
-                    if imported
-                    else None
+            current_digest = None
+            if prior is not None:
+                current_digest = prior.source_digest
+            elif imported:
+                current_digest = policy_document_digest(
+                    build_policy_document_from_rows(imported, document_id="local-policy")
                 )
-            )
             if current_digest != expected_current_digest:
                 raise _error("native_business_source_current_digest_changed")
         next_revision = 1 if prior is None else prior.mutation_revision + 1

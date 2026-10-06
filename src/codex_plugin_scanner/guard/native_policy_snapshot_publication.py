@@ -7,6 +7,7 @@ import sqlite3
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, cast
 
+from .native_command_control_authority_io import hold_command_control_authority_lock
 from .native_policy_snapshot_codec import _strict_json_loads_v3
 from .native_policy_snapshot_constants import (
     _PUBLISH_RETRY_MAX_SECONDS,
@@ -203,12 +204,15 @@ class NativePolicySnapshotPublicationMixin:
                 with publisher._condition:
                     publisher._acked = False
                 raise NativePolicySnapshotError("native_provider_catalog_changed")
-            with publisher._condition:
+            with hold_command_control_authority_lock(publisher.guard_home, shared=True), publisher._condition:
                 # A mutation may have invalidated the barrier while this
                 # request was in flight. Do not let an older ACK make that
                 # newer policy appear ready.
                 if publisher._closed or publisher._epoch != publish_epoch:
                     return
+                if publisher._compiled_business_source() != business_source:
+                    publisher._acked = False
+                    raise NativePolicySnapshotError("native_business_source_binding_changed")
                 # Bind the ACK to the resident observed before publication,
                 # after publication, and at the barrier commit point.
                 resident_fingerprint_confirmed = publisher._confirm_resident_fingerprint(

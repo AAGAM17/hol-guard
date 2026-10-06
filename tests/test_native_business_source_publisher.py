@@ -78,3 +78,30 @@ def test_business_source_cannot_be_acknowledged_in_observe_mode(tmp_path: Path, 
         assert publisher.last_error == "native_business_source_enforce_required"
     finally:
         publisher.close()
+
+
+def test_source_replacement_between_post_ack_read_and_barrier_is_refused(tmp_path, native_mcp_probe, monkeypatch):
+    store = GuardStore(tmp_path / "barrier-gap-home")
+    native_mcp_probe(store.guard_home)
+    (store.guard_home / "config.toml").write_text('mode = "prompt"\nprotection_posture = "protected"\n')
+    _install(store, document(1), _grant(store, document(1)))
+    newer_grant = _grant(store, document(2), initialize=False)
+    publisher = NativePolicySnapshotPublisher(store=store)
+    read = publisher._compiled_business_source
+    reads = []
+
+    def replace_after_read():
+        result = read()
+        reads.append(1)
+        if len(reads) == 2:
+            _install(store, document(2), newer_grant)
+        return result
+
+    monkeypatch.setattr(publisher, "_compiled_business_source", replace_after_read)
+    try:
+        publisher._publish_once()
+        assert len(reads) == 3
+        assert not publisher.is_ready() and publisher.current_snapshot() is None
+        assert publisher.last_error == "native_business_source_binding_changed"
+    finally:
+        publisher.close()

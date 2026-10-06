@@ -47,9 +47,9 @@ const MAX_BACKOFF_DEFAULT: f64 = 300.0;
 /// `runner.py` `_oauth_local_credentials_state_key` — the
 /// `oauth_local_credentials` sync payload.
 const CREDENTIALS_STATE_KEY: &str = "oauth_local_credentials";
-/// `state_directory_lock` slot for the rotation persist — serializes the
-/// secret rewrite + re-fingerprint across concurrent resident / Python writers.
-const REFRESH_LOCK_NAME: &str = "oauth-refresh";
+/// Lock file for the rotation persist — serializes the secret rewrite +
+/// re-fingerprint across concurrent resident / Python writers.
+const REFRESH_LOCK_NAME: &str = "oauth-refresh.lock";
 /// Reauth message mirrors `_guard_oauth_reconnect_after_revoked_message` so a
 /// propagated dead-grant matches the Python surface byte-for-byte (the retry
 /// loop keys off the exact string).
@@ -334,19 +334,15 @@ fn refresh_binding(
 /// Decode the JWT payload segment into a claims map (no signature check — the
 /// token was just returned over the authenticated TLS channel).
 fn decode_jwt_claims(token: &str) -> Option<Map<String, Value>> {
-    let seg = token.split('.').nth(1)?;
-    let padded = match seg.len() % 4 {
-        0 => seg.to_owned(),
-        n => format!("{seg}{}", "=".repeat(4 - n)),
-    };
-    let bytes = Base64UrlUnpadded::decode_vec(&padded).ok()?;
+    let seg = token.split('.').nth(1)?.trim_end_matches('=');
+    let bytes = Base64UrlUnpadded::decode_vec(seg).ok()?;
     let claims: Value = serde_json::from_slice(&bytes).ok()?;
     claims.as_object().cloned()
 }
 
 /// `runner.py:_persist_rotated_oauth_refresh_token` (:4454) —
 /// `set_oauth_local_credentials` written under the `oauth-refresh.lock`
-/// directory lock so concurrent resident / Python writers serialize the secret
+/// file lock so concurrent resident / Python writers serialize the secret
 /// rewrite + record re-fingerprint. `refresh_token` is the rotated grant (or
 /// the unchanged one when the endpoint did not rotate); `access_token` /
 /// `access_token_expires_at` refresh the cached token fields.
@@ -401,13 +397,20 @@ pub(crate) fn persist_rotated_oauth_refresh_token(
     let binding = refresh_binding(credentials, &recovered, access_token.is_some());
 
     let guard_home = store.guard_home().to_path_buf();
-    let _lock = crate::state_directory_lock::acquire(&guard_home.join(REFRESH_LOCK_NAME)).map_err(
-        |_| {
-            EvalError::Validation(
-                "Guard OAuth credential rotation is held by another process; retry.".to_owned(),
-            )
-        },
-    )?;
+    let lock_path = guard_home.join(REFRESH_LOCK_NAME);
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|e| {
+            EvalError::Validation(format!("{RECONNECT_AFTER_REVOKED} lock open failed: {e}"))
+        })?;
+    fs2::FileExt::lock_exclusive(&lock_file).map_err(|_| {
+        EvalError::Validation(
+            "Guard OAuth credential rotation is held by another process; retry.".to_owned(),
+        )
+    })?;
 
     // Build the secret payload the same way `set_oauth_local_credentials` does:
     // canonical sorted-compact JSON of the secret material.
@@ -537,7 +540,11 @@ pub(crate) fn refresh_oauth_access_token(
     use EvalError;
 
     // Circuit fast-fail before touching the endpoint.
-    circuit_check(store, refresh_token)?;
+    if let Some(wait) = circuit_check(store, refresh_token)? {
+        return Err(EvalError::Validation(format!(
+            "Guard Cloud rate-limited the token refresh; retry in {wait:.0}s."
+        )));
+    }
 
     // `runner.py:_SYNC_HTTP_TIMEOUT_SECONDS` (:799).
     let timeout = 20.0f64;

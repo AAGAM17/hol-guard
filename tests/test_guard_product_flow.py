@@ -822,7 +822,7 @@ args = ["workspace-skill.js", "--changed"]
         assert codex_summary["next_action"] == "review"
 
     @pytest.mark.usefixtures("native_hook_force")
-    def test_guard_shim_forwards_dash_prefixed_args(self, tmp_path, capsys, monkeypatch):
+    def test_guard_shim_forwards_dash_prefixed_args(self, tmp_path, capsys, monkeypatch, native_context_digest):
         home_dir = tmp_path / "home"
         workspace_dir = tmp_path / "workspace"
         fake_bin = tmp_path / "fake-bin"

@@ -39,7 +39,8 @@ INPUT_HANDLER_SOURCE = r"""  async function inputWorkspaceReadiness(cwd, deadlin
       void ensureGuardWorkspaceReady(cwd).then(async (prepared) => {
         if (!isActive()) return;
         if (!prepared.ready) {
-          ctx.ui.notify(readinessFailureReason(prepared), "warning");
+          ctx.ui.notify("HOL Guard could not prepare protection for this prompt. "
+            + "Retry the prompt to reconnect (" + (prepared.reasonCode ?? "native_workspace_not_ready") + ").", "warning");
           return;
         }
         const response = await runGuard(

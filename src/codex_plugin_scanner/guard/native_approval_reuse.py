@@ -1,11 +1,13 @@
 """Resident bridge for the ``approval_reuse_decide`` op (RTM-032).
 
 Mirrors ``native_approval_gate.approval_gate_native``: ``runtime.approval_reuse``
-calls :func:`approval_reuse_decide_native` first; when the resident answers it
+calls :func:`approval_reuse_decide_native`; when the resident answers it
 returns the decoded ``ApprovalReuseDecision.to_evidence()`` payload, and when
-the resident cannot service the call it returns ``None`` so the caller falls
-back to the in-process Python body (the established native-first contract:
-``None`` is a transport failure, never a decision).
+the resident cannot service the call it returns ``None`` — the established
+transport-failure contract, never a decision. The resident is the sole
+authority for this composition: a ``None`` result preserves the caller's
+current evaluation unchanged (no saved approval is claimed); it never routes
+to a Python evaluator.
 
 The op is pure (no IO, no SQLite): it composes a recomputed action with saved
 approval evidence. ``guard_home`` resolves through the same bound-home binding
@@ -25,6 +27,7 @@ from .native_runtime_resilience import (
     native_record_resident_failure,
     native_record_resident_success,
 )
+from .runtime.approval_reuse import ApprovalReuseMalformedResultError
 
 _MAX_REQUEST_BYTES = 256 * 1024
 _RESIDENT_PROTOCOL_FEATURE = "resident-protocol-v2"
@@ -50,8 +53,9 @@ def approval_reuse_decide_native(
 
     Returns the decoded ``payload`` (an ``ApprovalReuseDecision.to_evidence()``
     dict) on success. Returns ``None`` when the resident cannot service the call
-    (unavailable, capability absent, timeout, malformed envelope) so the caller
-    falls back to the Python implementation. Business-rule semantics always
+    (unavailable, capability absent, timeout or overload): the caller
+    preserves the current evaluation. Malformed results raise instead of
+    being treated as unavailable authority. Business-rule outcomes always
     return ``ok``; there is no domain-error envelope to reconstruct.
     """
     global _request_counter
@@ -122,20 +126,26 @@ def approval_reuse_decide_native(
             guard_home,
             reason="native_approval_reuse_decode_failed",
         )
-        return None
+        raise ApprovalReuseMalformedResultError("approval_reuse result is not valid JSON") from None
     if _native_error(envelope) == "native_overloaded":
         native_record_overload(status.identity.sha256, guard_home)
         return None
-    if not isinstance(envelope, dict) or envelope.get("schema") != _RESULT_SCHEMA:
+    if (
+        not isinstance(envelope, dict)
+        or envelope.get("schema") != _RESULT_SCHEMA
+        or envelope.get("request_id") != request["request_id"]
+    ):
         native_record_resident_failure(
             status.identity.sha256,
             guard_home,
             reason="native_approval_reuse_schema_mismatch",
         )
-        return None
+        raise ApprovalReuseMalformedResultError("approval_reuse result does not match the request")
 
-    native_record_resident_success(status.identity.sha256, guard_home)
-    if envelope.get("status") != "ok":
-        return None
+    if envelope.get("status") != "ok" or envelope.get("code") != "ok":
+        raise ApprovalReuseMalformedResultError("resident rejected the approval_reuse request")
     payload = envelope.get("payload")
-    return payload if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        raise ApprovalReuseMalformedResultError("approval_reuse result has no decision object")
+    native_record_resident_success(status.identity.sha256, guard_home)
+    return payload

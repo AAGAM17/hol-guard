@@ -250,13 +250,13 @@ def _ambient_context_digest_home(
     flow context or the default user home; both are pointed at the keyed
     session home.  Unit tests default to ``HOL_GUARD_NATIVE=off`` so the
     adapter's status probe is additionally re-evaluated under ``force`` —
-    scoped to the ``native_context`` module only, leaving every other
-    off-mode surface (hook eval, fail-safe denials) untouched.  With no
+    scoped to context-digest and approval-reuse adapters, leaving other
+    off-mode surfaces (hook eval, fail-safe denials) untouched. With no
     resolvable runtime the probe is left alone and digests stay unavailable,
     preserving the no-binary behavior.
     """
 
-    from codex_plugin_scanner.guard import native_context, native_runtime
+    from codex_plugin_scanner.guard import native_approval_reuse, native_context, native_runtime
     from codex_plugin_scanner.guard.runtime import approval_context
 
     real_status = native_runtime.native_runtime_status
@@ -285,6 +285,7 @@ def _ambient_context_digest_home(
                 os.environ["HOL_GUARD_NATIVE_BINARY"] = previous_binary
 
     monkeypatch.setattr(native_context, "native_runtime_status", _digest_status)
+    monkeypatch.setattr(native_approval_reuse, "native_runtime_status", _digest_status)
     monkeypatch.setattr(native_context, "context_digest_guard_home", lambda: _native_context_home)
     monkeypatch.setattr(
         approval_context,
@@ -361,6 +362,15 @@ def native_context_digest(
     binary = _context_digest_runtime_binary()
     if binary is None:
         pytest.skip("native context digest tests require the compiled Rust runtime")
+    monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
+    monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(binary.resolve()))
+    return _native_context_home
+
+
+@pytest.fixture
+def native_approval_reuse_runtime(monkeypatch: pytest.MonkeyPatch, _native_context_home: Path) -> Path:
+    """Require the real resident for sole-authority reuse behavior tests."""
+    binary = _resolve_native_hook_runtime()
     monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
     monkeypatch.setenv("HOL_GUARD_NATIVE_BINARY", str(binary.resolve()))
     return _native_context_home

@@ -102,6 +102,12 @@ class _PersistentNativeClientPool:
         self._condition = threading.Condition()
         self._closed = False
 
+    def has_idle_client(self) -> bool:
+        """True when a live client is parked and can serve without a spawn."""
+
+        with self._condition:
+            return not self._closed and bool(self._idle)
+
     def _lease(self, *, deadline_monotonic: float) -> _PersistentNativeClient | None:
         with self._condition:
             while not self._closed:
@@ -186,6 +192,21 @@ class _PersistentNativeClientPool:
 _CLIENTS_LOCK = threading.Lock()
 _CLIENT_POOLS: dict[tuple[str, str], _PersistentNativeClientPool] = {}
 forget_in_child(_CLIENT_POOLS)
+
+
+def native_resident_client_ready(executable: Path, guard_home: Path) -> bool:
+    """True when a pooled resident for this runtime and home needs no spawn.
+
+    Callers that budget a request tightly have to know whether the cost they
+    are bounding is a round trip or a process spawn: the pool starts a client
+    lazily, and a resident that a test or an operator killed leaves no idle
+    client behind.
+    """
+
+    key = (str(executable), str(_pinned_state_dir(guard_home / "native-runtime")))
+    with _CLIENTS_LOCK:
+        pool = _CLIENT_POOLS.get(key)
+    return pool is not None and pool.has_idle_client()
 
 
 def _client_pool_for(executable: Path, state_dir: Path, environment: Mapping[str, str]) -> _PersistentNativeClientPool:
@@ -535,6 +556,7 @@ __all__ = [
     "close_native_resident_clients",
     "close_native_residents",
     "native_resident_client_failure_code",
+    "native_resident_client_ready",
     "native_resident_client_request",
     "record_native_resident_client_failure_code",
     "retire_native_resident_for_update",

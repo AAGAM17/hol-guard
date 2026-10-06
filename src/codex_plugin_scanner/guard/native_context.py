@@ -27,6 +27,7 @@ from .directory_path_authority import canonical_guard_home_path
 from .fork_safety import forget_in_child
 from .native_resident_client import (
     native_resident_client_failure_code,
+    native_resident_client_ready,
     native_resident_client_request,
 )
 from .native_response_decoder import native_error as _native_error
@@ -94,13 +95,10 @@ _UNCACHEABLE_DIGEST_KINDS = frozenset(
 )
 _MAX_REQUEST_BYTES = 2 * 1024 * 1024
 _TIMEOUT_SECONDS = 0.5
-# One-time allowance for the pooled resident's lazy spawn, granted to the first
-# request for a (runtime, guard home) pair.  Steady-state requests keep the tight
-# budget; a cold start on a contended runner must not fail closed.
+# Allowance for the pooled resident's lazy spawn, granted whenever the pool has no
+# idle client to serve the request.  Steady-state requests keep the tight budget;
+# a spawn on a contended runner must not fail closed.
 _COLD_START_ALLOWANCE_SECONDS = 3.0
-# Failure code the pooled stream client reports when a request exhausts its
-# deadline — the one outcome that still deserves the cold-start allowance.
-_COLD_START_TIMEOUT_CODE = "native_client_timed_out"
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -130,10 +128,6 @@ _RESULT_CACHE_MAX = 256
 # is remembered; a child process re-establishes it (see `forget_in_child`).
 _RESIDENT_PREREQUISITE_LOCK = threading.Lock()
 _RESIDENT_PREREQUISITE_HOMES: set[str] = set()
-# (runtime sha256, canonical guard home) pairs whose pooled resident has already
-# answered once in this process.  A pair that has never answered pays a spawn.
-_READY_RESIDENTS_LOCK = threading.Lock()
-_READY_RESIDENTS: set[tuple[str, str]] = set()
 
 # Why the most recent `native_context_digest` call in this context returned
 # `None`.  Digest callers that have no fallback raise a `*_unavailable` error,
@@ -217,7 +211,6 @@ def _native_runtime_status_memo() -> NativeRuntimeStatus:
 
 forget_in_child(_RESULT_CACHE)
 forget_in_child(_RESIDENT_PREREQUISITE_HOMES)
-forget_in_child(_READY_RESIDENTS)
 
 
 def bind_context_digest_home(guard_home: Path | None, *, remember: bool = True) -> Any:
@@ -637,9 +630,12 @@ def native_context_digest(
     if not ensure_resident_prerequisite(guard_home):
         return _digest_failed("native_context_digest_prerequisite_unavailable")
     canonical_home = canonical_guard_home_path(guard_home)
-    resident_key = (status.identity.sha256, canonical_home)
-    with _READY_RESIDENTS_LOCK:
-        cold_start = resident_key not in _READY_RESIDENTS
+    # The pool spawns its resident lazily and drops it when the process dies,
+    # so ask it rather than remembering: a pair that has answered before can
+    # still be asked to pay for a spawn, and one that has not may have a warm
+    # client another caller already started.
+    environment = _isolated_environment()
+    cold_start = not native_resident_client_ready(status.identity.path, guard_home)
     deadline_started = time.monotonic()
     # The budget bounds steady-state degradation, not process startup: the
     # pooled resident is spawned lazily on the first request, and a contended
@@ -712,18 +708,10 @@ def native_context_digest(
     output = native_resident_client_request(
         executable=status.identity.path,
         guard_home=guard_home,
-        environment=_isolated_environment(),
+        environment=environment,
         payload=envelope,
         deadline_monotonic=deadline_monotonic,
     )
-    if output is not None or native_resident_client_failure_code() != _COLD_START_TIMEOUT_CODE:
-        # A request that ran out of budget while the spawn was still faulting
-        # in leaves the pair cold: the pool retired that client, so the next
-        # request spawns again and needs the allowance just as much.  Any other
-        # outcome — a response, or a hard failure — will not improve with more
-        # time, so the pair stops paying the startup allowance.
-        with _READY_RESIDENTS_LOCK:
-            _READY_RESIDENTS.add(resident_key)
     if output is None:
         # The client's own code ("native_client_timed_out",
         # "native_client_pool_exhausted", ...) is the actionable half of this.

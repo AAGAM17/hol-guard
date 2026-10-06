@@ -212,9 +212,10 @@ impl PolicySnapshotStore {
             &expected_scope_digest,
             &verifier_key,
         )?;
-        if loaded.migrate {
-            // A recovered business floor must be durable before startup or an
-            // idempotent ACK can rely on it. Failure leaves this store closed.
+        if loaded.migrate && loaded.snapshot.is_some() {
+            // A recovered business floor must be durable before an idempotent ACK
+            // can rely on it. Non-admissible bodies stay intact so the floor remains
+            // recoverable and Python readers keep the authenticated snapshot.
             persist_loaded_authority(&authority_path, &loaded, &verifier_key)?;
         }
         let approval_authority = approval_authority::load(state_base)?;

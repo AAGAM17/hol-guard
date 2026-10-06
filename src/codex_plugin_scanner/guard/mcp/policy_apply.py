@@ -65,16 +65,16 @@ def apply_pending_policy_request(
         ):
             raise PolicyToolError("candidate_digest_mismatch", "Stored candidate changed before apply.")
         previous_source = mutation.previous_source if mutation is not None else None
-        previous_document = (
-            (_build_current_legacy_document(store) if mutation is not None else _build_current_document(store))
-            if previous_source is None
-            else None
-        )
-        checked_digest = (
-            previous_source.source_digest
-            if previous_source is not None
-            else (policy_document_digest(previous_document) if previous_document else None)
-        )
+        checked_digest = None
+        if previous_source is not None:
+            checked_digest = previous_source.source_digest
+        else:
+            if mutation is not None:
+                previous_document = _build_current_legacy_document(store)
+            else:
+                previous_document = _build_current_document(store)
+            if previous_document is not None:
+                checked_digest = policy_document_digest(previous_document)
         if checked_digest != request.expected_current_digest:
             raise PolicyToolError("current_digest_mismatch", "Current policy digest has changed.")
         if expected_generation is not None:

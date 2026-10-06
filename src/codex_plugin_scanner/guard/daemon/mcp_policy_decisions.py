@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from ..approval_gate import ApprovalGateError, require_high_risk
 from ..approval_gate import input_from_mapping as approval_gate_input_from_mapping
+from ..native_policy_snapshot_constants import NativePolicySnapshotError
 
 
 class PolicyDecisionHandler(Protocol):
@@ -69,6 +70,10 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
         _write_policy_error(handler, store, request_id, error)
         return
 
+    except (NativePolicySnapshotError, TimeoutError) as error:
+        _write_source_error(handler, error)
+        return
+
     try:
         apply_result = apply_pending_policy_request(
             store,
@@ -81,7 +86,39 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
     except PolicyToolError as error:
         _write_policy_error(handler, store, request_id, error)
         return
+    except (NativePolicySnapshotError, TimeoutError) as error:
+        _write_source_error(handler, error)
+        return
     handler._write_json({"resolved": True, **apply_result})
+
+
+def _write_source_error(handler: PolicyDecisionHandler, error: Exception) -> None:
+    # Never copy an arbitrary exception/path into the dashboard response.
+    codes = {
+        "native_business_source_approval_required",
+        "native_business_source_installation_incoherent",
+        "native_business_source_current_fence_unavailable",
+        "native_business_source_transaction_not_committed",
+        "native_business_source_codec_refused",
+        "native_business_policy_removal_requires_authority",
+        "native_business_source_retention_unavailable",
+        "native_business_source_retention_conflict",
+        "native_business_source_recovery_required",
+        "native_business_source_installation_key_unavailable",
+    }
+    code = str(error)
+    if isinstance(error, TimeoutError):
+        code = "policy_authority_busy"
+    elif code not in codes:
+        code = "native_business_source_unavailable"
+    handler._write_json(
+        {
+            "resolved": False,
+            "error": code,
+            "message": "Policy source operation failed. Check its installation state before retrying.",
+        },
+        status=503,
+    )
 
 
 def _write_policy_error(handler: PolicyDecisionHandler, store, request_id: str, error) -> None:

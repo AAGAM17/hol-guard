@@ -1389,7 +1389,9 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
             }) {
                 Ok(credentials) => break credentials,
                 Err(reason)
-                    if reason == "credentials_secret_fingerprint_mismatch" && attempt < 2 =>
+                    if (reason == "credentials_secret_fingerprint_mismatch"
+                        || reason == "credentials_secret_unavailable")
+                        && attempt < 2 =>
                 {
                     continue;
                 }

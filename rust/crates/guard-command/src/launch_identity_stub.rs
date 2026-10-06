@@ -16,27 +16,34 @@ use sha2::{Digest, Sha256};
 // approvals still fail closed and nothing claims a verified launch.
 
 // `reuse_nonce` must never be reusable, so it must stay unique even when the
-// OS RNG is unavailable. Hash entropy plus a per-process counter and pid so two
-// identities can never share a nonce a saved approval could match; a constant
-// zero nonce would let an attacker pin a stable identity. Every call site
-// produces a 16-byte nonce.
+// OS RNG is unavailable. Hash entropy plus process id, a per-process counter,
+// and wall-clock nanos so two identities — including across processes where
+// the pid and counter may repeat — can never share a nonce a saved approval
+// could match. This is uniqueness, not a cryptographic guarantee if getrandom
+// fails; a constant zero nonce would let an attacker pin a stable identity.
+// Every call site produces a 16-byte nonce.
 fn token_hex() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let mut entropy = [0u8; 16];
     let _ = getrandom::fill(&mut entropy);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let mut hasher = Sha256::new();
     hasher.update(entropy);
     hasher.update(std::process::id().to_be_bytes());
     hasher.update(COUNTER.fetch_add(1, Ordering::Relaxed).to_be_bytes());
+    hasher.update(nanos.to_be_bytes());
     hex::encode(&hasher.finalize()[..16])
 }
 
 // `launch_identity.rs::launch_argv_digest` — sha256 over canonical JSON argv.
-fn launch_argv_digest(argv: &[String]) -> String {
-    let material = Value::Array(argv.iter().map(|s| Value::String(s.clone())).collect());
+// Digests borrowed `&Value` material; no intermediate String/Vec copies.
+fn launch_argv_digest(material: &Value) -> String {
     let mut bytes = Vec::with_capacity(64);
-    if guard_contracts::write_canonical_json(&material, &mut bytes).is_err() {
+    if guard_contracts::write_canonical_json(material, &mut bytes).is_err() {
         bytes.clear();
     }
     hex::encode(Sha256::digest(&bytes))
@@ -76,7 +83,7 @@ fn unsupported_entrypoint_identity() -> Value {
     );
     map.insert(
         "selector_sha256".to_string(),
-        Value::String(launch_argv_digest(&[])),
+        Value::String(launch_argv_digest(&Value::Array(Vec::new()))),
     );
     map.insert("status".to_string(), Value::String("unproven".to_string()));
     map.insert("reuse_nonce".to_string(), Value::String(token_hex()));
@@ -145,19 +152,22 @@ pub fn build_runtime_launch_identity(
 ) -> Value {
     // Digest the real argv vector so `argv_sha256` is present and content-bound,
     // even though the identity remains non-reusable on unsupported platforms.
-    let mut full_argv: Vec<String> = Vec::new();
+    // One clone per element is the minimum Value ownership requires; borrow
+    // the command/args strings and build the canonical array in place.
+    let mut argv_values: Vec<Value> = Vec::with_capacity(1 + args.len());
     if let Some(cmd) = command.as_str() {
         if !cmd.trim().is_empty() {
-            full_argv.push(cmd.to_string());
+            argv_values.push(Value::String(cmd.to_string()));
         }
     }
     for a in args {
         if let Some(s) = a.as_str() {
-            full_argv.push(s.to_string());
+            argv_values.push(Value::String(s.to_string()));
         }
     }
+    let argv_material = Value::Array(argv_values);
     json!({
-        "argv_sha256": launch_argv_digest(&full_argv),
+        "argv_sha256": launch_argv_digest(&argv_material),
         "entrypoint": unsupported_entrypoint_identity(),
         "executable": build_runtime_executable_identity(
             command, search_path, cwd, home_dir, true,

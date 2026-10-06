@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -47,6 +48,25 @@ if TYPE_CHECKING:
 def _digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _desktop_hook_proxy_context() -> dict[str, str]:
+    """Carry only Desktop's signed-proxy selectors into the verified hook probe.
+
+    The child revalidates the app bundle, executable ownership, and Apple team
+    before using this proxy. Keep the runtime-owner path out of this boundary:
+    it can select an executable and is not needed by the proxy.
+    """
+
+    if os.environ.get("HOL_GUARD_DESKTOP") != "1":
+        return {}
+    proxy = os.environ.get("HOL_GUARD_DESKTOP_HOOK_PROXY", "")
+    if not proxy or "\x00" in proxy or not Path(proxy).is_absolute():
+        return {}
+    return {
+        "HOL_GUARD_DESKTOP": "1",
+        "HOL_GUARD_DESKTOP_HOOK_PROXY": proxy,
+    }
 
 
 def observe_configured_codex_hook(
@@ -220,6 +240,7 @@ def _observe_configured_codex_hook(
     output_digests: list[str] = []
     launch_environment = dict(trusted.environment)
     launch_environment.update(environment)
+    launch_environment.update(_desktop_hook_proxy_context())
     for probe_command, decision in (("pwd", "allow"), ("rm -rf /", "deny")):
         check_deadline()
         request_id = "transition-hook-" + uuid.uuid4().hex

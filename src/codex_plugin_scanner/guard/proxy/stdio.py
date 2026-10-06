@@ -524,11 +524,7 @@ class StdioGuardProxy:
             # teardown). argv is None when the launch identity did not yield a
             # verified executable, so the resident cannot take the child —
             # keep the Python pipe transport for that case only.
-            argv = (
-                [executable] + [str(a) for a in self.command[1:]]
-                if isinstance(executable, str)
-                else None
-            )
+            argv = [executable] + [str(a) for a in self.command[1:]] if isinstance(executable, str) else None
             guard_home = getattr(self.guard_store, "guard_home", None)
             native_session_id = (
                 f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}"
@@ -1068,14 +1064,14 @@ class StdioGuardProxy:
                     # lines; ask it for the next one with the same timeout.
                     frame = process.stdout.next_frame(timeout_seconds, required=True)
                     if frame is None or frame.error is not None:
-                        raise frame.error if frame is not None else ProxyIoTimeoutError(
-                            source="child_response", timeout_seconds=timeout_seconds
+                        raise (
+                            frame.error
+                            if frame is not None
+                            else ProxyIoTimeoutError(source="child_response", timeout_seconds=timeout_seconds)
                         )
                     line = frame.line
                 else:
-                    line = _readline_with_timeout(
-                        process.stdout, timeout_seconds, source="child_response"
-                    )
+                    line = _readline_with_timeout(process.stdout, timeout_seconds, source="child_response")
             except ProxyIoTimeoutError:
                 _quarantine_process(process)
                 return _timeout_response(

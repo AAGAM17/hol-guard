@@ -300,7 +300,6 @@ def saved_allow_context_validation_reason(
     return approval_context_tokens_validation_reason(decision.get("artifact_hash"), artifact_hash)
 
 
-
 def build_runtime_executable_identity(
     command: object,
     *,
@@ -328,7 +327,6 @@ def build_runtime_executable_identity(
         home_dir=home_dir,
         require_executable=require_executable,
     )
-
 
 
 def build_runtime_launch_identity(
@@ -506,7 +504,6 @@ def build_configured_header_values_hash(
         # reject this sentinel rather than treat it as an exact binding.
         return f"{_UNBOUND_PREFIX}configured-headers"
     return cast(str, result["digest"])
-
 
 
 def _is_sha256_hex(value: object) -> TypeGuard[str]:

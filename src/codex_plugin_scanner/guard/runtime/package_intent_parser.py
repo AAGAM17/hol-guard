@@ -179,6 +179,7 @@ def _native_package_intent(
     except (TypeError, ValueError, KeyError, AttributeError):
         return None
 
+
 def parse_package_intent(
     command_text: str,
     *,

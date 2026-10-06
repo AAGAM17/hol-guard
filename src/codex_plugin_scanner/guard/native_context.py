@@ -40,13 +40,29 @@ _REQUEST_SCHEMA = "guard-context-digest-request.v1"
 _RESULT_SCHEMA = "guard-context-digest-result.v1"
 _RESULT_REQUIRED_KEYS = {"schema", "request_id", "request_sha256", "status", "code"}
 _RESULT_OPTIONAL_KEYS = {
-    "token", "digest", "validation_reason", "environment_values", "package_context",
-    "mcp_server_identity", "mcp_tool_identity", "package_launcher",
-    "mcp_descriptor", "browser_mcp", "mcp_tool_risk", "mcp_tool_policy",
-    "mcp_launch_environment", "mcp_launch_target", "mcp_safe_arguments",
-    "mcp_serialized_arguments", "mcp_redacted_value", "runtime_identity",
-    "runtime_identity_match", "runtime_identity_reusable",
-    "runtime_resolved_executable", "runtime_resolved_argv", "tool_catalog",
+    "token",
+    "digest",
+    "validation_reason",
+    "environment_values",
+    "package_context",
+    "mcp_server_identity",
+    "mcp_tool_identity",
+    "package_launcher",
+    "mcp_descriptor",
+    "browser_mcp",
+    "mcp_tool_risk",
+    "mcp_tool_policy",
+    "mcp_launch_environment",
+    "mcp_launch_target",
+    "mcp_safe_arguments",
+    "mcp_serialized_arguments",
+    "mcp_redacted_value",
+    "runtime_identity",
+    "runtime_identity_match",
+    "runtime_identity_reusable",
+    "runtime_resolved_executable",
+    "runtime_resolved_argv",
+    "tool_catalog",
 }
 _RESULT_CODES = {
     "ok",
@@ -535,9 +551,7 @@ def native_context_digest(
         # Cache on the request *content* — `request_id` is random per call, so
         # it is excluded from the canonical material.
         content_sha256 = (
-            _canonical_request_sha256({"kind": kind, **kind_fields})
-            if kind not in _UNCACHEABLE_DIGEST_KINDS
-            else None
+            _canonical_request_sha256({"kind": kind, **kind_fields}) if kind not in _UNCACHEABLE_DIGEST_KINDS else None
         )
     except (TypeError, ValueError):
         # Components the canonical encoder cannot express (non-JSON values,
@@ -1098,10 +1112,7 @@ def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: boo
     return digest, tuple(categories)
 
 
-
-def context_mcp_arguments_projection(
-    tool_name: str, arguments: object
-) -> tuple[object, str, str]:
+def context_mcp_arguments_projection(tool_name: str, arguments: object) -> tuple[object, str, str]:
     """`_safe_mcp_arguments` + `_mcp_arguments_digest` + `_launch_target`, one op.
 
     Returns ``(safe_arguments, launch_target, digest)``. ``arguments`` may be
@@ -1111,7 +1122,9 @@ def context_mcp_arguments_projection(
     """
     fields = json.loads(json.dumps({"tool_name": tool_name, "arguments": arguments}))
     result = native_context_digest(
-        "mcp_arguments_projection", fields, guard_home=_resolve_digest_home(None),
+        "mcp_arguments_projection",
+        fields,
+        guard_home=_resolve_digest_home(None),
     )
     ok = isinstance(result, dict) and result.get("status") == "ok"
     launch_target = result.get("mcp_launch_target") if ok else None
@@ -1132,7 +1145,9 @@ def context_mcp_redact_json(value: object) -> object:
     """stdio `_redact_json` parity for recorded MCP traffic; terminal on failure."""
     fields = json.loads(json.dumps({"material": value}))
     result = native_context_digest(
-        "mcp_redact_json", fields, guard_home=_resolve_digest_home(None),
+        "mcp_redact_json",
+        fields,
+        guard_home=_resolve_digest_home(None),
     )
     ok = isinstance(result, dict) and result.get("status") == "ok"
     if not ok or "mcp_redacted_value" not in result:

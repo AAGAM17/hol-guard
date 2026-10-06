@@ -57,6 +57,9 @@ pub mod homebrew_intent;
 pub mod jsonc;
 #[cfg(unix)]
 pub mod launch_identity;
+#[cfg(not(unix))]
+#[path = "launch_identity_stub.rs"]
+pub mod launch_identity;
 #[cfg(unix)]
 pub mod launch_identity_binding;
 pub mod launch_identity_environment;

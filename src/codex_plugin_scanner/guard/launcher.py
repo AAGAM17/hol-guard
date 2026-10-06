@@ -6,7 +6,6 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-
 # Native-authority bindings the managed proxy child must inherit from the
 # installer process. Persisted into the launcher ``env`` block so the proxy
 # keeps the same compiled runtime outside the dev shell; server-supplied env

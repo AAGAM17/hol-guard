@@ -197,6 +197,9 @@ use lockfile_helpers::{
 #[path = "supply_chain_package_eval/package_lock.rs"]
 mod package_lock;
 
+#[path = "supply_chain_package_eval/manifest_dependency_targets.rs"]
+mod manifest_dependency_targets;
+
 #[path = "supply_chain_package_eval/manifest_dependencies.rs"]
 mod manifest_dependencies;
 

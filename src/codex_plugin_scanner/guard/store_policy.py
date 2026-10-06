@@ -1516,6 +1516,19 @@ class StorePolicyMixin:
                 ).fetchone()
                 is not None
             )
+            has_remote_policy = (
+                connection.execute(
+                    f"select 1 from policy_decisions where source in {_REMOTE_POLICY_SOURCE_PLACEHOLDERS} limit 1",
+                    _REMOTE_POLICY_SOURCE_PARAMS,
+                ).fetchone()
+                is not None
+            )
+            has_local_once_approvals = (
+                connection.execute(
+                    "select 1 from guard_local_once_approvals limit 1"
+                ).fetchone()
+                is not None
+            )
             integrity_state = (
                 self._refresh_policy_integrity_state(
                     connection,
@@ -1526,18 +1539,6 @@ class StorePolicyMixin:
                 if has_local_policy
                 else {}
             )
-
-        # Resident startup needs the same verifier authority even when only
-        # remote policy rows (or no policy rows) exist. Procuring that key does
-        # not refresh, sign, or promote remote policy into local authority.
-        resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
-        if has_local_policy:
-            integrity_key, integrity_key_id = resident_key, resident_key_id
-        else:
-            integrity_key, integrity_key_id = None, None
-        # Local-once approvals live in a separate table from policy_decisions.
-        # Their integrity evidence must not depend on has_local_policy.
-        local_once_key, local_once_key_id = resident_key, resident_key_id
 
         # The resident refuses to serve until the owner-private verifier key
         # exists under this guard home (consume_for_spawn gate). Publishers
@@ -1554,10 +1555,40 @@ class StorePolicyMixin:
             # verifier key; treat as none so the degraded-lookup guard below applies.
             verifier_path = None
         verifier_exists = verifier_path.is_file() if verifier_path is not None else False
+
+        # Resident startup needs the same verifier authority even when only
+        # remote policy rows (or only local-once approvals) exist. Read the
+        # keyring non-creatively first; minting is reserved for stores that
+        # carry resident evidence (verifier file, remote policy rows, or a
+        # local-once row whose signature was issued under the keyring) so a
+        # lookup against a never-provisioned store does not mint an unused key.
+        resident_key, resident_key_id = self._policy_integrity_secret_material(create=False)
+        if resident_key is None and (
+            verifier_exists or has_remote_policy or has_local_once_approvals
+        ):
+            resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
+        if has_local_policy:
+            integrity_key, integrity_key_id = resident_key, resident_key_id
+        else:
+            integrity_key, integrity_key_id = None, None
+        # Local-once approvals live in a separate table from policy_decisions.
+        # Their integrity evidence must not depend on has_local_policy.
+        local_once_key, local_once_key_id = resident_key, resident_key_id
+
         if resident_key is not None:
             try:
                 provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
-            except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError):
+            except NativePolicySnapshotError as error:
+                if str(error) in {
+                    "native_policy_verifier_key_invalid",
+                    "native_policy_verifier_key_mismatch",
+                    "native_policy_verifier_key_not_private",
+                }:
+                    # A persisted verifier that is malformed, foreign-owned,
+                    # or bytes-mismatched is active tampering evidence. Never
+                    # silently degrade past it — the resident must not serve
+                    # under an unverifiable authority.
+                    raise
                 # Cannot persist the verifier under an untrusted home; keep only
                 # the on-disk evidence flag, which is False when provisioning
                 # failed on the same home.
@@ -1569,13 +1600,24 @@ class StorePolicyMixin:
                         "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
                         "authority_revision": -1,
                     }
-        elif not verifier_exists:
-            # A store with no integrity keyring AND no persisted verifier key has
-            # no authority to serve and must not honor any local approval. Return
-            # an empty degraded lookup rather than raising
-            # native_policy_decision_lookup_unavailable on a store that was never
-            # provisioned. When a verifier file persists, dispatch anyway so the
-            # resident degrades the integrity-less rows (ignored_local_integrity).
+            except (OSError, RuntimeError, TypeError, ValueError):
+                verifier_exists = verifier_path.is_file() if verifier_path is not None else False
+                if not verifier_exists:
+                    return {
+                        "decision": None,
+                        "ignored_local_integrity": None,
+                        "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
+                        "authority_revision": -1,
+                    }
+        elif verifier_path is not None and not verifier_exists and not has_local_once_approvals:
+            # A store with no integrity keyring, no persisted verifier key, and
+            # no local-once approvals has no authority to serve and must not
+            # honor any local approval. Return an empty degraded lookup rather
+            # than raising native_policy_decision_lookup_unavailable on a store
+            # that was never provisioned. When local-once rows exist (even
+            # unsigned legacy ones) or a verifier file persists (or the home is
+            # untrusted so we cannot determine one), dispatch anyway so the
+            # resident emits ignored_local_integrity evidence.
             return {
                 "decision": None,
                 "ignored_local_integrity": None,

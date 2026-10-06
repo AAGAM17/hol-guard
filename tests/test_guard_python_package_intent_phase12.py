@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from codex_plugin_scanner.guard.native_mode import native_mode_requires_rust
 from codex_plugin_scanner.guard.runtime.package_intent import (
     parse_manifest_dependency_changes,
     parse_package_intent,
@@ -165,8 +166,14 @@ def test_parse_package_intent_redacts_pip_index_credentials_from_flag_values() -
     assert intent is not None
     assert "user:secret@" not in intent.redacted_command
     assert "token@" not in intent.redacted_command
-    assert "--index-url=https://example.com/simple" in intent.redacted_command
-    assert "--extra-index-url=https://mirror.example/simple" in intent.redacted_command
+    if native_mode_requires_rust():
+        assert intent.redacted_command.count("[REDACTED_URL]") == 2
+        assert "example.com" not in intent.redacted_command
+        assert "mirror.example" not in intent.redacted_command
+    else:
+        assert "--index-url=https://example.com/simple" in intent.redacted_command
+        assert "--extra-index-url=https://mirror.example/simple" in intent.redacted_command
+    assert intent.redacted_command.endswith("requests==2.31.0")
 
 
 def test_parse_package_intent_redacts_pip_index_credentials_from_env_assignments() -> None:
@@ -177,11 +184,19 @@ def test_parse_package_intent_redacts_pip_index_credentials_from_env_assignments
 
     assert intent is not None
     assert "user:secret@" not in intent.redacted_command
-    assert "PIP_INDEX_URL=https://example.com/simple" in intent.redacted_command
+    if native_mode_requires_rust():
+        assert intent.redacted_command.count("[REDACTED_URL]") == 1
+        assert "example.com" not in intent.redacted_command
+    else:
+        assert "PIP_INDEX_URL=https://example.com/simple" in intent.redacted_command
     assert intent.redacted_command.endswith("pip install requests==2.31.0")
     assert wrapped_intent is not None
     assert "user:secret@" not in wrapped_intent.redacted_command
-    assert "PIP_INDEX_URL=https://example.com/simple" in wrapped_intent.redacted_command
+    if native_mode_requires_rust():
+        assert wrapped_intent.redacted_command.count("[REDACTED_URL]") == 1
+        assert "example.com" not in wrapped_intent.redacted_command
+    else:
+        assert "PIP_INDEX_URL=https://example.com/simple" in wrapped_intent.redacted_command
     assert wrapped_intent.redacted_command.endswith("pip install requests==2.31.0")
 
 
@@ -196,7 +211,11 @@ def test_parse_package_intent_package_source_env_changes_fingerprint() -> None:
     assert source_intent is not None
     assert unrelated_env_intent is not None
     assert "user:secret@" not in source_intent.redacted_command
-    assert "PIP_INDEX_URL=https://evil.example/simple" in source_intent.redacted_command
+    if native_mode_requires_rust():
+        assert source_intent.redacted_command.count("[REDACTED_URL]") == 1
+        assert "evil.example" not in source_intent.redacted_command
+    else:
+        assert "PIP_INDEX_URL=https://evil.example/simple" in source_intent.redacted_command
     assert unrelated_env_intent.redacted_command == benign_intent.redacted_command
 
     benign_artifact = build_package_request_artifact(

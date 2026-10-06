@@ -58,10 +58,11 @@ def recover_committed_business_source(store, document, *, approval_gate_grant, d
                     candidate, key, deadline_monotonic=deadline, retained_identity_bytes=anchor.retained_identity_bytes
                 )
         witness = owner._database_witness(store)
+        anchors = (marker, *copies)
         if witness is None:
             owner._refuse_native_business_floor_without_source(store, key)
         else:
-            if all(wire is None for wire in (marker, *copies)) or any(wire is None for wire in copies):
+            if all(wire is None for wire in anchors) or any(wire is None for wire in copies):
                 raise owner._error("native_business_source_recovery_required")
             # SQL may retain a newer identity even when readable markers were
             # rolled back. Its floor can only restrict this recovery candidate.

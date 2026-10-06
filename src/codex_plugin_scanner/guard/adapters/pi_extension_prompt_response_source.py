@@ -1,4 +1,4 @@
-"""Compatibility with native prompt receipts from older signed Core builds."""
+"""Validate the native prompt approval envelope for Pi-family hooks."""
 
 PROMPT_RESPONSE_HELPER_SOURCE = r'''
 function normalizePromptGuardResponse(value: unknown, event: unknown): GuardResponse | null {
@@ -8,6 +8,7 @@ function normalizePromptGuardResponse(value: unknown, event: unknown): GuardResp
     return null;
   }
   const parsed = value as Record<string, unknown>;
+  // Protocol-2 native prompt approvals carry policy_action and the event envelope.
   if (Object.keys(parsed).some((key) =>
     !["policy_action", "reason_code", "hookSpecificOutput", "risk_signals"].includes(key))) return null;
   if (parsed.policy_action !== "allow" && parsed.policy_action !== "warn") return null;

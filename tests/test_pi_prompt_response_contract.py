@@ -13,7 +13,7 @@ from codex_plugin_scanner.guard.daemon.hook_worker_responses import harness_json
 from codex_plugin_scanner.guard.daemon.manager import GUARD_DAEMON_COMPATIBILITY_VERSION
 from tests.test_pi_hook_latency import _bun_executable
 
-LEGACY_ALLOW = {
+NATIVE_PROMPT_ALLOW = {
     "policy_action": "warn",
     "reason_code": "native_policy_warning",
     "hookSpecificOutput": {"hookEventName": "UserPromptSubmit"},
@@ -25,8 +25,8 @@ LEGACY_ALLOW = {
 @pytest.mark.parametrize(
     ("response", "tool_call", "allowed", "fallback"),
     [
-        (LEGACY_ALLOW, False, True, False),
-        ({**LEGACY_ALLOW, "policy_action": "allow"}, False, True, False),
+        (NATIVE_PROMPT_ALLOW, False, True, False),
+        ({**NATIVE_PROMPT_ALLOW, "policy_action": "allow"}, False, True, False),
         (
             harness_json_from_native_prompt(
                 "omp", {"decision": "allow", "minimum_action": "allow", "reason_code": "native_prompt_clean"}
@@ -37,14 +37,14 @@ LEGACY_ALLOW = {
         ),
         ({"decision": "deny", "reason": "protected prompt"}, False, False, False),
         ({"decision": "block", "reason": "protected prompt"}, False, False, False),
-        (LEGACY_ALLOW, True, False, True),
-        ({**LEGACY_ALLOW, "policy_action": "review"}, False, False, True),
-        ({**LEGACY_ALLOW, "hookSpecificOutput": {"hookEventName": "PreToolUse"}}, False, False, True),
-        ({**LEGACY_ALLOW, "decision": "ask"}, False, False, True),
-        ({**LEGACY_ALLOW, "continue": False}, False, False, True),
-        ({**LEGACY_ALLOW, "hookSpecificOutput": []}, False, False, True),
-        ({**LEGACY_ALLOW, "reason_code": None}, False, False, True),
-        ({**LEGACY_ALLOW, "risk_signals": "not an array"}, False, False, True),
+        (NATIVE_PROMPT_ALLOW, True, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "policy_action": "review"}, False, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "hookSpecificOutput": {"hookEventName": "PreToolUse"}}, False, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "decision": "ask"}, False, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "continue": False}, False, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "hookSpecificOutput": []}, False, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "reason_code": None}, False, False, True),
+        ({**NATIVE_PROMPT_ALLOW, "risk_signals": "not an array"}, False, False, True),
     ],
 )
 def test_prompt_receipt_is_bound_to_the_input_event(

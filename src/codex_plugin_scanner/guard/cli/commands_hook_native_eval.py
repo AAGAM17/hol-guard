@@ -49,11 +49,11 @@ from ..local_supply_chain import (
     _package_policy_override_evaluation,
 )
 from ..models import GuardAction
-from ..package_execution_context import PackageExecutionContext, build_package_execution_context
 from ..native_package_authority import (
     apply_stored_package_policy_native,
     evaluation_from_native_payload,
 )
+from ..package_execution_context import PackageExecutionContext, build_package_execution_context
 from ..runtime.approval_context import approval_context_tokens_validation_reason
 from ..runtime.approval_reuse import (
     APPROVAL_REUSE_CLAIM_FAILED,

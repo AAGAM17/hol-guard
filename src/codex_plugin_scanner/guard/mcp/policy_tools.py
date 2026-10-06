@@ -306,22 +306,34 @@ def execute_get_policy_creation(store: GuardStore, arguments: dict[str, object])
     return _envelope(payload)
 
 
+def _pending_policy_candidate(
+    store: GuardStore,
+    request_id: str,
+) -> tuple[PendingPolicyRequest, GuardPolicyDocument]:
+    """Recheck candidate identity separately at issuance and application."""
+    request = MCPolicyRequestRepository(store).get_request(request_id)
+    if request is None:
+        raise PolicyToolError("policy_request_not_found", "Policy request not found.")
+    if request.status != "pending":
+        raise PolicyToolError("approval_already_resolved", f"Request is {request.status}.")
+    if request.mode not in {"merge", "replace"}:
+        raise PolicyToolError("candidate_invalid", "Stored policy candidate is invalid.")
+    try:
+        document = parse_policy_document_yaml(request.canonical_policy_yaml)
+    except ValueError:
+        raise PolicyToolError("candidate_invalid", "Stored policy candidate is invalid.") from None
+    if policy_document_digest(document) != request.policy_document_digest:
+        raise PolicyToolError("candidate_digest_mismatch", "Stored candidate digest mismatch.")
+    return request, document
+
+
 def pending_policy_import_approval_binding(
     store: GuardStore,
     request_id: str,
 ) -> PolicyImportApprovalBinding:
     """Bind approval issuance to the stored candidate rechecked during apply."""
-    request = MCPolicyRequestRepository(store).get_request(request_id)
-    if request is None:
-        raise PolicyToolError("policy_request_not_found", "Policy request not found.")
-    try:
-        document = parse_policy_document_yaml(request.canonical_policy_yaml)
-        binding = policy_import_approval_binding(document, request.mode)
-    except ValueError:
-        raise PolicyToolError("candidate_invalid", "Stored policy candidate is invalid.") from None
-    if policy_document_digest(document) != request.policy_document_digest:
-        raise PolicyToolError("candidate_digest_mismatch", "Stored candidate digest mismatch.")
-    return binding
+    request, document = _pending_policy_candidate(store, request_id)
+    return policy_import_approval_binding(document, request.mode)
 
 
 def apply_pending_policy_request(
@@ -343,17 +355,8 @@ def apply_pending_policy_request(
     ``approval_gate_required`` whenever the gate is enabled.
     """
     repo = MCPolicyRequestRepository(store)
-    request = repo.get_request(request_id)
-    if request is None:
-        raise PolicyToolError("policy_request_not_found", "Policy request not found.")
-    if request.status != "pending":
-        raise PolicyToolError("approval_already_resolved", f"Request is {request.status}.")
-
-    document = parse_policy_document_yaml(request.canonical_policy_yaml)
+    request, document = _pending_policy_candidate(store, request_id)
     compiled = compile_policy_document(document)
-    candidate_digest = policy_document_digest(document)
-    if candidate_digest != request.policy_document_digest:
-        raise PolicyToolError("candidate_digest_mismatch", "Stored candidate digest mismatch.")
 
     current_document = _build_current_document(store)
     current_digest = policy_document_digest(current_document) if current_document else None

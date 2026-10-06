@@ -91,6 +91,10 @@ _UNCACHEABLE_DIGEST_KINDS = frozenset(
 )
 _MAX_REQUEST_BYTES = 2 * 1024 * 1024
 _TIMEOUT_SECONDS = 0.5
+# One-time allowance for the pooled resident's lazy spawn, granted to the first
+# request for a (runtime, guard home) pair.  Steady-state requests keep the tight
+# budget; a cold start on a contended runner must not fail closed.
+_COLD_START_ALLOWANCE_SECONDS = 3.0
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -120,6 +124,10 @@ _RESULT_CACHE_MAX = 256
 # is remembered; a child process re-establishes it (see `forget_in_child`).
 _RESIDENT_PREREQUISITE_LOCK = threading.Lock()
 _RESIDENT_PREREQUISITE_HOMES: set[str] = set()
+# (runtime sha256, canonical guard home) pairs whose pooled resident has already
+# answered once in this process.  A pair that has never answered pays a spawn.
+_READY_RESIDENTS_LOCK = threading.Lock()
+_READY_RESIDENTS: set[tuple[str, str]] = set()
 # ``native_runtime_status()`` re-reads and SHA-256-hashes the whole runtime
 # binary per call.  Batch digest sites (``environment_material`` hashes one
 # value per env var, launch verification re-hashes argv/shebang/search-path)
@@ -176,6 +184,7 @@ def _native_runtime_status_memo() -> NativeRuntimeStatus:
 
 forget_in_child(_RESULT_CACHE)
 forget_in_child(_RESIDENT_PREREQUISITE_HOMES)
+forget_in_child(_READY_RESIDENTS)
 
 
 def bind_context_digest_home(guard_home: Path | None, *, remember: bool = True) -> Any:
@@ -593,8 +602,19 @@ def native_context_digest(
         return None
     if not ensure_resident_prerequisite(guard_home):
         return None
+    canonical_home = canonical_guard_home_path(guard_home)
+    resident_key = (status.identity.sha256, canonical_home)
+    with _READY_RESIDENTS_LOCK:
+        cold_start = resident_key not in _READY_RESIDENTS
     deadline_started = time.monotonic()
-    deadline_budget_ms = max(1, min(9_000, int(timeout_seconds * 1_000)))
+    # The budget bounds steady-state degradation, not process startup: the
+    # pooled resident is spawned lazily on the first request, and a contended
+    # runner can spend several hundred milliseconds faulting a 20 MB binary in
+    # before it answers.  Grant that one spawn an allowance so a slow cold
+    # start degrades to a slow request instead of a resident-unavailable
+    # failure for every caller that has no fallback.
+    budget_seconds = timeout_seconds + (_COLD_START_ALLOWANCE_SECONDS if cold_start else 0.0)
+    deadline_budget_ms = max(1, min(9_000, int(budget_seconds * 1_000)))
     deadline_monotonic = deadline_started + deadline_budget_ms / 1_000
     request_id = uuid.uuid4().hex
     request: dict[str, Any] = {
@@ -620,7 +640,7 @@ def native_context_digest(
     # authority, not transport work.
     # Launch environments contain granted credentials: do not retain them in
     # the digest result cache or hash the input a second time for caching.
-    cache_key = (content_sha256, canonical_guard_home_path(guard_home)) if content_sha256 is not None else None
+    cache_key = (content_sha256, canonical_home) if content_sha256 is not None else None
     cached = None
     if cache_key is not None:
         with _RESULT_CACHE_LOCK:
@@ -662,6 +682,9 @@ def native_context_digest(
         payload=envelope,
         deadline_monotonic=deadline_monotonic,
     )
+    if output is not None:
+        with _READY_RESIDENTS_LOCK:
+            _READY_RESIDENTS.add(resident_key)
     if output is None:
         native_record_resident_failure(
             status.identity.sha256,

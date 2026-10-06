@@ -223,6 +223,74 @@ def test_native_context_digest_does_not_ship_requests_to_an_unprovisionable_home
     assert captured == []
 
 
+def test_native_context_digest_grants_a_cold_start_allowance_once_per_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pooled resident is spawned lazily, so the first request pays for it.
+
+    A contended runner can spend several hundred milliseconds faulting the
+    runtime binary in; that startup must not be charged to the steady-state
+    degradation budget, or callers with no fallback (launch identity, package
+    context) fail closed on a resident that is merely still starting.
+    """
+
+    budgets: list[int] = []
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "_READY_RESIDENTS", set())
+
+    def _client(*_args: object, **kwargs: object) -> bytes | None:
+        envelope = json.loads(kwargs["payload"])
+        budgets.append(envelope["deadline_budget_ms"])
+        return _ok_result(envelope["request"])
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", _client)
+    first_home = tmp_path / "one"
+    first_home.mkdir()
+    second_home = tmp_path / "two"
+    second_home.mkdir()
+
+    # Whatever the pool is asked, the allowance is per (runtime, guard home)
+    # pair and only until that pair answers for the first time.
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=first_home)
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["b"]}, guard_home=first_home)
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["c"]}, guard_home=second_home)
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["d"]}, guard_home=second_home)
+    warm = int(native_context._TIMEOUT_SECONDS * 1_000)
+    cold = warm + int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
+    assert budgets == [cold, warm, cold, warm]
+
+
+def test_native_context_digest_keeps_the_cold_start_allowance_after_a_failed_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A spawn that never answered leaves the pair cold for the next attempt."""
+
+    budgets: list[int] = []
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "_READY_RESIDENTS", set())
+    outcomes: list[bytes | None] = [None]
+
+    def _client(*_args: object, **kwargs: object) -> bytes | None:
+        envelope = json.loads(kwargs["payload"])
+        budgets.append(envelope["deadline_budget_ms"])
+        return outcomes.pop(0) if outcomes else _ok_result(envelope["request"])
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", _client)
+    guard_home = tmp_path / "one"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    assert (
+        native_context.native_context_digest("launch_argv_digest", {"argv": ["b"]}, guard_home=guard_home) is not None
+    )
+    warm = int(native_context._TIMEOUT_SECONDS * 1_000)
+    cold = warm + int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
+    assert budgets == [cold, cold]
+
+
 def test_native_context_digest_happy_path_binds_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured = _prime(monkeypatch)
     result = native_context.native_context_digest("launch_argv_digest", {"argv": ["hol-guard"]}, guard_home=tmp_path)

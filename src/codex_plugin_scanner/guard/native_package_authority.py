@@ -267,6 +267,7 @@ def package_authority_decide_native(
     payload = response.get("payload")
     return payload if isinstance(payload, dict) else None
 
+
 def apply_stored_package_policy_native(
     evaluation: Mapping[str, object],
     artifact: Mapping[str, object],

@@ -204,7 +204,7 @@ def _verify(
         or not isinstance(identity["source_id"], str)
         or not identity["source_id"]
         or type(identity["source_revision"]) is not int
-        or not 1 <= identity["source_revision"] <= (1 << 64) - 1
+        or not 0 <= identity["source_revision"] <= (1 << 64) - 1
     ):
         raise _invalid()
     return KeyAuthenticatedBusinessSource(

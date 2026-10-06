@@ -60,7 +60,6 @@ impl BusinessSourceFloor {
                     .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         };
         if self.mutation_revision == 0
-            || self.source_revision == 0
             || self.source_id.is_empty()
             || self.source_id.len() > 4096
             || !valid_digest(&self.record_digest)
@@ -185,9 +184,7 @@ pub fn sign_business_source(
     let compiled = compile_business_document(source_document)
         .map_err(|_| BusinessSourceError::InvalidSource)?;
     if source_document["metadata"]["id"].as_str().is_none()
-        || !source_document["metadata"]["revision"]
-            .as_u64()
-            .is_some_and(|revision| revision > 0)
+        || source_document["metadata"]["revision"].as_u64().is_none()
     {
         return Err(BusinessSourceError::InvalidSource);
     }
@@ -244,7 +241,6 @@ pub fn verify_business_source(
         .to_owned();
     let source_revision = record.source_document["metadata"]["revision"]
         .as_u64()
-        .filter(|revision| *revision > 0)
         .ok_or(BusinessSourceError::InvalidSource)?;
     let binding_value =
         serde_json::to_value(compiled.binding()).map_err(|_| BusinessSourceError::InvalidSource)?;

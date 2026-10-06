@@ -15,15 +15,16 @@ from codex_plugin_scanner.guard.policy_document import canonical_json_bytes
 from tests.test_native_business_document_compile import document
 
 
-@pytest.mark.parametrize("phase", ["closed", "committed"])
-def test_native_phase_marker_binds_minimal_exact_identity(native_hook_force: Path, phase: str) -> None:
-    candidate = compile_business_policy_document(document())
+@pytest.mark.parametrize("phase,revision", [("closed", 0), ("committed", 0), ("closed", 1), ("committed", 1)])
+def test_native_phase_marker_binds_minimal_exact_identity(native_hook_force: Path, phase: str, revision: int) -> None:
+    candidate = compile_business_policy_document(document(revision))
     source = sources.build_business_source_record(candidate, b"s" * 32, 1)
     marker = anchors.build_business_source_anchor(source, b"s" * 32, phase)
     verified = anchors.verify_business_source_anchor(marker.anchor_bytes, b"s" * 32)
     assert verified == marker
     assert marker.phase == phase
     assert marker.retained_identity_bytes == source.retained_identity_bytes
+    assert json.loads(marker.retained_identity_bytes)["source_revision"] == revision
     assert not marker.anchor_bytes.endswith(b"\n")
     assert len(marker.anchor_bytes) <= anchors.MAX_ANCHOR_BYTES
     assert b"source_document" not in marker.anchor_bytes

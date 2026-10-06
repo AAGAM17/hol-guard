@@ -152,3 +152,27 @@ fn malformed_retained_floor_is_not_treated_as_unarmed() {
         );
     }
 }
+
+#[test]
+fn schema_valid_zero_source_revision_remains_authenticated_and_retained() {
+    let mut document = source();
+    document["metadata"]["revision"] = json!(0);
+    let bytes = sign_business_source(&document, 1, &[9; 32]).unwrap();
+    let zero = verify_business_source(&bytes, &[9; 32]).unwrap();
+    zero.check_retained_floor(&zero.floor()).unwrap();
+    let mut changed = document.clone();
+    changed["metadata"]["name"] = json!("Substituted zero revision");
+    let conflicting = sign_business_source(&changed, 2, &[9; 32]).unwrap();
+    assert_eq!(
+        verify_business_source(&conflicting, &[9; 32])
+            .unwrap()
+            .check_retained_floor(&zero.floor()),
+        Err(BusinessSourceError::RevisionConflict)
+    );
+    document["metadata"]["revision"] = json!(1);
+    let next = sign_business_source(&document, 2, &[9; 32]).unwrap();
+    verify_business_source(&next, &[9; 32])
+        .unwrap()
+        .check_retained_floor(&zero.floor())
+        .unwrap();
+}

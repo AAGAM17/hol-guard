@@ -84,7 +84,7 @@ def _verify(
         or type(identity["mutation_revision"]) is not int
         or not 1 <= identity["mutation_revision"] <= (1 << 64) - 1
         or type(identity["source_revision"]) is not int
-        or not 1 <= identity["source_revision"] <= (1 << 64) - 1
+        or not 0 <= identity["source_revision"] <= (1 << 64) - 1
         or not isinstance(identity["source_id"], str)
         or not identity["source_id"]
         or len(identity["source_id"].encode("utf-8")) > MAX_ANCHOR_BYTES

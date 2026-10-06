@@ -15,15 +15,7 @@ pub(super) fn contains_credential_post(
     if !read_paths::verified_path_context(context.home_dir, context.cwd) {
         return false;
     }
-    // Absolute targets retain their identity across cwd changes. Relative
-    // targets still need a per-segment cwd binding that this model lacks.
-    let changes_directory = model.segments.iter().any(|segment| {
-        segment
-            .executable
-            .as_deref()
-            .is_some_and(|value| matches!(value.rsplit('/').next(), Some("cd" | "pushd" | "popd")))
-    });
-    model.segments.iter().any(|segment| {
+    model.segments.iter().enumerate().any(|(index, segment)| {
         if !crate::parser_wrappers::is_file_shell_invocation(
             segment.executable.as_deref(),
             &segment.arguments,
@@ -36,7 +28,14 @@ pub(super) fn contains_credential_post(
         } else {
             &arguments[0]
         };
-        if changes_directory && !Path::new(script).is_absolute() {
+        // Only earlier cwd changes make a relative target uncertain. Absolute
+        // targets retain their identity regardless of sibling cwd changes.
+        let prior_directory_change = model.segments[..index].iter().any(|prior| {
+            prior.executable.as_deref().is_some_and(|value| {
+                matches!(value.rsplit('/').next(), Some("cd" | "pushd" | "popd"))
+            })
+        });
+        if prior_directory_change && !Path::new(script).is_absolute() {
             return false;
         }
         if !read_paths::bounded_file_read_target(script, context.home_dir, context.cwd) {
@@ -217,6 +216,7 @@ mod tests {
         .unwrap();
         for (command, expected) in [
             ("bash ./posting.sh".to_owned(), "block"),
+            ("bash ./posting.sh && cd .".to_owned(), "block"),
             ("bash ./ordinary.sh".to_owned(), "review"),
             ("cd nested && bash ./posting.sh".to_owned(), "review"),
             (

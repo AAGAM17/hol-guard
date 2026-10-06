@@ -21,11 +21,13 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
     """Resolve an MCP policy creation request via human approval.
 
     POST /v1/mcp-policy/requests/<id>/decision
-    Body: {"action": "approve" | "decline", ...approval_gate_input}
+    Body: {"action": "approve" | "decline" | "recover", ...approval_gate_input}
 
     On approve: obtains the ApprovalGateGrant via require_high_risk
     (purpose="policy_import"), then calls apply_pending_policy_request
     with the grant.  On decline: calls decline_pending_policy_request.
+    Recovery is a separate freshly approved import of the exact saved source;
+    it does not resolve or replay the old request.
     """
 
     from codex_plugin_scanner.guard.mcp.policy_errors import PolicyToolError
@@ -36,7 +38,7 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
     )
 
     action = payload.get("action")
-    if not isinstance(action, str) or action.strip() not in {"approve", "decline"}:
+    if not isinstance(action, str) or action.strip() not in {"approve", "decline", "recover"}:
         handler._write_json(
             {"resolved": False, "error": "missing_required_fields"},
             status=400,
@@ -45,6 +47,12 @@ def handle_mcp_policy_decision(handler: PolicyDecisionHandler, request_id: str, 
     action = action.strip()
     store = handler.server.store  # type: ignore[attr-defined]
     guard_home = store.guard_home
+
+    if action == "recover":
+        from .business_policy_recovery import handle_business_policy_recovery
+
+        handle_business_policy_recovery(handler, request_id, payload)
+        return
 
     if action == "decline":
         try:

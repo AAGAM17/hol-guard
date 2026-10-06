@@ -1,4 +1,75 @@
-import { r as reactExports, cl as fetchMcpPolicyRequest, au as buildApprovalProofCredentials, cm as resolveMcpPolicyRequest, j as jsxRuntimeExports, n as EmptyState, A as ActionButton, ar as HiMiniArrowPath, at as isApprovalProofSubmitDisabled, aM as WorkspacePageHeader, R as Badge, w as HiMiniShieldCheck, s as HiMiniCheckCircle, P as HiMiniExclamationTriangle, S as SectionLabel, bE as HiMiniClock, cn as HiMiniDocumentPlus, co as HiMiniDocumentMagnifyingGlass, aU as HiMiniNoSymbol, as as ApprovalProofFieldInputs, ak as HiMiniKey } from "../guard-dashboard.js";
+import { bh as fetchGuardApi, bd as GuardHarnessActionError, r as reactExports, j as jsxRuntimeExports, as as ApprovalProofFieldInputs, A as ActionButton, at as isApprovalProofSubmitDisabled, au as buildApprovalProofCredentials, cl as fetchMcpPolicyRequest, cm as resolveMcpPolicyRequest, n as EmptyState, ar as HiMiniArrowPath, aM as WorkspacePageHeader, R as Badge, w as HiMiniShieldCheck, s as HiMiniCheckCircle, P as HiMiniExclamationTriangle, S as SectionLabel, bE as HiMiniClock, cn as HiMiniDocumentPlus, co as HiMiniDocumentMagnifyingGlass, aU as HiMiniNoSymbol, ak as HiMiniKey } from "../guard-dashboard.js";
+const RECOVERY_SOURCE_ERRORS = /* @__PURE__ */ new Set([
+  "native_business_source_installation_incoherent",
+  "native_business_source_transaction_not_committed",
+  "native_business_source_retention_conflict",
+  "native_business_source_recovery_required"
+]);
+async function recoverBusinessPolicy(input) {
+  const response = await fetchGuardApi(`/v1/mcp-policy/requests/${encodeURIComponent(input.requestId)}/decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "recover", ...input })
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new GuardHarnessActionError(response.status, {
+      error: "business_policy_recovery_failed",
+      message: "The saved policy could not be recovered. Its approval or installation state needs attention."
+    });
+  }
+  if (!payload || typeof payload !== "object" || !("installationRecovered" in payload) || payload.installationRecovered !== true || !("sourceDigest" in payload) || payload.sourceDigest !== input.candidateDigest) {
+    throw new Error("Recovery was not confirmed for this policy. Refresh before continuing.");
+  }
+}
+function BusinessPolicyRecoveryPanel(props) {
+  const [password, setPassword] = reactExports.useState("");
+  const [totp, setTotp] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const [message, setMessage] = reactExports.useState(null);
+  const [recovered, setRecovered] = reactExports.useState(false);
+  async function recover() {
+    if (busy || recovered) return;
+    const proof = buildApprovalProofCredentials(props.approvalGate, { approvalPassword: password, approvalTotpCode: totp }, true);
+    setPassword("");
+    setTotp("");
+    setBusy(true);
+    setMessage(null);
+    try {
+      await recoverBusinessPolicy({ requestId: props.requestId, candidateDigest: props.candidateDigest, ...proof });
+      setRecovered(true);
+      setMessage("Policy installation recovered. No app action was sent or replayed.");
+      props.onRecovered();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The saved policy could not be recovered. Refresh before retrying.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "space-y-4 border-t border-slate-200 pt-5", "aria-labelledby": "business-policy-recovery-title", "aria-busy": busy, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "business-policy-recovery-title", className: "text-lg font-semibold text-brand-dark", children: "Recover interrupted policy installation" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "max-w-prose text-sm leading-6 text-brand-dark/75", children: "Freshly approve this request’s saved policy to finish its installation. Guard checks that it matches the saved policy and does not replace newer protection. This does not resume an app task or resolve the original request." }),
+    !recovered ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ApprovalProofFieldInputs,
+        {
+          approvalGate: props.approvalGate ?? null,
+          approvalPassword: password,
+          approvalTotpCode: totp,
+          onApprovalPasswordChange: (event) => setPassword(event.target.value),
+          onApprovalTotpCodeChange: (event) => setTotp(event.target.value),
+          requireFreshTotp: true,
+          requireGate: true
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { onClick: () => void recover(), disabled: busy || isApprovalProofSubmitDisabled(props.approvalGate, {
+        approvalPassword: password,
+        approvalTotpCode: totp
+      }, busy, true, true), children: busy ? "Recovering policy…" : "Approve and recover policy" })
+    ] }) : null,
+    message ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", "aria-live": "polite", className: "text-sm leading-6 text-brand-dark", children: message }) : null
+  ] });
+}
 const STATUS_LABELS = {
   pending: "Pending review",
   applied: "Applied",
@@ -51,29 +122,26 @@ function isActable(request) {
   return !request.isTerminal && !request.isExpired;
 }
 function truncateDigest(digest) {
-  if (digest.length <= 16) return digest;
-  return `${digest.slice(0, 12)}…${digest.slice(-4)}`;
+  return digest.length <= 16 ? digest : `${digest.slice(0, 12)}…${digest.slice(-4)}`;
 }
 function formatTimestamp(iso) {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString(void 0, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  return date.toLocaleString(void 0, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 function McpPolicyRequestPanel(props) {
   const [state, setState] = reactExports.useState({ kind: "loading" });
   const [outcome, setOutcome] = reactExports.useState(null);
   const [approvalPassword, setApprovalPassword] = reactExports.useState("");
   const [approvalTotpCode, setApprovalTotpCode] = reactExports.useState("");
+  const [recoveryCode, setRecoveryCode] = reactExports.useState(null);
+  const [installationRecovered, setInstallationRecovered] = reactExports.useState(false);
   const load = reactExports.useCallback(async () => {
     setState({ kind: "loading" });
     setOutcome(null);
+    setRecoveryCode(null);
+    setInstallationRecovered(false);
     setApprovalPassword("");
     setApprovalTotpCode("");
     try {
@@ -122,6 +190,7 @@ function McpPolicyRequestPanel(props) {
         }
         props.onResolved?.();
       } catch (error) {
+        setRecoveryCode(error instanceof GuardHarnessActionError ? error.payload?.error ?? null : null);
         const message = error instanceof Error && error.message ? error.message : `Unable to ${action} this request.`;
         setOutcome({ kind: "failed", message });
         setState({ kind: "ready", request: request2 });
@@ -175,11 +244,12 @@ function McpPolicyRequestPanel(props) {
     );
   }
   const request = state.request;
+  const recoveryRequired = RECOVERY_SOURCE_ERRORS.has(recoveryCode ?? request.failureCode ?? "");
   const actable = isActable(request);
   const resolving = state.kind === "resolving";
   const approving = resolving && state.action === "approve";
   const declining = resolving && state.action === "decline";
-  const approveDisabled = !actable || resolving || isApprovalProofSubmitDisabled(
+  const approveDisabled = recoveryRequired || installationRecovered || !actable || resolving || isApprovalProofSubmitDisabled(
     props.approvalGate,
     { approvalPassword, approvalTotpCode },
     resolving
@@ -210,15 +280,15 @@ function McpPolicyRequestPanel(props) {
           resolveOutcomeMessage(outcome.result)
         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-2", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniExclamationTriangle, { className: "h-4 w-4", "aria-hidden": "true" }),
-          outcome.message
+          recoveryRequired ? "Policy installation needs attention. Review the saved policy below before approving recovery." : outcome.message
         ] })
       }
     ) : null,
-    request.activeEnforcementWarning ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-2", children: [
+    request.activeEnforcementWarning && !recoveryRequired ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-2", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniExclamationTriangle, { className: "h-4 w-4", "aria-hidden": "true" }),
       "This request is active and waiting for your decision."
     ] }) }) : null,
-    request.failureCode !== null && request.failureCode.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800", children: [
+    request.failureCode !== null && request.failureCode.length > 0 && !recoveryRequired ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold", children: "Policy write failed" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1", children: FAILURE_CODE_LABELS[request.failureCode] ?? `Failure code: ${request.failureCode}` })
     ] }) : null,
@@ -284,6 +354,20 @@ function McpPolicyRequestPanel(props) {
       ] }),
       !hasPlanEntries ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-slate-500", children: "No structured changes were reported for this request." }) : null
     ] }),
+    recoveryRequired ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      BusinessPolicyRecoveryPanel,
+      {
+        requestId: request.requestId,
+        candidateDigest: request.candidateDigest,
+        approvalGate: props.approvalGate,
+        onRecovered: () => {
+          setInstallationRecovered(true);
+          setOutcome(null);
+          props.onResolved?.();
+        }
+      },
+      request.requestId
+    ) : null,
     request.isTerminal || request.isExpired ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-2", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniCheckCircle, { className: "h-4 w-4 text-slate-400", "aria-hidden": "true" }),
       "This request is ",
@@ -292,7 +376,7 @@ function McpPolicyRequestPanel(props) {
     ] }) }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-labelledby": "mcp-policy-actions", className: "space-y-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "Actions" }),
-      actable ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-md rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] p-4", children: [
+      actable && !installationRecovered && !recoveryRequired ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-md rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] p-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-sm text-slate-600", children: "Approval requires your local proof. It is sent once and never stored." }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           ApprovalProofFieldInputs,

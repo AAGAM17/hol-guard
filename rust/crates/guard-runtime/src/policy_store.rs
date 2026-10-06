@@ -33,6 +33,8 @@ mod policy_store_approval;
 mod policy_store_authority;
 #[path = "policy_store_business_floor.rs"]
 mod policy_store_business_floor;
+#[path = "policy_store_business_source.rs"]
+mod policy_store_business_source;
 #[path = "policy_store_command_authority.rs"]
 mod policy_store_command_authority;
 #[path = "policy_store_command_floor.rs"]

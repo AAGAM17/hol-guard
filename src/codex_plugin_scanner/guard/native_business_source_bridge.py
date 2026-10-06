@@ -157,17 +157,23 @@ def _verify(
     record: bytes,
     key: bytes,
     deadline: float,
+    retained_identity_bytes: bytes | None = None,
 ) -> KeyAuthenticatedBusinessSource:
     if type(record) is not bytes or len(record) > MAX_RECORD_BYTES:
         raise _invalid()
+    payload: dict[str, object] = {
+        "schema": "guard.business-source-verify.v1",
+        "version": 1,
+        "record_json": _utf8(record),
+    }
+    if retained_identity_bytes is not None:
+        if type(retained_identity_bytes) is not bytes or len(retained_identity_bytes) > 4096:
+            raise _invalid()
+        payload["retained_floor"] = _strict_json_loads_v3(retained_identity_bytes)
     response_bytes = _operation(
         status,
         "business-source-verify",
-        {
-            "schema": "guard.business-source-verify.v1",
-            "version": 1,
-            "record_json": _utf8(record),
-        },
+        payload,
         key,
         deadline,
     )
@@ -222,9 +228,10 @@ def verify_business_source_record(
     verifier_key: bytes,
     *,
     deadline_monotonic: float | None = None,
+    retained_identity_bytes: bytes | None = None,
 ) -> KeyAuthenticatedBusinessSource:
     deadline = _deadline(deadline_monotonic)
-    return _verify(_consumer(deadline), record, verifier_key, deadline)
+    return _verify(_consumer(deadline), record, verifier_key, deadline, retained_identity_bytes)
 
 
 def build_business_source_record(

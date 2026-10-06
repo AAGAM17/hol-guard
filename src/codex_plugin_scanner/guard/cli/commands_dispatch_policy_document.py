@@ -11,6 +11,13 @@ from typing import Protocol, TextIO, cast
 
 from ...version import __version__
 from ..approval_gate import ApprovalGateError, require_high_risk
+from ..business_policy_document_import import (
+    compile_document_for_import,
+    has_business_rules,
+    plan_document_for_import,
+    read_business_document_for_store,
+)
+from ..native_policy_snapshot_constants import NativePolicySnapshotError
 from ..policy_authority import PolicyAuthorityError
 from ..policy_document import policy_document_digest
 from ..policy_document_authority import policy_import_approval_binding
@@ -73,13 +80,13 @@ def _now() -> str:
 
 def _load_and_compile(path: Path):
     document = load_trusted_policy_document(path)
-    return document, compile_policy_document(document)
+    return document, compile_document_for_import(document)
 
 
 def _compile_for_local_store(path: Path):
     document = load_trusted_policy_document(path)
     try:
-        return document, compile_policy_document(document), None
+        return document, compile_document_for_import(document), None
     except PolicyCompilationError as error:
         if error.code != "command_expression_requires_guard_3_1_runtime":
             raise
@@ -134,7 +141,9 @@ def _run_guard_policy_document_command(
                     "local_store_compilable": local_store_error is None,
                     "local_store_reason": local_store_error.code if local_store_error is not None else None,
                     "message": (
-                        f"Valid Guard policy: {document.metadata.id} ({len(compiled)} rows)"
+                        f"Valid Guard policy: {document.metadata.id} ({len(document.rules)} business rules)"
+                        if has_business_rules(document)
+                        else f"Valid Guard policy: {document.metadata.id} ({len(compiled)} rows)"
                         if local_store_error is None
                         else f"Valid Guard 3.0 policy: {document.metadata.id}"
                     ),
@@ -237,7 +246,10 @@ def _run_guard_policy_document_command(
                     approval_gate_input=gate_input,
                 )
             rows = store.list_policy_decisions()
-            document = build_policy_document_from_rows(rows, include_provenance=include_provenance)
+            business_document = read_business_document_for_store(store)
+            if business_document is not None and not include_provenance:
+                raise NativePolicySnapshotError("native_business_source_export_requires_provenance")
+            document = business_document or build_policy_document_from_rows(rows, include_provenance=include_provenance)
             formatted = format_policy_document_yaml(document)
             output_value = getattr(args, "output", None) if command == "export" else None
             payload: dict[str, object] = {
@@ -315,12 +327,12 @@ def _run_guard_policy_document_command(
                 return 4
             document, compiled = _load_and_compile(Path(args.file))
             mode = cast(PolicyImportMode, args.mode)
-            current_document = build_policy_document_from_rows(
+            current_document = read_business_document_for_store(store) or build_policy_document_from_rows(
                 store.list_policy_decisions(),
                 include_provenance=True,
             )
             difference = diff_policy_documents(current_document, document)
-            plan = store.plan_policy_document_import(compiled, mode=mode)
+            plan = plan_document_for_import(store, document, compiled, mode)
             dry_run = bool(args.dry_run)
             if dry_run:
                 _write_payload(
@@ -379,7 +391,7 @@ def _run_guard_policy_document_command(
                     "additions": list(plan.additions),
                     "replacements": list(plan.replacements),
                     "removals": list(plan.removals),
-                    "message": f"Imported {result.inserted} policy rows.",
+                    "message": f"Imported {result.inserted} policy rules.",
                 },
                 as_json=as_json,
                 output_stream=output_stream,
@@ -393,6 +405,7 @@ def _run_guard_policy_document_command(
         PolicyCompilationError,
         PolicyDocumentError,
         PolicyFileTrustError,
+        NativePolicySnapshotError,
     ) as error:
         code = getattr(error, "code", error.__class__.__name__)
         _write_payload(

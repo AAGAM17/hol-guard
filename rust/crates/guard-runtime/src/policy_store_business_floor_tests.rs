@@ -2,14 +2,14 @@ use super::*;
 
 fn business_snapshot(generation: u64, key: &[u8], root: &Path) -> PolicySnapshotV3 {
     let mut snapshot = signed_snapshot(generation, key, root);
-    snapshot.business_policy = Some(
-        serde_json::from_value(serde_json::json!({
-            "schema":"guard.native-business-policy.v1", "version":1,
-            "defaultAction":"block", "sourceDocumentDigest":"c".repeat(64), "rules":[]
-        }))
-        .unwrap(),
+    business_source_tests::install_source(
+        &mut snapshot,
+        &business_source_tests::source_document(),
+        generation,
+        key,
+        root,
+        guard_policy_snapshot::business_source_anchor::BusinessSourcePhase::Committed,
     );
-    command_floor_tests::resign(&mut snapshot, key);
     snapshot
 }
 

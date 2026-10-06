@@ -44,6 +44,8 @@ struct VerifyRequest {
     version: u16,
     verifier_key: PublisherKey,
     record_json: String,
+    #[serde(default)]
+    retained_floor: Option<guard_policy_snapshot::business_source_authority::BusinessSourceFloor>,
 }
 
 #[derive(Deserialize)]
@@ -116,6 +118,11 @@ fn verify_from_reader(reader: impl Read) -> Result<Vec<u8>, String> {
     }
     let source = verify_business_source(request.record_json.as_bytes(), &request.verifier_key.0)
         .map_err(|_| ERROR.to_owned())?;
+    if let Some(floor) = request.retained_floor.as_ref() {
+        source
+            .check_retained_floor(floor)
+            .map_err(|_| ERROR.to_owned())?;
+    }
     let response = json!({
         "schema":"guard.business-source-verification.v1", "version":1,
         "authentication":"provided_key_verified", "approval":"not_checked",

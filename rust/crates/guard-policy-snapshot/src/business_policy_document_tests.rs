@@ -163,6 +163,29 @@ fn inactive_only_documents_do_not_create_a_default_business_floor() {
 }
 
 #[test]
+fn binding_capacity_overflow_is_distinct_from_malformed_source() {
+    for count in [256, 257] {
+        let mut source = document();
+        let template = source["spec"]["rules"][0].clone();
+        source["spec"]["rules"] = Value::Array(
+            (0..count)
+                .map(|index| {
+                    let mut rule = template.clone();
+                    rule["id"] = json!(format!("rule.{index}"));
+                    rule
+                })
+                .collect(),
+        );
+        let result = compile_business_document(&source);
+        if count == 256 {
+            assert_eq!(result.unwrap().binding().rules.len(), 256);
+        } else {
+            assert_eq!(result.unwrap_err(), BusinessDocumentError::Bounds);
+        }
+    }
+}
+
+#[test]
 fn whole_document_compilation_agrees_with_shared_business_vectors() {
     let vectors: Value = serde_json::from_str(include_str!(
         "../../../../contracts/business-policy/selector-v1-fixtures.json"

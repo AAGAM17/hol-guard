@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-const MAX_DOCUMENT_BYTES: usize = 1_048_576;
+pub const MAX_BUSINESS_POLICY_DOCUMENT_BYTES: usize = 1_048_576;
 const MAX_DOCUMENT_DEPTH: usize = 32;
 const CANONICAL_SCHEMA: &str = include_str!("../../../../spec/guard-policy/v1alpha1/schema.json");
 
@@ -71,7 +71,7 @@ fn validate_tree(
     label_keys: bool,
 ) -> Result<(), BusinessDocumentError> {
     *budget = budget.saturating_add(1);
-    if depth > MAX_DOCUMENT_DEPTH || *budget > MAX_DOCUMENT_BYTES {
+    if depth > MAX_DOCUMENT_DEPTH || *budget > MAX_BUSINESS_POLICY_DOCUMENT_BYTES {
         return Err(BusinessDocumentError::Bounds);
     }
     match value {
@@ -100,7 +100,7 @@ fn validate_tree(
         }
         Value::String(value) => {
             *budget = budget.saturating_add(value.len());
-            if value.chars().count() > 4096 || *budget > MAX_DOCUMENT_BYTES {
+            if value.chars().count() > 4096 || *budget > MAX_BUSINESS_POLICY_DOCUMENT_BYTES {
                 return Err(BusinessDocumentError::Bounds);
             }
         }
@@ -139,7 +139,7 @@ pub fn compile_business_document(
     validate_tree(document, 0, &mut 0, false)?;
     let canonical_source =
         canonical_json_bytes(document).map_err(|_| BusinessDocumentError::InvalidDocument)?;
-    if canonical_source.len() > MAX_DOCUMENT_BYTES {
+    if canonical_source.len() > MAX_BUSINESS_POLICY_DOCUMENT_BYTES {
         return Err(BusinessDocumentError::Bounds);
     }
     if !validator()?.is_valid(document) {
@@ -214,6 +214,9 @@ pub fn compile_business_document(
     }
     if rules.is_empty() {
         return Err(BusinessDocumentError::UnsupportedRule);
+    }
+    if rules.len() > crate::POLICY_SNAPSHOT_MAX_MAP_ENTRIES {
+        return Err(BusinessDocumentError::Bounds);
     }
     let binding = BusinessPolicyBindingV1 {
         schema: BUSINESS_POLICY_BINDING_SCHEMA.to_owned(),

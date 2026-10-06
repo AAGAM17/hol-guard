@@ -45,9 +45,14 @@ const DOCKER_LAB_GUARD_HOSTS: &[&str] = &["host.docker.internal"];
 /// machine: the nonce fast-path, bounded 429 waits, gateway retries, the
 /// generic nonce challenge, and one longer-timeout retry.
 const SYNC_NONCE_RETRY_LIMIT: u32 = 3;
-const SYNC_RATE_LIMIT_RETRY_LIMIT: u32 = 3;
+/// `runner.py:5054` — `rate_limit_retry_count < 2`.
+const SYNC_RATE_LIMIT_RETRY_LIMIT: u32 = 2;
+/// `runner.py:802` — `_SYNC_RETRYABLE_GATEWAY_MAX_ATTEMPTS`.
 const SYNC_GATEWAY_RETRY_LIMIT: u32 = 2;
-const SYNC_429_MAX_WAIT_SECONDS: u64 = 30;
+/// `runner.py:3306` — a 429 with no `Retry-After` waits a minute, not a poll tick.
+const SYNC_429_DEFAULT_WAIT_SECONDS: f64 = 60.0;
+/// `runner.py:5056` — `time.sleep(min(retry_after, 120))`.
+const SYNC_429_MAX_WAIT_SECONDS: u64 = 120;
 const SYNC_GATEWAY_MAX_WAIT_SECONDS: u64 = 8;
 
 fn base64url(data: &[u8]) -> String {
@@ -689,8 +694,10 @@ fn sync_retry_poll_interval_seconds() -> f64 {
     env_timeout_seconds("GUARD_SYNC_RETRY_POLL_INTERVAL_SECONDS", 0.05, 0.01, 1.0)
 }
 
+/// `runner.py:801` — `_SYNC_RETRYABLE_GATEWAY_STATUS_CODES`, including the two
+/// Cloudflare codes (522, 524) whose omission stops a bounded retry early.
 fn status_is_retryable_gateway(status: u16) -> bool {
-    matches!(status, 502..=504)
+    matches!(status, 502..=504 | 522 | 524)
 }
 
 /// `runner.py:_guard_sync_retry_after_seconds` (:3502) — `Retry-After` header,
@@ -754,7 +761,7 @@ pub fn urlopen_with_sync_retries(
                 }
                 if status == 429 && rate_limit_retry_count < SYNC_RATE_LIMIT_RETRY_LIMIT {
                     rate_limit_retry_count += 1;
-                    let wait = retry_after_seconds(&headers, sync_retry_poll_interval_seconds())
+                    let wait = retry_after_seconds(&headers, SYNC_429_DEFAULT_WAIT_SECONDS)
                         .min(SYNC_429_MAX_WAIT_SECONDS as f64);
                     std::thread::sleep(Duration::from_secs_f64(
                         wait.max(sync_retry_poll_interval_seconds()),
@@ -933,5 +940,59 @@ fn map_ureq_error(error: ureq::Error) -> SyncHttpError {
         ureq::Error::StatusCode(code) => SyncHttpError::Other(format!("status: {code}")),
         ureq::Error::Http(e) => SyncHttpError::Other(format!("http: {e}")),
         other => SyncHttpError::Other(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod sync_retry_parity_tests {
+    use super::*;
+
+    /// `runner.py:801` retries two Cloudflare gateway codes the tighter list missed.
+    #[test]
+    fn retryable_gateway_statuses_match_the_python_set() {
+        for status in [502_u16, 503, 504, 522, 524] {
+            assert!(status_is_retryable_gateway(status), "{status} must retry");
+        }
+        for status in [500_u16, 501, 505, 421, 429, 525] {
+            assert!(
+                !status_is_retryable_gateway(status),
+                "{status} must not retry"
+            );
+        }
+    }
+
+    /// `runner.py:3306` waits a minute without `Retry-After`; `:5056` caps at 120.
+    #[test]
+    fn a_rate_limit_without_retry_after_waits_a_minute_capped_at_two_minutes() {
+        let empty = BTreeMap::new();
+        assert_eq!(
+            retry_after_seconds(&empty, SYNC_429_DEFAULT_WAIT_SECONDS),
+            60.0
+        );
+
+        let supplied: BTreeMap<String, String> = [("Retry-After".to_owned(), "45".to_owned())]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            retry_after_seconds(&supplied, SYNC_429_DEFAULT_WAIT_SECONDS)
+                .min(SYNC_429_MAX_WAIT_SECONDS as f64),
+            45.0
+        );
+
+        let long: BTreeMap<String, String> = [("Retry-After".to_owned(), "600".to_owned())]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            retry_after_seconds(&long, SYNC_429_DEFAULT_WAIT_SECONDS)
+                .min(SYNC_429_MAX_WAIT_SECONDS as f64),
+            SYNC_429_MAX_WAIT_SECONDS as f64
+        );
+    }
+
+    /// `runner.py:5054` allows two rate-limit retries; `:802` two gateway retries.
+    #[test]
+    fn retry_attempt_bounds_match_the_python_bounds() {
+        assert_eq!(SYNC_RATE_LIMIT_RETRY_LIMIT, 2);
+        assert_eq!(SYNC_GATEWAY_RETRY_LIMIT, 2);
     }
 }

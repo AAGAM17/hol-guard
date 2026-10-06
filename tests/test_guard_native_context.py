@@ -103,6 +103,9 @@ def _prime(
 
     monkeypatch.setattr(native_context, "native_resident_client_request", _client)
     monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    # Provisioning the resident's on-disk prerequisite is exercised on its own;
+    # these cases stay at the transport-binding level.
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _guard_home: True)
     return captured
 
 
@@ -122,6 +125,102 @@ def test_native_context_digest_missing_feature_returns_none(tmp_path: Path, monk
 def test_native_context_digest_incompatible_returns_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _prime(monkeypatch, status=_status(compatible=False))
     assert native_context.native_context_digest("launch_argv_digest", {"argv": ["x"]}, guard_home=tmp_path) is None
+
+
+def _seed_verifier_key(guard_home: Path) -> Path:
+    from codex_plugin_scanner.guard.native_policy_snapshot_constants import (
+        NATIVE_POLICY_VERIFIER_KEY_NAME,
+        NATIVE_RUNTIME_STATE_DIRECTORY,
+    )
+
+    key = guard_home / NATIVE_RUNTIME_STATE_DIRECTORY / NATIVE_POLICY_VERIFIER_KEY_NAME
+    key.parent.mkdir(parents=True, exist_ok=True)
+    key.write_bytes(b"\x07" * 32)
+    return key
+
+
+def _forget_prerequisite_memo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(native_context, "_RESIDENT_PREREQUISITE_HOMES", set())
+
+
+def test_resident_prerequisite_accepts_seeded_key_without_opening_a_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A home that already carries the verifier key must not need a store.
+
+    The resident only refuses to serve when that file is missing, so homes
+    whose key was seeded by an owner (the test harness, a repair path) must
+    keep working even when the home has no policy master to derive from.
+    """
+
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    _seed_verifier_key(guard_home)
+    _forget_prerequisite_memo(monkeypatch)
+
+    def _unexpected(_store: object) -> None:
+        raise AssertionError("a seeded home must not be provisioned again")
+
+    from codex_plugin_scanner.guard import native_policy_snapshot_publisher
+
+    monkeypatch.setattr(native_policy_snapshot_publisher, "provision_native_verifier_key_for_store", _unexpected)
+    assert native_context.ensure_resident_prerequisite(guard_home) is True
+
+
+def test_resident_prerequisite_provisions_a_missing_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A home without the key is provisioned from its store, once per process."""
+
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    _forget_prerequisite_memo(monkeypatch)
+    provisioned: list[Path] = []
+
+    from codex_plugin_scanner.guard import native_policy_snapshot_publisher
+
+    def _provision(store: object) -> None:
+        provisioned.append(Path(store.guard_home))
+        _seed_verifier_key(guard_home)
+
+    monkeypatch.setattr(native_policy_snapshot_publisher, "provision_native_verifier_key_for_store", _provision)
+    assert native_context.ensure_resident_prerequisite(guard_home) is True
+    assert native_context.ensure_resident_prerequisite(guard_home) is True
+    assert provisioned == [guard_home]
+
+
+def test_resident_prerequisite_reports_an_unprovisionable_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    _forget_prerequisite_memo(monkeypatch)
+
+    from codex_plugin_scanner.guard import native_policy_snapshot_publisher
+
+    def _fail(_store: object) -> None:
+        raise RuntimeError("no policy master")
+
+    monkeypatch.setattr(native_policy_snapshot_publisher, "provision_native_verifier_key_for_store", _fail)
+    assert native_context.ensure_resident_prerequisite(guard_home) is False
+
+
+def test_native_context_digest_does_not_ship_requests_to_an_unprovisionable_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the prerequisite every request would fail closed after a spawn."""
+
+    real_prerequisite = native_context.ensure_resident_prerequisite
+    captured = _prime(monkeypatch)
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    _forget_prerequisite_memo(monkeypatch)
+
+    from codex_plugin_scanner.guard import native_policy_snapshot_publisher
+
+    def _fail(_store: object) -> None:
+        raise RuntimeError("no policy master")
+
+    monkeypatch.setattr(native_policy_snapshot_publisher, "provision_native_verifier_key_for_store", _fail)
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", real_prerequisite)
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["x"]}, guard_home=guard_home) is None
+    assert captured == []
 
 
 def test_native_context_digest_happy_path_binds_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2494,4 +2494,87 @@ mod tests {
         .unwrap();
         assert_eq!(package_advisory_ids(&package), vec!["GHSA-X"]);
     }
+
+    /// `env -S` option clusters must terminate after an operand-consuming flag
+    /// (`short_index = len(token)` in `env_wrapper.parse_env_wrapper`). The port
+    /// omitted that advance, so the cluster loop re-read the same flag until
+    /// `ENV_SPLIT_MAX_EXPANSIONS` tripped and every `#!/usr/bin/env -S ...`
+    /// shebang resolved as `env_shebang_command_unresolved`.
+    #[test]
+    fn env_split_string_cluster_consumes_operand_once() {
+        for (args, expected) in [
+            (
+                vec!["-S", "python", "-m", "bootstrap"],
+                vec!["python", "-m", "bootstrap"],
+            ),
+            (
+                vec!["-S python -m bootstrap"],
+                vec!["python", "-m", "bootstrap"],
+            ),
+            (vec!["-Spython"], vec!["python"]),
+            (vec!["-u", "FOO", "cmd"], vec!["cmd"]),
+            (vec!["-C", "/tmp", "cmd"], vec!["cmd"]),
+            (vec!["cmd"], vec!["cmd"]),
+        ] {
+            let tokens: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+            let parsed = crate::env_wrapper::parse_env_wrapper(&tokens, None, None);
+            assert_eq!(parsed.error, None, "{args:?}");
+            assert!(parsed.complete, "{args:?}");
+            assert_eq!(parsed.executable_argv, expected, "{args:?}");
+        }
+    }
+
+    /// Descriptor-race parity for the ported executable hasher. The Python
+    /// `test_windows_executable_hash_keeps_descriptor_race_checks` matrix was
+    /// retired with the approval_context helper cluster; this keeps the same
+    /// decision contract on the Rust side: any stat field that moves between
+    /// the pre-open probe and the opened descriptor yields `identity_raced`
+    /// with no digest, while an unmoved stat verifies.
+    #[test]
+    fn executable_hash_reports_identity_races() {
+        let (_dir, path) = temp_script("#!/bin/sh\necho hi\n");
+        let expected = stat_key(&fs::metadata(&path).unwrap());
+        let (digest, status, _shebang, _shebang_status) = cached_executable_hash(&path, expected);
+        assert_eq!(status, "verified");
+        assert!(digest.is_some());
+
+        fn assert_identity_raced(path: &Path, expected: StatKey) {
+            let (digest, status, _shebang, _shebang_status) =
+                cached_executable_hash(path, expected);
+            assert_eq!(status, "identity_raced");
+            assert!(digest.is_none());
+        }
+
+        let mut raced = expected;
+        raced.ino += 1;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.mode &= !0o111;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.mtime_ns += 1;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.ctime_ns += 1;
+        assert_identity_raced(&path, raced);
+
+        let mut raced = expected;
+        raced.size += 1;
+        assert_identity_raced(&path, raced);
+    }
+
+    /// `O_NOFOLLOW` must reject a final-component symlink exactly like the
+    /// Python `os.open(..., O_NOFOLLOW)` it replaced: nothing is hashed.
+    #[cfg(unix)]
+    #[test]
+    fn executable_hash_refuses_final_symlink() {
+        let (dir, path) = temp_script("#!/bin/sh\necho hi\n");
+        let link = dir.path().join("link.sh");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        let expected = stat_key(&fs::metadata(&link).unwrap());
+        assert_eq!(cached_executable_hash(&link, expected).1, "open_failed");
+    }
 }

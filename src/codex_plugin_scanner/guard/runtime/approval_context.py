@@ -12,7 +12,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -21,7 +20,6 @@ from pathlib import Path
 from typing import Literal, TypeGuard, cast
 
 from ..native_context import _UNBOUND_PREFIX
-from .env_wrapper import parse_env_wrapper
 from .extension_control_runtime import current_extension_control_binding_digest
 
 APPROVAL_CONTEXT_TOKEN_PREFIX = "guard-approval-context:v1:"
@@ -302,7 +300,6 @@ def saved_allow_context_validation_reason(
     return approval_context_tokens_validation_reason(decision.get("artifact_hash"), artifact_hash)
 
 
-
 def build_runtime_executable_identity(
     command: object,
     *,
@@ -330,7 +327,6 @@ def build_runtime_executable_identity(
         home_dir=home_dir,
         require_executable=require_executable,
     )
-
 
 
 def build_runtime_launch_identity(
@@ -508,7 +504,6 @@ def build_configured_header_values_hash(
         # reject this sentinel rather than treat it as an exact binding.
         return f"{_UNBOUND_PREFIX}configured-headers"
     return cast(str, result["digest"])
-
 
 
 def _is_sha256_hex(value: object) -> TypeGuard[str]:

@@ -2025,6 +2025,7 @@ def test_matching_saved_allow_is_composed_non_consumingly_before_any_claim(
     assert item["approval_reuse_reason_code"] == reason_code
 
 
+@pytest.mark.usefixtures("native_context_digest")
 def test_evaluation_records_exact_saved_allow_without_claiming_before_launch(
     tmp_path: Path,
 ) -> None:

@@ -198,6 +198,7 @@ class _FailingAccessGraphEventStore(GuardStore):
         super().add_guard_event_v1(event)
 
 
+@pytest.mark.usefixtures("native_context_digest")
 def test_access_graph_queue_failure_does_not_block_local_approval_decision(tmp_path: Path) -> None:
     store = _FailingAccessGraphEventStore(tmp_path / "guard-home")
     _seed_guard_cloud(store, workspace_id="workspace-alpha")

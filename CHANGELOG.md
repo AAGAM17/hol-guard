@@ -16,6 +16,10 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 * **mcp:** the resident owns MCP call-argument display safety — `_safe_mcp_arguments`/`_safe_mcp_params`/`_mcp_arguments_digest`/`_launch_target` and the stdio `_redact_json` traffic recorder delegate to `mcp_arguments_projection`/`mcp_redact_json` context-digest ops; Python keeps no fallback masking path.
 * **sync:** port the Guard-Cloud sync transport into the resident — OAuth credential read, ES256 DPoP proof signing (ring PKCS#8→r||s JWT), issuer/sync-endpoint origin allowlisting, and the bounded `ureq` retry state machine (DPoP nonce fast-path, 429 waits, gateway retries, one longer-timeout retry). `GuardSyncRequest` carries the `retry_context` side-channel so nonce/timeout retries re-sign proofs without re-reading credentials. Token refresh and bundle-sync orchestration remain Python-owned until the secret-store write path is ported; an expired cached token resolves to the authorization-expired `ask` rather than a silent local-only downgrade, and `supply-chain-cloud-transport-v1` is not yet advertised so production evaluation keeps routing through the Python refresh path.
 
+### Bug Fixes
+
+* **native:** the context-digest transport now establishes the resident's on-disk prerequisite (the owner-private `policy-verifier.key` under `<guard-home>/native-runtime/`) before shipping a request, the way every native launch/session caller already did. Launch and executable identities became resident-owned, so a guard home that had never been provisioned — a fresh deployment, or a test home carrying a seeded key — failed closed on `native_runtime_launch_identity_unavailable`, `native_mcp_launch_environment_unavailable`, and `native_package_context_digest_unavailable`. An existing key file is accepted as satisfied without opening a store; only a missing key is provisioned, once per home per process.
+
 ## [3.25.2](https://github.com/hashgraph-online/hol-guard/compare/v3.25.1...v3.25.2) (2026-10-05)
 
 

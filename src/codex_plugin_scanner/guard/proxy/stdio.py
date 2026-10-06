@@ -391,8 +391,14 @@ class StdioGuardProxy:
         self._active_env_values_hash: str | None = None
         if guard_store is not None:
             from ..native_context import bind_context_digest_home
+            from ..native_policy_snapshot_publisher import ensure_native_launch_resident_verifier
 
             bind_context_digest_home(getattr(guard_store, "guard_home", None))
+            # A standalone stdio proxy never starts the snapshot publisher, so
+            # it owns the same one-time verifier prerequisite before the
+            # resident will serve `mcp_stdio_session_*`. A failure here must
+            # raise: there is no Python fallback for the resident session.
+            ensure_native_launch_resident_verifier(guard_store)
 
     def _response_timeout_seconds(self) -> float:
         configured = getattr(self.guard_config, "approval_wait_timeout_seconds", None)
@@ -518,11 +524,7 @@ class StdioGuardProxy:
             # teardown). argv is None when the launch identity did not yield a
             # verified executable, so the resident cannot take the child —
             # keep the Python pipe transport for that case only.
-            argv = (
-                [executable] + [str(a) for a in self.command[1:]]
-                if isinstance(executable, str)
-                else None
-            )
+            argv = [executable] + [str(a) for a in self.command[1:]] if isinstance(executable, str) else None
             guard_home = getattr(self.guard_store, "guard_home", None)
             native_session_id = (
                 f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}"
@@ -548,12 +550,13 @@ class StdioGuardProxy:
                 # status is terminal — never fall back to the Python transport
                 # on a real open failure.
                 if opened.get("status") != "opened":
-                    raise RuntimeError(
-                        f"native stdio session open failed: {opened.get('payload')}"
-                    )
-                native_session_id = str(opened.get("session_id", "")) or None
-                if native_session_id is None:
-                    raise RuntimeError("native stdio session open returned no session_id")
+                    raise RuntimeError(f"native stdio session open failed: {opened.get('payload')}")
+                # Resident echoes the caller-supplied session id in `payload`
+                # (same contract the runtime MCP proxy relies on). Keep our own
+                # id and cross-check the echo rather than inventing a field the
+                # result schema does not carry.
+                if opened.get("payload") != native_session_id:
+                    raise RuntimeError("native stdio session open returned an unexpected session id")
                 if not self._active_launch_identity_matches(launch_env):
                     raise ProxyLaunchIdentityChangedError(
                         "Guard stdio proxy launch identity changed while starting the MCP server."
@@ -1057,14 +1060,14 @@ class StdioGuardProxy:
                     # lines; ask it for the next one with the same timeout.
                     frame = process.stdout.next_frame(timeout_seconds, required=True)
                     if frame is None or frame.error is not None:
-                        raise frame.error if frame is not None else ProxyIoTimeoutError(
-                            source="child_response", timeout_seconds=timeout_seconds
+                        raise (
+                            frame.error
+                            if frame is not None
+                            else ProxyIoTimeoutError(source="child_response", timeout_seconds=timeout_seconds)
                         )
                     line = frame.line
                 else:
-                    line = _readline_with_timeout(
-                        process.stdout, timeout_seconds, source="child_response"
-                    )
+                    line = _readline_with_timeout(process.stdout, timeout_seconds, source="child_response")
             except ProxyIoTimeoutError:
                 _quarantine_process(process)
                 return _timeout_response(

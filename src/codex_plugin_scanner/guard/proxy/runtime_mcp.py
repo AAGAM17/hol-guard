@@ -634,23 +634,14 @@ def _configured_server_launch_environment(configured_keys: Sequence[str]) -> dic
 def _ensure_native_launch_resident_verifier(store: GuardStore) -> None:
     """Provision the resident verifier key before any native launch RPC.
 
-    Production hook entry provisions this through the policy snapshot
-    publisher at worker start.  A proxy constructed standalone (the CLI MCP
-    proxy entrypoints) never starts that publisher, so it must establish the
-    same one-time prerequisite itself before touching a native launch RPC —
-    otherwise the resident either refuses to serve, or if some other process
-    already provisioned a *different* key for this guard home, authentic
-    approvals signed with this store's key would never verify.  Unlike the
-    best-effort pre-tool floor helper, launch-environment resolution has no
-    Python fallback, so a failure here must raise rather than proceed.
+    See `native_policy_snapshot_publisher.ensure_native_launch_resident_verifier`
+    — the same prerequisite is shared with the stdio proxy, which opens native
+    resident sessions through a different entrypoint.
     """
 
-    from ..native_policy_snapshot_publisher import provision_native_verifier_key_for_store
+    from ..native_policy_snapshot_publisher import ensure_native_launch_resident_verifier
 
-    # The provisioner is idempotent for a matching key and validates any
-    # existing file (regular, private, content-equal to this store's derived
-    # key), so always run it rather than short-circuiting on mere existence.
-    provision_native_verifier_key_for_store(store)
+    ensure_native_launch_resident_verifier(store)
 
 
 @dataclass(frozen=True, slots=True)

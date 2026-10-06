@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 import time
 import uuid
@@ -39,13 +40,29 @@ _REQUEST_SCHEMA = "guard-context-digest-request.v1"
 _RESULT_SCHEMA = "guard-context-digest-result.v1"
 _RESULT_REQUIRED_KEYS = {"schema", "request_id", "request_sha256", "status", "code"}
 _RESULT_OPTIONAL_KEYS = {
-    "token", "digest", "validation_reason", "environment_values", "package_context",
-    "mcp_server_identity", "mcp_tool_identity", "package_launcher",
-    "mcp_descriptor", "browser_mcp", "mcp_tool_risk", "mcp_tool_policy",
-    "mcp_launch_environment", "mcp_launch_target", "mcp_safe_arguments",
-    "mcp_serialized_arguments", "mcp_redacted_value", "runtime_identity",
-    "runtime_identity_match", "runtime_identity_reusable",
-    "runtime_resolved_executable", "runtime_resolved_argv", "tool_catalog",
+    "token",
+    "digest",
+    "validation_reason",
+    "environment_values",
+    "package_context",
+    "mcp_server_identity",
+    "mcp_tool_identity",
+    "package_launcher",
+    "mcp_descriptor",
+    "browser_mcp",
+    "mcp_tool_risk",
+    "mcp_tool_policy",
+    "mcp_launch_environment",
+    "mcp_launch_target",
+    "mcp_safe_arguments",
+    "mcp_serialized_arguments",
+    "mcp_redacted_value",
+    "runtime_identity",
+    "runtime_identity_match",
+    "runtime_identity_reusable",
+    "runtime_resolved_executable",
+    "runtime_resolved_argv",
+    "tool_catalog",
 }
 _RESULT_CODES = {
     "ok",
@@ -98,6 +115,11 @@ _last_bound_home: Path | None = None
 _RESULT_CACHE_LOCK = threading.Lock()
 _RESULT_CACHE: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
 _RESULT_CACHE_MAX = 256
+# Guard homes whose resident on-disk prerequisite is already established by
+# this process.  Provisioning is idempotent but builds a store, so the result
+# is remembered; a child process re-establishes it (see `forget_in_child`).
+_RESIDENT_PREREQUISITE_LOCK = threading.Lock()
+_RESIDENT_PREREQUISITE_HOMES: set[str] = set()
 # ``native_runtime_status()`` re-reads and SHA-256-hashes the whole runtime
 # binary per call.  Batch digest sites (``environment_material`` hashes one
 # value per env var, launch verification re-hashes argv/shebang/search-path)
@@ -153,6 +175,7 @@ def _native_runtime_status_memo() -> NativeRuntimeStatus:
 
 
 forget_in_child(_RESULT_CACHE)
+forget_in_child(_RESIDENT_PREREQUISITE_HOMES)
 
 
 def bind_context_digest_home(guard_home: Path | None, *, remember: bool = True) -> Any:
@@ -187,6 +210,55 @@ def _resolve_digest_home(guard_home: Path | None) -> Path:
     from .runtime.approval_context import _context_digest_guard_home
 
     return _context_digest_guard_home(str(Path.home()))
+
+
+def ensure_resident_prerequisite(guard_home: Path) -> bool:
+    """Establish the resident's on-disk prerequisite for ``guard_home``.
+
+    The resident refuses every request until the owner-private verifier key
+    exists under the home's runtime state, and it never creates that state
+    itself.  Native launch/session callers have always provisioned it before
+    their RPC; the plain digest transport never did, because launch and
+    executable identities used to be computed in Python.  Now that the
+    resident owns them, the transport must establish the same prerequisite or
+    every identity request fails closed.
+
+    An existing key file is taken as satisfied without touching the store:
+    callers that ship their own key (the test harness seeds one, and every
+    production entry point provisions before its first RPC) must not need a
+    secret-store master that their guard home was never given.  Returns
+    ``False`` when a missing prerequisite cannot be created, which callers
+    report as an unavailable runtime rather than a crash.
+    """
+
+    try:
+        key = str(canonical_guard_home_path(guard_home))
+    except OSError:
+        key = str(guard_home)
+    with _RESIDENT_PREREQUISITE_LOCK:
+        if key in _RESIDENT_PREREQUISITE_HOMES:
+            return True
+    from .native_policy_snapshot_constants import (
+        NATIVE_POLICY_VERIFIER_KEY_NAME,
+        NATIVE_RUNTIME_STATE_DIRECTORY,
+    )
+
+    if os.path.isfile(guard_home / NATIVE_RUNTIME_STATE_DIRECTORY / NATIVE_POLICY_VERIFIER_KEY_NAME):
+        with _RESIDENT_PREREQUISITE_LOCK:
+            _RESIDENT_PREREQUISITE_HOMES.add(key)
+        return True
+    try:
+        from .native_policy_snapshot_publisher import provision_native_verifier_key_for_store
+        from .store import GuardStore
+
+        provision_native_verifier_key_for_store(GuardStore(guard_home))
+    except Exception:
+        # Nothing to fall back to: the resident is the only authority for these
+        # digests, so an unprovisionable home is an unavailable runtime.
+        return False
+    with _RESIDENT_PREREQUISITE_LOCK:
+        _RESIDENT_PREREQUISITE_HOMES.add(key)
+    return True
 
 
 @contextmanager
@@ -519,6 +591,8 @@ def native_context_digest(
         or timeout_seconds <= 0
     ):
         return None
+    if not ensure_resident_prerequisite(guard_home):
+        return None
     deadline_started = time.monotonic()
     deadline_budget_ms = max(1, min(9_000, int(timeout_seconds * 1_000)))
     deadline_monotonic = deadline_started + deadline_budget_ms / 1_000
@@ -534,9 +608,7 @@ def native_context_digest(
         # Cache on the request *content* — `request_id` is random per call, so
         # it is excluded from the canonical material.
         content_sha256 = (
-            _canonical_request_sha256({"kind": kind, **kind_fields})
-            if kind not in _UNCACHEABLE_DIGEST_KINDS
-            else None
+            _canonical_request_sha256({"kind": kind, **kind_fields}) if kind not in _UNCACHEABLE_DIGEST_KINDS else None
         )
     except (TypeError, ValueError):
         # Components the canonical encoder cannot express (non-JSON values,
@@ -749,6 +821,20 @@ def context_mcp_launch_environment(
     return values
 
 
+def _ambient_launch_environment(launch_env: Mapping[str, str] | None) -> dict[str, str]:
+    """Mirror `launch_env if launch_env is not None else os.environ`.
+
+    The resident is spawned through `_isolated_environment`, which deliberately
+    drops PATH (and every other credential-bearing variable) on POSIX.  A caller
+    that supplies no launch environment would therefore lose the ambient PATH
+    and every interpreter/module entrypoint would resolve as `unresolved` —
+    the in-process reference implementation read `os.environ` here.  Forward the
+    ambient environment so the native decision sees exactly what Python saw.
+    """
+
+    return dict(launch_env) if launch_env is not None else dict(os.environ)
+
+
 def context_runtime_executable_identity(
     command: object,
     *,
@@ -763,7 +849,10 @@ def context_runtime_executable_identity(
         "runtime_executable_identity",
         {
             "command": command if command is None or isinstance(command, (str, int, float, bool, list, dict)) else None,
-            "search_path": search_path,
+            # The in-process reference resolved a bare command with
+            # `shutil.which(..., path=search_path or os.environ["PATH"])`; the
+            # resident cannot see the ambient PATH, so fall back here.
+            "search_path": search_path if search_path is not None else os.environ.get("PATH"),
             "cwd": str(cwd) if cwd is not None else None,
             "home_dir": str(home_dir) if home_dir is not None else None,
             "require_executable": require_executable,
@@ -799,7 +888,7 @@ def context_runtime_launch_identity(
             "search_path": search_path,
             "cwd": str(cwd) if cwd is not None else None,
             "home_dir": str(home_dir) if home_dir is not None else None,
-            "launch_env": dict(launch_env) if launch_env is not None else None,
+            "launch_env": _ambient_launch_environment(launch_env),
         },
         guard_home=_resolve_digest_home(guard_home),
     )
@@ -832,7 +921,7 @@ def context_runtime_launch_identity_matches(
             "direct_executable": direct_executable,
             "search_path": search_path,
             "cwd": str(cwd) if cwd is not None else None,
-            "launch_env": dict(launch_env) if launch_env is not None else None,
+            "launch_env": _ambient_launch_environment(launch_env),
         },
         guard_home=_resolve_digest_home(guard_home),
     )
@@ -1080,10 +1169,7 @@ def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: boo
     return digest, tuple(categories)
 
 
-
-def context_mcp_arguments_projection(
-    tool_name: str, arguments: object
-) -> tuple[object, str, str]:
+def context_mcp_arguments_projection(tool_name: str, arguments: object) -> tuple[object, str, str]:
     """`_safe_mcp_arguments` + `_mcp_arguments_digest` + `_launch_target`, one op.
 
     Returns ``(safe_arguments, launch_target, digest)``. ``arguments`` may be
@@ -1093,7 +1179,9 @@ def context_mcp_arguments_projection(
     """
     fields = json.loads(json.dumps({"tool_name": tool_name, "arguments": arguments}))
     result = native_context_digest(
-        "mcp_arguments_projection", fields, guard_home=_resolve_digest_home(None),
+        "mcp_arguments_projection",
+        fields,
+        guard_home=_resolve_digest_home(None),
     )
     ok = isinstance(result, dict) and result.get("status") == "ok"
     launch_target = result.get("mcp_launch_target") if ok else None
@@ -1114,7 +1202,9 @@ def context_mcp_redact_json(value: object) -> object:
     """stdio `_redact_json` parity for recorded MCP traffic; terminal on failure."""
     fields = json.loads(json.dumps({"material": value}))
     result = native_context_digest(
-        "mcp_redact_json", fields, guard_home=_resolve_digest_home(None),
+        "mcp_redact_json",
+        fields,
+        guard_home=_resolve_digest_home(None),
     )
     ok = isinstance(result, dict) and result.get("status") == "ok"
     if not ok or "mcp_redacted_value" not in result:

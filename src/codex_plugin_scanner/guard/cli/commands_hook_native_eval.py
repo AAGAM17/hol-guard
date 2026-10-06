@@ -50,6 +50,10 @@ from ..local_supply_chain import (
 )
 from ..models import GuardAction
 from ..package_execution_context import PackageExecutionContext, build_package_execution_context
+from ..native_package_authority import (
+    apply_stored_package_policy_native,
+    evaluation_from_native_payload,
+)
 from ..runtime.approval_context import approval_context_tokens_validation_reason
 from ..runtime.approval_reuse import (
     APPROVAL_REUSE_CLAIM_FAILED,
@@ -287,6 +291,41 @@ def _runtime_cisco_scanner_evidence(
             if signal not in evidence:
                 evidence.append(signal)
     return tuple(evidence)
+
+
+def _apply_stored_package_policy_via_resident(
+    package_evaluation,
+    *,
+    store,
+    guard_home: Path,
+    artifact,
+    artifact_hash: str,
+    workspace_dir: Path,
+    now: str,
+    current_action: object | None,
+    claim_saved_approval: bool,
+):
+    """Route the saved-package-policy claim through the resident.
+
+    The resident is the sole authority for the stored-approval claim. When it
+    is unreachable (``None`` — transport/identity failure) the evaluation is
+    returned unchanged: no saved approval is applied, matching the resident's
+    own no-saved-approval result rather than re-running a Python path.
+    """
+    payload = apply_stored_package_policy_native(
+        package_evaluation.to_dict(),
+        artifact.to_dict(),
+        store_path=store.path,
+        guard_home=guard_home,
+        artifact_hash=artifact_hash,
+        workspace_dir=workspace_dir,
+        now=now,
+        current_action=current_action,
+        claim_saved_approval=claim_saved_approval,
+    )
+    if payload is None:
+        return package_evaluation
+    return evaluation_from_native_payload(payload)
 
 
 def evaluate_native_artifact_hook(
@@ -898,14 +937,14 @@ def evaluate_native_artifact_hook(
     if package_evaluation is not None:
         # Package approval lookup/claim is deferred until every current policy,
         # data-flow, and scanner input has been composed.
-        package_evaluation = apply_stored_package_policy_override(
+        package_evaluation = _apply_stored_package_policy_via_resident(
             package_evaluation,
             store=store,
+            guard_home=context.guard_home,
             artifact=runtime_artifact,
             artifact_hash=runtime_artifact_hash,
             workspace_dir=runtime_workspace or Path.cwd(),
             now=_now(),
-            execution_context=package_execution_context,
             current_action=current_policy_action,
             claim_saved_approval=_claim_saved_approval,
         )

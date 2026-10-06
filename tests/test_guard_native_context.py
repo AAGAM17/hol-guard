@@ -315,6 +315,39 @@ def test_native_context_digest_retries_a_timeout_once_with_the_allowance(
     assert remaining[1] > int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000) - 500
 
 
+def test_native_context_digest_retries_a_timeout_that_already_had_the_allowance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A contended cold start must be retried, not trusted to a single allowance.
+
+    The first attempt's allowance covers a spawn that has not finished; the
+    second attempt finds the process resident and its binary in page cache, so
+    a timeout there is evidence of contention rather than of a dead runtime.
+    """
+
+    remaining: list[float] = []
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "native_resident_client_ready", lambda _executable, _home: False)
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: "native_client_timed_out")
+    outcomes: list[bytes | None] = [None]
+
+    def _client(*_args: object, **kwargs: object) -> bytes | None:
+        envelope = json.loads(kwargs["payload"])
+        remaining.append((kwargs["deadline_monotonic"] - time.monotonic()) * 1_000)
+        return outcomes.pop(0) if outcomes else _ok_result(envelope["request"])
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", _client)
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home)
+    allowance_ms = int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
+    assert len(remaining) == 2
+    assert remaining[0] > allowance_ms - 500
+    assert remaining[1] > allowance_ms - 500
+
+
 def test_native_context_digest_does_not_retry_other_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A failure more time cannot fix must fail once, not twice."""
 

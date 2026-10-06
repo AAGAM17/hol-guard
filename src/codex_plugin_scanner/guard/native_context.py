@@ -723,12 +723,14 @@ def native_context_digest(
         )
         if output is not None or native_resident_client_failure_code() != _TIMEOUT_FAILURE_CODE:
             break
-        if cold_start:
-            # The allowance was already granted; more time will not help.
-            break
-        cold_start = True
-        budget_seconds += _COLD_START_ALLOWANCE_SECONDS
-        deadline_monotonic = time.monotonic() + timeout_seconds + _COLD_START_ALLOWANCE_SECONDS
+        # Retry even when the first attempt already carried the allowance: on a
+        # contended runner the allowance covers a spawn that has not finished
+        # and a lock queue behind a sibling's RPC, and the second attempt finds
+        # the process resident and the binary in page cache.  "More time will
+        # not help" is true only of a resident that is gone, which the failure
+        # code distinguishes after the retry.
+        budget_seconds = timeout_seconds + _COLD_START_ALLOWANCE_SECONDS
+        deadline_monotonic = time.monotonic() + budget_seconds
     if output is None:
         # The client's own code ("native_client_timed_out",
         # "native_client_pool_exhausted", ...) is the actionable half of this.

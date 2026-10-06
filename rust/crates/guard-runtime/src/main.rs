@@ -33,6 +33,7 @@ mod oneshot;
 mod package_authority_op;
 mod policy_enforcement;
 mod policy_integrity_resolver;
+mod policy_snapshot_build;
 mod policy_store;
 mod prompt_analyze_op;
 mod resident_client;
@@ -172,6 +173,10 @@ fn run() -> Result<(), String> {
         [command, flag] if command == "hook" && flag == "--stdin" => {
             let bytes = read_stdin_bounded()?;
             let response = oneshot::evaluate_hook_bytes(&bytes)?;
+            write_bytes_response(&response)
+        }
+        [command, flag] if policy_snapshot_build::is_command(command) && flag == "--stdin" => {
+            let response = policy_snapshot_build::run_command(command, io::stdin().lock())?;
             write_bytes_response(&response)
         }
         [command, state_flag, state_dir]
@@ -392,7 +397,7 @@ fn run() -> Result<(), String> {
             )
         }
         _ => Err(
-            "usage: hol-guard-runtime capabilities --json | rule-contract --json | self-test --json | hook --stdin | migrate-policy --state-dir STATE_DIR | prepare-approval-enrollment --state-dir STATE_DIR | enroll-approval-authority --state-dir STATE_DIR --record RECORD | prepare-approval-v4-enrollment --state-dir STATE_DIR --rp-id RP_ID --origin ORIGIN | enroll-approval-v4-authority --state-dir STATE_DIR --record RECORD | enroll-workspace-review-authority --state-dir STATE_DIR --record RECORD | workspace-review-decision --stdin STATE_DIR --request-id REQUEST_ID | hook-client --stdin STATE_DIR | resident-client --stdin STATE_DIR | resident-client-stream --stdin STATE_DIR | command-model --stdin | pre-tool --stdin | archive-inspect --stdin | context-digest --stdin | serve --socket PATH | serve --tcp-loopback 127.0.0.1:PORT | resident-stop --state-dir STATE_DIR [--retire-clients] | serve-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA | supervise-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA"
+            "usage: hol-guard-runtime capabilities --json | rule-contract --json | self-test --json | hook --stdin | policy-snapshot-build --stdin | policy-snapshot-inspect --stdin | migrate-policy --state-dir STATE_DIR | prepare-approval-enrollment --state-dir STATE_DIR | enroll-approval-authority --state-dir STATE_DIR --record RECORD | prepare-approval-v4-enrollment --state-dir STATE_DIR --rp-id RP_ID --origin ORIGIN | enroll-approval-v4-authority --state-dir STATE_DIR --record RECORD | enroll-workspace-review-authority --state-dir STATE_DIR --record RECORD | workspace-review-decision --stdin STATE_DIR --request-id REQUEST_ID | hook-client --stdin STATE_DIR | resident-client --stdin STATE_DIR | resident-client-stream --stdin STATE_DIR | command-model --stdin | pre-tool --stdin | archive-inspect --stdin | context-digest --stdin | serve --socket PATH | serve --tcp-loopback 127.0.0.1:PORT | resident-stop --state-dir STATE_DIR [--retire-clients] | serve-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA | supervise-managed --state-dir STATE_DIR --generation N --owner-process-id PID --runtime-sha256 SHA"
                 .into(),
         ),
     }

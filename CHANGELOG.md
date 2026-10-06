@@ -8,6 +8,9 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 
 ## Unreleased
 
+### Fixed
+* **windows:** native hook authority no longer collapses into `native_hook_worker_exception` on Windows. The non-Unix launch-identity stub (`launch_identity_stub.rs`) returned a bare `{status,reuse_nonce}` object missing `argv_sha256`, `executable`, `entrypoint`, and `launch_cwd`, which the Python consumer hard-indexed — every native hook decision raised `KeyError` and fell through to the generic fail-closed deny, leaving Hermes receipts empty and Grok PreToolUse denials without their real reason. The stub now emits the complete identity contract (real `argv_sha256`, unresolved executable, unproven entrypoint, `launch_cwd`) while keeping a cryptographically fresh `reuse_nonce` so `runtime_launch_identity_is_reusable` stays false and saved approvals still fail closed on unsupported targets.
+
 ### Features
 * **policy:** the saved-package-approval claim now resolves inside the resident. The `apply_stored_package_policy` operation ships the evaluation, artifact and store path to `evaluate_apply_stored_package_policy`, which reuses the ported `resolve_stored_package_policy_override` and returns the evaluation unchanged when the store holds no usable saved approval. The previous `commands_hook_native_eval` bridge re-entered the Python override; it now routes through `apply_stored_package_policy_native` and, on transport failure, returns the evaluation unchanged — the resident's own no-saved-approval terminal — rather than re-running the Python override.
 

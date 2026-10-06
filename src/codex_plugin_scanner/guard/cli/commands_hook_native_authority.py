@@ -22,7 +22,6 @@ from ..native_policy_snapshot_acked import recording_only_from_acked_snapshot
 from ..store import GuardStore
 from .commands_hook_native_availability import _native_unavailable_exit_code
 from .commands_support_interaction import _emit
-from ..daemon.hook_process_entrypoint import _diag_dump_exception
 
 _NATIVE_RECEIPT_DRAIN_TIMEOUT_SECONDS = 0.25
 
@@ -67,8 +66,7 @@ def try_native_hook_authority(
             guard_home=guard_home,
             workspace=workspace,
         )
-    except Exception as error:
-        _diag_dump_exception(error, site="native_authority")
+    except Exception:
         return availability_harness_response(
             payload,
             harness=harness,
@@ -196,8 +194,7 @@ def route_native_hook(
         # rc mirrors the emitted verdict through the harness's adapter contract
         # (per-harness deny code, recording-only allows keep 0).
         return _native_unavailable_exit_code(args, native_result, runtime_hook_event_name(payload))
-    except Exception as error:
-        _diag_dump_exception(error, site="route_native_hook")
+    except Exception:
         response = availability_harness_response(
             payload,
             harness=args.harness,

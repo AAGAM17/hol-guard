@@ -225,3 +225,38 @@ pub fn package_advisory_ids(package: &Map<String, Value>) -> Vec<String> {
     }
     advisory_ids
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Consumer-visible regression for the Windows KeyError 'argv_sha256' fix:
+    // every key a cross-platform consumer hard-indexes must be present, and the
+    // identity must stay non-reusable / non-matching so saved approvals fail
+    // closed rather than ever pinning a stable launch on an unsupported target.
+    #[test]
+    fn unsupported_launch_identity_is_complete_and_never_reusable() {
+        let cwd = Path::new("C:\\work");
+        let command = Value::String("python".to_string());
+        let args = vec![Value::String("-m".to_string()), Value::String("srv".to_string())];
+
+        let first = build_runtime_launch_identity(&command, &args, false, false, None, Some(cwd), None, None);
+        let second = build_runtime_launch_identity(&command, &args, false, false, None, Some(cwd), None, None);
+
+        for identity in [&first, &second] {
+            assert!(identity.get("argv_sha256").and_then(Value::as_str).is_some());
+            assert!(identity.get("launch_cwd").and_then(Value::as_str).is_some());
+            assert!(identity.get("executable").is_some());
+            assert!(identity.get("entrypoint").is_some());
+            // Fail closed: the identity is never reusable and never matches.
+            assert!(!runtime_launch_identity_is_reusable(identity));
+            assert!(resolved_runtime_launch_executable(identity).is_none());
+        }
+        // Two launches of the same vector produce distinct nonces, so a saved
+        // approval can never pin a stable identity on this platform.
+        assert_ne!(first, second);
+        assert!(!runtime_launch_identity_matches(
+            &first, &command, &args, false, false, None, Some(cwd), None,
+        ));
+    }
+}

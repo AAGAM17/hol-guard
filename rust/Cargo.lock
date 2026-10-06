@@ -763,6 +763,7 @@ dependencies = [
  "sha2",
  "sysinfo",
  "windows-permissions",
+ "zeroize",
 ]
 
 [[package]]

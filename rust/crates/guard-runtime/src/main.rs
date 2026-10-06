@@ -33,6 +33,7 @@ mod oneshot;
 mod package_authority_op;
 mod policy_enforcement;
 mod policy_integrity_resolver;
+mod policy_snapshot_build;
 mod policy_store;
 mod prompt_analyze_op;
 mod resident_client;
@@ -172,6 +173,10 @@ fn run() -> Result<(), String> {
         [command, flag] if command == "hook" && flag == "--stdin" => {
             let bytes = read_stdin_bounded()?;
             let response = oneshot::evaluate_hook_bytes(&bytes)?;
+            write_bytes_response(&response)
+        }
+        [command, flag] if command == "policy-snapshot-build" && flag == "--stdin" => {
+            let response = policy_snapshot_build::build_from_reader(io::stdin().lock())?;
             write_bytes_response(&response)
         }
         [command, state_flag, state_dir]

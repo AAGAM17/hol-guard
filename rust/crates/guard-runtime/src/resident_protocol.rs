@@ -37,6 +37,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         guard_contracts::NATIVE_COMMAND_PROGRAM_CAPABILITY.into(),
         guard_contracts::NATIVE_COMMAND_CONTROL_FENCE_CAPABILITY.into(),
         "policy-snapshot-v3".into(),
+        "native-policy-snapshot-build-v1".into(),
         "policy-snapshot-push-v1".into(),
         "policy-snapshot-resident-generation-v1".into(),
         "native-approval-artifact-v3".into(),

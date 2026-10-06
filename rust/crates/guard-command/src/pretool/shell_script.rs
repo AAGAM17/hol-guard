@@ -15,16 +15,14 @@ pub(super) fn contains_credential_post(
     if !read_paths::verified_path_context(context.home_dir, context.cwd) {
         return false;
     }
-    // The model does not bind a per-segment cwd. Never inspect a different
-    // relative file after a directory-changing sibling command.
-    if model.segments.iter().any(|segment| {
+    // Absolute targets retain their identity across cwd changes. Relative
+    // targets still need a per-segment cwd binding that this model lacks.
+    let changes_directory = model.segments.iter().any(|segment| {
         segment
             .executable
             .as_deref()
             .is_some_and(|value| matches!(value.rsplit('/').next(), Some("cd" | "pushd" | "popd")))
-    }) {
-        return false;
-    }
+    });
     model.segments.iter().any(|segment| {
         if !crate::parser_wrappers::is_file_shell_invocation(
             segment.executable.as_deref(),
@@ -38,6 +36,9 @@ pub(super) fn contains_credential_post(
         } else {
             &arguments[0]
         };
+        if changes_directory && !Path::new(script).is_absolute() {
+            return false;
+        }
         if !read_paths::bounded_file_read_target(script, context.home_dir, context.cwd) {
             return false;
         }
@@ -172,6 +173,8 @@ mod tests {
         assert!(!credential_post("printf '%s' 'os.environ[\"TOKEN\"] urllib.request.Request(url, method=\"POST\") urllib.request.urlopen(request)'"));
         assert!(!credential_post("\"\"\"os.environ[\"TOKEN\"]\nurllib.request.Request(url, method=\"POST\")\nurllib.request.urlopen(request)\"\"\""));
         assert!(credential_post("body = os.environ[\"TOKEN\"]\nrequest = urllib.request.Request(url, data=body, method = 'POST')\nurllib.request.urlopen(request)"));
+        assert!(credential_post("body = os.environ [\"TOKEN\"]\nrequest = urllib.request.Request(url, data=body, method = 'POST')\nurllib.request.urlopen(request)"));
+        assert!(credential_post("body = os.environ.get (\"TOKEN\").encode ()\nrequest = urllib.request.Request(url, data=body, method = 'POST')\nurllib.request.urlopen(request)"));
         assert!(!credential_post("body = os.environ[\"TOKEN\"]\nrequest = urllib.request.Request(url, data=\"method='POST'\")\nurllib.request.urlopen(request)"));
     }
 
@@ -212,9 +215,17 @@ mod tests {
         )
         .unwrap();
         for (command, expected) in [
-            ("bash ./posting.sh", "block"),
-            ("bash ./ordinary.sh", "review"),
-            ("cd nested && bash ./posting.sh", "review"),
+            ("bash ./posting.sh".to_owned(), "block"),
+            ("bash ./ordinary.sh".to_owned(), "review"),
+            ("cd nested && bash ./posting.sh".to_owned(), "review"),
+            (
+                format!("bash {} && cd .", root.join("posting.sh").display()),
+                "block",
+            ),
+            (
+                format!("cd nested && bash {}", root.join("posting.sh").display()),
+                "block",
+            ),
         ] {
             let result = evaluate_pre_tool_envelope_with_context(
                 "zcode",

@@ -74,6 +74,7 @@ fn identifier(value: &str) -> bool {
 fn call_arguments<'a>(expression: &'a str, name: &str) -> Option<&'a str> {
     expression
         .strip_prefix(name)?
+        .trim_start()
         .strip_prefix('(')?
         .strip_suffix(')')
 }
@@ -85,8 +86,12 @@ fn tainted_expression(expression: &str, values: &BTreeSet<String>, os_imported: 
     {
         return false;
     }
-    for (index, _) in expression.match_indices('(') {
-        let prefix = &expression[..index];
+    let compact: String = expression
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect();
+    for (index, _) in compact.match_indices('(') {
+        let prefix = &compact[..index];
         if !["json.dumps", "os.environ.get", ".encode"]
             .iter()
             .any(|allowed| prefix.ends_with(allowed))
@@ -94,7 +99,7 @@ fn tainted_expression(expression: &str, values: &BTreeSet<String>, os_imported: 
             return false;
         }
     }
-    (os_imported && (expression.contains("os.environ[") || expression.contains("os.environ.get(")))
+    (os_imported && (compact.contains("os.environ[") || compact.contains("os.environ.get(")))
         || expression
             .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
             .any(|token| values.contains(token))

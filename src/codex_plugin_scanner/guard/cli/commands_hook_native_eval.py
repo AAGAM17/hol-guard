@@ -78,6 +78,7 @@ from .commands_hook_github_workflow import (
     github_workflow_approval_evidence,
     prepare_github_workflow_hook_state,
 )
+from .commands_hook_native_edge_floor import _native_edge_floor_action
 from .commands_hook_native_floor import (
     _runtime_package_raw_command,
     apply_local_grant_then_native_floor,
@@ -100,53 +101,6 @@ from .commands_support_runtime_policy import (
 
 def _resolved_guard_action(value: object, fallback: GuardAction) -> GuardAction:
     return coerce_guard_action(value) or fallback
-
-
-def _native_edge_floor_action(
-    native_edge_result: Mapping[str, object] | None,
-    event_name: str,
-    *,
-    artifact_default_action: object | None = None,
-    artifact_type: str | None = None,
-) -> GuardAction | None:
-    """Project the typed native edge result onto the composition floor."""
-
-    if not isinstance(native_edge_result, Mapping):
-        return None
-    action = coerce_guard_action(native_edge_result.get("policy_action") or native_edge_result.get("minimum_action"))
-    if (
-        event_name == "PreToolUse"
-        and artifact_type == "package_request"
-        and native_edge_result.get("reason_code") == "native_command_extension_evaluation_failed"
-    ):
-        # Package requests have their own fail-closed evaluator. A generic
-        # command-control failure is not a second package verdict.
-        return None
-    if event_name == "PreToolUse" and action in {"block", "sandbox-required"}:
-        # A typed terminal native edge cannot become browser-overridable review
-        # when the compatibility command floor lacks the same source context.
-        return action
-    if event_name != "PostToolUse":
-        # PreToolUse/UserPromptSubmit composition floors come from the
-        # command-level native review (``native_pre_tool_floor``) and the
-        # artifact's own request classes; the envelope edge result is carried
-        # as provenance, not as a second policy floor.
-        return None
-    if action is None and native_edge_result.get("decision") == "deny":
-        action = "block"
-    if action not in {"block", "sandbox-required"}:
-        return action
-    if artifact_default_action == "warn":
-        # Standalone credential-looking output is warn-tier evidence the
-        # artifact classifier already priced (cleared environments, remote
-        # samples, read-only dumps). The edge deny still masks the emitted
-        # output surface; it does not turn the run into a pause.
-        return None
-    # PostToolUse can never undo the finished action; the edge deny is an
-    # output-mask directive carried by the emitted decision surface. The
-    # policy floor flags the run for re-approval so it stays reviewable
-    # instead of terminal.
-    return "require-reapproval"
 
 
 def _requested_policy_action_normalization(

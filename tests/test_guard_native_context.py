@@ -12,6 +12,7 @@ import hashlib
 import json
 import multiprocessing
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -278,6 +279,61 @@ def test_native_context_digest_asks_the_pool_about_the_resolved_runtime(
     assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home)
     status = native_context._native_runtime_status_memo()
     assert seen == [(status.identity.path, guard_home)]
+
+
+def test_native_context_digest_retries_a_timeout_once_with_the_allowance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pooled client serialises requests, so a tight budget can lose the lock.
+
+    A sibling's long RPC and a resident that must be spawned look identical
+    from here, and the second attempt tells them apart at the cost of one
+    round trip.
+    """
+
+    remaining: list[float] = []
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "native_resident_client_ready", lambda _executable, _home: True)
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: "native_client_timed_out")
+    outcomes: list[bytes | None] = [None]
+
+    def _client(*_args: object, **kwargs: object) -> bytes | None:
+        envelope = json.loads(kwargs["payload"])
+        remaining.append((kwargs["deadline_monotonic"] - time.monotonic()) * 1_000)
+        return outcomes.pop(0) if outcomes else _ok_result(envelope["request"])
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", _client)
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home)
+    assert native_context._DIGEST_ATTEMPTS == 2
+    assert len(remaining) == 2
+    # The retry gets the timeout plus the allowance, not the bare timeout.
+    assert remaining[0] < 1_500
+    assert remaining[1] > int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000) - 500
+
+
+def test_native_context_digest_does_not_retry_other_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failure more time cannot fix must fail once, not twice."""
+
+    calls: list[int] = []
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "native_resident_client_ready", lambda _executable, _home: True)
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: "native_client_exit_nonzero")
+    monkeypatch.setattr(native_context, "native_resident_client_request", lambda **_kwargs: calls.append(1))
+    monkeypatch.setattr(
+        native_context,
+        "native_record_resident_failure",
+        lambda *_args, **_kwargs: None,
+    )
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    assert len(calls) == 1
 
 
 def test_unavailable_errors_report_the_transport_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

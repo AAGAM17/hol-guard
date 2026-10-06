@@ -100,6 +100,11 @@ _TIMEOUT_SECONDS = 0.5
 # idle client to serve the request.  Steady-state requests keep the tight budget;
 # a spawn on a contended runner must not fail closed.
 _COLD_START_ALLOWANCE_SECONDS = 3.0
+# A digest request is retried once, with the allowance, when the client reports a
+# timeout: the pooled client serialises requests, so a tight budget can lose the
+# lock to a long sibling RPC rather than to a round trip.
+_DIGEST_ATTEMPTS = 2
+_TIMEOUT_FAILURE_CODE = "native_client_timed_out"
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -637,7 +642,6 @@ def native_context_digest(
     # client another caller already started.
     environment = _isolated_environment()
     cold_start = not native_resident_client_ready(status.identity.path, guard_home)
-    deadline_started = time.monotonic()
     # The budget bounds steady-state degradation, not process startup: the
     # pooled resident is spawned lazily on the first request, and a contended
     # runner can spend several hundred milliseconds faulting a 20 MB binary in
@@ -645,8 +649,8 @@ def native_context_digest(
     # start degrades to a slow request instead of a resident-unavailable
     # failure for every caller that has no fallback.
     budget_seconds = timeout_seconds + (_COLD_START_ALLOWANCE_SECONDS if cold_start else 0.0)
-    deadline_budget_ms = max(1, min(9_000, int(budget_seconds * 1_000)))
-    deadline_monotonic = deadline_started + deadline_budget_ms / 1_000
+    resident_budget_ms = max(1, min(9_000, int(budget_seconds * 1_000)))
+    deadline_monotonic = time.monotonic() + budget_seconds
     request_id = uuid.uuid4().hex
     request: dict[str, Any] = {
         "schema": _REQUEST_SCHEMA,
@@ -685,7 +689,7 @@ def native_context_digest(
         return {**deepcopy(cached), "request_id": request_id, "request_sha256": request_sha256}
     try:
         envelope = json.dumps(
-            {"operation": "context_digest", "deadline_budget_ms": deadline_budget_ms, "request": request},
+            {"operation": "context_digest", "deadline_budget_ms": resident_budget_ms, "request": request},
             separators=(",", ":"),
             ensure_ascii=False,
             allow_nan=False,
@@ -706,20 +710,30 @@ def native_context_digest(
         }
     if len(envelope) > _MAX_REQUEST_BYTES:
         return _digest_failed("native_context_digest_request_too_large")
-    output = native_resident_client_request(
-        executable=status.identity.path,
-        guard_home=guard_home,
-        environment=environment,
-        payload=envelope,
-        deadline_monotonic=deadline_monotonic,
-    )
+    output = None
+    attempts = 0
+    while attempts < _DIGEST_ATTEMPTS:
+        attempts += 1
+        output = native_resident_client_request(
+            executable=status.identity.path,
+            guard_home=guard_home,
+            environment=environment,
+            payload=envelope,
+            deadline_monotonic=deadline_monotonic,
+        )
+        if output is not None or native_resident_client_failure_code() != _TIMEOUT_FAILURE_CODE:
+            break
+        # A timeout means the client never got an answer in time, which a busy
+        # sibling on the same pooled client explains just as well as a resident
+        # that has to be spawned.  One retry with the allowance tells them apart.
+        deadline_monotonic = time.monotonic() + timeout_seconds + _COLD_START_ALLOWANCE_SECONDS
     if output is None:
         # The client's own code ("native_client_timed_out",
         # "native_client_pool_exhausted", ...) is the actionable half of this.
         _digest_failed(
             f"{native_resident_client_failure_code() or 'native_context_digest_resident_unavailable'}"
-            f"[{native_resident_client_transport()},allowance={'granted' if cold_start else 'none'},"
-            f"budget={budget_seconds:.2f}s]"
+            f"[{native_resident_client_transport()},{attempts} attempt(s),"
+            f"allowance={'granted' if cold_start else 'none'},budget={budget_seconds:.2f}s]"
         )
         native_record_resident_failure(
             status.identity.sha256,

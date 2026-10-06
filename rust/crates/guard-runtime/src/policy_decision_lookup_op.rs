@@ -185,12 +185,43 @@ fn runtime_scoped_exact_match_key(
 }
 
 /// `runtime_tool_action_portable_match_context` — portable context form.
+/// `runtime_tool_action_portable_match_context` (`store_base.py:1490`) — strip
+/// `config_path`/`source_scope` (project-location fields) so a `harness`/`global`
+/// broad rule matches the identical executable action across workspaces. Parses
+/// the runtime exact-match context JSON, requires `raw_command_text`, and rebuilds
+/// the canonical context payload with the location fields nulled.
 fn runtime_tool_action_portable_match_context(ctx: Option<&str>) -> Option<String> {
     let ctx = ctx?;
-    if ctx.is_empty() {
+    let payload: Value = serde_json::from_str(ctx).ok()?;
+    let payload = payload.as_object()?;
+    let raw_command_text = payload.get("raw_command_text")?.as_str()?;
+    if raw_command_text.is_empty() {
         return None;
     }
-    Some(ctx.to_string())
+    let wrapper_chain = payload
+        .get("wrapper_chain")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .filter(|item| !item.is_empty())
+                .map(|item| json!(item))
+                .collect::<Vec<_>>()
+        });
+    let permission_mode = payload
+        .get("permission_mode")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let context = json!({
+        "config_path": null,
+        "source_scope": null,
+        "raw_command_text": raw_command_text,
+        "wrapper_chain": wrapper_chain.unwrap_or_default(),
+        "permission_mode": permission_mode,
+    });
+    Some(canonical_json(&context))
 }
 
 /// `_global_runtime_scoped_exact_match_key`.

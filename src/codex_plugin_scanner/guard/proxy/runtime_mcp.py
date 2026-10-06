@@ -3453,6 +3453,20 @@ class RuntimeMcpGuardProxy:
                     message="Guard runtime MCP proxy timed out waiting for the MCP server.",
                 )
             assert frame is not None
+            # The native stdio session returns a timeout as a frame ``error``
+            # rather than raising. Mirror the ``except ProxyIoTimeoutError``
+            # branch above so both transports yield the same
+            # ``_timeout_response`` and quarantine the child.
+            if isinstance(frame.error, ProxyIoTimeoutError):
+                active_process = self._active_process
+                if active_process is not None:
+                    _quarantine_process(active_process)
+                return _timeout_response(
+                    request_id,
+                    source="child_response",
+                    timeout_seconds=timeout_seconds,
+                    message="Guard runtime MCP proxy timed out waiting for the MCP server.",
+                )
             line = self._child_output_line(frame)
             payload = json.loads(line)
             if not isinstance(payload, dict):

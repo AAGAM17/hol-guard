@@ -50,7 +50,7 @@ from .memory_pattern_fingerprint import (
 )
 from .models import GUARD_ACTION_VALUES
 from .native_execution import _resident_request
-from .native_policy_snapshot_constants import NATIVE_POLICY_VERIFIER_KEY_NAME
+from .native_policy_snapshot_constants import NATIVE_POLICY_VERIFIER_KEY_NAME, NativePolicySnapshotError
 from .native_policy_snapshot_windows_key import provision_native_policy_verifier_key
 from .native_policy_snapshot_windows_support import _runtime_state_directory
 from .runtime.approval_context import approval_context_tokens_validation_reason
@@ -1545,10 +1545,31 @@ class StorePolicyMixin:
         # the same prerequisite or every request fails closed on
         # native_policy_verifier_key_missing. Provisioning is O_EXCL +
         # never-replace, so it is idempotent and safe to run per lookup.
-        verifier_path = _runtime_state_directory(Path(self.guard_home)) / NATIVE_POLICY_VERIFIER_KEY_NAME
+        try:
+            verifier_path = (
+                _runtime_state_directory(Path(self.guard_home)) / NATIVE_POLICY_VERIFIER_KEY_NAME
+            )
+        except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError):
+            # Untrusted/inaccessible guard home (e.g. symlinked) cannot persist a
+            # verifier key; treat as none so the degraded-lookup guard below applies.
+            verifier_path = None
+        verifier_exists = verifier_path.is_file() if verifier_path is not None else False
         if resident_key is not None:
-            provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
-        elif not verifier_path.is_file():
+            try:
+                provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
+            except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError):
+                # Cannot persist the verifier under an untrusted home; keep only
+                # the on-disk evidence flag, which is False when provisioning
+                # failed on the same home.
+                verifier_exists = verifier_path.is_file() if verifier_path is not None else False
+                if not verifier_exists:
+                    return {
+                        "decision": None,
+                        "ignored_local_integrity": None,
+                        "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
+                        "authority_revision": -1,
+                    }
+        elif not verifier_exists:
             # A store with no integrity keyring AND no persisted verifier key has
             # no authority to serve and must not honor any local approval. Return
             # an empty degraded lookup rather than raising

@@ -2568,20 +2568,25 @@ def test_runtime_mcp_quarantines_child_when_entrypoint_changes_during_spawn(
         source_scope="project",
         config_path=str(context.workspace_dir / ".codex" / "config.toml"),
     )
-    real_popen = runtime_mcp_module.subprocess.Popen
-    processes: list[Any] = []
+    real_open_native = runtime_mcp_module.mcp_stdio_session_open_native
+    sessions: list[str] = []
 
     def mutate_after_spawn(*args: Any, **kwargs: Any) -> Any:
-        process = real_popen(*args, **kwargs)
-        processes.append(process)
+        # RTM-023 moved the child spawn into the resident; the launch-identity
+        # re-check happens after `mcp_stdio_session_open_native` returns. Mutate
+        # the entrypoint inside the native-open seam so the post-spawn verify
+        # sees a swapped file, then let the real opener run.
         server_script.write_text("raise SystemExit(93)\n", encoding="utf-8")
-        return process
+        session_id = kwargs.get("session_id")
+        if session_id:
+            sessions.append(str(session_id))
+        return real_open_native(*args, **kwargs)
 
-    monkeypatch.setattr(runtime_mcp_module.subprocess, "Popen", mutate_after_spawn)
+    monkeypatch.setattr(runtime_mcp_module, "mcp_stdio_session_open_native", mutate_after_spawn)
 
     with pytest.raises(RuntimeError, match="launch identity changed"):
         proxy._start_process()
 
-    assert processes and processes[0].poll() is not None
+    assert sessions
     assert proxy._active_runtime_launch_identity is None
     assert proxy._active_executable_identity is None

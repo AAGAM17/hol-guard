@@ -326,6 +326,20 @@ def test_native_context_digest_stops_paying_the_allowance_after_a_hard_failure(
     assert budgets == [cold, warm]
 
 
+def test_unavailable_errors_report_the_transport_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`*_unavailable` must say *why*: a callers that has no fallback needs the reason."""
+
+    _prime(monkeypatch, status=_status(mode="off"))
+    with pytest.raises(ValueError, match=":native_context_digest_unsupported"):
+        native_context.context_runtime_launch_identity("python", guard_home=tmp_path)
+
+    _prime(monkeypatch)
+    monkeypatch.setattr(native_context, "native_resident_client_request", lambda **_kwargs: None)
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: "native_client_timed_out")
+    with pytest.raises(ValueError, match="native_runtime_launch_identity_unavailable:native_client_timed_out"):
+        native_context.context_runtime_launch_identity("python", guard_home=tmp_path)
+
+
 def test_native_context_digest_happy_path_binds_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured = _prime(monkeypatch)
     result = native_context.native_context_digest("launch_argv_digest", {"argv": ["hol-guard"]}, guard_home=tmp_path)

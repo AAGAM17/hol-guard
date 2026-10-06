@@ -8,7 +8,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 
-from .store_review_event_acknowledgment import acknowledge_review_events
+from .store_review_event_acknowledgment import acknowledge_review_events, release_unacked_snapshot_gaps
 from .store_review_event_outbox_binding import (
     explicitly_reassign_quarantined_events,
     load_review_oauth_binding,
@@ -265,6 +265,35 @@ class StoreReviewEventOutboxMixin:
             }
             for row in rows
         ]
+
+    def release_unacked_snapshot_gaps(
+        self,
+        sequences: Sequence[int],
+        *,
+        oauth_subject_hash: str,
+        workspace_id: str,
+        machine_id: str,
+        machine_installation_id: str,
+    ) -> int:
+        """Drop ready source-gap rows covered by an accepted snapshot."""
+
+        released = sorted({int(sequence) for sequence in sequences if int(sequence) > 0})
+        if not released:
+            return 0
+        binding = normalized_delivery_binding(
+            oauth_subject_hash=oauth_subject_hash,
+            workspace_id=workspace_id,
+            machine_id=machine_id,
+            machine_installation_id=machine_installation_id,
+        )
+        with self._connect() as connection:
+            connection.execute("begin immediate")
+            return release_unacked_snapshot_gaps(
+                connection,
+                source=self._guard_source,
+                sequences=released,
+                binding=binding,
+            )
 
     def acknowledge_review_events(
         self,

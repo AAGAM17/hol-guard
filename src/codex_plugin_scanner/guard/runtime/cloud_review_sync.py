@@ -186,6 +186,65 @@ def _complete_sync_state(
     return completed_at, outbox_status
 
 
+def _payload_event_type(event: dict[str, object]) -> str | None:
+    raw = event.get("eventPayloadJson")
+    if not isinstance(raw, str):
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    event_type = payload.get("eventType")
+    return event_type if isinstance(event_type, str) else None
+
+
+def _release_covered_snapshot_gaps(
+    store: GuardStore,
+    *,
+    events: list[dict[str, object]],
+    sequences: list[int],
+    per_event_results: list[dict[str, object]],
+    acknowledged_sequences: list[int],
+    acknowledged_through: object,
+    open_snapshot_gaps: dict[str, set[int]],
+    binding: dict[str, str],
+) -> None:
+    """Delete refused gap rows once Cloud accepts the replacement snapshot.
+
+    The server checkpoint is the snapshot sequence. A refused predecessor must
+    leave the ready prefix before that snapshot is acknowledged, or the local
+    cursor cannot advance. Accepted and quarantined rows stay.
+    """
+
+    if type(acknowledged_through) is not int:
+        return
+    acknowledged = set(acknowledged_sequences)
+    released: set[int] = set()
+    for index, item in enumerate(per_event_results):
+        if item.get("accepted") is not True:
+            continue
+        request_id = events[index].get("localRequestId")
+        snapshot_sequence = sequences[index]
+        if (
+            not isinstance(request_id, str)
+            or snapshot_sequence > acknowledged_through
+            or _payload_event_type(events[index]) != "review.request.snapshot_requeued"
+        ):
+            continue
+        for gap_sequence in open_snapshot_gaps.get(request_id, ()):
+            if gap_sequence < snapshot_sequence and gap_sequence not in acknowledged:
+                released.add(gap_sequence)
+    if not released:
+        return
+    store.release_unacked_snapshot_gaps(sorted(released), **binding)
+    for request_id in list(open_snapshot_gaps):
+        open_snapshot_gaps[request_id].difference_update(released)
+        if not open_snapshot_gaps[request_id]:
+            del open_snapshot_gaps[request_id]
+
+
 def _is_terminally_superseded_result(item: dict[str, object]) -> bool:
     """Ignore refreshes superseded by an authoritative Cloud decision.
 
@@ -250,6 +309,7 @@ def sync_cloud_review_events_once(
 
     total_accepted = total_rejected = total_delivered = batches = 0
     all_errors: list[str] = []
+    open_snapshot_gaps: dict[str, set[int]] = {}
     native_context_probe_state = getattr(store, _PROBE_STATE_ATTRIBUTE, None)
     setattr(store, _PROBE_STATE_ATTRIBUTE, None)
     if not isinstance(native_context_probe_state, NativeWorkspaceReviewContextProbeState):
@@ -330,6 +390,7 @@ def sync_cloud_review_events_once(
                 retry_sequences: list[int] = []
                 retry_results: list[dict[str, object]] = []
                 snapshot_repairs: dict[str, int] = {}
+                batch_gaps: dict[str, set[int]] = {}
                 valid_results = True
                 for index, item in enumerate(per_event_results):
                     if (
@@ -351,6 +412,7 @@ def sync_cloud_review_events_once(
                                 snapshot_repairs[request_id] = max(
                                     snapshot_repairs.get(request_id, 0), request_sequence
                                 )
+                                batch_gaps.setdefault(request_id, set()).add(sequences[index])
                 if (
                     valid_results
                     and sum(bool(item["accepted"]) for item in per_event_results) == accepted
@@ -362,6 +424,18 @@ def sync_cloud_review_events_once(
                         all_errors.append(message)
                         _retry_review_events(store, sequences, error=message, binding=delivery_binding)
                         continue
+                    for request_id, gap_sequences in batch_gaps.items():
+                        open_snapshot_gaps.setdefault(request_id, set()).update(gap_sequences)
+                    _release_covered_snapshot_gaps(
+                        store,
+                        events=events,
+                        sequences=sequences,
+                        per_event_results=per_event_results,
+                        acknowledged_sequences=acknowledged_sequences,
+                        acknowledged_through=response.get("acknowledgedThrough"),
+                        open_snapshot_gaps=open_snapshot_gaps,
+                        binding=delivery_binding,
+                    )
                     store.acknowledge_review_events(acknowledged_sequences, **delivery_binding)
                     retry_sequences, retry_results = recover_rejected_review_events(
                         store,

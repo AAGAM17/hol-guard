@@ -532,6 +532,85 @@ def test_invalid_claim_is_quarantined_without_starving_a_later_neighbor(
     assert int(cursor["acknowledged_stream_sequence"]) > 0
 
 
+def test_source_gap_snapshot_acks_neighbor_without_acknowledging_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused gap cannot keep the accepted snapshot out of the local cursor."""
+
+    from codex_plugin_scanner.guard.review_contracts import GuardReviewContractError
+    from codex_plugin_scanner.guard.runtime import cloud_review_event_delivery as delivery
+    from codex_plugin_scanner.guard.runtime import cloud_review_event_projection as projection
+
+    store = GuardStore(tmp_path / "guard")
+    binding = _connect(store)
+    store.add_approval_request(_request("poison"), _NOW)
+    store.add_approval_request(_request("neighbor"), _NOW)
+    original = projection.build_local_review_request_claim
+
+    def fail_poison(*, request_row: dict[str, object], oauth: object, store: GuardStore) -> dict[str, object]:
+        if request_row.get("request_id") == "poison":
+            raise GuardReviewContractError("missing_oauth_credentials")
+        return original(request_row=request_row, oauth=oauth, store=store)
+
+    monkeypatch.setattr(projection, "build_local_review_request_claim", fail_poison)
+    posted: list[list[str]] = []
+
+    def post(_auth: dict[str, object], *, path: str, payload: dict[str, object]) -> dict[str, object]:
+        del path
+        events = payload["events"]
+        assert isinstance(events, list)
+        results = []
+        kinds: list[str] = []
+        through = 0
+        for event in events:
+            assert isinstance(event, dict)
+            kind = json.loads(str(event["eventPayloadJson"]))["eventType"]
+            assert isinstance(kind, str)
+            kinds.append(kind)
+            assert event["localRequestId"] != "poison"
+            if kind == "review.request.snapshot_requeued":
+                status = "accepted"
+                code = "source_sequence_gap_repaired"
+                through = event["localStreamSequence"]
+            else:
+                status = "quarantined"
+                code = "review_event_snapshot_required"
+                through = 0
+            results.append({"eventId": event["eventId"], "status": status, "code": code})
+        posted.append(kinds)
+        accepted = sum(row["status"] == "accepted" for row in results)
+        return {
+            "protocolVersion": 2,
+            "acknowledgedThrough": through,
+            "accepted": accepted,
+            "rejected": len(results) - accepted,
+            "results": results,
+        }
+
+    monkeypatch.setattr(delivery, "_post_json", post)
+    result = cloud_review_sync.sync_cloud_review_events_once(
+        store,
+        {**_auth(binding), "sync_url": "https://guard.example"},
+    )
+
+    assert result["synced"] == 1
+    assert posted == [["review.request.created"], ["review.request.snapshot_requeued"]]
+    with store._connect() as connection:
+        rows = connection.execute(
+            "select payload_json, binding_status, quarantine_reason, acknowledged_at from guard_review_outbox_events"
+        ).fetchall()
+        cursor = connection.execute("select acknowledged_stream_sequence from guard_review_outbox_cursors").fetchone()
+    assert len(rows) == 1
+    assert "poison" in rows[0]["payload_json"]
+    assert "neighbor" not in rows[0]["payload_json"]
+    assert rows[0]["binding_status"] == "quarantined"
+    assert rows[0]["quarantine_reason"] == "review_event_claim_invalid"
+    assert rows[0]["acknowledged_at"] is None
+    assert cursor is not None
+    assert int(cursor["acknowledged_stream_sequence"]) == 3
+
+
 def test_watch_only_snapshot_projects_schema_two_observation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

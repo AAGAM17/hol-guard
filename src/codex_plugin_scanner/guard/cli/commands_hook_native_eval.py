@@ -304,13 +304,12 @@ def _apply_stored_package_policy_via_resident(
     now: str,
     current_action: object | None,
     claim_saved_approval: bool,
+    execution_context: PackageExecutionContext | None = None,
 ):
-    """Route the saved-package-policy claim through the resident.
+    """Apply saved package policy through the resident when available.
 
-    The resident is the sole authority for the stored-approval claim. When it
-    is unreachable (``None`` — transport/identity failure) the evaluation is
-    returned unchanged: no saved approval is applied, matching the resident's
-    own no-saved-approval result rather than re-running a Python path.
+    Fall back to the Python override when the resident is unreachable so saved
+    package approvals and blocks are not silently dropped.
     """
     payload = apply_stored_package_policy_native(
         package_evaluation.to_dict(),
@@ -324,7 +323,17 @@ def _apply_stored_package_policy_via_resident(
         claim_saved_approval=claim_saved_approval,
     )
     if payload is None:
-        return package_evaluation
+        return apply_stored_package_policy_override(
+            package_evaluation,
+            store=store,
+            artifact=artifact,
+            artifact_hash=artifact_hash,
+            workspace_dir=workspace_dir,
+            now=now,
+            execution_context=execution_context,
+            current_action=current_action,
+            claim_saved_approval=claim_saved_approval,
+        )
     return evaluation_from_native_payload(payload)
 
 
@@ -937,14 +946,14 @@ def evaluate_native_artifact_hook(
     if package_evaluation is not None:
         # Package approval lookup/claim is deferred until every current policy,
         # data-flow, and scanner input has been composed.
-        package_evaluation = _apply_stored_package_policy_via_resident(
+        package_evaluation = apply_stored_package_policy_override(
             package_evaluation,
             store=store,
-            guard_home=context.guard_home,
             artifact=runtime_artifact,
             artifact_hash=runtime_artifact_hash,
             workspace_dir=runtime_workspace or Path.cwd(),
             now=_now(),
+            execution_context=package_execution_context,
             current_action=current_policy_action,
             claim_saved_approval=_claim_saved_approval,
         )

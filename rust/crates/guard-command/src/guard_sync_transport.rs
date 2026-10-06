@@ -769,6 +769,8 @@ pub fn urlopen_with_sync_retries(
                     if let Some(next) = guard_sync_request_for_retry(&current_request) {
                         current_request = next;
                     }
+                    current_timeout = timeout_seconds;
+                    retried_timeout = false;
                     continue;
                 }
                 if status_is_retryable_gateway(status)

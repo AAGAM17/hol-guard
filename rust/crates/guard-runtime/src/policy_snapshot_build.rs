@@ -52,16 +52,24 @@ fn present_business_binding<'de, D: serde::Deserializer<'de>>(
     BusinessPolicyBindingV1::deserialize(deserializer).map(Some)
 }
 
-pub(crate) fn build_from_reader(reader: impl Read) -> Result<Vec<u8>, String> {
-    let mut bytes = Zeroizing::new(Vec::new());
-    reader
-        .take(POLICY_SNAPSHOT_MAX_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| ERROR.to_owned())?;
-    if bytes.len() > POLICY_SNAPSHOT_MAX_BYTES {
+pub(crate) fn build_from_reader(mut reader: impl Read) -> Result<Vec<u8>, String> {
+    // A fixed allocation avoids leaving key-bearing copies in old Vec buffers
+    // as read_to_end grows its capacity. Drop clears the entire allocation.
+    let mut bytes = Zeroizing::new(vec![0u8; POLICY_SNAPSHOT_MAX_BYTES + 1]);
+    let mut filled = 0;
+    while filled < bytes.len() {
+        match reader.read(&mut bytes[filled..]) {
+            Ok(0) => break,
+            Ok(count) => filled += count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(ERROR.into()),
+        }
+    }
+    if filled > POLICY_SNAPSHOT_MAX_BYTES {
         return Err(ERROR.into());
     }
-    let request: BuildRequest = serde_json::from_slice(&bytes).map_err(|_| ERROR.to_owned())?;
+    let request: BuildRequest =
+        serde_json::from_slice(&bytes[..filled]).map_err(|_| ERROR.to_owned())?;
     if request.schema != SCHEMA || request.version != 1 {
         return Err(ERROR.into());
     }

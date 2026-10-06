@@ -220,6 +220,12 @@ def approved_business_source_mutation(
     binding = policy_import_approval_binding(document, mode)
     _require_approved(store, binding, approval_gate_grant, now)
     with hold_command_control_authority_lock(store.guard_home, timeout_seconds=_remaining(deadline)):
+        _require_approved(
+            store,
+            binding,
+            approval_gate_grant,
+            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        )
         retained = read_retained_business_source_anchor(store)
         marker = read_private_state(store.guard_home, ANCHOR_FILE_NAME, MAX_ANCHOR_BYTES)
         record = read_private_state(store.guard_home, SOURCE_FILE_NAME, MAX_RECORD_BYTES)
@@ -275,11 +281,5 @@ def approved_business_source_mutation(
             or read_retained_business_source_anchor(store) != closed.anchor_bytes
         ):
             raise _error()
-        _require_approved(
-            store,
-            binding,
-            approval_gate_grant,
-            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        )
         write_retained_business_source_anchor(store, committed.anchor_bytes)
         _write_private(store, ANCHOR_FILE_NAME, committed.anchor_bytes, MAX_ANCHOR_BYTES, deadline)

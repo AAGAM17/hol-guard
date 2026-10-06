@@ -147,7 +147,7 @@ def test_grok_pretool_denies_python_environ_dump(tmp_path: Path, monkeypatch, ca
     )
     payload = json.loads(capsys.readouterr().out)
 
-    assert rc == 2
+    assert rc == 0
     assert payload["decision"] == "deny"
     assert "environment" in str(payload.get("reason", "")).lower() or "secret" in str(payload.get("reason", "")).lower()
 

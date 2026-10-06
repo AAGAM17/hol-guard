@@ -35,6 +35,9 @@ _MAX_REQUEST_BYTES = 6 * 1024 * 1024
 _MAX_PERSISTENT_CLIENTS = 16
 _MAX_PERSISTENT_POOLS = 16
 _MAX_FAILURE_CODE_LENGTH = 128
+# Shared bounds for probes that must confirm native resident cleanup.
+NATIVE_RESIDENT_CLEANUP_TIMEOUT_SECONDS = 10.0
+NATIVE_RESIDENT_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
 _LAST_FAILURE_CODE: ContextVar[str | None] = ContextVar(
     "native_resident_client_failure_code",
     default=None,

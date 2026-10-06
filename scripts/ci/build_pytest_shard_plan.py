@@ -29,6 +29,7 @@ MAX_NODES_PER_AFFINITY_GROUP = 8
 SINGLE_PROCESS_FILES = frozenset({"tests/test_guard_command_decision_diff.py"})
 SCHEDULING_ONLY_NODE_IDS = frozenset(
     {
+        "tests/test_guard_continuation_contract.py::test_bounded_adapter_cancels_a_hung_worker_and_records_timeout",
         "tests/test_guard_hook_process_runner.py::"
         "test_scheduler_and_runner_complete_48_routine_reviews_without_capacity_denial",
         "tests/test_guard_daemon_storage_liveness.py::"

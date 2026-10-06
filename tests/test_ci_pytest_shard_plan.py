@@ -86,6 +86,22 @@ def test_scheduling_only_nodes_cannot_own_or_inflate_a_coverage_shard() -> None:
     assert not SCHEDULING_ONLY_NODE_IDS.intersection(node for shard in shards for node in shard)
 
 
+def test_hung_continuation_timing_runs_in_required_dedicated_lane_not_parallel_shards() -> None:
+    import yaml
+
+    module = "tests/test_guard_continuation_contract.py"
+    timing_node = f"{module}::test_bounded_adapter_cancels_a_hung_worker_and_records_timeout"
+    ordinary_node = f"{module}::test_failed_attempt_persistence_never_populates_the_in_memory_cache"
+    shards, _loads = build_affinity_node_shards([timing_node, ordinary_node], 1, {})
+    assert shards == [[ordinary_node]]
+
+    root = Path(__file__).resolve().parents[1]
+    jobs = expand_ci_job_actions(yaml.safe_load((root / ".github/workflows/ci.yml").read_text()))["jobs"]
+    commands = [step["run"] for step in jobs["scheduling-sensitive"]["steps"] if "run" in step]
+    assert any(module in shlex.split(command) or timing_node in shlex.split(command) for command in commands)
+    assert "scheduling-sensitive" in jobs["ci-python-312"]["needs"]
+
+
 def test_affinity_plan_splits_only_an_oversized_file() -> None:
     large = [f"tests/test_large.py::test_{index}" for index in range(24)]
     small = [f"tests/test_small_{index}.py::test_one" for index in range(6)]

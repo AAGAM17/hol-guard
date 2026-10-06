@@ -23,10 +23,12 @@ pep440_rs.workspace = true
 toml.workspace = true
 roxmltree.workspace = true
 getrandom.workspace = true
-nix.workspace = true
 ring.workspace = true
 rsa.workspace = true
 base64ct.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
 
 [build-dependencies]
 guard-command-build = { path = "../guard-command-build" }

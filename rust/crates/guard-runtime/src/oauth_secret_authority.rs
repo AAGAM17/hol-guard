@@ -116,10 +116,6 @@ pub fn resolve_credentials(
     let object = payload
         .as_object()
         .ok_or_else(|| "credentials_payload_not_object".to_owned())?;
-    // Writers that inlined the secret material are read as-is.
-    if non_empty_str(object.get("refresh_token")).is_some() {
-        return Ok(payload.clone());
-    }
     let secret_ref = non_empty_str(object.get(CREDENTIALS_REF_KEY));
     let expected = non_empty_str(object.get(CREDENTIALS_HASH_KEY))
         .ok_or_else(|| "credentials_hash_missing".to_owned())?;

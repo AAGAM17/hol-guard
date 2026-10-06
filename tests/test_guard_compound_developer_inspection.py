@@ -407,7 +407,7 @@ def test_compound_stdin_only_python_observer_requires_host_binary_proof(
             assert not is_trusted_absolute_command_path(Path(sys.executable), cwd=workspace, home_dir=home)
         assert artifact is not None
         assert artifact.metadata["compound_segment_count"] == 3
-        assert artifact.metadata["reason_code"] == "interpreter_host_binding_unverified"
+        assert artifact.metadata["reason_code"] == "interpreter_identity_untrusted"
         assert artifact.metadata["guard_default_action"] == "require-reapproval"
     else:
         assert artifact is None

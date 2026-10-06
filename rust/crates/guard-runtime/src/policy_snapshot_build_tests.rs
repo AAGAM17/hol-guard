@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::{json, Value};
 
-fn request() -> Value {
+pub(super) fn request() -> Value {
     json!({
         "schema": SCHEMA, "version": 1, "verifier_key": vec![7u8; 32],
         "generation": 4, "runtime_identity": "a".repeat(64), "rule_digest": "b".repeat(64),

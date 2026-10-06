@@ -413,6 +413,47 @@ def test_native_context_digest_names_unexpected_result_keys(tmp_path: Path, monk
     assert "'kind'" in reason
 
 
+def test_native_context_digest_reports_a_resident_error_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused request must report the resident's code, not "result invalid"."""
+
+    recorded: list[str] = []
+    _stub_digest_client(
+        monkeypatch,
+        transport=lambda **_kwargs: json.dumps(
+            {"error": "native_resident_update_in_progress", "retryable": True}
+        ).encode("utf-8"),
+    )
+    monkeypatch.setattr(
+        native_context,
+        "native_record_resident_failure",
+        lambda *_a, reason=None, **_k: recorded.append(str(reason)),
+    )
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    assert native_context.native_context_failure_reason() == "native_resident_update_in_progress"
+    assert recorded == ["native_resident_update_in_progress"]
+
+
+def test_native_context_digest_reports_an_unknown_resident_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An error envelope outside the contract must still name its code."""
+
+    _stub_digest_client(
+        monkeypatch,
+        transport=lambda **_kwargs: json.dumps({"error": "native_wat", "retryable": False}).encode("utf-8"),
+    )
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    reason = native_context.native_context_failure_reason() or ""
+    assert reason.startswith("native_context_digest_result_invalid:payload_keys_mismatch")
+    assert "error='native_wat'" in reason
+
+
 def test_native_context_digest_names_a_mismatched_request_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A response to somebody else's request must be reported as such."""
 

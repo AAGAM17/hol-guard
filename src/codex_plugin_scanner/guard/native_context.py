@@ -463,7 +463,9 @@ def _decode_result(
     if not keys.issuperset(_RESULT_REQUIRED_KEYS) or not keys.issubset(_RESULT_REQUIRED_KEYS | _RESULT_OPTIONAL_KEYS):
         missing = sorted(_RESULT_REQUIRED_KEYS - keys)
         unexpected = sorted(keys - (_RESULT_REQUIRED_KEYS | _RESULT_OPTIONAL_KEYS))[:3]
-        return _reject(f"payload_keys_mismatch missing={missing} unexpected={unexpected}")
+        reported = payload.get("error")
+        suffix = f" error={reported!r}" if isinstance(reported, str) else ""
+        return _reject(f"payload_keys_mismatch missing={missing} unexpected={unexpected}{suffix}")
     if (
         payload.get("schema") != _RESULT_SCHEMA
         or payload.get("request_id") != request_id
@@ -780,9 +782,16 @@ def native_context_digest(
             reason="native_context_digest_result_invalid",
         )
         return _digest_failed(f"native_context_digest_result_invalid:response_not_json bytes={len(output)}")
-    if _native_error(payload) == "native_overloaded":
-        native_record_overload(status.identity.sha256, guard_home)
-        return _digest_failed("native_overloaded")
+    error_code = _native_error(payload)
+    if error_code is not None:
+        # A resident that answers with its own error envelope is not an invalid
+        # result: it is a request the resident refused, and its code is both the
+        # actionable reason and the right thing to record against the breaker.
+        if error_code == "native_overloaded":
+            native_record_overload(status.identity.sha256, guard_home)
+            return _digest_failed("native_overloaded")
+        native_record_resident_failure(status.identity.sha256, guard_home, reason=error_code)
+        return _digest_failed(error_code)
     decoded = _decode_result(payload, request_id=request_id, request_sha256=request_sha256, kind=kind)
     if decoded is None:
         native_record_resident_failure(

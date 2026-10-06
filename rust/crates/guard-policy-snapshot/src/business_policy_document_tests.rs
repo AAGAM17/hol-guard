@@ -61,22 +61,10 @@ fn co_selectors_are_refused_instead_of_widened() {
 }
 
 #[test]
-fn bounded_lifetimes_and_unrepresented_defaults_refuse() {
-    for mode in [
-        "once",
-        "session",
-        "project",
-        "machine",
-        "workspace",
-        "team",
-        "until",
-    ] {
+fn scoped_lifetimes_and_unrepresented_defaults_refuse() {
+    for mode in ["once", "session", "project", "machine", "workspace", "team"] {
         let mut source = document();
-        source["spec"]["rules"][0]["lifetime"] = if mode == "until" {
-            json!({"mode": mode, "expiresAt": "2026-07-16T12:00:00Z"})
-        } else {
-            json!({"mode": mode})
-        };
+        source["spec"]["rules"][0]["lifetime"] = json!({"mode": mode});
         assert_eq!(
             compile_business_document(&source).unwrap_err(),
             BusinessDocumentError::UnsupportedLifetime
@@ -96,6 +84,35 @@ fn bounded_lifetimes_and_unrepresented_defaults_refuse() {
         compile_business_document(&source).unwrap_err(),
         BusinessDocumentError::UnsupportedDefaults
     );
+}
+
+#[test]
+fn until_preserves_exact_expiry_and_complete_source_identity() {
+    let mut source = document();
+    let permanent = compile_business_document(&source).unwrap();
+    source["spec"]["rules"][0]["lifetime"] =
+        json!({"mode": "until", "expiresAt": "2026-07-16T12:00:00.123456789Z"});
+    let compiled = compile_business_document(&source).unwrap();
+    assert_eq!(
+        compiled.binding().rules[0].expires_at.as_deref(),
+        Some("2026-07-16T12:00:00.123456789Z")
+    );
+    assert_ne!(compiled.source_digest(), permanent.source_digest());
+    assert_eq!(
+        serde_json::from_slice::<Value>(compiled.canonical_source()).unwrap(),
+        source
+    );
+    for expiry in [
+        "2026-02-29T12:00:00Z",
+        "2026-04-31T12:00:00Z",
+        "0000-01-01T00:00:00Z",
+    ] {
+        source["spec"]["rules"][0]["lifetime"]["expiresAt"] = json!(expiry);
+        assert_eq!(
+            compile_business_document(&source).unwrap_err(),
+            BusinessDocumentError::InvalidDocument
+        );
+    }
 }
 
 #[test]

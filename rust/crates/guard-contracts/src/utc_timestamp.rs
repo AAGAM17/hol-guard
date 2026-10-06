@@ -202,6 +202,46 @@ pub fn utc_timestamp_micros(value: &str) -> Option<i64> {
     Some(micros)
 }
 
+/// Canonical policy UTC spelling, preserving all nine fractional digits.
+/// Unlike the SQLite-compatible parser, this rejects normalized invalid dates,
+/// whitespace, offsets and omitted time components.
+pub fn canonical_policy_timestamp_nanos(value: &str) -> Option<i128> {
+    let bytes = value.as_bytes();
+    if !(20..=30).contains(&bytes.len()) || bytes.last() != Some(&b'Z') {
+        return None;
+    }
+    for (index, expected) in [(4, b'-'), (7, b'-'), (10, b'T'), (13, b':'), (16, b':')] {
+        if bytes.get(index) != Some(&expected) {
+            return None;
+        }
+    }
+    for range in [0..4, 5..7, 8..10, 11..13, 14..16, 17..19] {
+        if !bytes[range].iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+    }
+    if bytes.len() > 20
+        && (bytes.len() < 22
+            || bytes[19] != b'.'
+            || !bytes[20..bytes.len() - 1].iter().all(u8::is_ascii_digit))
+    {
+        return None;
+    }
+    let parsed = parse_iso8601(value)?;
+    let days = days_from_civil(parsed.year, parsed.month, parsed.day);
+    if parsed.year == 0 || civil_from_days(days) != (parsed.year, parsed.month, parsed.day) {
+        return None;
+    }
+    Some(
+        (i128::from(days) * 86_400
+            + i128::from(parsed.hour) * 3600
+            + i128::from(parsed.minute) * 60
+            + i128::from(parsed.second))
+            * 1_000_000_000
+            + i128::from(parsed.fraction_ns),
+    )
+}
+
 /// `_canonical_utc_timestamp` (:1681-1684): parse + re-emit UTC
 /// `isoformat(timespec="microseconds")`. `None` on parse failure.
 pub fn canonical_utc_timestamp(value: &str) -> Option<String> {
@@ -247,6 +287,10 @@ pub fn timestamp_has_expired(expires_at: &str, now: &str) -> bool {
         _ => true,
     }
 }
+
+#[cfg(test)]
+#[path = "canonical_policy_timestamp_tests.rs"]
+mod canonical_policy_timestamp_tests;
 
 #[cfg(test)]
 mod tests {

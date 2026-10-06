@@ -10,11 +10,13 @@ timeout, child death — without needing a real spawned child.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from codex_plugin_scanner.guard.proxy import runtime_mcp
+from codex_plugin_scanner.guard.store import GuardStore
 
 
 @pytest.fixture
@@ -220,22 +222,25 @@ def test_native_process_open_not_opened_is_terminal(guard_home, monkeypatch):
         server_name="test-server",
         command=["/bin/echo", "hello"],
         context=runtime_mcp.HarnessContext(
-            harness="codex",
+            home_dir=guard_home,
             workspace_dir=guard_home,
             guard_home=guard_home,
         ),
-        store=None,
-        config=runtime_mcp.GuardConfig(),
+        store=GuardStore(guard_home),
+        config=runtime_mcp.GuardConfig(guard_home=guard_home, workspace=guard_home),
         source_scope="test",
         config_path="codex.json",
     )
+    # The identity check reads this attribute; `_prepare_launch` normally sets
+    # it, so stubbing `_prepare_launch` requires seeding it directly.
+    proxy._active_runtime_launch_identity = {"executable": "/bin/echo"}
     monkeypatch.setattr(proxy, "_prepare_launch", lambda: ({}, {}, {}))
 
     def fail_on_subprocess_fallback(*args, **kwargs):
         raise AssertionError("Python subprocess fallback")
 
     monkeypatch.setattr(
-        runtime_mcp.subprocess, "Popen", fail_on_subprocess_fallback
+        subprocess, "Popen", fail_on_subprocess_fallback
     )
 
     with pytest.raises(RuntimeError, match="native MCP session open failed"):

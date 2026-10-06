@@ -2554,7 +2554,7 @@ def test_resolved_target_version_uses_registry_metadata_for_npm_ranges(monkeypat
             }
         }
 
-    monkeypatch.setattr(evaluator_module, "_urlopen_json_with_timeout_retry", fake_urlopen_json_with_timeout_retry)
+    monkeypatch.setattr(package_services, "_urlopen_json_with_timeout_retry", fake_urlopen_json_with_timeout_retry)
     resolved = evaluator_module._resolved_target_version(
         target={
             "ecosystem": "npm",

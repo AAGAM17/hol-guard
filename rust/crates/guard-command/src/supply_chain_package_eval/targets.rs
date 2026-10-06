@@ -1,3 +1,4 @@
+use super::manifest_dependency_targets::manifest_dependency_targets;
 use super::manifest_versions::{
     default_registry_range, source_url_from_raw_spec, source_url_from_specifier,
 };
@@ -11,12 +12,18 @@ pub(super) fn evaluation_targets(
     artifact: &GuardArtifact,
     workspace_dir: Option<&Path>,
 ) -> Vec<Map<String, Value>> {
-    deps.manifest.evaluation_targets(
-        artifact,
-        workspace_dir,
-        &targets_from_artifact(artifact),
-        false,
-    )
+    let explicit = targets_from_artifact(artifact);
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    let intent_kind = optional_string(artifact.metadata.get("intent_kind"));
+    if !matches!(
+        intent_kind.as_deref(),
+        None | Some("install") | Some("sync")
+    ) {
+        return Vec::new();
+    }
+    manifest_dependency_targets(deps, artifact, workspace_dir, false)
 }
 
 /// `_cloud_evaluation_targets` (:2178-2187).
@@ -27,12 +34,18 @@ pub(super) fn cloud_evaluation_targets(
     artifact: &GuardArtifact,
     workspace_dir: Option<&Path>,
 ) -> Vec<Map<String, Value>> {
-    deps.manifest.evaluation_targets(
-        artifact,
-        workspace_dir,
-        &targets_from_artifact(artifact),
-        true,
-    )
+    let explicit = targets_from_artifact(artifact);
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    let intent_kind = optional_string(artifact.metadata.get("intent_kind"));
+    if !matches!(
+        intent_kind.as_deref(),
+        None | Some("install") | Some("sync")
+    ) {
+        return Vec::new();
+    }
+    manifest_dependency_targets(deps, artifact, workspace_dir, true)
 }
 
 /// `_targets_from_artifact` (:2190-2254).

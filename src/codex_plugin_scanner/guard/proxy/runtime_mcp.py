@@ -631,7 +631,7 @@ def _configured_server_launch_environment(configured_keys: Sequence[str]) -> dic
     return _build_scrubbed_env(configured_values)
 
 
-def _ensure_native_launch_resident_verifier(store: GuardStore, guard_home: Path) -> None:
+def _ensure_native_launch_resident_verifier(store: GuardStore) -> None:
     """Provision the resident verifier key before any native launch RPC.
 
     Production hook entry provisions this through the policy snapshot
@@ -645,18 +645,11 @@ def _ensure_native_launch_resident_verifier(store: GuardStore, guard_home: Path)
     Python fallback, so a failure here must raise rather than proceed.
     """
 
-    from ..native_policy_snapshot_constants import (
-        NATIVE_POLICY_VERIFIER_KEY_NAME,
-        NATIVE_RUNTIME_STATE_DIRECTORY,
-    )
     from ..native_policy_snapshot_publisher import provision_native_verifier_key_for_store
 
-    key_path = Path(guard_home) / NATIVE_RUNTIME_STATE_DIRECTORY / NATIVE_POLICY_VERIFIER_KEY_NAME
-    try:
-        if key_path.is_file():
-            return
-    except OSError:
-        pass
+    # The provisioner is idempotent for a matching key and validates any
+    # existing file (regular, private, content-equal to this store's derived
+    # key), so always run it rather than short-circuiting on mere existence.
     provision_native_verifier_key_for_store(store)
 
 
@@ -719,7 +712,7 @@ class RuntimeMcpGuardProxy:
         self.server_id = server_id
         self._current_config_provider = current_config_provider
         self.server_env_keys = tuple(dict.fromkeys(key.strip() for key in server_env_keys if key.strip()))
-        _ensure_native_launch_resident_verifier(self.store, context.guard_home)
+        _ensure_native_launch_resident_verifier(self.store)
         initial_launch_env = _configured_server_launch_environment(self.server_env_keys)
         self.server_identity = server_identity or build_mcp_server_identity(
             config_path=self.config_path,
@@ -3414,6 +3407,20 @@ class RuntimeMcpGuardProxy:
                     message="Guard runtime MCP proxy timed out waiting for the MCP server.",
                 )
             assert frame is not None
+            # The native stdio session returns a timeout as a frame ``error``
+            # rather than raising. Mirror the ``except ProxyIoTimeoutError``
+            # branch above so both transports yield the same
+            # ``_timeout_response`` and quarantine the child.
+            if isinstance(frame.error, ProxyIoTimeoutError):
+                active_process = self._active_process
+                if active_process is not None:
+                    _quarantine_process(active_process)
+                return _timeout_response(
+                    request_id,
+                    source="child_response",
+                    timeout_seconds=timeout_seconds,
+                    message="Guard runtime MCP proxy timed out waiting for the MCP server.",
+                )
             line = self._child_output_line(frame)
             payload = json.loads(line)
             if not isinstance(payload, dict):

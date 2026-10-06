@@ -35,7 +35,9 @@ def test_empty_lookup_provisions_resident_before_dispatch_without_signing_rows(m
 
     assert store.resolve_policy_decision_lookup("codex", "codex:project:absent") == expected
     assert calls == ["provision", "dispatch"]
-    material.assert_called_once_with(create=True)
+    # The empty-store lookup reads the keyring non-creatively; the mocked
+    # material answer then lets the resident authority provisioning proceed.
+    material.assert_called_once_with(create=False)
     provision.assert_called_once_with(store.guard_home, master)
     refresh.assert_not_called()
 

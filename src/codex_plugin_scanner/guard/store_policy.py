@@ -50,7 +50,9 @@ from .memory_pattern_fingerprint import (
 )
 from .models import GUARD_ACTION_VALUES
 from .native_execution import _resident_request
+from .native_policy_snapshot_constants import NATIVE_POLICY_VERIFIER_KEY_NAME, NativePolicySnapshotError
 from .native_policy_snapshot_windows_key import provision_native_policy_verifier_key
+from .native_policy_snapshot_windows_support import _runtime_state_directory
 from .runtime.approval_context import approval_context_tokens_validation_reason
 from .store_base import *
 from .store_event_receipts import _local_once_approval_is_reusable, _verify_local_once_approval
@@ -1514,6 +1516,16 @@ class StorePolicyMixin:
                 ).fetchone()
                 is not None
             )
+            has_remote_policy = (
+                connection.execute(
+                    f"select 1 from policy_decisions where source in {_REMOTE_POLICY_SOURCE_PLACEHOLDERS} limit 1",
+                    _REMOTE_POLICY_SOURCE_PARAMS,
+                ).fetchone()
+                is not None
+            )
+            has_local_once_approvals = (
+                connection.execute("select 1 from guard_local_once_approvals limit 1").fetchone() is not None
+            )
             integrity_state = (
                 self._refresh_policy_integrity_state(
                     connection,
@@ -1525,10 +1537,29 @@ class StorePolicyMixin:
                 else {}
             )
 
+        # The resident refuses to serve until the owner-private verifier key
+        # exists under this guard home (consume_for_spawn gate). Publishers
+        # provision it at start(); standalone decision lookups must establish
+        # the same prerequisite or every request fails closed on
+        # native_policy_verifier_key_missing. Provisioning is O_EXCL +
+        # never-replace, so it is idempotent and safe to run per lookup.
+        try:
+            verifier_path = _runtime_state_directory(Path(self.guard_home)) / NATIVE_POLICY_VERIFIER_KEY_NAME
+        except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError):
+            # Untrusted/inaccessible guard home (e.g. symlinked) cannot persist a
+            # verifier key; treat as none so the degraded-lookup guard below applies.
+            verifier_path = None
+        verifier_exists = verifier_path.is_file() if verifier_path is not None else False
+
         # Resident startup needs the same verifier authority even when only
-        # remote policy rows (or no policy rows) exist. Procuring that key does
-        # not refresh, sign, or promote remote policy into local authority.
-        resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
+        # remote policy rows (or only local-once approvals) exist. Read the
+        # keyring non-creatively first; minting is reserved for stores that
+        # carry resident evidence (verifier file, remote policy rows, or a
+        # local-once row whose signature was issued under the keyring) so a
+        # lookup against a never-provisioned store does not mint an unused key.
+        resident_key, resident_key_id = self._policy_integrity_secret_material(create=False)
+        if resident_key is None and (verifier_exists or has_remote_policy or has_local_once_approvals):
+            resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
         if has_local_policy:
             integrity_key, integrity_key_id = resident_key, resident_key_id
         else:
@@ -1537,14 +1568,55 @@ class StorePolicyMixin:
         # Their integrity evidence must not depend on has_local_policy.
         local_once_key, local_once_key_id = resident_key, resident_key_id
 
-        # The resident refuses to serve until the owner-private verifier key
-        # exists under this guard home (consume_for_spawn gate). Publishers
-        # provision it at start(); standalone decision lookups must establish
-        # the same prerequisite or every request fails closed on
-        # native_policy_verifier_key_missing. Provisioning is O_EXCL +
-        # never-replace, so it is idempotent and safe to run per lookup.
         if resident_key is not None:
-            provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
+            try:
+                provision_native_policy_verifier_key(Path(self.guard_home), resident_key)
+            except NativePolicySnapshotError as error:
+                if str(error) in {
+                    "native_policy_verifier_key_invalid",
+                    "native_policy_verifier_key_mismatch",
+                    "native_policy_verifier_key_not_private",
+                }:
+                    # A persisted verifier that is malformed, foreign-owned,
+                    # or bytes-mismatched is active tampering evidence. Never
+                    # silently degrade past it — the resident must not serve
+                    # under an unverifiable authority.
+                    raise
+                # Cannot persist the verifier under an untrusted home; keep only
+                # the on-disk evidence flag, which is False when provisioning
+                # failed on the same home.
+                verifier_exists = verifier_path.is_file() if verifier_path is not None else False
+                if not verifier_exists:
+                    return {
+                        "decision": None,
+                        "ignored_local_integrity": None,
+                        "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
+                        "authority_revision": -1,
+                    }
+            except (OSError, RuntimeError, TypeError, ValueError):
+                verifier_exists = verifier_path.is_file() if verifier_path is not None else False
+                if not verifier_exists:
+                    return {
+                        "decision": None,
+                        "ignored_local_integrity": None,
+                        "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
+                        "authority_revision": -1,
+                    }
+        elif verifier_path is None or (not verifier_exists and not has_local_once_approvals):
+            # An untrusted guard home (verifier_path is None) can never persist
+            # a verifier key, and a store with no integrity keyring, no
+            # persisted verifier, and no local-once approvals has no authority
+            # to serve. Return an empty degraded lookup rather than raising
+            # native_policy_decision_lookup_unavailable on a store that cannot
+            # be provisioned. When local-once rows exist (even unsigned legacy
+            # ones) the resident still needs the request to emit
+            # ignored_local_integrity evidence.
+            return {
+                "decision": None,
+                "ignored_local_integrity": None,
+                "trust_status": TrustStatus.from_policy_integrity_state(integrity_state).to_dict(),
+                "authority_revision": -1,
+            }
 
         request: dict[str, object] = {
             "schema": "guard-policy-decision-lookup-request.v1",

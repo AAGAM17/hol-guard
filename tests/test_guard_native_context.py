@@ -264,9 +264,12 @@ def test_native_context_digest_grants_the_cold_start_allowance_only_while_the_po
     # tight steady-state budget, a home the pool must spawn does not.
     assert [value > cold - 500 for value in remaining[:2]] == [True, True]
     assert [value < warm + 500 for value in remaining[2:]] == [True, True]
-    # The resident's own bound is generous either way, so a retry is never bound
-    # by the tight steady-state budget the first attempt carried.
-    assert budgets == [cold, cold, cold, cold]
+    # The resident's own bound is the retry's, and it is the same on every
+    # attempt, so a retry is never bound by the tight budget the first carried.
+    retry = warm + native_context._RETRY_ALLOWANCE_MULTIPLIER * int(
+        native_context._COLD_START_ALLOWANCE_SECONDS * 1_000
+    )
+    assert budgets == [retry, retry, retry, retry]
 
 
 def test_native_context_digest_asks_the_pool_about_the_resolved_runtime(
@@ -318,9 +321,10 @@ def test_native_context_digest_retries_a_timeout_once_with_the_allowance(
     assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home)
     assert native_context._DIGEST_ATTEMPTS == 2
     assert len(remaining) == 2
-    # The retry gets the timeout plus the allowance, not the bare timeout.
+    # The retry is the last word, so it carries more than the bare timeout.
     assert remaining[0] < 1_500
-    assert remaining[1] > int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000) - 500
+    retry_ms = native_context._RETRY_ALLOWANCE_MULTIPLIER * int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
+    assert remaining[1] > retry_ms - 500
 
 
 def test_native_context_digest_retries_a_timeout_that_already_had_the_allowance(

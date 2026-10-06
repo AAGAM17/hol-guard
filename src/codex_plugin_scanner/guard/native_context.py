@@ -108,6 +108,11 @@ _COLD_START_ALLOWANCE_SECONDS = 3.0
 # "not enough time", not "this resident is gone".
 _DIGEST_ATTEMPTS = 2
 _DEADLINE_FAILURE_CODES = frozenset({"native_client_timed_out", "native_client_deadline_exceeded"})
+# The retry is the last word on whether the resident is contended or gone, so it
+# carries twice the allowance.  Only a request that has already failed pays it:
+# the steady-state deadline stays tight, and a resident that is genuinely gone
+# has the resilience breaker to stop the cost from repeating.
+_RETRY_ALLOWANCE_MULTIPLIER = 2
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -680,13 +685,14 @@ def native_context_digest(
     # start degrades to a slow request instead of a resident-unavailable
     # failure for every caller that has no fallback.
     budget_seconds = timeout_seconds + (_COLD_START_ALLOWANCE_SECONDS if cold_start else 0.0)
-    # The resident's own bound is always the generous one.  It is the budget the
-    # resident may spend on the request, and a retry must not inherit the tight
-    # steady-state budget the first attempt carried: a contended resident that
-    # starts serving after 500ms answers `native_client_deadline_exceeded`, and
-    # it would answer exactly that again.  The client's deadline is what keeps
-    # the steady state cheap.
-    resident_budget_ms = max(1, min(9_000, int((timeout_seconds + _COLD_START_ALLOWANCE_SECONDS) * 1_000)))
+    # The resident's own bound is the retry's.  It is the budget the resident may
+    # spend on the request, and a retry must not inherit the tight steady-state
+    # budget the first attempt carried: a contended resident that starts serving
+    # after that deadline answers `native_client_deadline_exceeded`, and it would
+    # answer exactly that again.  The client's deadline is what keeps the steady
+    # state cheap.
+    retry_budget_seconds = timeout_seconds + _RETRY_ALLOWANCE_MULTIPLIER * _COLD_START_ALLOWANCE_SECONDS
+    resident_budget_ms = max(1, min(9_000, int(retry_budget_seconds * 1_000)))
     deadline_monotonic = time.monotonic() + budget_seconds
     request_id = uuid.uuid4().hex
     request: dict[str, Any] = {
@@ -766,7 +772,7 @@ def native_context_digest(
         # the process resident and the binary in page cache.  "More time will
         # not help" is true only of a resident that is gone, which the failure
         # code distinguishes after the retry.
-        budget_seconds = timeout_seconds + _COLD_START_ALLOWANCE_SECONDS
+        budget_seconds = retry_budget_seconds
         deadline_monotonic = time.monotonic() + budget_seconds
     if output is None:
         # The client's own code ("native_client_timed_out",

@@ -792,6 +792,8 @@ def native_context_digest(
             return _digest_failed("native_overloaded")
         native_record_resident_failure(status.identity.sha256, guard_home, reason=error_code)
         return _digest_failed(error_code)
+    # A rejection is only meaningful for the result that produced it.
+    _LAST_RESULT_REJECTION.set(None)
     decoded = _decode_result(payload, request_id=request_id, request_sha256=request_sha256, kind=kind)
     if decoded is None:
         native_record_resident_failure(

@@ -56,6 +56,24 @@ pub(super) fn package_target_result(
             .map(Value::String)
             .unwrap_or(Value::Null),
     );
+    r.insert(
+        "sourceIdentity".to_string(),
+        optional_string(target.get("source_identity"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    r.insert(
+        "sourceRepository".to_string(),
+        optional_string(target.get("source_repository"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    r.insert(
+        "sourceRevisionKind".to_string(),
+        optional_string(target.get("source_revision_kind"))
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
     if let Some(rid) = rule_id {
         r.insert("ruleId".to_string(), Value::String(rid.to_string()));
     }
@@ -78,6 +96,10 @@ pub(super) fn heuristic_package_result(
     reason.insert("code".to_string(), Value::String(code.to_string()));
     reason.insert("message".to_string(), Value::String(message.to_string()));
     reason.insert("severity".to_string(), Value::String(severity.to_string()));
+    reason.insert(
+        "source".to_string(),
+        Value::String("guard-local".to_string()),
+    );
     package_target_result(target, decision, vec![reason], None)
 }
 

@@ -1524,10 +1524,7 @@ class StorePolicyMixin:
                 is not None
             )
             has_local_once_approvals = (
-                connection.execute(
-                    "select 1 from guard_local_once_approvals limit 1"
-                ).fetchone()
-                is not None
+                connection.execute("select 1 from guard_local_once_approvals limit 1").fetchone() is not None
             )
             integrity_state = (
                 self._refresh_policy_integrity_state(
@@ -1547,9 +1544,7 @@ class StorePolicyMixin:
         # native_policy_verifier_key_missing. Provisioning is O_EXCL +
         # never-replace, so it is idempotent and safe to run per lookup.
         try:
-            verifier_path = (
-                _runtime_state_directory(Path(self.guard_home)) / NATIVE_POLICY_VERIFIER_KEY_NAME
-            )
+            verifier_path = _runtime_state_directory(Path(self.guard_home)) / NATIVE_POLICY_VERIFIER_KEY_NAME
         except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError):
             # Untrusted/inaccessible guard home (e.g. symlinked) cannot persist a
             # verifier key; treat as none so the degraded-lookup guard below applies.
@@ -1563,9 +1558,7 @@ class StorePolicyMixin:
         # local-once row whose signature was issued under the keyring) so a
         # lookup against a never-provisioned store does not mint an unused key.
         resident_key, resident_key_id = self._policy_integrity_secret_material(create=False)
-        if resident_key is None and (
-            verifier_exists or has_remote_policy or has_local_once_approvals
-        ):
+        if resident_key is None and (verifier_exists or has_remote_policy or has_local_once_approvals):
             resident_key, resident_key_id = self._policy_integrity_secret_material(create=True)
         if has_local_policy:
             integrity_key, integrity_key_id = resident_key, resident_key_id

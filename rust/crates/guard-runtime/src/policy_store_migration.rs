@@ -22,6 +22,7 @@ pub(super) fn load_legacy_authority(
             if let Some(floor) = floor {
                 return Ok(LoadedAuthority {
                     snapshot: None,
+                    recovered_snapshot: None,
                     canonical_bytes: Vec::new(),
                     generation_floor: floor.generation,
                     policy_digest: Some(floor.policy_digest),
@@ -38,6 +39,7 @@ pub(super) fn load_legacy_authority(
         let Some(floor) = floor else {
             return Ok(LoadedAuthority {
                 snapshot: None,
+                recovered_snapshot: None,
                 canonical_bytes: Vec::new(),
                 generation_floor: 0,
                 policy_digest: None,
@@ -49,6 +51,7 @@ pub(super) fn load_legacy_authority(
         };
         return Ok(LoadedAuthority {
             snapshot: None,
+            recovered_snapshot: None,
             canonical_bytes: Vec::new(),
             generation_floor: floor.generation,
             policy_digest: Some(floor.policy_digest),
@@ -79,6 +82,9 @@ pub(super) fn load_legacy_authority(
     } else {
         None
     };
+    let recovered_snapshot = business_policy_floor
+        .as_ref()
+        .map(|_| legacy_snapshot.clone());
     let mut generation_floor = floor_generation.max(legacy_snapshot.generation);
     let mut invalid_on_startup = false;
     let mut snapshot = None;
@@ -116,6 +122,7 @@ pub(super) fn load_legacy_authority(
         .or_else(|| floor.map(|item| item.policy_digest));
     Ok(LoadedAuthority {
         snapshot,
+        recovered_snapshot,
         canonical_bytes,
         generation_floor,
         policy_digest,

@@ -161,6 +161,9 @@ struct PolicyState {
 
 struct LoadedAuthority {
     pub(super) snapshot: Option<PolicySnapshotV3>,
+    // Authenticated legacy content may remain useful for recovery while it is
+    // expired or incompatible with the current runtime admission context.
+    pub(super) recovered_snapshot: Option<PolicySnapshotV3>,
     pub(super) canonical_bytes: Vec<u8>,
     pub(super) generation_floor: u64,
     pub(super) policy_digest: Option<String>,
@@ -212,10 +215,9 @@ impl PolicySnapshotStore {
             &expected_scope_digest,
             &verifier_key,
         )?;
-        if loaded.migrate && loaded.snapshot.is_some() {
-            // A recovered business floor must be durable before an idempotent ACK
-            // can rely on it. Non-admissible bodies stay intact so the floor remains
-            // recoverable and Python readers keep the authenticated snapshot.
+        if loaded.migrate {
+            // Persist the recovered floor and its authenticated body before any
+            // startup or idempotent ACK can rely on them. Failure keeps us closed.
             persist_loaded_authority(&authority_path, &loaded, &verifier_key)?;
         }
         let approval_authority = approval_authority::load(state_base)?;

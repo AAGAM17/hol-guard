@@ -240,3 +240,44 @@ fn authentic_record_with_incoherent_binding_is_not_admitted() {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn expired_combined_legacy_body_and_recovered_floor_are_both_durable() {
+    let root = test_root("business-floor-expired-combined");
+    let key = install_test_key(&root, 77);
+    let store = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+    push(&store, business_snapshot(1, &key, &root)).unwrap();
+    drop(store);
+    let path = root.join(SNAPSHOT_FILE_NAME);
+    let mut record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let mut expired: PolicySnapshotV3 = serde_json::from_value(record["snapshot"].clone()).unwrap();
+    expired.issued_at_ms = 1;
+    expired.expires_at_ms = 2;
+    command_floor_tests::resign(&mut expired, &key);
+    record["snapshot"] = serde_json::to_value(expired).unwrap();
+    record
+        .as_object_mut()
+        .unwrap()
+        .remove("business_policy_floor");
+    record["floor_mac"] = Value::String(generation_floor_mac(
+        1,
+        record["policy_digest"].as_str().unwrap(),
+        &key,
+    ));
+    fixture_file(&path, &canonical_json_bytes(&record).unwrap());
+    let authenticated_body = record["snapshot"].clone();
+    let restarted = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+    assert_eq!(restarted.current_generation(), None);
+    drop(restarted);
+    let mut upgraded: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert!(upgraded["business_policy_floor"].is_string());
+    assert_eq!(upgraded["snapshot"], authenticated_body);
+    upgraded["snapshot"] = Value::Null;
+    fixture_file(&path, &canonical_json_bytes(&upgraded).unwrap());
+    let after_loss = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+    assert_eq!(
+        push(&after_loss, signed_snapshot(2, &key, &root)).unwrap_err(),
+        "native_business_policy_removal_requires_authority"
+    );
+    fs::remove_dir_all(root).unwrap();
+}

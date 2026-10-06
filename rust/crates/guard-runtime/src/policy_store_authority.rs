@@ -279,6 +279,7 @@ pub(super) fn load_authority(
             if let Some(floor) = read_generation_floor(legacy_floor_path, verifier_key)? {
                 return Ok(LoadedAuthority {
                     snapshot: None,
+                    recovered_snapshot: None,
                     canonical_bytes: Vec::new(),
                     generation_floor: floor.generation,
                     policy_digest: Some(floor.policy_digest),
@@ -322,6 +323,7 @@ pub(super) fn load_authority(
             if let Some(floor) = read_generation_floor(legacy_floor_path, verifier_key)? {
                 Ok(LoadedAuthority {
                     snapshot: None,
+                    recovered_snapshot: None,
                     canonical_bytes: Vec::new(),
                     generation_floor: floor.generation,
                     policy_digest: Some(floor.policy_digest),
@@ -357,6 +359,7 @@ pub(super) fn load_current_authority(
     else {
         return Ok(LoadedAuthority {
             snapshot: None,
+            recovered_snapshot: None,
             canonical_bytes: Vec::new(),
             generation_floor: 0,
             policy_digest: None,
@@ -414,6 +417,7 @@ pub(super) fn load_combined_authority(
     let mut invalid_on_startup = false;
     let mut business_floor = record.business_policy_floor;
     let mut migrate = false;
+    let mut recovered_snapshot = None;
     if let Some(candidate) = record.snapshot {
         // Recover an old record's floor only from authenticated whole content,
         // including expired snapshots. This grants no current admission.
@@ -434,6 +438,7 @@ pub(super) fn load_combined_authority(
         {
             business_floor = super::policy_store_business_floor::snapshot_floor(Some(&candidate))?;
             migrate = true;
+            recovered_snapshot = Some(candidate.clone());
         }
         if candidate.generation != record.generation_floor
             || candidate.policy_digest != record.policy_digest
@@ -465,6 +470,7 @@ pub(super) fn load_combined_authority(
     }
     Ok(LoadedAuthority {
         snapshot,
+        recovered_snapshot,
         canonical_bytes: canonical_snapshot,
         generation_floor: record.generation_floor,
         policy_digest: Some(record.policy_digest),

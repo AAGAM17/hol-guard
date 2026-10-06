@@ -3,10 +3,18 @@
 use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
+struct FixtureDirectory(std::path::PathBuf);
+
+impl Drop for FixtureDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn word_counts_do_not_gain_secret_or_file_list_access() {
-    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/word-count-fixtures");
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/word-count-fixtures");
     std::fs::create_dir_all(&fixtures).unwrap();
     let mut attempt = 0;
     let root = loop {
@@ -17,6 +25,7 @@ fn word_counts_do_not_gain_secret_or_file_list_access() {
             Err(error) => panic!("failed to create fixture directory: {error}"),
         }
     };
+    let _fixture = FixtureDirectory(root.clone());
     let root = std::fs::canonicalize(root).unwrap();
     std::fs::write(root.join("one.txt"), "ordinary fixture\n").unwrap();
     std::fs::write(root.join("two.txt"), "ordinary fixture\n").unwrap();

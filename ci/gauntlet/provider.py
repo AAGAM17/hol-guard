@@ -116,9 +116,11 @@ class InferenceRelay:
                     payload = json.loads(body)
                     if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
                         raise ValueError("invalid inference conversation")
-                    # Evidence records each round's actual tool choice; the forwarded
+                    # Evidence records each round's actual tool choice and thinking mode;
                     # body is untouched apart from the operator-pinned model/stream.
                     row["tool_choice"] = payload.get("tool_choice", "auto")
+                    if "thinking" in payload:
+                        row["thinking"] = payload["thinking"]
                     # The configured provider/model is fixed by the test operator.
                     payload["model"] = relay.model
                     payload["stream"] = True

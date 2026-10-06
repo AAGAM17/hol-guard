@@ -123,22 +123,25 @@ def run_process(
 def _agent_configuration(path: Path, relay: InferenceRelay) -> None:
     """Point the actual OMP provider at the transparent live relay."""
     path.mkdir(mode=0o700)
+    model_spec: dict[str, Any] = {
+        "id": "agent",
+        "name": "Guard Gauntlet live inference",
+        "reasoning": False,
+        "input": ["text"],
+        "contextWindow": 128000,
+        "maxTokens": 8192,
+    }
+    if relay.model.startswith("deepseek"):
+        # DeepSeek defaults to thinking mode, which rejects required tool calls.
+        # Use the pinned SDK's supported model compatibility configuration.
+        model_spec["compat"] = {"extraBody": {"thinking": {"type": "disabled"}}}
     configuration = {
         "providers": {
             "gauntlet-live": {
                 "baseUrl": relay.base_url,
                 "api": "openai-completions",
                 "auth": "none",
-                "models": [
-                    {
-                        "id": "agent",
-                        "name": "Guard Gauntlet live inference",
-                        "reasoning": False,
-                        "input": ["text"],
-                        "contextWindow": 128000,
-                        "maxTokens": 8192,
-                    }
-                ],
+                "models": [model_spec],
             }
         }
     }

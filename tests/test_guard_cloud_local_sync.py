@@ -182,6 +182,9 @@ def test_evaluate_detection_queues_access_graph_snapshot_without_cloud_workspace
 ) -> None:
     store = GuardStore(tmp_path / "guard-home")
     _seed_guard_cloud(store)
+    workspace_script = tmp_path / "workspace" / "workspace.js"
+    workspace_script.parent.mkdir(parents=True, exist_ok=True)
+    workspace_script.write_text("console.log('ok');\n", encoding="utf-8")
     artifact = _artifact(tmp_path)
     config = GuardConfig(guard_home=tmp_path / "guard-home", workspace=None)
 

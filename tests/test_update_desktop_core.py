@@ -61,9 +61,7 @@ def test_executable_is_desktop_core_for_app_bundle_and_managed_sidecar(tmp_path:
 def test_frozen_promoted_linux_bundle_uses_desktop_updater_without_launch_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    executable = (
-        tmp_path / "org.hol.guard.desktop" / "core" / "bundled" / "3.20.2-digest" / "bin" / "hol-guard"
-    )
+    executable = tmp_path / "org.hol.guard.desktop" / "core" / "bundled" / "3.20.2-digest" / "bin" / "hol-guard"
     executable.parent.mkdir(parents=True)
     executable.write_text("core", encoding="utf-8")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
@@ -78,9 +76,7 @@ def test_bundle_path_alone_does_not_make_python_desktop_managed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sys, "frozen", False, raising=False)
-    monkeypatch.setattr(
-        sys, "executable", str(tmp_path / "org.hol.guard.desktop/core/bundled/bin/python")
-    )
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "org.hol.guard.desktop/core/bundled/bin/python"))
     monkeypatch.delenv("HOL_GUARD_DESKTOP", raising=False)
     assert update_desktop_core.is_desktop_managed_runtime() is False
 

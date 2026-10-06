@@ -284,10 +284,7 @@ def executable_is_desktop_core(executable: Path) -> bool:
     except (OSError, RuntimeError):
         return False
     posix = resolved.as_posix().lower()
-    if any(
-        f"{_DESKTOP_APP_ID.lower()}/core/{directory}/" in posix
-        for directory in ("versions", "bundled")
-    ):
+    if any(f"{_DESKTOP_APP_ID.lower()}/core/{directory}/" in posix for directory in ("versions", "bundled")):
         return True
     if "hol guard.app/" in posix:
         return True

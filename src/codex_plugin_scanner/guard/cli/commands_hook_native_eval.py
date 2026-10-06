@@ -107,12 +107,21 @@ def _native_edge_floor_action(
     event_name: str,
     *,
     artifact_default_action: object | None = None,
+    artifact_type: str | None = None,
 ) -> GuardAction | None:
     """Project the typed native edge result onto the composition floor."""
 
     if not isinstance(native_edge_result, Mapping):
         return None
     action = coerce_guard_action(native_edge_result.get("policy_action") or native_edge_result.get("minimum_action"))
+    if (
+        event_name == "PreToolUse"
+        and artifact_type == "package_request"
+        and native_edge_result.get("reason_code") == "native_command_extension_evaluation_failed"
+    ):
+        # Package requests have their own fail-closed evaluator. A generic
+        # command-control failure is not a second package verdict.
+        return None
     if event_name == "PreToolUse" and action in {"block", "sandbox-required"}:
         # A typed terminal native edge cannot become browser-overridable review
         # when the compatibility command floor lacks the same source context.
@@ -557,6 +566,7 @@ def evaluate_native_artifact_hook(
         native_edge_result,
         event_name,
         artifact_default_action=runtime_artifact.metadata.get("guard_default_action"),
+        artifact_type=runtime_artifact.artifact_type,
     )
     if native_edge_action is not None:
         current_action_inputs.append(native_edge_action)

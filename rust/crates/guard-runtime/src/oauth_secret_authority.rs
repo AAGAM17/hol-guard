@@ -297,4 +297,23 @@ mod tests {
         let resolved = resolve_credentials(&inline, &|_: Option<&str>| None).expect("inline");
         assert_eq!(resolved, inline);
     }
+
+    #[test]
+    fn a_record_carrying_a_ref_is_verified_even_when_it_also_inlines_a_token() {
+        let secret = secret_payload();
+        let payload = serde_json::json!({
+            "issuer": "https://cloud.example",
+            "client_id": "client-1",
+            "refresh_token": "rt-stale-inline",
+            CREDENTIALS_REF_KEY: "ref-1",
+            CREDENTIALS_HASH_KEY: secret_fingerprint(&secret).expect("fingerprint"),
+        });
+        // The stored secret wins: an inline token must not bypass verification.
+        let resolved = resolve_credentials(&payload, &|_: Option<&str>| Some(secret.clone()))
+            .expect("resolved");
+        assert_eq!(
+            resolved.get("refresh_token").and_then(Value::as_str),
+            Some("rt-1")
+        );
+    }
 }

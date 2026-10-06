@@ -146,9 +146,14 @@ fn top_level_statements<'a>(code: &'a str, raw: &'a str) -> Option<Vec<(&'a str,
         }
         offset += line.len();
         if depth == 0 {
-            let statement = code[start..offset].trim();
+            let segment = &code[start..offset];
+            let leading = segment.len() - segment.trim_start().len();
+            let statement = segment.trim();
             if !statement.is_empty() {
-                statements.push((statement, raw[start..offset].trim()));
+                // Literal/comment masking preserves offsets. Use code bounds
+                // for both slices so a trailing comment cannot hide a call.
+                let begin = start + leading;
+                statements.push((statement, &raw[begin..begin + statement.len()]));
             }
             start = offset;
         }

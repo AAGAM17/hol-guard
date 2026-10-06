@@ -175,6 +175,7 @@ mod tests {
         assert!(credential_post("body = os.environ[\"TOKEN\"]\nrequest = urllib.request.Request(url, data=body, method = 'POST')\nurllib.request.urlopen(request)"));
         assert!(credential_post("body = os.environ [\"TOKEN\"]\nrequest = urllib.request.Request(url, data=body, method = 'POST')\nurllib.request.urlopen(request)"));
         assert!(credential_post("body = os.environ.get (\"TOKEN\").encode ()\nrequest = urllib.request.Request(url, data=body, method = 'POST')\nurllib.request.urlopen(request)"));
+        assert!(credential_post("body = os.environ[\"TOKEN\"]  # read\nrequest = urllib.request.Request(url, data=body, method='POST')  # send\nurllib.request.urlopen(request)  # execute"));
         assert!(!credential_post("body = os.environ[\"TOKEN\"]\nrequest = urllib.request.Request(url, data=\"method='POST'\")\nurllib.request.urlopen(request)"));
     }
 

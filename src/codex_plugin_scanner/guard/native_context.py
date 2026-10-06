@@ -100,11 +100,14 @@ _TIMEOUT_SECONDS = 0.5
 # idle client to serve the request.  Steady-state requests keep the tight budget;
 # a spawn on a contended runner must not fail closed.
 _COLD_START_ALLOWANCE_SECONDS = 3.0
-# A digest request is retried once, with the allowance, when the client reports a
-# timeout: the pooled client serialises requests, so a tight budget can lose the
-# lock to a long sibling RPC rather than to a round trip.
+# A digest request is retried once, with the allowance, when the failure is the
+# deadline running out: the pooled client serialises requests, so the tight
+# steady-state budget can lose the lock to a long sibling RPC, and the resident
+# reports its own deadline (`native_client_deadline_exceeded`) when it starts
+# serving after the budget the request carried has already lapsed. Both are
+# "not enough time", not "this resident is gone".
 _DIGEST_ATTEMPTS = 2
-_TIMEOUT_FAILURE_CODE = "native_client_timed_out"
+_DEADLINE_FAILURE_CODES = frozenset({"native_client_timed_out", "native_client_deadline_exceeded"})
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -677,7 +680,13 @@ def native_context_digest(
     # start degrades to a slow request instead of a resident-unavailable
     # failure for every caller that has no fallback.
     budget_seconds = timeout_seconds + (_COLD_START_ALLOWANCE_SECONDS if cold_start else 0.0)
-    resident_budget_ms = max(1, min(9_000, int(budget_seconds * 1_000)))
+    # The resident's own bound is always the generous one.  It is the budget the
+    # resident may spend on the request, and a retry must not inherit the tight
+    # steady-state budget the first attempt carried: a contended resident that
+    # starts serving after 500ms answers `native_client_deadline_exceeded`, and
+    # it would answer exactly that again.  The client's deadline is what keeps
+    # the steady state cheap.
+    resident_budget_ms = max(1, min(9_000, int((timeout_seconds + _COLD_START_ALLOWANCE_SECONDS) * 1_000)))
     deadline_monotonic = time.monotonic() + budget_seconds
     request_id = uuid.uuid4().hex
     request: dict[str, Any] = {
@@ -749,7 +758,7 @@ def native_context_digest(
             payload=envelope,
             deadline_monotonic=deadline_monotonic,
         )
-        if output is not None or native_resident_client_failure_code() != _TIMEOUT_FAILURE_CODE:
+        if output is not None or native_resident_client_failure_code() not in _DEADLINE_FAILURE_CODES:
             break
         # Retry even when the first attempt already carried the allowance: on a
         # contended runner the allowance covers a spawn that has not finished

@@ -56,16 +56,16 @@ def test_recovery_finishes_only_exact_committed_source(tmp_path, native_mcp_prob
     assert owner.read_installed_business_source(store, _key(store)) == recovered
 
 
-def test_recovery_refuses_rolled_back_transaction(tmp_path, native_mcp_probe):
+def test_fresh_approval_recovery_finishes_rolled_back_prepared_transaction(tmp_path, native_mcp_probe):
     store = GuardStore(tmp_path / "rollback-home")
     native_mcp_probe(store.guard_home)
     candidate = document()
     with pytest.raises(NativePolicySnapshotError, match="native_business_source_transaction_not_committed"):
         _install(store, candidate, _grant(store, candidate), commit=False)
-    with pytest.raises(NativePolicySnapshotError, match="native_business_source_transaction_not_committed"):
-        recover_committed_business_source(
-            store, candidate, approval_gate_grant=_grant(store, candidate, initialize=False)
-        )
+    recovered = recover_committed_business_source(
+        store, candidate, approval_gate_grant=_grant(store, candidate, initialize=False)
+    )
+    assert owner.read_installed_business_source(store, _key(store)) == recovered
 
 
 def test_cli_exposes_freshly_approved_recovery(tmp_path, native_mcp_probe, monkeypatch):

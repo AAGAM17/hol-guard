@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import replace
@@ -30,7 +31,15 @@ from codex_plugin_scanner.guard.store import GuardStore
 from tests.test_guard_bulk_allow_once import PASSWORD, _enable_gate
 from tests.test_guard_runtime_mcp_saved_blocks import _child_command, _context, _messages
 
-pytestmark = pytest.mark.usefixtures("bundle_first_cloud")
+
+pytestmark = [
+    pytest.mark.usefixtures("bundle_first_cloud"),
+    pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="mcp-stdio-session-v1 native feature is Unix-only; resident cannot open MCP stdio sessions on Windows",
+    ),
+]
+
 
 
 def _save_rule(store, request, action):

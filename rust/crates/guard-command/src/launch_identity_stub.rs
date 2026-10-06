@@ -66,10 +66,7 @@ fn unsupported_executable_identity(command: &Value) -> Value {
         "status".to_string(),
         Value::String("unsupported_platform".to_string()),
     );
-    map.insert(
-        "reuse_nonce".to_string(),
-        Value::String(token_hex(16)),
-    );
+    map.insert("reuse_nonce".to_string(), Value::String(token_hex(16)));
     Value::Object(map)
 }
 
@@ -77,7 +74,10 @@ fn unsupported_executable_identity(command: &Value) -> Value {
 // never bound, so the entrypoint stays unproven with a fresh reuse_nonce.
 fn unsupported_entrypoint_identity() -> Value {
     let mut map = Map::new();
-    map.insert("kind".to_string(), Value::String("unknown-launch".to_string()));
+    map.insert(
+        "kind".to_string(),
+        Value::String("unknown-launch".to_string()),
+    );
     map.insert(
         "reason".to_string(),
         Value::String("unsupported_platform".to_string()),
@@ -86,14 +86,8 @@ fn unsupported_entrypoint_identity() -> Value {
         "selector_sha256".to_string(),
         Value::String(launch_argv_digest(&[])),
     );
-    map.insert(
-        "status".to_string(),
-        Value::String("unproven".to_string()),
-    );
-    map.insert(
-        "reuse_nonce".to_string(),
-        Value::String(token_hex(16)),
-    );
+    map.insert("status".to_string(), Value::String("unproven".to_string()));
+    map.insert("reuse_nonce".to_string(), Value::String(token_hex(16)));
     Value::Object(map)
 }
 
@@ -238,13 +232,37 @@ mod tests {
     fn unsupported_launch_identity_is_complete_and_never_reusable() {
         let cwd = Path::new("C:\\work");
         let command = Value::String("python".to_string());
-        let args = vec![Value::String("-m".to_string()), Value::String("srv".to_string())];
+        let args = vec![
+            Value::String("-m".to_string()),
+            Value::String("srv".to_string()),
+        ];
 
-        let first = build_runtime_launch_identity(&command, &args, false, false, None, Some(cwd), None, None);
-        let second = build_runtime_launch_identity(&command, &args, false, false, None, Some(cwd), None, None);
+        let first = build_runtime_launch_identity(
+            &command,
+            &args,
+            false,
+            false,
+            None,
+            Some(cwd),
+            None,
+            None,
+        );
+        let second = build_runtime_launch_identity(
+            &command,
+            &args,
+            false,
+            false,
+            None,
+            Some(cwd),
+            None,
+            None,
+        );
 
         for identity in [&first, &second] {
-            assert!(identity.get("argv_sha256").and_then(Value::as_str).is_some());
+            assert!(identity
+                .get("argv_sha256")
+                .and_then(Value::as_str)
+                .is_some());
             assert!(identity.get("launch_cwd").and_then(Value::as_str).is_some());
             assert!(identity.get("executable").is_some());
             assert!(identity.get("entrypoint").is_some());
@@ -256,7 +274,14 @@ mod tests {
         // approval can never pin a stable identity on this platform.
         assert_ne!(first, second);
         assert!(!runtime_launch_identity_matches(
-            &first, &command, &args, false, false, None, Some(cwd), None,
+            &first,
+            &command,
+            &args,
+            false,
+            false,
+            None,
+            Some(cwd),
+            None,
         ));
     }
 }

@@ -52,7 +52,7 @@ fn present_business_binding<'de, D: serde::Deserializer<'de>>(
     BusinessPolicyBindingV1::deserialize(deserializer).map(Some)
 }
 
-pub(crate) fn build_from_reader(mut reader: impl Read) -> Result<Vec<u8>, String> {
+fn read_request(mut reader: impl Read) -> Result<(Zeroizing<Vec<u8>>, usize), String> {
     // A fixed allocation avoids leaving key-bearing copies in old Vec buffers
     // as read_to_end grows its capacity. Drop clears the entire allocation.
     let mut bytes = Zeroizing::new(vec![0u8; POLICY_SNAPSHOT_MAX_BYTES + 1]);
@@ -68,6 +68,11 @@ pub(crate) fn build_from_reader(mut reader: impl Read) -> Result<Vec<u8>, String
     if filled > POLICY_SNAPSHOT_MAX_BYTES {
         return Err(ERROR.into());
     }
+    Ok((bytes, filled))
+}
+
+pub(crate) fn build_from_reader(reader: impl Read) -> Result<Vec<u8>, String> {
+    let (bytes, filled) = read_request(reader)?;
     let request: BuildRequest =
         serde_json::from_slice(&bytes[..filled]).map_err(|_| ERROR.to_owned())?;
     if request.schema != SCHEMA || request.version != 1 {
@@ -113,6 +118,21 @@ pub(crate) fn build_from_reader(mut reader: impl Read) -> Result<Vec<u8>, String
     .map_err(|_| ERROR.to_owned())?;
     snapshot_bytes(&snapshot).map_err(|_| ERROR.to_owned())
 }
+
+pub(crate) fn is_command(command: &str) -> bool {
+    matches!(command, "policy-snapshot-build" | "policy-snapshot-inspect")
+}
+
+pub(crate) fn run_command(command: &str, reader: impl Read) -> Result<Vec<u8>, String> {
+    match command {
+        "policy-snapshot-build" => build_from_reader(reader),
+        "policy-snapshot-inspect" => inspect::inspect_from_reader(reader),
+        _ => Err(ERROR.into()),
+    }
+}
+
+#[path = "policy_snapshot_inspect.rs"]
+mod inspect;
 
 #[cfg(test)]
 #[path = "policy_snapshot_build_tests.rs"]

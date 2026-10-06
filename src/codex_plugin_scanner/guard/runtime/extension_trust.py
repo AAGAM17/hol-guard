@@ -10,14 +10,12 @@ from importlib import resources
 from pathlib import Path
 from typing import Final, Literal, Protocol, TypeVar, cast
 
-from .extension_contribution import contribution_catalog_overlay, frozen_package_data
 from .extension_control_contract import (
     ControlLayerKind,
     ControlState,
     ControlTargetKind,
     ExtensionControlLayer,
 )
-from .mcp_server_contribution import mcp_payload_for_catalog_id, reset_mcp_contribution_cache
 
 
 class _ExtensionLike(Protocol):
@@ -140,6 +138,8 @@ def _packaged_map_bytes() -> bytes | None:
         root = resources.files("codex_plugin_scanner.guard.contracts.data.extensions")
         return (root / "trust-class-map.v1.json").read_bytes()
     except (FileNotFoundError, ModuleNotFoundError, OSError):
+        from .extension_contribution import frozen_package_data
+
         frozen = frozen_package_data("extensions", "trust-class-map.v1.json")
         return frozen.read_bytes() if frozen is not None and frozen.is_file() else None
 
@@ -190,6 +190,9 @@ def catalog_trust_fields(extension_id: str, *, required: bool) -> dict[str, obje
         "publisher": publisher_for(extension_id),
         "icon": {"kind": "none"},
     }
+    from .extension_contribution import contribution_catalog_overlay
+    from .mcp_server_contribution import mcp_payload_for_catalog_id
+
     overlay = contribution_catalog_overlay(extension_id)
     mcp_payload = mcp_payload_for_catalog_id(extension_id)
     if overlay is not None and mcp_payload is not None:
@@ -257,4 +260,6 @@ def reset_trust_map_cache() -> None:
 
     _trust_map.cache_clear()
     reset_contribution_cache()
+    from .mcp_server_contribution import reset_mcp_contribution_cache
+
     reset_mcp_contribution_cache()

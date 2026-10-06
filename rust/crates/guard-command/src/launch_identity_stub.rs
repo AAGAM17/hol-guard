@@ -8,22 +8,101 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 
-fn unsupported_identity() -> Value {
-    json!({
-        "status": "unsupported_platform",
-        "reuse_nonce": "unsupported_platform",
-    })
+// Mirror the Unix implementation's contract shape on non-Unix targets: every
+// key a cross-platform consumer indexes must be present, but the identity
+// stays non-reusable (`reuse_nonce`) and `unsupported_platform`, so saved
+// approvals still fail closed and nothing claims a verified launch.
+
+fn token_hex(bytes: usize) -> String {
+    let mut buffer = vec![0u8; bytes];
+    if getrandom::fill(&mut buffer).is_ok() {
+        hex::encode(buffer)
+    } else {
+        "0".repeat(bytes * 2)
+    }
+}
+
+// `launch_identity.rs::launch_argv_digest` — sha256 over canonical JSON argv.
+fn launch_argv_digest(argv: &[String]) -> String {
+    let material = Value::Array(argv.iter().map(|s| Value::String(s.clone())).collect());
+    let mut bytes = Vec::with_capacity(64);
+    if guard_contracts::write_canonical_json(&material, &mut bytes).is_err() {
+        bytes.clear();
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    hex::encode(Sha256::digest(text.as_bytes()))
+}
+
+// `launch_identity.rs::unreusable_executable_identity` — non-Unix executables
+// are never verified, so reuse_nonce keeps the identity fail-closed.
+fn unsupported_executable_identity(command: &Value) -> Value {
+    let mut map = Map::new();
+    map.insert(
+        "command".to_string(),
+        command
+            .as_str()
+            .map(|s| Value::String(s.to_string()))
+            .unwrap_or(Value::Null),
+    );
+    map.insert("path".to_string(), Value::Null);
+    map.insert(
+        "status".to_string(),
+        Value::String("unsupported_platform".to_string()),
+    );
+    map.insert(
+        "reuse_nonce".to_string(),
+        Value::String(token_hex(16)),
+    );
+    Value::Object(map)
+}
+
+// `launch_identity.rs::unproven_runtime_entrypoint` — non-Unix entrypoints are
+// never bound, so the entrypoint stays unproven with a fresh reuse_nonce.
+fn unsupported_entrypoint_identity() -> Value {
+    let mut map = Map::new();
+    map.insert("kind".to_string(), Value::String("unknown-launch".to_string()));
+    map.insert(
+        "reason".to_string(),
+        Value::String("unsupported_platform".to_string()),
+    );
+    map.insert(
+        "selector_sha256".to_string(),
+        Value::String(launch_argv_digest(&[])),
+    );
+    map.insert(
+        "status".to_string(),
+        Value::String("unproven".to_string()),
+    );
+    map.insert(
+        "reuse_nonce".to_string(),
+        Value::String(token_hex(16)),
+    );
+    Value::Object(map)
+}
+
+fn launch_cwd_text(cwd: Option<&Path>) -> String {
+    cwd.map(|c| c.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 pub fn build_runtime_executable_identity(
-    _command: &Value,
-    _search_path: Option<&str>,
-    _cwd: Option<&Path>,
-    _home_dir: Option<&Path>,
+    command: &Value,
+    search_path: Option<&str>,
+    cwd: Option<&Path>,
+    home_dir: Option<&Path>,
     _require_executable: bool,
 ) -> Value {
-    unsupported_identity()
+    let _ = (search_path, home_dir);
+    let mut identity = unsupported_executable_identity(command);
+    if let Some(obj) = identity.as_object_mut() {
+        obj.insert(
+            "launch_cwd".to_string(),
+            Value::String(launch_cwd_text(cwd)),
+        );
+    }
+    identity
 }
 
 pub fn runtime_launch_identity_is_reusable(_identity: &Value) -> bool {
@@ -54,16 +133,36 @@ pub fn runtime_launch_identity_matches(
 
 #[allow(clippy::too_many_arguments)]
 pub fn build_runtime_launch_identity(
-    _command: &Value,
-    _args: &[Value],
+    command: &Value,
+    args: &[Value],
     _structured_command: bool,
     _direct_executable: bool,
-    _search_path: Option<&str>,
-    _cwd: Option<&Path>,
-    _home_dir: Option<&Path>,
+    search_path: Option<&str>,
+    cwd: Option<&Path>,
+    home_dir: Option<&Path>,
     _launch_env: Option<&Value>,
 ) -> Value {
-    unsupported_identity()
+    // Digest the real argv vector so `argv_sha256` is present and content-bound,
+    // even though the identity remains non-reusable on unsupported platforms.
+    let mut full_argv: Vec<String> = Vec::new();
+    if let Some(cmd) = command.as_str() {
+        if !cmd.trim().is_empty() {
+            full_argv.push(cmd.to_string());
+        }
+    }
+    for a in args {
+        if let Some(s) = a.as_str() {
+            full_argv.push(s.to_string());
+        }
+    }
+    json!({
+        "argv_sha256": launch_argv_digest(&full_argv),
+        "entrypoint": unsupported_entrypoint_identity(),
+        "executable": build_runtime_executable_identity(
+            command, search_path, cwd, home_dir, true,
+        ),
+        "launch_cwd": launch_cwd_text(cwd),
+    })
 }
 
 fn python_str_is_space(c: char) -> bool {

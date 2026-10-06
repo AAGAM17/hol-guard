@@ -40,6 +40,8 @@ SCHEDULING_ONLY_NODE_IDS = frozenset(
         "test_listing_queue_page_without_totals_stays_under_50ms_with_100k_rows",
         "tests/test_guard_approval_store_scale.py::TestQueueScaleTargets::"
         "test_resolving_one_request_with_100k_rows_stays_under_100ms",
+        "tests/test_guard_daemon_acceptance.py::test_packaged_correctness_workloads[pi-240-24]",
+        "tests/test_guard_daemon_acceptance.py::test_packaged_correctness_workloads[pi-480-two-client-24]",
         "tests/test_guard_daemon_acceptance.py::test_packaged_correctness_workloads[mixed-harness-fairness]",
         "tests/test_guard_omp_fast_path_regression.py::test_omp_post_tool_read_burst_uses_resident_scanner",
         "tests/test_guard_cloud_review_runtime_recovery.py::"

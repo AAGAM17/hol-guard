@@ -155,7 +155,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert set(jobs["compatibility"]["strategy"]["matrix"]["python-version"]) == {"3.10", "3.11", "3.13", "3.14"}
     selected = shlex.split(scheduling_job)
     for node in SCHEDULING_ONLY_NODE_IDS:
-        assert node in selected or node.split("::", 1)[0] in selected
+        assert node in selected or node.split("[", 1)[0] in selected or node.split("::", 1)[0] in selected
     redundant_deselections = re.findall(r"--deselect '?([^'\s]+)'?", coverage_job)
     assert set(redundant_deselections) <= SCHEDULING_ONLY_NODE_IDS
     assert coverage_job.count("--deselect ") == len(set(redundant_deselections))

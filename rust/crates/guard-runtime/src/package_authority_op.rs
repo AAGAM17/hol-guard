@@ -29,7 +29,8 @@ use guard_command::supply_chain_package_eval::{
     evaluate_package_request_artifact, CanonicalPackageIdentity as EvalCanonicalPackageIdentity,
     ConfigLoaderApi, EntitlementRefreshApi, EvalError, EvalResult, GuardSyncRequest,
     GuardSyncRunnerApi, JsSemverApi, LockfileParseApi, LockfileParseResult, ManifestDepsApi,
-    NativeArchiveApi, PackageIdentityApi, RestrictedArchiveApi, RestrictedArchiveDownloadResult,
+    NativeArchiveApi, PackageIdentityApi, RestrictedArchiveApi,
+    RestrictedArchiveDownload as EvalRestrictedArchiveDownload, RestrictedArchiveDownloadResult,
     RestrictedArchiveFailure, RiskDetectApi, StoreExtrasApi, SupplyChainBundleApi,
     SupplyChainBundleResponse as EvalBundleResponse, SupplyChainEvalDeps, WorkspaceIoApi,
 };
@@ -1282,16 +1283,20 @@ impl SupplyChainStore for ResidentSupplyChainStore {
 // ResidentEvalDeps — concrete `SupplyChainEvalDeps` impls.
 // ---------------------------------------------------------------------------
 
-/// Fails closed — resident has no HTTP transport for guard-sync; eval falls
-/// back to local-only exactly like Python `GuardSyncNotConfiguredError`.
+/// Resident `.runtime.runner` guard-sync seam — owns the OAuth credential
+/// read, DPoP proof signing (ES256/ring), origin-allowlist endpoint
+/// validation, and the ureq-backed HTTPS transport with the Python retry
+/// state machine (`_urlopen_with_sync_retries`). Token refresh is not yet
+/// ported (stage B) — a cached-token-miss surfaces `EvalError::Validation`
+/// (`GuardSyncAuthorizationExpiredError` mirror, fail-closed to `ask`).
 ///
 /// `auth_context_override` is a test-only seam: when the originating Python
 /// process is running under pytest (`PYTEST_CURRENT_TEST` set) and exports
 /// `HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON`, `supply_chain_eval_native` forwards
 /// the parsed dict on the request as `sync_auth_context_override`. Two forms:
 ///   * `{"sync_url": ..., "access_token": ...}` — used verbatim as the auth
-///     context so the resident reaches the (still stubbed) transport and
-///     surfaces `cloud_http_error` rather than silently degrading;
+///     context so the resident reaches the transport and surfaces
+///     `cloud_http_error` rather than silently degrading;
 ///   * `{"error": "authorization_expired"}` — surfaces as
 ///     `EvalError::Validation`, which `evaluate_with_cloud` maps to the
 ///     `cloud_auth_error` fail-closed path (parity with
@@ -1303,57 +1308,174 @@ struct ResidentGuardSyncRunner {
 impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
     fn resolve_guard_sync_auth_context(
         &self,
-        _store: &dyn SupplyChainStore,
+        store: &dyn SupplyChainStore,
         _allow_primary_repair: bool,
-        _force_refresh: bool,
+        force_refresh: bool,
     ) -> EvalResult<Map<String, Value>> {
+        use guard_command::guard_sync_transport as gst;
         if let Some(override_ctx) = &self.auth_context_override {
             if override_ctx.get("error").and_then(Value::as_str) == Some("authorization_expired") {
                 return Err(EvalError::Validation(
                     "guard sync authorization expired (test override)".into(),
                 ));
             }
-            return Ok(override_ctx.clone());
+            let mut ctx = override_ctx.clone();
+            if let Some(sync_url) = ctx.get("sync_url").and_then(Value::as_str) {
+                let issuer = ctx.get("issuer").and_then(Value::as_str);
+                ctx.insert(
+                    "sync_url".to_owned(),
+                    Value::String(
+                        gst::validate_guard_sync_endpoint(sync_url, issuer)
+                            .map_err(EvalError::Validation)?,
+                    ),
+                );
+            }
+            return Ok(ctx);
         }
-        Err(EvalError::NotFound(
-            "guard sync auth context unavailable in resident".into(),
-        ))
+        if let Some(mut env_ctx) = gst::test_sync_auth_context_from_env() {
+            if let Some(sync_url) = env_ctx.get("sync_url").and_then(Value::as_str) {
+                let issuer = env_ctx.get("issuer").and_then(Value::as_str);
+                env_ctx.insert(
+                    "sync_url".to_owned(),
+                    Value::String(
+                        gst::validate_guard_sync_endpoint(sync_url, issuer)
+                            .map_err(EvalError::Validation)?,
+                    ),
+                );
+            }
+            return Ok(env_ctx);
+        }
+        // `_resolve_guard_sync_auth_context` (:4733) — read the stored OAuth
+        // credentials, extract DPoP material, and reuse a still-valid cached
+        // access token. Token refresh (the network leg + rotation persist) is
+        // NOT ported in stage A: a missing/expired token surfaces
+        // `EvalError::Validation` (the `GuardSyncAuthorizationExpiredError`
+        // mirror) so `_evaluate_with_cloud` fail-closes to `ask` rather than
+        // mislabeling a refresh-needed credential as `NotFound` ("not
+        // configured") and falling back to local-only evaluation.
+        let oauth_credentials = match store.get_sync_payload("oauth_local_credentials") {
+            Some(c) if c.is_object() => c,
+            _ => return Err(EvalError::NotFound("Guard is not logged in.".to_owned())),
+        };
+        let issuer = oauth_credentials
+            .get("issuer")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty());
+        let client_id = oauth_credentials
+            .get("client_id")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty());
+        let refresh_token = oauth_credentials
+            .get("refresh_token")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty());
+        let (issuer, client_id, refresh_token) = match (issuer, client_id, refresh_token) {
+            (Some(i), Some(c), Some(r)) => (i, c, r),
+            _ => {
+                return Err(EvalError::Validation(
+                    "Guard OAuth credentials are incomplete; reauthorize Guard.".to_owned(),
+                ))
+            }
+        };
+        let _ = (client_id, refresh_token); // refresh path is the stage-B port
+        let dpop_key_material = gst::oauth_dpop_key_material(&oauth_credentials)?;
+        gst::resolve_guard_oauth_client_config(issuer).map_err(|e| {
+            EvalError::Validation(format!("Reconnect Guard to Guard Cloud to continue. {e}"))
+        })?;
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or_default();
+        let cached_access_token = if force_refresh {
+            None
+        } else {
+            gst::cached_oauth_access_token(&oauth_credentials, now_unix)
+        };
+        let access_token = match cached_access_token {
+            Some(t) => t,
+            None => {
+                return Err(EvalError::Validation(
+                    "Guard OAuth access token needs refresh; the resident refresh path \
+                     is not ported (stage A). Reauthorize Guard to continue."
+                        .to_owned(),
+                ))
+            }
+        };
+        let sync_url = gst::validate_guard_sync_endpoint(
+            &gst::oauth_sync_url_from_issuer(issuer).map_err(EvalError::Validation)?,
+            Some(issuer),
+        )
+        .map_err(EvalError::Validation)?;
+        let mut ctx = Map::new();
+        ctx.insert("sync_url".to_owned(), Value::String(sync_url));
+        ctx.insert("access_token".to_owned(), Value::String(access_token));
+        ctx.insert(
+            "dpop_key_material".to_owned(),
+            Value::Object(dpop_key_material),
+        );
+        ctx.insert("issuer".to_owned(), Value::String(issuer.to_owned()));
+        Ok(ctx)
     }
-    fn validate_guard_sync_url(&self, sync_url: &str, _issuer: Option<&str>) -> EvalResult<String> {
-        Ok(sync_url.trim_end_matches('/').to_owned())
+    fn validate_guard_sync_url(&self, sync_url: &str, issuer: Option<&str>) -> EvalResult<String> {
+        guard_command::guard_sync_transport::validate_guard_sync_endpoint(sync_url, issuer)
+            .map_err(EvalError::Validation)
     }
     fn guard_sync_request(
         &self,
-        _auth_context: &Value,
+        auth_context: &Value,
         request_url: &str,
         method: &str,
         data: Option<&[u8]>,
-        _extra_headers: Option<&Map<String, Value>>,
+        extra_headers: Option<&Map<String, Value>>,
         dpop_nonce: Option<&str>,
     ) -> EvalResult<GuardSyncRequest> {
-        Ok(GuardSyncRequest {
-            url: request_url.to_owned(),
-            method: method.to_owned(),
-            headers: BTreeMap::new(),
-            body: data.map(|d| d.to_vec()),
-            dpop_nonce: dpop_nonce.map(str::to_owned),
-        })
+        guard_command::guard_sync_transport::guard_sync_request(
+            auth_context,
+            request_url,
+            method,
+            data,
+            extra_headers,
+            dpop_nonce,
+        )
     }
     fn urlopen_json_with_timeout_retry(
         &self,
-        _request: &GuardSyncRequest,
-        _timeout_seconds: u64,
-        _retry_timeout_seconds: u64,
+        request: &GuardSyncRequest,
+        timeout_seconds: u64,
+        retry_timeout_seconds: u64,
     ) -> EvalResult<Map<String, Value>> {
-        Err(EvalError::Internal(
-            "resident guard-sync transport unavailable".into(),
-        ))
+        let payload = guard_command::guard_sync_transport::urlopen_json_with_timeout_retry(
+            request,
+            timeout_seconds as f64,
+            retry_timeout_seconds as f64,
+        )?;
+        match payload {
+            Value::Object(map) => Ok(map),
+            _ => Err(EvalError::Internal(
+                "Guard Cloud sync returned an invalid response payload.".into(),
+            )),
+        }
     }
-    fn is_timeout_error(&self, _error: &(dyn std::error::Error + 'static)) -> bool {
-        false
+    fn is_timeout_error(&self, error: &(dyn std::error::Error + 'static)) -> bool {
+        // `_is_timeout_error` (:4997) — urllib surfaces `TimeoutError`,
+        // `URLError` with a `timeout` reason, and (rarely) `HTTPException`.
+        // The transport folds all of those into `EvalError::Internal` with a
+        // `timeout:` prefix.
+        error
+            .downcast_ref::<EvalError>()
+            .is_some_and(|e| matches!(e, EvalError::Internal(m) if m.starts_with("timeout:")))
     }
     fn normalized_receipts_sync_url(&self, sync_url: &str) -> String {
-        sync_url.to_owned()
+        // `_normalized_receipts_sync_url` (:4927) — trailing `/`s trimmed,
+        // the sync endpoint suffix stripped so error detail + nonce paths
+        // compare origins.
+        let trimmed = sync_url.trim_end_matches('/');
+        let lower = trimmed.to_lowercase();
+        if lower.ends_with("/api/guard/receipts/sync") {
+            trimmed[..trimmed.len() - "/api/guard/receipts/sync".len()].to_owned()
+        } else {
+            trimmed.to_owned()
+        }
     }
 }
 
@@ -1719,27 +1841,49 @@ impl PackageIdentityApi for ResidentPackageIdentity {
     }
 }
 
-/// Restricted-archive seam — no HTTP transport in the resident; return the
-/// policy Failure the Python download produces when the fetch is denied.
+/// Restricted-archive seam — bounded public-HTTPS-only acquisition via the
+/// `guard_command::restricted_archive` policy engine over the ureq-backed
+/// pinned transport.
 struct ResidentRestrictedArchive;
 
 impl RestrictedArchiveApi for ResidentRestrictedArchive {
     fn download_restricted_archive(
         &self,
         source_url: &str,
-        _max_bytes: u64,
-        _max_redirects: u32,
-        _timeout_seconds: f64,
-        _temp_dir: Option<&Path>,
+        max_bytes: u64,
+        max_redirects: u32,
+        timeout_seconds: f64,
+        temp_dir: Option<&Path>,
     ) -> EvalResult<RestrictedArchiveDownloadResult> {
-        Ok(RestrictedArchiveDownloadResult::Failure(
-            RestrictedArchiveFailure {
-                code: "external_archive_transport_unavailable".into(),
-                message: format!(
-                    "Restricted archive download is unavailable in the resident: {source_url}"
-                ),
+        let resolver = guard_command::restricted_archive_transport::SystemDnsResolver;
+        let transport = guard_command::restricted_archive_transport::UreqPinnedTransport;
+        Ok(
+            match guard_command::restricted_archive::download_restricted_archive(
+                source_url,
+                max_bytes,
+                max_redirects,
+                timeout_seconds,
+                temp_dir,
+                &resolver,
+                &transport,
+            ) {
+                guard_command::restricted_archive::RestrictedArchiveDownloadResult::Success(
+                    blob,
+                ) => RestrictedArchiveDownloadResult::Success(EvalRestrictedArchiveDownload {
+                    path: blob.path,
+                    sha256: blob.sha256,
+                    size: blob.size,
+                    source_url: blob.source_url,
+                    final_url: blob.final_url,
+                }),
+                guard_command::restricted_archive::RestrictedArchiveDownloadResult::Failure(
+                    failure,
+                ) => RestrictedArchiveDownloadResult::Failure(RestrictedArchiveFailure {
+                    code: failure.code,
+                    message: failure.message,
+                }),
             },
-        ))
+        )
     }
 }
 
@@ -1979,11 +2123,33 @@ struct ResidentRuntimeRunner;
 impl RuntimeRunnerApi for ResidentRuntimeRunner {
     fn resolve_guard_sync_auth_context(
         &self,
-        _store: &dyn SupplyChainStore,
+        store: &dyn SupplyChainStore,
     ) -> Result<Value, LocalSupplyChainError> {
-        Err(LocalSupplyChainError::NotAvailable {
-            message: "guard sync auth context unavailable in resident".into(),
-            retryable: true,
+        // `.runtime.runner` resolve delegates to the same resident
+        // `GuardSyncRunnerApi` — the OAuth credential read + origin gate +
+        // cached-token check live there. `EvalError` → `LocalSupplyChainError`
+        // mapping: `NotFound` = `GuardSyncNotConfiguredError` (non-retryable
+        // not-configured), `Validation` = `GuardSyncAuthorizationExpiredError`
+        // (fail-closed auth-expired; still `retryable` at this seam so the
+        // caller's `with_refresh` loop can retry once before surfacing).
+        ResidentGuardSyncRunner {
+            auth_context_override: None,
+        }
+        .resolve_guard_sync_auth_context(store, false, false)
+        .map(Value::Object)
+        .map_err(|e| match e {
+            EvalError::NotFound(m) => LocalSupplyChainError::NotAvailable {
+                message: m,
+                retryable: false,
+            },
+            EvalError::Validation(m) => LocalSupplyChainError::NotAvailable {
+                message: m,
+                retryable: true,
+            },
+            other => LocalSupplyChainError::NotAvailable {
+                message: other.to_string(),
+                retryable: true,
+            },
         })
     }
     fn sync_local_guard_cloud_proof(
@@ -2006,14 +2172,118 @@ impl RuntimeRunnerApi for ResidentRuntimeRunner {
             retryable: true,
         })
     }
-    fn guard_sync_headers(&self, _auth_context: &Value) -> BTreeMap<String, String> {
-        BTreeMap::new()
+    fn guard_sync_headers(&self, auth_context: &Value) -> BTreeMap<String, String> {
+        // `_guard_sync_headers` (:4783) without a request_url — the bundle
+        // sync path only needs the Bearer + content-type set (no DPoP proof
+        // is bound to a URL/method yet).
+        let mut headers = BTreeMap::new();
+        let access_token = auth_context
+            .get("access_token")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        headers.insert("Authorization".to_owned(), format!("Bearer {access_token}"));
+        headers.insert("Content-Type".to_owned(), "application/json".to_owned());
+        headers.insert("Accept".to_owned(), "application/json".to_owned());
+        headers.insert("User-Agent".to_owned(), "hol-guard-native".to_owned());
+        headers
     }
-    fn check_plan_restriction_403(&self, _status: u16, _body: &str) -> (bool, String) {
-        (false, String::new())
+    fn check_plan_restriction_403(&self, _status: u16, body: &str) -> (bool, String) {
+        // `_check_plan_restriction_403` (:4955) — read the 403 body once,
+        // prefer the `error`/`syncEnabled`/`code` fields, keyword-scan the
+        // combined message+code for plan-restriction signals.
+        const PLAN_403_KEYWORDS: &[&str] = &[
+            "sync_not_available",
+            "plan_restriction",
+            "requires a pro",
+            "requires a team",
+            "upgrade your plan",
+            "upgrade to",
+            "subscription required",
+            "not included in your plan",
+            "guard sync requires",
+        ];
+        let fallback = {
+            let trimmed = body.trim();
+            if trimmed.is_empty() {
+                "HTTP Error 403".to_owned()
+            } else {
+                trimmed.to_owned()
+            }
+        };
+        let Ok(Value::Object(payload)) = serde_json::from_str::<Value>(body) else {
+            return (false, fallback);
+        };
+        let message_str = payload
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| fallback.clone());
+        if payload.get("syncEnabled").and_then(Value::as_bool) == Some(false) {
+            return (true, message_str);
+        }
+        let error_field = payload
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_lowercase();
+        let code_field = payload
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_lowercase();
+        let combined = format!("{error_field} {code_field}");
+        if PLAN_403_KEYWORDS.iter().any(|kw| combined.contains(kw)) {
+            return (true, message_str);
+        }
+        (false, message_str)
     }
     fn guard_cloud_http_error_details(&self, status: u16, body: &str) -> (String, bool) {
-        (format!("guard cloud HTTP {status}: {body}"), status >= 500)
+        // `_guard_cloud_http_error_details` (:2874) — retryable codes +
+        // `guardError.retryable`/`guardError.code` signals, message preferring
+        // the structured `guardError.message`/`error`/`message` field.
+        let mut retryable = matches!(status, 429 | 503 | 524);
+        let mut message: Option<String> = None;
+        if let Ok(Value::Object(payload)) = serde_json::from_str::<Value>(body) {
+            for key in ["guardError", "error", "message"] {
+                if let Some(s) = payload.get(key).and_then(Value::as_str).map(str::trim) {
+                    if !s.is_empty() {
+                        message = Some(s.to_owned());
+                        break;
+                    }
+                }
+                if let Some(inner) = payload.get(key).and_then(Value::as_object) {
+                    if let Some(s) = inner.get("message").and_then(Value::as_str).map(str::trim) {
+                        if !s.is_empty() {
+                            message = Some(s.to_owned());
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Some(guard_error) = payload.get("guardError").and_then(Value::as_object) {
+                if guard_error.get("retryable").and_then(Value::as_bool) == Some(true) {
+                    retryable = true;
+                }
+                if let Some(code) = guard_error.get("code").and_then(Value::as_str) {
+                    let normalized = code.trim().to_lowercase();
+                    if normalized == "guard_unavailable" || normalized == "guard_cloud_unavailable"
+                    {
+                        retryable = true;
+                    }
+                }
+            }
+        }
+        let message = message.unwrap_or_else(|| {
+            let trimmed = body.trim();
+            if trimmed.is_empty() {
+                format!("HTTP Error {status}")
+            } else {
+                trimmed.to_owned()
+            }
+        });
+        (message, retryable)
     }
     fn sync_url_error_message(&self, error: &str) -> String {
         error.to_owned()

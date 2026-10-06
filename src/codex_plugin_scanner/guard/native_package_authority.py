@@ -102,6 +102,26 @@ def _resident_request(
     return decoded if isinstance(decoded, dict) else None
 
 
+def _resident_environment(environment: Mapping[str, str] | None) -> dict[str, str] | None:
+    """The environment the resident must resolve the launch in.
+
+    The resident is long-lived, so its own ``PATH`` is the one it was spawned
+    with.  A caller that passes no environment still means the ambient one this
+    decision is being made in — the Python baseline resolves the manager from
+    ``os.environ`` — and a manager the resident cannot reproduce (`npx` absent
+    from a spawn-time ``PATH``) makes the launch evidence incomplete and sends
+    a contained TypeScript typecheck back to review.  Bind the caller's ``PATH``
+    whenever it is not already part of the request.
+    """
+
+    ambient_path = os.environ.get("PATH")
+    if environment is None:
+        return {"PATH": ambient_path} if ambient_path else None
+    if "PATH" in environment or not ambient_path:
+        return dict(environment)
+    return {**environment, "PATH": ambient_path}
+
+
 def package_intent_parse_native(
     command_text: str,
     *,
@@ -120,7 +140,7 @@ def package_intent_parse_native(
         "workspace": str(workspace) if workspace is not None else None,
         "home_dir": str(home_dir) if home_dir is not None else None,
         "canonical_command": dict(canonical_command) if canonical_command else None,
-        "environment": dict(environment) if environment else None,
+        "environment": _resident_environment(environment),
     }
     response = _resident_request(
         operation="package_intent_parse",

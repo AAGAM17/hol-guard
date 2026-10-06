@@ -527,6 +527,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "base64ct",
+ "caseless",
  "fancy-regex",
  "getrandom 0.3.4",
  "guard-command-build",
@@ -535,7 +536,9 @@ dependencies = [
  "guard-secure-fs",
  "hex",
  "idna",
+ "libc",
  "mailparse",
+ "nix",
  "pep440_rs",
  "percent-encoding",
  "regex",
@@ -546,6 +549,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml 0.8.23",
+ "ureq",
+ "url",
 ]
 
 [[package]]
@@ -554,6 +559,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "base64ct",
+ "caseless",
  "fancy-regex",
  "getrandom 0.3.4",
  "guard-contracts",
@@ -561,7 +567,9 @@ dependencies = [
  "guard-secure-fs",
  "hex",
  "idna",
+ "libc",
  "mailparse",
+ "nix",
  "pep440_rs",
  "percent-encoding",
  "regex",
@@ -572,6 +580,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml 0.9.12+spec-1.1.0",
+ "ureq",
+ "url",
 ]
 
 [[package]]

@@ -23,7 +23,7 @@ mod command_evaluation_tests;
 mod command_launcher_floors;
 pub mod command_model;
 mod command_operand_matchers;
-mod command_option_parsing;
+pub mod command_option_parsing;
 mod command_segment_parsing;
 #[cfg(unix)]
 pub mod command_shell_read_factors;
@@ -57,11 +57,16 @@ pub mod homebrew_intent;
 pub mod jsonc;
 #[cfg(unix)]
 pub mod launch_identity;
+#[cfg(not(unix))]
+#[path = "launch_identity_stub.rs"]
+pub mod launch_identity;
 #[cfg(unix)]
 pub mod launch_identity_binding;
 pub mod launch_identity_environment;
+pub mod mcp_arguments;
 pub mod mcp_launch_environment;
 pub mod mcp_tool_approval;
+pub mod mcp_tool_catalog;
 pub mod mcp_tool_policy;
 pub mod mcp_tool_risk;
 pub mod native_command_catalog;
@@ -1097,6 +1102,7 @@ pub mod detectors;
 #[cfg(unix)]
 pub mod direct_vitest;
 pub mod false_positive_rules;
+pub mod guard_sync_transport;
 pub mod hook_evidence_writer;
 pub mod hook_responses;
 pub mod inventory_contract;
@@ -1111,6 +1117,7 @@ pub mod mcp_decision;
 pub mod mcp_stdio_session;
 pub mod pep440;
 pub mod restricted_archive;
+pub mod restricted_archive_transport;
 #[cfg(unix)]
 pub mod restricted_pytest;
 pub mod resume_template;

@@ -17,6 +17,8 @@ pub mod business_budget;
 pub mod business_match;
 pub mod business_policy;
 pub mod business_policy_document;
+pub mod business_source_anchor;
+pub mod business_source_authority;
 
 #[path = "policy_snapshot_canonical.rs"]
 mod canonical;

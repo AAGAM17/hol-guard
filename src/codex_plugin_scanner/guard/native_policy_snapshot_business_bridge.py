@@ -83,7 +83,11 @@ def _selected_runtime() -> NativeRuntimeStatus:
 
     _remaining_timeout()
     status = native_runtime_status(deadline_monotonic=_DEADLINE.get())
-    required = {"native-policy-snapshot-build-v1", "native-policy-snapshot-inspect-v1"}
+    required = {
+        "native-policy-snapshot-build-v1",
+        "native-policy-snapshot-inspect-v1",
+        "native-business-policy-retained-floor-v1",
+    }
     if (
         not status.available
         or not status.compatible

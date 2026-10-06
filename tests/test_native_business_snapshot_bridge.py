@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -40,7 +41,7 @@ def test_business_content_requires_native_consumer_without_python_fallback(
         build(tmp_path, binding())
 
 
-def test_older_native_consumer_refuses_before_constructor_receives_key(
+def test_native_consumer_without_retained_floor_refuses_before_constructor_receives_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -50,7 +51,7 @@ def test_older_native_consumer_refuses_before_constructor_receives_key(
         available=True,
         compatible=True,
         identity=SimpleNamespace(path=tmp_path / "unused"),
-        capabilities=SimpleNamespace(features=("native-policy-snapshot-build-v1",)),
+        capabilities=SimpleNamespace(features=("native-policy-snapshot-build-v1", "native-policy-snapshot-inspect-v1")),
     )
     monkeypatch.setattr(native_runtime, "native_runtime_status", lambda **kwargs: old)
 
@@ -311,6 +312,25 @@ def test_business_transport_receives_real_native_ack_without_provider_dispatch(
         assert resident_generation >= snapshot["generation"]
         cached = api._read_v3_snapshot_cache(home, verifier_key=api.derive_native_policy_verifier_key(b"m" * 32))
         assert cached is not None and cached[0] == snapshot
+        # Verify the native-written combined record through both Python
+        # readers; a copied MAC formula alone is not cross-runtime evidence.
+        from codex_plugin_scanner.guard.native_command_control_authority_store import read_native_control_floor_for_home
+        from codex_plugin_scanner.guard.native_policy_snapshot_constants import (
+            _RUST_SNAPSHOT_STATE_NAME,
+            NATIVE_RUNTIME_STATE_DIRECTORY,
+            POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES,
+        )
+
+        verifier = api.derive_native_policy_verifier_key(b"m" * 32)
+        control_floor = read_native_control_floor_for_home(home, verifier)
+        assert (control_floor is not None) == (controls["health"] == "protected")
+        retained = api._read_v3_snapshot_file(
+            home / NATIVE_RUNTIME_STATE_DIRECTORY / _RUST_SNAPSHOT_STATE_NAME,
+            verifier_key=verifier,
+            maximum_bytes=POLICY_SNAPSHOT_AUTHORITY_MAX_BYTES,
+        )
+        assert retained is not None and retained[0] == snapshot
+        assert len(json.loads(retained[1])["business_policy_floor"]) == 64
     finally:
         assert close_native_residents(home, deadline_monotonic=time.monotonic() + 5.0)
 

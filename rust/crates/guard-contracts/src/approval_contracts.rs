@@ -212,6 +212,8 @@ pub const NATIVE_APPROVAL_ERROR_CODES: &[&str] = &[
     "native_policy_snapshot_authority_write_failed",
     "native_policy_snapshot_authority_recovery_failed",
     "native_policy_snapshot_floor_invalid",
+    "native_business_policy_floor_invalid",
+    "native_business_policy_removal_requires_authority",
     "native_policy_snapshot_floor_parent_missing",
     "native_policy_snapshot_floor_not_private",
     "native_policy_snapshot_floor_read_failed",

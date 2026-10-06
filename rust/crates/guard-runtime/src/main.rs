@@ -18,6 +18,7 @@ mod command_effect;
 mod contained_op;
 mod context_digest;
 mod context_digest_json;
+mod daemon_policy_authority;
 mod edge;
 mod encrypted_secret_store;
 mod github_workflow_runtime_authorization;

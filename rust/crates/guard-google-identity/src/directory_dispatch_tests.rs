@@ -21,6 +21,59 @@ fn owned(input: &PreparedGoogleBusinessRequest) -> PreparedBusinessInputV1 {
 }
 
 #[test]
+fn owned_send_budget_and_snapshot_cover_headers_and_original_api_json() {
+    use base64ct::{Base64UrlUnpadded, Encoding};
+    use std::cell::Cell;
+
+    // A tiny text body cannot hide a much larger header from the byte budget.
+    let mime = format!(
+        "From: sender@work.example\r\nTo: recipient@work.example\r\nSubject: {}\r\nContent-Type: text/plain\r\n\r\nx",
+        "meeting agenda ".repeat(20)
+    );
+    let raw = Base64UrlUnpadded::encode_string(mime.as_bytes());
+    let expected_json = format!("{{ \"raw\": \"{raw}\" }}").into_bytes();
+    let command = format!(
+        "gws gmail users messages send --params '{{\"userId\":\"me\"}}' --json '{}'",
+        std::str::from_utf8(&expected_json).unwrap()
+    );
+    let inspected = crate::oauth::worker_input_tests::credential("subject-one")
+        .prepare_command(command)
+        .unwrap()
+        .inspect_outbound()
+        .unwrap();
+    assert_eq!(inspected.input().input().body_bytes(), b"x");
+    let input = grant()
+        .resolve_with(inspected, |_, address| Ok(bytes(&row(address))))
+        .unwrap()
+        .prepare_business_request()
+        .unwrap();
+    let facts = input.prepared_input().facts();
+    assert_eq!(facts.volume.byte_count, expected_json.len() as u64);
+    assert_eq!(facts.content.inspected_bytes, expected_json.len() as u64);
+    assert!(facts.volume.byte_count > 256);
+    assert_eq!(
+        PreparedBusinessInputV1::prepare(
+            &serde_json::to_vec(facts).unwrap(),
+            b"x".to_vec(),
+            vec![]
+        )
+        .err(),
+        Some(guard_command::business_input::PreparedBusinessInputErrorV1::ContentMismatch)
+    );
+    let frozen = owned(&input);
+    let calls = Cell::new(0);
+    let attempt = input
+        .dispatch_with(frozen, |_, transmitted| {
+            calls.set(calls.get() + 1);
+            assert_eq!(transmitted, expected_json);
+            Ok(RawSendAttempt::Unconfirmed)
+        })
+        .unwrap();
+    assert_eq!(calls.get(), 1);
+    assert_eq!(attempt, GoogleSendAttempt::Unconfirmed);
+}
+
+#[test]
 fn ownership_boundary_preserves_frozen_json_and_fingerprints_private_response() {
     let input = prepared();
     let frozen = owned(&input);

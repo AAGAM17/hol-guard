@@ -120,13 +120,15 @@ pub(crate) fn runtime_launch_argv(
     RuntimeLaunchArgv::Valid(full_argv)
 }
 
-// `_normalized_launch_cwd` (:872-878) — expanduser + resolve(strict=False)
-// with absolute() fallback. The stub reports the same string the Unix
-// implementation computes so `launch_cwd` is identical across platforms for
-// the same input. expanduser/resolve are cwd-only path operations that work
-// on every supported target.
+// Normalize an existing cwd and expand the current-user `~` shortcut.
+// Unix uses HOME; Windows uses USERPROFILE or HOMEDRIVE+HOMEPATH.
+// Nonexistent paths retain a best-effort absolute spelling. Named-user
+// shortcuts remain literal.
 pub(crate) fn expand_user(path: &Path) -> std::path::PathBuf {
     let text = path.to_string_lossy();
+    if cfg!(windows) {
+        return expand_user_windows(path, &text);
+    }
     if text == "~" {
         if let Some(home) = std::env::var_os("HOME") {
             return std::path::PathBuf::from(home);
@@ -141,19 +143,111 @@ pub(crate) fn expand_user(path: &Path) -> std::path::PathBuf {
     path.to_path_buf()
 }
 
+// `ntpath.expanduser` tail test: expandable `~` references are `~`, `~/...`,
+// and `~\...`; the returned tail keeps its leading separator because Python
+// concatenates `userhome + path[i:]`.
+fn windows_tilde_tail(text: &str) -> Option<&str> {
+    match text.strip_prefix('~') {
+        Some(tail) if tail.is_empty() || tail.starts_with('/') || tail.starts_with('\\') => {
+            Some(tail)
+        }
+        _ => None,
+    }
+}
+
+// `ntpath.expanduser` home resolution: `USERPROFILE` when the variable is
+// present (even empty), else `HOMEDRIVE`+`HOMEPATH` joined (`HOMEDRIVE`
+// defaults to `""`); absent `HOMEPATH` leaves the path unexpanded.
+fn windows_home_text(
+    userprofile: Option<String>,
+    homedrive: Option<String>,
+    homepath: Option<String>,
+) -> Option<String> {
+    if let Some(profile) = userprofile {
+        return Some(profile);
+    }
+    let homepath = homepath?;
+    let mut home = homedrive.unwrap_or_default();
+    // Match ntpath's verbatim drive concatenation, including drive-relative paths.
+    home.reserve(homepath.len());
+    home.push_str(&homepath);
+    Some(home)
+}
+
+fn expand_user_windows(path: &Path, text: &str) -> std::path::PathBuf {
+    let Some(tail) = windows_tilde_tail(text) else {
+        return path.to_path_buf();
+    };
+    let env = |name: &str| {
+        std::env::var_os(name).map(|value| {
+            value
+                .into_string()
+                .unwrap_or_else(|value| value.to_string_lossy().into_owned())
+        })
+    };
+    let home = match env("USERPROFILE") {
+        Some(profile) => windows_home_text(Some(profile), None, None),
+        None => {
+            let homepath = env("HOMEPATH");
+            let drive = homepath.as_ref().and_then(|_| env("HOMEDRIVE"));
+            windows_home_text(None, drive, homepath)
+        }
+    };
+    let Some(mut home) = home else {
+        return path.to_path_buf();
+    };
+    home.reserve(tail.len());
+    home.push_str(tail);
+    std::path::PathBuf::from(home)
+}
+
+// Python `Path.resolve`/`os.path.realpath` on Windows strips the `\\?\`
+// prefix `GetFinalPathNameByHandle` adds (`canonicalize` keeps it): an
+// ordinary drive path `\\?\C:\x` resolves to `C:\x`, and
+// `\\?\UNC\server\share` to `\\server\share`. A caller-supplied
+// `\\?\` prefix is preserved — realpath never strips a prefix the input
+// already carried.
+#[cfg(any(windows, test))]
+fn strip_generated_extended_prefix(original: &str, mut resolved: String) -> String {
+    if original.starts_with("\\\\?\\") {
+        return resolved;
+    }
+    if resolved.starts_with("\\\\?\\UNC\\") {
+        resolved.replace_range(..8, "\\\\");
+        return resolved;
+    }
+    if resolved.starts_with("\\\\?\\") {
+        resolved.replace_range(..4, "");
+    }
+    resolved
+}
+
 pub(crate) fn normalized_launch_cwd(cwd: Option<&Path>) -> std::path::PathBuf {
     let candidate = cwd.map(expand_user).unwrap_or_else(|| {
         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
     });
-    candidate.canonicalize().unwrap_or_else(|_| {
+    let resolved = candidate.canonicalize().unwrap_or_else(|_| {
         if candidate.is_absolute() {
-            candidate
+            candidate.clone()
         } else {
             std::env::current_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join(candidate)
+                .join(&candidate)
         }
-    })
+    });
+    // On Windows `canonicalize` returns the `\\?\`-prefixed path from
+    // `GetFinalPathNameByHandle`; Python's `resolve` strips that generated
+    // prefix for ordinary inputs, so `launch_cwd` must do the same to keep
+    // the identity bytes consistent with Python's Windows cwd representation.
+    #[cfg(windows)]
+    let resolved = std::path::PathBuf::from(strip_generated_extended_prefix(
+        &candidate.to_string_lossy(),
+        resolved
+            .into_os_string()
+            .into_string()
+            .unwrap_or_else(|path| path.to_string_lossy().into_owned()),
+    ));
+    resolved
 }
 
 #[cfg(test)]
@@ -228,6 +322,87 @@ mod tests {
         assert!(argv_of(&json!("git"), &[json!(1)], false).is_err());
         assert!(argv_of(&json!("git"), &[json!(null)], true).is_err());
         assert!(argv_of(&json!("git"), &[json!("-m"), json!({"k": 1})], false).is_err());
+    }
+
+    // Windows `expanduser`/`realpath` semantics — pure helpers, no env
+    // mutation, so they run deterministically on any host.
+
+    #[test]
+    fn windows_tilde_accepts_forward_and_backslash() {
+        // ntpath.expanduser treats ~, ~/, and ~\ as the current-user home;
+        // ~user stays literal (no user lookup in this port).
+        assert_eq!(windows_tilde_tail("~"), Some(""));
+        assert_eq!(windows_tilde_tail("~/docs"), Some("/docs"));
+        assert_eq!(windows_tilde_tail("~\\docs"), Some("\\docs"));
+        assert_eq!(windows_tilde_tail("~alice/docs"), None);
+        assert_eq!(windows_tilde_tail("nottilde"), None);
+    }
+
+    #[test]
+    fn windows_home_prefers_userprofile_then_drive_pair() {
+        assert_eq!(
+            windows_home_text(
+                Some("C:\\Users\\me".to_string()),
+                Some("D:".to_string()),
+                Some("\\other".to_string())
+            ),
+            Some("C:\\Users\\me".to_string())
+        );
+        // Present-but-empty USERPROFILE wins over the drive pair (Python
+        // tests env membership, not non-empty).
+        assert_eq!(
+            windows_home_text(Some("".to_string()), None, Some("\\Users\\me".to_string())),
+            Some("".to_string())
+        );
+        assert_eq!(
+            windows_home_text(
+                None,
+                Some("D:".to_string()),
+                Some("\\Users\\me".to_string())
+            ),
+            Some("D:\\Users\\me".to_string())
+        );
+        // HOMEDRIVE defaults to "" when absent; missing HOMEPATH fails
+        // expansion entirely. A non-rooted HOMEPATH stays drive-relative,
+        // matching ntpath.join's verbatim drive concatenation.
+        assert_eq!(
+            windows_home_text(None, None, Some("\\Users\\me".to_string())),
+            Some("\\Users\\me".to_string())
+        );
+        assert_eq!(
+            windows_home_text(None, Some("D:".to_string()), Some("Users\\me".to_string())),
+            Some("D:Users\\me".to_string())
+        );
+        assert_eq!(windows_home_text(None, Some("D:".to_string()), None), None);
+        assert_eq!(windows_home_text(None, None, None), None);
+    }
+
+    #[test]
+    fn extended_prefix_strip_matches_python_realpath() {
+        // Ordinary drive input: canonicalize's generated \\?\ prefix is
+        // removed, matching Path.resolve.
+        assert_eq!(
+            strip_generated_extended_prefix("C:\\work", "\\\\?\\C:\\work".to_string()),
+            "C:\\work"
+        );
+        // UNC: \\?\UNC\server\share collapses to \\server\share.
+        assert_eq!(
+            strip_generated_extended_prefix(
+                "\\\\server\\share\\dir",
+                "\\\\?\\UNC\\server\\share\\dir".to_string()
+            ),
+            "\\\\server\\share\\dir"
+        );
+        // Caller-supplied \\?\ prefix is preserved verbatim.
+        assert_eq!(
+            strip_generated_extended_prefix("\\\\?\\C:\\work", "\\\\?\\C:\\work".to_string()),
+            "\\\\?\\C:\\work"
+        );
+        // Non-prefixed results pass through unchanged.
+        assert_eq!(
+            strip_generated_extended_prefix("C:\\work", "C:\\work".to_string()),
+            "C:\\work"
+        );
     }
 
     #[test]

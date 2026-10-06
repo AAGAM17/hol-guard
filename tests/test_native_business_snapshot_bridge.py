@@ -70,7 +70,7 @@ def test_constructor_failure_clears_owned_key_list_and_request_reference(
 
     observed = []
 
-    def fail(request: dict[str, object]) -> dict[str, object]:
+    def fail(request: dict[str, object], **kwargs: object) -> dict[str, object]:
         observed.extend((request, request["verifier_key"]))
         raise api.NativePolicySnapshotError("synthetic_constructor_failure")
 

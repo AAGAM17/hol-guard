@@ -124,6 +124,20 @@ def validate_business_snapshot_content(
     *,
     allow_empty_mac: bool = False,
     verify_digests: bool = True,
+    deadline_monotonic: float | None = None,
+) -> None:
+    token = begin_business_deadline(deadline_monotonic)
+    try:
+        _validate_business_snapshot_content(snapshot, allow_empty_mac=allow_empty_mac, verify_digests=verify_digests)
+    finally:
+        end_business_deadline(token)
+
+
+def _validate_business_snapshot_content(
+    snapshot: Mapping[str, object],
+    *,
+    allow_empty_mac: bool,
+    verify_digests: bool,
 ) -> None:
     """Validate content with Rust; does not authenticate MAC or currentness."""
 
@@ -168,7 +182,19 @@ def validate_business_snapshot_content(
             _INSPECTED.popitem(last=False)
 
 
-def build_native_business_snapshot(request: Mapping[str, object]) -> dict[str, object]:
+def build_native_business_snapshot(
+    request: Mapping[str, object],
+    *,
+    deadline_monotonic: float | None = None,
+) -> dict[str, object]:
+    token = begin_business_deadline(deadline_monotonic)
+    try:
+        return _build_native_business_snapshot(request)
+    finally:
+        end_business_deadline(token)
+
+
+def _build_native_business_snapshot(request: Mapping[str, object]) -> dict[str, object]:
     """Forward a typed constructor request, then verify returned binding/content."""
 
     result = _native_content_operation("policy-snapshot-build", request)

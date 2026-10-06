@@ -15,6 +15,7 @@ from ..native_command_control_authority_io import hold_command_control_authority
 from ..native_policy_snapshot_constants import NativePolicySnapshotError
 from ..policy_document import policy_document_digest
 from .policy_errors import PolicyToolError
+from .policy_recovery_state import request_recovery_recorded, request_recovery_recorded_on_connection
 from .policy_store import MCPolicyRequestRepository, PendingPolicyRequest
 from .policy_time import utc_now_iso as _now_iso
 
@@ -40,9 +41,16 @@ def apply_pending_policy_request(
 
     repo = MCPolicyRequestRepository(store)
     request, document = _pending_policy_candidate(store, request_id)
+    if request_recovery_recorded(store, request_id):
+        raise PolicyToolError("business_source_already_recovered", "This request's policy was already recovered.")
     compiled = compile_document_for_import(document)
     current_document = _build_current_document(store)
     current_digest = policy_document_digest(current_document) if current_document else None
+    if has_business_rules(document) and current_digest == request.policy_document_digest:
+        raise PolicyToolError(
+            "business_source_already_installed",
+            "This business policy is already installed. Decline the unchanged request.",
+        )
     if current_digest != request.expected_current_digest:
         raise PolicyToolError("current_digest_mismatch", "Current policy digest has changed.")
     expected_generation = request.expected_policy_generation
@@ -53,6 +61,8 @@ def apply_pending_policy_request(
     mutation: BusinessSourceMutation | None = None
 
     def _do_import(pending: PendingPolicyRequest, conn: sqlite3.Connection) -> PolicyDocumentImportResult:
+        if request_recovery_recorded_on_connection(conn, request_id):
+            raise PolicyToolError("business_source_already_recovered", "This request's policy was already recovered.")
         if any(
             getattr(pending, name) != getattr(request, name)
             for name in (
@@ -110,9 +120,14 @@ def apply_pending_policy_request(
                 now=_now_iso(),
                 approval_gate_grant=approval_gate_grant,
                 expected_current_digest=request.expected_current_digest,
+                reject_already_installed=True,
             ) as mutation:
                 result = repo.apply_request(request_id, apply_fn=_do_import)
         except NativePolicySnapshotError as error:
+            if str(error) == "native_business_source_already_installed":
+                raise PolicyToolError(
+                    "business_source_already_installed", "This business policy is already installed."
+                ) from None
             if str(error) == "native_business_source_current_digest_changed":
                 raise PolicyToolError("current_digest_mismatch", "Current policy digest has changed.") from None
             raise

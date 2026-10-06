@@ -19,7 +19,9 @@ from .policy_document import policy_document_digest
 from .policy_document_authority import policy_import_approval_binding
 
 
-def recover_committed_business_source(store, document, *, approval_gate_grant, deadline_monotonic=None):
+def recover_committed_business_source(
+    store, document, *, approval_gate_grant, deadline_monotonic=None, stage_request_recovery=None
+):
     """Finish the exact prepared document, never restore an older source or replay work."""
     deadline = _deadline(deadline_monotonic)
     status = _consumer(deadline, anchor=True)
@@ -87,7 +89,7 @@ def recover_committed_business_source(store, document, *, approval_gate_grant, d
         owner._write_private(store, owner.ANCHOR_FILE_NAME, closed.anchor_bytes, owner.MAX_ANCHOR_BYTES, deadline)
         write_retained_business_source_anchor(store, closed.anchor_bytes)
         owner._write_private(store, owner.SOURCE_FILE_NAME, candidate, owner.MAX_RECORD_BYTES, deadline)
-        if witness != owner._witness(committed):
+        if witness != owner._witness(committed) or stage_request_recovery is not None:
             from .business_policy_document_import import apply_business_document_on_connection
 
             with store._connect() as connection:
@@ -95,15 +97,18 @@ def recover_committed_business_source(store, document, *, approval_gate_grant, d
                 if owner._read_witness(connection) != witness:
                     raise owner._error("native_business_source_current_digest_changed")
                 now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                apply_business_document_on_connection(
-                    store,
-                    document,
-                    owner.BusinessSourceMutation(source, committed),
-                    mode="replace",
-                    now=now,
-                    approval_gate_grant=approval_gate_grant,
-                    connection=connection,
-                )
+                if witness != owner._witness(committed):
+                    apply_business_document_on_connection(
+                        store,
+                        document,
+                        owner.BusinessSourceMutation(source, committed),
+                        mode="replace",
+                        now=now,
+                        approval_gate_grant=approval_gate_grant,
+                        connection=connection,
+                    )
+                if stage_request_recovery is not None:
+                    stage_request_recovery(connection, source.source_digest, now)
                 connection.commit()
         if owner._database_witness(store) != owner._witness(committed):
             raise owner._error("native_business_source_transaction_not_committed")

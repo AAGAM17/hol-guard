@@ -236,6 +236,7 @@ def test_native_context_digest_grants_the_cold_start_allowance_only_while_the_po
     """
 
     budgets: list[int] = []
+    remaining: list[float] = []
     monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
     monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
     monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
@@ -243,6 +244,7 @@ def test_native_context_digest_grants_the_cold_start_allowance_only_while_the_po
     def _client(*_args: object, **kwargs: object) -> bytes | None:
         envelope = json.loads(kwargs["payload"])
         budgets.append(envelope["deadline_budget_ms"])
+        remaining.append((kwargs["deadline_monotonic"] - time.monotonic()) * 1_000)
         return _ok_result(envelope["request"])
 
     monkeypatch.setattr(native_context, "native_resident_client_request", _client)
@@ -258,7 +260,16 @@ def test_native_context_digest_grants_the_cold_start_allowance_only_while_the_po
 
     warm = int(native_context._TIMEOUT_SECONDS * 1_000)
     cold = warm + int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
-    assert budgets == [cold, cold, warm, warm]
+    # The client's deadline is what the pool readiness buys: a warm home keeps the
+    # tight steady-state budget, a home the pool must spawn does not.
+    assert [value > cold - 500 for value in remaining[:2]] == [True, True]
+    assert [value < warm + 500 for value in remaining[2:]] == [True, True]
+    # The resident's own bound is the retry's, and it is the same on every
+    # attempt, so a retry is never bound by the tight budget the first carried.
+    retry = warm + native_context._RETRY_ALLOWANCE_MULTIPLIER * int(
+        native_context._COLD_START_ALLOWANCE_SECONDS * 1_000
+    )
+    assert budgets == [retry, retry, retry, retry]
 
 
 def test_native_context_digest_asks_the_pool_about_the_resolved_runtime(
@@ -310,9 +321,10 @@ def test_native_context_digest_retries_a_timeout_once_with_the_allowance(
     assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home)
     assert native_context._DIGEST_ATTEMPTS == 2
     assert len(remaining) == 2
-    # The retry gets the timeout plus the allowance, not the bare timeout.
+    # The retry is the last word, so it carries more than the bare timeout.
     assert remaining[0] < 1_500
-    assert remaining[1] > int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000) - 500
+    retry_ms = native_context._RETRY_ALLOWANCE_MULTIPLIER * int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000)
+    assert remaining[1] > retry_ms - 500
 
 
 def test_native_context_digest_retries_a_timeout_that_already_had_the_allowance(
@@ -381,6 +393,38 @@ def _stub_digest_client(
     monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: None)
     monkeypatch.setattr(native_context, "native_record_resident_failure", lambda *_a, **_k: None)
     monkeypatch.setattr(native_context, "native_resident_client_request", transport)
+
+
+def test_native_context_digest_retries_a_resident_deadline_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The resident's own deadline code is "not enough time", so it is retried.
+
+    The resident reports `native_client_deadline_exceeded` when it begins
+    serving after the budget the request carried has lapsed — a contended
+    runner, not a missing runtime.
+    """
+
+    remaining: list[float] = []
+    outcomes: list[bytes | None] = [None]
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "native_resident_client_ready", lambda _executable, _home: True)
+    monkeypatch.setattr(
+        native_context, "native_resident_client_failure_code", lambda: "native_client_deadline_exceeded"
+    )
+
+    def _client(*_args: object, **kwargs: object) -> bytes | None:
+        remaining.append((kwargs["deadline_monotonic"] - time.monotonic()) * 1_000)
+        return outcomes.pop(0) if outcomes else _ok_result(json.loads(kwargs["payload"])["request"])
+
+    monkeypatch.setattr(native_context, "native_resident_client_request", _client)
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home)
+    assert len(remaining) == 2
+    assert remaining[1] > int(native_context._COLD_START_ALLOWANCE_SECONDS * 1_000) - 500
 
 
 def test_native_context_digest_names_a_non_json_response(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

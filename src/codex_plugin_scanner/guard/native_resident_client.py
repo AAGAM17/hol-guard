@@ -108,10 +108,7 @@ class _PersistentNativeClientPool:
         with self._condition:
             if self._closed:
                 return False
-            return any(
-                client._process is not None and client._process.poll() is None
-                for client in self._idle
-            )
+            return any(client._process is not None and client._process.poll() is None for client in self._idle)
 
     def _lease(self, *, deadline_monotonic: float) -> _PersistentNativeClient | None:
         with self._condition:
@@ -511,6 +508,12 @@ def _legacy_native_resident_client_request(
     return result.stdout.encode("utf-8")
 
 
+def native_resident_client_transport() -> str:
+    """Which transport the next request takes: ``"pool"`` or the legacy seam."""
+
+    return "legacy" if run_isolated_hook_process is not _legacy_run_isolated_hook_process else "pool"
+
+
 def native_resident_client_request(
     *,
     executable: Path,
@@ -563,6 +566,7 @@ __all__ = [
     "native_resident_client_failure_code",
     "native_resident_client_ready",
     "native_resident_client_request",
+    "native_resident_client_transport",
     "record_native_resident_client_failure_code",
     "retire_native_resident_for_update",
     "stop_native_resident",

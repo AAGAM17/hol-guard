@@ -29,6 +29,7 @@ from .native_resident_client import (
     native_resident_client_failure_code,
     native_resident_client_ready,
     native_resident_client_request,
+    native_resident_client_transport,
 )
 from .native_response_decoder import native_error as _native_error
 from .native_runtime import NativeRuntimeStatus, _isolated_environment, native_runtime_status
@@ -715,7 +716,11 @@ def native_context_digest(
     if output is None:
         # The client's own code ("native_client_timed_out",
         # "native_client_pool_exhausted", ...) is the actionable half of this.
-        _digest_failed(native_resident_client_failure_code() or "native_context_digest_resident_unavailable")
+        _digest_failed(
+            f"{native_resident_client_failure_code() or 'native_context_digest_resident_unavailable'}"
+            f"[{native_resident_client_transport()},allowance={'granted' if cold_start else 'none'},"
+            f"budget={budget_seconds:.2f}s]"
+        )
         native_record_resident_failure(
             status.identity.sha256,
             guard_home,

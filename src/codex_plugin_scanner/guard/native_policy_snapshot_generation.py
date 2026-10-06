@@ -113,6 +113,7 @@ def _snapshot_inputs_v3(
     rule_digest: str,
     command_extensions: Mapping[str, object] | None = None,
     business_policy: Mapping[str, object] | None = None,
+    deadline_monotonic: float | None = None,
 ) -> tuple[dict[str, object], str, str, str, str]:
     effective_policy = effective_native_policy_v3(config)
     raw_mode = _config_value(config, "mode", "prompt")
@@ -134,6 +135,7 @@ def _snapshot_inputs_v3(
             expires_at_ms=1,
             command_extensions=command_extensions,
             business_policy=business_policy,
+            deadline_monotonic=deadline_monotonic,
         )
         return effective_policy, mode, str(semantic["config_digest"]), str(semantic["policy_digest"]), scope_digest
     config_digest = _digest_v3(effective_policy)
@@ -289,6 +291,7 @@ def _materialize_snapshot_v3(
     policy_digest: str,
     command_extensions: Mapping[str, object] | None,
     business_policy: Mapping[str, object] | None = None,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object]:
     snapshot = api.build_policy_snapshot_v3(
         config={**effective_policy, "mode": mode},
@@ -301,6 +304,7 @@ def _materialize_snapshot_v3(
         expires_at_ms=expires_at_ms,
         command_extensions=command_extensions,
         business_policy=business_policy,
+        deadline_monotonic=deadline_monotonic,
     )
     api._write_v3_snapshot_file(guard_home, _NATIVE_POLICY_SNAPSHOT_PENDING_NAME, snapshot)
     api._write_v3_snapshot_cache(guard_home, snapshot)
@@ -359,6 +363,7 @@ def native_policy_snapshot_v3(
             rule_digest,
             binding,
             business_policy,
+            deadline_monotonic,
         )
         api = _snapshot_api()
         with api._v3_generation_lock(guard_home, deadline_monotonic=deadline_monotonic) as lock_descriptor:
@@ -402,6 +407,7 @@ def native_policy_snapshot_v3(
                 expires_at_ms=expires_at_ms,
                 command_extensions=binding,
                 business_policy=business_policy,
+                deadline_monotonic=deadline_monotonic,
             )
     finally:
         # The caller's master is an ephemeral input. Clear both local

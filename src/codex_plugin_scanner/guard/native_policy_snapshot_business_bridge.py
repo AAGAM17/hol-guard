@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Mapping
 from typing import cast
 
@@ -26,6 +27,12 @@ _INSPECTION_FIELDS = frozenset(
     }
 )
 
+_VALIDATED: dict[bytes, dict[str, object]] = {}
+
+
+def _deadline_timeout_seconds(deadline_monotonic: float | None) -> float:
+    return 5.0 if deadline_monotonic is None else max(0.0, deadline_monotonic - time.monotonic())
+
 
 def capture_business_binding(value: Mapping[str, object]) -> dict[str, object]:
     """Own an immutable-in-flight wire copy; Rust still validates semantics."""
@@ -39,7 +46,12 @@ def capture_business_binding(value: Mapping[str, object]) -> dict[str, object]:
     return cast(dict[str, object], result)
 
 
-def _native_content_operation(command: str, value: Mapping[str, object]) -> dict[str, object]:
+def _native_content_operation(
+    command: str,
+    value: Mapping[str, object],
+    *,
+    timeout_seconds: float = 5.0,
+) -> dict[str, object]:
     from .native_runtime import _run_native_process, native_runtime_status
 
     if command not in {"policy-snapshot-build", "policy-snapshot-inspect"}:
@@ -61,7 +73,7 @@ def _native_content_operation(command: str, value: Mapping[str, object]) -> dict
         status.identity.path,
         (command, "--stdin"),
         input_text=encoded.decode("utf-8"),
-        timeout_seconds=5.0,
+        timeout_seconds=timeout_seconds,
     )
     if output is None or len(output.encode("utf-8")) > POLICY_SNAPSHOT_MAX_BYTES:
         raise NativePolicySnapshotError("native_business_policy_content_invalid")
@@ -71,11 +83,23 @@ def _native_content_operation(command: str, value: Mapping[str, object]) -> dict
     return cast(dict[str, object], result)
 
 
+def _inspect_cached(value: Mapping[str, object], timeout: float) -> dict[str, object]:
+    key = hashlib.sha256(_canonical_json_bytes_v3(value)).digest()
+    hit = _VALIDATED.get(key)
+    if hit is None:
+        hit = _native_content_operation("policy-snapshot-inspect", value, timeout_seconds=timeout)
+        if len(_VALIDATED) > 64:
+            _VALIDATED.clear()
+        _VALIDATED[key] = hit
+    return hit
+
+
 def validate_business_snapshot_content(
     snapshot: Mapping[str, object],
     *,
     allow_empty_mac: bool = False,
     verify_digests: bool = True,
+    deadline_monotonic: float | None = None,
 ) -> None:
     """Validate content with Rust; does not authenticate MAC or currentness."""
 
@@ -84,7 +108,7 @@ def validate_business_snapshot_content(
         integrity = value.get("integrity")
         if isinstance(integrity, Mapping) and integrity.get("mac") == "":
             value["integrity"] = {**integrity, "mac": "0" * 64}
-    result = _native_content_operation("policy-snapshot-inspect", value)
+    result = _inspect_cached(value, _deadline_timeout_seconds(deadline_monotonic))
     if (
         set(result) != _INSPECTION_FIELDS
         or result.get("schema") != "guard-native-policy-content-inspection.v1"
@@ -103,10 +127,18 @@ def validate_business_snapshot_content(
         raise NativePolicySnapshotError("native_policy_snapshot_digest_mismatch")
 
 
-def build_native_business_snapshot(request: Mapping[str, object]) -> dict[str, object]:
+def build_native_business_snapshot(
+    request: Mapping[str, object],
+    *,
+    deadline_monotonic: float | None = None,
+) -> dict[str, object]:
     """Forward a typed constructor request, then verify returned binding/content."""
 
-    result = _native_content_operation("policy-snapshot-build", request)
+    result = _native_content_operation(
+        "policy-snapshot-build",
+        request,
+        timeout_seconds=_deadline_timeout_seconds(deadline_monotonic),
+    )
     for field in (
         "generation",
         "runtime_identity",
@@ -122,5 +154,5 @@ def build_native_business_snapshot(request: Mapping[str, object]) -> dict[str, o
             raise NativePolicySnapshotError("native_business_policy_content_invalid")
     if result.get("command_extensions") != request.get("command_extensions"):
         raise NativePolicySnapshotError("native_business_policy_content_invalid")
-    validate_business_snapshot_content(result)
+    validate_business_snapshot_content(result, deadline_monotonic=deadline_monotonic)
     return cast(dict[str, object], result)

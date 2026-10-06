@@ -234,6 +234,7 @@ def _validate_snapshot_v3(
     *,
     allow_empty_mac: bool = False,
     verify_digests: bool = True,
+    deadline_monotonic: float | None = None,
 ) -> None:
     """Apply the resident's typed v3 validation before signing or transport."""
 
@@ -245,6 +246,7 @@ def _validate_snapshot_v3(
             snapshot,
             allow_empty_mac=allow_empty_mac,
             verify_digests=verify_digests,
+            deadline_monotonic=deadline_monotonic,
         )
         return
     optional_fields = snapshot.keys() & _OPTIONAL_SNAPSHOT_FIELDS if isinstance(snapshot, Mapping) else frozenset()
@@ -259,8 +261,13 @@ def _validate_snapshot_v3(
         _verify_snapshot_digests_v3(root, effective, mode, scope)
 
 
-def _snapshot_integrity_mac_v3(snapshot: Mapping[str, object], verifier_key: bytes) -> str:
-    _validate_snapshot_v3(snapshot, allow_empty_mac=True)
+def _snapshot_integrity_mac_v3(
+    snapshot: Mapping[str, object],
+    verifier_key: bytes,
+    *,
+    deadline_monotonic: float | None = None,
+) -> str:
+    _validate_snapshot_v3(snapshot, allow_empty_mac=True, deadline_monotonic=deadline_monotonic)
     signing_value = dict(snapshot)
     signing_value.pop("integrity", None)
     return hmac.new(
@@ -286,6 +293,7 @@ def build_policy_snapshot_v3(
     expires_at_ms: int | None = None,
     command_extensions: Mapping[str, object] | None = None,
     business_policy: Mapping[str, object] | None = None,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object]:
     """Build and authenticate one Rust ``PolicySnapshotV3`` value."""
 
@@ -380,13 +388,18 @@ def build_policy_snapshot_v3(
         if binding is not None:
             request["command_extensions"] = binding
         try:
-            built = build_native_business_snapshot(request)
+            built = build_native_business_snapshot(request, deadline_monotonic=deadline_monotonic)
             integrity = built.get("integrity")
             if (
                 not isinstance(integrity, Mapping)
                 or integrity.get("key_id") != native_policy_verifier_key_id(verifier_key)
                 or not hmac.compare_digest(
-                    cast(str, integrity.get("mac")), _snapshot_integrity_mac_v3(built, verifier_key)
+                    cast(str, integrity.get("mac")),
+                    _snapshot_integrity_mac_v3(
+                        built,
+                        verifier_key,
+                        deadline_monotonic=deadline_monotonic,
+                    ),
                 )
             ):
                 raise NativePolicySnapshotError("native_policy_snapshot_cache_integrity_invalid")
@@ -395,17 +408,21 @@ def build_policy_snapshot_v3(
             for index in range(len(key)):
                 key[index] = 0
             request.pop("verifier_key", None)
-    _validate_snapshot_v3(snapshot, allow_empty_mac=True)
+    _validate_snapshot_v3(snapshot, allow_empty_mac=True, deadline_monotonic=deadline_monotonic)
     integrity = cast(dict[str, object], snapshot["integrity"])
     # The MAC is a fixed-size lowercase hex string. Validate the complete
     # canonical size with that exact placeholder before spending CPU on the
     # signing operation; Rust rejects the same 256 KiB boundary.
     integrity["mac"] = "0" * 64
-    _validate_snapshot_v3(snapshot)
+    _validate_snapshot_v3(snapshot, deadline_monotonic=deadline_monotonic)
     if len(_canonical_json_bytes_v3(snapshot)) > POLICY_SNAPSHOT_MAX_BYTES:
         raise NativePolicySnapshotError("native_policy_snapshot_too_large")
-    integrity["mac"] = _snapshot_integrity_mac_v3(snapshot, verifier_key)
-    _validate_snapshot_v3(snapshot)
+    integrity["mac"] = _snapshot_integrity_mac_v3(
+        snapshot,
+        verifier_key,
+        deadline_monotonic=deadline_monotonic,
+    )
+    _validate_snapshot_v3(snapshot, deadline_monotonic=deadline_monotonic)
     encoded = _canonical_json_bytes_v3(snapshot)
     if len(encoded) > POLICY_SNAPSHOT_MAX_BYTES:
         raise NativePolicySnapshotError("native_policy_snapshot_too_large")

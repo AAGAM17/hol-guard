@@ -369,6 +369,68 @@ def test_native_context_digest_does_not_retry_other_failures(tmp_path: Path, mon
     assert len(calls) == 1
 
 
+def _stub_digest_client(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    transport: object,
+) -> None:
+    monkeypatch.setattr(native_context, "native_runtime_status", lambda: _status())
+    monkeypatch.setattr(native_context, "ensure_resident_prerequisite", lambda _home: True)
+    monkeypatch.setattr(native_context, "_isolated_environment", lambda: {})
+    monkeypatch.setattr(native_context, "native_resident_client_ready", lambda _executable, _home: True)
+    monkeypatch.setattr(native_context, "native_resident_client_failure_code", lambda: None)
+    monkeypatch.setattr(native_context, "native_record_resident_failure", lambda *_a, **_k: None)
+    monkeypatch.setattr(native_context, "native_resident_client_request", transport)
+
+
+def test_native_context_digest_names_a_non_json_response(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A truncated or non-JSON frame must say so rather than "result_invalid"."""
+
+    _stub_digest_client(monkeypatch, transport=lambda **_kwargs: b"{not json")
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    assert (
+        native_context.native_context_failure_reason()
+        == "native_context_digest_result_invalid:response_not_json bytes=9"
+    )
+
+
+def test_native_context_digest_names_unexpected_result_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A frame that is not a digest response at all must name its foreign keys."""
+
+    def _transport(*_args: object, **kwargs: object) -> bytes:
+        payload = json.loads(_ok_result(json.loads(kwargs["payload"])["request"]))
+        payload["kind"] = "policy_snapshot"
+        return json.dumps(payload).encode("utf-8")
+
+    _stub_digest_client(monkeypatch, transport=_transport)
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    reason = native_context.native_context_failure_reason() or ""
+    assert reason.startswith("native_context_digest_result_invalid:payload_keys_mismatch")
+    assert "'kind'" in reason
+
+
+def test_native_context_digest_names_a_mismatched_request_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A response to somebody else's request must be reported as such."""
+
+    def _transport(*_args: object, **kwargs: object) -> bytes:
+        payload = json.loads(_ok_result(json.loads(kwargs["payload"])["request"]))
+        payload["request_id"] = "0" * 32
+        return json.dumps(payload).encode("utf-8")
+
+    _stub_digest_client(monkeypatch, transport=_transport)
+    guard_home = tmp_path / "guard-home"
+    guard_home.mkdir()
+    assert native_context.native_context_digest("launch_argv_digest", {"argv": ["a"]}, guard_home=guard_home) is None
+    reason = native_context.native_context_failure_reason() or ""
+    assert "payload_header_mismatch" in reason
+    assert "id_matches=False" in reason
+    assert "sha_matches=True" in reason
+
+
 def test_unavailable_errors_report_the_transport_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`*_unavailable` must say *why*: a callers that has no fallback needs the reason."""
 

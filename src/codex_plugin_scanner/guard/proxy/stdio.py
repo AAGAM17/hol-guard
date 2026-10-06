@@ -511,6 +511,10 @@ class StdioGuardProxy:
         launch_env = _build_scrubbed_env(self.env)
         process: subprocess.Popen[str] | None = None
         native_session_id: str | None = None
+        native_guard_home: Path | None = None
+        # Assigned before the failure boundary so the cleanup path can name the
+        # home a half-opened native session belongs to.
+        guard_home = cast("Path | None", getattr(self.guard_store, "guard_home", None))
         try:
             # Digest calls raise when the native resident is unreachable; keep
             # them inside the failure boundary so partial state is unwound.
@@ -525,27 +529,24 @@ class StdioGuardProxy:
             # verified executable, so the resident cannot take the child —
             # keep the Python pipe transport for that case only.
             argv = [executable] + [str(a) for a in self.command[1:]] if isinstance(executable, str) else None
-            guard_home = getattr(self.guard_store, "guard_home", None)
-            native_session_id = (
-                f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}"
-                if argv is not None and guard_home is not None
-                else None
-            )
-            opened = (
-                mcp_stdio_session_open_native(
+            if argv is not None and guard_home is not None:
+                native_session_id = f"stdio-{self.harness}-{os.getpid()}-{uuid4().hex[:8]}"
+                native_guard_home = guard_home
+                opened = mcp_stdio_session_open_native(
                     argv,
                     session_id=native_session_id,
-                    home_dir=guard_home,
+                    home_dir=native_guard_home,
                     cwd=self.cwd,
                     extra_env=launch_env,
-                    guard_home=guard_home,
+                    guard_home=native_guard_home,
                 )
-                if native_session_id is not None
-                else None
-            )
+            else:
+                opened = None
             if native_session_id is not None and opened is None and _native_session_feature_available():
                 raise RuntimeError("Native stdio session authority is unavailable.")
             if opened is not None:
+                if native_session_id is None or native_guard_home is None:
+                    raise RuntimeError("Native stdio session authority is unavailable.")
                 # Resident owns the child (RTM-024 data plane). A non-"opened"
                 # status is terminal — never fall back to the Python transport
                 # on a real open failure.
@@ -563,7 +564,7 @@ class StdioGuardProxy:
                     )
                 from .runtime_mcp import _NativeChildProcess
 
-                return _NativeChildProcess(native_session_id, guard_home)
+                return _NativeChildProcess(native_session_id, native_guard_home)
             # The native open was not attempted or the session feature is
             # unsupported; only those cases may use the Python pipe transport.
             process = subprocess.Popen(
@@ -584,8 +585,8 @@ class StdioGuardProxy:
         except BaseException:
             if process is not None:
                 _quarantine_process(process)
-            elif native_session_id is not None:
-                mcp_stdio_session_close_native(native_session_id, guard_home=guard_home)
+            elif native_session_id is not None and native_guard_home is not None:
+                mcp_stdio_session_close_native(native_session_id, guard_home=native_guard_home)
             self._active_launch_identity = None
             self._active_env_values_hash = None
             raise
@@ -630,7 +631,7 @@ class StdioGuardProxy:
     def _forward_message(
         self,
         *,
-        process: subprocess.Popen[str],
+        process: subprocess.Popen[str] | _NativeChildProcess,
         message: dict[str, Any],
         responses: list[dict[str, Any]],
         events: list[dict[str, Any]],
@@ -1043,7 +1044,7 @@ class StdioGuardProxy:
     def _read_response(
         self,
         *,
-        process: subprocess.Popen[str],
+        process: subprocess.Popen[str] | _NativeChildProcess,
         message_id: Any,
         output_stream: Any | None = None,
     ) -> dict[str, Any] | None:
@@ -1059,12 +1060,10 @@ class StdioGuardProxy:
                     # Native session (RTM-024): the resident already frames
                     # lines; ask it for the next one with the same timeout.
                     frame = process.stdout.next_frame(timeout_seconds, required=True)
-                    if frame is None or frame.error is not None:
-                        raise (
-                            frame.error
-                            if frame is not None
-                            else ProxyIoTimeoutError(source="child_response", timeout_seconds=timeout_seconds)
-                        )
+                    if frame is None:
+                        raise ProxyIoTimeoutError(source="child_response", timeout_seconds=timeout_seconds)
+                    if frame.error is not None:
+                        raise frame.error
                     line = frame.line
                 else:
                     line = _readline_with_timeout(process.stdout, timeout_seconds, source="child_response")

@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from .directory_path_authority import canonical_guard_home_path
 from .fork_safety import forget_in_child
@@ -366,7 +366,7 @@ _OK_NULLABLE_OUTPUT_FIELD: dict[str, str] = {
 }
 
 
-def _is_sha256_digest(value: object) -> bool:
+def _is_sha256_digest(value: object) -> TypeGuard[str]:
     return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
@@ -431,6 +431,25 @@ def _valid_browser_projection(browser: Any) -> bool:
     )
 
 
+_LAST_RESULT_REJECTION: ContextVar[str | None] = ContextVar("_LAST_RESULT_REJECTION", default=None)
+
+
+def native_context_result_rejection_reason() -> str | None:
+    """Which contract clause rejected the last digest result, for failure messages.
+
+    A rejected result is otherwise indistinguishable from a resident that
+    answered the wrong request, a frame that is not a response at all, and a
+    truncated read; naming the clause is what makes the failure actionable.
+    """
+
+    return _LAST_RESULT_REJECTION.get()
+
+
+def _reject(reason: str) -> None:
+    _LAST_RESULT_REJECTION.set(reason)
+    return None
+
+
 def _decode_result(
     payload: object,
     *,
@@ -439,10 +458,12 @@ def _decode_result(
     kind: str,
 ) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
-        return None
+        return _reject("payload_not_object")
     keys = set(payload)
     if not keys.issuperset(_RESULT_REQUIRED_KEYS) or not keys.issubset(_RESULT_REQUIRED_KEYS | _RESULT_OPTIONAL_KEYS):
-        return None
+        missing = sorted(_RESULT_REQUIRED_KEYS - keys)
+        unexpected = sorted(keys - (_RESULT_REQUIRED_KEYS | _RESULT_OPTIONAL_KEYS))[:3]
+        return _reject(f"payload_keys_mismatch missing={missing} unexpected={unexpected}")
     if (
         payload.get("schema") != _RESULT_SCHEMA
         or payload.get("request_id") != request_id
@@ -452,7 +473,12 @@ def _decode_result(
         or (payload.get("status") == "ok" and payload.get("code") != "ok")
         or (payload.get("status") == "error" and payload.get("code") == "ok")
     ):
-        return None
+        return _reject(
+            f"payload_header_mismatch schema={payload.get('schema')!r} "
+            f"id_matches={payload.get('request_id') == request_id} "
+            f"sha_matches={payload.get('request_sha256') == request_sha256} "
+            f"status={payload.get('status')!r} code={payload.get('code')!r}"
+        )
     for field in ("token", "digest", "validation_reason"):
         value = payload.get(field)
         if value is not None and not isinstance(value, str):
@@ -748,7 +774,12 @@ def native_context_digest(
     try:
         payload = json.loads(output)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        payload = None
+        native_record_resident_failure(
+            status.identity.sha256,
+            guard_home,
+            reason="native_context_digest_result_invalid",
+        )
+        return _digest_failed(f"native_context_digest_result_invalid:response_not_json bytes={len(output)}")
     if _native_error(payload) == "native_overloaded":
         native_record_overload(status.identity.sha256, guard_home)
         return _digest_failed("native_overloaded")
@@ -759,7 +790,9 @@ def native_context_digest(
             guard_home,
             reason="native_context_digest_result_invalid",
         )
-        return _digest_failed("native_context_digest_result_invalid")
+        return _digest_failed(
+            f"native_context_digest_result_invalid:{native_context_result_rejection_reason() or 'unknown'}"
+        )
     native_record_resident_success(status.identity.sha256, guard_home)
     if decoded.get("status") == "ok" and cache_key is not None:
         with _RESULT_CACHE_LOCK:

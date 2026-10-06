@@ -138,6 +138,21 @@ class _CommandSegment:
     context_reason_code: str | None
 
 
+def _canonical_command_mapping(canonical_command: object) -> Mapping[str, object] | None:
+    """Project the caller's canonical command onto the native payload shape.
+
+    The native parser takes a mapping, so a structured command is reduced with
+    its own ``to_dict``; anything else that is not already a mapping has no
+    representation to send and is reported as absent.
+    """
+
+    to_dict = getattr(canonical_command, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        return payload if isinstance(payload, dict) else None
+    return canonical_command if isinstance(canonical_command, dict) else None
+
+
 def _native_package_intent(
     command_text: str,
     *,
@@ -164,9 +179,7 @@ def _native_package_intent(
             command_text,
             workspace=workspace,
             home_dir=home_dir,
-            canonical_command=(
-                canonical_command.to_dict() if hasattr(canonical_command, "to_dict") else canonical_command
-            ),
+            canonical_command=_canonical_command_mapping(canonical_command),
             environment=environment,
             guard_home=guard_home if guard_home is not None else resolve_guard_home(),
         )

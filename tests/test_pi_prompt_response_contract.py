@@ -63,7 +63,7 @@ def test_prompt_receipt_is_bound_to_the_input_event(
     cli.write_text(
         f"#!{sys.executable}\nfrom pathlib import Path\n"
         f"Path({str(marker)!r}).write_text('called')\n"
-        "print('{\"decision\":\"deny\",\"reason\":\"fallback denied\"}')\n"
+        'print(\'{"decision":"deny","reason":"fallback denied"}\')\n'
     )
     cli.chmod(0o755)
     source = managed_extension_source(

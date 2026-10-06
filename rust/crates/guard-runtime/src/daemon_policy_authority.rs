@@ -521,7 +521,7 @@ fn daemon_state_matches_current_runtime(payload: &Map<String, Value>) -> bool {
         return false;
     }
     let fingerprint = payload.get("runtime_fingerprint").and_then(Value::as_str);
-    if fingerprint.map_or(true, |f| f.trim().is_empty()) {
+    if fingerprint.is_none_or(|f| f.trim().is_empty()) {
         return false;
     }
     payload

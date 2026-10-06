@@ -49,7 +49,9 @@ APPROVAL_REUSE_SAVED_ACTION_NOT_ALLOW = "approval_reuse_saved_action_not_allow"
 APPROVAL_REUSE_SAVED_BLOCK = "approval_reuse_saved_block"
 APPROVAL_REUSE_CLAIM_FAILED = "approval_reuse_claim_failed"
 APPROVAL_REUSE_LAUNCH_IDENTITY_UNVERIFIED = "approval_reuse_launch_identity_unverified"
-APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM = "approval_reuse_context_changed_after_claim"
+APPROVAL_REUSE_CONTEXT_CHANGED_AFTER_CLAIM = (
+    "approval_reuse_context_changed_after_claim"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +94,9 @@ class ApprovalReuseDecision:
             "original_saved_type": self.original_saved_type,
         }
         if self.saved_artifact_hash_is_context_token is not None:
-            evidence["saved_artifact_hash_is_context_token"] = self.saved_artifact_hash_is_context_token
+            evidence["saved_artifact_hash_is_context_token"] = (
+                self.saved_artifact_hash_is_context_token
+            )
         return evidence
 
 
@@ -115,7 +119,10 @@ def with_saved_artifact_hash_provenance(
 
     return replace(
         reuse,
-        saved_artifact_hash_is_context_token=parse_approval_context_token(stored_artifact_hash) is not None,
+        saved_artifact_hash_is_context_token=parse_approval_context_token(
+            stored_artifact_hash
+        )
+        is not None,
     )
 
 
@@ -142,9 +149,34 @@ def evaluate_approval_reuse(
     allow whose exact context token and integrity were verified by the caller.
     Broader saved policy and manually-authored policy must never set it.
     """
+    # RTM-032: the resident is the sole authority for this decision when it can
+    # be reached.  ``None`` is a transport failure (the established contract
+    # also used by ``native_approval_gate``); fall through to the Python body.
+    from ..native_approval_reuse import approval_reuse_decide_native
+    from ..native_context import context_digest_guard_home
+
+    native_home = context_digest_guard_home()
+    if native_home is not None:
+        native_payload = approval_reuse_decide_native(
+            current_action,
+            saved_action,
+            saved_decision_present=saved_decision_present,
+            validation_reason=validation_reason,
+            fresh_local_approval=fresh_local_approval,
+            durable_exact_approval=durable_exact_approval,
+            guard_home=native_home,
+        )
+        if native_payload is not None:
+            decision = _decision_from_native_payload(native_payload)
+            if decision is not None:
+                return decision
 
     current = normalize_guard_action_result(current_action, unknown_action="block")
-    present = saved_action is not None if saved_decision_present is None else saved_decision_present
+    present = (
+        saved_action is not None
+        if saved_decision_present is None
+        else saved_decision_present
+    )
     if not present:
         reason_code = (
             APPROVAL_REUSE_CURRENT_ACTION_UNKNOWN
@@ -158,8 +190,12 @@ def evaluate_approval_reuse(
             current=current,
         )
 
-    saved = normalize_guard_action_result(saved_action, unknown_action="require-reapproval")
-    conservative_action = most_restrictive_guard_action(current.action, saved.action, unknown_action="block")
+    saved = normalize_guard_action_result(
+        saved_action, unknown_action="require-reapproval"
+    )
+    conservative_action = most_restrictive_guard_action(
+        current.action, saved.action, unknown_action="block"
+    )
     if current.reason_code is not None:
         return _decision(
             action=conservative_action,
@@ -284,9 +320,64 @@ def _decision(
         saved_action=saved.action if saved is not None else None,
         should_claim=should_claim,
         current_normalization_reason_code=current.reason_code,
-        saved_normalization_reason_code=saved.reason_code if saved is not None else None,
+        saved_normalization_reason_code=(
+            saved.reason_code if saved is not None else None
+        ),
         original_current_action=current.original_action,
         original_saved_action=saved.original_action if saved is not None else None,
         original_current_type=current.original_type,
         original_saved_type=saved.original_type if saved is not None else None,
+    )
+
+
+def _native_str(payload: dict[str, object], key: str) -> str | None:
+    value = payload.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _decision_from_native_payload(payload: object) -> ApprovalReuseDecision | None:
+    """Rebuild an ``ApprovalReuseDecision`` from the resident op payload.
+
+    ``payload`` is the ``ApprovalReuseDecision.to_evidence()`` dict emitted by
+    the ``approval_reuse_decide`` resident op.  Returns ``None`` on a malformed
+    payload so the caller falls through to the Python body rather than trusting
+    unverifiable bytes.
+    """
+
+    if not isinstance(payload, dict):
+        return None
+    action = _native_str(payload, "action")
+    status = _native_str(payload, "status")
+    reason_code = _native_str(payload, "reason_code")
+    if (
+        action is None
+        or status not in ("accepted", "rejected", "not-applicable")
+        or reason_code is None
+    ):
+        return None
+    return ApprovalReuseDecision(
+        action=action,  # type: ignore[arg-type]
+        status=status,  # type: ignore[arg-type]
+        reason_code=reason_code,
+        current_action=_native_str(payload, "current_action") or action,  # type: ignore[arg-type]
+        saved_action=_native_str(payload, "saved_action"),
+        should_claim=bool(payload.get("should_claim")),
+        current_normalization_reason_code=_native_str(
+            payload, "current_normalization_reason_code"
+        ),
+        saved_normalization_reason_code=_native_str(
+            payload, "saved_normalization_reason_code"
+        ),
+        original_current_action=(
+            payload.get("original_current_action")
+            if isinstance(payload.get("original_current_action"), str)
+            else None
+        ),
+        original_saved_action=(
+            payload.get("original_saved_action")
+            if isinstance(payload.get("original_saved_action"), str)
+            else None
+        ),
+        original_current_type=_native_str(payload, "original_current_type") or "str",
+        original_saved_type=_native_str(payload, "original_saved_type"),
     )

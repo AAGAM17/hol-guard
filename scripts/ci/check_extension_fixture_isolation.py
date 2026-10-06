@@ -80,6 +80,7 @@ def _trust_with_external(root: Path, extension_id: str) -> dict:
         "classes": classes,
     }
 
+
 def contributor_cli() -> Path:
     """Exercise the installed console entry point used by contributors."""
     binary = Path(sys.executable).with_name("hol-guard.exe" if os.name == "nt" else "hol-guard")

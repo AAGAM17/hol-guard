@@ -129,6 +129,7 @@ def test_malformed_binding_is_not_silently_replaced(checkout):
         refresh.main(["--trust-only"])
     assert bad.read_text() == "invalid JSON"
 
+
 def test_hand_edited_aggregate_is_rejected_not_laundered(checkout):
     root, bindings_dir = checkout
     trust = root / "contracts/extensions/trust-class-map.v1.json"

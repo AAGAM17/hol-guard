@@ -253,9 +253,7 @@ def _shared_files(root: Path, metadata: Metadata) -> dict[str, str]:
     bindings_dir = root / BINDINGS_DIR
     if bindings_dir.is_dir():
         for binding in sorted(bindings_dir.glob("*.v1.json")):
-            files[str(binding.relative_to(root)).replace("\\", "/")] = text_from_bytes(
-                read_bytes(binding)
-            )
+            files[str(binding.relative_to(root)).replace("\\", "/")] = text_from_bytes(read_bytes(binding))
     return files
 
 
@@ -265,19 +263,19 @@ def _edited_shared(files: dict[str, str], metadata: Metadata) -> dict[str, str]:
     # bindings including the new one.
     binding_path = trust_binding_path(metadata)
     binding_content = trust_binding_content(metadata)
-    bindings = {
-        path: content for path, content in files.items() if path.startswith(f"{BINDINGS_DIR}/")
-    }
+    bindings = {path: content for path, content in files.items() if path.startswith(f"{BINDINGS_DIR}/")}
     # Guard against reclassifying an existing trusted extension.
     classes = trust_members(project_trust_map(bindings))
     if metadata.catalog_id in classes["first-party"] or metadata.catalog_id in classes["trusted-library"]:
-        raise conflict(
-            "The builder cannot modify an existing trusted extension or change its trust class."
-        )
+        raise conflict("The builder cannot modify an existing trusted extension or change its trust class.")
     if metadata.catalog_id not in classes["external"]:
         bindings[binding_path] = binding_content
+    aggregate = project_trust_map(bindings)
+    # Preserve the committed file's line endings so CRLF checkouts stay byte-stable.
+    if "\r\n" in files.get(TRUST_PATH, ""):
+        aggregate = aggregate.replace("\n", "\r\n")
     edited = {
-        TRUST_PATH: project_trust_map(bindings),
+        TRUST_PATH: aggregate,
         PYPROJECT_PATH: edit_pyproject(files[PYPROJECT_PATH], metadata),
         STAGING_PATH: edit_staging(files[STAGING_PATH], metadata),
     }
@@ -296,9 +294,7 @@ def plan_repository(kit: Kit, repository: Path) -> IntegrationPlan:
     metadata = kit.discovery.metadata
     previous, legacy_orphans = _previous_kit(root, metadata)
     shared = _shared_files(root, metadata)
-    classes = trust_members(
-        project_trust_map({p: c for p, c in shared.items() if p.startswith(f"{BINDINGS_DIR}/")})
-    )
+    classes = trust_members(project_trust_map({p: c for p, c in shared.items() if p.startswith(f"{BINDINGS_DIR}/")}))
     if previous is None and any(metadata.catalog_id in values for values in classes.values()):
         raise conflict("This catalog ID already exists and is not owned by this authoring workflow.")
     if previous is not None and any(

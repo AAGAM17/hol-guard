@@ -29,7 +29,8 @@ use guard_command::supply_chain_package_eval::{
     evaluate_package_request_artifact, CanonicalPackageIdentity as EvalCanonicalPackageIdentity,
     ConfigLoaderApi, EntitlementRefreshApi, EvalError, EvalResult, GuardSyncRequest,
     GuardSyncRunnerApi, JsSemverApi, LockfileParseApi, LockfileParseResult, ManifestDepsApi,
-    NativeArchiveApi, PackageIdentityApi, RestrictedArchiveApi, RestrictedArchiveDownloadResult,
+    NativeArchiveApi, PackageIdentityApi, RestrictedArchiveApi,
+    RestrictedArchiveDownload as EvalRestrictedArchiveDownload, RestrictedArchiveDownloadResult,
     RestrictedArchiveFailure, RiskDetectApi, StoreExtrasApi, SupplyChainBundleApi,
     SupplyChainBundleResponse as EvalBundleResponse, SupplyChainEvalDeps, WorkspaceIoApi,
 };
@@ -1793,27 +1794,49 @@ impl PackageIdentityApi for ResidentPackageIdentity {
     }
 }
 
-/// Restricted-archive seam — no HTTP transport in the resident; return the
-/// policy Failure the Python download produces when the fetch is denied.
+/// Restricted-archive seam — bounded public-HTTPS-only acquisition via the
+/// `guard_command::restricted_archive` policy engine over the ureq-backed
+/// pinned transport.
 struct ResidentRestrictedArchive;
 
 impl RestrictedArchiveApi for ResidentRestrictedArchive {
     fn download_restricted_archive(
         &self,
         source_url: &str,
-        _max_bytes: u64,
-        _max_redirects: u32,
-        _timeout_seconds: f64,
-        _temp_dir: Option<&Path>,
+        max_bytes: u64,
+        max_redirects: u32,
+        timeout_seconds: f64,
+        temp_dir: Option<&Path>,
     ) -> EvalResult<RestrictedArchiveDownloadResult> {
-        Ok(RestrictedArchiveDownloadResult::Failure(
-            RestrictedArchiveFailure {
-                code: "external_archive_transport_unavailable".into(),
-                message: format!(
-                    "Restricted archive download is unavailable in the resident: {source_url}"
-                ),
+        let resolver = guard_command::restricted_archive_transport::SystemDnsResolver;
+        let transport = guard_command::restricted_archive_transport::UreqPinnedTransport;
+        Ok(
+            match guard_command::restricted_archive::download_restricted_archive(
+                source_url,
+                max_bytes,
+                max_redirects,
+                timeout_seconds,
+                temp_dir,
+                &resolver,
+                &transport,
+            ) {
+                guard_command::restricted_archive::RestrictedArchiveDownloadResult::Success(
+                    blob,
+                ) => RestrictedArchiveDownloadResult::Success(EvalRestrictedArchiveDownload {
+                    path: blob.path,
+                    sha256: blob.sha256,
+                    size: blob.size,
+                    source_url: blob.source_url,
+                    final_url: blob.final_url,
+                }),
+                guard_command::restricted_archive::RestrictedArchiveDownloadResult::Failure(
+                    failure,
+                ) => RestrictedArchiveDownloadResult::Failure(RestrictedArchiveFailure {
+                    code: failure.code,
+                    message: failure.message,
+                }),
             },
-        ))
+        )
     }
 }
 

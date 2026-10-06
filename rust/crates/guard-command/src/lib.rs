@@ -1113,6 +1113,7 @@ pub mod mcp_decision;
 pub mod mcp_stdio_session;
 pub mod pep440;
 pub mod restricted_archive;
+pub mod restricted_archive_transport;
 #[cfg(unix)]
 pub mod restricted_pytest;
 pub mod resume_template;

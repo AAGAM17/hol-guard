@@ -41,6 +41,8 @@ ring = "0.17.14"
 rsa = "0.9.8"
 base64ct = "1.6.0"
 caseless = "0.2.2"
+ureq = { version = "=3.3.0", default-features = false, features = ["rustls"] }
+url = "=2.5.8"
 
 [build-dependencies]
 sha2 = "0.10.9"

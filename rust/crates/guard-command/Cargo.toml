@@ -28,6 +28,8 @@ libc.workspace = true
 ring.workspace = true
 rsa.workspace = true
 base64ct.workspace = true
+ureq = { version = "=3.3.0", default-features = false, features = ["rustls"] }
+url = "=2.5.8"
 
 [build-dependencies]
 guard-command-build = { path = "../guard-command-build" }

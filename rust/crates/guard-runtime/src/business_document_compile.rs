@@ -72,6 +72,26 @@ mod tests {
     }
 
     #[test]
+    fn until_transport_retains_exact_expiry_without_installing_policy() {
+        let mut document = source();
+        document["spec"]["rules"][0]["lifetime"] =
+            json!({"mode":"until", "expiresAt":"2026-07-16T00:00:00.000000001Z"});
+        let response = compile_bytes(&serde_json::to_vec(&document).unwrap()).unwrap();
+        assert_eq!(
+            response["business_policy"]["rules"][0]["expiresAt"],
+            "2026-07-16T00:00:00.000000001Z"
+        );
+        assert_eq!(response["installed"], false);
+        assert_eq!(response["authority"], "unverified_source");
+        assert_eq!(
+            response["source_digest"],
+            compile_business_document(&document)
+                .unwrap()
+                .source_digest()
+        );
+    }
+
+    #[test]
     fn duplicate_members_and_trailing_values_are_rejected_before_compilation() {
         for input in [
             br#"{"kind":"GuardPolicy","kind":"GuardPolicy"}"#.as_slice(),

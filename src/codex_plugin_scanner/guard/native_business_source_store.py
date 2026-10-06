@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 SOURCE_FILE_NAME = "business-source-authority.v1.json"
 ANCHOR_FILE_NAME = "business-source-anchor.v1.json"
 INSTALLATION_STATE_KEY = "business_source_installation_v1"
-CURRENT_FENCE_CAPABILITY = "native-business-source-current-fence-v1"
+CURRENT_FENCE_CAPABILITY = "native-business-source-current-fence-v2"
 _UNSPECIFIED_CURRENT = object()
 
 

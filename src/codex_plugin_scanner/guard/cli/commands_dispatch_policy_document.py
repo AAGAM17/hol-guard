@@ -285,6 +285,7 @@ def _run_guard_policy_document_command(
                 "rules": len(document.rules),
                 "digest": policy_document_digest(document),
                 "include_provenance": include_provenance,
+                "provenance_redacted": not include_provenance,
             }
             if output_value is None:
                 if as_json:

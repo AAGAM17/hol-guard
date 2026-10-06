@@ -152,6 +152,32 @@ def test_cli_business_inspection_uses_source_and_redacts_provenance(tmp_path, na
             assert exported.rules[0].match == candidate.rules[0].match
             assert exported.rules[0].provenance.source == "local"
             assert exported.rules[0].provenance.created_at == "1970-01-01T00:00:00Z"
+            assert result["provenance_redacted"] is True
+
+
+def test_business_view_excludes_private_free_text_and_extensions():
+    from codex_plugin_scanner.guard.business_policy_document_view import without_provenance
+    from codex_plugin_scanner.guard.policy_document import GuardPolicyDocument
+    from codex_plugin_scanner.guard.policy_document_yaml import parse_policy_document_yaml
+
+    value = document().to_mapping()
+    marker = "private-free-text-never-export"
+    value["metadata"]["name"] = marker
+    value["metadata"]["labels"] = {"owner": marker}
+    value["metadata"]["x-owner"] = marker
+    value["x-owner"] = marker
+    value["spec"]["x-owner"] = marker
+    value["spec"]["defaults"]["x-owner"] = marker
+    rule = value["spec"]["rules"][0]
+    rule["description"] = marker
+    rule["x-hol-local"] = {"owner": marker, "workspace": marker}
+    rule["provenance"]["createdBy"] = marker
+    rule["match"]["x-owner"] = marker
+    rule["lifetime"]["x-owner"] = marker
+    view = without_provenance(GuardPolicyDocument.from_mapping(value))
+    encoded = json.dumps(view.to_mapping())
+    assert marker not in encoded
+    assert parse_policy_document_yaml(encoded).rules[0].match == document().rules[0].match
 
 
 def test_legacy_replacement_plan_cannot_hide_installed_business_rules(tmp_path, native_mcp_probe):

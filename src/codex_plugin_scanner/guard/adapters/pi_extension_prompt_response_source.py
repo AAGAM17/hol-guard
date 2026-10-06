@@ -1,6 +1,6 @@
 """Validate the native prompt approval envelope for Pi-family hooks."""
 
-PROMPT_RESPONSE_HELPER_SOURCE = r'''
+PROMPT_RESPONSE_HELPER_SOURCE = r"""
 function normalizePromptGuardResponse(value: unknown, event: unknown): GuardResponse | null {
   const normalized = normalizeGuardResponse(value);
   if (normalized !== null) return normalized;
@@ -24,4 +24,4 @@ function normalizePromptGuardResponse(value: unknown, event: unknown): GuardResp
   return { ...parsed, decision: "allow" } as GuardResponse;
 }
 
-'''
+"""

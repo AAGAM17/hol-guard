@@ -39,9 +39,30 @@ TrustClass = Literal["first-party", "trusted-library", "external"]
 Activation = Literal["default-on", "opt-in"]
 
 _MAP_SCHEMA: Final = "guard.extension-trust-class-map.v1"
+_BINDING_SCHEMA: Final = "guard.extension-trust-binding.v1"
 _VALID_CLASSES: Final = frozenset({"first-party", "trusted-library", "external"})
 _HOL_PUBLISHER: Final = {"id": "hol", "displayName": "Hashgraph Online"}
 _CURATED_PUBLISHER: Final = {"id": "hol-curated", "displayName": "HOL curated library"}
+
+
+def _bindings_dir() -> Path:
+    return Path(__file__).resolve().parents[4] / "contracts" / "extensions" / "trust"
+
+
+def _binding_payload(path: Path) -> tuple[str, TrustClass]:
+    try:
+        payload = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"invalid trust binding {path.name}") from exc
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != _BINDING_SCHEMA:
+        raise ValueError(f"invalid trust binding schema {path.name}")
+    extension = payload.get("extension")
+    trust_class = payload.get("trustClass")
+    if not isinstance(extension, str) or extension != path.name[: -len(".v1.json")]:
+        raise ValueError(f"trust binding {path.name} extension does not match filename")
+    if trust_class not in _VALID_CLASSES:
+        raise ValueError(f"trust binding {path.name} has unknown trust class")
+    return extension, cast(TrustClass, trust_class)
 
 
 @lru_cache(maxsize=1)
@@ -66,6 +87,12 @@ def _trust_map() -> dict[str, TrustClass]:
 
 
 def _load_map() -> dict[str, object]:
+    # Frozen binaries ship only packaged data; the source-tree bindings directory
+    # is absent there and must never be consulted.
+    if not bool(getattr(sys, "frozen", False)):
+        bindings = _bindings_dir()
+        if bindings.is_dir():
+            return trust_map_from_bindings(bindings)
     packaged = _packaged_map_bytes()
     if packaged is None:
         if bool(getattr(sys, "frozen", False)):
@@ -76,6 +103,36 @@ def _load_map() -> dict[str, object]:
     if not isinstance(payload, dict) or payload.get("schemaVersion") != _MAP_SCHEMA:
         raise ValueError("invalid trust-class map")
     return payload
+
+
+def trust_binding_index(bindings: Path) -> dict[str, TrustClass]:
+    """Fold authored per-extension bindings into an id -> trust-class index.
+
+    Strictly validates each binding file: schema, filename == extension, known
+    class, and no duplicate extension across files. Shared by the runtime trust
+    lookup and the artifact refresh so authored and generated surfaces agree.
+    """
+    index: dict[str, TrustClass] = {}
+    for path in sorted(bindings.glob("*.v1.json")):
+        extension, trust_class = _binding_payload(path)
+        if extension in index:
+            raise ValueError(f"duplicate trust binding for {extension}")
+        index[extension] = trust_class
+    return index
+
+
+def trust_map_from_bindings(bindings: Path) -> dict[str, object]:
+    """Assemble the trust-class map contract from per-extension bindings."""
+    classes: dict[str, list[str]] = {"first-party": [], "trusted-library": [], "external": []}
+    for extension, trust_class in sorted(trust_binding_index(bindings).items()):
+        classes[trust_class].append(extension)
+    for values in classes.values():
+        values.sort()
+    return {
+        "schemaVersion": _MAP_SCHEMA,
+        "publishers": {"hol": dict(_HOL_PUBLISHER), "hol-curated": dict(_CURATED_PUBLISHER)},
+        "classes": classes,
+    }
 
 
 def _packaged_map_bytes() -> bytes | None:

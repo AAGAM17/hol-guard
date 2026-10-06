@@ -581,9 +581,12 @@ fn oauth_credential_state(guard_home: &Path, payload: Option<&Value>) -> String 
 }
 
 /// `_load_oauth_secret_payload` — resolve the scoped secret ref from
-/// `credentials_ref` (falling back to the home-scoped default ref) and read
-/// the JSON secret from the encrypted file store.
-fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value> {
+/// `credentials_ref` (falling back to the home-scoped default ref), read the
+/// secret from the encrypted file store, and verify it against the record's
+/// `credentials_sha256` (`store_base._secret_matches_hash`, all three accepted
+/// prefixes). Bytes that no longer match the fingerprint they were stored with
+/// are not usable, so the caller degrades instead of trusting them.
+fn load_oauth_secret_raw(guard_home: &Path, payload: &Value) -> Option<String> {
     let resolved_home = resolve_runtime_home(guard_home)?;
     let default_ref = crate::policy_integrity_resolver::build_scoped_secret_ref(
         "guard-oauth-local-credentials",
@@ -598,7 +601,20 @@ fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value
         .unwrap_or(default_ref);
     let mut store = crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
     let raw = store.get_secret(&secret_ref)?;
-    serde_json::from_str(&raw).ok()
+    let expected = payload
+        .get(crate::oauth_secret_authority::CREDENTIALS_HASH_KEY)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())?;
+    crate::oauth_secret_authority::verified_secret_matches(&raw, expected)
+        .ok()
+        .filter(|matches| *matches)?;
+    Some(raw)
+}
+
+/// `_load_oauth_secret_payload` — the parsed form of `load_oauth_secret_raw`.
+fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value> {
+    serde_json::from_str(&load_oauth_secret_raw(guard_home, payload)?).ok()
 }
 
 /// `_build_oauth_local_credentials_result` — a secret payload is usable only
@@ -1346,16 +1362,41 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
             return Ok(env_ctx);
         }
         // `_resolve_guard_sync_auth_context` (:4733) — read the stored OAuth
-        // credentials, extract DPoP material, and reuse a still-valid cached
-        // access token. Token refresh (the network leg + rotation persist) is
-        // NOT ported in stage A: a missing/expired token surfaces
-        // `EvalError::Validation` (the `GuardSyncAuthorizationExpiredError`
-        // mirror) so `_evaluate_with_cloud` fail-closes to `ask` rather than
-        // mislabeling a refresh-needed credential as `NotFound` ("not
-        // configured") and falling back to local-only evaluation.
-        let oauth_credentials = match store.get_sync_payload("oauth_local_credentials") {
-            Some(c) if c.is_object() => c,
-            _ => return Err(EvalError::NotFound("Guard is not logged in.".to_owned())),
+        // credentials through the scoped secret authority: metadata from the
+        // `oauth_local_credentials` payload, secret material (refresh token,
+        // DPoP key, cached access token) from the verified secret behind
+        // `credentials_ref`. `store_oauth` never inlines the secret, so the
+        // payload alone cannot start a sync. Token refresh (the network leg +
+        // rotation persist) is still the stage-B port: a missing/expired token
+        // surfaces `EvalError::Validation` (the
+        // `GuardSyncAuthorizationExpiredError` mirror) so `_evaluate_with_cloud`
+        // fail-closes to `ask` rather than mislabeling a refresh-needed
+        // credential as `NotFound` ("not configured") and falling back to
+        // local-only evaluation.
+        // The writer replaces the secret before it republishes the record's
+        // fingerprint, so a read landing inside that window can see a valid pair
+        // torn apart and must not turn a healthy credential into a denial. One
+        // re-read settles it; anything else fails closed.
+        let mut attempt = 0_u8;
+        let oauth_credentials = loop {
+            attempt += 1;
+            let payload = match store.get_sync_payload("oauth_local_credentials") {
+                Some(payload) if payload.is_object() => payload,
+                _ => return Err(EvalError::NotFound("Guard is not logged in.".to_owned())),
+            };
+            match crate::oauth_secret_authority::resolve_credentials(&payload, &|_| {
+                load_oauth_secret_raw(store.guard_home(), &payload)
+            }) {
+                Ok(credentials) => break credentials,
+                Err(reason)
+                    if (reason == "credentials_secret_fingerprint_mismatch"
+                        || reason == "credentials_secret_unavailable")
+                        && attempt < 2 =>
+                {
+                    continue;
+                }
+                Err(reason) => return Err(EvalError::Validation(reason)),
+            }
         };
         let issuer = oauth_credentials
             .get("issuer")
@@ -1377,9 +1418,10 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
                 ))
             }
         };
-        let _ = (client_id, refresh_token); // refresh path is the stage-B port
         let dpop_key_material = gst::oauth_dpop_key_material(&oauth_credentials)?;
-        gst::resolve_guard_oauth_client_config(issuer).map_err(|e| {
+        // `(origin, authorize_url, token_endpoint, device_authorize_url,
+        // jwks_url, client_id)` — `token_endpoint` is element 2.
+        let oauth_client_config = gst::resolve_guard_oauth_client_config(issuer).map_err(|e| {
             EvalError::Validation(format!("Reconnect Guard to Guard Cloud to continue. {e}"))
         })?;
         let now_unix = std::time::SystemTime::now()
@@ -1394,11 +1436,47 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
         let access_token = match cached_access_token {
             Some(t) => t,
             None => {
-                return Err(EvalError::Validation(
-                    "Guard OAuth access token needs refresh; the resident refresh path \
-                     is not ported (stage A). Reauthorize Guard to continue."
-                        .to_owned(),
-                ))
+                // `runner.py` refresh leg — `_refresh_guard_oauth_access_token`:
+                // circuit-checked, `invalid_grant`-retried, rotation-persisted
+                // under `oauth-refresh.lock`. The reloader hands the loop the
+                // latest stored credential when a peer rotated mid-flight.
+                let store_ref = store;
+                let refreshed = crate::oauth_refresh::refresh_oauth_access_token(
+                    store,
+                    &oauth_credentials,
+                    &oauth_client_config.2,
+                    client_id,
+                    refresh_token,
+                    &dpop_key_material,
+                    &move || {
+                        store_ref
+                            .get_sync_payload("oauth_local_credentials")
+                            .and_then(|payload| {
+                                crate::oauth_secret_authority::resolve_credentials(
+                                    &payload,
+                                    &|_| {
+                                        crate::package_authority_op::load_oauth_secret_raw(
+                                            store_ref.guard_home(),
+                                            &payload,
+                                        )
+                                    },
+                                )
+                                .ok()
+                            })
+                            .and_then(|creds| {
+                                let rt = creds
+                                    .get("refresh_token")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_owned)?;
+                                let mat = gst::oauth_dpop_key_material(&creds).ok()?;
+                                Some((rt, mat))
+                            })
+                    },
+                );
+                match refreshed {
+                    Ok(auth) => auth.access_token,
+                    Err(e) => return Err(e),
+                }
             }
         };
         let sync_url = gst::validate_guard_sync_endpoint(

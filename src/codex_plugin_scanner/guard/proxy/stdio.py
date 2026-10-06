@@ -630,7 +630,7 @@ class StdioGuardProxy:
     def _forward_message(
         self,
         *,
-        process: subprocess.Popen[str],
+        process: subprocess.Popen[str] | _NativeChildProcess,
         message: dict[str, Any],
         responses: list[dict[str, Any]],
         events: list[dict[str, Any]],
@@ -1043,7 +1043,7 @@ class StdioGuardProxy:
     def _read_response(
         self,
         *,
-        process: subprocess.Popen[str],
+        process: subprocess.Popen[str] | _NativeChildProcess,
         message_id: Any,
         output_stream: Any | None = None,
     ) -> dict[str, Any] | None:

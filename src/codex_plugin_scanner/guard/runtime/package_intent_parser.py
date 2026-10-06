@@ -164,9 +164,7 @@ def _native_package_intent(
             command_text,
             workspace=workspace,
             home_dir=home_dir,
-            canonical_command=(
-                canonical_command.to_dict() if hasattr(canonical_command, "to_dict") else canonical_command
-            ),
+            canonical_command=canonical_command.to_dict() if canonical_command is not None else None,
             environment=environment,
             guard_home=guard_home if guard_home is not None else resolve_guard_home(),
         )

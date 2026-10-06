@@ -116,6 +116,38 @@ def test_recovery_final_approval_failure_keeps_committed_sql_closed(tmp_path, na
     assert owner.read_installed_business_source(store, _key(store)) == recovered
 
 
+@pytest.mark.parametrize("loss", ["all-anchors", "one-copy", "older-anchors"])
+def test_existing_sql_floor_prevents_recovery_of_older_prepared_source(tmp_path, native_mcp_probe, monkeypatch, loss):
+    import time
+
+    store = GuardStore(tmp_path / "newer-sql-home")
+    native_mcp_probe(store.guard_home)
+    old = _install(store, document(1), _grant(store, document(1)))
+    old_marker = retention.read_retained_business_source_anchor(store)
+    _install(store, document(2), _grant(store, document(2), initialize=False))
+    copies = (Copy(old_marker.decode()), Copy(old_marker.decode()))
+    monkeypatch.setattr(retention, "_copies", lambda current_store: copies)
+    owner._write_private(
+        store, owner.PREPARED_SOURCE_FILE_NAME, old.source.record_bytes, owner.MAX_RECORD_BYTES, time.monotonic() + 5
+    )
+    state = store.guard_home / "native-runtime"
+    if loss == "all-anchors":
+        (state / owner.ANCHOR_FILE_NAME).unlink()
+        copies[0].value = copies[1].value = None
+    elif loss == "one-copy":
+        copies[1].value = None
+    else:
+        owner._write_private(store, owner.ANCHOR_FILE_NAME, old_marker, owner.MAX_ANCHOR_BYTES, time.monotonic() + 5)
+    witness = owner._database_witness(store)
+    values = tuple(copy.value for copy in copies)
+    with pytest.raises(NativePolicySnapshotError):
+        recover_committed_business_source(
+            store, document(1), approval_gate_grant=_grant(store, document(1), initialize=False)
+        )
+    assert owner._database_witness(store) == witness
+    assert tuple(copy.value for copy in copies) == values
+
+
 def test_split_retained_write_is_repaired_only_with_fresh_exact_approval(tmp_path, native_mcp_probe, monkeypatch):
     store = GuardStore(tmp_path / "split-home")
     native_mcp_probe(store.guard_home)

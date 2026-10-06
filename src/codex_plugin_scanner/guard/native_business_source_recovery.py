@@ -60,6 +60,22 @@ def recover_committed_business_source(store, document, *, approval_gate_grant, d
         witness = owner._database_witness(store)
         if witness is None:
             owner._refuse_native_business_floor_without_source(store, key)
+        else:
+            if all(wire is None for wire in (marker, *copies)) or any(wire is None for wire in copies):
+                raise owner._error("native_business_source_recovery_required")
+            # SQL may retain a newer identity even when readable markers were
+            # rolled back. Its floor can only restrict this recovery candidate.
+            from .native_policy_snapshot_codec import _canonical_json_bytes_v3, _strict_json_loads_v3
+
+            observed = _strict_json_loads_v3(witness)
+            if observed.get("schema") != "guard.business-source-installation.v1" or "retained_identity" not in observed:
+                raise owner._error("native_business_source_recovery_required")
+            verify_business_source_record(
+                candidate,
+                key,
+                deadline_monotonic=deadline,
+                retained_identity_bytes=_canonical_json_bytes_v3(observed["retained_identity"]),
+            )
         closed = build_business_source_anchor(source, key, "closed", deadline_monotonic=deadline)
         committed = build_business_source_anchor(source, key, "committed", deadline_monotonic=deadline)
         # Old installations without a prepared record retain the narrow existing

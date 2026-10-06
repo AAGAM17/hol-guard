@@ -96,3 +96,34 @@ def test_business_draft_preserves_intersection_and_cannot_compile(effect: str, e
 @pytest.mark.parametrize("selector", [None, {}, [], "business", True])
 def test_malformed_business_field_never_becomes_wildcard(selector: object) -> None:
     _assert_conformance(selector, valid=False)
+
+
+@pytest.mark.parametrize("suffix", ["\n", "\r\n", "\u2028", "\u2029"])
+def test_account_binding_requires_exact_bytes(suffix: str) -> None:
+    _assert_conformance({**SELECTORS["base"], "accountBindings": ["a" * 64 + suffix]}, valid=False)
+
+
+def _large_selector(count: int) -> dict[str, object]:
+    return {
+        **SELECTORS["base"],
+        "accountBindings": [f"{index:064x}" for index in range(count)],
+        "recipientDomains": [
+            ".".join([f"{index:03d}" + "a" * 60, "b" * 63, "c" * 63, "d" * 61]) for index in range(count)
+        ],
+    }
+
+
+def test_aggregate_selector_limit_rejects_individually_valid_arrays() -> None:
+    selector = _large_selector(256)
+    source = _draft(selector)
+    assert len(source.encode()) < 1_048_576
+    with pytest.raises(PolicyDocumentError) as caught:
+        parse_policy_document_yaml(source)
+    diagnostic = caught.value.diagnostics[0]
+    assert diagnostic.code == "business_selector_limit_bytes"
+    assert diagnostic.path == ("spec", "rules", 0, "match", "business")
+    assert "aaaaaaaa" not in str(caught.value)
+
+
+def test_bounded_selector_keeps_all_values() -> None:
+    _assert_conformance(_large_selector(100), valid=True)

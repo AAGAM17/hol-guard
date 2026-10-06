@@ -312,6 +312,8 @@
           "description": "Opaque tenant-scoped account bindings established by the trusted account resolver. Raw identities and unsalted account hashes are not valid bindings.",
           "items": {
             "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
             "pattern": "^[a-f0-9]{64}$"
           }
         },

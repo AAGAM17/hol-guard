@@ -17,6 +17,7 @@ from typing import Literal
 from ..action_lattice import (
     UNKNOWN_GUARD_ACTION_REASON,
     GuardActionNormalization,
+    is_guard_action,
     most_restrictive_guard_action,
     normalize_guard_action_result,
 )
@@ -347,10 +348,14 @@ def _decision_from_native_payload(payload: object) -> ApprovalReuseDecision | No
     if not isinstance(payload, dict):
         return None
     action = _native_str(payload, "action")
+    current_action = _native_str(payload, "current_action") or action
+    saved_action = _native_str(payload, "saved_action")
     status = _native_str(payload, "status")
     reason_code = _native_str(payload, "reason_code")
     if (
-        action is None
+        not is_guard_action(action)
+        or not is_guard_action(current_action)
+        or (saved_action is not None and not is_guard_action(saved_action))
         or status not in ("accepted", "rejected", "not-applicable")
         or reason_code is None
     ):
@@ -359,8 +364,8 @@ def _decision_from_native_payload(payload: object) -> ApprovalReuseDecision | No
         action=action,  # type: ignore[arg-type]
         status=status,  # type: ignore[arg-type]
         reason_code=reason_code,
-        current_action=_native_str(payload, "current_action") or action,  # type: ignore[arg-type]
-        saved_action=_native_str(payload, "saved_action"),
+        current_action=current_action,  # type: ignore[arg-type]
+        saved_action=saved_action,
         should_claim=bool(payload.get("should_claim")),
         current_normalization_reason_code=_native_str(
             payload, "current_normalization_reason_code"

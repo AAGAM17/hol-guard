@@ -31,7 +31,7 @@ fn token_hex(bytes: usize) -> String {
     let digest = hex::encode(hasher.finalize());
     // Produce exactly `bytes` bytes of hex (2*bytes chars); the digest is 32
     // bytes, so this truncates when bytes<=16 and stays hex-shaped otherwise.
-    let mut out = digest;
+    let mut out = String::with_capacity(bytes * 2);
     while out.len() < bytes * 2 {
         out.push_str(&digest);
     }

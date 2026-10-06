@@ -511,11 +511,9 @@ fn hmac_sha256_raw(key: &[u8], message: &[u8]) -> Vec<u8> {
 }
 
 /// `daemon_state_matches_current_runtime` (runtime_peer.py:105-:135):
-/// compat + fingerprint equality, or `package_version == installed`, or a
-/// current/newer Desktop Core source. Rust has no Python package version
-/// or Desktop-core fingerprint; accept only the fingerprint/package
-/// equality branch, plus a current compat. A desktop-owned daemon's
-/// fingerprint still matches when the same source tree produced it.
+/// requires the current compatibility version, a non-empty runtime
+/// fingerprint, and a matching package version. Rust does not compute the
+/// Python tree fingerprint or identify Desktop Core sources.
 fn daemon_state_matches_current_runtime(payload: &Map<String, Value>) -> bool {
     if payload.get("compatibility_version").and_then(Value::as_i64)
         != Some(GUARD_DAEMON_COMPATIBILITY_VERSION)
@@ -523,16 +521,13 @@ fn daemon_state_matches_current_runtime(payload: &Map<String, Value>) -> bool {
         return false;
     }
     let fingerprint = payload.get("runtime_fingerprint").and_then(Value::as_str);
-    if fingerprint.is_none() || fingerprint.is_some_and(|f| f.trim().is_empty()) {
+    if fingerprint.map_or(true, |f| f.trim().is_empty()) {
         return false;
     }
-    // Accept when the state's runtime fingerprint equals this runtime's
-    // or when package_version matches the installed runtime. The Rust
-    // runtime does not compute a Python tree fingerprint; a daemon whose
-    // fingerprint was minted from the same source tree will still match.
-    // We treat a present fingerprint as compatible and let `package_version`
-    // equality (when the field exists) stand in for the version branch.
-    true
+    payload
+        .get("package_version")
+        .and_then(Value::as_str)
+        .is_some_and(|v| v == crate::PACKAGE_VERSION)
 }
 
 /// `_healthz_payload_is_current` (manager.py:3696-:3709).
@@ -1187,5 +1182,65 @@ fn parse_http_response(raw: &[u8]) -> Option<Vec<u8>> {
     match content_length {
         Some(len) => Some(body.get(..len).unwrap_or(body).to_vec()),
         None => Some(body.to_vec()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daemon_state_matches_current_runtime_requires_matching_package_version() {
+        let mut payload = serde_json::json!({
+            "compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION,
+            "runtime_fingerprint": "runtime-fingerprint",
+            "package_version": crate::PACKAGE_VERSION,
+        });
+        assert!(daemon_state_matches_current_runtime(
+            payload.as_object().unwrap()
+        ));
+
+        payload["package_version"] = Value::String("different-version".to_owned());
+        assert!(!daemon_state_matches_current_runtime(
+            payload.as_object().unwrap()
+        ));
+
+        payload["package_version"] = Value::String(crate::PACKAGE_VERSION.to_owned());
+        payload["runtime_fingerprint"] = Value::String("  ".to_owned());
+        assert!(!daemon_state_matches_current_runtime(
+            payload.as_object().unwrap()
+        ));
+
+        payload["runtime_fingerprint"] = Value::String("runtime-fingerprint".to_owned());
+        payload["compatibility_version"] = Value::from(GUARD_DAEMON_COMPATIBILITY_VERSION + 1);
+        assert!(!daemon_state_matches_current_runtime(
+            payload.as_object().unwrap()
+        ));
+    }
+
+    #[test]
+    fn healthz_payload_requires_current_compatibility_and_required_tables() {
+        let current = serde_json::json!({
+            "compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION,
+            "tables": REQUIRED_DAEMON_TABLES,
+        });
+        assert!(healthz_payload_is_current(&current));
+
+        let without_tables = serde_json::json!({
+            "compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION,
+        });
+        assert!(healthz_payload_is_current(&without_tables));
+
+        let missing_required_table = serde_json::json!({
+            "compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION,
+            "tables": [],
+        });
+        assert!(!healthz_payload_is_current(&missing_required_table));
+
+        let outdated_compatibility = serde_json::json!({
+            "compatibility_version": GUARD_DAEMON_COMPATIBILITY_VERSION + 1,
+            "tables": REQUIRED_DAEMON_TABLES,
+        });
+        assert!(!healthz_payload_is_current(&outdated_compatibility));
     }
 }

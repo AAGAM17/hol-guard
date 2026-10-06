@@ -56,24 +56,6 @@ pub(super) fn package_target_result(
             .map(Value::String)
             .unwrap_or(Value::Null),
     );
-    r.insert(
-        "sourceIdentity".to_string(),
-        optional_string(target.get("source_identity"))
-            .map(Value::String)
-            .unwrap_or(Value::Null),
-    );
-    r.insert(
-        "sourceRepository".to_string(),
-        optional_string(target.get("source_repository"))
-            .map(Value::String)
-            .unwrap_or(Value::Null),
-    );
-    r.insert(
-        "sourceRevisionKind".to_string(),
-        optional_string(target.get("source_revision_kind"))
-            .map(Value::String)
-            .unwrap_or(Value::Null),
-    );
     if let Some(rid) = rule_id {
         r.insert("ruleId".to_string(), Value::String(rid.to_string()));
     }
@@ -100,7 +82,20 @@ pub(super) fn heuristic_package_result(
         "source".to_string(),
         Value::String("guard-local".to_string()),
     );
-    package_target_result(target, decision, vec![reason], None)
+    let mut r = package_target_result(target, decision, vec![reason], None);
+    for (key, src) in [
+        ("sourceIdentity", "source_identity"),
+        ("sourceRepository", "source_repository"),
+        ("sourceRevisionKind", "source_revision_kind"),
+    ] {
+        r.insert(
+            key.to_string(),
+            optional_string(target.get(src))
+                .map(Value::String)
+                .unwrap_or(Value::Null),
+        );
+    }
+    r
 }
 
 #[allow(dead_code)]

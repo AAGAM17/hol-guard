@@ -1237,7 +1237,13 @@ def context_package_launcher_token(command_name: str, args: Sequence[str]) -> st
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
         raise _unavailable("native_package_launcher_token_unavailable")
-    return result["package_launcher"]["package"]
+    launcher = result.get("package_launcher")
+    if not isinstance(launcher, dict):
+        raise _unavailable("native_package_launcher_token_unavailable")
+    package = launcher.get("package")
+    if package is not None and not isinstance(package, str):
+        raise _unavailable("native_package_launcher_token_unavailable")
+    return package
 
 
 def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: bool) -> tuple[str, tuple[str, ...]]:
